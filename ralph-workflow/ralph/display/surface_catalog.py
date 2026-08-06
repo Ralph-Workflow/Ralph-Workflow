@@ -219,6 +219,12 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         production_entry_points=("build_edit_preview",),
     ),
     SurfaceSpec(
+        "file_preview",
+        "edit_preview",
+        format="indent: shared unit; read-write body, no polarity rows",
+        production_entry_points=("build_edit_preview",),
+    ),
+    SurfaceSpec(
         "diff_preview",
         "edit_preview",
         format="indent: shared unit; numbered polarity rows",

@@ -29,6 +29,24 @@ class _OpenCodeDispatch:
     def __init__(self, owner: OpenCodeParser) -> None:
         self._owner = owner
 
+    @staticmethod
+    def _canonical_tool_name(raw_tool_name: str) -> str:
+        """Normalize OpenCode's ``ralph_*`` tool names to the canonical form.
+
+        The live 1.18.14 wire format emits tool names like
+        ``ralph_read_file`` / ``ralph_write_file`` / ``ralph_edit_file``;
+        the transport-neutral preview payload builder keys off
+        ``read_file`` / ``write_file`` / ``edit_file``. This is the
+        single normalization point at the transport boundary so the
+        display and the preview builder see one canonical name.
+        A name that does not start with ``ralph_`` is returned unchanged
+        (e.g. Claude-shaped ``Read`` / ``Write`` / ``Edit`` input is
+        preserved as-is).
+        """
+        if raw_tool_name.startswith("ralph_"):
+            return raw_tool_name[len("ralph_") :]
+        return raw_tool_name
+
     def dispatch(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
 
@@ -144,12 +162,15 @@ class _OpenCodeDispatch:
         part: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        tool_name = str(part.get("tool", obj.get("tool", "unknown")))
+        raw_tool_name = str(part.get("tool", obj.get("tool", "unknown")))
+        canonical_tool_name = self._canonical_tool_name(raw_tool_name)
         state_obj = part.get("state")
         metadata = self._tool_metadata(obj, part)
 
         if not isinstance(state_obj, dict):
-            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+            yield AgentOutputLine(
+                type="tool_use", content=canonical_tool_name, raw=raw, metadata=metadata
+            )
             return
 
         status = str(state_obj.get("status", ""))
@@ -159,7 +180,12 @@ class _OpenCodeDispatch:
             # event already exposed the dispatch, however; emit it only once
             # per call ID while still retaining the terminal result.
             if not self._owner._tool_call_was_dispatched(part):
-                yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+                yield AgentOutputLine(
+                    type="tool_use",
+                    content=canonical_tool_name,
+                    raw=raw,
+                    metadata=metadata,
+                )
             self._owner._finish_tool_call(part)
             output = state_obj.get("output", "")
             yield AgentOutputLine(
@@ -174,14 +200,21 @@ class _OpenCodeDispatch:
             # Keep an errored dispatch visible, but do not duplicate a prior
             # running event for the same call.
             if not self._owner._tool_call_was_dispatched(part):
-                yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+                yield AgentOutputLine(
+                    type="tool_use",
+                    content=canonical_tool_name,
+                    raw=raw,
+                    metadata=metadata,
+                )
             self._owner._finish_tool_call(part)
             err = str(state_obj.get("error", "tool error"))
             yield AgentOutputLine(type="error", content=err, raw=raw, metadata=metadata)
             return
 
         self._owner._record_tool_dispatch(part)
-        yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+        yield AgentOutputLine(
+            type="tool_use", content=canonical_tool_name, raw=raw, metadata=metadata
+        )
 
     def _parse_tool_result(
         self,
@@ -207,9 +240,20 @@ class _OpenCodeDispatch:
         part: dict[str, object],
     ) -> dict[str, object]:
         metadata = dict(obj)
-        tool_name = part.get("tool", obj.get("tool"))
-        if isinstance(tool_name, str) and tool_name:
+        raw_tool_name = part.get("tool", obj.get("tool"))
+        if isinstance(raw_tool_name, str) and raw_tool_name:
+            # Normalize OpenCode's ``ralph_*`` tool names at the
+            # transport boundary so the canonical preview payload
+            # builder recognizes them. The live 1.18.14 wire format
+            # emits tool names like ``ralph_read_file`` /
+            # ``ralph_write_file`` / ``ralph_edit_file``; the
+            # transport-neutral preview payload builder keys off
+            # ``read_file`` / ``write_file`` / ``edit_file``. Preserve
+            # the raw name in ``tool_raw`` for diagnostics so an
+            # operator can still trace the originating wire bytes.
+            tool_name = self._canonical_tool_name(raw_tool_name)
             metadata["tool"] = tool_name
+            metadata["tool_raw"] = raw_tool_name
 
         call_id = self._owner._tool_call_id(part)
         if call_id is not None:

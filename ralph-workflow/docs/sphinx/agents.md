@@ -230,13 +230,47 @@ Each agent has a documented verification path that targets its own contract:
 - **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder --agent '<exact nanocoder alias>'`
 - **AGY (interactive)**: `ralph smoke-interactive-agy` (manual paid diagnostic)
 - **Cursor (headless)**: `ralph smoke-interactive-cursor` (live binary required)
-- **Codex, OpenCode, Pi**: public-surface black-box pytest suite
-  (`uv run pytest tests/agents/<agent>_blackbox.py -q`)
+- **OpenCode (headless)**: `ralph smoke-interactive-opencode --agent '<exact opencode alias>'`
+  (live binary required; see
+  [the OpenCode section in Agent Compatibility](agent-compatibility.md#opencode)
+  for the model/provider syntax reference and the live capture command)
+
+The Codex and Pi transports are exercised through the public-surface
+black-box pytest suite (`uv run pytest tests/agents/parsers/ tests/test_opencode_display_fidelity.py -q`)
+plus the per-agent parser unit tests under `tests/agents/parsers/`. There
+is no `tests/agents/<agent>_blackbox.py` file; the older operator docs
+referenced one that never existed.
 
 These suites verify Ralph Workflow's public registry / catalog / parser /
 command-builder surface for each agent, plus the committed wire-format
 fixture where applicable. They do **not** claim live MCP wiring for agents
 that have no documented CLI MCP path.
+
+## Display-capability declarations
+
+Every built-in agent carries a tri-state display-capability declaration
+in its registration entry (see
+:mod:`ralph.agents.display_capabilities`). The declaration names the
+agent's stance on each catalog-derived display capability -- syntax
+highlighting, file preview, and edit diff at minimum -- as one of:
+
+- ``SUPPORTED`` -- the agent's parser produces a metadata envelope the
+  shared preview builder recognizes, and ``build_edit_preview`` renders
+  the surface. A SUPPORTED capability paired with an empty recorder
+  during a smoke run is recorded as a defect.
+- ``NOT_APPLICABLE (<reason>)`` -- the transport is structurally incapable
+  of producing the surface (rare; almost always applicable agents).
+- ``UNIMPLEMENTED (<reason>)`` -- the transport CAN produce the surface
+  in principle, but the current parser/display wiring is not yet brought
+  to the same shape as the working transports.
+
+The declarations appear in
+``.agent/artifacts/smoke_conformance_matrix.md`` (rendered by
+:func:`ralph.pipeline.plumbing.smoke_plumbing.render_capability_matrix_markdown`)
+alongside the per-run evidence-provenance grades. Read that file to see
+which agent currently implements what. Adding a ninth built-in or a new
+capability without declaring the full cross-product fails the gate that
+``tests/agents/test_display_capabilities.py`` enforces.
 
 AGY's v1.1.8 source record includes manual observations for
 `gemini-3.6-flash-low`, an explicit `gemini-3.6-flash-high --effort high`

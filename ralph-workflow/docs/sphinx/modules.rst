@@ -1533,6 +1533,20 @@ ralph.agents.drain_not_bound_error
    :members:
    :show-inheritance:
 
+ralph.agents.display_capabilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.display_capabilities
+   :members:
+   :show-inheritance:
+
+ralph.agents.display_capability_stance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.display_capability_stance
+   :members:
+   :show-inheritance:
+
 ralph.agents.executor_error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3241,6 +3255,20 @@ ralph.display.auto_integrate_message
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.auto_integrate_message
+   :members:
+   :show-inheritance:
+
+ralph.display.capability_observation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.capability_observation
+   :members:
+   :show-inheritance:
+
+ralph.display.capability_observation_recorder
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.capability_observation_recorder
    :members:
    :show-inheritance:
 

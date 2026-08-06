@@ -152,6 +152,12 @@ from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
 )
+from ralph.display.capability_observation import CapabilityObservation
+from ralph.display.capability_observation_recorder import (
+    CapabilityObservationRecorder,
+    capability_for_render,
+    infer_surface_for_preview,
+)
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.edit_preview import (
@@ -490,6 +496,7 @@ class ParallelDisplay:
         "_activity_router",
         "_block_open_mono",
         "_block_open_wall",
+        "_capability_recorder",
         "_clock",
         "_ctx",
         "_drop_last_warned",
@@ -548,6 +555,7 @@ class ParallelDisplay:
         is_quiet: bool = False,
         clock: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
+        capability_recorder: CapabilityObservationRecorder | None = None,
     ) -> None:
         # Re-validate at runtime: a duck-typed stand-in (e.g. test stub) is
         # permitted provided it exposes ``.console``. The strict type contract
@@ -566,6 +574,14 @@ class ParallelDisplay:
             display_context.terminal_background_hex
             if isinstance(display_context, DisplayContext)
             else None
+        )
+        # S-5: per-instance recorder of capability observations. Defaults
+        # to a fresh recorder so the smoke harness can query
+        # ``observed_capabilities`` without wiring extra dependencies;
+        # tests may inject a recorder to assert the observation shape
+        # without going through a full ParallelDisplay session.
+        self._capability_recorder: CapabilityObservationRecorder = (
+            capability_recorder if capability_recorder is not None else CapabilityObservationRecorder()
         )
         # PLAN.md S-7: one allocator per ParallelDisplay instance -- its
         # lifetime is the render session, matching G-6's "frame-indexed
@@ -2627,6 +2643,30 @@ class ParallelDisplay:
         )
         if preview is None:
             return
+        # S-5: record a capability observation at the single existing
+        # preview-production choke point. The capability is inferred
+        # from the preview's catalog surface name so the recorder
+        # stays transport-neutral -- no `if transport == AgentTransport.X`
+        # branching. ``payload_from_tool_event`` already maps tool
+        # names to ``PreviewPayload.operation``; ``infer_surface_for_preview``
+        # maps the operation to the catalog surface, and
+        # ``capability_for_render`` maps the surface to the
+        # operator-facing capability.
+        preview_input_dict = preview_input.get("input")
+        operation = "syntax_preview"
+        if isinstance(preview_input_dict, dict):
+            from ralph.display.preview_payload import payload_from_tool_event as _pfe
+
+            canonical = _pfe(tool_name, preview_input)
+            if canonical is not None:
+                operation = infer_surface_for_preview(preview, canonical.operation)
+        capability = capability_for_render(surface_name=operation, tool_name=tool_name)
+        if capability is not None:
+            self._capability_recorder.record(
+                CapabilityObservation(
+                    capability=capability, tool_name=tool_name, unit_id=unit_id
+                )
+            )
         path = ""
         payload = preview_input.get("input")
         if isinstance(payload, dict):
@@ -3364,6 +3404,22 @@ class ParallelDisplay:
             self._status_bar.stop()
         self.flush_blocks()
         self._flush_pending_tool_results()
+
+    @property
+    def capability_recorder(self) -> CapabilityObservationRecorder:
+        """Return the per-instance capability observation recorder.
+
+        The recorder exposes ``observed_capabilities()`` and
+        ``observations_for_capability(capability)`` so the smoke
+        harness can compare the selected ``AgentSupport``'s declared
+        capabilities with what actually rendered during the run --
+        the S-5 contract that turns a SUPPORTED capability into a
+        falsifiable claim.
+        """
+        return self._capability_recorder
+
+    def _stop_flush_rendered_writers(self) -> None:
+        """Flush any per-unit rendered-record writer that was not already collected."""
         # P0 (wt-028-display S-11 / AC-07): flush any per-unit
         # rendered-record writer that was not already collected by
         # ``drop_unit`` (e.g. a single-wave run whose drop_unit is

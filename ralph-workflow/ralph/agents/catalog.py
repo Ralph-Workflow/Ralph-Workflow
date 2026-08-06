@@ -630,4 +630,5 @@ def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "Ag
         config=config,
         is_builtin=base.is_builtin,
         no_default_session_flag=base.no_default_session_flag,
+        display_capabilities=base.display_capabilities,
     )

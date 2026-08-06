@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.agents._contracts import StrategyFactory
+    from ralph.agents.display_capability_stance import DisplayCapabilityStance
     from ralph.agents.parsers.base import AgentParser
 
 
@@ -82,6 +83,7 @@ class BuiltinAgentSpec:
     interactive: bool = False
     subagent_capability: bool | None = None
     no_default_session_flag: bool = False
+    display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:
         """Materialize the dataclass into an :class:`AgentSupport`.
@@ -106,6 +108,12 @@ class BuiltinAgentSpec:
             for field, value in asdict_result.items()
             if field not in _BUILTIN_SPEC_POSITIONAL_FIELDS
         }
+        # ``dataclasses.asdict`` recursively converts nested dataclasses
+        # to plain dicts, which would lose the ``DisplayCapabilityStance``
+        # class identity the downstream validator relies on. Pass the
+        # original tuple through explicitly so the validator sees real
+        # ``DisplayCapabilityStance`` instances.
+        kwargs["display_capabilities"] = self.display_capabilities
         return AgentSupport.from_registration_kwargs(
             name,
             transport=self.transport,

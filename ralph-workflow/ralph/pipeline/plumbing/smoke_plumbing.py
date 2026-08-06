@@ -57,6 +57,7 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from ralph.agents.display_capability_stance import DisplayCapabilityStance
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
@@ -308,6 +309,24 @@ CONFORMANCE_MATRIX_FACTS: Final[tuple[str, ...]] = (
     "tool_activity_seen",
 )
 
+#: Canonical agent-identity order for the capability table (S-6). The
+#: capability matrix is keyed by *agent identity*, not by transport
+#: enum, so that ``claude`` and ``claude-headless`` -- which share the
+#: same binary but exercise different transports -- appear as
+#: distinguishable rows. The full set of eight built-ins appears here
+#: so an operator can read which agent implements what at a glance,
+#: matching the plan's AC-6.
+CANONICAL_CAPABILITY_AGENT_ORDER: Final[tuple[str, ...]] = (
+    "claude",
+    "claude-headless",
+    "codex",
+    "opencode",
+    "nanocoder",
+    "agy",
+    "pi",
+    "cursor",
+)
+
 #: Durable JSON store (source of truth) and its rendered markdown sibling.
 #: Follows the ``run_time_report`` pattern (a runtime-generated file written
 #: directly to ``.agent/artifacts/``, never submitted through
@@ -459,6 +478,79 @@ def render_conformance_matrix_markdown(matrix: ConformanceMatrix) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_capability_matrix_markdown(
+    *,
+    capability_rows: dict[str, tuple[DisplayCapabilityStance, ...]] | None = None,
+) -> str:
+    """Render the operator-facing display-capability matrix (S-4 / S-6).
+
+    One row per built-in agent, one column per catalog-derived
+    :class:`DisplayCapability`. Each cell shows the agent's declared
+    stance verbatim (``SUPPORTED`` / ``NOT_APPLICABLE (<reason>)`` /
+    ``UNIMPLEMENTED (<reason>)``). The matrix is sourced from the
+    built-in :class:`AgentSupport` declarations so an operator can
+    read which agent implements what without reading code.
+
+    The matrix is total and fail-closed: the underlying
+    :func:`ralph.agents.display_capabilities.all_display_capabilities`
+    vocabulary is the source of truth, and every built-in agent must
+    declare a stance for every entry. The matrix render is therefore
+    driven by those declarations; an empty ``capability_rows`` mapping
+    means the caller has not yet loaded the built-ins.
+
+    The rendered table is meant to live in
+    ``.agent/artifacts/smoke_conformance_matrix.md`` below the
+    evidence-provenance table, so an operator can see both
+    "what the latest run graded" and "what the agent declares it
+    supports" in the same file.
+    """
+    from ralph.agents.builtin import (
+        builtin_supports,  # reason: lazy import breaks plumbing<-> ->builtin cycle
+    )
+    from ralph.agents.display_capabilities import (  # reason: lazy import breaks plumbing<-> ->display_capabilities cycle
+        all_display_capabilities,
+    )
+
+    capabilities = tuple(all_display_capabilities())
+    rows = capability_rows if capability_rows is not None else {
+        support.name: support.display_capabilities for support in builtin_supports()
+    }
+    lines = [
+        "## Display-capability declarations (S-4)",
+        "",
+        "Per-agent tri-state stance for each catalog-derived "
+        "display capability. ``SUPPORTED`` means the agent's parser "
+        "produces a metadata envelope the canonical "
+        "`payload_from_tool_event` recognizes and `build_edit_preview` "
+        "renders; ``NOT_APPLICABLE`` means the transport is "
+        "structurally incapable; ``UNIMPLEMENTED`` means the transport "
+        "can produce the surface but the current parser/display path "
+        "is not wired to its frame shape. ``NOT_APPLICABLE`` and "
+        "`UNIMPLEMENTED` carry a non-empty reason.",
+        "",
+    ]
+    if not rows:
+        lines.append("No built-in capability declarations recorded yet.")
+        return "\n".join(lines).rstrip() + "\n"
+    header = ["Agent", *(c.name for c in capabilities)]
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("| " + " | ".join("---" for _ in header) + " |")
+    ordered = [name for name in CANONICAL_CAPABILITY_AGENT_ORDER if name in rows]
+    ordered.extend(sorted(name for name in rows if name not in CANONICAL_CAPABILITY_AGENT_ORDER))
+    for agent_name in ordered:
+        stances = rows[agent_name]
+        stance_by_capability = {stance.capability: stance for stance in stances}
+        cells = []
+        for capability in capabilities:
+            stance = stance_by_capability.get(capability)
+            if stance is None:
+                cells.append("UNSPECIFIED")
+            else:
+                cells.append(stance.label())
+        lines.append(f"| {agent_name} | " + " | ".join(cells) + " |")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def record_conformance_matrix(
     workspace_root: Path,
     *,
@@ -475,6 +567,11 @@ def record_conformance_matrix(
     defaults to the real filesystem (:data:`DEFAULT_FILE_BACKEND`) but
     accepts an in-memory :class:`FileBackend` so the whole update-and-persist
     pipeline is testable without real file I/O.
+
+    The markdown sibling composes the per-fact evidence table (F1)
+    with the per-agent display-capability declarations (S-4) so an
+    operator reading the file sees both "what the latest run graded"
+    and "what the agent declares it supports" in the same view.
     """
     json_path, md_path = conformance_matrix_paths(workspace_root)
     matrix = load_conformance_matrix(json_path, backend=backend)
@@ -490,10 +587,11 @@ def record_conformance_matrix(
         encoding="utf-8",
         prepare_write=lambda: backend.mkdir(json_path.parent, parents=True, exist_ok=True),
     )
+    md_body = render_conformance_matrix_markdown(updated) + render_capability_matrix_markdown()
     write_text_if_changed(
         backend,
         md_path,
-        render_conformance_matrix_markdown(updated),
+        md_body,
         encoding="utf-8",
         prepare_write=lambda: backend.mkdir(md_path.parent, parents=True, exist_ok=True),
     )

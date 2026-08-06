@@ -1,3 +1,0 @@
-{"type":"text","content":"OpenCode checks the display."}
-{"type":"tool_use","part":{"tool":"Read","input":{"path":"ralph/display/record_writer.py"}}}
-{"type":"tool_result","tool":"Read","result":"record source","part":{"tool":"Read","input":{"path":"ralph/display/record_writer.py"}}}

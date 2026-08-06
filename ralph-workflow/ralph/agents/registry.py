@@ -239,6 +239,7 @@ def _synthesize_override_support(
         config=config,
         is_builtin=True,
         no_default_session_flag=builtin.spec.no_default_session_flag,
+        display_capabilities=builtin.display_capabilities,
     )
 
 

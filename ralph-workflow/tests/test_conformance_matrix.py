@@ -13,14 +13,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.agents.builtin import builtin_supports
+from ralph.agents.display_capabilities import (
+    DisplayCapability,
+    all_display_capabilities,
+)
+from ralph.agents.display_capability_stance import DisplayCapabilityStance
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.pipeline.plumbing.smoke_plumbing import (
+    CANONICAL_CAPABILITY_AGENT_ORDER,
     CONFORMANCE_MATRIX_FACTS,
     CONFORMANCE_MATRIX_TRANSPORT_ORDER,
     conformance_matrix_paths,
     load_conformance_matrix,
     record_conformance_matrix,
+    render_capability_matrix_markdown,
     render_conformance_matrix_markdown,
     update_conformance_matrix,
 )
@@ -297,3 +305,91 @@ def test_load_conformance_matrix_is_fail_open_for_malformed_json(
     backend = _MemoryBackend()
     backend.write_text(json_path, "{not valid json")
     assert load_conformance_matrix(json_path, backend=backend) == {}
+
+
+# ---------------------------------------------------------------------------
+# Capability matrix (S-4 / S-6): the per-agent tri-state declarations
+# are appended to the markdown sibling of the conformance matrix so an
+# operator can read what each agent declares without reading code.
+# ---------------------------------------------------------------------------
+
+
+def test_render_capability_matrix_markdown_renders_one_row_per_builtin_agent() -> None:
+    rows = {support.name: support.display_capabilities for support in builtin_supports()}
+    rendered = render_capability_matrix_markdown(capability_rows=rows)
+    for support in builtin_supports():
+        assert f"| {support.name} " in rendered, (
+            f"Capability matrix missing row for built-in {support.name!r}"
+        )
+
+
+def test_render_capability_matrix_markdown_lists_capability_columns_in_order() -> None:
+    """Header columns must match the catalog-derived vocabulary, in declared order."""
+    rows = {support.name: support.display_capabilities for support in builtin_supports()}
+    rendered = render_capability_matrix_markdown(capability_rows=rows)
+    header = next(line for line in rendered.splitlines() if line.startswith("| Agent "))
+    capability_names = [c.name for c in all_display_capabilities()]
+    for capability_name in capability_names:
+        assert capability_name in header
+
+
+def test_render_capability_matrix_markdown_orders_rows_by_canonical_agent_order() -> None:
+    """Row order must follow CANONICAL_CAPABILITY_AGENT_ORDER so operators can scan it."""
+    rows = {support.name: support.display_capabilities for support in builtin_supports()}
+    rendered = render_capability_matrix_markdown(capability_rows=rows)
+    body_rows = [
+        line
+        for line in rendered.splitlines()
+        if line.startswith("| ")
+        and not line.startswith("| Agent ")
+        and not line.startswith("| ---")
+    ]
+    observed_order = [row.split("|")[1].strip() for row in body_rows]
+    expected = [name for name in CANONICAL_CAPABILITY_AGENT_ORDER if name in rows]
+    expected.extend(sorted(name for name in rows if name not in CANONICAL_CAPABILITY_AGENT_ORDER))
+    assert observed_order == expected
+
+
+def test_render_capability_matrix_markdown_inlines_unsupported_reasons() -> None:
+    """The matrix render surfaces the reason text for non-SUPPORTED stances."""
+    rows = {
+        "opencode": (
+            DisplayCapabilityStance.unimplemented(
+                DisplayCapability.SYNTAX_HIGHLIGHTING,
+                reason="OpenCode 1.18.14 wire format drift not yet measured",
+            ),
+            DisplayCapabilityStance.unimplemented(
+                DisplayCapability.FILE_PREVIEW,
+                reason="OpenCode 1.18.14 wire format drift not yet measured",
+            ),
+            DisplayCapabilityStance.unimplemented(
+                DisplayCapability.EDIT_DIFF,
+                reason="OpenCode 1.18.14 wire format drift not yet measured",
+            ),
+        ),
+    }
+    rendered = render_capability_matrix_markdown(capability_rows=rows)
+    assert "UNIMPLEMENTED (OpenCode 1.18.14 wire format drift not yet measured)" in rendered
+
+
+def test_render_capability_matrix_markdown_handles_empty_rows() -> None:
+    rendered = render_capability_matrix_markdown(capability_rows={})
+    assert "No built-in capability declarations recorded yet." in rendered
+
+
+def test_record_conformance_matrix_persists_capability_table_too(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """The markdown sibling carries both the evidence table AND the capability table."""
+    workspace_root = tmp_path_factory.mktemp("smoke-matrix-ws")
+    backend = _MemoryBackend()
+    md_path = record_conformance_matrix(
+        workspace_root,
+        transport="agy",
+        evidence=_full_evidence(Provenance.TRANSCRIPT),
+        backend=backend,
+    )
+    rendered = backend.read_text(md_path)
+    assert "## Display-capability declarations (S-4)" in rendered
+    for support in builtin_supports():
+        assert f"| {support.name} " in rendered
