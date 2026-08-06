@@ -1736,6 +1736,53 @@ def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] 
     return names
 
 
+def _opencode_tool_use_reaches_ralph(first_lines: list[str]) -> bool | None:
+    """Return whether an OpenCode-shaped ``tool_use`` frame names a Ralph tool.
+
+    OpenCode 1.18.14's measured wire format (see
+    ``tests/display/_fixtures/opencode_wire_provenance.md``) never emits an
+    ``init``-shaped frame, so the scan in :func:`transport_evidence_ceiling`
+    above always misses for OpenCode and the ceiling would otherwise be
+    perpetually ``Provenance.ABSENT`` regardless of whether the transport
+    actually reached Ralph's MCP tools. OpenCode's own MCP client dials
+    Ralph's tools with the raw wire name ``ralph_<tool>``
+    (``ralph/mcp/transport/opencode.py`` grants the ``ralph_*`` permission
+    wildcard for exactly this reason); the display-layer normalization that
+    strips the prefix (``OpenCodeParser._canonical_tool_name``) runs after
+    this check, so this reads ``part.tool`` before it is stripped.
+
+    Returns ``True`` when a ``tool_use``-shaped frame names a Ralph-routed
+    tool, ``False`` when a ``tool_use``-shaped frame is found but none
+    reaches Ralph (a real tool-activity signal that proves nothing about
+    reaching Ralph), or ``None`` when no ``tool_use``-shaped frame is
+    present at all (no signal either way).
+    """
+    found_any = False
+    for line in first_lines:
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            parsed: object = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        obj = cast("dict[str, object]", parsed)
+        if obj.get("type") != "tool_use":
+            continue
+        part = obj.get("part")
+        if not isinstance(part, dict):
+            continue
+        raw_tool = cast("dict[str, object]", part).get("tool")
+        if not isinstance(raw_tool, str) or not raw_tool:
+            continue
+        found_any = True
+        if _tool_name_reaches_ralph(raw_tool):
+            return True
+    return False if found_any else None
+
+
 def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> Provenance:
     """Return the maximum Provenance this transport's tools could reach (F3).
 
@@ -1747,12 +1794,21 @@ def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> P
     the model has no way to produce a genuine ``tools/call`` frame — this is
     the ceiling reported before further turns are spent.
 
-    Returns ``Provenance.ABSENT`` when no ``init``-shaped frame is found in
-    ``first_lines`` (no signal either way), ``Provenance.TRANSCRIPT`` when one
-    is found but advertises no route to Ralph (the measured AGY v1.1.10 shape:
-    56 tools, 0 ``ralph_*``), or ``Provenance.WIRE`` when a route is
-    advertised. ``config`` is accepted for a future transport-specific parsing
-    strategy; the current implementation is transport-agnostic NDJSON scanning.
+    OpenCode never emits an ``init``-shaped frame (measured; see
+    ``_opencode_tool_use_reaches_ralph``), so when the ``init``-frame scan
+    finds no signal at all, this falls back to inspecting an
+    OpenCode-shaped ``tool_use`` frame's raw (pre-normalization) tool name
+    for the same ``ralph_*`` / ``mcp__ralph__*`` route. A transport whose
+    transcript carries neither shape stays ``Provenance.ABSENT``.
+
+    Returns ``Provenance.ABSENT`` when no ``init``-shaped frame and no
+    ``tool_use``-shaped frame is found in ``first_lines`` (no signal either
+    way), ``Provenance.TRANSCRIPT`` when a frame is found but advertises no
+    route to Ralph (the measured AGY v1.1.10 shape: 56 tools, 0
+    ``ralph_*``; or a native OpenCode tool call like ``read`` / ``bash``),
+    or ``Provenance.WIRE`` when a route is advertised. ``config`` is
+    accepted for a future transport-specific parsing strategy; the current
+    implementation is transport-agnostic NDJSON scanning.
     """
     del config
     for line in first_lines:
@@ -1770,6 +1826,11 @@ def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> P
             continue
         if any(_tool_name_reaches_ralph(name) for name in names):
             return Provenance.WIRE
+        return Provenance.TRANSCRIPT
+    opencode_signal = _opencode_tool_use_reaches_ralph(first_lines)
+    if opencode_signal is True:
+        return Provenance.WIRE
+    if opencode_signal is False:
         return Provenance.TRANSCRIPT
     return Provenance.ABSENT
 

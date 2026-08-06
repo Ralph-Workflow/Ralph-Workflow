@@ -227,6 +227,78 @@ def test_ceiling_ignores_non_json_and_malformed_lines() -> None:
     assert transport_evidence_ceiling(_agy_config(), lines) == Provenance.TRANSCRIPT
 
 
+# --- S-8: OpenCode never emits an init-shaped frame (measured, see
+# tests/display/_fixtures/opencode_wire_provenance.md: "no init events"),
+# so the init-frame scan above always misses for OpenCode and the ceiling
+# would otherwise be perpetually ABSENT regardless of whether the
+# transport actually reached Ralph's MCP tools. OpenCode's own MCP client
+# dials Ralph's tools with the raw wire name ``ralph_<tool>``
+# (ralph/mcp/transport/opencode.py grants the ``ralph_*`` permission
+# wildcard for exactly this reason; OpenCodeParser._canonical_tool_name
+# strips that prefix for display AFTER this ceiling check runs). These
+# tests pin the tool_use-frame fallback that recognizes that raw name. --
+
+
+def _opencode_config() -> AgentConfig:
+    return AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE)
+
+
+def _opencode_tool_use_frame(tool_name: str) -> str:
+    return json.dumps(
+        {
+            "type": "tool_use",
+            "timestamp": 1785000003000,
+            "sessionID": "s_0001",
+            "part": {
+                "type": "tool",
+                "tool": tool_name,
+                "callID": "c_0002",
+                "state": {"status": "completed", "input": {}},
+                "id": "p_0003",
+                "sessionID": "s_0001",
+                "messageID": "m_0002",
+            },
+        }
+    )
+
+
+def test_ceiling_reports_wire_when_opencode_tool_use_names_a_ralph_tool() -> None:
+    """The measured OpenCode 1.18.14 shape: ``ralph_read_file`` before
+    ``OpenCodeParser._canonical_tool_name`` strips the prefix."""
+    lines = [_opencode_tool_use_frame("ralph_read_file")]
+
+    assert transport_evidence_ceiling(_opencode_config(), lines) == Provenance.WIRE
+
+
+def test_ceiling_reports_transcript_when_opencode_tool_use_names_a_non_ralph_tool() -> None:
+    """A native OpenCode tool (e.g. ``read``, ``bash``) is a real tool_use
+    signal but proves nothing about reaching Ralph's MCP tools."""
+    lines = [_opencode_tool_use_frame("read")]
+
+    assert transport_evidence_ceiling(_opencode_config(), lines) == Provenance.TRANSCRIPT
+
+
+def test_ceiling_stays_absent_for_opencode_lifecycle_frames_with_no_tool_use() -> None:
+    step_start = json.dumps(
+        {
+            "type": "step_start",
+            "timestamp": 1785000001000,
+            "sessionID": "s_0001",
+            "part": {"id": "p_0001", "messageID": "m_0001", "sessionID": "s_0001", "type": "step-start"},
+        }
+    )
+
+    assert transport_evidence_ceiling(_opencode_config(), [step_start]) == Provenance.ABSENT
+
+
+def test_ceiling_prefers_init_frame_signal_over_opencode_tool_use_fallback() -> None:
+    """An AGY-shaped init frame still short-circuits before the fallback runs,
+    even when a (hypothetical) tool_use-shaped line is also present."""
+    lines = [_init_frame(["view_file"]), _opencode_tool_use_frame("ralph_read_file")]
+
+    assert transport_evidence_ceiling(_agy_config(), lines) == Provenance.TRANSCRIPT
+
+
 # --- S-5: regression pinning the measured DEGRADED (host-synthesized) run --
 
 
