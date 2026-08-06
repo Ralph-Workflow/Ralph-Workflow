@@ -26,6 +26,7 @@ value, and records a conflict rather than resolving one.
 
 from __future__ import annotations
 
+import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
@@ -35,6 +36,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -57,7 +59,10 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
-from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
+from ralph.pipeline.phase_agent_handler import (
+    phase_event_after_agent_run,
+    render_phase_failure_report,
+)
 from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state_init import create_initial_state
@@ -425,6 +430,11 @@ def run_parallel_worker_from_manifest(
         drain=effect.drain,
         chain_name=effect.chain_name,
     )
+    # Generated once per attempt so the later render call (success
+    # PASS/DEGRADED banner or the FAILED-no-artifact report) grades the
+    # same run's evidence the agent invocation itself was scoped under
+    # (S-2 run_id threading, mirrors runner.py's run loop).
+    run_id = str(uuid.uuid4())
     event: Event = execute_agent_effect(
         worker_effect,
         config,
@@ -436,6 +446,7 @@ def run_parallel_worker_from_manifest(
         worker_namespace=worker_namespace,
         worker_artifact_dir=Path(manifest.worker_artifact_dir),
         parallel_worker=True,
+        run_id=run_id,
     )
     if event == PipelineEvent.AGENT_SUCCESS:
         worker_artifact_path = Path(manifest.worker_artifact_dir) / "development_result.md"
@@ -452,6 +463,21 @@ def run_parallel_worker_from_manifest(
                 output_artifact_path=str(worker_artifact_path),
                 assigned_work_unit_id=manifest.unit_id,
             ),
+            run_id=run_id,
+        )
+    else:
+        # F6 / DoD 12: mirror runner.py's failure-path render so a
+        # required-artifact phase failing under the parallel worker
+        # runtime also reports FAILED (no artifact) rather than silently
+        # returning 1 with no operator-facing verdict. Display-only.
+        render_phase_failure_report(
+            worker_effect,
+            policy_bundle=policy_bundle,
+            workspace=workspace,
+            display=None,
+            display_context=display_context,
+            verbosity=Verbosity.VERBOSE,
+            run_id=run_id,
         )
     if isinstance(event, ExecutionResultEvent) and event.status == "completed":
         event = PipelineEvent.AGENT_SUCCESS

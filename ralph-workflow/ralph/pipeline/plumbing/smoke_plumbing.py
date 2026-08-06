@@ -54,7 +54,13 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineCore, PipelineDeps
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
-from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent
+from ralph.pipeline.plumbing.smoke_evidence import (
+    Evidence,
+    Provenance,
+    absent,
+    grade_artifact_submission_evidence,
+    grade_completion_sentinel_evidence,
+)
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
@@ -1629,25 +1635,16 @@ def _artifact_submission_evidence(
 ) -> Evidence:
     """Grade the artifact-submission fact (A3): fallback promotion vs. a wire hit.
 
-    ``submitted`` is the pre-computed authoritative bool (a receipt exists,
-    possibly after promoting a fallback document through the canonical submit
-    path). A submission backed by a matching ``tools/call`` ledger record
-    grades ``WIRE``; any other submitted receipt (including one promoted from
-    the model's fallback markdown file) grades ``WORKSPACE_EFFECT`` — real,
-    but not attributable to a witnessed tool call.
+    Thin call-through to the shared
+    ``smoke_evidence.grade_artifact_submission_evidence`` (S-2) so the smoke
+    gate and ``ralph.agents.completion_signals.evaluate_completion`` grade a
+    submitted artifact's provenance identically — no behavior change here.
     """
-    if not submitted:
-        return absent("smoke_test_result artifact was not submitted")
-    if wire_evidence_for(workspace_root, run_id, tool_name="artifact", secret=secret):
-        return Evidence(
-            holds=True,
-            provenance=Provenance.WIRE,
-            detail="receipt matched a tools/call ledger record",
-        )
-    return Evidence(
-        holds=True,
-        provenance=Provenance.WORKSPACE_EFFECT,
-        detail="receipt present (direct submission or promoted fallback); no matching wire-ledger record",
+    return grade_artifact_submission_evidence(
+        workspace_root,
+        run_id,
+        submitted=submitted,
+        secret=secret,
     )
 
 
@@ -1661,38 +1658,17 @@ def _completion_evidence(
 ) -> Evidence:
     """Grade the completion-sentinel fact (A4/A5).
 
-    A sentinel the harness wrote to itself (the AGY fallback-synthesis
-    branch) grades ``HOST_SYNTHESIZED`` — it caps the run's verdict at
-    ``DEGRADED`` and names itself, rather than reading as unqualified proof
-    the agent called ``declare_complete``. An unsigned sentinel
-    (``RALPH_BROKER_SECRET`` unset, A5) is capped at ``TRANSCRIPT``: "not a
-    weaker WIRE fact — not a WIRE fact." Only a sentinel backed by a
-    matching ``declare_complete`` wire-ledger record grades ``WIRE``.
+    Thin call-through to the shared
+    ``smoke_evidence.grade_completion_sentinel_evidence`` (S-2) so the smoke
+    gate and ``ralph.agents.completion_signals.evaluate_completion`` grade a
+    completion sentinel's provenance identically — no behavior change here.
     """
-    if not present:
-        return absent("completion sentinel was not observed")
-    if host_synthesized:
-        return Evidence(
-            holds=True,
-            provenance=Provenance.HOST_SYNTHESIZED,
-            detail="written by the harness (AGY fallback-artifact completion synthesis)",
-        )
-    if secret is None:
-        return Evidence(
-            holds=True,
-            provenance=Provenance.TRANSCRIPT,
-            detail="sentinel present but RALPH_BROKER_SECRET is unset; HMAC unverified, not WIRE",
-        )
-    if wire_evidence_for(workspace_root, run_id, tool_name="declare_complete", secret=secret):
-        return Evidence(
-            holds=True,
-            provenance=Provenance.WIRE,
-            detail="declare_complete matched a tools/call ledger record",
-        )
-    return Evidence(
-        holds=True,
-        provenance=Provenance.TRANSCRIPT,
-        detail="sentinel present but no matching wire-ledger record",
+    return grade_completion_sentinel_evidence(
+        workspace_root,
+        run_id,
+        present=present,
+        host_synthesized=host_synthesized,
+        secret=secret,
     )
 
 

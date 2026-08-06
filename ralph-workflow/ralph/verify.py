@@ -733,7 +733,25 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
 
         step_start = time.monotonic()
-        result = runner(command, args, cwd=cwd, timeout=effective_timeout, capture_output=False)
+        # Clear only PYTHONPATH before spawning each verify step. An
+        # ambient PYTHONPATH inherited from the invoking shell (e.g. a
+        # pipx-installed copy of this package on some other interpreter's
+        # site-packages) can shadow the project's own editable `ralph`
+        # install for any `uv run python -m ralph.*` step, causing imports
+        # to resolve against a stale, broken copy instead of the local
+        # source. `ProcessRunOptions.env` is merged on top of `os.environ`
+        # (`ralph/executor/_process_run_options.py`), so this clears just
+        # the one contaminating key and leaves the rest of the inherited
+        # environment (PATH, HOME, secrets, ...) untouched for steps that
+        # legitimately depend on it.
+        result = runner(
+            command,
+            args,
+            cwd=cwd,
+            env={"PYTHONPATH": ""},
+            timeout=effective_timeout,
+            capture_output=False,
+        )
         step_elapsed = time.monotonic() - step_start
 
         if is_tracked:

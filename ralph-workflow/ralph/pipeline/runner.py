@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import uuid
 from inspect import signature
 from typing import TYPE_CHECKING, cast
 
@@ -120,6 +121,7 @@ from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
+    render_phase_failure_report,
 )
 from ralph.pipeline.phase_entry_cleaner import clear_phase_entry_drains
 from ralph.pipeline.phase_transition import (
@@ -330,6 +332,7 @@ def _execute_effect(
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    run_id: str | None = None,
 ) -> PipelineEvent:
     resolved_display_context = display_context or (
         display._ctx if display is not None and hasattr(display, "_ctx") else make_display_context()
@@ -347,6 +350,7 @@ def _execute_effect(
             verbosity=verbosity,
             state=state,
             policy_bundle=policy_bundle,
+            run_id=run_id,
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect_from_deps(
@@ -387,6 +391,7 @@ def _execute_effect_with_optional_display(
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    run_id: str | None = None,
 ) -> Event:
     fn = execute_effect
     params = signature(fn).parameters
@@ -398,6 +403,7 @@ def _execute_effect_with_optional_display(
         "state": state,
         "policy_bundle": policy_bundle,
         "pipeline_deps": pipeline_deps,
+        "run_id": run_id,
     }
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
     return cast("_ExecuteEffectKwargsFn", fn)(
@@ -416,6 +422,7 @@ def execute_effect_with_optional_display(
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    run_id: str | None = None,
 ) -> Event:
     """Execute an effect and return the resulting event, optionally routing output to a display."""
     return _execute_effect_with_optional_display(
@@ -428,6 +435,7 @@ def execute_effect_with_optional_display(
         state=state,
         policy_bundle=policy_bundle,
         pipeline_deps=pipeline_deps,
+        run_id=run_id,
     )
 
 
@@ -445,6 +453,7 @@ def _invoke_execute_effect_with_optional_display(
     pre_workspace: object | None = None,
     pre_phase_role: str | None = None,
     pre_phase_drain: str | None = None,
+    run_id: str | None = None,
 ) -> Event:
     # Phase 1 lifecycle hooks: bounded changed-file refresh before
     # and after an InvokeAgentEffect. Hooks skip cleanly when the
@@ -492,6 +501,7 @@ def _invoke_execute_effect_with_optional_display(
             state=state,
             policy_bundle=policy_bundle,
             pipeline_deps=pipeline_deps,
+            run_id=run_id,
         )
     finally:
         if should_refresh:
@@ -1042,6 +1052,66 @@ def _integrate_after_fan_out(
     return state.copy_with(rebase=outcome) if outcome is not None else state
 
 
+def _finalize_agent_invocation(
+    *,
+    effect: Effect,
+    event: Event,
+    state: PipelineState,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    workspace: FsWorkspace,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None,
+    verbosity: Verbosity,
+    recovery_controller: RecoveryController | None,
+    run_id: str | None,
+) -> tuple[PipelineState, Event]:
+    """Apply session capture and the post-agent-run render/phase-handler call.
+
+    A no-op that returns ``(state, event)`` unchanged for every effect type
+    other than :class:`InvokeAgentEffect`. Extracted from
+    ``_run_pipeline_step`` (S-2) so that function's branch/statement count
+    stays under the repo's complexity budget after the F6 success/failure
+    render split was added -- this is a pure extraction, not a behavior
+    change.
+    """
+    if not isinstance(effect, InvokeAgentEffect):
+        return state, event
+    state = _apply_session_capture(state)
+    if event == PipelineEvent.AGENT_SUCCESS:
+        if recovery_controller is not None:
+            recovery_controller.reset_backoff(effect.phase, effect.agent_name)
+        event = phase_event_after_agent_run(
+            effect=effect,
+            config=config,
+            policy_bundle=policy_bundle,
+            workspace=workspace,
+            workspace_scope=workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+            run_id=run_id,
+        )
+    else:
+        # F6 / DoD 12: a required-artifact phase whose agent invocation did
+        # not succeed must not report success by omission. Display-only --
+        # does not call handle_phase or otherwise change what the reducer
+        # sees afterward (see render_phase_failure_report's reachability
+        # docstring).
+        render_phase_failure_report(
+            effect,
+            policy_bundle=policy_bundle,
+            workspace=workspace,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            run_id=run_id,
+        )
+    return state, event
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -1201,6 +1271,11 @@ def _run_pipeline_step(
                         exc=exc,
                     )
                 )
+            # Generated once per attempt so the later render call (success
+            # PASS/DEGRADED banner or the FAILED-no-artifact report) grades
+            # the same run's evidence the agent invocation itself was
+            # scoped under (S-2 run_id threading).
+            run_id = str(uuid.uuid4())
             event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,
@@ -1214,23 +1289,22 @@ def _run_pipeline_step(
                 pre_workspace=workspace,
                 pre_phase_role=_phase_role,
                 pre_phase_drain=_phase_drain,
+                run_id=run_id,
             )
-            if isinstance(effect, InvokeAgentEffect):
-                state = _apply_session_capture(state)
-            if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-                if recovery_controller is not None:
-                    recovery_controller.reset_backoff(effect.phase, effect.agent_name)
-                event = phase_event_after_agent_run(
-                    effect=effect,
-                    config=config,
-                    policy_bundle=policy_bundle,
-                    workspace=workspace,
-                    workspace_scope=workspace_scope,
-                    display=display,
-                    display_context=display_context,
-                    verbosity=verbosity,
-                    state=state,
-                )
+            state, event = _finalize_agent_invocation(
+                effect=effect,
+                event=event,
+                state=state,
+                config=config,
+                policy_bundle=policy_bundle,
+                workspace=workspace,
+                workspace_scope=workspace_scope,
+                display=display,
+                display_context=display_context,
+                verbosity=verbosity,
+                recovery_controller=recovery_controller,
+                run_id=run_id,
+            )
 
         _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
         _auto_integrate_outcome = _maybe_auto_integrate(

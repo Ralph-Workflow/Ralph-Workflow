@@ -294,3 +294,66 @@ class TestExecuteEffect:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_execute_effect_forwards_run_id_to_execute_agent_effect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """S-2 run_id threading: ``execute_effect``'s InvokeAgentEffect branch
+        forwards a caller-supplied ``run_id`` into ``execute_agent_effect``
+        instead of letting it be silently regenerated there."""
+        captured: dict[str, object] = {}
+
+        def fake_execute_agent_effect(
+            effect: object,
+            config: object,
+            pipeline_deps: object,
+            workspace_scope: object,
+            **kwargs: object,
+        ) -> PipelineEvent:
+            del effect, config, pipeline_deps, workspace_scope
+            captured.update(kwargs)
+            return PipelineEvent.AGENT_SUCCESS
+
+        monkeypatch.setattr(runner_module, "execute_agent_effect", fake_execute_agent_effect)
+        effect = InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="plan.md")
+
+        result = runner_module.execute_effect(
+            effect,
+            MagicMock(),
+            WorkspaceScope("/tmp/worktree"),
+            pipeline_deps=MagicMock(),
+            run_id="direct-execute-effect-run-id",
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert captured["run_id"] == "direct-execute-effect-run-id"
+
+    def test_execute_effect_with_optional_display_forwards_run_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """S-2 run_id threading: the public wrapper chain forwards run_id
+        through to whatever ``execute_effect`` resolves to at call time."""
+        captured: dict[str, object] = {}
+
+        def fake_execute_effect(
+            effect: object, config: object, workspace_scope: object, **kwargs: object
+        ) -> object:
+            del effect, config, workspace_scope
+            captured.update(kwargs)
+            return PipelineEvent.AGENT_SUCCESS
+
+        monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
+        effect = InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="plan.md")
+
+        result = runner_module.execute_effect_with_optional_display(
+            effect,
+            MagicMock(),
+            WorkspaceScope("/tmp/worktree"),
+            display=None,
+            display_context=make_display_context(),
+            verbosity=Verbosity.QUIET,
+            run_id="wrapper-chain-run-id",
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert captured["run_id"] == "wrapper-chain-run-id"

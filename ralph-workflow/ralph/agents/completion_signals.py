@@ -22,7 +22,14 @@ from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.md_draft_io import unsubmitted_draft_divergence
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
-from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent, grade_verdict
+from ralph.pipeline.plumbing.smoke_evidence import (
+    Evidence,
+    Provenance,
+    absent,
+    grade_artifact_submission_evidence,
+    grade_completion_sentinel_evidence,
+    grade_verdict,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -457,16 +464,25 @@ def evaluate_completion(
     """
     explicit = extract_explicit_completion(raw_output or [])
     ra = required_artifact
-    sentinel_present = (
-        _check_completion_sentinel(workspace, run_id, sentinel_secret=sentinel_secret)
-        if run_id is not None
-        else False
-    )
-    sentinel_evidence = _bool_evidence(
-        sentinel_present,
-        holding_detail="completion sentinel receipt present (graded at WORKSPACE_EFFECT; upgrade to WIRE via smoke_evidence grading when wire ledger is in scope)",
-        absent_detail="completion sentinel receipt not present",
-    )
+    if run_id is not None:
+        sentinel_present = _check_completion_sentinel(
+            workspace, run_id, sentinel_secret=sentinel_secret
+        )
+        # A holding sentinel backed by a matching ``declare_complete``
+        # wire-ledger record grades WIRE, not the WORKSPACE_EFFECT ceiling
+        # the bare bool used to impose (F1 / DoD 2). Shares the exact
+        # grading decision the smoke gate uses (S-2), extracted to
+        # ``smoke_evidence.grade_completion_sentinel_evidence`` so both
+        # callers agree.
+        sentinel_evidence = grade_completion_sentinel_evidence(
+            workspace,
+            run_id,
+            present=sentinel_present,
+            host_synthesized=False,
+            secret=sentinel_secret,
+        )
+    else:
+        sentinel_evidence = absent("completion sentinel receipt not present (no run_id)")
     if ra is None:
         return CompletionSignals(
             explicit_complete=explicit,
@@ -481,22 +497,29 @@ def evaluate_completion(
     # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
     # cannot be determined from the artifact alone.
     artifact_path = workspace / ra.artifact_path
-    present = (
-        is_artifact_submitted(
+    if run_id is not None:
+        present = is_artifact_submitted(
             workspace,
             run_id,
             ra.artifact_type,
             receipt_secret=receipt_secret,
             artifact_path=ra.artifact_path,
         )
-        if (run_id is not None)
-        else False
-    )
-    artifact_evidence = _bool_evidence(
-        present,
-        holding_detail="artifact submission receipt present (graded at WORKSPACE_EFFECT; upgrade to WIRE via smoke_evidence grading when wire ledger is in scope)",
-        absent_detail="artifact submission receipt not present",
-    )
+        # A holding receipt backed by a matching ``tools/call`` wire-ledger
+        # record grades WIRE, not the WORKSPACE_EFFECT ceiling the bare bool
+        # used to impose (F1 / DoD 2). Shares the exact grading decision the
+        # smoke gate uses (S-2), extracted to
+        # ``smoke_evidence.grade_artifact_submission_evidence`` so both
+        # callers agree.
+        artifact_evidence = grade_artifact_submission_evidence(
+            workspace,
+            run_id,
+            submitted=present,
+            secret=receipt_secret,
+        )
+    else:
+        present = False
+        artifact_evidence = absent("artifact submission receipt not present (no run_id)")
     divergence = unsubmitted_draft_divergence(
         artifact_path.parent,
         ra.artifact_type,
@@ -556,6 +579,49 @@ def format_phase_verdict(signals: CompletionSignals) -> str:
     return f"DEGRADED ({weakest.name.lower().replace('_', '-')})"
 
 
+def graded_phase_verdict(
+    signals: CompletionSignals,
+    *,
+    required_artifact: RequiredArtifact | None = None,
+) -> tuple[str, Provenance, str]:
+    """Grade a phase's outcome, adding the FAILED-no-artifact case (F6).
+
+    A phase that exists to produce an artifact and produced none is not a
+    demoted rung of evidence -- ``ABSENT`` cannot grade to success, and the
+    absence of the fact the phase exists to produce is a failure, not a
+    degradation (brief F6 / DoD 12). Returns
+    ``("FAILED", Provenance.ABSENT, <missing-artifact detail>)`` when
+    ``signals.artifact_required`` is True and the required-artifact fact
+    does not hold. Otherwise delegates to the unchanged ``graded_verdict``
+    for the existing closed PASS/DEGRADED vocabulary, with an empty detail
+    string (``format_phase_verdict`` already formats that case).
+
+    ``graded_verdict`` itself is intentionally left unchanged so the
+    existing DoD 16 regression assertion
+    (``graded_verdict(...) == ("DEGRADED", Provenance.ABSENT)``) keeps
+    passing unmodified -- ``FAILED`` is a phase-render-layer label added on
+    top, not a change to the shared lattice primitive.
+
+    Args:
+        signals: The phase's graded completion evidence.
+        required_artifact: When given, names the missing artifact
+            (``artifact_type`` / ``artifact_path``) in the FAILED detail.
+            Falls back to the graded evidence's own (generic) detail text
+            when omitted.
+    """
+    if signals.artifact_required and not signals.required_artifact_evidence.holds:
+        if required_artifact is not None:
+            detail = (
+                f"no receipt for '{required_artifact.artifact_type}'; "
+                f"{required_artifact.artifact_path} absent"
+            )
+        else:
+            detail = signals.required_artifact_evidence.detail
+        return "FAILED", Provenance.ABSENT, detail
+    label, weakest = graded_verdict(signals)
+    return label, weakest, ""
+
+
 __all__ = [
     "CompletionSignals",
     "completion_signals_terminal",
@@ -563,6 +629,7 @@ __all__ = [
     "extract_explicit_completion",
     "format_phase_verdict",
     "graded_completion_signals",
+    "graded_phase_verdict",
     "graded_verdict",
     "is_artifact_submitted",
 ]
