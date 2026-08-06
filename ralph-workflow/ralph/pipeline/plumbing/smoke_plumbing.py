@@ -23,6 +23,7 @@ from ralph.agents.completion_signals import (
     _check_completion_sentinel,
     is_artifact_submitted,
 )
+from ralph.agents.display_capabilities import surface_to_capability
 from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -36,6 +37,9 @@ from ralph.agents.invoke._process_reader import _parent_broker_secret
 from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
+from ralph.display.capability_observation_recorder import infer_surface_for_preview
+from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -57,7 +61,9 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from ralph.agents.display_capabilities import DisplayCapability
     from ralph.agents.display_capability_stance import DisplayCapabilityStance
+    from ralph.agents.support import AgentSupport
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
@@ -315,6 +321,12 @@ class SmokeRunResult:
     #: frame was found in the transcript (e.g. a non-AGY transport whose
     #: parser does not surface one yet).
     transport_evidence_ceiling: Provenance = Provenance.ABSENT
+    #: S-5: frozenset of capabilities the display's
+    #: :class:`CapabilityObservationRecorder` actually rendered during
+    #: the run. Empty when no ``display`` was threaded through
+    #: ``SmokeRunParams``. Defaults to ``frozenset()`` so existing
+    #: test constructions keep passing.
+    observed_capabilities: frozenset[DisplayCapability] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -1040,6 +1052,107 @@ def _detect_break_indicators(lines: list[str]) -> list[str]:
     return errors
 
 
+def _tool_calls_exercising_capability(
+    config: AgentConfig,
+    lines: list[str],
+    capability: DisplayCapability,
+) -> set[str]:
+    """Return the set of tool names whose calls should have rendered ``capability``.
+
+    Uses the exact ``payload_from_tool_event`` / ``infer_surface_for_preview``
+    sequence the production ``ParallelDisplay._emit_file_preview`` choke point
+    applies at ``parallel_display.py:2640-2665``, so the helper cannot diverge
+    from production. The OpenCode parser normalizes ``ralph_*`` tool names at
+    the transport boundary (``opencode.py:_canonical_tool_name``), so the
+    helper sees the canonical ``read_file`` / ``write_file`` / ``edit_file``
+    names already and reuses them.
+
+    A tool call whose ``payload_from_tool_event`` returns ``None`` (no
+    recognized file activity) or whose surface is not in the
+    catalog-derived vocabulary does NOT count as exercising ``capability``.
+    A tool call whose surface maps to ``capability`` does.
+
+    The returned set contains the canonical, lowercase tool names emitted by
+    the parser (e.g. ``"read_file"``, ``"edit_file"``) so the smoke report's
+    break message can name the specific tool that should have rendered.
+    """
+    parser = get_parser(_parser_key_for_config(config))
+    exercising: set[str] = set()
+    for parsed in parser.parse(iter(lines)):
+        if parsed.type != "tool_use":
+            continue
+        metadata = parsed.metadata or {}
+        raw_name = metadata.get("tool")
+        if not isinstance(raw_name, str) or not raw_name:
+            continue
+        tool_name = raw_name.lower()
+        payload = payload_from_tool_event(tool_name, dict(metadata))
+        if payload is None:
+            continue
+        surface_name = infer_surface_for_preview(None, payload.operation)
+        observed = surface_to_capability(surface_name)
+        if observed is capability:
+            exercising.add(tool_name)
+    return exercising
+
+
+def _detect_capability_breaks(
+    support: AgentSupport | None,
+    observed: frozenset[DisplayCapability],
+    config: AgentConfig,
+    lines: list[str],
+) -> list[str]:
+    """Return break messages for SUPPORTED capabilities that did not render.
+
+    Compares each declared ``SUPPORTED`` stance on ``support`` against
+    ``observed`` (the per-capability frozenset the display's
+    :class:`CapabilityObservationRecorder` collected during the run) and
+    emits a break message when the transcript contained a tool call that
+    should have rendered the capability but the recorder never saw one.
+
+    Branch A -- ``support is None``: a custom agent that registered no
+    display-capability stance gets NO capability grading. A bare
+    ``support is None`` is the "nobody has said" condition; the empty
+    ``observed`` set is NOT in this branch -- it is the smoking gun, not
+    "nothing to grade".
+
+    Branch B -- per declared SUPPORTED stance: for every stance in
+    ``support.display_capabilities`` whose ``kind == "supported"``, ask
+    ``_tool_calls_exercising_capability`` whether the transcript contained
+    a tool call that should have produced a render. If the helper returns a
+    non-empty set AND ``capability not in observed``, the run reports a
+    break -- the declared capability claimed to render and the run
+    actually exercised the relevant tool calls, but the display never
+    materialized the render. This branch covers the empty-observed
+    case explicitly: an empty ``observed`` paired with a non-empty
+    exercising set emits one break per declared SUPPORTED capability.
+
+    Branch C -- return the collected breaks verbatim.
+
+    Returns an empty list when the agent has no supported stances (the
+    ``UNIMPLEMENTED`` / ``NOT_APPLICABLE`` stances do not contribute
+    breaks -- they describe absence of capability, not absence of render).
+    """
+    if support is None:
+        return []
+    breaks: list[str] = []
+    for stance in support.display_capabilities:
+        if stance.kind != "supported":
+            continue
+        target = stance.capability
+        exercising = _tool_calls_exercising_capability(config, lines, target)
+        if exercising and target not in observed:
+            tools = ", ".join(sorted(exercising))
+            breaks.append(
+                f"declared capability {target.name} never rendered despite "
+                f"{tools} tool call"
+            )
+    return breaks
+
+
+
+
+
 def _nanocoder_prompt_submission_error(
     params: SmokeRunParams,
     lines: list[str],
@@ -1111,6 +1224,7 @@ def _execute_smoke_turns(
                     "RestartAwareMcpBridge", params.bridge
                 ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 display_context=params.display_context,
+                display=params.display,
                 run_id=run_id,
                 raw_output_sink=raw_lines,
                 rendered_output_sink=rendered_lines,
@@ -1391,9 +1505,35 @@ def _detect_smoke_errors(
     artifact_submitted: bool = False,
     *,
     run_id: str = _SMOKE_RUN_ID,
+    observed_capabilities: frozenset[DisplayCapability] = frozenset(),
+    support: AgentSupport | None = None,
 ) -> list[str]:
-    """Detect errors in smoke run results."""
+    """Detect errors in smoke run results.
+
+    Two new optional keyword-only kwargs close the S-4 capability gap:
+
+    - ``observed_capabilities``: frozenset of capabilities the display's
+      :class:`CapabilityObservationRecorder` recorded during the run.
+      Defaults to ``frozenset()`` so every existing call site
+      (``tests/test_harness_run_diagnosis.py``, ``tests/test_cli_smoke.py``,
+      ``tests/integration/test_cli_plumbing_uses_factory.py``) keeps
+      passing.
+    - ``support``: the registered :class:`AgentSupport` resolved for
+      ``params.agent_name`` via ``AgentRegistry.from_config(...).catalog.get(...)``.
+      Defaults to ``None`` so a bare ``_detect_smoke_errors`` call is
+      hermetic (Branch A returns ``[]``).
+
+    The capability branch only fires when BOTH kwargs are supplied
+    explicitly. With the defaults, the original error-taxonomy is
+    unchanged for callers that do not thread the recorder through.
+    """
     errors = _detect_break_indicators(lines)
+    if support is not None and params.agent_name:
+        errors.extend(
+            _detect_capability_breaks(
+                support, observed_capabilities, params.config, lines
+            )
+        )
     if final_exception is not None:
         errors.append(str(final_exception))
     if prompt_submission_error := _nanocoder_prompt_submission_error(
@@ -1684,7 +1824,19 @@ def _run_smoke_agent(
     params: SmokeRunParams,
     run_id: str = _SMOKE_RUN_ID,
 ) -> SmokeRunResult:
-    """Run the smoke agent and return results."""
+    """Run the smoke agent and return results.
+
+    S-5: snapshots the display's :class:`CapabilityObservationRecorder`
+    between ``_execute_smoke_turns`` returning and ``_detect_smoke_errors``
+    being called -- the only ordering that lets the capability-breaks
+    detector (S-4) see real observations AND keeps the original ordering
+    of the smoke harness's grading pipeline intact. Resolves the
+    :class:`AgentSupport` via ``params.support_resolver`` or, by default,
+    via ``AgentRegistry.from_config(params.unified_config).catalog.get(name)``
+    so the synthesized dynamic-alias support (e.g. for
+    ``opencode/minimax/MiniMax-M3``) is what the gate grades, not a stale
+    ``builtin_supports()`` lookup that misses the alias.
+    """
     all_lines, live_output_lines, current_session_id, final_exception = _execute_smoke_turns(
         params, None, run_id=run_id
     )
@@ -1749,6 +1901,46 @@ def _run_smoke_agent(
     meaningful_output_lines = parsed_output_lines or live_filtered
     subagent_evidence = _subagent_smoke_evidence(params.config, lines)
 
+    # S-5: snapshot the recorder's observed-capabilities set BEFORE the
+    # error-taxonomy runs. A ``ParallelDisplay`` instance is per-run,
+    # so the snapshot lives only as long as the dataclass field below.
+    # The capability branch is gated on ``params.display is not None``
+    # so tests that never wire a display pay no registry-build cost and
+    # a fake-``AgentRegistry`` registry cannot crash the resolver.
+    if params.display is not None:
+        observed_capabilities = params.display.capability_recorder.observed_capabilities()
+        if params.support_resolver is not None:
+            resolved_support = params.support_resolver(params.agent_name)
+        else:
+            # Prefer the ``AgentConfig``'s attached ``_support`` (set when
+            # the config was registered through ``AgentCatalog.add`` / the
+            # legacy ``register_agent_support`` API), which is the
+            # transport-neutral way to read the registered support and
+            # bypasses the catalog round-trip. The catalog fallback still
+            # works for dynamic-alias synthesised supports whose
+            # ``AgentConfig`` is built by ``_resolve_dynamic_agent`` and
+            # attaches the synthesised ``_support`` immediately. The
+            # try/except on ``AttributeError`` keeps existing tests that
+            # monkey-patch ``AgentRegistry`` (returning a stand-in with no
+            # ``.catalog`` attribute) hermetic; production registry mocks
+            # always expose ``.catalog``.
+            attached_support: AgentSupport | None = cast(
+                "AgentSupport | None", getattr(params.config, "_support", None)
+            )
+            if attached_support is not None:
+                resolved_support = attached_support
+            else:
+                try:
+                    resolved_support = (
+                        AgentRegistry.from_config(params.unified_config)
+                        .catalog.get(params.agent_name)
+                    )
+                except AttributeError:
+                    resolved_support = None
+    else:
+        observed_capabilities = frozenset()
+        resolved_support = None
+
     errors = _detect_smoke_errors(
         params,
         lines,
@@ -1758,6 +1950,8 @@ def _run_smoke_agent(
         tool_activity_seen=tool_activity_holds,
         artifact_submitted=artifact_submitted,
         run_id=run_id,
+        observed_capabilities=observed_capabilities,
+        support=resolved_support,
     )
 
     config = params.config
@@ -1781,6 +1975,7 @@ def _run_smoke_agent(
         subagent_result_seen=subagent_evidence.result_seen,
         post_subagent_activity_seen=subagent_evidence.post_result_activity_seen,
         transport_evidence_ceiling=transport_ceiling,
+        observed_capabilities=observed_capabilities,
     )
 
 
@@ -1882,6 +2077,12 @@ def run_smoke_plumbing(
         )
         smoke_config = config.model_copy(update={"general": smoke_general})
 
+        # S-5: build a fresh ``ParallelDisplay`` per smoke run, owned by
+        # the plumbing so its capability recorder is the live one the
+        # display path writes to. Tests inject their own ``display`` via
+        # ``SmokeRunParams``; production never needs to.
+        fresh_display = ParallelDisplay(display_context=display_context)
+
         results = [
             _run_smoke_agent(
                 SmokeRunParams(
@@ -1896,6 +2097,7 @@ def run_smoke_plumbing(
                     bridge=bridge,
                     pipeline_deps=effective_pipeline_deps,
                     subagents_requested=subagents,
+                    display=fresh_display,
                 ),
                 run_id=spec.run_id,
             )
