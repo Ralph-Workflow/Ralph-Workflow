@@ -221,3 +221,101 @@ def test_absent_raw_log_has_no_breaks(isolated_workspace: Path) -> None:
     # Intentionally do not create the file.
 
     assert detect_raw_log_breaks(raw_path) == []
+
+
+# --- S-4 (G4 / DoD 15): the smoke seam ----------------------------------
+
+
+def test_detect_smoke_errors_surfaces_corrupted_raw_transcript(
+    isolated_workspace: Path,
+) -> None:
+    """S-4: ``_detect_smoke_errors`` itself reports a corrupted raw
+    transcript, not only ``detect_raw_log_breaks`` in isolation.
+
+    Confirms the smoke seam reads the exact path the real
+    ``RawOverflowLog`` writer used for this ``AgentConfig`` (derived via
+    ``shlex.split(config.cmd)[0]`` for the unit id, ``config.model`` for
+    the model suffix) -- not a hand-picked filename.
+    """
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+    from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
+
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b'{"event":"init","tools":["call_mcp_tool"]}\n' + (b"\x00" * 512)
+    )
+
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=isolated_workspace,
+        prompt_file=isolated_workspace / "PROMPT.md",
+        output_file=isolated_workspace / "tmp" / "interactive-agy-smoke" / "todo-list.js",
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        lines=[],
+        live_output_lines=[],
+        session_id="some-session",
+        final_exception=None,
+        artifact_submitted=True,
+        tool_activity_seen=True,
+    )
+
+    corruption_errors = [e for e in errors if e.startswith("raw transcript corrupted:")]
+    assert corruption_errors, (
+        f"_detect_smoke_errors must surface the raw log corruption; got errors={errors}"
+    )
+    assert "NUL-byte run" in corruption_errors[0]
+
+
+def test_detect_smoke_errors_is_clean_when_raw_transcript_has_no_breaks(
+    isolated_workspace: Path,
+) -> None:
+    """A well-formed raw transcript contributes no corruption error."""
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+    from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
+
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(b'{"event":"init","tools":["call_mcp_tool"]}\n')
+
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=isolated_workspace,
+        prompt_file=isolated_workspace / "PROMPT.md",
+        output_file=isolated_workspace / "tmp" / "interactive-agy-smoke" / "todo-list.js",
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        lines=[],
+        live_output_lines=[],
+        session_id="some-session",
+        final_exception=None,
+        artifact_submitted=True,
+        tool_activity_seen=True,
+    )
+
+    assert not [e for e in errors if e.startswith("raw transcript corrupted:")]

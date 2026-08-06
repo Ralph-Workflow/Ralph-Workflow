@@ -40,7 +40,9 @@ if TYPE_CHECKING:
         SessionBridgeLike,
     ]
     InvokeAgentFn = Callable[[AgentConfig, str, InvokeOptions | None], Iterable[str]]
-    MaterializeMasterPromptFn = Callable[[Path, str, str | None], str]
+    MaterializeMasterPromptFn = Callable[
+        [Path, str, str | None, Path | None, AgentTransport | None], str
+    ]
     WorkspaceFactoryFn = Callable[[Path], Workspace]
     ShutdownBridgeFn = Callable[[SessionBridgeLike], None]
 
@@ -84,12 +86,14 @@ def _materialize_master_prompt(
     name: str,
     default_product_criteria: str | None,
     worker_namespace: Path | None = None,
+    transport: AgentTransport | None = None,
 ) -> str:
     return materialize_master_prompt(
         workspace_root=workspace_root,
         name=name,
         default_product_criteria=default_product_criteria,
         worker_namespace=worker_namespace,
+        transport=transport,
     )
 
 

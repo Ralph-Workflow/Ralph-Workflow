@@ -42,6 +42,7 @@ from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.plumbing import smoke_plumbing
 from ralph.pipeline.plumbing.smoke_evidence import (
     DEGRADED,
     PASS,
@@ -339,6 +340,95 @@ def test_2026_08_05_run_grades_degraded() -> None:
     assert weakest == Provenance.ABSENT
     assert format_verdict(required_facts) == "DEGRADED (absent)"
     assert label != PASS, "the 2026-08-05 run must never grade PASS or print 'Breaks: none'"
+
+
+# --- S-1 (G1): the evidence ceiling is reported while still streaming --
+
+
+def test_evidence_ceiling_reported_while_still_streaming(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1 (G1): the ceiling is reported as the init frame streams in via
+    ``raw_line_sink``, not only after ``execute_agent_effect`` returns.
+
+    A tracking wrapper around ``_report_evidence_ceiling_once`` records each
+    call. The fake ``execute_agent_effect`` feeds the init frame through the
+    ``raw_line_sink`` kwarg and asserts -- from INSIDE the fake, i.e. still
+    mid-stream, before the fake itself returns -- that the ceiling was
+    already reported exactly once. A later, non-init line is then streamed
+    and must not trigger a second report (the ``ceiling_reported`` guard
+    holds). This proves the append-time observer produced the report, not
+    the post-return fallback calls at the turn loop's tail.
+    """
+    calls: list[list[str]] = []
+    real_report = smoke_plumbing._report_evidence_ceiling_once
+
+    def _tracking_report(config: AgentConfig, lines: list[str]) -> bool:
+        calls.append(list(lines))
+        return real_report(config, lines)
+
+    monkeypatch.setattr(smoke_plumbing, "_report_evidence_ceiling_once", _tracking_report)
+
+    config = _agy_config()
+    output_dir = tmp_path / "tmp" / "interactive-agy-smoke"
+    output_dir.mkdir(parents=True)
+    output_file = output_dir / "todo-list.js"
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("smoke prompt", encoding="utf-8")
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+    run_id = "raw-line-sink-mid-stream-run"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        del args
+        raw_sink = kwargs.get("raw_output_sink")
+        raw_line_sink = kwargs.get("raw_line_sink")
+        assert callable(raw_line_sink), (
+            "S-1 requires execute_agent_effect to accept raw_line_sink and "
+            "smoke_plumbing to pass a real observer through it"
+        )
+
+        init_line = _init_frame(["view_file", "call_mcp_tool", "write_to_file"])
+        if isinstance(raw_sink, deque):
+            raw_sink.append(init_line)
+        raw_line_sink(init_line)
+
+        # Mid-stream: the ceiling must already be reported here, before
+        # this fake even considers returning.
+        assert len(calls) == 1, "ceiling must be reported synchronously as the init line streams in"
+        assert calls[0] == [init_line]
+
+        later_line = json.dumps(
+            {"event": "step_update", "step_update": {"step_type": "agent_response"}}
+        )
+        if isinstance(raw_sink, deque):
+            raw_sink.append(later_line)
+        raw_line_sink(later_line)
+        assert len(calls) == 1, "ceiling must be reported exactly once per run"
+
+        output_file.write_text("// smoke output\n", encoding="utf-8")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    assert len(calls) == 1
+    assert result.transport_evidence_ceiling == Provenance.WIRE
 
 
 # --- Evidence Provenance closeout plan, S-3: pin the WIRE path (PA-001) ----

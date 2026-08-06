@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.builtin import builtin_supports
 from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -27,6 +28,7 @@ from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.support import AgentSupport
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.session_bridge import (
         BuildSessionMcpPlanFn,
@@ -1128,6 +1130,19 @@ def test_agent_session_ceilings_opencode_gets_360s_agy_gets_360s_claude_gets_120
     assert captured_params[0].unified_config.general.agent_max_session_seconds == 120.0
 
 
+def _nanocoder_support() -> AgentSupport:
+    """Return the real registered nanocoder ``AgentSupport`` (S-6 / G6 / DoD 20).
+
+    Used by direct ``_detect_smoke_errors`` calls in this module so they
+    reproduce the ``support`` resolution ``_run_smoke_agent`` performs in
+    production, rather than a hand-built double that could drift from the
+    real registered ``session_identifier_observable`` value.
+    """
+    return next(
+        support for support in builtin_supports() if support.transport == AgentTransport.NANOCODER
+    )
+
+
 def _make_artifact(
     tmp_path: Path,
     *,
@@ -1364,7 +1379,17 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
 def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
     tmp_path: Path,
 ) -> None:
-    """Nanocoder uses the same receipt-plus-sentinel completion contract."""
+    """Nanocoder uses the same receipt-plus-sentinel completion contract.
+
+    S-6 (Evidence Provenance G6 / DoD 20): the NANOCODER-only fallback that
+    treated a submitted artifact as tool-activity evidence was removed --
+    it was the exact self-report-as-evidence shape DoD 19 removed for AGY,
+    and NanocoderParser DOES emit authoritative parser-classified tool
+    events (the shared ``[plain] tool: NAME`` convention). This test now
+    supplies a real tool-activity line, matching what every other
+    transport's smoke run must provide, rather than relying on the
+    deleted artifact-submitted fallback.
+    """
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1403,18 +1428,82 @@ def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
 
     errors = smoke_plumbing_module._detect_smoke_errors(
         params,
-        [],
+        ["[plain] tool: createTodoList"],
         [],
         None,
         None,
         artifact_submitted=artifact_submitted,
         run_id=run_id,
+        # S-6 (G6 / DoD 20): the session-ID exemption is now resolved from
+        # the registered AgentSupport's session_identifier_observable
+        # property, not a literal transport comparison -- thread the real
+        # registered nanocoder support so this direct call reproduces what
+        # _run_smoke_agent resolves in production.
+        support=_nanocoder_support(),
     )
 
     assert "completion sentinel was not observed" not in errors
     assert "no tool activity was observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
+
+
+def test_detect_smoke_errors_nanocoder_requires_authoritative_tool_activity_evidence(
+    tmp_path: Path,
+) -> None:
+    """S-6 (G6 / DoD 20): a submitted artifact alone no longer satisfies the
+    tool-activity check for NANOCODER -- authoritative parser-classified
+    evidence is required, the same bar every other transport must clear.
+    """
+    output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(
+        tmp_path,
+        observed_breaks=[],
+        run_id="interactive-nanocoder-smoke-no-tool-activity",
+    )
+    _make_completion_sentinel(tmp_path, "interactive-nanocoder-smoke-no-tool-activity")
+
+    config = AgentConfig(
+        cmd="nanocoder",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.NANOCODER,
+    )
+    params = SmokeRunParams(
+        agent_name="nanocoder",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+    run_id = "interactive-nanocoder-smoke-no-tool-activity"
+
+    artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(
+        params.workspace_root,
+        run_id,
+    )
+    assert artifact_submitted is True
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        [],
+        [],
+        None,
+        None,
+        artifact_submitted=artifact_submitted,
+        run_id=run_id,
+        support=_nanocoder_support(),
+    )
+
+    assert "no tool activity was observed" in errors, (
+        "a submitted artifact must not substitute for authoritative tool-activity "
+        "evidence -- NANOCODER must clear the same bar as every other transport"
+    )
 
 
 def test_detect_smoke_errors_nanocoder_banner_without_progress_reports_prompt_submission_failure(

@@ -227,6 +227,18 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         can_commit=False,
         interactive=True,
         no_default_session_flag=True,
+        # S-6 (Evidence Provenance G6 / DoD 20): the one documented False
+        # case. Upstream documentation review (see
+        # docs/superpowers/specs/2026-06-07-nanocoder-support-design.md's
+        # "Session and Retry Policy" section) found no documented
+        # unattended `run`-mode session/resume output of any kind, and
+        # NanocoderParser (plain-text PTY redraw, no JSON session
+        # protocol) confirms there is no mechanism to observe one --
+        # unlike AGY, which also has no_default_session_flag=True but
+        # DOES emit an observable conversation_id via its JSON init
+        # frame and is therefore NOT exempted from the smoke gate's
+        # session-id check.
+        session_identifier_observable=False,
         display_capabilities=_NANOCODER_CAPABILITIES,
     ).to_support("nanocoder"),
     BuiltinAgentSpec(

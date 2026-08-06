@@ -118,6 +118,39 @@ def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
         assert method in recorded_methods, f"no ledger row for {method}"
 
 
+#: S-2 (Evidence Provenance G2): the two notification methods are handled
+#: before the `handlers` dict in `_dispatch_request` and previously never
+#: reached the ledger at all.
+_NOTIFICATION_METHODS: tuple[str, ...] = (
+    "notifications/initialized",
+    "notifications/reset_wrapup",
+)
+
+
+def test_notification_methods_append_a_ledger_row(tmp_path: Path) -> None:
+    """S-2: notifications/initialized and notifications/reset_wrapup are chained too."""
+    server = McpServer(
+        session=_session("run-1", broker_secret="s3cr3t"),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    for msg_id, method in enumerate(_NOTIFICATION_METHODS, start=1):
+        request = JsonRpcRequest(jsonrpc="2.0", method=method, msg_id=str(msg_id), params={})
+        response, _ = server.handle_request(request, ServerState.RUNNING)
+        assert response is None  # notifications never carry a response
+
+    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    assert ledger_path.exists()
+    assert verify_chain(tmp_path, "s3cr3t") is True
+
+    import json
+
+    lines = ledger_path.read_text(encoding="utf-8").splitlines()
+    recorded_methods = [json.loads(line)["method"] for line in lines]
+    for method in _NOTIFICATION_METHODS:
+        assert method in recorded_methods, f"no ledger row for {method}"
+
+
 def test_ledger_with_only_handler_dict_rows_grants_no_wire_evidence(tmp_path: Path) -> None:
     """A ledger with only initialize/tools/list/... rows (no tools/call) still
     grades below WIRE — F2's `tools/call`-only grading predicate is unchanged."""

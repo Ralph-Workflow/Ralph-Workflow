@@ -54,6 +54,20 @@ _REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
 )  # bounded-accumulator-ok: weak-keyed by definition; entries auto-evict when no strong references remain
 
 
+def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = None) -> Path:
+    """Return the on-disk path a real ``RawOverflowLog`` writer uses for this unit.
+
+    S-4 (G4 / DoD 15): named so every caller that needs to *find* an
+    already-written raw log (not just create/append to one) derives the
+    exact same path the real writer used, instead of each caller
+    re-deriving the ``safe_id_for(unit_id, model)`` formula inline and
+    risking drift. Factored out of :func:`get_or_create_raw_overflow_log`,
+    which now calls this helper instead of inlining the expression --
+    a refactor, not a behavior change.
+    """
+    return workspace_root / ".agent" / "raw" / f"{safe_id_for(unit_id, model)}.log"
+
+
 def get_or_create_raw_overflow_log(
     workspace_root: Path,
     unit_id: str,
@@ -72,9 +86,7 @@ def get_or_create_raw_overflow_log(
     already-written bytes (S-8 / C4 / DoD 15). Returns the existing
     instance on a repeat call -- not a fresh one.
     """
-    key_path = (
-        workspace_root / ".agent" / "raw" / f"{safe_id_for(unit_id, model)}.log"
-    )
+    key_path = raw_log_path_for(workspace_root, unit_id, model=model)
     key = str(key_path.resolve(strict=False))
     with _REGISTRY_LOCK:
         existing = _REGISTRY.get(key)
@@ -415,4 +427,5 @@ __all__ = [
     "RawOverflowLog",
     "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
+    "raw_log_path_for",
 ]

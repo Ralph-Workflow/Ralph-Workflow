@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
@@ -19,6 +20,7 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
+from ralph.display.raw_overflow import detect_raw_log_breaks, raw_log_path_for
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -26,6 +28,7 @@ from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 if TYPE_CHECKING:
     from typing import Protocol
 
+    from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
     from ralph.display.context import DisplayContext
@@ -153,6 +156,11 @@ def _phase_event_after_agent_run(
             policy_bundle=policy_bundle,
             state=state,
             run_id=run_id,
+            # S-4 (G4 / DoD 15): the registry built above already resolves
+            # every agent from ``config``; reuse it here so the shared
+            # phase-verdict seam can name the exact raw log the real
+            # writer used for this phase's agent.
+            agent_config=ctx.registry.get(effect.agent_name),
         )
 
     if (
@@ -189,6 +197,7 @@ def _render_phase_artifact_handoff(
     policy_bundle: PolicyBundle | None = None,
     state: PipelineState | None = None,
     run_id: str | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> None:
     ctx = get_display_context(display, display_context)
     effective_drain = drain or phase
@@ -234,13 +243,42 @@ def _render_phase_artifact_handoff(
             verbosity,
             required_artifact,
             run_id=run_id,
+            agent_config=agent_config,
         )
+
+
+def _raw_transcript_break_detail(
+    workspace_root: Path, agent_config: AgentConfig | None
+) -> str | None:
+    """S-4 (G4 / DoD 15): the shared non-smoke phase-verdict seam.
+
+    Mirrors ``smoke_plumbing._raw_transcript_corruption_errors``'s path
+    formula exactly (``unit_id`` via ``shlex.split(agent_config.cmd)[0]``,
+    matching the private ``_agent_command_name`` helper in
+    ``_process_reader.py``, and ``model`` read directly from
+    ``agent_config.model``) so this reads the exact file the real
+    ``RawOverflowLog`` writer used. Returns ``None`` when no agent config is
+    available (the caller could not resolve one) or no break is found --
+    never raises.
+    """
+    if agent_config is None:
+        return None
+    try:
+        unit_id = shlex.split(agent_config.cmd)[0]
+    except (ValueError, IndexError):
+        return None
+    raw_path = raw_log_path_for(workspace_root, unit_id, model=agent_config.model)
+    breaks = detect_raw_log_breaks(raw_path)
+    if not breaks:
+        return None
+    return f"raw transcript corrupted: {breaks[0].detail}"
 
 
 def _compute_graded_phase_verdict(
     workspace_root: Path,
     required_artifact: RequiredArtifact,
     run_id: str | None,
+    agent_config: AgentConfig | None = None,
 ) -> tuple[str, Provenance, str]:
     """Recompute graded completion evidence at the phase-close render boundary.
 
@@ -252,6 +290,12 @@ def _compute_graded_phase_verdict(
     plumbing. This reads the same durable receipt/sentinel state the
     completion-enforcement path already gated on; it does not derive a new
     decision (S-2).
+
+    ``agent_config`` (S-4 / G4 / DoD 15) additionally folds a detected raw
+    transcript corruption into the returned detail string, so a corrupted or
+    truncated capture is a reported break at this shared phase-verdict seam,
+    not only at the smoke gate. Optional and additive: omitting it (the
+    default) reproduces the pre-S-4 behavior exactly.
     """
     secret = _parent_broker_secret()
     signals = evaluate_completion(
@@ -261,16 +305,28 @@ def _compute_graded_phase_verdict(
         receipt_secret=secret,
         sentinel_secret=secret,
     )
-    return graded_phase_verdict(signals, required_artifact=required_artifact)
+    label, weakest, detail = graded_phase_verdict(signals, required_artifact=required_artifact)
+    break_detail = _raw_transcript_break_detail(workspace_root, agent_config)
+    if break_detail is not None:
+        detail = f"{detail}; {break_detail}" if detail else break_detail
+    return label, weakest, detail
 
 
 def _format_graded_phase_verdict(label: str, weakest: Provenance, detail: str) -> str:
-    """Format ``_compute_graded_phase_verdict``'s tuple as operator-facing text."""
+    """Format ``_compute_graded_phase_verdict``'s tuple as operator-facing text.
+
+    S-4 (G4 / DoD 15): a non-empty ``detail`` (e.g. a folded-in raw
+    transcript corruption break) is appended for EVERY label, not only
+    ``FAILED`` -- a corrupted transcript is a reported break regardless of
+    whether the phase otherwise graded PASS or DEGRADED on its completion
+    evidence alone. Empty ``detail`` reproduces the pre-S-4 text exactly.
+    """
     if label == "PASS":
-        return "PASS"
+        return f"PASS — {detail}" if detail else "PASS"
     if label == "FAILED":
         return f"FAILED (no artifact) — {detail}" if detail else "FAILED (no artifact)"
-    return f"DEGRADED ({weakest.name.lower().replace('_', '-')})"
+    base = f"DEGRADED ({weakest.name.lower().replace('_', '-')})"
+    return f"{base} — {detail}" if detail else base
 
 
 def _render_success_artifact(
@@ -282,6 +338,7 @@ def _render_success_artifact(
     ra: RequiredArtifact,
     *,
     run_id: str | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> None:
     def _emit_close(produced: str) -> None:
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
@@ -297,7 +354,9 @@ def _render_success_artifact(
         # grading failure must not blank out the artifact summary that
         # already rendered successfully.
         with suppress(Exception):
-            label, weakest, detail = _compute_graded_phase_verdict(workspace_root, ra, run_id)
+            label, weakest, detail = _compute_graded_phase_verdict(
+                workspace_root, ra, run_id, agent_config
+            )
             return f"{produced} — {_format_graded_phase_verdict(label, weakest, detail)}"
         return produced
 
@@ -360,9 +419,16 @@ def _render_phase_failure_report(
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     run_id: str | None = None,
+    config: UnifiedConfig | None = None,
 ) -> None:
     """Render ``Verdict: FAILED (no artifact)`` when an agent invocation did
     not succeed for a required-artifact phase (F6 / DoD 12).
+
+    ``config`` (S-4 / G4 / DoD 15) is optional and additive: when supplied,
+    ``effect.agent_name``'s :class:`AgentConfig` is resolved from it so the
+    shared phase-verdict seam can also fold a detected raw transcript
+    corruption into the rendered detail. Omitting it (the default)
+    reproduces the pre-S-4 behavior exactly.
 
     Reachability (PA-001): called directly from the runner/worker call
     sites' ``else`` branch on a non-``AGENT_SUCCESS`` event -- NOT through
@@ -389,8 +455,13 @@ def _render_phase_failure_report(
         if required_artifact is None or not required_artifact.artifact_required:
             return
         workspace_root = Path(workspace.absolute_path("."))
+        agent_config = (
+            AgentRegistry.from_config(config).get(effect.agent_name)
+            if config is not None
+            else None
+        )
         label, weakest, detail = _compute_graded_phase_verdict(
-            workspace_root, required_artifact, run_id
+            workspace_root, required_artifact, run_id, agent_config
         )
         if label != "FAILED":
             return

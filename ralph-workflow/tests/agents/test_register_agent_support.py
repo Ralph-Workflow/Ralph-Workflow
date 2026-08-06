@@ -974,6 +974,11 @@ class TestPostRefactorContract:
             "config",
             "is_builtin",
             "no_default_session_flag",
+            # S-6 (Evidence Provenance G6 / DoD 20): a general,
+            # transport-declared property replacing the literal
+            # `== AgentTransport.NANOCODER` session-ID exemption branch in
+            # smoke_plumbing.py. See AgentSupport's docstring.
+            "session_identifier_observable",
             "display_capabilities",
             "_name_lower",
         }

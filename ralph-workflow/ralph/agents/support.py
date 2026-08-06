@@ -39,6 +39,24 @@ class AgentSupport:
         no_default_session_flag: When True, the agent opts out of the
             default ``--resume {}`` session template that would otherwise
             be applied for interactive agents.  Set by agy.
+        session_identifier_observable: S-6 (Evidence Provenance G6 / DoD 20).
+            Whether this transport's documented output can ever carry an
+            observable session/conversation identifier at all -- a
+            structural property of the transport's wire protocol, distinct
+            from ``no_default_session_flag`` (which is about a CLI
+            ``--resume``-style flag, not about whether an identifier is
+            ever emitted). AGY has ``no_default_session_flag=True`` (no
+            ``--resume`` flag) but DOES emit an observable identifier (its
+            JSON ``init`` frame's ``conversation_id``), so it is NOT
+            exempted from the smoke gate's "session ID was not observed"
+            check. Nanocoder is the one documented ``False`` case: its
+            design doc (``docs/superpowers/specs/2026-06-07-nanocoder-support-design.md``)
+            found no documented unattended ``run``-mode session/resume
+            output of any kind during upstream documentation review, and
+            its parser (plain-text PTY redraw, no JSON session protocol)
+            confirms there is no mechanism to observe one. Defaults to
+            ``True`` so every other built-in and every custom agent is
+            held to the same bar unless it declares otherwise.
         display_capabilities: Per-capability tri-state stance; the
             mapping's keys must match
             :func:`ralph.agents.display_capabilities.all_display_capabilities`
@@ -57,6 +75,7 @@ class AgentSupport:
     config: AgentConfig
     is_builtin: bool = False
     no_default_session_flag: bool = False
+    session_identifier_observable: bool = True
     display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
 
     _name_lower: str = ""
@@ -115,6 +134,7 @@ class AgentSupport:
         subagent_capability: bool | None = None,
         is_builtin: bool = False,
         no_default_session_flag: bool = False,
+        session_identifier_observable: bool = True,
         display_capabilities: tuple[DisplayCapabilityStance, ...] = (),
     ) -> AgentSupport:
         """Build an AgentSupport from the legacy register_agent_support kwargs.
@@ -146,6 +166,11 @@ class AgentSupport:
             no_default_session_flag: When True, suppress the default
                 ``--resume {}`` template.  Replaces the historical hidden
                 ``name != "agy"`` special case; agy sets this to True.
+            session_identifier_observable: S-6 (G6 / DoD 20). Whether this
+                transport's output can ever carry an observable session
+                identifier at all. Defaults to True; nanocoder is the one
+                documented False case (see :class:`AgentSupport`'s
+                docstring).
             display_capabilities: Per-capability stance tuple; built-in
                 agents (is_builtin=True) must declare exactly one stance
                 per catalog-derived capability. Custom agents may omit
@@ -191,6 +216,7 @@ class AgentSupport:
             config=config,
             is_builtin=is_builtin,
             no_default_session_flag=no_default_session_flag,
+            session_identifier_observable=session_identifier_observable,
             display_capabilities=display_capabilities,
         )
         object.__setattr__(config, "_support", support)

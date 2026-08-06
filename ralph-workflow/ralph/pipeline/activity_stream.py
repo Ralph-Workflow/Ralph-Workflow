@@ -91,6 +91,7 @@ def stream_parsed_agent_activity(
         "deque[str] | list[str] | None", kwargs.get("rendered_output_sink")
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
+    raw_line_sink = cast("Callable[[str], None] | None", kwargs.get("raw_line_sink"))
     subagent_pid_registry = cast(
         "SubagentPidRegistry | None",
         kwargs.get("subagent_pid_registry"),
@@ -123,6 +124,15 @@ def stream_parsed_agent_activity(
             text = str(line)
             if raw_output_sink is not None:
                 raw_output_sink.append(text)
+            # G1/S-1 (Evidence Provenance F3): a named observer fired as
+            # each raw line streams in, independent of raw_output_sink's
+            # own append -- the same "act on a line while it streams"
+            # pattern session_id_sink already uses below. This lets a
+            # caller (the smoke gate's evidence-ceiling check) react to
+            # the init frame the moment it appears, not after the whole
+            # turn's output is exhausted.
+            if raw_line_sink is not None:
+                raw_line_sink(text)
             session_id = extract_transport_session_id((text,))
             if session_id is not None and session_id_sink is not None:
                 session_id_sink(session_id)

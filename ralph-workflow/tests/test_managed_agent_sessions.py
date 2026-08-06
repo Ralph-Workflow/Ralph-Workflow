@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents.invoke import AgentInvocationError
+from ralph.config.enums import AgentTransport
 from ralph.mcp.session_plan import SessionMcpPlan
+from ralph.prompts._mcp_dispatcher_hint import agy_dispatcher_hint_text
 from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
 
@@ -91,6 +93,80 @@ def test_invoke_prompt_file_uses_managed_runtime_contract(
     assert extra_env["RALPH_MCP_RUN_ID"] == session.run_id
     assert extra_env["RALPH_AGENT_LABEL_SCOPE"] == session.run_id
     assert bridge_state["shutdown_calls"] == 1
+
+
+def test_managed_session_with_agy_transport_threads_dispatcher_hint(
+    tmp_path: Path,
+    config_with_test_agent: UnifiedConfig,
+) -> None:
+    """S-3 (G3/C1, closes PA-001): a real managed session with
+    ``agent_config.transport=AgentTransport.AGY`` gets the ``call_mcp_tool``
+    dispatcher hint in its materialized master prompt file, driven through
+    the REAL production ``materialize_master_prompt`` wrapper end to end --
+    ``ManagedAgentSessionDeps`` deliberately does NOT override
+    ``materialize_master_prompt`` here (every other test in this module
+    does), so ``ManagedAgentSessionRuntime.open`` calls the actual
+    ``ralph._session_runtime_deps._materialize_master_prompt`` wrapper with
+    exactly the four positional arguments
+    ``(workspace_root, name, default_product_criteria, worker_namespace,
+    transport)`` it now accepts.
+
+    PA-001 found the prior draft's wrapper change had no transport value to
+    forward because ``open`` passed only three positional arguments; this
+    test proves the full chain -- ``open`` -> the deps wrapper -> the public
+    ``materialize_master_prompt`` -- now carries the transport through to a
+    file a real agent process would read.
+    """
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Describe a notes app.", encoding="utf-8")
+
+    # AgentConfig is a pydantic RalphBaseModel, not a stdlib dataclass --
+    # model_copy(update=...) is the pydantic equivalent of
+    # dataclasses.replace() for an immutable-by-convention config value.
+    agy_agent_config = config_with_test_agent.agents["test-agent"].model_copy(
+        update={"transport": AgentTransport.AGY}
+    )
+
+    bridge, _bridge_state = _make_fake_bridge()
+    captured: dict[str, object] = {}
+
+    def fake_start_mcp_server(*args: object) -> object:
+        return bridge
+
+    def fake_invoke_agent(
+        agent_config: object,
+        prompt_file_path: str,
+        options: object,
+    ) -> Iterator[str]:
+        del agent_config, prompt_file_path
+        captured["options"] = options
+        return iter(())
+
+    deps = _session_runtime().ManagedAgentSessionDeps(
+        start_mcp_server=fake_start_mcp_server,
+        invoke_agent=fake_invoke_agent,
+        workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
+    )
+
+    with _session_runtime().ManagedAgentSessionRuntime.open(
+        config=config_with_test_agent,
+        workspace_root=tmp_path,
+        agent_config=agy_agent_config,
+        request=_session_runtime().ManagedAgentSessionRequest(
+            session_id_prefix="managed-agent-agy",
+            drain="standalone",
+            capabilities=frozenset({"workspace.read", "artifact.submit"}),
+            master_prompt_name="managed-agent-agy",
+        ),
+        deps=deps,
+    ) as runtime:
+        list(runtime.invoke_prompt_file(prompt_file))
+
+    options = captured["options"]
+    master_prompt_path = Path(options.master_prompt_file)
+    assert master_prompt_path.exists(), f"no master prompt file written at {master_prompt_path}"
+    content = master_prompt_path.read_text(encoding="utf-8")
+    assert agy_dispatcher_hint_text("ralph_submit_md_artifact") in content
 
 
 def test_runtime_builds_session_plan_when_request_omits_explicit_capabilities(

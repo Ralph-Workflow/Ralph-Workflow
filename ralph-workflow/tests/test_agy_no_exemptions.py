@@ -86,28 +86,40 @@ def test_agy_meaningful_output_exemption_is_gone() -> None:
 
 
 def test_agy_session_id_exemption_is_gone() -> None:
-    """``AgentTransport.AGY`` must not appear in the session-ID exemption set.
+    """AGY must not be exempted from the session-ID check by name.
 
     Pre-fix branch (smoke_plumbing.py:1190) included AGY alongside
-    ``NANOCODER`` in the set of transports that do not need a session ID.
-    Post-F7, only ``NANOCODER`` retains the exemption (out of this brief's
-    scope; the brief only restricts what F7 names for AGY).
+    ``NANOCODER`` in a literal ``params.config.transport not in {...}`` set.
+
+    S-6 (G6 / DoD 20) replaced that literal transport-comparison set
+    entirely with a general, transport-declared property
+    (``AgentSupport.session_identifier_observable``, defaulting to
+    ``True``) so the check applies uniformly to every registered
+    transport unless one explicitly documents why it cannot clear it.
+    This test therefore asserts the general property directly: no
+    ``AgentTransport.<X> not in {...}`` literal exemption set exists
+    anywhere in the file (the pattern DoD 20 forbids for any transport,
+    not only AGY), AND AGY's own registered support keeps the default
+    ``session_identifier_observable=True`` -- it is not special-cased.
     """
     source = _read_smoke_plumbing()
-    match = re.search(
-        r"if session_id is None and params\.config\.transport not in \{\s*\n"
-        r"(\s+AgentTransport\.[A-Z_]+,?\s*\n)+\s*\}\:",
-        source,
+    assert re.search(r"AgentTransport\.[A-Z_]+\s+not in\s+\{", source) is None, (
+        "a literal 'transport not in {...}' exemption set was reintroduced "
+        "in smoke_plumbing.py -- DoD 20 requires exemptions to be expressed "
+        "as a general, transport-declared property, never a per-transport "
+        "comparison."
     )
-    assert match is not None, (
-        "Could not locate the session-ID exemption set in smoke_plumbing.py; "
-        "this regression must continue to track the exact exempt set."
+
+    from ralph.agents.builtin import builtin_supports
+    from ralph.config.enums import AgentTransport
+
+    agy_support = next(
+        support for support in builtin_supports() if support.transport == AgentTransport.AGY
     )
-    exemption_block = match.group(0)
-    assert "AgentTransport.AGY" not in exemption_block, (
-        "AgentTransport.AGY reintroduced into the session-ID exemption "
-        "set -- every transport must surface 'session ID was not observed' "
-        "when the session ID is missing."
+    assert agy_support.session_identifier_observable is True, (
+        "AGY's registered AgentSupport must keep the default "
+        "session_identifier_observable=True -- AGY is not exempted from "
+        "the smoke gate's session-ID check."
     )
 
 

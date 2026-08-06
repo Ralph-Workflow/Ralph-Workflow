@@ -64,6 +64,11 @@ class BuiltinAgentSpec:
             ``--resume {}`` session template that would otherwise be set
             by :meth:`AgentSupport.from_registration_kwargs` for
             interactive agents.  Used for agy.
+        session_identifier_observable: S-6 (G6 / DoD 20). Whether this
+            transport's output can ever carry an observable session
+            identifier. Defaults to True; nanocoder is the one documented
+            False case (see :class:`ralph.agents.support.AgentSupport`'s
+            docstring for the full reasoning and its evidence source).
     """
 
     transport: AgentTransport
@@ -83,6 +88,7 @@ class BuiltinAgentSpec:
     interactive: bool = False
     subagent_capability: bool | None = None
     no_default_session_flag: bool = False
+    session_identifier_observable: bool = True
     display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:

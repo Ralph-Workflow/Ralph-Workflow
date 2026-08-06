@@ -478,6 +478,7 @@ def run_parallel_worker_from_manifest(
             display_context=display_context,
             verbosity=Verbosity.VERBOSE,
             run_id=run_id,
+            config=config,
         )
     if isinstance(event, ExecutionResultEvent) and event.status == "completed":
         event = PipelineEvent.AGENT_SUCCESS

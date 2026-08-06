@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ from ralph.config.enums import AgentTransport
 from ralph.display.capability_observation_recorder import infer_surface_for_preview
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.preview_payload import payload_from_tool_event
+from ralph.display.raw_overflow import detect_raw_log_breaks, raw_log_path_for
 from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -1035,7 +1037,20 @@ def _tool_activity_seen(config: AgentConfig, lines: list[str]) -> bool:
         signal = strategy.classify_activity_line(line)
         if signal is not None and signal.kind.value == "tool_use":
             return True
-    return False
+    # S-6 (Evidence Provenance G6 / DoD 20): a second authoritative source,
+    # applied uniformly to every transport, not a per-transport softening.
+    # The execution-strategy classifier above is watchdog-focused, and some
+    # transports (e.g. nanocoder's plain GenericExecutionStrategy) have no
+    # custom tool-use override -- their execution strategy can never
+    # return a tool_use signal even when their transcript genuinely
+    # contains one. Their PARSER (a separately-tested classification
+    # layer -- NanocoderParser's ``⚒ Executed <tool>`` convention and the
+    # shared ``[plain] tool: NAME`` convention both classify as
+    # ``type="tool_use"``) already carries this evidence; falling back to
+    # it here closes that gap for every transport whose parser can
+    # classify tool markers the strategy cannot, not only nanocoder.
+    parser = get_parser(_parser_key_for_config(config))
+    return any(parsed.type == "tool_use" for parsed in parser.parse(iter(lines)))
 
 
 def _meaningful_output_lines(config: AgentConfig, lines: list[str]) -> list[str]:
@@ -1230,6 +1245,31 @@ def _execute_smoke_turns(
             nonlocal observed_session_id
             observed_session_id = session_id
 
+        def _observe_raw_line(line: str, *, _turn_raw_lines: deque[str] = raw_lines) -> None:
+            # G1/S-1 (Evidence Provenance F3): report the ceiling as soon as
+            # an init-shaped frame is observed while lines stream in, not
+            # only after execute_agent_effect returns — for the common
+            # single-turn run, waiting for the return means the whole
+            # turn's tokens are already spent before the operator learns
+            # the transport could never pass. raw_lines already contains
+            # this line by the time raw_line_sink fires (it is invoked
+            # immediately after the append inside stream_parsed_agent_activity),
+            # so list(raw_lines) is a faithful up-to-this-line view.
+            #
+            # ``_turn_raw_lines`` is bound as a default-value parameter
+            # (not read directly from the enclosing loop scope) so this
+            # closure is pinned to THIS iteration's ``raw_lines`` object,
+            # not whatever ``raw_lines`` is rebound to by a later loop
+            # iteration (ruff B023: function-definition-in-loop closures
+            # over a loop variable capture by reference, not by value).
+            del line  # already appended to raw_lines by the time this fires
+            nonlocal ceiling_reported
+            if ceiling_reported:
+                return
+            ceiling_reported = _report_evidence_ceiling_once(
+                params.config, list(_turn_raw_lines)
+            )
+
         effect = InvokeAgentEffect(
             agent_name=params.agent_name,
             phase="development",
@@ -1253,6 +1293,7 @@ def _execute_smoke_turns(
                 run_id=run_id,
                 raw_output_sink=raw_lines,
                 rendered_output_sink=rendered_lines,
+                raw_line_sink=_observe_raw_line,
                 set_session_id_cb=_capture_session_id,
                 invoke_agent=invoke_agent,
                 raise_resumable_exit=True,
@@ -1512,12 +1553,22 @@ def _tool_activity_seen_for_errors(
     1. Parser-classified tool events from the transcript (the
        ``[plain] tool: NAME`` convention handled by ``GenericParser``,
        plus structured tool events from JSON-aware parsers like ``AgyParser``).
+
+    S-6 (Evidence Provenance G6 / DoD 20): a NANOCODER-only fallback that
+    treated ``artifact_submitted`` as tool-activity evidence used to live
+    here. Research confirmed it is the exact self-report-as-evidence shape
+    DoD 19 removed for AGY, not a genuine structural constraint --
+    ``NanocoderParser`` DOES emit parser-classified ``tool_use`` events
+    (the ``⚒ Executed <tool>`` convention and the shared ``[plain] tool:``
+    convention both match; see ``ralph/agents/parsers/nanocoder.py``), so
+    authoritative tool-activity evidence is available for this transport
+    the same way it is for every other one. The branch is deleted;
+    nanocoder meets the same bar as every other transport here.
     """
+    del artifact_submitted
     if tool_activity_seen is not None:
         return tool_activity_seen
-    if _tool_activity_seen(params.config, lines) if lines else False:
-        return True
-    return params.config.transport == AgentTransport.NANOCODER and artifact_submitted
+    return bool(_tool_activity_seen(params.config, lines)) if lines else False
 
 
 def _detect_smoke_errors(
@@ -1553,6 +1604,7 @@ def _detect_smoke_errors(
     unchanged for callers that do not thread the recorder through.
     """
     errors = _detect_break_indicators(lines)
+    errors.extend(_raw_transcript_corruption_errors(params.workspace_root, params.config))
     if support is not None and params.agent_name:
         errors.extend(
             _detect_capability_breaks(
@@ -1569,9 +1621,15 @@ def _detect_smoke_errors(
         errors.append(prompt_submission_error)
     if not params.output_file.exists():
         errors.append("expected todo-list.js was not created")
-    if session_id is None and params.config.transport not in {
-        AgentTransport.NANOCODER,
-    }:
+    # S-6 (Evidence Provenance G6 / DoD 20): the exemption is expressed as
+    # a general, transport-declared property (session_identifier_observable,
+    # defaulting to True) rather than a literal transport comparison, so
+    # every registered transport is held to the same bar unless it
+    # explicitly documents why it cannot clear it. See
+    # ``AgentSupport.session_identifier_observable``'s docstring for why
+    # nanocoder is currently the only documented ``False`` case.
+    session_identifier_observable = support is None or support.session_identifier_observable
+    if session_id is None and session_identifier_observable:
         errors.append("session ID was not observed")
 
     if not _explicit_completion_seen(params.workspace_root, run_id=run_id):
@@ -1603,6 +1661,27 @@ def _detect_smoke_errors(
     if overrun_error is not None:
         errors.append(overrun_error)
     return errors
+
+
+def _raw_transcript_corruption_errors(workspace_root: Path, config: AgentConfig) -> list[str]:
+    """S-4 (G4 / DoD 15): surface a corrupted/truncated raw transcript as a
+    reported break at the smoke seam, mirroring the same real writer's path
+    formula (\"unit_id\" via ``shlex.split(config.cmd)[0]``, matching the
+    private ``_agent_command_name`` helper in ``_process_reader.py``, and
+    ``model`` read directly from ``config.model``) so this reads the exact
+    file the real ``RawOverflowLog`` writer used, not a guessed path.
+
+    Never raises: an unreadable/malformed ``config.cmd`` degrades to an
+    empty break list rather than crashing the whole smoke error sweep.
+    """
+    try:
+        unit_id = shlex.split(config.cmd)[0]
+    except (ValueError, IndexError):
+        return []
+    raw_path = raw_log_path_for(workspace_root, unit_id, model=config.model)
+    return [
+        f"raw transcript corrupted: {br.detail}" for br in detect_raw_log_breaks(raw_path)
+    ]
 
 
 def _visible_output_overrun_error(
@@ -1960,31 +2039,43 @@ def _run_smoke_agent(
     # S-5: snapshot the recorder's observed-capabilities set BEFORE the
     # error-taxonomy runs. A ``ParallelDisplay`` instance is per-run,
     # so the snapshot lives only as long as the dataclass field below.
-    # The capability branch is gated on ``params.display is not None``
-    # so tests that never wire a display pay no registry-build cost and
-    # a fake-``AgentRegistry`` registry cannot crash the resolver.
     if params.display is not None:
         observed_capabilities = params.display.capability_recorder.observed_capabilities()
-        # S-5's resolver: an injected ``support_resolver`` wins (tests feed
-        # a synthetic support without standing up a registry); the
-        # production default resolves through
-        # ``AgentRegistry.from_config(params.unified_config).catalog.get(name)``,
-        # the dynamic-alias-aware lookup that correctly synthesises an
-        # ``AgentSupport`` for aliases like ``opencode/minimax/MiniMax-M3``
-        # (see ``AgentCatalog._resolve_dynamic_support``). No ``getattr``
-        # default and no swallowed exception: a resolver that cannot find a
-        # support returns ``None`` explicitly, which is the "nobody has
-        # said" case Branch A of ``_detect_capability_breaks`` grades as
-        # ungraded rather than silently passing.
-        if params.support_resolver is not None:
-            resolved_support = params.support_resolver(params.agent_name)
-        else:
-            resolved_support = AgentRegistry.from_config(params.unified_config).catalog.get(
-                params.agent_name
-            )
     else:
         observed_capabilities = frozenset()
-        resolved_support = None
+    # S-6 (G6 / DoD 20): resolved unconditionally (not gated on
+    # ``params.display is not None`` the way ``observed_capabilities`` above
+    # is) because ``_detect_smoke_errors`` also reads
+    # ``support.session_identifier_observable`` for the session-id check
+    # below, independent of whether a display is wired.
+    if params.support_resolver is not None:
+        resolved_support = params.support_resolver(params.agent_name)
+    else:
+        # Prefer the ``AgentConfig``'s attached ``_support`` (set when
+        # the config was registered through ``AgentCatalog.add`` / the
+        # legacy ``register_agent_support`` API), which is the
+        # transport-neutral way to read the registered support and
+        # bypasses the catalog round-trip. The catalog fallback still
+        # works for dynamic-alias synthesised supports whose
+        # ``AgentConfig`` is built by ``_resolve_dynamic_agent`` and
+        # attaches the synthesised ``_support`` immediately. The
+        # try/except on ``AttributeError`` keeps existing tests that
+        # monkey-patch ``AgentRegistry`` (returning a stand-in with no
+        # ``.catalog`` attribute) hermetic; production registry mocks
+        # always expose ``.catalog``.
+        attached_support: AgentSupport | None = cast(
+            "AgentSupport | None", getattr(params.config, "_support", None)
+        )
+        if attached_support is not None:
+            resolved_support = attached_support
+        else:
+            try:
+                resolved_support = (
+                    AgentRegistry.from_config(params.unified_config)
+                    .catalog.get(params.agent_name)
+                )
+            except AttributeError:
+                resolved_support = None
 
     errors = _detect_smoke_errors(
         params,

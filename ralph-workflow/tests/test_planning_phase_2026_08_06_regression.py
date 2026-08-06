@@ -35,15 +35,19 @@ from ralph.agents.completion_signals import (
 )
 from ralph.agents.invoke import InvokeOptions
 from ralph.agents.parsers.agy import AgyParser
-from ralph.config.enums import AgentTransport
+from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.phases.required_artifacts import RequiredArtifact
+from ralph.pipeline import phase_agent_handler as phase_agent_handler_module
+from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_evidence import Provenance
 from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunParams,
     _run_smoke_agent,
 )
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -261,3 +265,89 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
         # the load-bearing one for this regression.
         result.tool_activity_seen.holds is True
     )
+
+
+def test_2026_08_06_planning_run_through_real_phase_verdict_path_grades_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-5 (DoD 16): the exact measured shape grades FAILED through the real
+    phase-verdict path, not only through smoke grading.
+
+    The companion test above (``..._through_smoke_agent_grades_degraded``)
+    proves the smoke gate's own grading path derives DEGRADED from this
+    shape. DoD 16's literal ask is stronger -- "the phase grades as a
+    failure" -- and the DoD-12 ``FAILED (no artifact)`` machinery lives in
+    ``phase_agent_handler.graded_phase_verdict`` / ``render_phase_failure_report``,
+    which neither existing test in this module exercises. This test drives
+    the reconstructed 2026-08-06 transcript's defining fact -- a 'plan'
+    phase that produced tool calls (no artifact, no receipt, no completion
+    sentinel) -- through that real render path and asserts the rendered
+    report contains ``"FAILED (no artifact)"`` naming the missing plan
+    artifact, exactly the shape the brief's "What the operator sees" section
+    specifies for this run.
+
+    ``tmp_path`` has no ``.agent/artifacts/plan.md`` and no receipt/sentinel
+    for ``run_id`` -- the same absence the measured run left behind.
+    ``resolve_phase_required_artifact`` is monkeypatched to the plan
+    contract directly (mirroring ``tests/pipeline/test_phase_close_failed_no_artifact.py``'s
+    established pattern) so this test does not need a full ``PolicyBundle``.
+    """
+    required_artifact = RequiredArtifact(
+        phase="plan",
+        artifact_type="plan",
+        artifact_path=".agent/artifacts/plan.md",
+        markdown_path=None,
+        normalizer=None,
+        artifact_required=True,
+    )
+
+    class _StubPolicyBundle:
+        pipeline = object()
+        artifacts = object()
+
+    captured: list[tuple[str, tuple[object, ...]]] = []
+
+    def _fake_emit_via_display(
+        ctx: object, method_name: str, *args: object, **kwargs: object
+    ) -> bool:
+        del ctx, kwargs
+        captured.append((method_name, args))
+        return True
+
+    monkeypatch.setattr(
+        phase_agent_handler_module,
+        "resolve_phase_required_artifact",
+        lambda *args, **kwargs: required_artifact,
+    )
+    monkeypatch.setattr(phase_agent_handler_module, "_emit_via_display", _fake_emit_via_display)
+
+    effect = InvokeAgentEffect(
+        agent_name="agy/gemini-3.6-flash-low",
+        phase="plan",
+        prompt_file="planning_prompt.md",
+        drain="plan",
+    )
+    workspace = FsWorkspace(tmp_path)
+
+    phase_agent_handler_module.render_phase_failure_report(
+        effect,
+        policy_bundle=_StubPolicyBundle(),
+        workspace=workspace,
+        display=None,
+        display_context=make_display_context(),
+        verbosity=Verbosity.VERBOSE,
+        run_id="interactive-agy-2026-08-06-planning-run",
+    )
+
+    assert len(captured) == 1, f"expected exactly one rendered verdict line, got {captured}"
+    method_name, args = captured[0]
+    assert method_name == "emit"
+    assert args[0] == "agy/gemini-3.6-flash-low"
+    message = str(args[1])
+
+    # The exact operator-facing shape DoD 16 requires: never
+    # "agy result SUCCESS", always a named-failure verdict.
+    assert "FAILED (no artifact)" in message, message
+    assert "plan" in message, message
+    assert "SUCCESS" not in message, message

@@ -1108,6 +1108,7 @@ def _finalize_agent_invocation(
             display_context=display_context,
             verbosity=verbosity,
             run_id=run_id,
+            config=config,
         )
     return state, event
 
