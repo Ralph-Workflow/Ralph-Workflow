@@ -17,12 +17,22 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class AllocationDecision:
     """G-9: one role's allocator outcome for one frame, inspectable as
-    data -- callers assert on this, never on allocator internals (F-4)."""
+    data -- callers assert on this, never on allocator internals (F-4).
+
+    ``frame_index`` (PLAN.md S-1) is the ``SalienceAllocator.frame_index``
+    value of the ``allocate_frame`` call that produced this decision, so a
+    caller holding a flat, chronologically-ordered sequence of decisions
+    (see ``ParallelDisplay.salience_decisions``) can regroup them by the
+    real frame that decided them -- the batch of concurrently-pending bids
+    one ``allocate_frame`` call arbitrated between -- without threading a
+    separate index alongside the decision stream.
+    """
 
     role: str
     tier: FrequencyTier
     lit: bool
     reason: str
+    frame_index: int
 
 
 __all__ = ["AllocationDecision"]

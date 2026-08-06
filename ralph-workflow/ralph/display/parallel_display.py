@@ -120,6 +120,7 @@ from rich.text import Text as _RichText
 
 from ralph.display import theme as _display_theme
 from ralph.display._activity_line_options import ActivityLineOptions as _ActivityLineOptions
+from ralph.display._frequency_tier import FrequencyTier
 from ralph.display._phase_close_counters import _PhaseCloseCounters
 from ralph.display._phase_close_options import PhaseCloseOptions
 from ralph.display._phase_counters import PhaseCounters as _PhaseCounters
@@ -526,6 +527,7 @@ class ParallelDisplay:
         "_salience_allocator",
         "_salience_decisions",
         "_salience_last_role",
+        "_salience_lit_event_roles",
         "_status_bar",
         "_subscriber",
         "_terminal_background_hex",
@@ -580,6 +582,23 @@ class ParallelDisplay:
         # an unbounded append-only log.
         self._salience_allocator = SalienceAllocator()
         self._salience_last_role: str | None = None
+        # PLAN.md S-1: role -> lit, EVENT-tier roles only, mirroring the
+        # allocator's own ``_was_lit`` bookkeeping so ``_apply_salience``
+        # can re-bid every event-tier role it still considers "on screen"
+        # (not yet decayed or evicted) alongside the role actually
+        # rendering a new line -- see ``_apply_salience`` for why this is
+        # what makes one ``allocate_frame`` call a real multi-candidate
+        # frame in the production render path rather than a single-bid
+        # call every time. ALARM-tier roles are deliberately excluded
+        # (never tracked here): G-5 already renders them unconditionally
+        # forever once bid, so re-submitting one on every later call would
+        # permanently shrink ``remaining_budget`` for every future frame
+        # of a long run even after the alarm has long scrolled off
+        # screen -- an alarm does not need to be re-asked about to keep
+        # rendering at full chroma.
+        # bounded-accumulator-ok: keyed only by ROLE_FREQUENCY_TIER's
+        # fixed small event-tier role-name set; never grows with frames.
+        self._salience_lit_event_roles: dict[str, bool] = {}  # bounded-accumulator-ok: fixed event-tier role-name set
         self._salience_decisions: collections.deque[AllocationDecision] = collections.deque(maxlen=_SALIENCE_DECISIONS_MAXLEN)  # bounded-accumulator-ok: drop-oldest ring buffer, matching ring_buffer.RingBuffer's own policy
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else (lambda: datetime.now(UTC))
@@ -824,24 +843,38 @@ class ParallelDisplay:
         return ts.strftime("%H:%M:%S")
 
     def _apply_salience(self, role: str, style_str: str) -> str:
-        """PLAN.md Section G / S-7: run one event/alarm-tier style string
+        """PLAN.md Section G / S-1: run one event/alarm-tier style string
         through the per-frame salience allocator before it paints.
 
-        Each call to this method is one allocator "frame" (G-1): the live
-        activity stream has no persistent redraw loop to key frames off
-        of (see this module's own docstring -- output is log-first,
-        copy-paste-safe transcript lines, not a repainted screen), so a
-        frame is defined as one resolved status badge -- the unit of
-        "a role about to paint" in this architecture. ``role`` is the
-        looked-up STATUS_STYLES key (``success``/``warning``/``error``/
-        ``running``/``skipped``/``pending``/``info``); ``state_changed``
-        (G-3/G-4) is true whenever this call's role differs from the
-        immediately preceding call's role on this same instance, so a run
-        of consecutive same-role lines (e.g. many ``running`` tool_use
-        rows) decays per G-4 while a genuine transition re-lights
-        instantly. Field/structure-tier roles are not part of this
-        competition (the allocator always reports them lit) and this
-        method is only ever called with an event/alarm-tier role.
+        Each call to this method is one allocator "frame" (G-1), but a
+        frame's *bid set* is no longer just this call's own role (S-1):
+        the live activity stream has no persistent redraw loop to key
+        frames off of (see this module's own docstring -- output is
+        log-first, copy-paste-safe transcript lines, not a repainted
+        screen, so there is no literal set of lines "about to reach the
+        console together" to batch by wall-clock or by print-deferral).
+        Instead, a frame is the set of event-tier roles this instance
+        still considers "on screen" -- lit and not yet decayed or evicted
+        by a prior frame (tracked in ``_salience_lit_event_roles``),
+        alongside ``role`` itself, the one actually rendering a new line.
+        This is what makes ``allocate_frame`` genuinely arbitrate more
+        than one candidate in the real render path (see
+        ``ralph.display._salience``'s module docstring): a role that
+        stays lit without itself rendering a new line is re-bid on every
+        other role's frame so its own G-4 decay counter still advances,
+        and a role newly requesting the budget genuinely competes against
+        every other role still holding a slot, not just against itself.
+
+        ``role`` is the looked-up STATUS_STYLES key (``success``/
+        ``warning``/``error``/``running``/``skipped``/``pending``/
+        ``info``); ``state_changed`` (G-3/G-4) is true whenever this
+        call's role differs from the immediately preceding call's role on
+        this same instance, so a run of consecutive same-role lines (e.g.
+        many ``running`` tool_use rows) decays per G-4 while a genuine
+        transition re-lights instantly. Field/structure-tier roles are
+        not part of this competition (the allocator always reports them
+        lit) and this method is only ever called with an event/alarm-tier
+        role.
 
         ``style_str`` is a full Style spec (``"#RRGGBB"`` or
         ``"bold #RRGGBB"``, per ``_build_status_styles``); only the hex
@@ -856,10 +889,18 @@ class ParallelDisplay:
             return style_str
         state_changed = role != self._salience_last_role
         self._salience_last_role = role
-        decision = self._salience_allocator.allocate_frame(
-            (RoleBid(role, state_changed),), depth=depth
-        )[0]
-        self._salience_decisions.append(decision)
+        pending = tuple(
+            RoleBid(other_role, False)
+            for other_role, lit in self._salience_lit_event_roles.items()
+            if lit and other_role != role
+        )
+        bids = (*pending, RoleBid(role, state_changed))
+        decisions = self._salience_allocator.allocate_frame(bids, depth=depth)
+        for decision in decisions:
+            if decision.tier is FrequencyTier.EVENT:
+                self._salience_lit_event_roles[decision.role] = decision.lit
+            self._salience_decisions.append(decision)
+        decision = next(d for d in decisions if d.role == role)
         if decision.lit:
             return style_str
         prefix, _, hex_part = style_str.rpartition(" ")

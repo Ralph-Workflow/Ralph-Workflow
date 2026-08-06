@@ -188,18 +188,33 @@ always render at their own fixed budget.
 
 **Wiring into the real render path.** The live activity stream has no
 persistent redraw loop (output is log-first, copy-paste-safe transcript
-lines, not a repainted screen), so :class:`~ralph.display.parallel_display.ParallelDisplay`
-defines one allocator "frame" as one resolved event/alarm-tier status badge
--- the unit of "a role about to paint" in this architecture.
-``ParallelDisplay._apply_salience`` carries one ``SalienceAllocator`` per
-display instance, bids the badge role for every emitted activity/log line,
-and records each decision on ``ParallelDisplay.salience_decisions`` (the
-public G-9 inspection seam). ``ralph.display.scene_catalog.scene_salience_decisions``
-drives a scene through the same production seams as
+lines, not a repainted screen), so there is no literal set of lines
+"about to reach the console together" to batch by wall clock or by
+deferring a print. ``ParallelDisplay._apply_salience`` carries one
+``SalienceAllocator`` per display instance and defines one allocator
+"frame" as the set of event-tier roles the instance still considers *on
+screen* -- lit, and not yet decayed or evicted by a prior frame -- bid
+alongside whichever role is actually rendering the current line. A role
+that stays lit without itself rendering a new line is still re-bid on
+every other role's frame, so its own steady-state decay (G-4) keeps
+advancing even while it renders nothing; a role newly requesting the
+budget genuinely competes against every role still holding a slot, not
+just against itself. This is what makes ``SalienceAllocator.allocate_frame``
+arbitrate a real multi-candidate frame in production, rather than the
+single-bid call every earlier revision of this wiring made regardless of
+how much else was concurrently lit. Every decision -- one for each bid a
+frame carried, not only for the line that triggered it -- is recorded on
+``ParallelDisplay.salience_decisions`` (the public G-9 inspection seam),
+tagged with the ``AllocationDecision.frame_index`` of the ``allocate_frame``
+call that produced it, so a flat, chronologically-ordered decision stream
+can still be regrouped by the real frame that decided it.
+``ralph.display.scene_catalog.scene_salience_decisions`` drives a scene
+through the same production seams as
 :func:`~ralph.display.scene_catalog.render_scene` and returns the recorded
 decision sequence, which the generated-scene test suite uses to assert the
-accent-count gate, alarm exemption, replay determinism, and the absence of
-lit/demoted oscillation across every canonical scene.
+per-frame accent-count gate (grouped by ``frame_index``), alarm exemption,
+replay determinism, and the absence of lit/demoted oscillation across
+every canonical scene.
 
 The DI invariant
 ----------------

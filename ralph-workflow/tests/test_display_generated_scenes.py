@@ -742,27 +742,46 @@ def test_generated_scene_salience_decisions_never_exceed_the_depth_budget(
     scene_name: str, case: SupportCase
 ) -> None:
     """G-10: routine frames must not light more tier-3/4 accents than the
-    active colour depth's budget affords. PLAN.md S-7 wires one role bid
-    per rendered line/frame (see ``ParallelDisplay._apply_salience``), so
-    this is a real -- if narrow -- regression floor: a future change that
-    ever batches multiple concurrent bids into one frame must still clear
-    this count."""
+    active colour depth's budget affords. PLAN.md S-1 batches every
+    event-tier role the render path still considers "on screen" into the
+    bid set of whichever role is actually rendering a new line (see
+    ``ParallelDisplay._apply_salience``), so ``AllocationDecision.frame_index``
+    (added by S-1) now genuinely groups more than one competing bid per
+    real production frame. Grouping the flat decision stream by that
+    field and checking each group is the actual G-10 gate: a frame that
+    lights more tier-3/4 accents than its budget affords must fail this
+    test, not merely satisfy an invariant the allocator already guarantees
+    for a single-bid call regardless of contention."""
     decisions = scene_salience_decisions(
         scene_name, case, terminal_bg_is_light=case.terminal_background_is_light
     )
     depth = "truecolor" if case.colour == "truecolour" else "256" if case.colour == "reduced" else "none"
     budget = ACCENT_BUDGET_BY_DEPTH[depth]
-    lit_event_or_alarm = sum(
-        1 for d in decisions if d.lit and d.tier in (FrequencyTier.EVENT, FrequencyTier.ALARM)
-    )
-    # Every decision in this single-bid-per-frame model is independently
-    # bounded by the budget (each frame carries exactly one competitor),
-    # so the running total of *lit* event/alarm decisions can still exceed
-    # the budget across many frames -- what G-10 actually bounds is
-    # concurrent lit accents in one frame, i.e. every individual frame's
-    # bid count, which is always 1 here and therefore always <= budget for
-    # any non-zero budget. This assertion pins that invariant explicitly.
-    assert budget >= 1 or lit_event_or_alarm == 0
+    frames: dict[int, list[object]] = {}
+    for decision in decisions:
+        frames.setdefault(decision.frame_index, []).append(decision)
+    for frame_index, frame_decisions in frames.items():
+        lit_event_or_alarm = sum(
+            1
+            for d in frame_decisions
+            if d.lit and d.tier in (FrequencyTier.EVENT, FrequencyTier.ALARM)
+        )
+        assert lit_event_or_alarm <= budget, (
+            scene_name,
+            case,
+            frame_index,
+            frame_decisions,
+        )
+    if scene_name == "burst":
+        # PLAN.md S-1/S-2: burst is the catalog's dedicated
+        # concurrent-activity vehicle (PLAN.md Characterize #5). Unless at
+        # least one of its frames actually carries more than one
+        # competing bid, the budget check above is checking the same
+        # tautology the pre-S-1 single-bid-per-frame model produced --
+        # this assertion is what makes the budget check above a real gate
+        # for this scene rather than a restatement of ``allocate_frame``'s
+        # own per-call contract.
+        assert any(len(v) > 1 for v in frames.values()), (scene_name, case, frames)
 
 
 def test_generated_scene_alarm_decisions_are_never_demoted() -> None:

@@ -14,6 +14,23 @@ roles are not scarce -- they already render at their own fixed, low chroma
 budget every time (E-1) -- so they are always reported "lit" and pass
 through unaffected.
 
+**What one ``allocate_frame`` call represents (PLAN.md S-1).** This module
+does not decide how many bids one call carries -- that is the caller's
+job (:meth:`ralph.display.parallel_display.ParallelDisplay._apply_salience`
+as of S-1). A prior design called ``allocate_frame`` with exactly one bid
+per rendered line, so the eviction/competition logic below never actually
+competed more than one candidate against the budget in the real render
+path -- a frame's ``remaining_budget`` was checked against a list of
+length <= 1 every time, which made the budget check trivially true rather
+than a real gate. The caller now re-bids every event-tier role it still
+considers "on screen" (not yet decayed or evicted) alongside whichever
+role is actually rendering a new line, so one call here genuinely
+arbitrates a multi-candidate frame in production, not just in tests that
+construct multi-bid tuples directly. Nothing in this module changed to
+make that true: the eviction, decay, and hysteresis logic below always
+supported an arbitrary-length ``bids`` tuple; it simply never received one
+from the real render path before S-1.
+
 **Hysteresis simplification (G-7).** G-7 allows re-promotion either on a
 real state change *or* on "a change in the competing set large enough to
 clear a stated margin". This implementation only re-promotes on a real
@@ -182,7 +199,11 @@ class SalienceAllocator:
             tier = ROLE_FREQUENCY_TIER.get(bid.role, FrequencyTier.FIELD)
             if tier in (FrequencyTier.FIELD, FrequencyTier.STRUCTURE):
                 decisions[bid.role] = AllocationDecision(
-                    bid.role, tier, True, "non-accent tier: always painted at its own budget"
+                    bid.role,
+                    tier,
+                    True,
+                    "non-accent tier: always painted at its own budget",
+                    self._frame_index,
                 )
                 continue
             if tier is FrequencyTier.ALARM:
@@ -194,7 +215,9 @@ class SalienceAllocator:
         # lit regardless of budget -- the budget is instead balanced below
         # by evicting the lowest-priority tier-3 (event) contender.
         for bid in alarm_bids:
-            decisions[bid.role] = AllocationDecision(bid.role, FrequencyTier.ALARM, True, "alarm: exempt")
+            decisions[bid.role] = AllocationDecision(
+                bid.role, FrequencyTier.ALARM, True, "alarm: exempt", self._frame_index
+            )
             self._steady_frames[bid.role] = 0
             self._was_lit[bid.role] = True
 
@@ -227,19 +250,23 @@ class SalienceAllocator:
 
         for bid in lit_bids:
             reason = "state change" if bid.state_changed else "budget slot"
-            decisions[bid.role] = AllocationDecision(bid.role, FrequencyTier.EVENT, True, reason)
+            decisions[bid.role] = AllocationDecision(
+                bid.role, FrequencyTier.EVENT, True, reason, self._frame_index
+            )
             self._was_lit[bid.role] = True
 
         for bid in evicted_bids:
             decisions[bid.role] = AllocationDecision(
-                bid.role, FrequencyTier.EVENT, False, "budget exhausted: evicted"
+                bid.role, FrequencyTier.EVENT, False, "budget exhausted: evicted", self._frame_index
             )
             self._was_lit[bid.role] = False
 
         for bid in carryover_demoted:
             steady = self._steady_frames.get(bid.role, 0)
             reason = "decayed" if steady > STEADY_STATE_DECAY_FRAMES else "demoted: one-way until state change"
-            decisions[bid.role] = AllocationDecision(bid.role, FrequencyTier.EVENT, False, reason)
+            decisions[bid.role] = AllocationDecision(
+                bid.role, FrequencyTier.EVENT, False, reason, self._frame_index
+            )
             self._was_lit[bid.role] = False
 
         return tuple(decisions[bid.role] for bid in bids)
