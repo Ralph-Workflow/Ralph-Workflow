@@ -346,7 +346,7 @@ def test_agy_wire_fixture_replay_yields_expected_event_sequence() -> None:
         "text",
         "stop",
     ]
-    assert parsed[0].content == ""
+    assert parsed[0].content == "agy init gemini-3.6-flash-low"
     assert parsed[0].metadata.get("model") == "gemini-3.6-flash-low"
     assert parsed[1].content == "I will create the file and read it back."
     assert parsed[2].content == "write_to_file hello.txt"
@@ -469,6 +469,22 @@ def test_d7_init_frame_yields_observable_lifecycle_event() -> None:
     assert meta.get("cwd") == "/workspace"
     assert meta.get("permission_mode") == "always-proceed"
     assert "define_subagent" in meta.get("tools", [])
+
+
+def test_d7_init_lifecycle_event_has_nonempty_content() -> None:
+    """DA-001: every emitted lifecycle event carries non-empty content.
+
+    A bodiless lifecycle event renders in the activity stream as a
+    content-free ``INFO <agent>`` line preceding the first real activity
+    line. Replays all three real-capture fixtures (text, tool, subagent) so
+    the lock covers every init frame shape actually observed live.
+    """
+    for fixture in (_AGY_WIRE_TEXT_FIXTURE, _AGY_WIRE_TOOL_FIXTURE, _AGY_WIRE_SUBAGENT_FIXTURE):
+        parsed = _replay(fixture)
+        lifecycle_events = [line for line in parsed if line.type == "lifecycle"]
+        assert lifecycle_events, f"expected at least one lifecycle event in {fixture.name}"
+        for line in lifecycle_events:
+            assert line.content.strip() != ""
 
 
 def test_d8_result_metadata_lifts_fields_to_top_level() -> None:

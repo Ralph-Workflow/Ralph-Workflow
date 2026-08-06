@@ -363,21 +363,30 @@ class AgyParser(NdjsonParserBase):
         yield AgentOutputLine(type="stop", raw=raw, metadata=metadata)
 
     def _dispatch_init_event(self, obj: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
-        """Map an ``init`` frame to a ``lifecycle`` event (D7).
+        """Map an ``init`` frame to a ``lifecycle`` event (D7, DA-001).
 
         Lifecycle, not operator-visible text: activity_router routes
         ``type='lifecycle'`` as ``ActivityEventKind.LIFECYCLE``. The session
         extractor (``ralph.agents.invoke._session``) reads the raw JSON line
         directly, so this classification does not affect it.
+
+        DA-001: the emitted event always carries non-empty content — a
+        bodiless lifecycle event renders in the activity stream as a
+        content-free ``INFO <agent>`` line, which reads as a display
+        glitch rather than a real lifecycle signal. The content summarizes
+        the init frame using the model name when present.
         """
         init_info = obj.get("init")
         metadata: dict[str, object] = dict(obj)
+        model: object = None
         if isinstance(init_info, dict):
             init_dict = cast("dict[str, object]", init_info)
             for key in ("model", "cwd", "tools", "permission_mode"):
                 if key in init_dict:
                     metadata[key] = init_dict[key]
-        yield AgentOutputLine(type="lifecycle", raw=raw, metadata=metadata)
+            model = init_dict.get("model")
+        content = f"agy init {model}" if isinstance(model, str) and model else "agy init"
+        yield AgentOutputLine(type="lifecycle", content=content, raw=raw, metadata=metadata)
 
     def _dispatch_legacy_tool_use(self, obj: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
         """Map a bare ``{"type": "tool_use", ...}`` frame (non-AGY-native shape)."""
