@@ -84,6 +84,47 @@ if TYPE_CHECKING:
     from types import FrameType
 
 
+@pytest.fixture(autouse=True)
+def _reset_rich_style_color_caches() -> Generator[None, None, None]:
+    """Clear Rich's process-global Style/Color LRU caches after each test.
+
+    Rich memoizes ``Style.parse`` / ``Color.parse`` / ``Color.downgrade`` /
+    ``Color.get_ansi_codes`` (among others) as module-level
+    ``functools.lru_cache``-wrapped callables, keyed by style/colour string
+    content -- shared across every ``Console`` in the process. A test that
+    renders through a non-default ``color_system`` (e.g.
+    ``Console(color_system="standard")``, used to exercise ANSI-16
+    downgrading -- see ``tests/pipeline/test_run_loop_status_bar_wiring.py``)
+    can leave a shared cached ``Style``/``Color`` object resolved for that
+    reduced colour depth. A LATER test's full-truecolour render for the
+    *same* style string then reuses the stale cached value instead of
+    resolving fresh for its own console, producing escape codes for the
+    wrong colour depth -- this was measured to make
+    ``tests/test_display_generated_scenes.py::test_generated_scene_colours_every_named_semantic_category``
+    fail only when it runs after that status-bar test in the same process
+    (confirmed by bisection), never in isolation. A real Ralph process only
+    ever constructs one Console at one colour depth for its entire
+    lifetime, so Rich's cross-Console cache sharing is never observed in
+    production -- this is purely a multi-Console test-isolation artifact.
+    Clearing the caches after every test keeps each test's rendering
+    assertions independent of execution order without touching any
+    production code path.
+    """
+    yield
+    import rich.color
+    import rich.style
+
+    for cached_callable in (
+        rich.color.Color.parse,
+        rich.color.Color.downgrade,
+        rich.color.Color.get_ansi_codes,
+        rich.style.Style.parse,
+        rich.style.Style.normalize,
+        rich.style.Style._add,
+    ):
+        cached_callable.cache_clear()
+
+
 class TestExecutionTimeoutError(TimeoutError):
     pass
 

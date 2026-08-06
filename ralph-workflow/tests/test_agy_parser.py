@@ -188,7 +188,15 @@ def test_agy_parser_regression_stream_json_subagent_step_index_correlates_result
 
 
 def test_agy_parser_regression_stream_json_tool_step_index_correlates_result() -> None:
-    """S-3: v1.1.9 tool updates use step_index, not a call_id."""
+    """S-3: v1.1.9 tool updates use step_index, not a call_id.
+
+    B5 (rewritten from the pre-fix expectation of ``tool_use_id == step_index``):
+    a raw ``step_index`` fallback is not a genuine upstream call id, so it is
+    surfaced as ``step_ordinal`` instead of the misleading ``tool_use_id``
+    (which downstream renderers print as ``call_id=N``). The correlation
+    still works internally (ACTIVE and DONE resolve the same id), it is just
+    no longer labeled as an upstream identifier in the emitted metadata.
+    """
     parser = AgyParser()
     lines = [
         '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_file"}}}',
@@ -198,10 +206,16 @@ def test_agy_parser_regression_stream_json_tool_step_index_correlates_result() -
     parsed = list(parser.parse(iter(lines)))
 
     assert [
-        (line.type, line.metadata.get("tool"), line.metadata.get("tool_use_id")) for line in parsed
+        (
+            line.type,
+            line.metadata.get("tool"),
+            line.metadata.get("tool_use_id"),
+            line.metadata.get("step_ordinal"),
+        )
+        for line in parsed
     ] == [
-        ("tool_use", "write_file", "3"),
-        ("tool_result", "write_file", "3"),
+        ("tool_use", "write_file", None, "3"),
+        ("tool_result", "write_file", None, "3"),
     ]
 
 
@@ -335,15 +349,24 @@ def test_agy_parser_coalesces_plain_text_output_format_transcript() -> None:
 
 
 def test_agy_wire_fixture_replay_yields_expected_event_sequence() -> None:
-    """Replay agy_wire.jsonl (mirrors the real agy_wire_tool.jsonl capture) through AgyParser."""
+    """Replay agy_wire.jsonl (mirrors the real agy_wire_tool.jsonl capture) through AgyParser.
+
+    B3/B4: the fixture's ``user_input`` / ``unknown`` / ``checkpoint`` steps
+    (step_index 0, 1, 4) are no longer silently dropped -- each now yields
+    its own ``lifecycle`` event, so the sequence carries 3 more events than
+    the pre-fix expectation.
+    """
     parsed = _replay(_AGY_WIRE_FIXTURE)
 
     types = [line.type for line in parsed]
     assert types == [
         "lifecycle",
+        "lifecycle",
+        "lifecycle",
         "text",
         "tool_use",
         "tool_result",
+        "lifecycle",
         "tool_use",
         "tool_result",
         "text",
@@ -351,14 +374,18 @@ def test_agy_wire_fixture_replay_yields_expected_event_sequence() -> None:
     ]
     assert parsed[0].content == "agy init gemini-3.6-flash-low"
     assert parsed[0].metadata.get("model") == "gemini-3.6-flash-low"
-    assert parsed[1].content == "I will create the file and read it back."
-    assert parsed[2].content == "write_to_file hello.txt"
-    assert parsed[3].content == "write_to_file hello.txt (0.065s)"
-    assert parsed[4].content == "view_file hello.txt"
-    assert parsed[5].content == "2 lines, 3 bytes"
-    assert parsed[6].content == "I have created the file and confirmed its contents."
-    assert parsed[7].type == "stop"
-    assert parsed[7].content == "agy result SUCCESS (3.58s, 1 turn)"
+    assert parsed[1].content == "agy step user_input"
+    assert parsed[2].content == "agy step unknown"
+    assert parsed[3].content == "I will create the file and read it back."
+    assert parsed[4].content == "write_to_file hello.txt"
+    # B2: duration_seconds is formatted to 2 decimal places (0.065 -> 0.07s).
+    assert parsed[5].content == "write_to_file hello.txt (0.07s)"
+    assert parsed[6].content == "agy step checkpoint"
+    assert parsed[7].content == "view_file hello.txt"
+    assert parsed[8].content == "2 lines, 3 bytes"
+    assert parsed[9].content == "I have created the file and confirmed its contents."
+    assert parsed[10].type == "stop"
+    assert parsed[10].content == "agy result SUCCESS (3.58s, 1 turn)"
 
 
 # --- D1-D9 defect locks (Plan: Improve AGY parsing fidelity, S-2) ---------
@@ -463,12 +490,21 @@ def test_d6_no_text_event_has_surrounding_whitespace_or_is_empty() -> None:
 
 
 def test_d7_init_frame_yields_observable_lifecycle_event() -> None:
-    """D7: init is no longer discarded wholesale; model/cwd/tools/permission_mode are observable."""
+    """D7: init is no longer discarded wholesale; model/cwd/tools/permission_mode are observable.
+
+    B3/B4 (rewritten from the pre-fix expectation of exactly 1 lifecycle
+    event): the fixture's bodiless ``user_input`` / ``unknown`` /
+    ``checkpoint`` steps now also yield their own ``lifecycle`` events, so
+    this test narrows to the specific init-sourced event (identified by its
+    ``model`` metadata) rather than asserting a total count of 1.
+    """
     parsed = _replay(_AGY_WIRE_TOOL_FIXTURE)
 
     lifecycle_events = [line for line in parsed if line.type == "lifecycle"]
-    assert len(lifecycle_events) == 1
-    meta = lifecycle_events[0].metadata
+    assert len(lifecycle_events) > 1
+    init_events = [line for line in lifecycle_events if "model" in line.metadata]
+    assert len(init_events) == 1
+    meta = init_events[0].metadata
     assert meta.get("model") == "gemini-3.6-flash-low"
     assert meta.get("cwd") == "/workspace"
     assert meta.get("permission_mode") == "always-proceed"
@@ -568,8 +604,15 @@ def test_d9_error_event_with_error_key_still_yields_error_type() -> None:
     assert [(line.type, line.content) for line in parsed] == [("error", "boom")]
 
 
-def test_sanity_user_input_unknown_checkpoint_steps_emit_no_events() -> None:
-    """Sanity: user_input / unknown / checkpoint steps emit no spurious events."""
+def test_b3_user_input_unknown_checkpoint_steps_emit_lifecycle_events() -> None:
+    """B3/B4 (rewritten from the pre-fix expectation of zero events).
+
+    ``user_input`` / ``unknown`` / ``checkpoint`` steps used to be silently
+    dropped by ``_dispatch_step_update``'s early return -- this locked in
+    the bug the brief flags ("nothing dropped with zero accounting"). Each
+    now yields exactly one non-empty ``lifecycle`` event naming its
+    step_type, so the frame is always accounted for.
+    """
     parser = AgyParser()
     lines = [
         '{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}',
@@ -577,7 +620,13 @@ def test_sanity_user_input_unknown_checkpoint_steps_emit_no_events() -> None:
         '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"checkpoint"}}',
     ]
     parsed = list(parser.parse(iter(lines)))
-    assert parsed == []
+    assert [(line.type, line.content) for line in parsed] == [
+        ("lifecycle", "agy step user_input"),
+        ("lifecycle", "agy step unknown"),
+        ("lifecycle", "agy step checkpoint"),
+    ]
+    for line in parsed:
+        assert line.content.strip() != ""
 
 
 def test_sanity_crlf_line_endings_parse_identically_to_lf() -> None:
@@ -591,3 +640,175 @@ def test_sanity_crlf_line_endings_parse_identically_to_lf() -> None:
     assert [(line.type, line.content) for line in parsed_lf] == [
         (line.type, line.content) for line in parsed_crlf
     ]
+
+
+# --- B1-B5 defect locks (Plan: Improve AGY parsing fidelity, S-8/S-9) -----
+
+
+def test_b2_completion_summary_duration_rounds_to_two_decimals() -> None:
+    """B2: a DONE frame's 9-decimal ``duration_seconds`` noise is formatted
+    to 2 decimal places in the synthesized completion summary, instead of
+    interpolating the raw float verbatim (e.g. ``0.076075017s``).
+    """
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"todo-list.js"}}}}',
+        '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"todo-list.js"}},"duration_seconds":0.076075017}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    result = next(line for line in parsed if line.type == "tool_result")
+    assert result.content == "write_to_file todo-list.js (0.08s)"
+    assert "0.076075017" not in result.content
+
+
+def test_b2_result_summary_duration_rounds_to_two_decimals() -> None:
+    """B2 companion: the ``result`` frame's ``stop`` summary rounds too."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"result","result":{"status":"SUCCESS","duration_seconds":3.581234567,"num_turns":2}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    stop = parsed[-1]
+    assert stop.type == "stop"
+    assert stop.content == "agy result SUCCESS (3.58s, 2 turns)"
+    assert "3.581234567" not in stop.content
+
+
+def test_b5_step_index_fallback_id_is_not_labeled_tool_use_id() -> None:
+    """B5: a raw ``step_index`` fallback id is never written to
+    ``metadata["tool_use_id"]`` -- downstream renderers read that key as
+    ``call_id=N``, which would misleadingly claim a synthesized ordinal is
+    an upstream-issued identifier. It is surfaced as ``step_ordinal``
+    instead, and internal ACTIVE/DONE correlation still works.
+    """
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":7,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file"}}}',
+        '{"event":"step_update","step_update":{"step_index":7,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","output":"written"}}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    assert [line.metadata.get("tool_use_id") for line in parsed] == [None, None]
+    assert [line.metadata.get("step_ordinal") for line in parsed] == ["7", "7"]
+
+
+def test_b5_genuine_call_id_still_uses_tool_use_id_key() -> None:
+    """B5 companion: a genuine ``tool_info.call_id`` is NOT renamed --
+    only the synthesized ``step_index`` fallback moves to ``step_ordinal``.
+    """
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":9,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file","call_id":"real-call-42"}}}',
+        '{"event":"step_update","step_update":{"step_index":9,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","call_id":"real-call-42","output":"written"}}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    assert [line.metadata.get("tool_use_id") for line in parsed] == [
+        "real-call-42",
+        "real-call-42",
+    ]
+    assert all(line.metadata.get("step_ordinal") is None for line in parsed)
+
+
+def test_b3_bodiless_agent_response_done_with_no_buffered_text_surfaces_usage() -> None:
+    """B3/B4: a bodiless ``agent_response`` DONE frame's ``usage`` is never
+    dropped even when there is no prior buffered text to attach it to (no
+    ACTIVE delta preceded it, so ``_pending_text_usage`` has nothing to ride
+    along on). It surfaces directly as its own non-empty ``lifecycle`` event.
+    """
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":2,"step_type":"agent_response","state":"DONE","text_delta":"","usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    assert len(parsed) == 1
+    assert parsed[0].type == "lifecycle"
+    assert parsed[0].content.strip() != ""
+    assert parsed[0].metadata.get("usage") == {
+        "input_tokens": 10,
+        "output_tokens": 2,
+        "total_tokens": 12,
+    }
+
+
+def test_b4_bodiless_agent_response_done_usage_reaches_pending_flush() -> None:
+    """B3/B4: replays the measured one-shot ``OK`` capture, whose DONE frame
+    has an empty ``text_delta`` alongside ``usage``. Text is already
+    buffered from the ACTIVE delta, so the usage rides forward via
+    ``_pending_text_usage`` to the eventual flush instead of being dropped
+    by the early-return path.
+    """
+    parsed = _replay(_AGY_WIRE_TEXT_FIXTURE)
+
+    text_events = [line for line in parsed if line.type == "text"]
+    assert len(text_events) == 1
+    assert text_events[0].content == "OK"
+    assert text_events[0].metadata.get("usage") == {
+        "input_tokens": 120,
+        "output_tokens": 3,
+        "total_tokens": 123,
+    }
+
+
+def test_b1_orphan_tool_result_record_body_names_tool_without_duplicating_it() -> None:
+    """B1: runs the full agy.py -> agent_event_renderer -> presented_entry.py
+    pipeline for an ordinary AGY tool result. After B5, this tool result has
+    no genuine call_id, so it is the falsy-``tool_call_id`` ("orphan") path
+    presented_entry.py's ``_tool_result_record_body`` / ``_strip_leading_tokens``
+    dedup contract must uphold: the tool name is re-stated for legibility
+    (an orphan result names its tool so flood entries stay distinguishable)
+    but never appears twice, and the record stays non-empty and informative.
+    """
+    from ralph.display.activity_provider import ActivityProvider
+    from ralph.display.agent_event_renderer import normalize_event_from_agent_output_line
+    from ralph.display.presented_entry import build_presented_entry
+
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"/workspace/todo-list.js"}}}}',
+        '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"/workspace/todo-list.js"}},"duration_seconds":0.076075017}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    tool_result_line = next(line for line in parsed if line.type == "tool_result")
+
+    # B5: no genuine call_id was present, so this is the orphan path --
+    # tool_use_id must be absent (never a misleading call_id=N).
+    assert tool_result_line.metadata.get("tool_use_id") is None
+    assert tool_result_line.metadata.get("step_ordinal") == "3"
+
+    event = normalize_event_from_agent_output_line(
+        tool_result_line, provider=ActivityProvider.AGY, unit_id="agy"
+    )
+    entry = build_presented_entry(event, unit_id="agy")
+
+    assert entry.body != ""
+    assert entry.body.casefold().count("write_to_file") == 1
+    assert "todo-list.js" in entry.body
+    assert "0.08s" in entry.body
+
+
+def test_b1_correlated_tool_result_record_body_omits_tool_name_and_stays_nonempty() -> None:
+    """B1 companion: a genuinely correlated result (real ``call_id`` present,
+    so it hangs below its already-rendered TOOL_USE call header) omits the
+    tool name from the record body -- the record still must never be
+    bodiless (the defect the completion summary was added to fix).
+    """
+    from ralph.display.activity_provider import ActivityProvider
+    from ralph.display.agent_event_renderer import normalize_event_from_agent_output_line
+    from ralph.display.presented_entry import build_presented_entry
+
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file","call_id":"real-1","parameters":{"TargetFile":"/workspace/todo-list.js"}}}}',
+        '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","call_id":"real-1","parameters":{"TargetFile":"/workspace/todo-list.js"}},"duration_seconds":0.08}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    tool_result_line = next(line for line in parsed if line.type == "tool_result")
+    assert tool_result_line.metadata.get("tool_use_id") == "real-1"
+
+    event = normalize_event_from_agent_output_line(
+        tool_result_line, provider=ActivityProvider.AGY, unit_id="agy"
+    )
+    entry = build_presented_entry(event, unit_id="agy")
+
+    assert entry.body != ""
+    assert "write_to_file" not in entry.body.casefold()
+    assert "todo-list.js" in entry.body

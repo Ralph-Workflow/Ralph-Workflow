@@ -44,6 +44,7 @@ from ralph.display._channel_prefix_stripper import (
     strip_parser_channel_prefix,
 )
 from ralph.display._tool_correlation import tool_call_id
+from ralph.display._tool_result_dedup import strip_duplicate_tool_prefix
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
@@ -450,8 +451,8 @@ def _append_tool_result_body(
     ctx: DisplayContext | None,
     escape_body: bool,
 ) -> None:
-    """Append a result body with its established identity and status carriers."""
-    del tool_name
+    """Append a result body, deduplicating a leading ``tool_name`` echo (B1)."""
+    body = strip_duplicate_tool_prefix(body, tool_name)
     _append_body_with_unit(text, body, unit_id, body_style, ctx=ctx, escape_body=escape_body)
 
 

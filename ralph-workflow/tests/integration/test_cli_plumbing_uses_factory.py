@@ -24,6 +24,7 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.plumbing.commit_plumbing import CommitAgentResult
+from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.policy.models import AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
@@ -153,11 +154,11 @@ def test_smoke_cli_uses_default_pipeline_factory(
             output_file=tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js",
             file_created=True,
             session_id="sess-1",
-            explicit_completion_seen=True,
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
             raw_line_count=1,
             parsed_event_count=1,
-            tool_activity_seen=True,
-            artifact_submitted=True,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
             meaningful_output_lines=["ok"],
             errors=[],
         )
@@ -278,11 +279,11 @@ def test_smoke_report_surfaces_ordered_subagent_evidence(tmp_path: Path) -> None
         output_file=tmp_path / "tmp" / "todo-list.js",
         file_created=True,
         session_id="sess-1",
-        explicit_completion_seen=True,
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
         raw_line_count=4,
         parsed_event_count=4,
-        tool_activity_seen=True,
-        artifact_submitted=True,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
         meaningful_output_lines=["tool_use: Agent", "tool_result: done"],
         errors=[],
         subagents_requested=True,
@@ -307,11 +308,11 @@ def test_smoke_table_subagent_status_accepts_two_correlated_dispatches(tmp_path:
         output_file=tmp_path / "tmp" / "todo-list.js",
         file_created=True,
         session_id="sess-1",
-        explicit_completion_seen=True,
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
         raw_line_count=5,
         parsed_event_count=5,
-        tool_activity_seen=True,
-        artifact_submitted=True,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
         meaningful_output_lines=["tool_use: Agent", "tool_result: done"],
         errors=[],
         subagents_requested=True,
@@ -334,11 +335,11 @@ def test_smoke_table_subagent_status_rejects_dispatch_without_correlated_result(
         output_file=tmp_path / "tmp" / "todo-list.js",
         file_created=True,
         session_id="sess-1",
-        explicit_completion_seen=True,
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
         raw_line_count=5,
         parsed_event_count=5,
-        tool_activity_seen=True,
-        artifact_submitted=True,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
         meaningful_output_lines=["tool_use: Agent", "tool_result: done"],
         errors=["not every subagent dispatch has a correlated result"],
         subagents_requested=True,

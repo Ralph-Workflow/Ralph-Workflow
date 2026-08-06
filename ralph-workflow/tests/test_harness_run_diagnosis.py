@@ -21,6 +21,7 @@ from ralph.mcp.artifacts.smoke_test_result import read_smoke_test_result_artifac
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+from ralph.pipeline.plumbing.smoke_evidence import absent
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 if TYPE_CHECKING:
@@ -907,11 +908,11 @@ def test_agent_session_ceilings_opencode_gets_360s_agy_gets_360s_claude_gets_120
             output_file=params.output_file,
             file_created=True,
             session_id=None,
-            explicit_completion_seen=False,
+            explicit_completion_seen=absent("test fixture: not observed"),
             raw_line_count=0,
             parsed_event_count=0,
-            tool_activity_seen=False,
-            artifact_submitted=False,
+            tool_activity_seen=absent("test fixture: not observed"),
+            artifact_submitted=absent("test fixture: not observed"),
             meaningful_output_lines=[],
             errors=[],
         )

@@ -20,6 +20,7 @@ from ralph.display.theme import RALPH_THEME
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent
 from ralph.pipeline.plumbing.smoke_plumbing import is_mock_agy_override
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
@@ -124,11 +125,11 @@ def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
         output_file=Path("tmp/interactive-claude-smoke/todo-list.js"),
         file_created=True,
         session_id="sess-1",
-        explicit_completion_seen=False,
+        explicit_completion_seen=absent("test fixture: not observed"),
         raw_line_count=2,
         parsed_event_count=1,
-        tool_activity_seen=False,
-        artifact_submitted=False,
+        tool_activity_seen=absent("test fixture: not observed"),
+        artifact_submitted=absent("test fixture: not observed"),
         meaningful_output_lines=[
             "thinking: checking prompt",
             "tool_use: write_file",
@@ -391,11 +392,11 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
             output_file=tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js",
             file_created=True,
             session_id="sess-1",
-            explicit_completion_seen=True,
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
             raw_line_count=1,
             parsed_event_count=1,
-            tool_activity_seen=True,
-            artifact_submitted=True,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
             meaningful_output_lines=["ok"],
             errors=[],
         )
@@ -499,11 +500,11 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
             output_file=tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js",
             file_created=True,
             session_id="agy-sess-1",
-            explicit_completion_seen=True,
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
             raw_line_count=1,
             parsed_event_count=1,
-            tool_activity_seen=True,
-            artifact_submitted=True,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
             meaningful_output_lines=["ok"],
             errors=[],
         )
@@ -558,11 +559,11 @@ def test_smoke_interactive_nanocoder_command_runs_nanocoder_harness_when_binary_
             output_file=tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js",
             file_created=True,
             session_id=None,
-            explicit_completion_seen=True,
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
             raw_line_count=1,
             parsed_event_count=1,
-            tool_activity_seen=True,
-            artifact_submitted=True,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
             meaningful_output_lines=["ok"],
             errors=[],
         )
@@ -614,11 +615,11 @@ def test_smoke_interactive_nanocoder_command_accepts_agent_alias(
             output_file=tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js",
             file_created=True,
             session_id=None,
-            explicit_completion_seen=True,
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
             raw_line_count=1,
             parsed_event_count=1,
-            tool_activity_seen=True,
-            artifact_submitted=True,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
             meaningful_output_lines=["ok"],
             errors=[],
         )

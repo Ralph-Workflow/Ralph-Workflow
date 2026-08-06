@@ -17,6 +17,7 @@ from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import SessionWrapupBudget
+from ralph.mcp.server._wire_ledger import append_wire_record
 from ralph.mcp.tools._exec_resource_uri import parse_exec_uri
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -579,6 +580,31 @@ class McpServer:
         # path); the contextvar sink is the production path so concurrent
         # agent runs do not stomp on each other.
         self._invoke_activity_sinks(tool_name)
+
+        # F2 (Evidence Provenance): record this tools/call frame on the wire
+        # ledger BEFORE dispatch, so the record exists even if the tool
+        # handler raises. Provenance.WIRE is granted only by a matching
+        # ledger row; append_wire_record() is a no-op (returns None, writes
+        # nothing) when the session carries no broker secret — an unsigned
+        # server cannot produce a WIRE-grade witness (A5). Best-effort: a
+        # session/workspace test double that does not expose the full
+        # McpSession/FsWorkspace surface (several existing McpServer tests
+        # construct one with only the attributes their scenario needs) must
+        # not turn a real tool dispatch into a JSON-RPC error — the ledger is
+        # diagnostic evidence, never a load-bearing part of the dispatch path.
+        try:
+            append_wire_record(
+                self._workspace.root,
+                method="tools/call",
+                tool_name=tool_name,
+                params=dict(arguments_value),
+                run_id=self._session.run_id,
+                secret=self._session.broker_secret,
+            )
+        except (AttributeError, OSError, TypeError):
+            logger.opt(exception=True).debug(
+                "MCP server: wire-ledger append failed (suppressed); tools/call proceeds"
+            )
 
         try:
             raw_result = self._registry.dispatch(

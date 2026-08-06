@@ -160,8 +160,8 @@ def test_smoke_plumbing_claude_branch_stamps_canonical_receipt(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is False
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is False
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -190,8 +190,8 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is True
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is True
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -217,7 +217,7 @@ def test_smoke_artifact_submitted_false_when_no_artifact(
     )
 
     result = _run_smoke_agent(params, run_id=run_id)
-    assert result.artifact_submitted is False
+    assert result.artifact_submitted.holds is False
 
 
 def test_smoke_artifact_submitted_false_when_artifact_malformed(
@@ -239,7 +239,7 @@ def test_smoke_artifact_submitted_false_when_artifact_malformed(
     )
 
     result = _run_smoke_agent(params, run_id=run_id)
-    assert result.artifact_submitted is False
+    assert result.artifact_submitted.holds is False
 
 
 def test_smoke_artifact_submitted_true_when_artifact_present_and_valid(
@@ -267,7 +267,7 @@ def test_smoke_artifact_submitted_true_when_artifact_present_and_valid(
     )
 
     result = _run_smoke_agent(params, run_id=run_id)
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
 
 
 def test_smoke_artifact_submitted_uses_canonical_helper_not_raw_file_presence(
@@ -342,7 +342,7 @@ def test_smoke_tmp_fallback_promotion_consistent_with_errors(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
     assert is_artifact_submitted(tmp_path, run_id, artifact_type)
     assert artifact_receipt_present(tmp_path, run_id, artifact_type)
     assert "smoke_test_result artifact was not submitted" not in result.errors
@@ -422,14 +422,14 @@ def test_agy_tool_activity_must_not_come_from_artifact(
     result = _run_smoke_agent(params, run_id=run_id)
 
     # The artifact was promoted to a receipt, so ``artifact_submitted`` is True.
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
     # BUT the self-reported ``tool activity`` in headless_guide_checks must
     # NOT be trusted. The transcript had no parser-classified tool events
     # AND the agent did not write the workspace output file.
     assert result.file_created is False, (
         "Test invariant: the agent should not have written the workspace file"
     )
-    assert result.tool_activity_seen is False, (
+    assert result.tool_activity_seen.holds is False, (
         "Tool activity must come from authoritative parser/transport events "
         "or a real workspace file-write side effect, not from the "
         "agent-authored artifact's headless_guide_checks"
@@ -469,8 +469,8 @@ def test_agy_smoke_regression_promotes_fallback_and_records_trusted_completion(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is True
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is True
     assert "completion sentinel was not observed" not in result.errors
 
 
@@ -600,7 +600,7 @@ def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence
     # The transcript marker MUST NOT satisfy the AGY completion check.
     # The marker is in the transcript (raw output line emitted by the fake),
     # but no durable completion sentinel was persisted.
-    assert result.explicit_completion_seen is False, (
+    assert result.explicit_completion_seen.holds is False, (
         "AGY explicit completion must require the durable sentinel, not the "
         "transcript 'Task declared complete:' marker. The marker alone is a "
         "spoofable signal and was removed from the AGY prompt precisely so "

@@ -133,3 +133,79 @@ an actionable message naming `--dangerously-skip-permissions` / the
 Volatile values (UUIDs, absolute paths, `duration_seconds`) are normalized to
 stable placeholders (`00000000-0000-0000-0000-00000000000N`, `/workspace/...`,
 fixed durations); token/usage counts are kept as measured.
+
+## B1/B2/B3/B4/B5 regression fixtures (parsing-fidelity plan, S-8/S-9)
+
+The inline JSON fixtures added to `tests/test_agy_parser.py` for the B1
+(duplicated tool name), B2 (raw-float duration noise), B3/B4 (dropped
+bodiless frames / discarded per-step usage), and B5 (fake `call_id`) defect
+locks are **synthetic, derived from the documented measured frame
+vocabulary in this file** — they are not a new live capture taken by the
+agent that authored them. Each is a small, hand-built variation clearly
+traceable to the `step_update` shapes already recorded above (`tool`,
+`agent_response`, `user_input`, `unknown`, `checkpoint`) and to the
+already-committed `agy_wire.jsonl` / `agy_wire_tool.jsonl` /
+`agy_wire_text.jsonl` fixtures replayed by the existing D1-D9 tests:
+
+- **B2** (`test_b2_completion_summary_duration_rounds_to_two_decimals`,
+  `test_b2_result_summary_duration_rounds_to_two_decimals`): synthetic
+  `tool` and `result` frames carrying a 9-decimal `duration_seconds`
+  (`0.076075017`, `3.581234567`) in the same shape as the measured
+  `agy_wire_tool.jsonl` `duration_seconds` fields, to pin the 2-decimal
+  formatting.
+- **B5** (`test_b5_step_index_fallback_id_is_not_labeled_tool_use_id`,
+  `test_b5_genuine_call_id_still_uses_tool_use_id_key`): synthetic `tool`
+  ACTIVE/DONE pairs, one omitting `tool_info.call_id`/`.id` (the measured
+  common case — AGY tools rarely carry one) to pin the `step_ordinal`
+  metadata key, and one supplying a synthetic `call_id` value to pin that a
+  genuine upstream id is not renamed.
+- **B3/B4** (`test_b3_user_input_unknown_checkpoint_steps_emit_lifecycle_events`,
+  `test_b3_bodiless_agent_response_done_with_no_buffered_text_surfaces_usage`,
+  `test_b4_bodiless_agent_response_done_usage_reaches_pending_flush`): the
+  first replays the exact `user_input` / `unknown` / `checkpoint` DONE-frame
+  shapes already measured in `agy_wire_tool.jsonl` (step_index 0, 1, 4); the
+  second is a synthetic bodiless `agent_response` DONE frame with no
+  preceding ACTIVE delta; the third replays the already-committed
+  `agy_wire_text.jsonl` one-shot `OK` capture, whose measured DONE frame
+  carries an empty `text_delta` alongside `usage`.
+- **B1** (`test_b1_orphan_tool_result_record_body_names_tool_without_duplicating_it`,
+  `test_b1_correlated_tool_result_record_body_omits_tool_name_and_stays_nonempty`):
+  synthetic `tool` ACTIVE/DONE pairs for `write_to_file` against a
+  `TargetFile` parameter and a 9-decimal duration, in the orphan (no
+  `call_id`) and correlated (synthetic `call_id`) shapes, run through the
+  full `agy.py` -> `agent_event_renderer` -> `presented_entry.py` pipeline
+  to pin the tool-name deduplication contract.
+
+Also note (S-8 characterization): running this repository's test suite
+against the current `presented_entry.py` showed its `_tool_result_record_body`
+/ `_strip_leading_tokens` dedup logic already collapses a repeated leading
+tool-name token to a single occurrence for both the orphan and correlated
+branches (see `test_b1_*` above) — no code change was required in
+`presented_entry.py` to close B1 on the *detailed-report* path; the
+regression tests above pin that contract now that B5 routes ordinary AGY
+tool results through the previously-rarely-exercised orphan branch (before
+B5, the step-index fallback made `tool_call_id(metadata)` truthy for nearly
+every AGY tool result, so the orphan branch was effectively dead code for
+this parser).
+
+**B1 follow-up: the live-activity-line duplication was real, and lived in
+`ralph/display/agent_event_renderer.py`.** The brief's illustrative example
+(`✓ PASS ↳ write_to_file write_to_file todo-list.js (0.076075017s)`) is the
+*live* activity line, a separate rendering path from `presented_entry.py`'s
+detailed report. `_render_tool_result_event` prepends `tool_ref` (the tool
+name) as its own text segment, then appends the parser's result body
+unmodified via `_append_tool_result_body` — which previously discarded the
+`tool_name` argument entirely (`del tool_name`). Since `AgyParser`'s
+`_completion_summary` (B2/B5's neighbor) synthesizes body content that
+already starts with the tool's own label whenever a DONE frame carries no
+`tool_info.output` (the common AGY case), the tool name doubled on every
+such live line. Fixed by `_strip_duplicate_tool_prefix`, called from
+`_append_tool_result_body`, which removes exactly one leading
+case-insensitive duplicate of the tool name from the body before it is
+appended — a body that does not start with the tool name (e.g. `view_file`,
+which carries a real `tool_info.output`) is left unchanged. Regression
+coverage: `tests/test_agent_event_renderer_tool_result_dedup.py`, driven
+through the public `render_event_kind_text` entry point with content shaped
+exactly like `AgyParser._completion_summary`'s synthesized output (measured
+shape, not fabricated — see the B2 fixture note above for the same
+duration-noise pattern).

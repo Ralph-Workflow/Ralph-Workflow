@@ -7,6 +7,7 @@ parsing, report rendering, exit codes only).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import deque
@@ -40,12 +41,14 @@ from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
 )
+from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.mcp.tools.coordination import _write_completion_sentinel
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineCore, PipelineDeps
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
+from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
@@ -215,18 +218,30 @@ _AGY_CLI_LOG_PATH: Path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log
 
 @dataclass(frozen=True)
 class SmokeRunResult:
-    """Observed results from the interactive Claude smoke run."""
+    """Observed results from the interactive Claude smoke run.
+
+    Evidence Provenance (F1): ``explicit_completion_seen``, ``tool_activity_seen``
+    and ``artifact_submitted`` are :class:`~ralph.pipeline.plumbing.smoke_evidence.Evidence`
+    values, not bare ``bool``. Each carries the :class:`~ralph.pipeline.plumbing.smoke_evidence.Provenance`
+    the harness graded it at and a human-readable ``detail`` explaining why.
+    Read ``.holds`` for the boolean question "did this fact hold at all";
+    read ``.provenance`` for "how much should an operator trust it". The
+    report's overall verdict is a pure function of the weakest provenance
+    among these three required facts (see ``smoke_evidence.grade_verdict``) —
+    it is never derived from ``.holds`` alone, so a run can satisfy every
+    boolean check and still report ``DEGRADED``.
+    """
 
     agent_name: str
     transport: str
     output_file: Path
     file_created: bool
     session_id: str | None
-    explicit_completion_seen: bool
+    explicit_completion_seen: Evidence
     raw_line_count: int
     parsed_event_count: int
-    tool_activity_seen: bool
-    artifact_submitted: bool
+    tool_activity_seen: Evidence
+    artifact_submitted: Evidence
     meaningful_output_lines: list[str]
     errors: list[str]
     subagents_requested: bool = False
@@ -234,6 +249,12 @@ class SmokeRunResult:
     subagent_dispatch_seen: bool = False
     subagent_result_seen: bool = False
     post_subagent_activity_seen: bool = False
+    #: F3: the maximum Provenance this transport's advertised tools could
+    #: possibly reach, inferred from the run's ``init``-shaped frame before
+    #: the wire ledger is consulted. ``Provenance.ABSENT`` when no such
+    #: frame was found in the transcript (e.g. a non-AGY transport whose
+    #: parser does not surface one yet).
+    transport_evidence_ceiling: Provenance = Provenance.ABSENT
 
 
 @dataclass(frozen=True)
@@ -910,6 +931,184 @@ def _detect_smoke_errors(
     return errors
 
 
+def _artifact_submission_evidence(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    submitted: bool,
+    secret: str | None,
+) -> Evidence:
+    """Grade the artifact-submission fact (A3): fallback promotion vs. a wire hit.
+
+    ``submitted`` is the pre-computed authoritative bool (a receipt exists,
+    possibly after promoting a fallback document through the canonical submit
+    path). A submission backed by a matching ``tools/call`` ledger record
+    grades ``WIRE``; any other submitted receipt (including one promoted from
+    the model's fallback markdown file) grades ``WORKSPACE_EFFECT`` — real,
+    but not attributable to a witnessed tool call.
+    """
+    if not submitted:
+        return absent("smoke_test_result artifact was not submitted")
+    if wire_evidence_for(workspace_root, run_id, tool_name="artifact", secret=secret):
+        return Evidence(
+            holds=True,
+            provenance=Provenance.WIRE,
+            detail="receipt matched a tools/call ledger record",
+        )
+    return Evidence(
+        holds=True,
+        provenance=Provenance.WORKSPACE_EFFECT,
+        detail="receipt present (direct submission or promoted fallback); no matching wire-ledger record",
+    )
+
+
+def _completion_evidence(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    present: bool,
+    host_synthesized: bool,
+    secret: str | None,
+) -> Evidence:
+    """Grade the completion-sentinel fact (A4/A5).
+
+    A sentinel the harness wrote to itself (the AGY fallback-synthesis
+    branch) grades ``HOST_SYNTHESIZED`` — it caps the run's verdict at
+    ``DEGRADED`` and names itself, rather than reading as unqualified proof
+    the agent called ``declare_complete``. An unsigned sentinel
+    (``RALPH_BROKER_SECRET`` unset, A5) is capped at ``TRANSCRIPT``: "not a
+    weaker WIRE fact — not a WIRE fact." Only a sentinel backed by a
+    matching ``declare_complete`` wire-ledger record grades ``WIRE``.
+    """
+    if not present:
+        return absent("completion sentinel was not observed")
+    if host_synthesized:
+        return Evidence(
+            holds=True,
+            provenance=Provenance.HOST_SYNTHESIZED,
+            detail="written by the harness (AGY fallback-artifact completion synthesis)",
+        )
+    if secret is None:
+        return Evidence(
+            holds=True,
+            provenance=Provenance.TRANSCRIPT,
+            detail="sentinel present but RALPH_BROKER_SECRET is unset; HMAC unverified, not WIRE",
+        )
+    if wire_evidence_for(workspace_root, run_id, tool_name="declare_complete", secret=secret):
+        return Evidence(
+            holds=True,
+            provenance=Provenance.WIRE,
+            detail="declare_complete matched a tools/call ledger record",
+        )
+    return Evidence(
+        holds=True,
+        provenance=Provenance.TRANSCRIPT,
+        detail="sentinel present but no matching wire-ledger record",
+    )
+
+
+def _tool_activity_evidence(
+    params: SmokeRunParams,
+    lines: list[str],
+    *,
+    run_id: str,
+    secret: str | None,
+    tool_activity_holds: bool,
+) -> Evidence:
+    """Grade the tool-activity fact from the strongest authoritative source available."""
+    if wire_evidence_for(params.workspace_root, run_id, secret=secret):
+        return Evidence(
+            holds=True,
+            provenance=Provenance.WIRE,
+            detail="a tools/call record was observed on the wire ledger",
+        )
+    if not tool_activity_holds:
+        return absent("no tool activity was observed")
+    if lines and _tool_activity_seen(params.config, lines):
+        return Evidence(
+            holds=True,
+            provenance=Provenance.TRANSCRIPT,
+            detail="the parser classified a tool_use event in the transcript",
+        )
+    return Evidence(
+        holds=True,
+        provenance=Provenance.WORKSPACE_EFFECT,
+        detail="inferred from a workspace side effect (expected output file present)",
+    )
+
+
+_RALPH_DISPATCHER_TOOL_NAMES = frozenset({"call_mcp_tool"})
+
+
+def _tool_name_reaches_ralph(name: str) -> bool:
+    """Return True when an advertised tool name is (or can dial) a Ralph MCP tool."""
+    lowered = name.lower()
+    return (
+        lowered.startswith("ralph_")
+        or lowered.startswith("mcp__ralph__")
+        or lowered in _RALPH_DISPATCHER_TOOL_NAMES
+    )
+
+
+def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] | None:
+    """Return the tool names an ``init``-shaped frame advertises, or None if not one."""
+    if obj.get("event") != "init":
+        return None
+    init_info = obj.get("init")
+    if not isinstance(init_info, dict):
+        return None
+    raw_tools = cast("dict[str, object]", init_info).get("tools")
+    if not isinstance(raw_tools, list):
+        return None
+    names: list[str] = []
+    for entry in cast("list[object]", raw_tools):
+        if isinstance(entry, str):
+            names.append(entry)
+        elif isinstance(entry, dict):
+            name = cast("dict[str, object]", entry).get("name")
+            if isinstance(name, str):
+                names.append(name)
+    return names
+
+
+def _transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> Provenance:
+    """Return the maximum Provenance this transport's tools could reach (F3).
+
+    Inspects an ``init``-shaped frame's advertised tool listing (AGY's
+    ``init.tools``) for a direct ``ralph_*`` / ``mcp__ralph__*`` tool name or
+    a known generic MCP dispatcher (``call_mcp_tool``). A transport that
+    advertises no route to Ralph's tools cannot possibly reach
+    ``Provenance.WIRE`` no matter what the transcript later claims, because
+    the model has no way to produce a genuine ``tools/call`` frame — this is
+    the ceiling reported before further turns are spent.
+
+    Returns ``Provenance.ABSENT`` when no ``init``-shaped frame is found in
+    ``first_lines`` (no signal either way), ``Provenance.TRANSCRIPT`` when one
+    is found but advertises no route to Ralph (the measured AGY v1.1.10 shape:
+    56 tools, 0 ``ralph_*``), or ``Provenance.WIRE`` when a route is
+    advertised. ``config`` is accepted for a future transport-specific parsing
+    strategy; the current implementation is transport-agnostic NDJSON scanning.
+    """
+    del config
+    for line in first_lines:
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            parsed: object = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        names = _advertised_tool_names_from_init_frame(cast("dict[str, object]", parsed))
+        if names is None:
+            continue
+        if any(_tool_name_reaches_ralph(name) for name in names):
+            return Provenance.WIRE
+        return Provenance.TRANSCRIPT
+    return Provenance.ABSENT
+
+
 def _run_smoke_agent(
     params: SmokeRunParams,
     run_id: str = _SMOKE_RUN_ID,
@@ -921,7 +1120,9 @@ def _run_smoke_agent(
 
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
+    secret = _parent_broker_secret()
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
+    host_synthesized_sentinel = False
     if (
         params.config.transport == AgentTransport.AGY
         and artifact_submitted
@@ -934,12 +1135,20 @@ def _run_smoke_agent(
         _write_completion_sentinel(
             FsWorkspace(params.workspace_root),
             run_id,
-            sentinel_hmac=_parent_broker_secret(),
+            sentinel_hmac=secret,
         )
+        host_synthesized_sentinel = True
     # Authoritative completion is the durable sentinel for every transport.
-    explicit_completion_seen = _explicit_completion_seen(
+    explicit_completion_present = _explicit_completion_seen(
         params.workspace_root,
         run_id=run_id,
+    )
+    completion_evidence = _completion_evidence(
+        params.workspace_root,
+        run_id,
+        present=explicit_completion_present,
+        host_synthesized=host_synthesized_sentinel,
+        secret=secret,
     )
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     # Tool activity MUST come from authoritative parser / transport events
@@ -947,12 +1156,26 @@ def _run_smoke_agent(
     # ``headless_guide_checks`` artifact. See
     # ``_tool_activity_seen_for_errors`` docstring and the regression test
     # ``test_agy_tool_activity_must_not_come_from_artifact``.
-    tool_activity_seen = _tool_activity_seen_for_errors(
+    tool_activity_holds = _tool_activity_seen_for_errors(
         params,
         lines,
         tool_activity_seen=None,
         artifact_submitted=artifact_submitted,
     )
+    tool_activity_evidence = _tool_activity_evidence(
+        params,
+        lines,
+        run_id=run_id,
+        secret=secret,
+        tool_activity_holds=tool_activity_holds,
+    )
+    artifact_evidence = _artifact_submission_evidence(
+        params.workspace_root,
+        run_id,
+        submitted=artifact_submitted,
+        secret=secret,
+    )
+    transport_ceiling = _transport_evidence_ceiling(params.config, lines)
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
@@ -974,7 +1197,7 @@ def _run_smoke_agent(
         live_output_lines,
         session_id,
         final_exception,
-        tool_activity_seen=tool_activity_seen,
+        tool_activity_seen=tool_activity_holds,
         artifact_submitted=artifact_submitted,
         run_id=run_id,
     )
@@ -987,11 +1210,11 @@ def _run_smoke_agent(
         output_file=params.output_file,
         file_created=params.output_file.exists(),
         session_id=session_id,
-        explicit_completion_seen=explicit_completion_seen,
+        explicit_completion_seen=completion_evidence,
         raw_line_count=len([line for line in lines if line.strip()]),
         parsed_event_count=parsed_event_count,
-        tool_activity_seen=tool_activity_seen,
-        artifact_submitted=artifact_submitted,
+        tool_activity_seen=tool_activity_evidence,
+        artifact_submitted=artifact_evidence,
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
         subagents_requested=params.subagents_requested,
@@ -999,6 +1222,7 @@ def _run_smoke_agent(
         subagent_dispatch_seen=subagent_evidence.dispatch_seen,
         subagent_result_seen=subagent_evidence.result_seen,
         post_subagent_activity_seen=subagent_evidence.post_result_activity_seen,
+        transport_evidence_ceiling=transport_ceiling,
     )
 
 

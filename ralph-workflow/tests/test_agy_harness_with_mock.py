@@ -156,11 +156,11 @@ def test_agy_harness_produces_real_output_with_mock(
     result, _workspace = cached_default_smoke
     assert result.file_created is True
     assert result.session_id is not None
-    assert result.explicit_completion_seen is True
-    assert result.tool_activity_seen is True
+    assert result.explicit_completion_seen.holds is True
+    assert result.tool_activity_seen.holds is True
     assert any("tool_use: createTodoList" in line for line in result.meaningful_output_lines)
     assert any(line.startswith("tool_result:") for line in result.meaningful_output_lines)
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
     assert result.parsed_event_count > 0
     text_lines = [line for line in result.meaningful_output_lines if line.startswith("text:")]
     assert text_lines, (
@@ -298,8 +298,8 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
         monkeypatch,
         agent_name="agy/gemini-3.5-flash-medium",
     )
-    assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is True
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is True
     assert result.file_created is True
 
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"

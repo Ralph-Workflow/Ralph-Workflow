@@ -158,8 +158,8 @@ def test_smoke_claude_branch_end_to_end_uses_canonical_submit(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is False
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is False
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -186,7 +186,7 @@ def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is True
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is True
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)

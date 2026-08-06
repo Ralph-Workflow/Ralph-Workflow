@@ -301,7 +301,7 @@ def test_smoke_plumbing_runs_on_pipeline_core(
     assert bridge_calls[0]["drain"] == "development"
     assert bridge_calls[0]["session_id_prefix"] == "smoke"
     assert bridge.shutdown.call_count == 1
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
 
 
 def test_plumbing_routes_through_execute_agent_effect(

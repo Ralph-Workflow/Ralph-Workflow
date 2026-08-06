@@ -32,12 +32,33 @@ Behaviour specifics (measured against the live v1.1.10 binary):
   * ``step_update`` frames yield structured ``tool_use`` and ``tool_result``
     events. Ordinary tools (``step_type == "tool"``) correlate ACTIVE/DONE by
     ``tool_info.call_id`` / ``tool_info.id`` when present, else by
-    ``step_index`` (guarded against the falsy ``0`` step index). Subagent
-    entries (``step_type == "subagent"``) correlate by a
-    ``f"{step_index}:{position}"`` composite id that is stable across ACTIVE
-    and DONE regardless of how many subagent entries share one frame — real
-    AGY adds each entry's own ``conversation_id`` only on the DONE update, so
-    an id scheme keyed on that field would not correlate the ACTIVE dispatch.
+    ``step_index`` (guarded against the falsy ``0`` step index). A genuine
+    ``tool_info.call_id`` / ``.id`` is surfaced as ``metadata["tool_use_id"]``;
+    a ``step_index`` fallback is NOT a genuine upstream call id, so it is
+    surfaced as ``metadata["step_ordinal"]`` instead — downstream renderers
+    read ``tool_use_id`` as ``call_id=N``, which would misleadingly claim a
+    synthesized ordinal as an upstream identifier. Subagent entries
+    (``step_type == "subagent"``) correlate by a ``f"{step_index}:{position}"``
+    composite id that is stable across ACTIVE and DONE regardless of how many
+    subagent entries share one frame — real AGY adds each entry's own
+    ``conversation_id`` only on the DONE update, so an id scheme keyed on that
+    field would not correlate the ACTIVE dispatch. That composite is a
+    purpose-built correlation key rather than a raw field standing in for
+    one, so it keeps using ``metadata["tool_use_id"]``.
+  * ``step_update`` frames whose ``step_type`` is ``user_input`` / ``unknown``
+    / ``checkpoint`` carry no ``text_delta`` and no ``tool_info`` /
+    ``subagent_info`` of their own. Rather than being silently dropped, each
+    yields a non-empty ``type='lifecycle'`` event summarizing the step_type.
+    A bodiless ``agent_response`` DONE frame's ``usage`` (no ``text_delta``,
+    e.g. the measured one-shot ``OK`` capture) is likewise never discarded:
+    it is carried forward to the next flushed ``text`` event when text is
+    already buffered, or, if no further flush is coming, surfaces directly as
+    its own ``lifecycle`` event.
+  * Duration values (``duration_seconds`` on a tool/step completion or a
+    ``result`` frame) are formatted to 2 decimal places (e.g. ``"0.08s"``)
+    rather than interpolated raw, since AGY's measured ``duration_seconds``
+    can carry up to 9 decimal digits of floating-point noise
+    (e.g. ``0.076075017``).
   * A tool's ``tool_use`` content includes a short summary of its most
     identifying parameter (e.g. ``write_to_file hello.txt``); a subagent's
     ``tool_use`` content is its ``role`` (e.g. ``Write File A``) so two
@@ -109,6 +130,13 @@ __all__ = ["AgyParser"]
 _IDENTIFYING_PARAM_KEYS: tuple[str, ...] = ("TargetFile", "path", "file_path", "command", "query")
 _PARAM_SUMMARY_MAX_LEN = 60
 
+# B3/B4: the documented ``step_type`` vocabulary (see the module docstring
+# and tests/display/_fixtures/agy_wire_provenance.md) that carries no body
+# of its own -- no text_delta, no tool_info, no subagent_info. These are no
+# longer silently dropped by ``_dispatch_step_update``; each yields an
+# explicit non-empty ``lifecycle`` event instead.
+_LIFECYCLE_STEP_TYPES: frozenset[str] = frozenset({"user_input", "unknown", "checkpoint"})
+
 
 def _truncate(value: str) -> str:
     """Truncate ``value`` to the parameter-summary length budget."""
@@ -141,6 +169,17 @@ def _parameter_summary(info: dict[str, object]) -> str | None:
     return None
 
 
+def _format_duration(seconds: float) -> str:
+    """Return a human-readable duration string rounded to 2 decimal places (B2).
+
+    AGY's ``duration_seconds`` is a raw float that can carry up to 9
+    decimal digits of floating-point noise (e.g. ``0.076075017``);
+    operators need a stable, readable duration, not a float-precision
+    artifact.
+    """
+    return f"{seconds:.2f}s"
+
+
 def _completion_summary(label: str, step: dict[str, object], info: dict[str, object]) -> str:
     """Return a non-empty completion summary for a DONE frame with no ``output``."""
     parts = [label]
@@ -149,7 +188,7 @@ def _completion_summary(label: str, step: dict[str, object], info: dict[str, obj
         parts.append(param_summary)
     duration = step.get("duration_seconds")
     if isinstance(duration, int | float) and not isinstance(duration, bool):
-        parts.append(f"({duration}s)")
+        parts.append(f"({_format_duration(duration)})")
     return " ".join(parts)
 
 
@@ -169,7 +208,7 @@ def _result_summary(res: dict[str, object]) -> str:
     detail_parts: list[str] = []
     duration = res.get("duration_seconds")
     if isinstance(duration, int | float) and not isinstance(duration, bool):
-        detail_parts.append(f"{duration}s")
+        detail_parts.append(_format_duration(duration))
     num_turns = res.get("num_turns")
     if isinstance(num_turns, int) and not isinstance(num_turns, bool):
         detail_parts.append(f"{num_turns} turn" + ("" if num_turns == 1 else "s"))
@@ -178,12 +217,23 @@ def _result_summary(res: dict[str, object]) -> str:
     return " ".join(parts)
 
 
-def _tool_updates(step: dict[str, object]) -> list[tuple[str, dict[str, object], str | None]]:
+def _tool_updates(
+    step: dict[str, object],
+) -> list[tuple[str, dict[str, object], str | None, bool]]:
     """Return normalized AGY tool or subagent update tuples.
 
-    Each tuple is ``(tool_name, info, correlation_id)``. ``info`` is
-    ``tool_info`` for ordinary tools and one subagent entry dict for
-    subagent updates.
+    Each tuple is ``(tool_name, info, correlation_id, id_is_synthesized)``.
+    ``info`` is ``tool_info`` for ordinary tools and one subagent entry dict
+    for subagent updates.
+
+    B5: ``id_is_synthesized`` is True only for the ordinary-tool
+    ``step_index`` fallback -- a raw step index is not a genuine
+    upstream-issued call identifier, so the caller must not label it
+    ``tool_use_id`` (downstream renderers read that key as ``call_id=N``,
+    which would misleadingly claim a synthesized ordinal as an upstream
+    id). The subagent composite id is a purpose-built, stable correlation
+    key (not a raw field standing in for one), so it is never flagged as
+    synthesized.
     """
     step_type = step.get("step_type")
     step_index = step.get("step_index")
@@ -196,7 +246,7 @@ def _tool_updates(step: dict[str, object]) -> list[tuple[str, dict[str, object],
         if not isinstance(raw_subagents, list):
             return []
         subagents = cast("list[object]", raw_subagents)
-        results: list[tuple[str, dict[str, object], str | None]] = []
+        results: list[tuple[str, dict[str, object], str | None, bool]] = []
         for position, sub in enumerate(subagents):
             if not isinstance(sub, dict):
                 continue
@@ -207,7 +257,7 @@ def _tool_updates(step: dict[str, object]) -> list[tuple[str, dict[str, object],
             # for every entry sharing one frame, so dispatch and result
             # correlate even though the identity-bearing field arrives later.
             cid = f"{step_index}:{position}" if step_index is not None else str(position)
-            results.append(("subagent", details, cid))
+            results.append(("subagent", details, cid, False))
         return results
 
     raw_info = step.get("tool_info")
@@ -222,10 +272,12 @@ def _tool_updates(step: dict[str, object]) -> list[tuple[str, dict[str, object],
     if step_type != "tool" or not tool_name:
         return []
     cid_obj = info.get("call_id") or info.get("id")
+    id_is_synthesized = False
     if cid_obj is None and step_index is not None:
         cid_obj = step_index
+        id_is_synthesized = True
     tool_cid: str | None = str(cid_obj) if cid_obj is not None else None
-    return [(tool_name, info, tool_cid)]
+    return [(tool_name, info, tool_cid, id_is_synthesized)]
 
 
 def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
@@ -434,20 +486,76 @@ class AgyParser(NdjsonParserBase):
             )
 
     def _dispatch_step_update(self, step: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
-        """Map one AGY incremental update to semantic parser events."""
+        """Map one AGY incremental update to semantic parser events.
+
+        B3/B4: a step with no ``text_delta`` and no tool/subagent updates is
+        never silently dropped. ``user_input`` / ``unknown`` / ``checkpoint``
+        step_types (the documented bodiless vocabulary) and a bodiless
+        ``agent_response`` DONE frame's ``usage`` are handled explicitly by
+        :meth:`_dispatch_bodiless_step` instead of falling through a bare
+        ``return``.
+        """
         text_delta = step.get("text_delta")
         if isinstance(text_delta, str) and text_delta:
             yield from self._accumulate_text_delta(text_delta, step, raw)
             return
         tool_updates = _tool_updates(step)
-        if not tool_updates:
+        if tool_updates:
+            yield from self._flush_text()
+            is_subagent = step.get("step_type") == "subagent"
+            for tool_name, info, call_id, id_is_synthesized in tool_updates:
+                yield from self._dispatch_tool_update(
+                    step,
+                    tool_name,
+                    info,
+                    call_id,
+                    is_subagent=is_subagent,
+                    id_is_synthesized=id_is_synthesized,
+                    raw=raw,
+                )
             return
-        yield from self._flush_text()
-        is_subagent = step.get("step_type") == "subagent"
-        for tool_name, info, call_id in tool_updates:
-            yield from self._dispatch_tool_update(
-                step, tool_name, info, call_id, is_subagent=is_subagent, raw=raw
+        yield from self._dispatch_bodiless_step(step, raw)
+
+    def _dispatch_bodiless_step(
+        self, step: dict[str, object], raw: str
+    ) -> Iterator[AgentOutputLine]:
+        """Handle a step_update with no ``text_delta`` and no tool/subagent update (B3/B4).
+
+        ``user_input`` / ``unknown`` / ``checkpoint`` are the documented
+        bodiless step_types (measured on the live capture -- see
+        ``tests/display/_fixtures/agy_wire_provenance.md``); each yields a
+        non-empty ``lifecycle`` event (mirroring :meth:`_dispatch_init_event`'s
+        pattern) so the frame is accounted for instead of silently discarded.
+
+        A bodiless ``agent_response`` DONE frame's ``usage`` is never thrown
+        away either: when text is already buffered, a later flush is
+        guaranteed (the next tool update or the closing ``result`` frame), so
+        the usage is carried forward via ``_pending_text_usage``; otherwise no
+        flush is coming, so the usage surfaces directly as its own
+        ``lifecycle`` event.
+        """
+        step_type = step.get("step_type")
+        usage = step.get("usage")
+        has_usage = isinstance(usage, dict) and bool(usage)
+        if isinstance(step_type, str) and step_type in _LIFECYCLE_STEP_TYPES:
+            metadata: dict[str, object] = dict(step)
+            if has_usage:
+                metadata["usage"] = usage
+            yield AgentOutputLine(
+                type="lifecycle", content=f"agy step {step_type}", raw=raw, metadata=metadata
             )
+            return
+        if not has_usage:
+            return
+        if self._text_accumulator is not None:
+            self._pending_text_usage = cast("dict[str, object]", usage)
+            return
+        label = step_type if isinstance(step_type, str) and step_type else "update"
+        metadata = dict(step)
+        metadata["usage"] = usage
+        yield AgentOutputLine(
+            type="lifecycle", content=f"agy step {label}", raw=raw, metadata=metadata
+        )
 
     def _accumulate_text_delta(
         self, text_delta: str, step: dict[str, object], raw: str
@@ -498,11 +606,24 @@ class AgyParser(NdjsonParserBase):
         *,
         is_subagent: bool,
         raw: str,
+        id_is_synthesized: bool = False,
     ) -> Iterator[AgentOutputLine]:
-        """Map one normalized tool or subagent update tuple to an output event."""
+        """Map one normalized tool or subagent update tuple to an output event.
+
+        B5: a ``call_id`` synthesized from a raw ``step_index`` fallback (no
+        genuine ``tool_info.call_id`` / ``.id`` present) is written under
+        ``metadata["step_ordinal"]``, never ``metadata["tool_use_id"]`` --
+        writing a step-index ordinal under the ``tool_use_id`` key made
+        downstream renderers (:mod:`ralph.display.presented_entry`,
+        :mod:`ralph.display.agent_event_renderer`) print it as
+        ``call_id=N``, falsely implying an upstream-issued identifier.
+        """
         metadata: dict[str, object] = {"tool": tool_name, "tool_info": info}
         if call_id:
-            metadata["tool_use_id"] = call_id
+            if id_is_synthesized:
+                metadata["step_ordinal"] = call_id
+            else:
+                metadata["tool_use_id"] = call_id
         content_label = self._tool_update_content_label(
             info, tool_name, metadata, is_subagent=is_subagent
         )

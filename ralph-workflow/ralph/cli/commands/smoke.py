@@ -33,6 +33,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.pipeline.factory import DefaultPipelineFactory
+from ralph.pipeline.plumbing.smoke_evidence import Evidence, format_verdict
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -291,6 +292,31 @@ def _subagent_status(result: SmokeRunResult) -> str:
     return "yes" if complete else "no"
 
 
+def _required_evidence(result: SmokeRunResult) -> dict[str, Evidence]:
+    """Return the three contract facts that back the run's overall verdict (F1).
+
+    The verdict is a pure function of the weakest provenance among exactly
+    these three required facts — not of ``file_created``, the transport
+    ceiling, or any other diagnostic-only signal.
+    """
+    return {
+        "artifact_submitted": result.artifact_submitted,
+        "explicit_completion_seen": result.explicit_completion_seen,
+        "tool_activity_seen": result.tool_activity_seen,
+    }
+
+
+def _evidence_line(label: str, evidence: Evidence) -> str:
+    return f"- {label} observed [{evidence.provenance.name}] ({evidence.detail})"
+
+
+def _evidence_cell(evidence: Evidence) -> str:
+    """Return the compact table-cell rendering of one graded fact."""
+    if not evidence.holds:
+        return "no"
+    return f"yes ({evidence.provenance.name.lower()})"
+
+
 def _render_smoke_report(
     results: list[SmokeRunResult],
     *,
@@ -304,27 +330,44 @@ def _render_smoke_report(
         "",
     ]
     for result in results:
+        evidence = _required_evidence(result)
+        verdict = format_verdict(evidence)
         lines.append(f"Agent: {result.agent_name} ({result.transport})")
+        lines.append(f"Verdict: {verdict}")
+        lines.append(
+            f"Ralph tools advertised: {result.transport_evidence_ceiling.name} "
+            "(evidence ceiling inferred from the init frame's tool listing)"
+        )
         lines.append("Observed working:")
         working: list[str] = []
         if result.file_created:
             working.append(f"- created {result.output_file}")
         if result.session_id is not None:
             working.append(f"- session ID observed: {result.session_id}")
-        if result.explicit_completion_seen:
-            working.append("- completion sentinel observed")
+        if result.explicit_completion_seen.holds:
+            working.append(_evidence_line("completion sentinel", result.explicit_completion_seen))
         if result.parsed_event_count > 0:
             working.append(f"- parser emitted {result.parsed_event_count} event(s)")
-        if result.tool_activity_seen:
-            working.append("- tool activity observed")
-        if result.artifact_submitted:
-            working.append("- smoke_test_result artifact submitted")
+        if result.tool_activity_seen.holds:
+            working.append(_evidence_line("tool activity", result.tool_activity_seen))
+        if result.artifact_submitted.holds:
+            working.append(_evidence_line("smoke_test_result artifact submitted", result.artifact_submitted))
         _append_subagent_working_lines(result, working)
         lines.extend(working or ["- none"])
         lines.append("Observed output:")
         lines.extend([f"- {line}" for line in result.meaningful_output_lines] or ["- none"])
         lines.append("Observed breaks:")
-        lines.extend([f"- {error}" for error in result.errors] or ["- No breaks observed"])
+        break_lines = [f"- {error}" for error in result.errors]
+        if not break_lines and verdict != "PASS":
+            below_wire = sum(
+                1 for ev in evidence.values() if not ev.holds or ev.provenance is not ev.provenance.WIRE
+            )
+            break_lines = [
+                f"- {verdict}: {below_wire} of {len(evidence)} required fact(s) graded below WIRE; "
+                "no functional break was detected, but this run does not prove the transport reached "
+                "Ralph's MCP tools"
+            ]
+        lines.extend(break_lines or ["- No breaks observed"])
         if any("no output" in error.lower() for error in result.errors):
             lines.append(
                 "- HUGE RED FLAG: repeated 'idle watchdog: drain window active' logs "
@@ -357,18 +400,21 @@ def _render_smoke_table(
     table.add_column("Tool activity")
     table.add_column("Subagent")
     table.add_column("Artifact")
+    table.add_column("Verdict")
     table.add_column("Breaks")
 
     for result in results:
+        evidence = _required_evidence(result)
         table.add_row(
             result.agent_name,
             result.transport,
             "yes" if result.file_created else "no",
             result.session_id or "missing",
             str(result.parsed_event_count),
-            "yes" if result.tool_activity_seen else "no",
+            _evidence_cell(result.tool_activity_seen),
             _subagent_status(result),
-            "yes" if result.artifact_submitted else "no",
+            _evidence_cell(result.artifact_submitted),
+            format_verdict(evidence),
             "none" if not result.errors else "; ".join(result.errors),
         )
     display.emit_renderable(table)

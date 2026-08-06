@@ -683,6 +683,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.pipeline.plumbing.smoke_plumbing",
             ("_run_smoke_agent",),
         ),
+        (
+            "tests/test_evidence_provenance_lattice.py",
+            "ralph.pipeline.plumbing.smoke_plumbing",
+            ("_transport_evidence_ceiling",),
+        ),
         # Grandfathered: pre-existing private-ralph imports in
         # unrelated test files. These have not been touched by wt-024.
         (

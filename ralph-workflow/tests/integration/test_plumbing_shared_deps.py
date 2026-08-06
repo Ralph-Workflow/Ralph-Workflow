@@ -426,7 +426,7 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
     assert bridge.shutdown.call_count == 1
     assert len(captured_execute_calls) == 1
     assert captured_execute_calls[0]["pipeline_deps"] is shared_deps
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
 
 
 def test_commit_plumbing_resolves_display_context_from_pipeline_deps(
@@ -615,7 +615,7 @@ def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
     assert isinstance(executed_deps, PipelineDeps)
     assert executed_deps.display_context is deps_display_context
     assert captured_execute_calls[0]["display_context"] is deps_display_context
-    assert result.artifact_submitted is True
+    assert result.artifact_submitted.holds is True
 
 
 class _RecordingPipelineFactoryForSharedDeps:
