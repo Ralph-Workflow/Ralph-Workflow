@@ -230,3 +230,42 @@ def test_mock_smoke_report_shows_text_output(tmp_path: Path) -> None:
         f"raw_lines={raw_lines} parser_classified_lines={parser_classified_lines}"
     )
     assert not raw_lines, f"Expected zero ': raw' lines in 'Observed output:', got: {raw_lines}"
+
+
+def test_mock_agy_evidence_ceiling_grades_below_wire() -> None:
+    """Pin mock_agy's init frame evidence ceiling to TRANSCRIPT (below WIRE).
+
+    The mock emits a deterministic init frame with standard tools but no Ralph
+    routes, so its evidence ceiling must grade TRANSCRIPT (< WIRE).
+    """
+    import json
+
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.pipeline.plumbing.smoke_evidence import Provenance
+    from ralph.pipeline.plumbing.smoke_plumbing import transport_evidence_ceiling
+    from tests._support.mock_agy import _MOCK_INIT_TOOL_NAMES
+
+    # Build the init frame from the mock's own tool-name constant (single
+    # source of truth -- see the constant's docstring in mock_agy.py) rather
+    # than a hand-duplicated list, so this test cannot silently drift out of
+    # sync with what the mock actually emits.
+    init_line = json.dumps(
+        {
+            "event": "init",
+            "conversation_id": "00000000-0000-0000-0000-000000000000",
+            "init": {
+                "model": "default",
+                "cwd": ".",
+                "tools": list(_MOCK_INIT_TOOL_NAMES),
+                "permission_mode": "always-proceed",
+            },
+        }
+    )
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    ceiling = transport_evidence_ceiling(config, [init_line])
+
+    assert ceiling == Provenance.TRANSCRIPT
+    assert ceiling < Provenance.WIRE
+

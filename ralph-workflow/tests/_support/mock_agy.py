@@ -145,6 +145,25 @@ def _write_completion_sentinel(artifact_dir: Path) -> None:
     sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
 
+# Deliberately Ralph-free (S-4, Evidence Provenance plan): no ``ralph_*`` /
+# ``mcp__ralph__*`` / ``call_mcp_tool`` name in this list, so this mock's
+# evidence ceiling always grades below WIRE (see
+# ``test_mock_agy_evidence_ceiling_grades_below_wire`` in
+# tests/test_smoke_agy_end_to_end.py, which imports this constant directly
+# rather than duplicating it, so the two cannot drift apart). "The mock
+# cannot prove any of this" (product brief) is therefore an enforced
+# invariant, not just documentation.
+_MOCK_INIT_TOOL_NAMES: tuple[str, ...] = (
+    "ask_permission",
+    "read_file",
+    "write_to_file",
+    "view_file",
+    "define_subagent",
+    "invoke_subagent",
+    "manage_subagents",
+)
+
+
 def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
     """Emit output based on output_format (stream-json, json, or text).
 
@@ -173,15 +192,7 @@ def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
             "init": {
                 "model": model or "default",
                 "cwd": ".",
-                "tools": [
-                    "ask_permission",
-                    "read_file",
-                    "write_to_file",
-                    "view_file",
-                    "define_subagent",
-                    "invoke_subagent",
-                    "manage_subagents",
-                ],
+                "tools": list(_MOCK_INIT_TOOL_NAMES),
                 "permission_mode": "always-proceed",
             },
         },

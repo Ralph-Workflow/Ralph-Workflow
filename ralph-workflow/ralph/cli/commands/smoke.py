@@ -33,7 +33,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.pipeline.factory import DefaultPipelineFactory
-from ralph.pipeline.plumbing.smoke_evidence import Evidence, format_verdict
+from ralph.pipeline.plumbing.smoke_evidence import PASS, Evidence, format_verdict, grade_verdict
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -406,6 +406,13 @@ def _render_smoke_table(
 
     for result in results:
         evidence = _required_evidence(result)
+        verdict_label, _ = grade_verdict(evidence)
+        if result.errors:
+            breaks_cell = "; ".join(result.errors)
+        elif verdict_label != PASS:
+            breaks_cell = f"degraded verdict: {format_verdict(evidence)}"
+        else:
+            breaks_cell = "none"
         table.add_row(
             result.agent_name,
             result.transport,
@@ -416,7 +423,7 @@ def _render_smoke_table(
             _subagent_status(result),
             _evidence_cell(result.artifact_submitted),
             format_verdict(evidence),
-            "none" if not result.errors else "; ".join(result.errors),
+            breaks_cell,
         )
     display.emit_renderable(table)
     display.emit_info_panel(
@@ -551,7 +558,8 @@ def smoke_harness_agent_command(
     record_conformance_matrix(
         workspace_root, transport=result.transport, evidence=_required_evidence(result)
     )
-    exit_code = 0 if not result.errors else 1
+    verdict_label, _ = grade_verdict(_required_evidence(result))
+    exit_code = 0 if not result.errors and verdict_label == PASS else 1
     # S-14: keep the literal ``EXIT_CODE=N`` machine-line shape so
     # external smoke harnesses that grep the line keep working. The
     # line is a machine contract (not operator-visible decoration) and

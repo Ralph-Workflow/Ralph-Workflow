@@ -28,7 +28,7 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     format_verdict,
     grade_verdict,
 )
-from ralph.pipeline.plumbing.smoke_plumbing import _transport_evidence_ceiling
+from ralph.pipeline.plumbing.smoke_plumbing import transport_evidence_ceiling
 
 
 def test_provenance_ordering_is_least_to_most_trustworthy() -> None:
@@ -151,7 +151,7 @@ def test_ceiling_reports_below_wire_when_no_ralph_tool_advertised() -> None:
     ]
     lines = [_init_frame(tool_names)]
 
-    ceiling = _transport_evidence_ceiling(_agy_config(), lines)
+    ceiling = transport_evidence_ceiling(_agy_config(), lines)
 
     assert ceiling < Provenance.WIRE
     assert ceiling == Provenance.TRANSCRIPT
@@ -160,19 +160,19 @@ def test_ceiling_reports_below_wire_when_no_ralph_tool_advertised() -> None:
 def test_ceiling_reports_wire_when_a_ralph_tool_is_advertised() -> None:
     lines = [_init_frame(["view_file", "ralph_submit_md_artifact", "write_to_file"])]
 
-    assert _transport_evidence_ceiling(_agy_config(), lines) == Provenance.WIRE
+    assert transport_evidence_ceiling(_agy_config(), lines) == Provenance.WIRE
 
 
 def test_ceiling_reports_wire_when_call_mcp_tool_dispatcher_is_advertised() -> None:
     lines = [_init_frame(["view_file", "call_mcp_tool", "write_to_file"])]
 
-    assert _transport_evidence_ceiling(_agy_config(), lines) == Provenance.WIRE
+    assert transport_evidence_ceiling(_agy_config(), lines) == Provenance.WIRE
 
 
 def test_ceiling_reports_absent_when_no_init_frame_present() -> None:
     lines = [json.dumps({"event": "step_update", "step_update": {"step_index": 0}})]
 
-    assert _transport_evidence_ceiling(_agy_config(), lines) == Provenance.ABSENT
+    assert transport_evidence_ceiling(_agy_config(), lines) == Provenance.ABSENT
 
 
 def test_ceiling_ignores_non_json_and_malformed_lines() -> None:
@@ -182,7 +182,7 @@ def test_ceiling_ignores_non_json_and_malformed_lines() -> None:
         _init_frame(["view_file"]),
     ]
 
-    assert _transport_evidence_ceiling(_agy_config(), lines) == Provenance.TRANSCRIPT
+    assert transport_evidence_ceiling(_agy_config(), lines) == Provenance.TRANSCRIPT
 
 
 # --- S-5: regression pinning the measured DEGRADED (host-synthesized) run --

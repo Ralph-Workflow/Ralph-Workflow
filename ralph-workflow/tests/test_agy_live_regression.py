@@ -279,10 +279,28 @@ def test_live_agy_produces_green_parity_table(
         f"Expected File=yes column in parity table. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    assert re.search(r"│\s*none\s*│", output) is not None, (
-        f"Expected Breaks=none in parity table. "
-        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
-    )
+    # Evidence Provenance plan (S-2, measured 2026-08-06 --
+    # tests/display/_fixtures/agy_wire_provenance.md): a genuine
+    # call_mcp_tool submission grades WORKSPACE_EFFECT, not WIRE, unless
+    # RALPH_BROKER_SECRET is set in this process's environment (F2/A5 --
+    # an unsigned server cannot produce a WIRE witness). A bare
+    # "Breaks=none" column would therefore be dishonest in the common case
+    # where the secret is unset; assert the DEGRADED verdict is named
+    # instead when unsigned, and only require a literal "none" break cell
+    # when the environment happens to have the secret set (a WIRE-eligible
+    # run can legitimately reach PASS).
+    if os.environ.get("RALPH_BROKER_SECRET"):
+        assert re.search(r"│\s*none\s*│", output) is not None, (
+            f"Expected Breaks=none in parity table (RALPH_BROKER_SECRET set, "
+            f"WIRE-eligible). cli.log tail: {cli_log_tail[-200:]!r}\n"
+            f"Output:\n{output[-5000:]}"
+        )
+    else:
+        assert "DEGR" in output, (
+            f"Expected a DEGRADED verdict column (RALPH_BROKER_SECRET unset, "
+            f"WIRE unreachable). cli.log tail: {cli_log_tail[-200:]!r}\n"
+            f"Output:\n{output[-5000:]}"
+        )
 
 
 def test_live_agy_artifact_present(live_smoke_session: _LiveSmokeResult) -> None:
@@ -328,14 +346,41 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         f"Expected the dash-prefixed '- smoke_test_result artifact submitted' "
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
+    # PA-002 / Evidence Provenance plan: a bare "- completion sentinel
+    # observed" substring is exactly the pre-feature contract this plan
+    # replaces -- it does not distinguish a real declare_complete call from
+    # a host-synthesized one (A4). Require the provenance bracket the
+    # report always attaches (see smoke.py's Evidence rendering) alongside
+    # it, naming one of the three ranks a live AGY run can actually reach.
     assert "- completion sentinel observed" in output, (
         f"Expected the durable completion-sentinel success marker. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    assert "No breaks observed" in output or "Breaks: none" in output, (
-        f"Expected no breaks marker in parity report. "
+    assert any(
+        f"- completion sentinel observed [{rung}]" in output
+        for rung in ("TRANSCRIPT", "HOST_SYNTHESIZED", "WIRE")
+    ), (
+        "Expected the completion sentinel marker to name its provenance rung "
+        "(TRANSCRIPT/HOST_SYNTHESIZED/WIRE), not a bare unqualified claim. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
+    # Evidence Provenance plan (S-2, measured 2026-08-06 -- see the parity-table
+    # assertion above for the full reasoning): "No breaks observed" / "Breaks: none"
+    # is only honest when every required fact reached WIRE, which needs
+    # RALPH_BROKER_SECRET set. Otherwise the report must name the DEGRADED
+    # demotion instead.
+    if os.environ.get("RALPH_BROKER_SECRET"):
+        assert "No breaks observed" in output or "Breaks: none" in output, (
+            f"Expected no breaks marker in parity report (RALPH_BROKER_SECRET set, "
+            f"WIRE-eligible). cli.log tail: {cli_log_tail[-200:]!r}\n"
+            f"Output:\n{output[-5000:]}"
+        )
+    else:
+        assert "DEGRADED (" in output, (
+            f"Expected a named DEGRADED demotion in parity report "
+            f"(RALPH_BROKER_SECRET unset, WIRE unreachable). "
+            f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+        )
 
     forbidden_negative_markers = (
         "- no tool activity was observed",
@@ -624,8 +669,18 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
+    # PA-002: a bare substring cannot distinguish a real declare_complete call
+    # (TRANSCRIPT/WIRE) from a host-synthesized one (HOST_SYNTHESIZED, A4) --
+    # require the provenance rung the report always attaches.
     assert "- completion sentinel observed" in output, (
         "Expected the independent durable completion evidence in the report. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    )
+    assert any(
+        f"- completion sentinel observed [{rung}]" in output
+        for rung in ("TRANSCRIPT", "HOST_SYNTHESIZED", "WIRE")
+    ), (
+        "Expected the completion sentinel marker to name its provenance rung. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
 

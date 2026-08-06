@@ -45,6 +45,7 @@ from ralph.mcp.artifacts.smoke_test_result import (
 )
 from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.mcp.tools.coordination import _write_completion_sentinel
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -542,15 +543,74 @@ def _build_smoke_prompt(
             "artifact and completing.\n"
         )
 
-    completion_requirement = (
-        "- After the artifact tool returns a valid receipt, call `declare_complete` "
-        "as the mandatory final action. The receipt is not phase completion; do not "
-        "stop until the completion call succeeds.\n"
-    )
     transport_requirement = (
         f"- Use the tool names exposed by the `{transport.value}` transport exactly.\n"
         if transport is not None
         else ""
+    )
+    # AGY does not list Ralph's tools directly (A1): its init frame advertises
+    # only the generic `call_mcp_tool` dispatcher (confirmed by a live
+    # v1.1.10 capture, never guessed -- see tests/display/_fixtures/
+    # agy_wire_provenance.md). A plain "call `{tool}`" bullet plus a
+    # permissive "if unavailable, write the file instead" fallback bullet
+    # measurably teaches the model nothing: a live v1.1.10 run against that
+    # phrasing still took the fallback-file path on every turn (the
+    # 2026-08-05-shaped defect this branch replaces). So for AGY the
+    # submission, fallback, and completion bullets are rewritten in one
+    # piece -- naming `call_mcp_tool` as the *only* first attempt, and
+    # narrowing the fallback to a genuine dispatcher error, not mere
+    # unfamiliarity with the target tool's name. The exact JSON argument
+    # shape for `call_mcp_tool` itself is part of AGY's own tool schema
+    # (already visible to the model), so it is deliberately not hand-typed
+    # here -- doing so would risk asserting an unmeasured shape.
+    is_agy = transport is AgentTransport.AGY
+    submit_call_instruction = (
+        f"- `{submit_artifact_tool_name}` is a Ralph Workflow MCP tool; AGY does not "
+        "list it directly as a callable tool name. Call your `call_mcp_tool` tool, "
+        f"naming MCP server `{RALPH_MCP_SERVER_NAME}` and target tool "
+        f"`{submit_artifact_tool_name}`, passing artifact_type="
+        f'"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
+        "and this complete Markdown document as the content argument, to submit the "
+        "artifact below. This is your first and required attempt -- do not skip "
+        "straight to the file-fallback bullet below because the tool name isn't "
+        "directly listed:\n"
+        if is_agy
+        else f"- Call `{submit_artifact_tool_name}` with "
+        f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
+        "and put this complete Markdown document in the content argument:\n"
+    )
+    submission_fallback_instruction = (
+        "- Only write the same complete Markdown document to "
+        "`.agent/tmp/smoke_test_result.md` as a fallback if `call_mcp_tool` itself "
+        f"errors when targeting server `{RALPH_MCP_SERVER_NAME}` (for example, the "
+        "server is unreachable) -- not merely because "
+        f"`{submit_artifact_tool_name}` is absent from your directly listed tools. "
+        "Ralph Workflow validates and promotes that fallback, but a genuine "
+        "`call_mcp_tool` attempt against the `ralph` server always comes first. "
+        "Do not write the canonical artifact directly.\n"
+        if is_agy
+        else "- Submit through the tool when it is available. If the submission tool is "
+        "unavailable, write the same complete Markdown document to "
+        "`.agent/tmp/smoke_test_result.md`; Ralph Workflow validates and promotes that "
+        "fallback. Do not write the canonical artifact directly.\n"
+    )
+    # NOTE (measured, not guessed): a live v1.1.10 replay that also routed
+    # `declare_complete` through a second `call_mcp_tool` invocation in the
+    # same turn did not return -- the run had to be killed after an
+    # inactivity timeout, losing even the artifact submission that had
+    # already succeeded moments earlier. Unlike the submission instruction
+    # above (which is proven to work: a live run produced a real
+    # `call_mcp_tool` round trip and a genuine tool result), a second
+    # dispatcher round trip for completion is not safe to require. Completion
+    # is therefore left on the plain `declare_complete` phrasing for every
+    # transport, including AGY: when the model cannot reach it directly, the
+    # existing AGY-only host-synthesis branch a few hundred lines below
+    # (search ``host_synthesized_sentinel``) already covers the gap and grades
+    # the result ``DEGRADED (host-synthesized)`` rather than hanging the run.
+    completion_requirement = (
+        "- After the artifact tool returns a valid receipt, call `declare_complete` "
+        "as the mandatory final action. The receipt is not phase completion; do not "
+        "stop until the completion call succeeds.\n"
     )
 
     return (
@@ -564,13 +624,9 @@ def _build_smoke_prompt(
         "completion signal, parser events, and tmp artifact creation.\n"
         f"{transport_requirement}"
         f"{subagent_requirements}"
-        f"- Call `{submit_artifact_tool_name}` with "
-        f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
-        "and put this complete Markdown document in the content argument:\n"
+        f"{submit_call_instruction}"
         f"```markdown\n{artifact_document}\n```\n"
-        "- Submit through the tool when it is available. If the submission tool is unavailable, "
-        "write the same complete Markdown document to `.agent/tmp/smoke_test_result.md`; "
-        "Ralph Workflow validates and promotes that fallback. Do not write the canonical artifact directly.\n"
+        f"{submission_fallback_instruction}"
         "- Do not start background work, run verification, or wait for other tasks; "
         "finish this small smoke task in this turn.\n"
         f"{completion_requirement}"
@@ -844,6 +900,8 @@ def _execute_smoke_turns(
                 or extract_transport_session_id(tuple(raw_lines))
             )
             final_exception = exc
+            if transport_evidence_ceiling(params.config, list(all_lines)) < Provenance.WIRE:
+                break
             continue
         except AgentInvocationError as exc:
             all_lines.extend(raw_lines)
@@ -1297,7 +1355,7 @@ def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] 
     return names
 
 
-def _transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> Provenance:
+def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> Provenance:
     """Return the maximum Provenance this transport's tools could reach (F3).
 
     Inspects an ``init``-shaped frame's advertised tool listing (AGY's
@@ -1401,7 +1459,7 @@ def _run_smoke_agent(
         submitted=artifact_submitted,
         secret=secret,
     )
-    transport_ceiling = _transport_evidence_ceiling(params.config, lines)
+    transport_ceiling = transport_evidence_ceiling(params.config, lines)
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES

@@ -81,6 +81,10 @@ def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     config_path = tmp_path / "mcp_config.json"
     monkeypatch.setattr("ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path)
+    secondary_config_path = tmp_path / "mcp_config_secondary.json"
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy._agy_secondary_config_path", lambda: secondary_config_path
+    )
     endpoint = "http://127.0.0.1:9999/mcp"
     seen_config_at_launch = False
 
@@ -232,6 +236,10 @@ def test_agy_invoke_skips_mcp_context_when_no_endpoint(
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     config_path = tmp_path / "mcp_config.json"
     monkeypatch.setattr("ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path)
+    secondary_config_path = tmp_path / "mcp_config_secondary.json"
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy._agy_secondary_config_path", lambda: secondary_config_path
+    )
 
     def fake_run_pty_and_read_lines(
         cmd: object,

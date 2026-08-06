@@ -1,8 +1,11 @@
 """Tests for AGY MCP config injection.
 
-The helper mutates AGY's global ``~/.gemini/antigravity-cli/mcp_config.json``.
-Tests patch the private path helper so they do not touch the developer's real
-home directory.
+The helper mutates two of AGY's global config paths
+(``~/.gemini/antigravity-cli/mcp_config.json`` and
+``~/.gemini/config/mcp_config.json`` -- see the module docstring in
+``ralph.mcp.transport.agy`` for why both are written). Tests patch both
+private path helpers so they do not touch the developer's real home
+directory.
 """
 
 from __future__ import annotations
@@ -33,28 +36,48 @@ def _assert_ralph_only(config: dict[str, object], endpoint: str) -> None:
 
 @pytest.fixture
 def agy_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Return a temp file standing in for AGY's global MCP config.
+    """Return a temp file standing in for AGY's legacy global MCP config.
 
     The path is nested (``tmp_path / "gemini" / "mcp_config.json``) so the
-    parent-directory creation behaviour is exercised.
+    parent-directory creation behaviour is exercised. The secondary path
+    (see :func:`agy_secondary_config_path`) is patched to an isolated temp
+    file too, so every test that only cares about the legacy path does not
+    also touch the developer's real ``~/.gemini/config/mcp_config.json``.
     """
     config_path = tmp_path / "gemini" / "mcp_config.json"
     monkeypatch.setattr("ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path)
+    secondary_path = tmp_path / "gemini-config" / "mcp_config.json"
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy._agy_secondary_config_path", lambda: secondary_path
+    )
     return config_path
+
+
+def _secondary_path_for(tmp_path: Path) -> Path:
+    """Return the secondary-config temp path the ``agy_config_path`` fixture patched in."""
+    return tmp_path / "gemini-config" / "mcp_config.json"
 
 
 def test_agy_workspace_mcp_endpoint_creates_config_when_absent(
     tmp_path: Path, agy_config_path: Path
 ) -> None:
     endpoint = "http://127.0.0.1:9999/mcp"
+    secondary_path = _secondary_path_for(tmp_path)
 
     assert not agy_config_path.exists()
+    assert not secondary_path.exists()
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint):
         assert agy_config_path.exists()
         _assert_ralph_only(_read_config(agy_config_path), endpoint)
+        # S-2 (Evidence Provenance): the secondary path is what makes live
+        # AGY dispatch actually reach the ralph server (module docstring in
+        # ralph.mcp.transport.agy) -- it must carry the identical entry.
+        assert secondary_path.exists()
+        _assert_ralph_only(_read_config(secondary_path), endpoint)
 
     assert not agy_config_path.exists()
+    assert not secondary_path.exists()
 
 
 def test_agy_workspace_mcp_endpoint_writes_ralph_only_when_existing_servers_present(
@@ -264,3 +287,35 @@ def test_agy_workspace_mcp_endpoint_serverurl_preserved_on_retained_upstreams(
         assert "serverUrl" in other
         assert "url" not in other
         assert other["serverUrl"] == "http://other.example/mcp"
+
+
+def test_agy_workspace_mcp_endpoint_restores_secondary_path_independently(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
+    """The secondary (live-dispatch) path is staged and restored on its own.
+
+    Gives it a *different* pre-existing entry than the legacy path so a bug
+    that restored one path's bytes into the other (rather than each path's
+    own captured original) would be caught.
+    """
+    secondary_path = _secondary_path_for(tmp_path)
+    legacy_original = json.dumps(
+        {"mcpServers": {"legacy-only": {"serverUrl": "http://legacy.example/mcp"}}},
+        indent=2,
+    )
+    secondary_original = json.dumps(
+        {"mcpServers": {"secondary-only": {"serverUrl": "http://secondary.example/mcp"}}},
+        indent=2,
+    )
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(legacy_original, encoding="utf-8")
+    secondary_path.parent.mkdir(parents=True, exist_ok=True)
+    secondary_path.write_text(secondary_original, encoding="utf-8")
+    endpoint = "http://127.0.0.1:9999/mcp"
+
+    with agy_workspace_mcp_endpoint(tmp_path, endpoint):
+        _assert_ralph_only(_read_config(agy_config_path), endpoint)
+        _assert_ralph_only(_read_config(secondary_path), endpoint)
+
+    assert agy_config_path.read_text(encoding="utf-8") == legacy_original
+    assert secondary_path.read_text(encoding="utf-8") == secondary_original

@@ -249,3 +249,106 @@ through the public `render_event_kind_text` entry point with content shaped
 exactly like `AgyParser._completion_summary`'s synthesized output (measured
 shape, not fabricated — see the B2 fixture note above for the same
 duration-noise pattern).
+
+
+## 2026-08-06: Evidence Provenance plan, S-1/S-2 -- AGY's real MCP config path
+
+Captured live against `agy` v1.1.10 (`gemini-3.6-flash-low`) in this
+workspace, run to completion end to end via
+`uv run python -m ralph smoke-interactive-agy --agent agy/gemini-3.6-flash-low`
+(S-1). This entry records what those runs actually showed, not an
+interpretation from the plan.
+
+**S-1 baseline reproduction (before any code change).** Reproduced the
+brief's 2026-08-05 finding fresh in this workspace: `Verdict: DEGRADED
+(host-synthesized)`, `EXIT_CODE=0` (the exit code and Breaks cell derived
+only from `result.errors`, ignoring the graded verdict -- see PA-001/S-6
+below). `init.tools` already listed `call_mcp_tool` (config-discovery half
+of A1 was already wired), but the live transcript showed zero `tools/call`
+attempts: `.agent/tmp/mcp-server.log` recorded the server starting and
+exiting with no request lines in between, and `.agent/state.db`'s
+`receipts`/`completion_sentinels` rows for the run carried `hmac = NULL`
+(confirms A5: `RALPH_BROKER_SECRET` was unset in this shell). The model's
+own transcript text: *"Since `ralph_submit_md_artifact` is unavailable in
+the current toolset, saved the smoke test result artifact to
+`.agent/tmp/smoke_test_result.md` as instructed for fallback."*
+
+**S-2, first attempt: prompt-only fix.** Added an AGY-specific instruction
+to `_build_smoke_prompt` naming `call_mcp_tool` as the required first
+attempt (no argument shape hand-typed -- the model already holds that
+schema). Two live re-runs against the *unchanged* config-write path still
+took the fallback: one repeated the same "unavailable" claim, the other
+switched to a stronger, directly falsifiable claim -- *"Since direct MCP
+invocation tools (`call_mcp_tool`) are not present in the current
+toolset..."* -- while that exact run's own `init` frame demonstrably listed
+`call_mcp_tool`, and `mcp-server.log` again showed zero connection attempts
+for the whole run window. The prompt-only fix could not be trusted on its
+own: the model was reporting a tool as absent that the transcript's own
+metadata said was present.
+
+**S-2, root cause: two different global config paths.** AGY's own bundled
+skill doc (`~/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/mcp_servers.md`)
+names `~/.gemini/config/mcp_config.json` as the "Global Configuration" path
+-- not `~/.gemini/antigravity-cli/mcp_config.json`, the path
+`ralph.mcp.transport.agy` had been writing (and the only path its
+"Research-confirmed facts" docstring listed). Writing the identical merged
+Ralph entry to *both* paths (`_agy_secondary_config_path`, kept alongside
+the original as `_agy_global_config_path`) and re-running the identical
+prompt produced a genuine `call_mcp_tool` invocation: `✓ PASS ↳
+call_mcp_tool ralph` with a real JSON tool result
+(`{"artifact_type": "smoke_test_result", "valid": true, ...
+"persisted_document": {...}}`), reproduced on two separate live runs.
+Verdict moved from `DEGRADED (host-synthesized)` to `DEGRADED
+(workspace-effect)` -- the artifact fact is now a real receipt matched to a
+real tool call, not a promoted fallback; it is not `WIRE` only because
+`RALPH_BROKER_SECRET` is unset in this shell (A5, by design -- an unsigned
+server cannot produce a `WIRE` witness).
+
+**S-2, completion step: measured, not assumed, to be unsafe to force.** An
+initial version of this fix additionally instructed the model to route
+`declare_complete` through a *second* `call_mcp_tool` call. A live replay
+of that version did not return: the `agy` process had to be killed after an
+inactivity timeout, and the run's own artifacts (`.agent/artifacts/
+smoke_conformance_matrix.md`) show `artifact_submitted: ABSENT`,
+`explicit_completion_seen: ABSENT` for that attempt -- worse than the
+original defect, because it lost even the successful submission mid-run.
+The completion instruction was reverted to the plain `declare_complete`
+phrasing used by every other transport; the pre-existing AGY-only
+`host_synthesized_sentinel` branch in `_run_smoke_agent` still covers a
+model that does not complete on its own, and grades that outcome
+`HOST_SYNTHESIZED` (honest, not a hang). A subsequent live run with the
+reverted prompt had the model call `call_mcp_tool` a *second* time on its
+own initiative anyway (having already learned the dispatcher works from the
+first call) and this time it returned cleanly (`Task declared complete:
+session_id=smoke-...`) -- moving `explicit_completion_seen` from
+`HOST_SYNTHESIZED` to `TRANSCRIPT`. So the model can complete through the
+dispatcher unprompted once it has evidence the route works; the fix does
+not force the second call and therefore does not force the hang either.
+
+**S-6 confirmed live.** That same run's harness output: `Verdict: DEGRADED
+(workspace-effect)`, `EXIT_CODE=1`, and the Breaks cell rendered `degraded
+verdict: DEGRADED (workspace-effect)` -- not the bare string `none` PA-001
+named as the defect, and the exit code now agrees with the graded verdict
+rather than with `result.errors` alone.
+
+**Unexplained, out of scope.** Several of these live runs' transcripts
+contained trailing text reading `[claude turn boundary]` followed by
+`/exit`, immediately before AGY reported `FAIL timeout waiting for
+response` / `agy result ERROR`. That text does not match any known AGY
+`gemini-3.6-flash-low` output shape and does not correlate with anything in
+this repository's own prompt construction; it appears to be a sandbox-level
+artifact of this specific execution environment (unrelated processes
+sharing the host), not a defect in `ralph`'s AGY transport or parser. Left
+unexplained rather than guessed at; it did not prevent any of the runs
+above from reaching and recording their real result.
+
+**Still open / not attempted this pass.** The pre-existing stray `"ralph"`
+entry in `~/.gemini/antigravity-cli/mcp_config.json` (noted as a risk in
+the plan before this pass started) was still present after every run in
+this pass, restored to the same dirty pre-run bytes each time (confirmed:
+`agy_workspace_mcp_endpoint`'s restore-on-exit ran correctly and restored
+exactly what it read at start; the underlying staleness predates this
+session and was not chased further here, since the write behaviour it
+restores is provably correct in isolation -- see
+`tests/test_agy_workspace_mcp.py`). A genuinely unattended host-machine
+cleanup of that pre-existing stray entry is out of scope for this plan.

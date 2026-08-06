@@ -17,10 +17,18 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
-from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent
+from ralph.pipeline.plumbing.smoke_evidence import (
+    DEGRADED,
+    PASS,
+    Evidence,
+    Provenance,
+    absent,
+    grade_verdict,
+)
 from ralph.pipeline.plumbing.smoke_plumbing import is_mock_agy_override
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
@@ -116,6 +124,43 @@ def test_build_smoke_prompt_targets_tmp_javascript_todo_list() -> None:
     assert "## Observed Working" in prompt
     assert "## Headless Guide Checks" in prompt
     assert "JSON artifact" not in prompt
+
+
+def test_build_smoke_prompt_teaches_agy_to_route_submission_through_call_mcp_tool() -> None:
+    """S-2 (Evidence Provenance): AGY must be told to reach Ralph tools via call_mcp_tool.
+
+    Measured live (agy_wire_provenance.md, 2026-08-06 entry): a plain
+    "call `{tool}`" instruction plus a permissive fallback bullet taught the
+    model nothing -- it took the file-fallback path on every turn, once even
+    while wrongly claiming `call_mcp_tool` was "not present in the current
+    toolset" despite the transcript's own init frame listing it. The
+    submission bullet must name `call_mcp_tool` as the required first
+    attempt; the completion bullet must NOT force a second `call_mcp_tool`
+    round trip (a live replay of that variant hung and had to be killed --
+    same fixture entry), so `declare_complete` stays on the plain
+    transport-agnostic phrasing every other transport uses.
+    """
+    agy_prompt = smoke_module.build_smoke_prompt(
+        "tmp/interactive-agy-smoke/todo-list.js",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
+        transport=AgentTransport.AGY,
+    )
+
+    assert "call_mcp_tool" in agy_prompt
+    assert "MCP server `ralph`" in agy_prompt
+    assert "ralph_submit_md_artifact" in agy_prompt
+    # The completion bullet must stay on the plain phrasing, not a second
+    # call_mcp_tool instruction -- assert declare_complete is never paired
+    # with the dispatcher wording in the same sentence.
+    assert "target tool `declare_complete`" not in agy_prompt
+    assert "call `declare_complete`" in agy_prompt
+
+    non_agy_prompt = smoke_module.build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    assert "call_mcp_tool" not in non_agy_prompt
 
 
 def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
@@ -302,7 +347,12 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert fake_factory.calls[0]["model_identity"] is None
     assert fake_factory.calls[0]["pro_hooks"] is None
 
-    assert exit_code == 0
+    # S-6 (PA-001): this scenario writes the fallback smoke_test_result.md
+    # and completion sentinel directly (a promoted fallback + host-authored
+    # sentinel, not a real MCP receipt), so no required fact reaches WIRE
+    # and the graded verdict is DEGRADED -- the exit code must say so too,
+    # not silently report 0 the way the pre-S-6 result.errors-only check did.
+    assert exit_code == 1
     assert bridge_shutdown == [True]
     assert requested_agents == ["claude/haiku"]
     output = stream.getvalue()
@@ -320,7 +370,11 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "write_file" in output
     assert "Observed working" in output
     assert "Observed breaks" in output
-    assert "No breaks observed" in output
+    # S-6 (PA-001): this scenario's evidence never reaches WIRE (see the
+    # exit_code assertion above), so "No breaks observed" is not the
+    # correct/honest text -- the DEGRADED branch of _render_smoke_report
+    # names the demotion instead, exactly like PA-001 says it must.
+    assert "DEGRADED (workspace-effect)" in output
 
 
 def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
@@ -730,7 +784,13 @@ def test_smoke_interactive_agy_with_mock_binary(
         display_context=None,
     )
 
-    assert exit_code == 0
+    # S-6 (PA-001) / S-4: the mock never contacts a real MCP server (it
+    # writes the fallback artifact and sentinel directly), and its evidence
+    # ceiling is pinned below WIRE (test_mock_agy_evidence_ceiling_grades_below_wire
+    # in test_smoke_agy_end_to_end.py), so the graded verdict here is always
+    # DEGRADED and the exit code must be non-zero -- a mock run can never
+    # honestly report exit_code 0.
+    assert exit_code == 1
     output = stream.getvalue()
     assert "agy/gemini-3.5-flash-medium" in output
     # The parity table row must show file=yes for the mock-backed run.
@@ -826,15 +886,21 @@ def test_smoke_interactive_agy_with_relative_mock_binary_path(
     )
 
     output = stream.getvalue()
-    assert exit_code == 0, (
-        f"Expected exit_code 0 for relative mock path; got {exit_code}. "
-        f"Output tail:\n{output[-3000:]}"
+    # S-6 (PA-001) / S-4: same reasoning as test_smoke_interactive_agy_with_mock_binary --
+    # the mock can never produce WIRE evidence, so the graded verdict is
+    # DEGRADED and exit_code must be non-zero.
+    assert exit_code == 1, (
+        f"Expected exit_code 1 (DEGRADED, mock evidence never reaches WIRE) for "
+        f"relative mock path; got {exit_code}. Output tail:\n{output[-3000:]}"
     )
     assert re.search(r"\u2502\s*agy\s*\u2502\s*yes\s*\u2502", output) is not None, (
         f"Expected 'file=yes' in parity table; output tail:\n{output[-3000:]}"
     )
-    assert "No breaks observed" in output or "Breaks: none" in output, (
-        f"Expected no breaks in parity report; output tail:\n{output[-3000:]}"
+    # S-6 (PA-001): the mock's evidence never reaches WIRE (see the
+    # exit_code assertion above), so the report must name the demotion
+    # rather than claim no breaks were observed.
+    assert "DEGRADED (" in output, (
+        f"Expected a named DEGRADED demotion in parity report; output tail:\n{output[-3000:]}"
     )
 
 
@@ -969,3 +1035,75 @@ def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
     assert str(stub_path) in agy_cmd
     # The non-AGY agent is preserved.
     assert result.agents["claude/haiku"].cmd == "claude"
+
+
+@pytest.mark.timeout_seconds(10)
+def test_smoke_command_exit_code_and_breaks_cell_reflect_evidence_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """PA-001: exit_code and Breaks cell derive from Evidence verdict, not result.errors alone.
+
+    Replay a 2026-08-05-shaped run (all facts hold but weak provenance -> DEGRADED).
+    Assert exit_code is 1 (non-zero) and the Breaks cell names the demotion
+    rather than printing "none".
+    """
+    stream = StringIO()
+    # A wide console so the Rich table does not truncate the Breaks cell to
+    # "degr…" -- the default 100-column width used elsewhere in this file
+    # is too narrow to fit "degraded verdict: DEGRADED (host-synthesized)"
+    # across 10 columns, and this test needs to read that cell's full text.
+    console = Console(
+        file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME, width=300
+    )
+    display_context = DisplayContext(
+        console=console,
+        theme=RALPH_THEME,
+        width=300,
+        mode="default",
+        color_enabled=True,
+        glyphs_enabled=True,
+        headline_max_chars=120,
+        condenser_soft_limit=400,
+        condenser_hard_limit=4000,
+        streaming_checkpoint_chars=4000,
+        streaming_checkpoint_fragments=20,
+        streaming_dedup_enabled=True,
+        streaming_checkpoints_enabled=True,
+        thinking_preview_min_chars=80,
+        tool_result_headline_min_chars=80,
+    )
+
+    result = smoke_module.SmokeRunResult(
+        agent_name="agy/gemini-3.6-flash-low",
+        transport="agy",
+        output_file=tmp_path / "todo-list.js",
+        file_created=True,
+        session_id="2f50d6ef-a009-427f-99e8-c58ac99c1f8d",
+        raw_line_count=16,
+        parsed_event_count=19,
+        tool_activity_seen=Evidence(True, Provenance.TRANSCRIPT, "14 frames"),
+        artifact_submitted=Evidence(True, Provenance.WORKSPACE_EFFECT, "promoted fallback"),
+        explicit_completion_seen=Evidence(True, Provenance.HOST_SYNTHESIZED, "written by harness"),
+        meaningful_output_lines=[],
+        errors=[],  # No hard breaks/errors reported in result.errors!
+    )
+
+    verdict_label, _ = grade_verdict(smoke_module._required_evidence(result))
+    assert verdict_label == DEGRADED
+
+    # Calculate exit_code as in smoke_harness_agent_command
+    exit_code = 0 if not result.errors and verdict_label == PASS else 1
+    assert exit_code == 1
+
+    # Render table and verify Breaks cell is not "none"
+    smoke_module._render_smoke_table(
+        [result], display_context=display_context, agent_name="agy/gemini-3.6-flash-low"
+    )
+    rendered = normalize_vt_text(stream.getvalue())
+    # The table's unrelated "Subagent" column legitimately renders "none"
+    # (no subagent requested), so assert the Breaks cell's own content
+    # directly rather than the bare absence of "none" anywhere in the table.
+    assert "degraded verdict" in rendered
+    assert "DEGRADED (host-synthesized)" in rendered
+

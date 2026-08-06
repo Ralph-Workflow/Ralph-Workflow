@@ -13,6 +13,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs import commit_message, smoke_test_result
+from ralph.pipeline.plumbing.smoke_plumbing import RALPH_MCP_SERVER_NAME
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -60,7 +61,7 @@ def test_agy_smoke_prompt_uses_canonical_markdown_submission() -> None:
     )
 
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert "Call `ralph_submit_md_artifact`" in prompt
+    assert "Call `ralph_submit_md_artifact`" in prompt or f"naming MCP server `{RALPH_MCP_SERVER_NAME}` and target tool `ralph_submit_md_artifact`" in prompt
     assert ".agent/artifacts/" not in prompt
     assert "JSON artifact" not in prompt
 
