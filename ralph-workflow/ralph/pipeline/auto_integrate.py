@@ -1,15 +1,14 @@
 """Auto-integration seam: rebase a feature branch and fast-forward its target safely.
-
 # AC-14 rationale: B10
 # ladder rung: 1
 # AC-14 rationale: E4
 # ladder rung: 4
-The workflow first rebases the feature branch onto its live local target. On a
-conflict, it hands the stop to the conflict-resolution pipeline to resolve the
-rebase in place, prove and stage the result, then run ``git rebase --continue``.
-Only when that resolution cannot land does it merge on unresolved conflict as
-the endpoint fallback before fast-forwarding the target. The phase hook reuses
-a clean worktree and records each attempt before the target advances.
+The workflow rebases the feature branch onto its live local target. On conflict,
+it hands the stop to the conflict-resolution pipeline to resolve the rebase in
+place, prove and stage the result, then run ``git rebase --continue``. Only when
+that cannot land does it merge on unresolved conflict as the endpoint fallback.
+The phase hook reuses a clean worktree and records each attempt before the target
+advances.
 """
 
 from __future__ import annotations
@@ -116,6 +115,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
+# Record/outcome helpers live in focused modules; aliases preserve call-site names.
 
 def _fast_forward_target(
     repo_root: Path,
@@ -953,6 +953,7 @@ def _handle_precondition_failure(
         exc,
     )
     return _record_skip(reason=f"preconditions not met: {exc}", target=target)
+
 
 __all__ = [
     "IntegrationRecord",

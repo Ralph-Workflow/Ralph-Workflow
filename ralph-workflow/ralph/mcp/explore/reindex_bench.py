@@ -393,14 +393,16 @@ def _compare_summary(
     implementations: Sequence[str],
     min_speedup: float,
     label: str,
+    enforce_speedup: bool,
 ) -> dict[str, object]:
     """Build the A/B summary block for ``implementations``.
 
     Computes the per-implementation median / spread, the
     scalar-vs-accelerated speedup ratio (when both are in the
-    dict), and a ``passed`` boolean keyed on the declared
-    threshold so the caller can fail closed when the speedup
-    regresses below it.
+    dict), a ``speedup_passed`` result keyed on the declared threshold,
+    and a caller-selected ``passed`` verdict. Quick smoke callers report
+    speed without making host timing a correctness failure; normal
+    benchmarks remain fail closed on a regression.
     """
     summary: dict[str, object] = {"label": label}
     for name in implementations:
@@ -411,7 +413,9 @@ def _compare_summary(
         speedup = scalar_median / accel_median if accel_median > 0 else 0.0
         summary["scalar_vs_accelerated_speedup"] = round(speedup, 4)
         summary["min_speedup"] = min_speedup
-        summary["passed"] = bool(speedup >= min_speedup)
+        speedup_passed = speedup >= min_speedup
+        summary["speedup_passed"] = speedup_passed
+        summary["passed"] = speedup_passed or not enforce_speedup
     elif "auto" in timings:
         summary["auto_median_ns"] = statistics.median(timings["auto"])
     return summary
@@ -424,6 +428,7 @@ def _run_representative(
     samples: int,
     mode: str,
     timeout_ms: int,
+    enforce_speedup: bool,
 ) -> dict[str, object]:
     """Run the representative A/B workload and return the summary block."""
     workspace, total_bytes = _seeded_workspace(
@@ -463,6 +468,7 @@ def _run_representative(
             implementations=implementations,
             min_speedup=REPRESENTATIVE_MIN_SPEEDUP,
             label="representative",
+            enforce_speedup=enforce_speedup,
         ),
     }
 
@@ -474,6 +480,7 @@ def _run_small(
     samples: int,
     mode: str,
     timeout_ms: int,
+    enforce_speedup: bool,
 ) -> dict[str, object]:
     """Run the small A/B workload so ``auto`` can switch to scalar."""
     workspace, total_bytes = _seeded_workspace(
@@ -509,6 +516,7 @@ def _run_small(
             implementations=implementations,
             min_speedup=SMALL_MIN_SPEEDUP,
             label="small",
+            enforce_speedup=enforce_speedup,
         ),
     }
 
@@ -532,8 +540,9 @@ def _compare_implementations(
     mode: str,
     timeout_ms: int,
     include_small: bool,
+    enforce_speedup: bool,
 ) -> tuple[dict[str, object], bool]:
-    """Run the A/B comparison workloads and return ``(summary, all_passed)``."""
+    """Run A/B workloads, optionally enforcing the speedup threshold."""
     with tempfile.TemporaryDirectory(prefix="ralph-reindex-bench-") as tmpdir:
         parent = Path(tmpdir)
         workloads: list[dict[str, object]] = []
@@ -544,6 +553,7 @@ def _compare_implementations(
                 samples=samples,
                 mode=mode,
                 timeout_ms=timeout_ms,
+                enforce_speedup=enforce_speedup,
             )
         )
         if include_small:
@@ -554,6 +564,7 @@ def _compare_implementations(
                     samples=samples,
                     mode=mode,
                     timeout_ms=timeout_ms,
+                    enforce_speedup=enforce_speedup,
                 )
             )
         summary = _output_summary(workloads)
@@ -565,6 +576,7 @@ def _end_to_end(
     samples: int,
     mode: str,
     timeout_ms: int,
+    enforce_speedup: bool,
 ) -> tuple[dict[str, object], bool]:
     """Drive the full ``reindex()`` path with output equality checks.
 
@@ -572,8 +584,8 @@ def _end_to_end(
     forces identical generation / file / structure snapshots
     between ``scalar`` and ``accelerated`` (and ``auto``) and
     then runs the representative A/B comparison. Failures on
-    output equality exit the CLI with a nonzero status so the
-    bench never reports a fabricated speedup.
+    output equality always exit nonzero; speed enforcement follows
+    the caller's quick-versus-normal benchmark mode.
     """
     with tempfile.TemporaryDirectory(prefix="ralph-reindex-e2e-") as tmpdir:
         parent = Path(tmpdir)
@@ -640,6 +652,7 @@ def _end_to_end(
             mode=mode,
             timeout_ms=timeout_ms,
             include_small=False,
+            enforce_speedup=enforce_speedup,
         )
         comparison["workload_bytes"] = total_bytes
         comparison["snapshots_agreed"] = True
@@ -797,6 +810,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             samples=samples,
             mode=mode_value,
             timeout_ms=timeout_value,
+            enforce_speedup=not quick_value,
         )
     else:
         summary, all_passed = _compare_implementations(
@@ -805,6 +819,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode=mode_value,
             timeout_ms=timeout_value,
             include_small=small_workload_value,
+            enforce_speedup=not quick_value,
         )
     print(json.dumps(summary, sort_keys=True, default=str))
     return 0 if all_passed else 1

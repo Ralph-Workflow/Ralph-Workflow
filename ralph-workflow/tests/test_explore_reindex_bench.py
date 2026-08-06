@@ -41,6 +41,7 @@ from ralph.mcp.explore._structure_extractor import (
     structure_extractor_name,
 )
 from ralph.mcp.explore.reindex_bench import (
+    _compare_summary,
     _index_snapshot,
     _parse_implementations,
     _seeded_workspace,
@@ -301,6 +302,33 @@ def test_snapshot_helper_returns_byte_equal_rows(tmp_path: Path) -> None:
         assert other["spans"] == scalar_snap["spans"]
         assert other["symbols"] == scalar_snap["symbols"]
         assert other["edges"] == scalar_snap["edges"]
+
+
+def test_quick_comparison_reports_but_does_not_gate_speedup() -> None:
+    """Quick smoke runs report a slow result without failing on host timing."""
+    summary = _compare_summary(
+        timings={"scalar": [100], "accelerated": [200]},
+        implementations=("scalar", "accelerated"),
+        min_speedup=1.10,
+        label="representative",
+        enforce_speedup=False,
+    )
+    assert summary["scalar_vs_accelerated_speedup"] == 0.5
+    assert summary["speedup_passed"] is False
+    assert summary["passed"] is True
+
+
+def test_non_quick_comparison_fails_below_declared_speedup() -> None:
+    """Normal benchmark mode keeps the performance regression gate."""
+    summary = _compare_summary(
+        timings={"scalar": [100], "accelerated": [200]},
+        implementations=("scalar", "accelerated"),
+        min_speedup=1.10,
+        label="representative",
+        enforce_speedup=True,
+    )
+    assert summary["speedup_passed"] is False
+    assert summary["passed"] is False
 
 
 # --- CLI smoke: the binary must accept the documented flags --------------

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 # This module is the real-git system contract. The default suite exercises
 # the same orchestration boundary with injected git collaborators.
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 def test_allows_clean_repository(tmp_git_repo: Path) -> None:
