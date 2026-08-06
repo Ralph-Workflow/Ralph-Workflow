@@ -72,6 +72,7 @@ REMOTE_NO_REMOTE_BRANCH = "no remote branch"
 #: motion needed; the next landing pushes the local state to the
 #: remote.
 REMOTE_LOCAL_AHEAD = "local ahead"
+REMOTE_ALREADY_CURRENT = "already current"
 #: Failure classification -- the recorded reason the run did not
 #: publish, used both for the operator line and the waiting-state
 #: end-of-run summary.
@@ -181,6 +182,8 @@ def pull_and_reconcile_target(
             last_remote_sync="refresh suppressed",
             last_refresh="refresh suppressed by throttle",
             reason="remote freshness probe suppressed by configured interval",
+            freshness_verdict="unverified",
+            freshness_source="suppressed probe",
         )
 
     refresh = refresh_target_from_remote(
@@ -225,6 +228,14 @@ def _dispatch_pull_outcome(
     state: RebaseState | None = None
     if refresh == REFRESH_LOCAL_FLEET:
         _arm_throttle(repo_root, chosen_remote, target, clock)
+        state = _record_remote_state(
+            target,
+            last_remote_sync="local fleet",
+            last_refresh=refresh,
+            reason=None,
+            freshness_verdict="verified",
+            freshness_source="shared local ref",
+        )
     elif refresh == REFRESH_UNREACHABLE:
         logger.debug("auto_integrate: remote sync pull unreachable on '{}'", target)
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
@@ -233,6 +244,8 @@ def _dispatch_pull_outcome(
             last_remote_sync=REMOTE_PULL_FAILED,
             last_refresh=refresh,
             reason=REMOTE_REMOTE_UNREACHABLE,
+            freshness_verdict="degraded",
+            freshness_source="fetch",
         )
     elif refresh in (REFRESH_NO_REMOTE, REFRESH_NO_REMOTE_BRANCH):
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
@@ -257,6 +270,9 @@ def _dispatch_pull_outcome(
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=refresh,
                 reason=str(exc),
+                freshness_verdict="unsafe",
+                freshness_source="fetch",
+                freshness_safe=False,
             )
         else:
             _arm_throttle(repo_root, chosen_remote, target, clock)
@@ -298,9 +314,20 @@ def _dispatch_pull_outcome(
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=refresh,
                 reason=reason,
+                freshness_verdict="unsafe",
+                freshness_source="fetch",
+                freshness_safe=False,
             )
     else:
         _arm_throttle(repo_root, chosen_remote, target, clock)
+        state = _record_remote_state(
+            target,
+            last_remote_sync=REMOTE_ALREADY_CURRENT,
+            last_refresh=refresh,
+            reason=None,
+            freshness_verdict="verified",
+            freshness_source="fetch",
+        )
     return state
 
 
@@ -646,6 +673,9 @@ def _record_remote_state(
     last_remote_sync: str,
     last_refresh: str | None,
     reason: str | None,
+    freshness_verdict: str | None = None,
+    freshness_source: str | None = None,
+    freshness_safe: bool = True,
 ) -> RebaseState:
     """Build the canonical ``RebaseState`` annotation for a remote sync outcome."""
     return RebaseState(
@@ -654,6 +684,9 @@ def _record_remote_state(
         last_target=target,
         last_remote_sync=last_remote_sync,
         last_refresh=last_refresh,
+        freshness_verdict=freshness_verdict,
+        freshness_source=freshness_source,
+        freshness_safe=freshness_safe,
     )
 
 

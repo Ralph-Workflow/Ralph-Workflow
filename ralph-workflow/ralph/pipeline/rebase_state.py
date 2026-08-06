@@ -53,6 +53,16 @@ class RebaseState(RalphBaseModel):
     # legacy checkpoints load unchanged.
     last_refresh: str | None = None
 
+    # Freshness is structured so seam control and display never infer safety
+    # from human-readable reasons. ``verified`` means a healthy fetch or
+    # shared-ref observation established the base; ``degraded`` is fail-open
+    # remote unavailability; ``unverified`` is an intentionally suppressed
+    # probe; ``unsafe`` blocks the feature rebase for this seam.
+    freshness_verdict: str | None = None
+    freshness_source: str | None = None
+    freshness_safe: bool = True
+    freshness_target_sha: str | None = None
+
     # ``last_push`` records the fail-open configured-remote push after a
     # successful local landing. The summary is operator-visible but never
     # changes the landing result. The field is None when sync is disabled

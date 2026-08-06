@@ -106,6 +106,23 @@ def test_disabled_returns_none_with_no_fetch(
     assert all("fetch" not in c for c in calls)
 
 
+def test_already_current_records_a_verified_freshness_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E1: a healthy equal-tip fetch is visible as a verified base."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+    from ralph.pipeline.auto_integrate_sync import REFRESH_ALREADY_CURRENT
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_ALREADY_CURRENT)
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.freshness_verdict == "verified"
+    assert out.freshness_source == "fetch"
+    assert out.last_remote_sync == "already current"
+
+
 def test_local_ahead_does_not_move_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -119,7 +136,9 @@ def test_local_ahead_does_not_move_target(
     )
     config = _config()
     out = remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
-    assert out is None
+    assert out is not None
+    assert out.freshness_verdict == "verified"
+    assert out.freshness_source == "shared local ref"
 
 
 def test_local_strictly_ahead_records_publishable_without_reconcile(
@@ -246,6 +265,40 @@ def test_interval_zero_fetches_every_seam(
     assert (
         throttle.should_pull("/repo", "origin", "main", interval_seconds=0.0, clock=clock) is True
     )
+
+
+def test_suppressed_refresh_is_explicitly_unverified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E6/AC-6: throttle suppression cannot masquerade as a fresh base."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "_throttle_allows_pull", lambda *a, **kw: False)
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.freshness_verdict == "unverified"
+    assert out.freshness_source == "suppressed probe"
+    assert out.freshness_safe is True
+
+
+def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E9: failed target reconciliation is not a base a feature may use."""
+    from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
+    monkeypatch.setattr(reconcile, "reconcile_target_onto_remote", lambda *a, **kw: (False, "conflicted"))
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.freshness_safe is False
+    assert out.freshness_verdict == "unsafe"
+    assert out.last_reason == "conflicted"
 
 
 def test_unreachable_remote_degrades_without_failing(

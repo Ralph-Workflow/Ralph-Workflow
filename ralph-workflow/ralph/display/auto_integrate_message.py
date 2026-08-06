@@ -47,6 +47,11 @@ def _fast_forward_suffix(
     return ""
 
 
+def _freshness_suffix(verdict: str | None) -> str:
+    """Render the operator-visible freshness class without parsing prose."""
+    return f" [base: {verdict}-fresh]" if verdict else ""
+
+
 def _refresh_suffix(refresh: str | None) -> str:
     """Append the pre-landing origin-refresh outcome, when one was recorded.
 
@@ -98,6 +103,7 @@ def format_auto_integrate_message(
     push: str | None = None,
     remote_sync: str | None = None,
     remote: str | None = None,
+    freshness_verdict: str | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
@@ -163,6 +169,7 @@ def format_auto_integrate_message(
 
     return (
         message
+        + _freshness_suffix(freshness_verdict)
         + _refresh_suffix(refresh)
         + _push_suffix(push)
         + _remote_suffix(remote_sync, remote, target)

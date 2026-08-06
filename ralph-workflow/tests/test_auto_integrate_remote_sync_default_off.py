@@ -38,7 +38,10 @@ def test_remote_sync_default_on_fetches_and_pushes_when_present(monkeypatch: pyt
     record = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     assert remote_sync_enabled(config) is True
     assert remote_target_name(config) == "origin"
-    assert pull_and_reconcile_target(config, Path("/repo"), "main") is None
+    pull = pull_and_reconcile_target(config, Path("/repo"), "main")
+    assert pull is not None
+    assert pull.freshness_verdict == "verified"
+    assert pull.freshness_source == "shared local ref"
     assert push_target_after_landing(config, Path("/repo"), "main", record).last_push is not None
     assert calls == ["fetch", "push"]
 

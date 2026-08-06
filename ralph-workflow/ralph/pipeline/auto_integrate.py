@@ -336,6 +336,11 @@ def _auto_integrate_after_commit_inner(
     # seam integrates against.  A remote failure is only operator state: the
     # local transaction below remains authoritative and fail-open.
     remote_record = pull_and_reconcile_target(config, root, target)
+    # A remote outage is deliberately fail-open, but a target that could not
+    # be safely advanced or reconciled is not a usable rebase base. Keep the
+    # typed distinction at the seam instead of guessing from display prose.
+    if remote_record is not None and not remote_record.freshness_safe:
+        return remote_record
 
     # Budget check BEFORE any git mutation: an exhausted budget still
     # runs the rebase and the endpoint merge (and still aborts them
@@ -444,6 +449,10 @@ def _auto_integrate_after_commit_inner(
                 "last_remote": remote_record.last_remote,
                 "last_refresh": remote_record.last_refresh or record.last_refresh,
                 "last_reason": record.last_reason or remote_record.last_reason,
+                "freshness_verdict": remote_record.freshness_verdict,
+                "freshness_source": remote_record.freshness_source,
+                "freshness_safe": remote_record.freshness_safe,
+                "freshness_target_sha": remote_record.freshness_target_sha,
             }
         )
     if attempts_exhausted:
