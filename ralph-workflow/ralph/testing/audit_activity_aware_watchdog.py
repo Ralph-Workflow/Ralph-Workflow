@@ -628,14 +628,28 @@ def audit_reader_file(path: Path) -> list[ActivityAwareWatchdogViolation]:
 
 
 # Bounded per-process cache: ``(resolved_root_str, fingerprint) -> list[Violation]``.
-# The fingerprint is a SHA-1 of (path, mtime_ns) for every ``*.py`` file
-# under the package root; recomputing it is fast (a single ``os.walk``
-# with a stat per file) and a fingerprint change invalidates the
-# cached result, so a fresh CI run that edited a source file still
-# gets a fresh audit. The cache is bounded by the natural fact that
-# the audit is called with at most a handful of distinct
-# ``package_root`` paths per process (the ralph/ production tree,
+# The fingerprint is a SHA-1 of (path, mtime_ns, content sha1) for every
+# ``*.py`` file under the package root; recomputing it re-reads every file
+# (a single ``os.walk`` with a stat + read per file) and a fingerprint
+# change invalidates the cached result, so a fresh CI run that edited a
+# source file still gets a fresh audit. The cache is bounded by the
+# natural fact that the audit is called with at most a handful of
+# distinct ``package_root`` paths per process (the ralph/ production tree,
 # plus a few tmp_path fakes in tests).
+#
+# Content is folded into the fingerprint -- not just path + mtime_ns --
+# because pytest's tmp_path retention policy (``pytest.ini``:
+# ``tmp_path_retention_policy = failed``, ``tmp_path_retention_count = 1``)
+# deletes a passing test's tmp dir, and two test node ids that truncate to
+# the same 30-character stem are then handed the *same* absolute tmp_path.
+# Back-to-back writes to that reused path can land on an identical
+# ``st_mtime_ns`` (measured on this host), which made a (path, mtime_ns)-only
+# fingerprint collide for two tests with different fake-package content and
+# leak the first test's cached violations into the second
+# (test_audit_flags_reader_missing_teardown_subtree_on_fire_path flaking
+# under the missing_subagent_sink/teardown_subtree_on_fire selection).
+# Hashing content closes that hole regardless of directory reuse or mtime
+# resolution.
 _AUDIT_FINGERPRINT_CACHE: dict[tuple[str, str], list[ActivityAwareWatchdogViolation]] = {}
 
 
@@ -645,11 +659,12 @@ def _compute_fingerprint(package_root: Path) -> str | None:
     Returns ``None`` when the root is not a directory (mirrors the
     ``audit_activity_aware_watchdog`` early-return path). The
     fingerprint is a SHA-1 hex digest of the concatenation
-    ``<posix_path>\\x00<mtime_ns>\\n`` for every ``*.py`` file
-    discovered via :func:`os.walk`. This is collision-resistant for
-    any realistic tree (the path + mtime pair is unique per file on
-    the same filesystem) and cheap (~8ms for the production
-    ``ralph/`` tree).
+    ``<posix_path>\\x00<mtime_ns>\\x00<content_sha1>\\n`` for every ``*.py``
+    file discovered via :func:`os.walk`. ``mtime_ns`` is kept as a cheap
+    prefix (a stat is already paid for on every walk), but correctness does
+    not depend on it: the content digest alone guarantees that two files
+    with different bytes never collide, even when they share a path and an
+    ``mtime_ns`` because a temp directory was reused across test runs.
     """
     if not package_root.is_dir():
         return None
@@ -663,12 +678,15 @@ def _compute_fingerprint(package_root: Path) -> str | None:
             path = Path(parent) / name
             try:
                 mtime = path.stat().st_mtime_ns
+                content = path.read_bytes()
             except OSError:
                 continue
             posix = path.as_posix()
             hasher.update(posix.encode("utf-8"))
             hasher.update(b"\x00")
             hasher.update(str(mtime).encode("utf-8"))
+            hasher.update(b"\x00")
+            hasher.update(hashlib.sha1(content).digest())
             hasher.update(b"\n")
     return hasher.hexdigest()
 
@@ -678,8 +696,8 @@ def audit_activity_aware_watchdog(package_root: Path) -> list[ActivityAwareWatch
 
     The audit is short-circuited by a bounded per-process cache
     keyed by ``(resolved_root, fingerprint)`` where ``fingerprint``
-    is a SHA-1 of every ``*.py`` file's (path, mtime_ns) pair.
-    The first call with a new fingerprint does the full audit and
+    is a SHA-1 of every ``*.py`` file's (path, mtime_ns, content sha1)
+    triple. The first call with a new fingerprint does the full audit and
     caches the result; subsequent calls with the same fingerprint
     skip the work and return the cached violations in O(1). This
     is the bounded-cache seam the analysis calls for: it avoids
