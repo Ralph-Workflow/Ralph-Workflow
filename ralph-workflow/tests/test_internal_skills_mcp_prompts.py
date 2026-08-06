@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 
 from ralph.config.mcp_models import McpConfig
+from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.protocol._session_drain import SessionDrain
@@ -74,14 +74,8 @@ def test_planning_skills_teach_the_mandatory_contract() -> None:
         assert "instruction set" in text or "executor-ready" in text
         assert "advisory findings are errors" not in text
 
-    format_doc = (
-        Path(__file__).resolve().parents[1]
-        / "ralph"
-        / "mcp"
-        / "artifacts"
-        / "format_docs"
-        / "planning_analysis_decision.md"
-    ).read_text(encoding="utf-8")
+    format_doc = load_bundled_format_doc("planning_analysis_decision")
+    assert format_doc is not None
     assert "Observation:" in format_doc
     assert "Cost:" in format_doc
     assert "Fix:" in format_doc

@@ -44,7 +44,8 @@ def test_planning_prompt_uses_concise_artifact_workflow(tmp_path: Path) -> None:
     assert "Characterize" in prompt
     assert "Change" in prompt
     assert "Verify" in prompt
-    assert "PLAN001" in prompt
+    assert "stable `### [S-n] Title` steps" in prompt
+    assert "Validation Overrides" in prompt
     assert 'artifact_type="plan"' in prompt
     assert "ralph_edit_md_artifact" in prompt
     assert "ralph_edit_md_plan_step" not in prompt
@@ -63,7 +64,7 @@ def test_planning_edit_treats_analysis_as_advice(tmp_path: Path) -> None:
     )
 
     assert "PLANNING EDIT MODE" in prompt
-    assert "fresh reviewer, not a document-shape checklist" in prompt
+    assert "Feedback\nis advice from a fresh reviewer" in prompt
     assert "ralph_edit_md_plan_step" not in prompt
 
 

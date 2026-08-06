@@ -42,6 +42,12 @@ Files:
 Depends on: S-1
 Verify: pytest tests/test_feature.py -q
 Expect: the focused regression passes with exit code 0
+
+## Verification
+- [V-1] pytest tests/test_feature.py -q
+  Expect: the focused regression passes with exit code 0
 ```
+
+Use `ralph_verify_md_artifact` before submission when a fast diagnostic preview helps. Use `ralph_stage_md_artifact`, `ralph_get_md_draft`, and `ralph_finalize_md_artifact` for an assembled draft; use `ralph_discard_md_draft` only for a genuine wholesale restart.
 
 `schema_version` and `## Validation Overrides` are unsupported. Repair every diagnostic directly. The only step-less document is exactly `type: plan` plus `noop: true`.

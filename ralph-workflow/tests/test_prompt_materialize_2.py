@@ -243,9 +243,9 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert (
         "Read the current plan and verify feedback against the request and repository." in rendered
     )
-    assert "feedback is advice from a fresh reviewer" in rendered
+    assert "Feedback\nis advice from a fresh reviewer" in rendered
     assert "Plan the full arc in this order" in rendered
-    assert "PLAN001" in rendered
+    assert "stable `### [S-n] Title` steps" in rendered
     assert "Feedback for the planner" not in rendered
     assert workspace.exists(".agent/artifacts/plan.md") is True
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.md") is True

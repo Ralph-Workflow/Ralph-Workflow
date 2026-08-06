@@ -11,7 +11,7 @@ and tolerate multi-line prose and unknown continuation lines.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
@@ -21,7 +21,6 @@ from ralph.mcp.artifacts.typed_artifacts import normalize_analysis_decision_cont
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
-    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _ANALYSIS_TYPES = (
     "planning_analysis_decision",
@@ -38,7 +37,7 @@ def _item_texts(document: ParsedDocument, section_name: str) -> list[str]:
     section = document.section(section_name)
     if section is None:
         return []
-    return [item.text for item in cast("list[ParsedItem]", section.items)]
+    return [item.text for item in section.items]
 
 
 def _finding_target(text: str) -> str | None:
@@ -55,7 +54,7 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     shortfall_section = document.section("What Came Up Short")
     finding_targets: dict[str, str] = {}
     if shortfall_section is not None:
-        shortfall_items = cast("list[ParsedItem]", shortfall_section.items)
+        shortfall_items = shortfall_section.items
         for item in shortfall_items:
             target = _finding_target(item.text)
             if target is not None:
@@ -70,7 +69,7 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
         if how_to_fix is None
         else [
             f"{item.identifier}: {item.text}"
-            for item in cast("list[ParsedItem]", how_to_fix.items)
+            for item in how_to_fix.items
         ],
     }
 

@@ -335,20 +335,7 @@ def test_noop_short_circuits_size_guard() -> None:
     original = size_limits_module.check_plan_size
     size_limits_module.check_plan_size = boom
     try:
-        # Both steps and work_units are empty lists -> is_noop_plan returns True
-        # and normalize short-circuits BEFORE the size guard runs.
-        noop_payload = {
-            "summary": {
-                "context": "x",
-                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
-            },
-            "skills_mcp": {"skills": ["writing-plans"]},
-            "steps": [],
-            "work_units": [],
-            "critical_files": {"primary_files": [{"path": "x.py", "action": "modify"}]},
-            "risks_mitigations": [{"risk": "x", "mitigation": "y"}],
-            "verification_strategy": [{"method": "pytest", "expected_outcome": "ok"}],
-        }
+        noop_payload = {"noop": True}
         result = normalize_plan_artifact_content(noop_payload)
         assert result == {"noop": True}
         assert call_count["n"] == 0, (

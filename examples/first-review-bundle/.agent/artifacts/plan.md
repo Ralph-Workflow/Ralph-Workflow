@@ -1,6 +1,5 @@
 ---
 type: plan
-schema_version: 1
 ---
 
 ## Summary
@@ -13,9 +12,11 @@ Reject empty or whitespace-only project names before file creation while preserv
 
 Cover empty and whitespace-only project names before changing the create flow.
 
-Type: test
+Type: file_change
 Files:
 - modify tests/test_create.py
+Verify: pytest tests/test_create.py -q
+Expect: the focused create-flow tests initially fail for empty and whitespace-only names
 
 ### [S-2] Validate normalized names before file creation
 
@@ -25,6 +26,8 @@ Type: file_change
 Files:
 - modify cli/create.py
 Depends on: S-1
+Verify: pytest tests/test_create.py -q
+Expect: empty and whitespace-only names fail clearly before file creation
 
 ### [S-3] Verify the focused behavior
 
