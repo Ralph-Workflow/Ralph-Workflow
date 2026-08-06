@@ -64,7 +64,7 @@ def test_planning_edit_treats_analysis_as_advice(tmp_path: Path) -> None:
     )
 
     assert "PLANNING EDIT MODE" in prompt
-    assert "Feedback\nis repository evidence, not a document-shape checklist." in prompt
+    assert "Feedback\nis advice from a fresh reviewer, grounded in repository evidence, not a document-shape checklist." in prompt
     assert "ralph_edit_md_plan_step" not in prompt
 
 

@@ -243,7 +243,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert (
         "Read the current plan and verify feedback against the request and repository." in rendered
     )
-    assert "Feedback\nis repository evidence, not a document-shape checklist." in rendered
+    assert "Feedback\nis advice from a fresh reviewer, grounded in repository evidence, not a document-shape checklist." in rendered
     assert "Plan the full arc in this order" in rendered
     assert "stable `### [S-n] Title` steps" in rendered
     assert "ralph_edit_md_artifact" in rendered

@@ -34,7 +34,7 @@ status: request_changes
 ## Summary
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
-- [PA-001] Step: [{step}] lacks an executable verification command.
+- [PA-001] Step: [{step}] lacks an executable verification command. Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
 ## How To Fix
 - [PA-001] Replace the affected plan text with a concrete command.
 """
