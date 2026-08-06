@@ -1,5 +1,9 @@
 """Auto-integration seam: rebase a feature branch and fast-forward its target safely.
 
+# AC-14 rationale: B10
+# ladder rung: 1
+# AC-14 rationale: E4
+# ladder rung: 4
 The workflow first rebases the feature branch onto its live local target. On a
 conflict, it hands the stop to the conflict-resolution pipeline to resolve the
 rebase in place, prove and stage the result, then run ``git rebase --continue``.
@@ -980,6 +984,7 @@ __all__ = [
     "recovery_retained_record",
     "resolve_integration_target",
 ]
+
 # ----- AC-14 catalog evidence -----
 # This file is the authoritative source for the catalog entries listed
 # below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent

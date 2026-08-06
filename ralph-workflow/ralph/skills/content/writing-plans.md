@@ -15,10 +15,11 @@ Cover the whole arc in order: **Orient**, **Characterize**, **Change**, and
 commands, and patterns in repository evidence; write a discovery step for an
 honest unknown.
 
-Use stable `### [S-n] Title` steps. Keep commitments next to the work they
-describe, state them once, and give every step concrete targets, dependencies
-when ordered work requires them, runnable verification, and observable
-completion evidence. Describe real risks rather than filling sections.
+Use the plan format supplied by the active workflow. Its headings are optional
+structure, not a checklist. Use stable `### [S-n] Title` steps where a downstream
+consumer needs them. Keep commitments next to the work they describe, state them
+once, and describe real risks and runnable completion evidence rather than
+filling sections.
 
 For a revision, preserve valid material, check feedback against the request and
 repository, and update every affected commitment together. Prefer the standard

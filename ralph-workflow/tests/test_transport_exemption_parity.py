@@ -57,6 +57,10 @@ _ALLOWED_TRANSPORT_REFERENCE_PATTERNS: tuple[tuple[str, str], ...] = (
         "OpenCode's own known empty-transcript shape",
     ),
     (
+        r"^if transport is AgentTransport\.OPENCODE$",
+        "identification: adds OpenCode's transport-specific MCP tool naming guidance",
+    ),
+    (
         r"^if params\.config\.transport == AgentTransport\.AGY:$",
         "additive diagnostic: _agy_upstream_diagnostic only ever ADDS an error for AGY's own "
         "known upstream-failure shape",

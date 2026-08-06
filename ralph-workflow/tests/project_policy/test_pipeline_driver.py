@@ -58,7 +58,7 @@ def _submit_decision(
             f"status: {status}\n"
             "---\n\n"
             "## Summary\n\n"
-            "- [SUM-1] Review complete.\n"
+            "- [SUM-1] Review complete. Evidence: declared policy probes were inspected.\n"
             f"{extra_sections}"
         ),
     )

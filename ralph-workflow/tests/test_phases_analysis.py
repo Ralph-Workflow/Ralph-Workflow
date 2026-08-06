@@ -67,7 +67,7 @@ def _development_analysis_markdown(status: str) -> str:
         f"status: {status}\n"
         "---\n"
         "\n## Summary\n\n"
-        "- [SUM-1] Development analysis reached a policy-defined decision.\n"
+        "- [SUM-1] Development analysis reached a policy-defined decision. Evidence: command output was inspected.\n"
         f"{feedback}"
     )
 
@@ -91,7 +91,7 @@ def _analysis_decision_markdown(artifact_type: str, status: str) -> str:
         f"status: {status}\n"
         "---\n"
         "\n## Summary\n\n"
-        "- [SUM-1] Analysis reached a decision.\n"
+        "- [SUM-1] Analysis reached a decision. Evidence: command output was inspected.\n"
         f"{feedback}"
     )
 
@@ -104,7 +104,7 @@ status: completed
 
 ## Summary
 
-- [SUM-1] Development analysis completed.
+- [SUM-1] Development analysis completed. Evidence: command output was inspected.
 """
 
 

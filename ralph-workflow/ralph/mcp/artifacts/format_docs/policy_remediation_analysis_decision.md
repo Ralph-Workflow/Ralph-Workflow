@@ -14,7 +14,7 @@ status: completed
 
 ## Summary
 
-- [SUM-1] Every declared criterion has evidence; no counterexample was found.
+- [SUM-1] Every declared criterion has evidence; no counterexample was found. Evidence: `make verify` exits 0.
 ```
 
 ## Request-changes example

@@ -727,7 +727,7 @@ def test_analysis_feedback_rejects_wrong_finding_id_even_when_counts_match() -> 
     assert "Unknown analysis finding ID" in failure_events[0].reason
 
 
-def test_analysis_feedback_passes_with_exact_text() -> None:
+def test_analysis_feedback_passes_with_exact_finding_id() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)

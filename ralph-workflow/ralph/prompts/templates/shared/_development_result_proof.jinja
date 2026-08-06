@@ -4,7 +4,7 @@ You MUST submit a `development_result` artifact before declaring completion: a m
 
 **## Plan Items Proven** (when the plan explicitly uses `## Work Units` instead): in the main integration session, one `- [unit-ID] <proof>` item for EVERY work unit in the plan; each bracketed ID EXACTLY matches the plan's `[unit-ID]` bracket ID. Isolated worker prompts override this with exactly one proof for their assigned unit. Never mix step IDs and work-unit IDs in one result.
 
-**## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
+**## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per localized `What Came Up Short` finding from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
 
 Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt.
 

@@ -25,6 +25,8 @@ _STATUSES = ("completed", "request_changes", "failed")
 _FINDING_TARGET_PATTERN = re.compile(r"(?:Step:\s*)?\[(S-[1-9][0-9]*)\]|Plan-level:", re.IGNORECASE)
 _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
 _REQUIRED_FINDING_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
+_COMPLETED_EVIDENCE_MARKER = "Evidence:"
+_NOT_EVALUABLE_MARKER = "verdict: not evaluable"
 
 
 def _item_texts(document: ParsedDocument, section_name: str) -> list[str]:
@@ -75,7 +77,8 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
     what_section = document.section("What Came Up Short")
     fix_section = document.section("How To Fix")
     if status == "completed":
-        return [
+        summary_section = document.section("Summary")
+        diagnostics = [
             Diagnostic(
                 section.line,
                 section.name,
@@ -85,6 +88,18 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
             for section in (what_section, fix_section)
             if section is not None
         ]
+        if artifact_type in _VERIFICATION_TYPES and summary_section is not None:
+            diagnostics.extend(
+                Diagnostic(
+                    item.line,
+                    "Summary",
+                    "ANALYSIS006",
+                    "completed verification decisions must cite evidence with 'Evidence:' rather than assert success",
+                )
+                for item in summary_section.items
+                if _COMPLETED_EVIDENCE_MARKER not in item.text
+            )
+        return diagnostics
     if status not in {"request_changes", "failed"}:
         return []
     what_items = () if what_section is None else what_section.items
@@ -108,6 +123,16 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
             for item in what_items
             if any(field not in item.text for field in _REQUIRED_FINDING_FIELDS)
         )
+    diagnostics.extend(
+        Diagnostic(
+            item.line,
+            "What Came Up Short",
+            "ANALYSIS007",
+            "a 'not evaluable' verification verdict requires status 'failed'",
+        )
+        for item in what_items
+        if status != "failed" and _NOT_EVALUABLE_MARKER in item.text.casefold()
+    )
     if artifact_type == "planning_analysis_decision":
         diagnostics.extend(
             Diagnostic(

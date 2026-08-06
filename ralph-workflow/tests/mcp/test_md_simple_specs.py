@@ -72,6 +72,32 @@ def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None
     assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
 
 
+def test_completed_verification_decision_requires_evidence_citation() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] Every criterion is met.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS006", "error")]
+
+
+def test_not_evaluable_verdict_requires_failed_status() -> None:
+    document = _decision("Step: [S-2] cannot be observed.").replace(
+        "Verdict: not met", "Verdict: not evaluable"
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error")]
+
+
 def test_request_changes_allows_explicit_plan_level_target() -> None:
     content, diagnostics = parse_and_validate(
         _decision("Plan-level: The outcome omits an out-of-scope boundary."),

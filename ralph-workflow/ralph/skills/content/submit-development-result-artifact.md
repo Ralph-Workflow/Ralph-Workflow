@@ -86,7 +86,7 @@ status: completed
 
 ## Analysis Items Addressed
 
-- [FIX-1] pytest tests/test_foo.py -q passes with the new regression test included.
+- [DA-001] pytest tests/test_foo.py -q passes with the new regression test included.
 ```
 
 ## Error Recovery

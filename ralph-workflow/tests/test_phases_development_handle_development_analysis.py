@@ -22,7 +22,7 @@ def _decision_markdown(status: str) -> str:
     return (
         "---\ntype: development_analysis_decision\n"
         f"status: {status}\n---\n"
-        "## Summary\n- [SUM-1] Analysis complete.\n"
+        "## Summary\n- [SUM-1] Analysis complete. Evidence: command output was inspected.\n"
         f"{feedback}"
     )
 

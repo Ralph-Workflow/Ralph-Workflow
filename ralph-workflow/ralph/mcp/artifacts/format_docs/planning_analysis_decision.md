@@ -14,7 +14,7 @@ status: completed
 
 ## Summary
 
-- [SUM-1] Every fixed criterion has evidence; no counterexample was found.
+- [SUM-1] Every fixed criterion has evidence; no counterexample was found. Evidence: `pytest tests/test_plan.py -q` reports 12 passed.
 ```
 
 ## Request-changes example
