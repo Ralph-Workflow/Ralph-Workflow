@@ -430,3 +430,91 @@ functions themselves (`_artifact_submission_evidence`, `_completion_evidence`,
 `_tool_activity_evidence`, `transport_evidence_ceiling`), not just the
 lattice arithmetic, derive that verdict from a transcript shaped like the
 real run.
+
+## 2026-08-06: Evidence Provenance closeout plan, S-3 -- fresh B-series live capture
+
+`agy_wire_b_series.jsonl` is a **new, dedicated live capture** taken
+specifically to close DoD items 8/9 for the B1/B2/B3/B5 parser-fidelity
+regression tests, which previously constructed their frames as hand-written
+JSON literals rather than replaying a captured fixture (flagged by DA-001
+against the prior pass of this plan). It is a distinct capture from every
+fixture in the "B1/B2/B3/B4/B5 regression fixtures" section above, which
+remained synthetic derivations from the *documented* frame vocabulary; this
+file's 12 frames are the direct, unedited output of one live run (only the
+`conversation_id` and the scratch-workspace absolute path were normalized
+to stable placeholders -- durations and usage are the exact measured
+floats, kept deliberately un-rounded so the B2 rounding assertions exercise
+genuine floating-point noise rather than a hand-picked example).
+
+**Capture command** (the same PTY harness documented above, prompt 2 --
+"the tool-using capture"):
+
+```
+agy --output-format stream-json --dangerously-skip-permissions \
+    --add-dir /tmp/agy-capture-b --model gemini-3.6-flash-low --print \
+    "Create a file named hello.txt in the current directory containing \
+     exactly hi, then read it back and stop."
+```
+
+**Capture date:** 2026-08-06. **Binary version:** `agy` v1.1.10 (`agy
+--version` printed `1.1.10` immediately before the capture, same shell).
+Run to completion in a scratch directory (`/tmp/agy-capture-b`) with real
+network access -- the process wrote `hello.txt` and exited on its own with
+no watchdog kill required, unlike the sandbox-artifact runs recorded
+elsewhere in this file.
+
+The 12 captured frames, in order: `init` (58 tools, including
+`call_mcp_tool`, zero `ralph_*` entries -- reconfirms A1), `user_input`
+DONE (step 0), `unknown` DONE (step 1, carries `duration_seconds`),
+a **bodiless `agent_response` DONE** with no `text_delta` but real `usage`
+(step 2 -- B3/B4 shape), `write_to_file` tool ACTIVE/DONE (step 3, DONE
+carries no `tool_info.output` and a 9-decimal `duration_seconds` of
+`0.075956764` -- the B1/B2/B5 shape, and genuinely has no `call_id`/`.id`,
+so it exercises the real step_index-fallback path), `checkpoint` DONE
+(step 4, carries `usage`), a second bodiless `agent_response` DONE (step 5),
+`view_file` tool ACTIVE/DONE (step 6, DONE carries a real `tool_info.output`
+for contrast), a final `agent_response` DONE with `text_delta` (step 7),
+and the closing `result` frame (`status: SUCCESS`, `duration_seconds:
+2.586211531`, `num_turns: 1`).
+
+`tests/test_agy_parser.py`'s `_fixture_lines` helper slices specific frame
+indices out of this file so each B-series test replays exactly the real
+frames its defect lock needs, in place of the previous hand-typed literals:
+
+- **B3** (`test_b3_user_input_unknown_checkpoint_steps_emit_lifecycle_events`):
+  frames 1 (`user_input`), 2 (`unknown`), 6 (`checkpoint`).
+- **B2** (`test_b2_completion_summary_duration_rounds_to_two_decimals`,
+  `test_b2_result_summary_duration_rounds_to_two_decimals`): frames 4-5
+  (the `write_to_file` ACTIVE/DONE pair) and frame 11 (the `result` frame)
+  respectively -- both now pin rounding against genuinely measured
+  floating-point noise (`0.075956764` -> `0.08s`; `2.586211531` -> `2.59s`).
+- **B5** (`test_b5_step_index_fallback_id_is_not_labeled_tool_use_id`):
+  frames 4-5, asserting the real measured absence of `call_id`/`.id` routes
+  through the `step_ordinal` fallback (`step_index` 3), not `tool_use_id`.
+- **B1** (`test_b1_orphan_tool_result_record_body_names_tool_without_duplicating_it`):
+  frames 4-5, run through the full `agy.py` -> `agent_event_renderer` ->
+  `presented_entry.py` pipeline to pin the tool-name deduplication contract
+  against a genuinely measured orphan (no-`call_id`) tool result.
+
+The genuine-`call_id` companion tests (`test_b5_genuine_call_id_still_uses_tool_use_id_key`,
+`test_b1_correlated_tool_result_record_body_omits_tool_name_and_stays_nonempty`)
+remain synthetic and are deliberately left that way: across every live
+capture recorded in this file (three prior probes plus this one), AGY's
+`tool_info` has never once carried a genuine `call_id`/`.id` for an
+ordinary tool, so there is no measured frame shape to replay for that
+branch -- the companion tests exist to pin the code path that would handle
+one if AGY ever starts emitting it.
+
+**DoD items 8/9 status:** closed for B1, B2, B3, and B5 by this capture.
+B4's dedicated tests (`test_b3_bodiless_agent_response_done_with_no_buffered_text_surfaces_usage`,
+`test_b4_bodiless_agent_response_done_usage_reaches_pending_flush`) already
+replayed a captured fixture (`agy_wire_text.jsonl`) before this pass and
+were not touched. `test_s2_back_to_back_bodiless_usage_frames_merge_instead_of_overwriting`
+remains synthetic by necessity: two bodiless `agent_response` DONE frames
+landing back-to-back while text is still buffered was not observed in any
+live capture (every measured run's bodiless DONE frames were separated by
+an intervening tool step, as frames 2 and 5 of this very capture show), so
+there is no live frame sequence to replay for that specific collision --
+only the merge logic it locks in is real (see the S-2 entry above). B6 and
+B7 were already resolved/labeled in earlier entries in this file and are
+unaffected by this capture.

@@ -7,6 +7,11 @@ and the real empty-output stderr message). The fixtures replayed below
 (``agy_wire.jsonl``, ``agy_wire_tool.jsonl``, ``agy_wire_subagent.jsonl``,
 ``agy_wire_text.jsonl``) reproduce those measured captures with volatile
 values (UUIDs, absolute paths, durations) normalized to stable placeholders.
+``agy_wire_b_series.jsonl`` is a separate, later live capture (2026-08-06)
+used by the B1/B2/B3/B5 defect-lock tests below via ``_fixture_lines`` so
+those regressions replay real measured frames instead of hand-typed JSON
+literals; only the conversation id and workspace path are normalized in it
+-- durations and usage are kept exactly as measured.
 
 The AgyParser maps stream-json events (``init``, ``step_update``, ``result``,
 ``error``) to normalized ``lifecycle`` / ``text`` / ``tool_use`` /
@@ -32,12 +37,25 @@ _AGY_WIRE_FIXTURE = _FIXTURES_DIR / "agy_wire.jsonl"
 _AGY_WIRE_TOOL_FIXTURE = _FIXTURES_DIR / "agy_wire_tool.jsonl"
 _AGY_WIRE_SUBAGENT_FIXTURE = _FIXTURES_DIR / "agy_wire_subagent.jsonl"
 _AGY_WIRE_TEXT_FIXTURE = _FIXTURES_DIR / "agy_wire_text.jsonl"
+_AGY_WIRE_B_SERIES_FIXTURE = _FIXTURES_DIR / "agy_wire_b_series.jsonl"
 
 
 def _replay(fixture: Path) -> list:
     parser = AgyParser()
     lines = fixture.read_text(encoding="utf-8").splitlines()
     return list(parser.parse(iter(lines)))
+
+
+def _fixture_lines(fixture: Path, indices: list[int]) -> list[str]:
+    """Return specific raw lines (by 0-based frame index) from a captured fixture.
+
+    Used by the B1/B2/B3/B5 regression tests below to replay a slice of a
+    real captured transcript (``agy_wire_b_series.jsonl``, captured live
+    2026-08-06 -- see ``tests/display/_fixtures/agy_wire_provenance.md``)
+    instead of hand-typing a synthetic frame.
+    """
+    lines = fixture.read_text(encoding="utf-8").splitlines()
+    return [lines[i] for i in indices]
 
 
 def test_plain_text_line_yields_text_event() -> None:
@@ -612,13 +630,13 @@ def test_b3_user_input_unknown_checkpoint_steps_emit_lifecycle_events() -> None:
     the bug the brief flags ("nothing dropped with zero accounting"). Each
     now yields exactly one non-empty ``lifecycle`` event naming its
     step_type, so the frame is always accounted for.
+
+    Replays the real ``user_input`` (frame 1), ``unknown`` (frame 2), and
+    ``checkpoint`` (frame 6) step_update frames captured live 2026-08-06 --
+    see ``agy_wire_b_series.jsonl`` / ``agy_wire_provenance.md``.
     """
     parser = AgyParser()
-    lines = [
-        '{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}',
-        '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"unknown"}}',
-        '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"checkpoint"}}',
-    ]
+    lines = _fixture_lines(_AGY_WIRE_B_SERIES_FIXTURE, [1, 2, 6])
     parsed = list(parser.parse(iter(lines)))
     assert [(line.type, line.content) for line in parsed] == [
         ("lifecycle", "agy step user_input"),
@@ -648,30 +666,34 @@ def test_sanity_crlf_line_endings_parse_identically_to_lf() -> None:
 def test_b2_completion_summary_duration_rounds_to_two_decimals() -> None:
     """B2: a DONE frame's 9-decimal ``duration_seconds`` noise is formatted
     to 2 decimal places in the synthesized completion summary, instead of
-    interpolating the raw float verbatim (e.g. ``0.076075017s``).
+    interpolating the raw float verbatim (e.g. ``0.075956764s``).
+
+    Replays the real ``write_to_file`` ACTIVE/DONE tool frames (frames 4-5,
+    step_index 3) captured live 2026-08-06 -- see ``agy_wire_b_series.jsonl``
+    / ``agy_wire_provenance.md``. The measured DONE frame carries no
+    ``tool_info.output``, so the completion summary is synthesized.
     """
     parser = AgyParser()
-    lines = [
-        '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"todo-list.js"}}}}',
-        '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"todo-list.js"}},"duration_seconds":0.076075017}}',
-    ]
+    lines = _fixture_lines(_AGY_WIRE_B_SERIES_FIXTURE, [4, 5])
     parsed = list(parser.parse(iter(lines)))
     result = next(line for line in parsed if line.type == "tool_result")
-    assert result.content == "write_to_file todo-list.js (0.08s)"
-    assert "0.076075017" not in result.content
+    assert result.content == "write_to_file hello.txt (0.08s)"
+    assert "0.075956764" not in result.content
 
 
 def test_b2_result_summary_duration_rounds_to_two_decimals() -> None:
-    """B2 companion: the ``result`` frame's ``stop`` summary rounds too."""
+    """B2 companion: the ``result`` frame's ``stop`` summary rounds too.
+
+    Replays the real closing ``result`` frame (frame 11) captured live
+    2026-08-06 -- see ``agy_wire_b_series.jsonl`` / ``agy_wire_provenance.md``.
+    """
     parser = AgyParser()
-    lines = [
-        '{"event":"result","result":{"status":"SUCCESS","duration_seconds":3.581234567,"num_turns":2}}',
-    ]
+    lines = _fixture_lines(_AGY_WIRE_B_SERIES_FIXTURE, [11])
     parsed = list(parser.parse(iter(lines)))
     stop = parsed[-1]
     assert stop.type == "stop"
-    assert stop.content == "agy result SUCCESS (3.58s, 2 turns)"
-    assert "3.581234567" not in stop.content
+    assert stop.content == "agy result SUCCESS (2.59s, 1 turn)"
+    assert "2.586211531" not in stop.content
 
 
 def test_b5_step_index_fallback_id_is_not_labeled_tool_use_id() -> None:
@@ -680,15 +702,17 @@ def test_b5_step_index_fallback_id_is_not_labeled_tool_use_id() -> None:
     ``call_id=N``, which would misleadingly claim a synthesized ordinal is
     an upstream-issued identifier. It is surfaced as ``step_ordinal``
     instead, and internal ACTIVE/DONE correlation still works.
+
+    Replays the real ``write_to_file`` ACTIVE/DONE tool frames (frames 4-5,
+    step_index 3) captured live 2026-08-06 -- see ``agy_wire_b_series.jsonl``
+    / ``agy_wire_provenance.md``. Measured live AGY ``tool_info`` carries no
+    ``call_id``/``.id`` for this tool, so the step_index fallback applies.
     """
     parser = AgyParser()
-    lines = [
-        '{"event":"step_update","step_update":{"step_index":7,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file"}}}',
-        '{"event":"step_update","step_update":{"step_index":7,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","output":"written"}}}',
-    ]
+    lines = _fixture_lines(_AGY_WIRE_B_SERIES_FIXTURE, [4, 5])
     parsed = list(parser.parse(iter(lines)))
     assert [line.metadata.get("tool_use_id") for line in parsed] == [None, None]
-    assert [line.metadata.get("step_ordinal") for line in parsed] == ["7", "7"]
+    assert [line.metadata.get("step_ordinal") for line in parsed] == ["3", "3"]
 
 
 def test_b5_genuine_call_id_still_uses_tool_use_id_key() -> None:
@@ -791,10 +815,7 @@ def test_b1_orphan_tool_result_record_body_names_tool_without_duplicating_it() -
     from ralph.display.presented_entry import build_presented_entry
 
     parser = AgyParser()
-    lines = [
-        '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"/workspace/todo-list.js"}}}}',
-        '{"event":"step_update","step_update":{"step_index":3,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"/workspace/todo-list.js"}},"duration_seconds":0.076075017}}',
-    ]
+    lines = _fixture_lines(_AGY_WIRE_B_SERIES_FIXTURE, [4, 5])
     parsed = list(parser.parse(iter(lines)))
     tool_result_line = next(line for line in parsed if line.type == "tool_result")
 
@@ -810,7 +831,7 @@ def test_b1_orphan_tool_result_record_body_names_tool_without_duplicating_it() -
 
     assert entry.body != ""
     assert entry.body.casefold().count("write_to_file") == 1
-    assert "todo-list.js" in entry.body
+    assert "hello.txt" in entry.body
     assert "0.08s" in entry.body
 
 
