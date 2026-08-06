@@ -15,8 +15,7 @@ from ralph.policy.loader import load_policy
 
 def _decision_markdown(status: str) -> str:
     feedback = (
-        "## What Came Up Short\n- [W-1] A defect remains.\n"
-        "## How To Fix\n- [W-1] Repair the defect.\n"
+        "## What Came Up Short\n- [W-1] Criterion: required behavior exists. Expected observation: focused check observes it. Verdict: not met. Evidence: command output. Location: source.\n"
         if status == "failed"
         else ""
     )

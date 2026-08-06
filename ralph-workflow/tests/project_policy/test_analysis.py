@@ -75,27 +75,18 @@ def test_analysis_prompt_uses_subagents_for_independent_evidence() -> None:
     assert "main session" in prompt.lower()
 
 
-def test_analysis_prompt_teaches_complete_and_remediation_invariants() -> None:
+def test_analysis_prompt_teaches_evidence_only_decision_invariants() -> None:
     normalized = " ".join(_prompt().split())
 
-    assert (
-        "A completed decision omits both remediation sections; every known gap uses a non-completed status."
-        in normalized
-    )
-    assert (
-        "The two remediation ID sets must match exactly: no missing, extra, or mismatched gap/fix IDs."
-        in normalized
-    )
-    assert (
-        "For `request_changes` and `failed`, include non-empty `## What Came Up Short` and `## How To Fix` sections"
-        in normalized
-    )
+    assert "A completed decision omits `## What Came Up Short`" in normalized
+    assert "one `PR-###` entry per localized verdict" in normalized
+    assert "do not propose remedies" in normalized
 
 
 def test_analysis_prompt_keeps_declare_complete_as_the_final_action() -> None:
     prompt = _prompt()
     declaration_index = prompt.rindex("After a valid artifact submission receipt")
 
-    assert declaration_index > prompt.rindex("The two remediation ID sets must match exactly")
+    assert declaration_index > prompt.rindex("one `PR-###` entry per localized verdict")
     assert "as your final explicit action" in prompt[declaration_index:]
     assert prompt[declaration_index:].rstrip().endswith("generic transports.")

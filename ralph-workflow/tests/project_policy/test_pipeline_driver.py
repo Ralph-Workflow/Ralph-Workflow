@@ -44,15 +44,12 @@ def _submit_decision(
     extra_sections = ""
     if shortcomings:
         short_items = "\n".join(
-            f"- [W-{index}] {item}" for index, item in enumerate(shortcomings, start=1)
+            f"- [W-{index}] Criterion: declared policy fact holds. Expected observation: "
+            f"the declared probe resolves. Verdict: not met. Evidence: {item}. "
+            "Location: policy declaration."
+            for index, item in enumerate(shortcomings, start=1)
         )
-        fix_items = "\n".join(
-            f"- [W-{index}] Resolve this policy gap."
-            for index, _item in enumerate(shortcomings, start=1)
-        )
-        extra_sections = (
-            f"\n## What Came Up Short\n\n{short_items}\n\n## How To Fix\n\n{fix_items}\n"
-        )
+        extra_sections = f"\n## What Came Up Short\n\n{short_items}\n"
     workspace.write(
         analysis.ANALYSIS_ARTIFACT_REL_PATH,
         (
@@ -179,8 +176,8 @@ def test_request_changes_loops_back_and_carries_feedback_forward() -> None:
     assert result.status is ReadinessStatus.READY
     assert len(prompts) == 2
     assert "make verify does not resolve" not in prompts[0]
-    assert "make verify does not resolve" in prompts[1], (
-        "the second remediation prompt must carry the reviewer's findings"
+    assert "Evidence: make verify does not resolve" in prompts[1], (
+        "the second remediation prompt must carry the reviewer's finding"
     )
 
 

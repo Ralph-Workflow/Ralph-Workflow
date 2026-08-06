@@ -14,9 +14,7 @@ status: request_changes
 ## Summary
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
-- [PA-001] {shortfall}
-## How To Fix
-- [PA-001] Replace the affected plan text with the repository-grounded correction.
+- [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
 """
 
 
@@ -49,7 +47,19 @@ def test_request_changes_preserves_exact_finding_binding() -> None:
 
     assert diagnostics == []
     assert content["finding_targets"] == {"PA-001": "S-2"}
+    assert content["finding_ids"] == ["PA-001"]
 
+
+def test_verification_decision_rejects_a_finding_without_evidence_fields() -> None:
+    document = _decision("Step: [S-2] lacks evidence.").replace(
+        " Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.",
+        "",
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS005", "error")]
 
 def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None:
     document = _decision("The rollout risk is unaddressed.").replace(

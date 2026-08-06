@@ -1,12 +1,4 @@
-"""Markdown specs for planning, development, and review analysis decisions.
-
-Consumed structure (stays strict): frontmatter ``type`` and ``status``.
-``status`` keeps its closed decision vocabulary (``completed`` |
-``request_changes`` | ``failed`` — it routes the pipeline, so a wrong
-status is a hard error naming the valid values), and ``How To Fix`` item
-IDs feed downstream proof references. Section bodies are descriptive
-and tolerate multi-line prose and unknown continuation lines.
-"""
+"""Markdown specs for planning, development, review, and policy decisions."""
 
 from __future__ import annotations
 
@@ -28,9 +20,11 @@ _ANALYSIS_TYPES = (
     "review_analysis_decision",
     "policy_remediation_analysis_decision",
 )
+_VERIFICATION_TYPES = frozenset(_ANALYSIS_TYPES) - {"review_analysis_decision"}
 _STATUSES = ("completed", "request_changes", "failed")
 _FINDING_TARGET_PATTERN = re.compile(r"(?:Step:\s*)?\[(S-[1-9][0-9]*)\]|Plan-level:", re.IGNORECASE)
 _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
+_REQUIRED_FINDING_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
 
 
 def _item_texts(document: ParsedDocument, section_name: str) -> list[str]:
@@ -48,22 +42,19 @@ def _finding_target(text: str) -> str | None:
 
 
 def _to_content(document: ParsedDocument) -> dict[str, object]:
-    summary = _item_texts(document, "Summary")
-    how_to_fix = document.section("How To Fix")
-    shortfalls = _item_texts(document, "What Came Up Short")
     shortfall_section = document.section("What Came Up Short")
+    shortfall_items = () if shortfall_section is None else shortfall_section.items
+    how_to_fix = document.section("How To Fix")
     finding_targets: dict[str, str] = {}
-    if shortfall_section is not None:
-        shortfall_items = shortfall_section.items
-        for item in shortfall_items:
-            target = _finding_target(item.text)
-            if target is not None:
-                finding_targets[item.identifier] = target
-    status = document.frontmatter["status"]
+    for item in shortfall_items:
+        target = _finding_target(item.text)
+        if target is not None:
+            finding_targets[item.identifier] = target
     return {
-        "status": status,
-        "summary": summary[0],
-        "what_came_up_short": shortfalls,
+        "status": document.frontmatter["status"],
+        "summary": _item_texts(document, "Summary")[0],
+        "what_came_up_short": [item.text for item in shortfall_items],
+        "finding_ids": [item.identifier for item in shortfall_items],
         "finding_targets": finding_targets,
         "how_to_fix": []
         if how_to_fix is None
@@ -79,66 +70,70 @@ def _normalize(content: dict[str, object]) -> dict[str, object]:
 
 
 def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
+    artifact_type = document.frontmatter["type"]
     status = document.frontmatter["status"]
     what_section = document.section("What Came Up Short")
     fix_section = document.section("How To Fix")
-
     if status == "completed":
         return [
             Diagnostic(
                 section.line,
                 section.name,
                 "ANALYSIS002",
-                "status 'completed' must omit both remediation sections; "
-                "known gaps require a non-completed status",
+                "status 'completed' must omit both remediation sections; known gaps require a non-completed status",
             )
             for section in (what_section, fix_section)
             if section is not None
         ]
-
     if status not in {"request_changes", "failed"}:
         return []
-
     what_items = () if what_section is None else what_section.items
-    fix_items = () if fix_section is None else fix_section.items
-    what_ids = {item.identifier for item in what_items}
-    fix_ids = {item.identifier for item in fix_items}
+    summary_section = document.section("Summary")
     diagnostics = [
         Diagnostic(
-            item.line,
+            1 if summary_section is None else summary_section.line,
             "What Came Up Short",
             "ANALYSIS003",
-            f"What Came Up Short item {item.identifier!r} has no matching "
-            "How To Fix item; both remediation sections must use exactly "
-            "the same IDs",
+            "non-completed decisions require a non-empty What Came Up Short section",
         )
-        for item in what_items
-        if item.identifier not in fix_ids
-    ]
-    diagnostics.extend(
-        Diagnostic(
-            item.line,
-            "How To Fix",
-            "ANALYSIS003",
-            f"How To Fix item {item.identifier!r} has no matching What Came "
-            "Up Short item; both remediation sections must use exactly the "
-            "same IDs",
+    ] if not what_items else []
+    if artifact_type in _VERIFICATION_TYPES:
+        diagnostics.extend(
+            Diagnostic(
+                item.line,
+                "What Came Up Short",
+                "ANALYSIS005",
+                "verification finding must include Criterion:, Expected observation:, Verdict:, Evidence:, and Location:",
+            )
+            for item in what_items
+            if any(field not in item.text for field in _REQUIRED_FINDING_FIELDS)
         )
-        for item in fix_items
-        if item.identifier not in what_ids
-    )
-    if status in {"request_changes", "failed"} and document.frontmatter["type"] == "planning_analysis_decision":
+    if artifact_type == "planning_analysis_decision":
         diagnostics.extend(
             Diagnostic(
                 item.line,
                 "What Came Up Short",
                 "ANALYSIS004",
-                "planning request_changes finding must identify its affected target as "
-                "'Step: [S-n]' or 'Plan-level:'",
+                "planning request_changes finding must identify its affected target as 'Step: [S-n]' or 'Plan-level:'",
             )
             for item in what_items
             if not _FINDING_TARGET_PATTERN.search(item.text)
         )
+    if artifact_type != "review_analysis_decision":
+        return diagnostics
+    fix_items = () if fix_section is None else fix_section.items
+    what_ids = {item.identifier for item in what_items}
+    fix_ids = {item.identifier for item in fix_items}
+    diagnostics.extend(
+        Diagnostic(item.line, "What Came Up Short", "ANALYSIS003", "What Came Up Short item has no matching How To Fix item")
+        for item in what_items
+        if item.identifier not in fix_ids
+    )
+    diagnostics.extend(
+        Diagnostic(item.line, "How To Fix", "ANALYSIS003", "How To Fix item has no matching What Came Up Short item")
+        for item in fix_items
+        if item.identifier not in what_ids
+    )
     return diagnostics
 
 

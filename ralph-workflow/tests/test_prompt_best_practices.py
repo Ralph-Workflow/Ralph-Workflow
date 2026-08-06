@@ -52,7 +52,7 @@ def test_prompt_templates_lead_with_the_work_not_a_mode_label() -> None:
 
 def test_review_templates_share_one_evidence_decision_contract() -> None:
     templates = _templates()
-    for name in ("development_analysis.jinja", "review_analysis.jinja", "review.jinja"):
+    for name in ("review_analysis.jinja", "review.jinja"):
         assert "shared/_analysis_decision_contract.j2" in templates[name]
 
 

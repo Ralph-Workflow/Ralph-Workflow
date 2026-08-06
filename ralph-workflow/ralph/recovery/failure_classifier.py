@@ -417,9 +417,9 @@ def _is_artifact_validation_message(raw_message: str) -> bool:
         "PROOF INVALID:",
         "PROOF INCOMPLETE:",
         "proof entries are incomplete or invalid",
-        "how_to_fix item",
+        "analysis item ID",
         "Unknown plan_item reference",
-        "Unknown how_to_fix_item reference",
+        "Unknown analysis finding ID",
     )
     return is_missing_artifact_message(raw_message) or any(
         s in raw_message for s in artifact_validation_substrings

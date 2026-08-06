@@ -10,31 +10,26 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class AnalysisDecision(RalphBaseModel):
-    """Validation model for analysis decision artifacts."""
+    """Validation model for an evidence-backed analysis decision artifact."""
 
     model_config = ConfigDict(extra="forbid")
 
     status: str
     summary: str = Field(..., min_length=1)
     what_came_up_short: list[str] | None = None
+    finding_ids: list[str] = Field(default_factory=list)
     how_to_fix: list[str] | None = None
     finding_targets: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _check_status_and_remediation(self) -> Self:
+    def _check_status_and_findings(self) -> Self:
         if self.status == "completed" and (self.what_came_up_short or self.how_to_fix):
             raise ValueError(
                 "what_came_up_short and how_to_fix must be omitted when status "
                 'is "completed"; known gaps require a non-completed status'
             )
-        if self.status in ("request_changes", "failed"):
-            if not self.what_came_up_short:
-                raise ValueError(f'what_came_up_short is required when status is "{self.status}"')
-            if not self.how_to_fix:
-                raise ValueError(f'how_to_fix is required when status is "{self.status}"')
-            finding_ids = {item.split(":", 1)[0] for item in self.how_to_fix}
-            if self.finding_targets and set(self.finding_targets) != finding_ids:
-                raise ValueError("every remediation finding must have exactly one affected target")
+        if self.status in ("request_changes", "failed") and not self.what_came_up_short:
+            raise ValueError(f'what_came_up_short is required when status is "{self.status}"')
         return self
 
 

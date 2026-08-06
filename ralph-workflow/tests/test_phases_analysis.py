@@ -57,9 +57,7 @@ def _load_default_pipeline_policy() -> object:
 def _development_analysis_markdown(status: str) -> str:
     feedback = (
         "\n## What Came Up Short\n\n"
-        "- [W-1] The implementation needs another development pass.\n"
-        "\n## How To Fix\n\n"
-        "- [W-1] Address the remaining implementation gap.\n"
+        "- [W-1] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: not met. Evidence: focused command output. Location: relevant source.\n"
         if status in {"request_changes", "failed"}
         else ""
     )
@@ -75,11 +73,15 @@ def _development_analysis_markdown(status: str) -> str:
 
 
 def _analysis_decision_markdown(artifact_type: str, status: str) -> str:
+    review_fix = (
+        "\n## How To Fix\n\n- [W-1] Address the remaining implementation gap.\n"
+        if artifact_type == "review_analysis_decision" and status in {"request_changes", "failed"}
+        else ""
+    )
     feedback = (
         "\n## What Came Up Short\n\n"
-        "- [W-1] The implementation needs another development pass.\n"
-        "\n## How To Fix\n\n"
-        "- [W-1] Address the remaining implementation gap.\n"
+        "- [W-1] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: not met. Evidence: focused command output. Location: relevant source.\n"
+        f"{review_fix}"
         if status in {"request_changes", "failed"}
         else ""
     )

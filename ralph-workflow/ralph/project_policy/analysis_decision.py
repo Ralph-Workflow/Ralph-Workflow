@@ -1,8 +1,6 @@
 """The decision the policy-remediation analysis agent returns.
 
-Carries both the routing decision and the concrete feedback that becomes the
-NEXT remediation prompt's input, which is what closes the loop: analysis does not
-merely say "try again", it says exactly what came up short and how to fix it.
+Carries the routing decision and localized findings for the next remediation prompt.
 """
 
 from __future__ import annotations
@@ -25,8 +23,8 @@ class AnalysisDecision:
         summary: The agent's one-line account of what the review found.
         what_came_up_short: What is wrong with the policy the remediation agent
             wrote. Empty for a ``completed`` decision.
-        how_to_fix: Concrete steps to resolve each item. Empty for a
-            ``completed`` decision.
+        how_to_fix: Legacy optional remediation text. New verification decisions
+            carry only localized findings.
     """
 
     status: str
@@ -44,10 +42,7 @@ class AnalysisDecision:
         Empty when the agent raised nothing, so the remediation prompt can omit
         the analysis-feedback section entirely rather than render an empty one.
         """
-        return [
-            *(f"- came up short: {item}" for item in self.what_came_up_short),
-            *(f"- how to fix: {item}" for item in self.how_to_fix),
-        ]
+        return [f"- came up short: {item}" for item in self.what_came_up_short]
 
 
 __all__ = ["AnalysisDecision"]

@@ -83,7 +83,7 @@ def test_policy_remediation_analysis_decision_ships_a_validated_format_contract(
 
 
 @pytest.mark.parametrize("artifact_type", _ANALYSIS_DECISION_TYPES)
-def test_analysis_format_docs_teach_relational_decision_invariants(
+def test_analysis_format_docs_teach_evidence_first_decision_invariants(
     artifact_type: str,
 ) -> None:
     doc = load_bundled_format_doc(artifact_type)
@@ -91,8 +91,10 @@ def test_analysis_format_docs_teach_relational_decision_invariants(
     assert doc is not None
     normalized = " ".join(doc.split())
     assert "A `completed` decision that includes either remediation section" in normalized
-    assert "missing, extra, or mismatched IDs" in normalized
-    assert "same stable ID" in normalized
+    if artifact_type != "review_analysis_decision":
+        assert "Criterion:" in normalized
+        assert "Expected observation:" in normalized
+    assert "stable ID" in normalized
 
 
 def test_development_analysis_example_uses_self_run_current_evidence() -> None:
@@ -100,18 +102,18 @@ def test_development_analysis_example_uses_self_run_current_evidence() -> None:
 
     assert doc is not None
     assert "was not executed" not in doc
-    assert ("Running `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` reports") in doc
+    assert "Expected observation:" in doc
+    assert "Evidence:" in doc
     assert "Run the exact pytest target for the parser and record the output." not in doc
 
 
-def test_policy_remediation_inline_example_matches_problem_and_fix_ids() -> None:
+def test_policy_remediation_inline_example_uses_a_localized_verdict() -> None:
     doc = load_bundled_format_doc(_POLICY_REMEDIATION_ANALYSIS_DECISION)
 
     assert doc is not None
-    assert doc.count("- [PR-1]") == 2
-    assert doc.count("- [PR-2]") == 2
-    assert "- [W-1]" not in doc
-    assert "- [FIX-1]" not in doc
+    assert doc.count("- [PR-001]") == 1
+    assert "Verdict: not met" in doc
+    assert "verification decisions omit" in doc
 
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)

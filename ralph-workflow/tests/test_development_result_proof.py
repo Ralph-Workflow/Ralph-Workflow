@@ -109,10 +109,7 @@ status: request_changes
 - [SUM-1] Issues found.
 
 ## What Came Up Short
-- [FIX-1] Plan-level: Missing test.
-
-## How To Fix
-- [FIX-1] Add test for edge case.
+- [FIX-1] Plan-level: Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
 """,
     )
 
@@ -673,7 +670,7 @@ def test_noop_plan_skips_proof_validation() -> None:
     assert events == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_analysis_feedback_requires_stable_how_to_fix_id() -> None:
+def test_analysis_feedback_requires_stable_finding_id() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
@@ -687,10 +684,10 @@ def test_analysis_feedback_requires_stable_how_to_fix_id() -> None:
 
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
-    assert "analysis item ID" in failure_events[0].reason
+    assert "analysis finding ID" in failure_events[0].reason
 
 
-def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
+def test_analysis_feedback_rejects_duplicate_finding_entries() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
@@ -711,7 +708,7 @@ def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
     assert "duplicate" in failure_events[0].reason.lower()
 
 
-def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> None:
+def test_analysis_feedback_rejects_wrong_finding_id_even_when_counts_match() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
@@ -727,7 +724,7 @@ def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> N
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
     assert "PROOF INVALID" in failure_events[0].reason
-    assert "Unknown how_to_fix_item ID" in failure_events[0].reason
+    assert "Unknown analysis finding ID" in failure_events[0].reason
 
 
 def test_analysis_feedback_passes_with_exact_text() -> None:

@@ -5,12 +5,8 @@ status: request_changes
 
 ## Summary
 
-- [SUM-1] One declared verification gate does not resolve, so the policy build system is not yet usable.
+- [SUM-1] One declared verification criterion is not met.
 
 ## What Came Up Short
 
-- [PR-1] Plan-level: verification-policy.md declares `make verify-all`, but that target does not exist.
-
-## How To Fix
-
-- [PR-1] Replace `make verify-all` with the repository's real `make verify` entry point.
+- [PR-1] Criterion: the declared verification command resolves. Expected observation: `make verify-all` invokes a target. Verdict: not met. Evidence: make reports no rule for `verify-all`. Location: verification-policy.md RALPH-COMMAND.

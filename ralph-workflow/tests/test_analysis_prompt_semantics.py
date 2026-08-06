@@ -1,36 +1,62 @@
-"""Semantic contract for concise planning analysis."""
+"""Semantic contract for evidence-first verification prompts."""
 
 from __future__ import annotations
+
+import pytest
 
 from ralph.prompts.template_context import TemplateContext
 
 
-def _source() -> str:
-    return TemplateContext.default().registry.get_template("planning_analysis")
+@pytest.mark.parametrize(
+    "template_name",
+    ("planning_analysis", "development_analysis", "policy_remediation_analysis"),
+)
+def test_verification_prompts_prescribe_independent_criterion_verdicts(
+    template_name: str,
+) -> None:
+    context = TemplateContext.default()
+    source = context.registry.get_template(template_name)
+    if template_name != "policy_remediation_analysis":
+        source += context.partials["shared/_criterion_verification_procedure"]
+
+    for required in (
+        "one yes/no question per criterion",
+        "Expected observation",
+        "`met`, `not met`, or `not evaluable`",
+        "command output or named file location",
+        "no counterexample found",
+        "Correctness outranks a passing proxy",
+        "special-case code",
+        "weaken or edit a test",
+        "narrow a criterion",
+        "fast path",
+        "full gate",
+    ):
+        assert required in source, (template_name, required)
 
 
-def test_planning_analysis_reviews_request_and_repository_substance() -> None:
-    source = _source()
-    assert source.startswith("You are the planning analysis reviewer.")
-    assert "Read the current plan" in source
-    assert "and the referenced repository areas" in source
-    assert "do not grade document shape" in source
+def test_planning_and_development_share_the_verification_only_procedure() -> None:
+    templates = TemplateContext.default().registry
+    for template_name in ("planning_analysis", "development_analysis"):
+        assert (
+            "shared/_criterion_verification_procedure.j2"
+            in templates.get_template(template_name)
+        )
 
 
-def test_planning_analysis_requires_actionable_costed_findings() -> None:
-    source = _source()
-    assert "Only report a finding you can prove" in source
-    assert "concrete cost" in source
-    assert "exact plan-text change that resolves it" in source
+def test_development_verifier_excludes_implementer_account() -> None:
+    source = TemplateContext.default().registry.get_template("development_analysis")
+
+    assert "LATEST ARTIFACT" not in source
+    assert "implementer summary, rationale, or completion claim" in source
 
 
-def test_planning_analysis_allows_no_findings() -> None:
-    source = _source()
-    assert "`completed` with no findings is the normal result" in source
-    assert "Use `completed` when no proven substantive gap remains" in source
+@pytest.mark.parametrize(
+    "template_name",
+    ("planning_analysis", "development_analysis", "policy_remediation_analysis"),
+)
+def test_verification_prompts_keep_criteria_and_submission_last(template_name: str) -> None:
+    source = TemplateContext.default().registry.get_template(template_name)
 
-
-def test_planning_analysis_keeps_matching_remediation_ids() -> None:
-    source = _source()
-    assert "matching `PA-###`" in source
-    assert "`Observation:`, `Cost:`, and `Fix:`" in source
+    assert source.rindex("## Criteria and verdicts") < source.rindex("## Decision artifact")
+    assert "How To Fix" not in source[source.rindex("## Criteria and verdicts") :]

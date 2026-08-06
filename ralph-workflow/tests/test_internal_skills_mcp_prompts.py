@@ -78,7 +78,7 @@ def test_planning_skills_teach_the_mandatory_contract() -> None:
     assert format_doc is not None
     assert "Observation:" in format_doc
     assert "Cost:" in format_doc
-    assert "Fix:" in format_doc
+    assert "Verdict:" in format_doc
     assert "Critical Files omits" not in format_doc
 
 
@@ -140,7 +140,7 @@ def test_planning_analysis_prompt_requires_cost_element_per_finding() -> None:
     source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
     assert "Cost:" in source, "planning_analysis.jinja must require a `Cost:` element per finding"
     assert "Observation:" in source
-    assert "Fix:" in source
+    assert "Verdict:" in source
     # The form must NOT regress to the legacy ``MCP plan-edit tools``
     # vocabulary that no longer exists in the runtime.
     assert "MCP plan-edit tools" not in source
