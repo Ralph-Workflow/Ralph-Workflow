@@ -24,11 +24,23 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.completion_signals import _check_completion_sentinel, is_artifact_submitted
 from ralph.agents.invoke import InvokeOptions
 from ralph.cli.commands.smoke import _required_evidence
 from ralph.config.enums import AgentTransport
+from ralph.config.mcp_models import McpConfig
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.smoke_test_result import SMOKE_TEST_RESULT_ARTIFACT_TYPE
+from ralph.mcp.protocol._session_drain import SessionDrain
+from ralph.mcp.protocol.capability_mapping import Capability
+from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server._in_memory_transport import drive_request, parse_sse_data
+from ralph.mcp.server._wire_ledger import append_wire_record
+from ralph.mcp.server.runtime import McpServer
+from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.mcp.tools.coordination import handle_declare_complete
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_evidence import (
     DEGRADED,
@@ -41,9 +53,14 @@ from ralph.pipeline.plumbing.smoke_evidence import (
 )
 from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunParams,
+    _artifact_submission_evidence,
+    _completion_evidence,
     _run_smoke_agent,
+    _tool_activity_evidence,
     transport_evidence_ceiling,
 )
+from ralph.workspace.fs import FsWorkspace
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 from tests._support.mock_agy import (
     DEGRADED_BASELINE_RUN_ID,
     degraded_baseline_artifact_markdown,
@@ -250,6 +267,282 @@ def test_2026_08_05_run_grades_degraded() -> None:
     assert weakest == Provenance.ABSENT
     assert format_verdict(required_facts) == "DEGRADED (absent)"
     assert label != PASS, "the 2026-08-05 run must never grade PASS or print 'Breaks: none'"
+
+
+# --- Evidence Provenance closeout plan, S-3: pin the WIRE path (PA-001) ----
+
+
+def _all_capabilities() -> set[str]:
+    """Every internal Ralph capability, granted to the Part A dispatch session."""
+    return {cap.value for cap in Capability}
+
+
+def test_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """S-3 Part A (closes PLANNING_ANALYSIS_DECISION.md PA-001): pin the WIRE path.
+
+    ``test_2026_08_05_transcript_replay_grades_degraded_host_synthesized``
+    above proves the DEGRADED path end to end. It does not prove the mirror
+    case: that a genuine dispatcher round trip through Ralph's real MCP
+    server -- the same class and dispatch chain a live ``tools/call`` from
+    AGY's ``call_mcp_tool`` bridge would hit -- actually grades ``WIRE``/
+    ``PASS``. Per PLANNING_ANALYSIS_DECISION.md PA-001, a test whose fake
+    ``execute_agent_effect`` calls ``submit_artifact_canonical``,
+    ``_write_completion_sentinel``, and ``append_wire_record`` directly is
+    NOT proof the dispatch route works: it fabricates the very artifacts a
+    real ``call_mcp_tool`` round trip would produce, so it would stay green
+    even if AGY's dispatcher route regressed to zero real MCP calls.
+
+    This test closes that gap. Inside the fake execution it builds a real,
+    in-process :class:`McpServer` bound to ``params.workspace_root`` --
+    mirroring ``tests/test_mcp_endpoint_functional_sweep.py``'s
+    ``_build_server`` (that module's own docstring calls this "the real
+    bridge") -- and issues two real JSON-RPC ``tools/call`` requests through
+    :func:`ralph.mcp.server._in_memory_transport.drive_request` (no sockets,
+    no subprocess, but the real ``_FallbackHttpHandler.do_POST`` ->
+    ``McpServer.handle_request`` -> registry -> tool-handler chain). It
+    never calls ``submit_artifact_canonical``, ``_write_completion_sentinel``,
+    or ``append_wire_record`` anywhere in this test -- only the real tool
+    handlers reached through ``handle_request`` are allowed to produce the
+    receipt, sentinel, and ledger rows. If the registry stops resolving
+    ``ralph_submit_md_artifact``/``declare_complete``, or ``McpServer`` stops
+    appending ledger rows on ``tools/call``, this test fails; the deleted
+    direct-call shape (the one PA-001 flags as insufficient) could not.
+
+    What this test proves: the protocol boundary (real ``McpServer``
+    dispatch -> receipt/sentinel/ledger -> grading) produces ``WIRE``/
+    ``PASS`` when driven correctly. What it does NOT prove: that AGY's
+    actual ``call_mcp_tool`` argument shape maps onto these two
+    ``tools/call`` requests -- that residual is what the forced-secret live
+    test in ``test_agy_live_regression.py`` proves.
+    """
+    test_secret = "s3-wire-dispatch-secret"
+    monkeypatch.setenv("RALPH_BROKER_SECRET", test_secret)
+
+    config = _agy_config()
+    output_dir = tmp_path / "tmp" / "interactive-agy-smoke"
+    output_dir.mkdir(parents=True)
+    output_file = output_dir / "todo-list.js"
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("smoke prompt", encoding="utf-8")
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+    run_id = "wire-dispatch-run"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            # A route to Ralph's tools IS advertised this time (the
+            # generic MCP dispatcher, call_mcp_tool), so the transport
+            # ceiling reaches WIRE rather than the measured AGY v1.1.10
+            # TRANSCRIPT ceiling the DEGRADED replay above pins.
+            raw_sink.append(_init_frame(["view_file", "call_mcp_tool", "write_to_file"]))
+
+        session = AgentSession(
+            session_id="wire-dispatch-session",
+            run_id=run_id,
+            drain=SessionDrain.DEVELOPMENT.value,
+            capabilities=_all_capabilities(),
+            broker_secret=test_secret,
+        )
+        workspace = FsWorkspace(params.workspace_root)
+        registry = build_ralph_tool_registry(session, workspace, mcp_config=McpConfig())
+        server = McpServer(session, workspace, registry)
+
+        submit_payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "ralph_submit_md_artifact",
+                    "arguments": {
+                        "artifact_type": "smoke_test_result",
+                        "content": degraded_baseline_artifact_markdown(),
+                    },
+                },
+            }
+        ).encode()
+        _status, _headers, body = drive_request(server, submit_payload)
+        submit_response = parse_sse_data(body)
+        assert "error" not in submit_response, (
+            f"ralph_submit_md_artifact tools/call returned an error: {submit_response}"
+        )
+
+        complete_payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "declare_complete",
+                    "arguments": {"summary": "S-3 Part A wire-dispatch proof"},
+                },
+            }
+        ).encode()
+        _status, _headers, body = drive_request(server, complete_payload)
+        complete_response = parse_sse_data(body)
+        assert "error" not in complete_response, (
+            f"declare_complete tools/call returned an error: {complete_response}"
+        )
+
+        output_file.write_text("// smoke output\n", encoding="utf-8")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    # The transport ceiling reaches WIRE because the init frame advertises
+    # the call_mcp_tool dispatcher route this time.
+    assert result.transport_evidence_ceiling == Provenance.WIRE
+
+    # Every required fact was derived by the real grading functions reading
+    # a receipt/sentinel/ledger a genuine tools/call dispatch produced.
+    assert result.artifact_submitted.holds is True
+    assert result.artifact_submitted.provenance == Provenance.WIRE
+    assert result.explicit_completion_seen.holds is True
+    assert result.explicit_completion_seen.provenance == Provenance.WIRE
+    assert result.tool_activity_seen.holds is True
+    assert result.tool_activity_seen.provenance == Provenance.WIRE
+
+    # The overall verdict is derived through the same path the CLI report
+    # uses -- grade_verdict(_required_evidence(result)) -- not asserted
+    # directly against a hand-built mapping.
+    required_facts = _required_evidence(result)
+    label, weakest = grade_verdict(required_facts)
+
+    assert label == PASS
+    assert weakest == Provenance.WIRE
+
+
+class _WireCorrelationSession:
+    """Minimal duck-typed session for Part B's isolated grading-correlation check."""
+
+    def __init__(self, run_id: str, broker_secret: str | None) -> None:
+        self.session_id = "wire-correlation-session"
+        self.run_id = run_id
+        self.drain = "development"
+        self.broker_secret = broker_secret
+
+    def check_capability(self, capability: str) -> object:
+        del capability
+        return "approved"
+
+
+def test_grading_functions_recognize_wire_evidence_from_existing_ledger_rows(
+    tmp_path: Path,
+) -> None:
+    """S-3 Part B: narrow grading-correlation check ONLY -- not a dispatch-route proof.
+
+    Pins the arithmetic of ``_artifact_submission_evidence``,
+    ``_completion_evidence`` and ``_tool_activity_evidence`` in isolation
+    from any real dispatch: a receipt and completion sentinel are written
+    directly through the production tool handlers
+    (``handle_submit_md_artifact`` / ``handle_declare_complete``) against a
+    bare ``MockWorkspace`` -- not through ``McpServer.handle_request`` -- and
+    matching ``tools/call`` wire-ledger rows are appended directly via
+    ``append_wire_record``, not produced by a real JSON-RPC round trip.
+
+    Per PLANNING_ANALYSIS_DECISION.md PA-001, this test does NOT and CANNOT
+    prove any dispatch route works: it fabricates the very artifacts a real
+    ``call_mcp_tool`` round trip would produce, so it would stay green even
+    if AGY's dispatcher route regressed to zero real MCP calls. That burden
+    is carried by
+    ``test_transcript_replay_with_real_mcp_dispatch_grades_wire_pass`` (Part
+    A) above. This test's only job is to pin the grading functions' WIRE-
+    recognition arithmetic against ledger rows shaped like real ones, fast
+    and in isolation -- the fast, targeted unit check
+    PLANNING_ANALYSIS_DECISION.md said to retain.
+    """
+    test_secret = "s3-part-b-secret"
+    run_id = "wire-correlation-run"
+    workspace = MockWorkspace(tmp_path)
+    session = _WireCorrelationSession(run_id=run_id, broker_secret=test_secret)
+
+    handle_submit_md_artifact(
+        session,
+        workspace,
+        {
+            "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
+            "content": degraded_baseline_artifact_markdown(),
+        },
+    )
+    handle_declare_complete(session, workspace, {"summary": "part B correlation"})
+
+    append_wire_record(
+        tmp_path,
+        method="tools/call",
+        tool_name="ralph_submit_md_artifact",
+        params={"artifact_type": "smoke_test_result"},
+        run_id=run_id,
+        secret=test_secret,
+    )
+    append_wire_record(
+        tmp_path,
+        method="tools/call",
+        tool_name="declare_complete",
+        params={"summary": "part B correlation"},
+        run_id=run_id,
+        secret=test_secret,
+    )
+
+    artifact_submitted = is_artifact_submitted(
+        tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE, receipt_secret=test_secret
+    )
+    completion_present = _check_completion_sentinel(tmp_path, run_id, sentinel_secret=test_secret)
+    assert artifact_submitted is True
+    assert completion_present is True
+
+    artifact_evidence = _artifact_submission_evidence(
+        tmp_path, run_id, submitted=artifact_submitted, secret=test_secret
+    )
+    completion_evidence = _completion_evidence(
+        tmp_path,
+        run_id,
+        present=completion_present,
+        host_synthesized=False,
+        secret=test_secret,
+    )
+
+    assert artifact_evidence.provenance == Provenance.WIRE
+    assert completion_evidence.provenance == Provenance.WIRE
+
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=_agy_config(),
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js",
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+    tool_activity_evidence = _tool_activity_evidence(
+        params,
+        [],
+        run_id=run_id,
+        secret=test_secret,
+        tool_activity_holds=False,
+    )
+    assert tool_activity_evidence.provenance == Provenance.WIRE
 
 
 # --- Evidence Provenance closeout plan, S-1: end-to-end transcript replay --

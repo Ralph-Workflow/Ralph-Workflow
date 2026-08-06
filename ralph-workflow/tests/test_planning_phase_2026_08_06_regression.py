@@ -14,9 +14,12 @@ call_mcp_tool route, 21 step_update frames with parser-classified tool
 events, no artifact file, no completion sentinel) and asserts the
 phase grades as ``DEGRADED (absent)`` -- never ``PASS`` and never
 ``SUCCESS``. The synthetic lines are deliberately short so the test
-runs within the per-suite budget; the real captured log lives at
-``.agent/raw/agy.log`` and the test reads it for an end-to-end shape
-sanity check.
+runs within the per-suite budget. The measured 2026-08-06
+``.agent/raw/agy.log`` was never committed to this repo (see
+``tests/display/_fixtures/agy_wire_provenance.md`` for the provenance
+note); this test reproduces the brief's own documented measurements of
+that run rather than replaying the original captured file byte for
+byte.
 """
 
 from __future__ import annotations
