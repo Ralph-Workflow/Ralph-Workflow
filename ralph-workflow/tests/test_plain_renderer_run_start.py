@@ -86,6 +86,16 @@ def test_emit_run_start_includes_parallel_when_present() -> None:
     assert "parallel=max_workers=4" in buf.getvalue()
 
 
+def test_emit_run_start_names_volatile_target_worktree() -> None:
+    """The run banner makes target-worktree reclamation visible before it happens."""
+    pd, buf = _make_display()
+    pd.emit_run_start(_orientation(target_worktree_path="/workspace/main"))
+    assert (
+        "target-worktree=/workspace/main (volatile; Ralph Workflow may snapshot and reset it)"
+        in buf.getvalue()
+    )
+
+
 def test_emit_run_start_reduces_rich_markup_in_path() -> None:
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(workspace_root="[bold]x[/bold]"))

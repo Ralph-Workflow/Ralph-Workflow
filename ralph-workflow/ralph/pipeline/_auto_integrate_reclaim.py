@@ -8,12 +8,21 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
-from ralph.git.merge import merge_in_progress
+from ralph.git.merge import WORKTREE_QUERY_FAILED, merge_in_progress, worktree_lookup
+from ralph.git.operations import find_main_worktree_root
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def target_worktree_lookup(repo_root: Path, target: str) -> tuple[str, Path | None]:
+    """Resolve the sole worktree that owns ``target``, failing closed on lookup errors."""
+    try:
+        return worktree_lookup(find_main_worktree_root(repo_root), target)
+    except Exception:
+        return WORKTREE_QUERY_FAILED, None
 
 
 def reclaim_dirty_target_worktree(worktree: Path, target: str) -> str | None:
@@ -70,3 +79,6 @@ def _discard_dirty_state(worktree: Path) -> bool:
     reset = run_git(("reset", "--hard", "HEAD"), cwd=worktree, label="auto-integrate:reclaim-reset")
     clean = run_git(("clean", "-fd"), cwd=worktree, label="auto-integrate:reclaim-clean")
     return reset.returncode == 0 and clean.returncode == 0
+
+
+__all__ = ["reclaim_dirty_target_worktree", "target_worktree_lookup"]

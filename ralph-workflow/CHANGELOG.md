@@ -45,6 +45,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Added
 
+- **feat(auto-integrate): reclaim the volatile target-owning worktree by default** — remote freshness checks run at every seam when the configured remote exists; Ralph snapshots `refs/ralph-reclaim/<target>/...` before resetting a dirty target owner, while `auto_integrate_reclaim_target_worktree = false` retains refuse-and-retry. Locked by `tests/test_auto_integrate_worktree_sync.py` and `tests/test_plain_renderer_run_start.py`.
 - **feat(smoke): add the headless-Claude smoke command** — `ralph smoke-headless-claude --subagents` is a thin pass-through to the shared `smoke_harness_agent_command` with the default alias `claude-headless/haiku` and the same `--subagents` / `--subagent-prompt-file` options as the interactive smoke, so both Claude transports are checked by one shared scenario rather than two divergent ones. Locked by `tests/test_cli_smoke_headless_claude.py`.
 
 ### Fixed

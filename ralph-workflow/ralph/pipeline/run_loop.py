@@ -26,6 +26,7 @@ from ralph.display.parallel_display import (
 )
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
+from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
 from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
     recovery_retained_record,
@@ -362,6 +363,7 @@ def _emit_run_start(
             if hasattr(ctx.effective_verbosity, "value")
             else str(ctx.effective_verbosity)
         )
+        target_worktree_path = _target_worktree_path(ctx)
         _orientation = RunStartOrientation(
             prompt_path=_prompt_path,
             developer_agent=cast(
@@ -375,8 +377,18 @@ def _emit_run_start(
             plan_present=_plan_present,
             verbosity=verbosity_str,
             workspace_root=str(ctx.workspace_scope.root),
+            target_worktree_path=target_worktree_path,
         )
         ctx.active_display.emit_run_start(_orientation)
+
+
+def _target_worktree_path(ctx: _LoopContext) -> str | None:
+    """Return the target-owner path for the run banner, if it can be safely resolved."""
+    target: object = getattr(ctx.config.general, "auto_integrate_target", None)
+    if not isinstance(target, str) or not target:
+        return None
+    _verdict, owner = target_worktree_lookup(ctx.workspace_scope.root, target)
+    return str(owner) if owner is not None else None
 
 
 def _log_waiting_state(

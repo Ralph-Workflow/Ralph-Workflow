@@ -3797,6 +3797,14 @@ class ParallelDisplay:
             pw_parts.append(("prompt", strip_markup(orientation.prompt_path)))
         if orientation.workspace_root is not None:
             pw_parts.append(("workspace", strip_markup(orientation.workspace_root)))
+        if orientation.target_worktree_path is not None:
+            pw_parts.append(
+                (
+                    "target-worktree",
+                    f"{strip_markup(orientation.target_worktree_path)} "
+                    "(volatile; Ralph Workflow may snapshot and reset it)",
+                )
+            )
         agents_parts: list[tuple[str, str]] = []
         if orientation.developer_agent is not None:
             agents_parts.append(("developer", strip_markup(orientation.developer_agent)))
