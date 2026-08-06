@@ -154,6 +154,8 @@ def test_canonical_plan_rejects_duplicate_consumed_step_numbers() -> None:
             "number": 1,
             "title": "Duplicate",
             "content": "This must not shadow the first consumed step.",
+            "step_type": "file_change",
+            "targets": [{"path": "src/a.py", "action": "modify"}],
         }
     )
 
@@ -539,15 +541,25 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
     }
 
 
-def test_format_doc_describes_the_mandatory_plan_contract() -> None:
-    """The concise guide teaches required steps and the normal revision path."""
+def test_format_doc_describes_the_mandatory_executor_ready_plan_contract() -> None:
+    """The concise guide teaches the mandatory step contract and revision path.
+
+    ``PLAN001`` is no longer the sole blocking rule -- ``PLAN010``/``PLAN020``/
+    ``PLAN021``/``PLAN022`` are all mandatory, blocking rules for step
+    structure now (see ``ralph/mcp/artifacts/markdown/specs/plan.py``), so
+    the doc no longer singles out ``PLAN001``. ``Validation Overrides`` is no
+    longer supported at all (see ``PLAN025``), so the doc states that instead
+    of teaching it as a usable escape hatch.
+    """
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for needle in (
-        "stable `### [S-n] Title` steps",
-        "Validation Overrides",
+        "### [S-n] Title",
+        "Verify",
+        "Expect",
+        "unsupported",
         "ralph_edit_md_artifact",
-        "line- and step-anchored repair diagnostic",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
     assert "ralph_edit_md_plan_step" not in doc
+    assert "`PLAN001` is the sole error" not in doc

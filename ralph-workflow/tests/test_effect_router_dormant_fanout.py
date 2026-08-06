@@ -96,8 +96,8 @@ Do the work.
 Type: file_change
 Files:
 - modify src/main.py
-Verify: pytest tests/test_effect_router_dormant_fanout.py -q
-Expect: the dormant fan-out tests pass with exit code 0
+Verify: pytest tests/test_main.py -q
+Expect: the focused test suite passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/main.py
@@ -375,9 +375,9 @@ type: plan
 ### [S-1] Implement A
 Type: file_change
 Files:
-- modify src/a/main.py
-Verify: pytest tests/test_effect_router_dormant_fanout.py -q
-Expect: the dormant fan-out tests pass with exit code 0
+- modify src/a
+Verify: pytest tests/test_a.py -q
+Expect: the focused A test passes with exit code 0
 
 - [unit-b] Implement B
   Directories: src/b
@@ -385,9 +385,9 @@ Expect: the dormant fan-out tests pass with exit code 0
 ### [S-2] Implement B
 Type: file_change
 Files:
-- modify src/b/main.py
-Verify: pytest tests/test_effect_router_dormant_fanout.py -q
-Expect: the dormant fan-out tests pass with exit code 0
+- modify src/b
+Verify: pytest tests/test_b.py -q
+Expect: the focused B test passes with exit code 0
 """,
         encoding="utf-8",
     )

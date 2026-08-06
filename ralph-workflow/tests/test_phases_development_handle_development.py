@@ -43,8 +43,8 @@ Implement the change.
 Type: file_change
 Files:
 - modify src/a.py
-Verify: pytest tests/test_phases_development_handle_development.py -q
-Expect: the development phase tests pass with exit code 0
+Verify: pytest tests/test_a.py -q
+Expect: the focused test suite passes with exit code 0
 ## Critical Files
 - [CF-1] src/a.py
   Action: modify

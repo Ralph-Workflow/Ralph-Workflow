@@ -41,7 +41,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [RA-001] The review omitted the bare exception at src/handler.py:42.
+- [RA-001] Step: [S-3] The review omitted the bare exception at src/handler.py:42.
 
 ## How To Fix
 

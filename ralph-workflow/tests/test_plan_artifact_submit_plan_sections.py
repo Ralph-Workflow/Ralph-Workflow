@@ -78,7 +78,7 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
     assert second.is_error is False
     assert _payload(second)["valid"] is True
     assert _payload(resumed)["content"] == document
-    assert _payload(resumed)["sections"] == ["Steps"]
+    assert _payload(resumed)["sections"] == ["Skills MCP", "Steps"]
 
 
 def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> None:

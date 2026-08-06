@@ -81,10 +81,16 @@ type: invented_artifact
 
 
 def test_every_concrete_plan_fence_is_validated_without_pseudo_plan_exemptions() -> None:
-    """Plan-fence examples that omit step blocks no longer fail the audit.
+    """Plan-fence examples are validated with the full step-block grammar.
 
-    Every concrete plan fence must demonstrate the mandatory executor-ready
-    step contract, so the documentation audit catches incomplete examples.
+    ``artifact=plan`` fences are concrete plan documents, not advisory
+    prose exempt from step-shape checks. PLAN022 is a blocking error for
+    any plan lacking a ``### [S-n] Title`` step block (see
+    ``ralph/mcp/artifacts/markdown/specs/plan.py``); there is no
+    content-shape-warning downgrade. Passing this audit therefore
+    requires each fence to carry a real, minimal, valid step block --
+    exactly the shape ``ralph/mcp/artifacts/format_docs/plan.md``
+    documents as the canonical example -- not a step-less summary.
     """
     check = getattr(audit_module, "check_source_examples", None)
     assert callable(check)
@@ -93,10 +99,12 @@ def test_every_concrete_plan_fence_is_validated_without_pseudo_plan_exemptions()
 type: plan
 ---
 ## Work
-### [S-1] Inspect the documented contract
-Read the documented plan contract before publishing the example.
+
+### [S-1] Characterize current retry behavior
+Inspect the current default and preserve it in a focused regression.
+
 Type: discovery
-Location: ralph/mcp/artifacts/format_docs/plan.md
+Location: tests/test_retry.py
 ```
 
 ```markdown artifact=plan example-size=large
@@ -104,15 +112,23 @@ Location: ralph/mcp/artifacts/format_docs/plan.md
 type: plan
 ---
 ## Work
-### [S-1] Inspect the documented contract
-Read the documented plan contract before publishing the example.
-Type: discovery
-Location: ralph/mcp/artifacts/format_docs/plan.md
+
+### [S-1] Change and prove the default
+Update retry handling and run the focused regression.
+
+Type: file_change
+Files:
+- modify ralph/retry.py
+- modify tests/test_retry.py
+Verify: pytest tests/test_retry.py -q
+Expect: the focused retry tests pass with exit code 0
 ```
 """
 
     violations = check("plan.md", source, declared_artifact_type="plan")
 
+    # Both fences carry a real, valid step block, so the full plan
+    # grammar (PLAN022 included) is satisfied without any exemption.
     assert violations == []
 
 

@@ -13,6 +13,9 @@ def _plan_document() -> str:
     return """---
 type: plan
 ---
+## Skills MCP
+Skills: test-driven-development
+
 ## Steps
 ### [S-1] Update the plan validator
 Change the markdown plan validator and prove the focused behavior.

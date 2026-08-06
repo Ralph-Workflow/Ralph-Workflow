@@ -107,8 +107,13 @@ with the retained staged draft before allowing the planning phase to finish.
 
 ### [S-1] Promote fallback
 Persist this fallback through the canonical submission path.
-Type: discovery
-Location: .agent/artifacts/plan.md
+
+
+Type: file_change
+Files:
+- modify ralph/pipeline/completion.py
+Verify: pytest tests/test_plan_draft_staleness.py -q
+Expect: the focused draft-staleness tests pass with exit code 0
 """,
         encoding="utf-8",
     )

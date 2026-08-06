@@ -2,7 +2,9 @@
 
 Submit one executor-ready Markdown plan. Use stable `### [S-n] Title` steps: IDs are stable and never renumbered. Each step states its purpose and `Type`: `file_change`, `file_create`, `file_delete`, `refactor`, `config_change`, `discovery`, or `verify`; use `Type: verify` for a proof-only step. Fields are preserved verbatim only when they satisfy this contract.
 
-Work types require `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step requires `Verify` plus `Expect` or `Location`; a `discovery` step requires `Verify`, `Evidence`, or `Location`. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`; repair validator findings directly. The only step-less plan is `noop: true`.
+Work types require `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step requires `Verify` plus `Expect` or `Location`; a `discovery` step requires `Verify`, `Evidence`, or `Location`. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`; repair validator findings directly. The only step-less plan is `noop: true`.
+
+Step IDs are stable and never renumbered once assigned; a later revision keeps `[S-3]` as `[S-3]`, and every `Depends on:`/`Satisfies:` reference stays valid. When repairing a diagnostic, rewrite only the field the diagnostic names and leave the rest of the step preserved verbatim.
 
 Submit a complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 (`artifact_type="plan"`). For a similar revision, use

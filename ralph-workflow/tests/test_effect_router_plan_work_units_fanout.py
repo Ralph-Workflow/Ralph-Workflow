@@ -98,8 +98,8 @@ Do the work.
 Type: file_change
 Files:
 - modify src/main.py
-Verify: pytest tests/test_effect_router_plan_work_units_fanout.py -q
-Expect: the fan-out routing tests pass with exit code 0
+Verify: pytest tests/test_main.py -q
+Expect: the focused main-module tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] src/main.py
@@ -147,8 +147,8 @@ Change the {name} component.
 Type: file_change
 Files:
 - modify src/{name}/main.py
-Verify: pytest tests/test_effect_router_plan_work_units_fanout.py -q
-Expect: the fan-out routing tests pass with exit code 0
+Verify: pytest tests/{name}/test_main.py -q
+Expect: the focused {name} tests pass with exit code 0
 """
         )
     return "---\ntype: plan\n---\n" + "\n".join(sections)

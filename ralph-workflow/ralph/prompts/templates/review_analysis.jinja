@@ -41,7 +41,7 @@ status: request_changes
 - [SUM-1] The review missed a high-severity validation issue.
 
 ## What Came Up Short
-- [RA-001] [Correctness] The review did not check the new error path in src/foo.py; the bare except at line 87 silently swallows exceptions.
+- [RA-001] Plan-level: [Correctness] The review did not check the new error path in src/foo.py; the bare except at line 87 silently swallows exceptions.
 
 ## How To Fix
 - [RA-001] Re-review src/foo.py and tests/test_foo.py, add a Correctness finding for the bare except at line 87, and submit issues if the error path is still uncovered.
