@@ -301,3 +301,116 @@ def test_agy_session_ceiling_invariant_survives_minus_o() -> None:
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
     assert "_AGENT_SESSION_CEILINGS['agy'] must exceed _SMOKE_IDLE_TIMEOUT_SECONDS" in result.stderr
+
+
+def test_execute_smoke_turns_stops_after_one_attempt_when_ceiling_below_wire(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The turn loop must not retry once turn 1's ceiling already rules out WIRE.
+
+    DA-001 regression: ``_execute_smoke_turns`` (``smoke_plumbing.py``) only
+    re-enters its ``for _attempt in range(_SMOKE_MAX_TURNS)`` loop from the
+    ``OpenCodeResumableExitError`` branch, which is supposed to ``break``
+    instead of ``continue`` once ``transport_evidence_ceiling(...) <
+    Provenance.WIRE``. Nothing previously drove that loop through a second
+    turn to prove the early break actually fires -- a future edit that
+    deleted it would silently regress to burning all ``_SMOKE_MAX_TURNS``
+    turns on a run whose ceiling already ruled out ``PASS`` from turn 1,
+    with no test catching it.
+
+    A fake multi-turn transport double (not live agy) raises
+    ``OpenCodeResumableExitError`` on every call and, on its first call,
+    deposits an ``init`` frame built from the mock's own
+    ``_MOCK_INIT_TOOL_NAMES`` (no ``ralph_*`` / ``mcp__ralph__*`` /
+    ``call_mcp_tool`` route), mirroring
+    ``test_mock_agy_evidence_ceiling_grades_below_wire`` in
+    ``test_smoke_agy_end_to_end.py``. The double must be invoked exactly
+    once, not ``_SMOKE_MAX_TURNS`` (5) times, and the ceiling computed from
+    the returned lines must stay below ``WIRE``.
+    """
+    import json
+    from collections.abc import MutableSequence
+
+    from ralph.agents.invoke import InvokeOptions, OpenCodeResumableExitError
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.plumbing.smoke_evidence import Provenance
+    from ralph.pipeline.plumbing.smoke_plumbing import (
+        SmokeRunParams,
+        _execute_smoke_turns,
+        transport_evidence_ceiling,
+    )
+    from tests._support.mock_agy import _MOCK_INIT_TOOL_NAMES
+
+    init_line = json.dumps(
+        {
+            "event": "init",
+            "conversation_id": "00000000-0000-0000-0000-000000000000",
+            "init": {
+                "model": "default",
+                "cwd": ".",
+                "tools": list(_MOCK_INIT_TOOL_NAMES),
+                "permission_mode": "always-proceed",
+            },
+        }
+    )
+
+    call_count = 0
+
+    def _fake_execute_agent_effect(
+        effect: object,
+        unified_config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        *,
+        bridge: object,
+        display_context: object,
+        run_id: str,
+        raw_output_sink: MutableSequence[str],
+        rendered_output_sink: MutableSequence[str],
+        set_session_id_cb: object,
+        invoke_agent: object,
+        raise_resumable_exit: object,
+    ) -> object:
+        nonlocal call_count
+        call_count += 1
+        raw_output_sink.append(init_line)
+        raise OpenCodeResumableExitError("agy/test-model")
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("smoke prompt", encoding="utf-8")
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    params = SmokeRunParams(
+        agent_name="agy/test-model",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+
+    all_lines, _live_lines, _session_id, final_exception = _execute_smoke_turns(
+        params, None, run_id="interactive-agy-smoke-test-model"
+    )
+
+    assert call_count == 1, (
+        "the fake transport must be invoked exactly once: the turn loop must "
+        f"break after turn 1 once the ceiling is below WIRE, got {call_count} calls"
+    )
+    assert isinstance(final_exception, OpenCodeResumableExitError)
+    ceiling = transport_evidence_ceiling(config, all_lines)
+    assert ceiling < Provenance.WIRE
