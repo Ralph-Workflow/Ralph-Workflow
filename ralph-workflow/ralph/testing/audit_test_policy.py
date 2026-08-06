@@ -244,6 +244,28 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     "test_recovery_memory_regression",
 }
 
+# Files whose name contains "smoke" but that are NOT live/slow smoke
+# tests in disguise -- the naming heuristic below assumes "smoke" in
+# the stem implies real subprocess/file I/O that must be excluded from
+# the default suite, which is wrong for a plumbing-level regression
+# test that merely exercises smoke-related production code hermetically.
+_SMOKE_NAME_ALLOWLIST: set[str] = {
+    # S-6 regression (DEVELOPMENT_ANALYSIS_DECISION.md DA-002) for the
+    # capability-breaks detector in ralph/pipeline/plumbing/smoke_plumbing.py.
+    # "smoke" appears in the name because the test drives
+    # ``_run_smoke_agent`` directly -- not because it is itself a live or
+    # slow smoke test. It reads only the committed
+    # tests/display/_fixtures/opencode_wire.jsonl fixture via
+    # Path.read_text()/splitlines(), uses tmp_path, and monkeypatches
+    # ``_execute_smoke_turns`` so no real subprocess, live binary, or
+    # wall-clock wait ever runs (completes in well under a second). It
+    # MUST stay in the default (unmarked) suite: marking it
+    # @pytest.mark.smoke would silently exclude it from ``make verify``,
+    # defeating the regression this task exists to add (AGENTS.md
+    # "every new check must run under make verify").
+    "test_smoke_capability_breaks_when_supported_but_unrendered",
+}
+
 # Path I/O methods that indicate real filesystem access.
 _PATH_IO_METHODS: frozenset[str] = frozenset(
     {"read_text", "write_text", "read_bytes", "write_bytes", "open"}
@@ -630,7 +652,11 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
         # name that LACKS the marker is a regression waiting to happen —
         # it would silently run as a regular test, leak real file I/O
         # into the suite, and burn the 60s budget.
-        if "smoke" in py_file.stem.lower() and "smoke" not in _collect_markers_for_file(py_file):
+        if (
+            "smoke" in py_file.stem.lower()
+            and py_file.stem not in _SMOKE_NAME_ALLOWLIST
+            and "smoke" not in _collect_markers_for_file(py_file)
+        ):
             all_violations.append(
                 TestPolicyViolation(
                     file_path=str(py_file),
