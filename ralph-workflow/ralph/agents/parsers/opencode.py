@@ -51,17 +51,20 @@ class _OpenCodeDispatch:
         event_type = str(obj.get("type", "unknown"))
 
         if event_type == "step_start":
-            # NOTE: OpenCode 1.17.15 emits exactly five event types --
-            # step_start, step_finish, text, tool_use, error -- and carries the
-            # part id at ``part.id``, not at the top level. So this lookup
-            # always misses on the live runtime and the accumulator machinery
-            # below never engages. That is currently harmless because the
-            # ``stream`` deltas it accumulates do not exist either; text
-            # arrives whole in one ``text`` event. Do NOT "fix" this by
-            # reading ``part.id``: the step-start part id is a DIFFERENT part
-            # from the text part the deltas would belong to, so it would key
-            # the accumulator wrongly. Both halves must be reworked together
-            # against a runtime that actually streams.
+            # MEASURED (opencode 1.18.14, captured 2025-11-19): the live
+            # binary emits FOUR event types -- step_start, step_finish,
+            # text, tool_use -- and carries the part id at ``part.id``,
+            # not at the top level. So this top-level ``id`` lookup
+            # always misses and the accumulator machinery below never
+            # engages. That is currently harmless: the live binary also
+            # never emits the ``stream`` deltas the accumulator is
+            # built for; text arrives whole in one ``text`` event (see
+            # ``tests/display/_fixtures/opencode_wire_provenance.md``).
+            # Do NOT "fix" this by reading ``part.id``: the step-start
+            # part id is a DIFFERENT part from the text part the
+            # deltas would belong to, so it would key the accumulator
+            # wrongly. Both halves must be reworked together against a
+            # runtime that actually streams.
             step_id = str(obj.get("id", ""))
             if step_id:
                 self._owner._current_part_id = step_id
@@ -306,10 +309,12 @@ class OpenCodeParser(NdjsonParserBase):
         # child-lifecycle events (child_started/child_progress/
         # child_heartbeat/child_complete) into a ChildLivenessRegistry, and the
         # parser-side registry hook is forward-compat for events that carry an
-        # embedded PID. Verified against OpenCode 1.17.15: the live runtime
-        # emits NONE of those types and no event carries a PID, so both hooks
-        # are inert today -- real subagent dispatch arrives as a ``task`` tool
-        # call and is classified by ``_opencode_tool_signal`` instead.
+        # embedded PID. MEASURED (opencode 1.18.14, captured 2025-11-19 via
+        # ``tests/display/_fixtures/opencode_wire_provenance.md``): the live
+        # runtime emits NONE of those types and no event carries a PID, so
+        # both hooks are inert today -- real subagent dispatch arrives as a
+        # ``task`` tool call and is classified by
+        # ``_opencode_tool_signal`` instead.
         self._subagent_pid_registry = subagent_pid_registry
         self._subagent_source_label = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained

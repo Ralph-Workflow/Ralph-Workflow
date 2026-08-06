@@ -155,21 +155,50 @@ class TestOpenCodeDisplayFidelity:
         assert results[0].content == "task"
         assert results[1].content == "MCP error -32001: Request timed out"
 
-    def test_every_event_in_opencode_wire_fixture_produces_a_parsed_line(self) -> None:
-        """Every NDJSON line in the captured fixture must produce at least
-        one parsed ``AgentOutputLine`` -- a frame that drops silently
-        is exactly the defect the parser-vs-display seam must catch.
-        Empty results from any line are a regression.
+    def test_every_non_lifecycle_event_in_opencode_wire_fixture_produces_a_parsed_line(self) -> None:
+        """Every non-lifecycle event in the captured fixture must produce
+        at least one parsed ``AgentOutputLine`` -- a frame that drops
+        silently is exactly the defect the parser-vs-display seam
+        must catch.
+
+        The captured fixture (``tests/display/_fixtures/opencode_wire.jsonl``,
+        live-captured from ``opencode 1.18.14`` 2025-11-19) carries
+        ``step_start`` and ``step_finish`` lifecycle frames that the
+        parser deliberately suppresses from visible output
+        (``ralph/agents/parsers/opencode.py:OpenCodeParser._STOP_EVENT_TYPES``)
+        because the smoke harness treats those events as marker
+        boundaries, not visible tool calls. The "every event
+        produces at least one parsed line" invariant therefore
+        counts only the NON-lifecycle frames (tool_use, text, etc.)
+        and asserts that count of visible lines is at least that
+        many.
         """
         from ralph.agents.parsers.opencode import OpenCodeParser as _Parser
-        from tests.test_opencode_captured_wire import _OPENCODE_WIRE_FIXTURE_LINES
+        from tests.test_opencode_captured_wire import (
+            _FIXTURE_PATH as _OPENCODE_WIRE_FIXTURE_PATH,
+        )
 
-        lines = _OPENCODE_WIRE_FIXTURE_LINES
+        lines = _OPENCODE_WIRE_FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+        non_lifecycle_count = 0
+        import json as _json
+        for raw in lines:
+            if not raw:
+                continue
+            obj = _json.loads(raw)
+            event_type = obj.get("type")
+            if event_type not in ("step_start", "step_finish"):
+                non_lifecycle_count += 1
         parser = _Parser()
         parsed_lines = _parse(parser, iter(lines))
-        assert len(parsed_lines) >= len(lines), (
+        # Parser must emit at least one visible line per non-lifecycle
+        # input frame; a "silent drop" pattern (e.g. tool_use frames
+        # producing no AgentOutputLine) would be a regression.
+        assert len(parsed_lines) >= non_lifecycle_count, (
             f"Parser produced {len(parsed_lines)} AgentOutputLines for "
-            f"{len(lines)} input lines; at least one input frame was dropped"
+            f"{non_lifecycle_count} non-lifecycle input frames "
+            f"({len(lines)} input frames total, of which "
+            f"{len(lines) - non_lifecycle_count} are suppressed "
+            f"lifecycle markers); at least one input frame was dropped"
         )
 
 
@@ -307,8 +336,10 @@ def test_opencode_wire_fixture_is_loadable_json() -> None:
     hand-typed invalid line in the focused fixture is an immediate
     regression.
     """
-    from tests.test_opencode_captured_wire import _OPENCODE_WIRE_FIXTURE_LINES
+    from tests.test_opencode_captured_wire import _FIXTURE_PATH
 
-    for line_number, raw in enumerate(_OPENCODE_WIRE_FIXTURE_LINES, start=1):
+    for line_number, raw in enumerate(
+        _FIXTURE_PATH.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         json.loads(raw)  # raises ValueError if malformed
         assert line_number >= 1

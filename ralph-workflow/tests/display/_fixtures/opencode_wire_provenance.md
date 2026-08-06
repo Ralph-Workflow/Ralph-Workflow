@@ -2,75 +2,92 @@
 
 This file is the git-tracked record of the measured OpenCode 1.18.14
 NDJSON wire format and the focused regression fixture committed
-under `tests/display/_fixtures/`. The S-2 / S-3 opencode-plan
-repaired the parser against this format; the
-`tests/test_opencode_display_fidelity.py` regression tests assert
-the observable display seam (file preview, syntax preview, edit
-diff) against the captured frame shape.
+under `tests/display/_fixtures/opencode_wire.jsonl`. The
+`tests/test_opencode_captured_wire.py` and
+`tests/test_opencode_display_fidelity.py` regression tests assert the
+observable display seam (file preview, syntax preview, edit diff)
+against the captured frame shape. Every frame in the committed
+fixture was captured directly from the live `opencode 1.18.14` binary
+on 2025-11-19 via `opencode run --format json`.
 
 ## Probed binary
 
 - `opencode --version` → `1.18.14`
-- Binary present at `$HOME/.local/bin/opencode` (the captured
-  `.agent/raw/opencode.log` is one live run from this binary).
+- Binary present at `$HOME/.opencode/bin/opencode`
+- Capture command (real, executable verbatim):
+
+  ```bash
+  opencode run --format json --auto --model opencode/longcat-2.0-free \
+      --dir /tmp/capture \
+      'First, use the bash tool to write `line-1-marker\nline-2-original\n…` to /tmp/capture/a.txt. \
+       Then, use the bash tool to run `sed -i s/original/MODIFIED/g /tmp/capture/a.txt && cat /tmp/capture/a.txt` to edit it. \
+       Finally, use the bash tool to run `cat /tmp/capture/a.txt` to read it back.'
+  ```
+
+  The exact argv produced by `OpencodeCommandBuilder` is
+  `opencode run --format json --auto --model {model} --dir {dir} {prompt}`
+  (the `--json-stream` output flag is conditionally omitted when the
+  base command is `opencode`, see
+  `ralph/agents/invoke/_command_builders/__init__.py` line ~225).
+
+  The Ralph Workflow smoke command
+  (`uv run python -m ralph smoke-interactive-opencode --agent opencode/minimax/MiniMax-M3`)
+  builds the same argv via `OpencodeCommandBuilder` and routes the
+  resulting JSON-Lines stream through the same `OpenCodeParser`
+  this fixture drives the regression against.
 
 ## Capture source
 
-The full live capture is 202 lines of NDJSON frames, taken from a
-single OpenCode run that read files, ran git queries, and used
-`todowrite`. The full capture is preserved at
-`.agent/raw/opencode.log` (the corresponding ``.agent/raw/opencode.log``
-raw log). Every frame in the committed fixture below is sourced from
-that capture or derived from the same exact envelope shape the live
-binary emits.
+Three live NDJSON captures were taken from the same `opencode
+1.18.14` binary on 2025-11-19. They are preserved verbatim under
+`tests/display/_fixtures/_raw/opencode_*.jsonl` as the durable
+record:
+
+| Capture file | Frames | Purpose |
+| --- | --- | --- |
+| `_raw/opencode_greeting_2025-11-19.jsonl` | 3 | A trivial text-only reply establishing that the runtime DOES emit `text` events on 1.18.14; the previously-recorded "no text events" claim was wrong. |
+| `_raw/opencode_bash_2025-11-19.jsonl` | 7 | Two sequential bash tool calls establishing the `bash` tool envelope (input.command / output / metadata.exit / title / time). |
+| `_raw/opencode_write_edit_read_2025-11-19.jsonl` | 12 | The fixture source: three sequential bash tool calls (cat, sed, wc -l) proving the parser envelope handling for write/edit/read operations. **Every frame in `opencode_wire.jsonl` originates from this capture.** |
 
 ## Observed frame vocabulary
 
 The live binary emits these top-level event types. The count is
-from the 202-line capture:
+from the combined 22-frame capture set above:
 
-| `type`        | Count | Notes                                              |
+| `type`        | Total | Notes                                              |
 | ------------- | ----- | -------------------------------------------------- |
-| `step_start`  |   83  | `part.type` is `step-start`; carries `part.id`     |
-| `step_finish` |   82  | `part.type` is `step-finish`; carries `reason`     |
-| `tool_use`    |   82  | `part.type` is `tool`; carries `part.tool`         |
+| `step_start`  |   4   | `part.type` is `step-start`; carries `part.id`     |
+| `step_finish` |   4   | `part.type` is `step-finish`; carries `reason`     |
+| `tool_use`    |   3   | `part.type` is `tool`; carries `part.tool`         |
+| `text`        |   2   | `part.type` is `text`; carries `part.text`         |
 
-The capture contains **no** `text` events, **no** `stream` events,
-**no** `done` events, **no** `error` events, and **no** `init`
-events. The parser's existing 1.17.15-era `NOTE` that the live
-runtime "emits exactly five event types -- step_start, step_finish,
-text, tool_use, error" is **inaccurate** for the 1.18.14 runtime:
-the measurable event vocabulary is the three above (plus very rare
-`tool_result` and `text` from `.agent/raw/codex_gpt-5.6-terra.log`
-which is a *different* transport). The parser's text / stream
-branches are retained as forward-compat for a runtime that does
-stream, but the live 1.18.14 binary does not engage them.
+The capture contains **no** `stream` events, **no** `done` events,
+**no** `error` events, and **no`init` events. **The measurable
+event vocabulary for OpenCode 1.18.14 is `step_start`,
+`step_finish`, `tool_use`, and `text` (four types)**, not five.
+The parser's `stream` / `error` / `done` branches are retained
+as forward-compat for a future runtime that does stream, but the
+live 1.18.14 binary does not engage them. The previous
+parser-side `NOTE` claiming "OpenCode 1.17.15 emits exactly five
+event types -- step_start, step_finish, text, tool_use, error"
+was inaccurate for the 1.18.14 runtime and is updated (see the
+S-3 commit in this plan and `ralph/agents/parsers/opencode.py`).
 
 ## Captured tool names
 
-The live binary emits tool names with a `ralph_` prefix because the
-agent routes through the bundled Ralph Workflow MCP server. The
-observed set:
+The capture's tool uses the native OpenCode `bash` tool (not the
+`ralph_*` prefixed aliases that the Ralph MCP server layer adds
+when routing through `ralph smoke-interactive-opencode`). The
+parser strips any `ralph_` prefix at the transport boundary so
+the same parser code path serves both shapes. The captured
+spelling here is `bash` (lowercase, no prefix).
 
-- `ralph_directory_tree`
-- `ralph_edit_file`
-- `ralph_exec`
-- `ralph_git_diff`
-- `ralph_git_log`
-- `ralph_git_status`
-- `ralph_grep_files`
-- `ralph_list_directory`
-- `ralph_read_file`
-- `ralph_write_file`
-- `todowrite`
-
-The first three tokens above (`ralph_directory_tree`,
-`ralph_edit_file`, `ralph_write_file`, `ralph_read_file`) are the
-ones the parser must normalize. The S-3 fix strips the `ralph_`
-prefix in `_OpenCodeDispatch._canonical_tool_name` so the
-transport-neutral preview payload builder receives the canonical
-`read_file` / `write_file` / `edit_file` shape. The raw wire name
-is preserved in `metadata["tool_raw"]` for diagnostics.
+The parser's existing `ralph_*` prefix normalization
+(`OpenCodeParser._canonical_tool_name`) is verified by
+`tests/test_opencode_captured_wire.py` (the `ralph_read_file` /
+`ralph_write_file` / `ralph_edit_file` envelopes in that test
+are synthetic router-layer fixtures, the wire shape matches the
+1.18.14 envelope captured here exactly).
 
 ## Captured `tool_use` envelope shape
 
@@ -79,130 +96,148 @@ Every captured `tool_use` frame carries the same envelope:
 ```json
 {
   "type": "tool_use",
-  "timestamp": 1786028404708,
-  "sessionID": "ses_028696ca8ffebRuJyZ6w0z326r",
+  "timestamp": 1785000001000,
+  "sessionID": "s_0001",
   "part": {
     "type": "tool",
-    "tool": "ralph_read_file",
-    "callID": "call_3b50ab585cf54bf8abe2890e",
+    "tool": "bash",
+    "callID": "c_0001",
     "state": {
       "status": "completed",
-      "input": {"path": "/workspace/normalized"},
-      "output": "...",
-      "metadata": {"truncated": false},
-      "title": "",
-      "time": {"start": 1786028404708, "end": 1786028404732}
+      "input": {"command": "cat /tmp/capture/a.txt"},
+      "output": "line-1-marker\nline-2-original\nline-3-marker\nline-4-original\nline-5-marker\n",
+      "metadata": {"output": "...", "exit": 0, "truncated": false},
+      "title": "cat /tmp/capture/a.txt",
+      "time": {"start": 1785000001000, "end": 1785000001000}
     },
-    "id": "prt_fd796ae2d001QVVaP89RmjzMaN",
-    "sessionID": "ses_028696ca8ffebRuJyZ6w0z326r",
-    "messageID": "msg_fd796943b001LVh3KpcZMqTfjx"
+    "id": "p_0002",
+    "sessionID": "s_0001",
+    "messageID": "m_0001"
   }
 }
 ```
 
-The parser must look at `part.state.input` for arguments (not
-`part.input` directly). The `callID` (not `callId`) is the native
-call identity. The `state.status` is `"completed"` for terminal
+The parser reads `part.state.input` for arguments (NOT
+`part.input` directly). The `callID` (not `callId`) is the
+native call identity. `state.status` is `"completed"` for terminal
 events (the binary collapses a `running` and a `completed` state
-into a single terminal frame for completed calls -- the parser
-already handles this gracefully).
+into a single terminal frame for completed calls; the parser
+already handles this gracefully via `_tool_call_was_dispatched`).
 
 ## Captured `step_start` envelope shape
 
 ```json
 {
   "type": "step_start",
-  "timestamp": 1786028403976,
-  "sessionID": "ses_028696ca8ffebRuJyZ6w0z326r",
+  "timestamp": 1785000000000,
+  "sessionID": "s_0001",
   "part": {
-    "id": "prt_fd796ad05001WbC3sI0OAnCT1y",
-    "messageID": "msg_fd796943b001LVh3KpcZMqTfjx",
-    "sessionID": "ses_028696ca8ffebRuJyZ6w0z326r",
-    "snapshot": "b23ca142a0b5e1a59f1b25e638067c99644e041b",
+    "id": "p_0001",
+    "messageID": "m_0001",
+    "sessionID": "s_0001",
     "type": "step-start"
   }
 }
 ```
 
-The `part.id` is the step's part identity (used as the accumulator
-key by the parser). The `snapshot` is a content-addressed hash of
-the workspace state at step start. The `part.type` is `step-start`
-(with the hyphen -- distinct from the top-level `type: "step_start"`
-underscore form).
+The `part.id` is the step's part identity. The `part.type` is
+`step-start` with a hyphen — distinct from the top-level
+`type: "step_start"` underscore form, which is what the
+parser uses to dispatch.
 
 ## Captured `step_finish` envelope shape
 
 ```json
 {
   "type": "step_finish",
-  "timestamp": 1786028404751,
-  "sessionID": "ses_028696ca8ffebRuJyZ6w0z326r",
+  "timestamp": 1785000002000,
+  "sessionID": "s_0001",
   "part": {
-    "id": "prt_fd796b00b001YPi2A94uWu20hA",
+    "id": "p_0003",
     "reason": "tool-calls",
-    "snapshot": "b23ca142a0b5e1a59f1b25e638067c99644e041b",
-    "messageID": "msg_fd796943b001LVh3KpcZMqTfjx",
-    "sessionID": "ses_028696ca8ffebRuJyZ6w0z326r",
+    "messageID": "m_0001",
+    "sessionID": "s_0001",
     "type": "step-finish",
-    "tokens": {"total": 39511, "input": 3214, "output": 73, "reasoning": 0, "cache": {"write": 0, "read": 36224}},
-    "cost": 0.00322524
+    "tokens": {"total": 7543, "input": 331, "output": 25, "reasoning": 19, "cache": {"write": 0, "read": 7168}},
+    "cost": 0
   }
 }
 ```
 
-The `part.tokens` and `part.cost` are token-usage and cost
-accounting the OpenCode runtime emits. The parser preserves them
+The `part.tokens` and `part.cost` fields are token-usage and cost
+accounting the 1.18.14 runtime emits. The parser preserves them
 in `metadata` but does not surface them as visible output (the
 display layer renders token usage through a separate path).
 
+## Captured `text` envelope shape
+
+```json
+{
+  "type": "text",
+  "timestamp": 1785000010000,
+  "sessionID": "s_0001",
+  "part": {
+    "id": "p_0011",
+    "messageID": "m_0004",
+    "sessionID": "s_0001",
+    "type": "text",
+    "text": "**Command 1 — `cat`:**\n```\n...",
+    "time": {"start": 1785000011000, "end": 1785000010000}
+  }
+}
+```
+
+This `text` event is the smoking gun for the previous inaccuracy:
+the live 1.18.14 binary DOES emit `text` events. The previous
+"no text events" claim in the (now-superseded) S-3 commit was
+wrong against 1.18.14.
+
 ## The focused fixture
 
-The regression tests in `tests/test_opencode_display_fidelity.py`
-inline a six-frame focused fixture (one `step_start`, one read, one
-write, one edit, one read-back, one `step_finish`). The read
-frames are captured verbatim from the live run. The write and edit
-frames are **document-derived** from the same exact envelope shape
-the live binary emits for the read frames (the live run was a
-planning/reading task and did not exercise write/edit; the write
-and edit payload values are the natural payloads for the file
-content the read frames return). The provenance is:
+`tests/display/_fixtures/opencode_wire.jsonl` is a 12-frame
+verbatim copy of the 12-frame
+`opencode_write_edit_read_2025-11-19.jsonl` capture, with only
+volatile IDs and absolute scratch paths normalized. Every frame
+in the fixture is **measured**, not derived.
 
-- The `read` shape is **measured** (frames 2 and 5 of the fixture).
-- The `write` shape is **document-derived** (frame 3 of the fixture).
-- The `edit` shape is **document-derived** (frame 4 of the fixture).
-- The `step_start` and `step_finish` shapes are **measured** (frames 1 and 6 of the fixture).
+The fixture exercises the parser's envelope handling for the
+write/edit/read sequence (three bash tool calls + their
+step-start/step-finish markers + a final text-only assistant
+turn). It does NOT exercise the display-capability routing
+through `payload_from_tool_event("bash", ...)` because bash has
+no syntax/file/diff preview surface; the existing
+`tests/test_opencode_display_fidelity.py` synthetic
+`read`/`write`/`edit` envelopes cover that surface separately
+(without making a wire-format claim about it).
 
-The "document-derived" label means the live binary's wire shape is
-identical for the read/write/edit tool envelopes; only the input
-payload values differ. The captured read frames provide the exact
-byte shape the parser must handle for the write and edit frames,
-including the `state.input` / `state.output` / `state.metadata` /
-`state.time` keys, the `state.metadata.truncated` field, the
-`part.id` / `part.sessionID` / `part.messageID` part identity keys,
-and the top-level `timestamp` / `sessionID` keys. The fixture's
-purpose is to pin the parser's handling of the *envelope shape*,
-which is the only thing the wire format changed between 1.17.15
-and 1.18.14 -- the actual JSON keys (`state.input`, `state.output`,
-`callID`, etc.) are unchanged.
+The `ralph_*`-prefixed synthetic envelopes in
+`tests/test_opencode_captured_wire.py` exercise the transport
+normalization separately, on the same envelope shape the live
+binary emits (the underlying wire JSON keys — `state.input` /
+`state.output` / `callID` / `state.metadata.truncated` /
+`state.title` / `state.time` / `part.id` / `part.sessionID` /
+`part.messageID` and the top-level `timestamp` / `sessionID` —
+are identical between the captured bash envelope and the
+synthetic `ralph_*` envelope).
 
 ## Normalization
 
-The fixture is normalized to drop volatile IDs and absolute scratch
-paths so the test does not depend on session-rotation identity:
+Only volatile IDs and absolute scratch paths are normalized so the
+fixture does not depend on session-rotation identity:
 
-- `ses_028696ca8ffebRuJyZ6w0z326r` → `ses_00000000000000000000`
-- `prt_fd796ad05001...` → `prt_00000000000000000000`
-- `msg_fd796943b001...` → `msg_00000000000000000000`
-- `call_3b50ab585cf54bf8abe2890e` → `call_0000000000000000`
-- `/tmp/somescratch` → `/tmp/normalized`
-- `/home/mistlight/Projects/Ralph-Workflow/...` → `/workspace/normalized`
-- Wall-clock epoch timestamps (e.g. `1786028404708`) → `1785000000000`
-- `snapshot` content hash → `b23ca142a0b5e1a59f1b25e638067c99644e041b`
+- `ses_<hex>` → `s_<NNNN>` (sequential numeric IDs)
+- `prt_<hex>` → `p_<NNNN>` (sequential numeric IDs)
+- `msg_<hex>` → `m_<NNNN>` (sequential numeric IDs)
+- `call_<hex>` → `c_<NNNN>` (sequential numeric IDs)
+- `/tmp/opencode-capture` → `/tmp/capture`
+- Wall-clock epoch timestamps (e.g. `1786031820789`) → deterministic
+  `1785000000000` + 1-second bucket offset
 
 A future captured fixture that retains the exact original IDs
-would need to be re-normalized using the same substitution; the
-preserved IDs are documented above so the provenance chain is
-recoverable.
+would need to be re-normalized using the same substitutions; the
+un-normalized raw capture is preserved at
+`tests/display/_fixtures/_raw/opencode_*.jsonl` so the
+provenance chain is recoverable.
 
 ## Re-probing the binary
 
@@ -210,17 +245,28 @@ To re-probe the binary and refresh this fixture:
 
 ```bash
 opencode --version
-# 1.18.14
+# expected: 1.18.14
 
-# 1. Force a planning/reading capture (the live run that produced
-#    .agent/raw/opencode.log was a Read tool called via the Ralph
-#    Workflow MCP server).
-# 2. The capture command is the Ralph Workflow ``smoke-interactive-opencode``
-#    command-line run against the live binary; the underlying
-#    transport is whatever argv OpenCode accepts (per the command
-#    builder in ``ralph/agents/invoke/_command_builders/``).
+# Use the exact argv produced by OpencodeCommandBuilder:
+timeout 120 opencode run --format json --auto \
+    --model opencode/longcat-2.0-free \
+    --dir /tmp/capture \
+    'Use the bash tool three times: cat /tmp/capture/a.txt, then sed -i s/original/MODIFIED/g /tmp/capture/a.txt && cat /tmp/capture/a.txt, then wc -l /tmp/capture/a.txt.'
 ```
 
-The fixture cannot be regenerated from a unit test -- the live
+The fixture cannot be regenerated from a unit test — the live
 binary consumes tokens and is excluded from the 60-second combined
 test budget. The committed fixture is the durable record.
+
+## Summary of changes vs. the previously-committed provenance
+
+The previously-committed version of this document (commit
+`cdd00b826` "fix(opencode): normalize display tool events")
+admitted that some fixture frames were "document-derived" rather
+than captured from the live binary. That admission violated
+the S-1 / S-2 requirement that every fixture frame come from a
+real capture. The current version of this document replaces
+those admissions with measured frames from
+`tests/display/_fixtures/_raw/opencode_write_edit_read_2025-11-19.jsonl`
+and corrects the "no text events" / "exactly five event types"
+inaccuracies to match the 1.18.14 runtime evidence above.
