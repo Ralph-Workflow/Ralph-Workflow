@@ -610,14 +610,20 @@ def background_hex_is_light(bg_hex: str) -> bool | None:
 def terminal_background_is_light(
     env: Mapping[str, str], *, measured_bg_hex: str | None = None
 ) -> bool | None:
-    """Resolve override, measured OSC 11 colour, then the COLORFGBG hint."""
-    explicit = _explicit_background_override(env)
-    if explicit is not None:
-        return explicit
+    """Resolve measured OSC 11 colour, then override, then the COLORFGBG hint.
+
+    B-1: the measured background wins. A successful probe outranks an
+    explicit ``RALPH_TERMINAL_BG`` override -- the override is a fallback
+    for terminals that cannot be measured, not a veto over a real
+    measurement.
+    """
     if measured_bg_hex:
         measured = background_hex_is_light(measured_bg_hex)
         if measured is not None:
             return measured
+    explicit = _explicit_background_override(env)
+    if explicit is not None:
+        return explicit
     return _colorfgbg_is_light(env)
 
 
@@ -631,18 +637,16 @@ def _terminal_background_timeout_seconds(env: Mapping[str, str]) -> float:
 
 
 def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
-    """Resolve the terminal background with OSC 11 unless overridden.
+    """Resolve the terminal background, OSC 11 first, then any override.
 
-    B-1: only an override that actually *resolves* skips the probe -- a
-    malformed ``RALPH_TERMINAL_BG`` (present but neither a recognised
-    light/dark token nor a valid hex) must fall through to OSC 11 the same
-    way :func:`detect_terminal_background_hex` already does, rather than
-    short-circuiting on the env var's mere presence and returning an
-    unmeasured ``None``.
+    B-1: the probe always runs first -- a successful measurement wins even
+    over an explicit ``RALPH_TERMINAL_BG`` override. The override (or a
+    malformed one) is only consulted once the probe fails to produce a
+    usable measurement, the same fallback tier
+    :func:`detect_terminal_background_hex` uses. The probe result is
+    cached for the process lifetime (see ``_terminal_bg_query``), so
+    running it unconditionally does not add a second measurement cost.
     """
-    explicit = _explicit_background_override(env)
-    if explicit is not None:
-        return explicit
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
     return terminal_background_is_light(
@@ -656,22 +660,37 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
 def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
     """Resolve the measured or explicitly declared terminal background surface hex.
 
-    A ``RALPH_TERMINAL_BG`` hex is only trusted when it is a valid
-    ``#RGB`` / ``#RRGGBB`` colour (``relative_luminance`` already raises
-    ``ValueError`` for malformed or wrong-length bodies). A malformed
-    override falls through to the OSC 11 probe rather than being
-    threaded, unvalidated, into the palette solver.
+    B-1: the OSC 11 probe runs first -- a successful measurement wins over
+    an explicit ``RALPH_TERMINAL_BG`` override. The probe result is cached
+    for the process lifetime (see ``_terminal_bg_query``), so trying it
+    before consulting the override does not add a second measurement cost.
+
+    Only when the probe cannot measure the surface (``None``) does the
+    override become the surface hex. A ``RALPH_TERMINAL_BG`` hex is only
+    trusted when it is a valid ``#RGB`` / ``#RRGGBB`` colour
+    (``relative_luminance`` already raises ``ValueError`` for malformed or
+    wrong-length bodies) -- a malformed override falls through to the
+    dual-safe fallback rather than being threaded, unvalidated, into the
+    palette solver.
 
     A non-hex explicit declaration (``light`` / ``dark`` / ``1`` / ``true`` /
     ``yes`` / ``0`` / ``false`` / ``no``) resolves to the same representative
     surface the measurement-free canonical tables are solved against
     (``_CANONICAL_LIGHT_SURFACE_HEX`` / ``_CANONICAL_DARK_SURFACE_HEX``,
-    i.e. ``#FAF8F5`` / ``#2D2A2E``) instead of falling through to the probe,
-    so this function and :func:`terminal_background_is_light` can never
-    disagree about a declared background, and this declared-but-unmeasured
-    path keeps the same contrast headroom DA-001 gave the canonical tables
-    rather than resolving fresh against a pure endpoint with none.
+    i.e. ``#FAF8F5`` / ``#2D2A2E``) so this function and
+    :func:`terminal_background_is_light` can never disagree about a
+    declared background, and this declared-but-unmeasured path keeps the
+    same contrast headroom DA-001 gave the canonical tables rather than
+    resolving fresh against a pure endpoint with none.
     """
+    from ralph.display._terminal_bg_query import query_terminal_background_hex
+
+    measured = query_terminal_background_hex(
+        timeout=_terminal_background_timeout_seconds(env)
+    )
+    if measured is not None:
+        return measured
+
     explicit = env.get("RALPH_TERMINAL_BG", "").strip()
     if explicit.startswith("#"):
         try:
@@ -684,11 +703,7 @@ def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
         override = _explicit_background_override(env)
         if override is not None:
             return _CANONICAL_LIGHT_SURFACE_HEX if override else _CANONICAL_DARK_SURFACE_HEX
-    from ralph.display._terminal_bg_query import query_terminal_background_hex
-
-    return query_terminal_background_hex(
-        timeout=_terminal_background_timeout_seconds(env)
-    )
+    return None
 
 
 #: Monokai-derived syntax palettes solved for each terminal background.

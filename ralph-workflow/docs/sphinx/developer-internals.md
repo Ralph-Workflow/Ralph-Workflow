@@ -146,8 +146,12 @@ immediately, including 12-row and temporarily below-floor terminals.
 
 ### Background-aware presentation
 
-`DisplayContext` resolves `RALPH_TERMINAL_BG` (`light`, `dark`, or a measured `#RRGGBB`
-background hex) or probes via OSC 11. Monokai Pro-derived role anchors are dynamically
+`DisplayContext` resolves the terminal background by precedence: the OSC 11 probe's
+measurement wins whenever it succeeds; only when the probe cannot measure the surface
+(non-tty, no reply, timeout) does an explicit `RALPH_TERMINAL_BG` override (`light`,
+`dark`, or a `#RRGGBB` hex) apply, followed by the `COLORFGBG` dual-safe hint. A
+malformed override falls through to the next tier rather than being threaded into the
+solver unvalidated. Monokai Pro-derived role anchors are dynamically
 solved against the measured or declared terminal surface to guarantee WCAG AA (4.5:1)
 contrast. Code and diff previews use a complete surface derived from the measured background
 when known, including source rows, gutters, and padding; an unknown background deliberately

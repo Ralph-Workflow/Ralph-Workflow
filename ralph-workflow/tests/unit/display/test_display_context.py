@@ -256,24 +256,51 @@ def test_malformed_terminal_bg_hex_falls_through_to_the_osc11_probe(
         assert is_light is not None
 
 
-def test_explicit_dark_override_is_not_contradicted_by_a_light_probe_measurement(
+def test_probe_measurement_wins_over_a_conflicting_explicit_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: an explicit ``RALPH_TERMINAL_BG=dark`` must resolve the same
-    canonical surface for both the boolean and the hex detector, even when the
-    OSC 11 probe (stubbed here) would answer with a contradicting light colour.
+    """DA-001 / B-1: the measured background wins. A successful OSC 11 probe
+    (stubbed here to answer with a light colour) outranks an explicit
+    ``RALPH_TERMINAL_BG=dark`` declaration that disagrees with it -- the
+    override is a fallback for terminals that cannot be measured, not a veto
+    over a real measurement.
 
-    Before the fix, ``detect_terminal_background_hex`` ignored the explicit
-    non-hex declaration and threaded the probed ``#FFFFFF`` into the solver
-    while ``detect_terminal_background_is_light`` stayed ``False`` -- a
-    dark/light contradiction that resolved a *light-surface-solved* palette
-    (e.g. ``success`` at ``#568316``) onto what the operator declared a dark
-    terminal. DA-001 also moved the canonical dark/light tables off the pure
+    Before the fix, ``detect_terminal_background_hex`` and
+    ``detect_terminal_background_is_light`` both let the explicit ``dark``
+    declaration win over the probed ``#FFFFFF``, resolving a dark-surface
+    palette onto a terminal OSC 11 had just measured as light. This test
+    pins the opposite: both resolvers agree the surface is the *probed*
+    light one, not the declared dark one.
+    """
+    monkeypatch.setattr(
+        "ralph.display._terminal_bg_query.query_terminal_background_hex",
+        lambda *, timeout: "#FFFFFF",
+    )
+    env = {"RALPH_TERMINAL_BG": "dark"}
+
+    resolved_hex = _theme.detect_terminal_background_hex(env)
+    assert resolved_hex == "#FFFFFF"
+    assert _theme.background_hex_is_light(resolved_hex) is True
+
+    is_light = _theme.detect_terminal_background_is_light(env)
+    assert is_light is True
+
+
+def test_explicit_override_is_honored_only_when_the_probe_cannot_measure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-001 / B-1 companion: when OSC 11 cannot measure the surface
+    (returns ``None``), the explicit ``RALPH_TERMINAL_BG`` override becomes
+    the next precedence tier and must resolve the declared surface -- the
+    same canonical headroom DA-001 established for the dark/light tables --
+    rather than falling all the way through to an unmeasured guess.
+
+    DA-001 moved the canonical dark/light tables off the pure
     ``#000000``/``#FFFFFF`` endpoints onto the representative
     ``#2D2A2E``/``#FAF8F5`` surfaces (a pigment solved to exactly the floor
     on ``#000000`` measures only ~3.05:1 on a realistic ``#2D2A2E``
     surface), so this declared-but-unmeasured path must resolve to that same
-    representative surface too, or it would regress below the floor exactly
+    representative surface, or it would regress below the floor exactly
     where DA-001 restored headroom. This test pins both properties: the hex
     and boolean resolvers agree, and the surface-aware resolution collapses
     onto the same dark canonical table -- now solved with real headroom on
@@ -281,7 +308,7 @@ def test_explicit_dark_override_is_not_contradicted_by_a_light_probe_measurement
     """
     monkeypatch.setattr(
         "ralph.display._terminal_bg_query.query_terminal_background_hex",
-        lambda *, timeout: "#FFFFFF",
+        lambda *, timeout: None,
     )
     env = {"RALPH_TERMINAL_BG": "dark"}
 
