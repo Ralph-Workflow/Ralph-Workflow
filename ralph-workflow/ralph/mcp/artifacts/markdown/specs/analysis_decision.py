@@ -138,13 +138,14 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
         for item in fix_items
         if item.identifier not in what_ids
     )
-    if status == "request_changes":
+    if status == "request_changes" and document.frontmatter["type"] == "planning_analysis_decision":
         diagnostics.extend(
             Diagnostic(
                 item.line,
                 "What Came Up Short",
                 "ANALYSIS004",
-                "request_changes finding must identify its affected target as 'Step: [S-n]' or 'Plan-level:'",
+                "planning request_changes finding must identify its affected target as "
+                "'Step: [S-n]' or 'Plan-level:'",
             )
             for item in what_items
             if not _FINDING_TARGET_PATTERN.search(item.text)

@@ -30,6 +30,17 @@ def test_request_changes_requires_a_step_or_plan_level_target() -> None:
     assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
 
 
+def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> None:
+    document = _decision("The implementation omits a required negative test.").replace(
+        "planning_analysis_decision", "development_analysis_decision"
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert diagnostics == []
+    assert content["finding_targets"] == {}
+
+
 def test_request_changes_preserves_exact_step_binding() -> None:
     content, diagnostics = parse_and_validate(
         _decision("Step: [S-2] lacks an executable verification command."),
