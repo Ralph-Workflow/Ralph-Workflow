@@ -203,11 +203,11 @@ def test_evaluate_completion_threads_sentinel_secret_to_verifier(
 
     # Without a secret, the forged DB row is accepted (pre-P3 contract).
     signals_forged = _eval(tmp_path, "run-1")
-    assert signals_forged.completion_sentinel_present is True
+    assert signals_forged.completion_sentinel_present.holds is True
 
     # With a real secret configured, the forged DB row is rejected.
     signals_real = _eval(tmp_path, "run-1", sentinel_secret="broker-real")
-    assert signals_real.completion_sentinel_present is False
+    assert signals_real.completion_sentinel_present.holds is False
 
 
 # RFC-013 P3 regression: a DB tombstone (CLEARED_SENTINEL_HMAC) MUST be
@@ -297,4 +297,4 @@ def test_evaluate_completion_db_tombstone_does_not_resurrect_via_legacy_file(
     )
 
     signals = _eval(tmp_path, "run-1", sentinel_secret="broker-real")
-    assert signals.completion_sentinel_present is False
+    assert signals.completion_sentinel_present.holds is False

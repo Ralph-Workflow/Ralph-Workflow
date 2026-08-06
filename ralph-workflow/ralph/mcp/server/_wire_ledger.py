@@ -18,6 +18,7 @@ never mistaken for a ledger (A5).
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import hmac
 import json
@@ -26,13 +27,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.server._wire_ledger_capture import WireLedgerCapture
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 __all__ = [
     "WIRE_LEDGER_RELPATH",
+    "WireLedgerCapture",
     "WireLedgerRecord",
     "append_wire_record",
+    "collect_captures",
+    "render_capture_table_markdown",
     "verify_chain",
     "wire_evidence_for",
 ]
@@ -115,6 +121,73 @@ def _iter_ledger_rows(ledger_path: Path) -> list[dict[str, object]]:
         if isinstance(parsed, dict):
             rows.append(cast("dict[str, object]", parsed))
     return rows
+
+
+def collect_captures(
+    workspace_root: Path, secret: str | None
+) -> list[WireLedgerCapture]:
+    """Return every verified capture row in ``workspace_root``'s wire ledger.
+
+    S-9 / F5: the wire-ledger-backed view of every frame a real AGY
+    run dispatched through the MCP server. Only HMAC-verifiable rows
+    are returned -- an unverifiable ledger backs nothing, so its
+    captures cannot be promoted to the fixture table either.
+
+    A missing or empty ledger returns an empty list (no captures yet,
+    no captures to report). This is the live-only source of truth the
+    ``render_capture_table_markdown`` exporter consumes.
+    """
+    if secret is None:
+        return []
+    if not verify_chain(workspace_root, secret):
+        return []
+    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    captures: list[WireLedgerCapture] = []
+    for row in _iter_ledger_rows(ledger_path):
+        capture = WireLedgerCapture.from_row(row)
+        if capture is not None:
+            captures.append(capture)
+    return captures
+
+
+def render_capture_table_markdown(
+    captures: list[WireLedgerCapture], *, run_id: str | None = None
+) -> str:
+    """Render ``captures`` as a markdown capture-method table for the AGY wire-provenance fixture.
+
+    S-9 / F5: a live run deposits replayable frames into the wire
+    ledger; this exporter turns those frames into the same capture-
+    method table that ``tests/display/_fixtures/agy_wire_provenance.md``
+    previously documented by hand. The output is deterministic for a
+    given ordered input (rows are emitted in input order -- the ledger
+    is HMAC-chained so insertion order is the canonical order).
+
+    When ``run_id`` is given, only captures whose ``run_id`` matches
+    are included (multi-run ledgers do not bleed into each other's
+    capture tables).
+
+    The table's columns are: method, tool_name, run_id, captured-at
+    (ISO-8601 UTC). ``captured-at`` is sourced from the row's HMAC-
+    sealed timestamp -- an unverifiable row never reaches this table,
+    so the timestamp itself is durable.
+    """
+    lines: list[str] = []
+    lines.append("| method | tool_name | run_id | captured-at (UTC) |")
+    lines.append("| --- | --- | --- | --- |")
+    for capture in captures:
+        if run_id is not None and capture.run_id != run_id:
+            continue
+        # ISO-8601 UTC second precision; the ledger stores float seconds.
+        captured_at = (
+            datetime.datetime.fromtimestamp(capture.timestamp, tz=datetime.UTC)
+            .replace(microsecond=0)
+            .isoformat()
+        )
+        lines.append(
+            f"| {capture.method} | {capture.tool_name or ''} | "
+            f"{capture.run_id} | {captured_at} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def _read_last_hmac(ledger_path: Path) -> str:

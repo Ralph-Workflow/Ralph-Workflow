@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import threading
 import time
 from typing import TYPE_CHECKING, BinaryIO, cast
 
+from ralph.display._raw_log_break import RawLogBreak
 from ralph.display.record_writer import safe_id_for
 
 if TYPE_CHECKING:
@@ -78,6 +80,115 @@ def _forget_raw_overflow_log(key_path: str) -> None:
     """Drop one entry from the registry. Used by tests; not part of the public API."""
     with _REGISTRY_LOCK:
         _REGISTRY.pop(key_path, None)
+
+
+def detect_raw_log_breaks(raw_path: Path) -> list[RawLogBreak]:
+    """Read ``raw_path`` back as JSONL and return every corruption break.
+
+    S-8 / C4 / DoD 15: a corrupted or truncated transcript is a reported
+    break, not a silent skip. Two break shapes are detected:
+
+    - ``NUL_BYTES``: any NUL byte anywhere in the file. The parser
+      cannot recover the next JSON frame's start (it cannot tell where
+      the JSON ends, since JSON itself permits ``\\\\u0000`` as an
+      escaped sequence inside a string but a bare NUL cannot appear in
+      a well-formed JSON document on the wire).
+    - ``NON_JSONL``: a line that is not a parseable JSON object. This
+      catches the 2026-08-06 captured shape where a separate writer
+      (the display layer's ``_get_overflow_log``) appended rendered
+      ``\u2713 PASS\u2026`` text into the same verbatim capture.
+
+    The function reads the file in binary mode so a NUL-byte break is
+    observable. ``read_text(errors='replace')`` would silently swallow
+    the NUL bytes; the binary read keeps the byte-level fingerprint
+    visible.
+
+    An absent file returns an empty break list (no break observed, no
+    break reported). A read error (locked file, missing parent) is
+    reported as a break with detail naming the OSError so the operator
+    sees the I/O failure rather than a silent empty result.
+    """
+    breaks: list[RawLogBreak] = []
+    if not raw_path.exists():
+        return breaks
+    try:
+        payload = raw_path.read_bytes()
+    except OSError as exc:
+        return [
+            RawLogBreak(
+                kind="READ_ERROR",
+                offset=0,
+                detail=f"failed to read raw log: {exc}",
+            )
+        ]
+    nul_offset = payload.find(b"\x00")
+    if nul_offset >= 0:
+        breaks.append(
+            RawLogBreak(
+                kind="NUL_BYTES",
+                offset=nul_offset,
+                detail=(
+                    f"NUL-byte run begins at byte {nul_offset}; the "
+                    "transcript is unparseable as JSONL past this point"
+                ),
+            )
+        )
+    return breaks + _detect_non_jsonl_breaks(payload)
+
+
+def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
+    """Return one ``NON_JSONL`` break per unparseable line.
+
+    Splits the payload on NUL bytes first so a measured NUL-hole run
+    does not silently swallow rendered text that follows the hole on
+    the same line. Each chunk between NUL runs is then parsed as
+    JSONL: lines that parse as JSON objects are skipped, and every
+    other non-empty line (rendered ``\u2713 PASS\u2026`` text, control
+    codes, malformed JSON) is a break.
+    """
+    breaks: list[RawLogBreak] = []
+    offset = 0
+    nul_chunks = payload.split(b"\x00")
+    for chunk_index, chunk in enumerate(nul_chunks):
+        # Advance offset past the chunk and (if not the last chunk)
+        # past the NUL byte that terminated it.
+        chunk_offset = offset
+        offset += len(chunk)
+        if chunk_index < len(nul_chunks) - 1:
+            offset += 1  # the NUL byte itself
+        for raw_line in chunk.splitlines(keepends=True):
+            line_offset = chunk_offset
+            chunk_offset += len(raw_line)
+            line_bytes = raw_line.rstrip(b"\n").rstrip(b"\r")
+            line_text = line_bytes.decode("utf-8", errors="replace").strip()
+            if not line_text:
+                continue
+            try:
+                parsed: object = json.loads(line_text)
+            except json.JSONDecodeError:
+                breaks.append(
+                    RawLogBreak(
+                        kind="NON_JSONL",
+                        offset=line_offset,
+                        detail=(
+                            f"line at byte {line_offset} is not parseable "
+                            f"JSON (first 60 chars: {line_text[:60]!r})"
+                        ),
+                    )
+                )
+                continue
+            if not isinstance(parsed, dict):
+                breaks.append(
+                    RawLogBreak(
+                        kind="NON_JSONL",
+                        offset=line_offset,
+                        detail=(
+                            f"line at byte {line_offset} parses as JSON but "
+                            f"is not a JSON object (type={type(parsed).__name__})"
+                        ),
+                    )
+                )
+    return breaks
 
 
 class RawOverflowLog:
@@ -218,5 +329,7 @@ class RawOverflowLog:
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "DEFAULT_MAX_OVERFLOW_FILE_BYTES",
+    "RawLogBreak",
     "RawOverflowLog",
+    "detect_raw_log_breaks",
 ]

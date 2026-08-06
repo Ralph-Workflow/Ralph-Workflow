@@ -36,7 +36,7 @@ def test_receipt_satisfies_required_artifact_when_path_missing(tmp_path: Path) -
 
     signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
 
-    assert signals.required_artifact_present is True
+    assert signals.required_artifact_present.holds is True
 
 
 def test_no_receipt_and_no_file_means_absent(tmp_path: Path) -> None:
@@ -44,7 +44,7 @@ def test_no_receipt_and_no_file_means_absent(tmp_path: Path) -> None:
 
     signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
 
-    assert signals.required_artifact_present is False
+    assert signals.required_artifact_present.holds is False
 
 
 def test_receipt_for_other_run_does_not_satisfy(tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ def test_receipt_for_other_run_does_not_satisfy(tmp_path: Path) -> None:
 
     signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
 
-    assert signals.required_artifact_present is False
+    assert signals.required_artifact_present.holds is False
 
 
 def test_evaluate_receipt_from_legacy_file(tmp_path: Path) -> None:
@@ -74,4 +74,4 @@ def test_evaluate_receipt_from_legacy_file(tmp_path: Path) -> None:
 
     signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
 
-    assert signals.required_artifact_present is True
+    assert signals.required_artifact_present.holds is True

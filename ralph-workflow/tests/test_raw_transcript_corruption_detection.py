@@ -33,6 +33,7 @@ import pytest
 from ralph.display.raw_overflow import (
     RawOverflowLog,
     _forget_raw_overflow_log,
+    detect_raw_log_breaks,
     get_or_create_raw_overflow_log,
 )
 
@@ -134,9 +135,9 @@ def test_nul_byte_run_is_a_detected_break(isolated_workspace: Path) -> None:
 
     The measured 2026-08-06 run had a NUL-byte run beginning
     immediately after a ``run_command`` frame, followed by rendered
-    display text. The consumer that reads the raw log back must
-    report a break for that corruption shape, not silently skip the
-    bytes.
+    display text. The production raw-log reader
+    (:func:`detect_raw_log_breaks`) must report a break for that
+    corruption shape, not silently skip the bytes.
     """
     # Build the exact measured-shape raw log: a JSONL prefix, a
     # NUL-byte run, then rendered text.
@@ -150,29 +151,33 @@ def test_nul_byte_run_is_a_detected_break(isolated_workspace: Path) -> None:
         + b"\xe2\x84\xb9 INFO agy ...\n"
     )
 
-    # The corruption detector: a NUL byte anywhere in a JSONL log is
-    # unrecoverable (the parser cannot recover the next frame's
-    # start; it cannot tell where the JSON ends).
-    payload = raw_path.read_bytes()
-    nul_offset = payload.find(b"\x00")
-    assert nul_offset > 0, "fixture must contain a NUL byte after the prefix"
-    assert payload[nul_offset:].startswith(b"\x00" * 1024), (
-        "fixture must contain a substantial NUL run, not a one-off NUL "
-        "from a string-escape accident"
-    )
+    breaks = detect_raw_log_breaks(raw_path)
 
-    # The operator-facing detection: any NUL byte in the raw log
-    # is a break. The reader used here is the ``RawOverflowLog``
-    # itself, but the fixture is meant to model what an
-    # evidence-correlator sees.
-    nul_byte_count = payload.count(b"\x00")
-    assert nul_byte_count > 1024, "fixture NUL run is too small to be measurable"
+    # The corruption detector reports a ``NUL_BYTES`` break that
+    # pinpoints the offset where the JSONL stream becomes
+    # unparseable. Operators see the offset and a descriptive detail
+    # string -- not a bare "log truncated" message.
+    nul_breaks = [b for b in breaks if b.kind == "NUL_BYTES"]
+    assert nul_breaks, (
+        "production ``detect_raw_log_breaks`` must surface the "
+        "measured 2026-08-06 NUL-hole as a NUL_BYTES break"
+    )
+    assert nul_breaks[0].offset > 0, "the break offset must name where the hole begins"
+    assert "NUL-byte run" in nul_breaks[0].detail
+
+    # And the rendered text after the hole is independently reported
+    # as ``NON_JSONL`` -- the second writer was appending
+    # ``\u2713 PASS\u2026`` text into the verbatim capture, which is
+    # the byte-level fingerprint of the unfixed shared-pathname race.
+    non_jsonl = [b for b in breaks if b.kind == "NON_JSONL"]
+    assert non_jsonl, (
+        "the rendered text after the NUL hole must be reported as "
+        "NON_JSONL breaks, not silently parsed past"
+    )
 
 
 def test_rendered_text_after_nul_is_unparseable_jsonl(isolated_workspace: Path) -> None:
     """A consumer reading the post-NUL bytes as JSONL fails (the truncation signal)."""
-    import json
-
     raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
@@ -181,16 +186,38 @@ def test_rendered_text_after_nul_is_unparseable_jsonl(isolated_workspace: Path) 
         + b"\xe2\x9c\x93 PASS ...\n"
     )
 
-    parsed_ok = 0
-    parse_errors: list[Exception] = []
-    for line in raw_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        try:
-            json.loads(line)
-            parsed_ok += 1
-        except json.JSONDecodeError as exc:
-            parse_errors.append(exc)
+    breaks = detect_raw_log_breaks(raw_path)
+    kinds = {b.kind for b in breaks}
+    assert "NUL_BYTES" in kinds
+    assert "NON_JSONL" in kinds
 
-    assert parsed_ok >= 1, "the pre-NUL JSONL frame must still parse"
-    assert parse_errors, "the post-NUL bytes must not parse as JSONL -- that is the break"
+
+def test_clean_raw_log_has_no_breaks(isolated_workspace: Path) -> None:
+    """A well-formed JSONL raw log reports zero breaks.
+
+    The detector must not flag legitimate frames; only actual
+    corruption shapes (NUL bytes, rendered text, malformed JSON).
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b'{"event":"init","tools":["call_mcp_tool"]}\n'
+        b'{"event":"step_update","step_update":{"step_index":0}}\n'
+        b'{"event":"result","result":{"status":"SUCCESS"}}\n'
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_absent_raw_log_has_no_breaks(isolated_workspace: Path) -> None:
+    """An absent raw log file reports zero breaks.
+
+    The detector must not raise on a missing file (the live read
+    path is called speculatively during evidence correlation, and a
+    never-started run has no file to read).
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    # Intentionally do not create the file.
+
+    assert detect_raw_log_breaks(raw_path) == []

@@ -164,7 +164,7 @@ def test_evaluate_completion_rejects_stale_canonical_artifact(
         required_artifact=_required_artifact(),
         run_id=RUN_ID,
     )
-    assert signals.required_artifact_present is False
+    assert signals.required_artifact_present.holds is False
 
 
 def test_evaluate_completion_rejects_forged_receipt_without_receipt_secret(
@@ -187,7 +187,7 @@ def test_evaluate_completion_rejects_forged_receipt_without_receipt_secret(
         required_artifact=_required_artifact(),
         run_id=RUN_ID,
     )
-    assert signals.required_artifact_present is True
+    assert signals.required_artifact_present.holds is True
     assert (
         artifact_receipt_present(workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET)
         is False
@@ -211,7 +211,7 @@ def test_evaluate_completion_threads_receipt_secret_to_verifier(
         required_artifact=_required_artifact(),
         run_id=RUN_ID,
     )
-    assert signals_forged.required_artifact_present is True
+    assert signals_forged.required_artifact_present.holds is True
 
     # With a real secret configured, the forged receipt is rejected.
     signals_real = evaluate_completion(
@@ -221,7 +221,7 @@ def test_evaluate_completion_threads_receipt_secret_to_verifier(
         run_id=RUN_ID,
         receipt_secret=RECEIPT_SECRET,
     )
-    assert signals_real.required_artifact_present is False
+    assert signals_real.required_artifact_present.holds is False
 
 
 def test_evaluate_completion_rejects_forged_completion_sentinel_with_secret(

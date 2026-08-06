@@ -44,7 +44,9 @@ def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> E
     ``completion_sentinel_evidence`` fields from the legacy bool
     fields. The provenance carried by the upgrade is deliberately
     conservative: a bool-only fact (no wire-ledger match in scope)
-    grades ``TRANSCRIPT`` when it holds, ``ABSENT`` when it does not.
+    grades ``WORKSPACE_EFFECT`` when it holds (a receipt row
+    stamped by the canonical-submit path, not a tools/call ledger
+    match), ``ABSENT`` when it does not.
 
     Sites that know a stronger provenance (e.g. ``smoke_evidence``
     grading with the wire ledger) construct the ``Evidence`` directly
@@ -54,7 +56,7 @@ def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> E
     if value:
         return Evidence(
             holds=True,
-            provenance=Provenance.TRANSCRIPT,
+            provenance=Provenance.WORKSPACE_EFFECT,
             detail=holding_detail,
         )
     return absent(absent_detail)
@@ -67,40 +69,37 @@ class CompletionSignals:
     Attributes:
         explicit_complete: True when the agent called the declare_complete MCP
             tool successfully (independent of artifact presence).
-        required_artifact_present: True when the required phase artifact exists
-            on disk. False when the phase has no registered required artifact or
-            the artifact file does not yet exist. Pre-S-4 contract; preserved
-            for backward compat with the 50+ call sites in tests + the
-            execution_state mixins that gate on ``.holds``. For graded
-            reporting use ``required_artifact_evidence`` (S-4).
+        required_artifact_present: ``Evidence`` value for the artifact-present
+            fact. ``holds=True`` only when the run-scoped canonical submission
+            receipt exists. ``Evidence``-typed (S-4): a bare ``bool`` cannot
+            construct this field; ``__post_init__`` coerces a legacy ``bool``
+            to ``Evidence`` at ``WORKSPACE_EFFECT`` provenance to keep the
+            older call sites compiling, but new code MUST pass an ``Evidence``
+            directly.
         artifact_types: Tuple of artifact type names found.
-        completion_sentinel_present: True when the run-scoped completion sentinel
-            written by handle_declare_complete exists on disk. This is the
-            authoritative proof that the agent actually invoked the
-            declare_complete MCP tool; the plain-text marker alone can be
-            spoofed by agent output. Pre-S-4 contract; preserved for backward
-            compat. For graded reporting use ``completion_sentinel_evidence``
-            (S-4).
+        completion_sentinel_present: ``Evidence`` value for the sentinel-
+            present fact. ``holds=True`` only when the run-scoped completion
+            sentinel written by ``handle_declare_complete`` exists on disk and
+            HMAC-verifies when ``sentinel_secret`` is in scope. The
+            plain-text marker alone can be spoofed by agent output and so
+            never grades above ``WORKSPACE_EFFECT``. ``Evidence``-typed (S-4).
         artifact_required: True when policy requires a receipt for the phase's
             artifact before the durable completion sentinel can terminate the
             run.
         unsubmitted_draft_present: True when a retained draft differs from the
             canonical artifact, proving authored content was not submitted.
-        required_artifact_evidence: Graded ``Evidence`` for the artifact-
-            present fact. Constructed by ``__post_init__`` from
-            ``required_artifact_present`` at ``TRANSCRIPT`` provenance
-            (conservative default when no wire-ledger match is in scope).
-            Constructors that know a stronger provenance (the smoke gate,
-            ``smoke_evidence`` grading) pass an ``Evidence`` directly.
-        completion_sentinel_evidence: Graded ``Evidence`` for the sentinel-
-            present fact, same provenance rules as
-            ``required_artifact_evidence``.
+        required_artifact_evidence: Alias for ``required_artifact_present``;
+            kept for backward compat with code that reads
+            ``signals.required_artifact_evidence``. New code should read
+            ``required_artifact_present`` directly.
+        completion_sentinel_evidence: Alias for ``completion_sentinel_present``;
+            same compat rationale.
     """
 
     explicit_complete: bool
-    required_artifact_present: bool
+    required_artifact_present: Evidence | bool
     artifact_types: tuple[str, ...]
-    completion_sentinel_present: bool = False
+    completion_sentinel_present: Evidence | bool = False
     artifact_required: bool = False
     unsubmitted_draft_present: bool = False
     required_artifact_evidence: Evidence = field(
@@ -111,48 +110,56 @@ class CompletionSignals:
     )
 
     def __post_init__(self) -> None:
-        # Populate the graded Evidence fields from the bool fields when
-        # the caller did not pass them explicitly. ``field(default_factory=...)``
-        # cannot detect "caller passed the default" vs "caller omitted";
-        # a sentinel provenance detail lets us tell them apart.
-        default_artifact_detail = "required_artifact_evidence not yet evaluated"
-        default_sentinel_detail = "completion_sentinel_evidence not yet evaluated"
-        artifact_eval_set = (
-            self.required_artifact_evidence.detail != default_artifact_detail
-        )
-        sentinel_eval_set = (
-            self.completion_sentinel_evidence.detail != default_sentinel_detail
-        )
-        object.__setattr__(
-            self,
-            "required_artifact_evidence",
-            self.required_artifact_evidence
-            if artifact_eval_set
-            else _bool_evidence(
-                self.required_artifact_present,
+        # Coerce legacy bool contract fields to ``Evidence`` at the
+        # conservative ``WORKSPACE_EFFECT`` provenance. New code MUST
+        # pass ``Evidence`` directly; this coercion is purely to keep
+        # the ~50+ legacy test/execution_state call sites compiling
+        # while the type annotation is tightened. Sites that know a
+        # stronger provenance (the smoke gate with the wire ledger)
+        # construct ``Evidence`` directly and pass it to
+        # ``required_artifact_present`` instead.
+        if not isinstance(self.required_artifact_present, Evidence):
+            coerced = _bool_evidence(
+                bool(self.required_artifact_present),
                 holding_detail=(
-                    "required artifact receipt present (graded at TRANSCRIPT "
-                    "from bool field; upgrade to WIRE via smoke_evidence "
-                    "grading when wire ledger is in scope)"
+                    "required artifact receipt present (graded at "
+                    "WORKSPACE_EFFECT from legacy bool field; upgrade "
+                    "to WIRE via smoke_evidence grading when wire "
+                    "ledger is in scope)"
                 ),
                 absent_detail="required artifact receipt not present",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "completion_sentinel_evidence",
-            self.completion_sentinel_evidence
-            if sentinel_eval_set
-            else _bool_evidence(
-                self.completion_sentinel_present,
+            )
+            object.__setattr__(self, "required_artifact_present", coerced)
+        if not isinstance(self.completion_sentinel_present, Evidence):
+            coerced = _bool_evidence(
+                bool(self.completion_sentinel_present),
                 holding_detail=(
-                    "completion sentinel present (graded at TRANSCRIPT from "
-                    "bool field; upgrade to WIRE via smoke_evidence grading "
-                    "when wire ledger is in scope)"
+                    "completion sentinel present (graded at "
+                    "WORKSPACE_EFFECT from legacy bool field; upgrade "
+                    "to WIRE via smoke_evidence grading when wire "
+                    "ledger is in scope)"
                 ),
                 absent_detail="completion sentinel not present",
-            ),
-        )
+            )
+            object.__setattr__(self, "completion_sentinel_present", coerced)
+        # Keep the alias fields in sync with the contract fields when
+        # the caller did not pass them explicitly. The default-detail
+        # sentinel distinguishes "caller omitted" from "caller passed
+        # the default".
+        default_artifact_detail = "required_artifact_evidence not yet evaluated"
+        default_sentinel_detail = "completion_sentinel_evidence not yet evaluated"
+        if self.required_artifact_evidence.detail == default_artifact_detail:
+            object.__setattr__(
+                self,
+                "required_artifact_evidence",
+                self.required_artifact_present,
+            )
+        if self.completion_sentinel_evidence.detail == default_sentinel_detail:
+            object.__setattr__(
+                self,
+                "completion_sentinel_evidence",
+                self.completion_sentinel_present,
+            )
 
 
 def completion_signals_terminal(signals: CompletionSignals) -> bool:
@@ -162,11 +169,24 @@ def completion_signals_terminal(signals: CompletionSignals) -> bool:
     valid sentinel is always required. Required-artifact phases additionally
     require their canonical submission receipt. Optional-artifact and
     artifact-free phases require no receipt.
+
+    S-4: gates on ``.holds`` of the ``Evidence``-typed contract fields, not
+    on a bare ``bool``. A holding fact graded below ``WIRE`` still ends the
+    phase (the gate's job is binary completion, not trust grading); grading
+    lives in ``graded_verdict`` / ``format_phase_verdict``.
     """
-    if not signals.completion_sentinel_present or signals.unsubmitted_draft_present:
+    # The dataclass field is annotated ``Evidence | bool`` so legacy
+    # callers that pass ``True``/``False`` keep compiling; ``__post_init__``
+    # coerces those into ``Evidence`` at ``WORKSPACE_EFFECT`` provenance.
+    # mypy's static type does not see that coercion, so we re-derive the
+    # graded ``Evidence`` here via the alias fields, which ARE always
+    # ``Evidence`` after ``__post_init__``.
+    sentinel_evidence = signals.completion_sentinel_evidence
+    artifact_evidence = signals.required_artifact_evidence
+    if not sentinel_evidence.holds or signals.unsubmitted_draft_present:
         return False
     if signals.artifact_required:
-        return signals.required_artifact_present
+        return artifact_evidence.holds
     return True
 
 
@@ -442,12 +462,17 @@ def evaluate_completion(
         if run_id is not None
         else False
     )
+    sentinel_evidence = _bool_evidence(
+        sentinel_present,
+        holding_detail="completion sentinel receipt present (graded at WORKSPACE_EFFECT; upgrade to WIRE via smoke_evidence grading when wire ledger is in scope)",
+        absent_detail="completion sentinel receipt not present",
+    )
     if ra is None:
         return CompletionSignals(
             explicit_complete=explicit,
-            required_artifact_present=False,
+            required_artifact_present=absent("phase has no registered required artifact"),
             artifact_types=(),
-            completion_sentinel_present=sentinel_present,
+            completion_sentinel_present=sentinel_evidence,
         )
     # A run-scoped submission receipt is the authoritative proof that the
     # artifact was persisted for this run. A raw canonical artifact file
@@ -467,6 +492,11 @@ def evaluate_completion(
         if (run_id is not None)
         else False
     )
+    artifact_evidence = _bool_evidence(
+        present,
+        holding_detail="artifact submission receipt present (graded at WORKSPACE_EFFECT; upgrade to WIRE via smoke_evidence grading when wire ledger is in scope)",
+        absent_detail="artifact submission receipt not present",
+    )
     divergence = unsubmitted_draft_divergence(
         artifact_path.parent,
         ra.artifact_type,
@@ -474,9 +504,9 @@ def evaluate_completion(
     )
     return CompletionSignals(
         explicit_complete=explicit,
-        required_artifact_present=present,
+        required_artifact_present=artifact_evidence,
         artifact_types=(ra.artifact_type,) if present else (),
-        completion_sentinel_present=sentinel_present,
+        completion_sentinel_present=sentinel_evidence,
         artifact_required=ra.artifact_required,
         unsubmitted_draft_present=divergence is not None,
     )

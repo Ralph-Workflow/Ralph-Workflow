@@ -518,3 +518,30 @@ there is no live frame sequence to replay for that specific collision --
 only the merge logic it locks in is real (see the S-2 entry above). B6 and
 B7 were already resolved/labeled in earlier entries in this file and are
 unaffected by this capture.
+
+## 2026-08-06: Evidence Provenance closeout plan, S-9 / F5 -- ledger-backed capture table
+
+`ralph/mcp/server/_wire_ledger.py` now ships a `WireLedgerCapture` /
+`collect_captures` / `render_capture_table_markdown` helper triplet
+(`tests/test_wire_ledger_capture_exporter.py` covers it
+deterministically). The export contract:
+
+- `collect_captures(workspace_root, secret)` reads the HMAC-chained
+  `.agent/tmp/mcp-wire-ledger.jsonl` and returns every row that
+  survives `verify_chain`. An unverifiable ledger backs nothing and
+  returns `[]` (the F2 invariant expressed at the exporter surface).
+- `render_capture_table_markdown(captures, run_id=...)` emits a stable
+  markdown table (header row + body rows in input order, ISO-8601 UTC
+  timestamps to second precision). A `run_id` filter keeps multi-run
+  ledgers from bleeding into each other's capture tables.
+- The `error`-frame B7 entry stays labelled synthetic until a real
+  `error` row appears in a verified ledger -- the exporter does not
+  invent one. No new live `error` frame has been captured for AGY in
+  this pass; the existing B7 entry is left untouched per the brief's
+  explicit instruction not to fabricate a payload shape.
+
+Future live AGY runs can regenerate the capture-method table for the
+newly-observed frames via `collect_captures(...).render_capture_table_markdown(...)`
+without hand-editing this file; the prose sections above (and their
+synthetic labels) are kept as the historical record of what each live
+run actually showed.

@@ -16,7 +16,11 @@ from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
-from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
+from ralph.display.raw_overflow import (
+    DEFAULT_MAX_OVERFLOW_FILE_BYTES,
+    RawOverflowLog,
+    get_or_create_raw_overflow_log,
+)
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.server._activity_sink import (
     reset_subagent_sink,
@@ -129,8 +133,18 @@ class SubprocessAgentExecutor:
             root = self._raw_overflow_root
             if root is None:
                 root = self._cwd if self._cwd is not None else Path.cwd()
-            self._raw_logs[unit_id] = RawOverflowLog(
-                root, unit_id, max_bytes=DEFAULT_MAX_OVERFLOW_FILE_BYTES
+            # S-8 / C4: route through the shared-by-path registry so the
+            # executor's per-unit overflow log and the display's per-unit
+            # overflow log are the same object. Two independently-constructed
+            # writers used to share the file path but neither lock nor
+            # ``_first_write`` state, leading to truncation races between
+            # the two writers (the plausible source of the measured
+            # 2026-08-06 NUL-hole corruption). The registry keys on the
+            # resolved path so all callers share one object per path.
+            self._raw_logs[unit_id] = get_or_create_raw_overflow_log(
+                root,
+                unit_id,
+                max_bytes=DEFAULT_MAX_OVERFLOW_FILE_BYTES,
             )
         return self._raw_logs[unit_id]
 

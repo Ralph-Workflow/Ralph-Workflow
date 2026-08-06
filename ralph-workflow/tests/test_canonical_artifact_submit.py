@@ -543,7 +543,7 @@ def test_completion_evaluation_passes_required_artifact_path_to_submission_check
         run_id="run-worker",
     )
 
-    assert signals.required_artifact_present is True
+    assert signals.required_artifact_present.holds is True
     assert observed["artifact_path"] == artifact_path
 
 
