@@ -57,6 +57,11 @@ _ALLOWED_TRANSPORT_REFERENCE_PATTERNS: tuple[tuple[str, str], ...] = (
         "additive diagnostic: _agy_upstream_diagnostic only ever ADDS an error for AGY's own "
         "known upstream-failure shape",
     ),
+    (
+        r"^if transport is AgentTransport\.OPENCODE$",
+        "identification: adds OpenCode's documented ralph_ tool-name prefix guidance; it does not "
+        "skip or weaken a shared smoke check",
+    ),
 )
 
 

@@ -981,8 +981,6 @@ __all__ = [
     "recovery_retained_record",
     "resolve_integration_target",
 ]
-
-
 # ----- AC-14 catalog evidence -----
 # This file is the authoritative source for the catalog entries listed
 # below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent

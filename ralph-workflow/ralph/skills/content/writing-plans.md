@@ -16,10 +16,10 @@ commands, and patterns in repository evidence; write a discovery step for an
 honest unknown.
 
 Use the plan format supplied by the active workflow. Its headings are optional
-structure, not a checklist. Keep commitments next to the work they describe,
-state them once, and use stable IDs only where a downstream consumer needs
-them. Describe real risks and runnable completion evidence rather than filling
-sections.
+structure, not a checklist. Use stable `### [S-n] Title` steps when a downstream
+consumer needs stable IDs. Keep commitments next to the work they describe,
+state them once, and describe real risks and runnable completion evidence rather
+than filling sections.
 
 For a revision, preserve valid material, check feedback against the request and
 repository, and update every affected commitment together. Prefer the standard

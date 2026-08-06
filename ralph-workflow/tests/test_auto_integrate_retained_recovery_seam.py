@@ -254,7 +254,11 @@ def test_a_cleared_record_never_reads_as_retained(
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
     monkeypatch.setattr(recovery, "is_ancestor", lambda _root, _target, _sha: True)
-    monkeypatch.setattr(recovery, "fast_forward_target", lambda _root, _target, _sha: ff_result)
+    monkeypatch.setattr(
+        recovery,
+        "fast_forward_target",
+        lambda _root, _target, _sha, **_kwargs: ff_result,
+    )
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 

@@ -156,6 +156,32 @@ def test_unreachable_remote_does_not_attempt_push(
     assert out.last_push_status == remote_push_module.PushStatus.UNREACHABLE.value
 
 
+def test_rejected_push_honors_target_reclaim_opt_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3 regression: rejected-push reconciliation preserves the configured opt-out."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+    from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *_a, **_kw: REFRESH_DIVERGED)
+    received: list[bool] = []
+    monkeypatch.setattr(
+        remote_reconcile,
+        "reconcile_target_onto_remote",
+        lambda *_a, **kwargs: received.append(kwargs["reclaim_target_worktree"]) or (False, "blocked"),
+    )
+
+    result = reconcile_after_rejected_push(
+        _config(auto_integrate_reclaim_target_worktree=False),
+        Path("/repo"),
+        "main",
+        _record(),
+    )
+
+    assert received == [False]
+    assert result.last_remote_sync == remote_sync.REMOTE_PULL_FAILED
+
+
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

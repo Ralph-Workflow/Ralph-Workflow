@@ -607,7 +607,12 @@ def _attempt_reconcile_and_push(
     if refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 
-        reconciled, reason = reconcile_target_onto_remote(repo_root, target, remote)
+        reconciled, reason = reconcile_target_onto_remote(
+            repo_root,
+            target,
+            remote,
+            reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+        )
         if not reconciled:
             return _PushOutcome(success=False, summary=reason, pushed=False)
     if reintegrate is not None and not reintegrate():

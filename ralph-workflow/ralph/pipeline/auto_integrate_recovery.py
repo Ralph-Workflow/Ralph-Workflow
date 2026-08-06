@@ -676,7 +676,14 @@ def _land_and_reconcile(
     ff_failed = False
     skip_reason = ""
     try:
-        ok, skip_reason = fast_forward_target(workspace_root, record.target, feature_sha)
+        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
+
+        ok, skip_reason = fast_forward_target(
+            workspace_root,
+            record.target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+        )
     except Exception as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"
