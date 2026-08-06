@@ -39,23 +39,17 @@ def test_plan_markdown_accepts_steps_without_the_recommended_optional_sections()
     assert diagnostics == []
 
 
-def test_plan_markdown_advisories_on_dangling_stable_id_references() -> None:
-    """A dangling ``Depends on:`` is a PLAN021 warning under the new contract.
-
-    Under the plan-scoped severity policy, PLAN021 (dangling reference)
-    is content-shape and demoted to warning. The plan still maps so
-    downstream consumers see the plan the agent authored; the warning
-    names the run cost and the fix.
-    """
+def test_plan_markdown_rejects_dangling_stable_id_references() -> None:
+    """A dangling dependency blocks the executor-ready handoff."""
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
 
     content, diagnostics = parse_and_validate(invalid, get_spec("plan"))
 
-    assert content != {}
+    assert content == {}
     assert any(
         item.rule_id == "PLAN021"
         and item.section == "Steps"
         and "S-99" in item.message
-        and item.severity == "warning"
+        and item.severity == "error"
         for item in diagnostics
     )

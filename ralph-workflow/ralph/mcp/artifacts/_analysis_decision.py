@@ -18,6 +18,8 @@ class AnalysisDecision(RalphBaseModel):
     summary: str = Field(..., min_length=1)
     what_came_up_short: list[str] | None = None
     how_to_fix: list[str] | None = None
+    finding_targets: dict[str, str] = Field(default_factory=dict)
+    step_references: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_status_and_remediation(self) -> Self:

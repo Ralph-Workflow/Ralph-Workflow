@@ -10,7 +10,8 @@ and tolerate multi-line prose and unknown continuation lines.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
@@ -20,6 +21,7 @@ from ralph.mcp.artifacts.typed_artifacts import normalize_analysis_decision_cont
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
+    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _ANALYSIS_TYPES = (
     "planning_analysis_decision",
@@ -28,25 +30,58 @@ _ANALYSIS_TYPES = (
     "policy_remediation_analysis_decision",
 )
 _STATUSES = ("completed", "request_changes", "failed")
+_FINDING_TARGET_PATTERN = re.compile(r"(?:Step:\s*)?\[(S-[1-9][0-9]*)\]|Plan-level:", re.IGNORECASE)
+_STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
 
 
 def _item_texts(document: ParsedDocument, section_name: str) -> list[str]:
     section = document.section(section_name)
-    return [] if section is None else [item.text for item in section.items]
+    if section is None:
+        return []
+    return [item.text for item in cast("list[ParsedItem]", section.items)]
+
+
+def _finding_target(text: str) -> str | None:
+    if "Plan-level:" in text:
+        return "plan-level"
+    match = _STEP_REFERENCE_PATTERN.search(text)
+    return None if match is None else match.group(1)
 
 
 def _to_content(document: ParsedDocument) -> dict[str, object]:
     summary = _item_texts(document, "Summary")
     how_to_fix = document.section("How To Fix")
+    shortfalls = _item_texts(document, "What Came Up Short")
+    shortfall_section = document.section("What Came Up Short")
+    finding_targets: dict[str, str] = {}
+    if shortfall_section is not None:
+        shortfall_items = cast("list[ParsedItem]", shortfall_section.items)
+        for item in shortfall_items:
+            target = _finding_target(item.text)
+            if target is not None:
+                finding_targets[item.identifier] = target
+    step_references: list[str] = []
+    for shortfall in shortfalls:
+        match = _STEP_REFERENCE_PATTERN.search(shortfall)
+        if match is not None:
+            reference = match.group(1)
+            if reference not in step_references:
+                step_references.append(reference)
+    status = document.frontmatter["status"]
     return {
-        "status": document.frontmatter["status"],
+        "status": status,
         "summary": summary[0],
-        "what_came_up_short": _item_texts(document, "What Came Up Short"),
+        "what_came_up_short": shortfalls,
+        "finding_targets": finding_targets,
+        "step_references": step_references,
         # Keep the stable ID in the canonical string until proof consumers move
         # from legacy prose matching to the markdown ID contract.
         "how_to_fix": []
         if how_to_fix is None
-        else [f"{item.identifier}: {item.text}" for item in how_to_fix.items],
+        else [
+            f"{item.identifier}: {item.text}"
+            for item in cast("list[ParsedItem]", how_to_fix.items)
+        ],
     }
 
 
@@ -103,6 +138,17 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
         for item in fix_items
         if item.identifier not in what_ids
     )
+    if status == "request_changes":
+        diagnostics.extend(
+            Diagnostic(
+                item.line,
+                "What Came Up Short",
+                "ANALYSIS004",
+                "request_changes finding must identify its affected target as 'Step: [S-n]' or 'Plan-level:'",
+            )
+            for item in what_items
+            if not _FINDING_TARGET_PATTERN.search(item.text)
+        )
     return diagnostics
 
 

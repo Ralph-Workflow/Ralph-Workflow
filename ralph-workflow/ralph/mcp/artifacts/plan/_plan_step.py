@@ -6,9 +6,8 @@ step into an executor-ready unit with an explicit completion contract. The
 ``file_change`` step declares at least one ``targets`` entry and every
 ``verify`` step declares either ``verify_command`` or ``location``.
 
-The built-in step types are documented by ``StepType`` (see
-``_step_contract``), while project-specific descriptive values remain valid.
-The per-step contract helpers apply requirements only to recognized values.
+The allowed step types are the shared executor contract; free-form values
+would leave downstream workers unable to determine their required evidence.
 """
 
 from __future__ import annotations
@@ -56,15 +55,14 @@ class PlanStep(RalphBaseModel):
     content: str = Field(
         default="",
         max_length=20000,
-        description="Optional step body / detailed content (max 20000 chars).",
+        description="Step purpose or detailed execution context (max 20000 chars)."
     )
     step_type: str = Field(
-        default=StepType.ACTION.value,
+        default=StepType.FILE_CHANGE.value,
         min_length=1,
         max_length=200,
         description=(
-            "Free-form step type. Built-in file_change needs targets; built-in "
-            "verify needs a command or location."
+            "One supported executor step type."
         ),
     )
     priority: str | None = Field(
@@ -189,14 +187,10 @@ class PlanStep(RalphBaseModel):
 
     @model_validator(mode="after")
     def _validate_step_type_contract(self) -> PlanStep:
-        if requires_targets(self.step_type) and len(self.targets) == 0:
+        if requires_targets(self.step_type) and not self.targets:
             msg = "file_change step must declare at least one target"
             raise ValueError(msg)
-        if (
-            requires_verify_handle(self.step_type)
-            and self.verify_command is None
-            and self.location is None
-        ):
+        if requires_verify_handle(self.step_type) and self.verify_command is None and self.location is None:
             msg = "verify step must declare verify_command or location"
             raise ValueError(msg)
         if self.verify_command is not None and self.expected_outcome is None:

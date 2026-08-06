@@ -18,6 +18,8 @@ type: plan
 
 ### [S-1] Keep the downstream handoff complete
 Inspect the artifact protocol, compare the staged document with canonical storage, and submit this complete plan before completion so the downstream development agent receives every committed verification detail.
+Type: discovery
+Location: ralph/mcp/artifacts/completion_receipts.py
 """
 
 

@@ -35,7 +35,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [PA-001] Observation: The plan changes retry behavior but does not characterize the current behavior.
+- [PA-001] Step: [S-2] Observation: The plan changes retry behavior but does not characterize the current behavior.
   Cost: The implementation could preserve or regress the wrong behavior because the executor has no baseline.
   Fix: Add a focused characterization step with the observed current retry behavior and the evidence that establishes it.
 
@@ -61,7 +61,7 @@ status: request_changes
   (e.g. `PA-001` in `## What Came Up Short` and `## How To Fix`); downstream
   phases cite that ID to prove closure, so keep IDs unique and stable.
   The two sections must form a one-to-one mapping with the same stable ID for
-  each gap and fix; missing, extra, or mismatched IDs are rejected.
+  each gap and fix; missing, extra, or mismatched IDs are rejected. For `request_changes`, each shortfall must include `Step: [S-n]` or `Plan-level:`. The former binds the finding to one submitted plan step; the latter explicitly records a plan-wide gap. Missing targets are rejected.
 
 ## Hard errors vs warnings
 

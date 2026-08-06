@@ -1,10 +1,9 @@
-"""Markdown mapping and validation rules for ``plan`` artifacts.
+"""Markdown mapping and validation rules for executor-ready ``plan`` artifacts.
 
-The plan grammar is deliberately shape-free. Conventional headings, order,
-and prose are recommendations rather than validation requirements. ``PLAN001``
-is the sole blocking diagnostic: it identifies a submission that is not a plan,
-so analysis and execution have nothing to consume. All other findings,
-including parsed anchors and consumed references, are advisory.
+Every active plan uses stable ``### [S-n]`` steps. Each step names its type,
+targets where it changes work, dependency edges where ordering matters, and
+runnable or inspectable completion evidence. Only the exact ``noop: true``
+frontmatter variant may omit steps.
 
 Grammar summary (three field kinds, closed key sets per context — see
 :mod:`ralph.mcp.artifacts.markdown._fields`):
@@ -18,13 +17,12 @@ sections may repeat so each unit can own a complete nested mini-plan.
 
 Consumed-structure map:
 
-- PARSED AND CONSUMED — ``### [S-n]`` step IDs, ``Depends on:`` /
-  ``Satisfied by:`` references, step-type fields, and ``## Parallel Plan`` /
-  ``## Work Units`` markers are mapped best-effort for proof and fan-out
-  consumers. Violations remain actionable advisory diagnostics, never blockers.
-- DESCRIPTIVE — headings, ordering, prose, labels, and recommended
-  vocabularies are likewise advisory. Unknown or repeated conventional
-  sections remain valid.
+- REQUIRED — ``### [S-n]`` step IDs, step types, targets, dependency
+  references, and completion evidence form the executor contract. Violations
+  are blocking and include an anchored repair diagnostic.
+- DESCRIPTIVE — conventional document sections and extra prose remain optional;
+  unknown or repeated sections are retained only when they do not weaken a
+  required step.
 """
 
 from __future__ import annotations
@@ -89,6 +87,7 @@ if TYPE_CHECKING:
 
 _ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^AC-[0-9]{2,}$")
 _VERIFICATION_ITEM_ID_PATTERN = re.compile(r"^V-[0-9]+$")
+_MIN_OVERRIDE_REASON_LENGTH = 3
 
 
 _SUMMARY_FIELDS: dict[str, FieldKind] = {"intent": "scalar", "coverage": "inline_list"}
@@ -134,6 +133,11 @@ _PARALLEL_FIELDS: dict[str, FieldKind] = {
     "paths": "inline_list",
     "directories": "inline_list",
 }
+_EXECUTOR_STEP_TYPES = frozenset(
+    {"file_change", "verify", "file_create", "file_delete", "discovery", "refactor", "config_change"}
+)
+_WORK_STEP_TYPES = _EXECUTOR_STEP_TYPES - {"verify", "discovery"}
+
 _WORK_UNIT_FIELDS: dict[str, FieldKind] = {
     "depends on": "inline_list",
     "directories": "inline_list",
@@ -421,6 +425,8 @@ def _steps_content(
     numbers: Mapping[str, int],
     verification_expectations: Mapping[str, str],
     diagnostics: list[Diagnostic],
+    *,
+    strict: bool,
 ) -> list[Content]:
     steps: list[Content] = []
     seen: set[str] = set()
@@ -482,7 +488,7 @@ def _steps_content(
             and verify in verification_expectations
         ):
             step["expected_outcome"] = verification_expectations[verify]
-        _check_step_contract(step, step_type, block.line, context, diagnostics)
+        _check_step_contract(step, step_type, block.line, context, diagnostics, strict=strict)
         steps.append(step)
     return steps
 
@@ -493,10 +499,24 @@ def _check_step_contract(
     line: int,
     context: str,
     diagnostics: list[Diagnostic],
+    *,
+    strict: bool,
 ) -> None:
     effective = step_type or "action"
     targets = step.get("targets")
-    if effective == "file_change" and not (isinstance(targets, list) and targets):
+    if strict and (step_type is None or step_type not in _EXECUTOR_STEP_TYPES):
+        diagnostics.append(
+            Diagnostic(
+                line,
+                "Steps",
+                "PLAN010",
+                f"{context} must declare a Type from {sorted(_EXECUTOR_STEP_TYPES)}",
+                "error",
+            )
+        )
+    if (effective == "file_change" or (strict and effective in _WORK_STEP_TYPES)) and not (
+        isinstance(targets, list) and targets
+    ):
         diagnostics.append(
             Diagnostic(
                 line,
@@ -508,10 +528,13 @@ def _check_step_contract(
                     "the executor will not know which file to edit and the step will stall",
                     "adding at least one 'Files:' entry (modify / create / inspect / coordinate)",
                 ),
-                "warning",
+                "error" if strict else "warning",
             )
         )
-    if effective == "verify" and "verify_command" not in step and "location" not in step:
+    if effective == "verify" and (
+        "verify_command" not in step
+        or ("expected_outcome" not in step and "location" not in step)
+    ):
         diagnostics.append(
             Diagnostic(
                 line,
@@ -523,10 +546,16 @@ def _check_step_contract(
                     "the analysis phase cannot prove completion of this step",
                     "adding either 'Verify: <concrete command>' or 'Location: <file/artifact>'",
                 ),
-                "warning",
+                "error" if strict else "warning",
             )
         )
     verify = step.get("verify_command")
+    if strict and effective in _WORK_STEP_TYPES and not isinstance(verify, str):
+        diagnostics.append(Diagnostic(line, "Steps", "PLAN020", f"{context} must declare Verify: <concrete command>", "error"))
+    if strict and effective in _WORK_STEP_TYPES and not isinstance(step.get("expected_outcome"), str):
+        diagnostics.append(Diagnostic(line, "Steps", "PLAN020", f"{context} must declare Expect: <observable result>", "error"))
+    if strict and effective == "discovery" and not (isinstance(verify, str) or isinstance(step.get("location"), str) or step.get("expected_evidence")):
+        diagnostics.append(Diagnostic(line, "Steps", "PLAN020", f"{context} must declare Verify:, Location:, or Evidence:", "error"))
     expected = step.get("expected_outcome")
     if isinstance(verify, str):
         if is_forbidden_shell_invocation(verify):
@@ -545,7 +574,7 @@ def _check_step_contract(
                         "rewriting the command as a direct executable path "
                         "(e.g. 'pytest tests/x.py -q' instead of 'bash -c ...')",
                     ),
-                    "warning",
+                    "error" if strict else "warning",
                 )
             )
         elif not is_concrete_command(verify):
@@ -561,7 +590,7 @@ def _check_step_contract(
                         "rewriting the command with a real executable and target "
                         "(e.g. 'pytest tests/x.py -q' not 'run the tests')",
                     ),
-                    "warning",
+                    "error" if strict else "warning",
                 )
             )
         if not isinstance(expected, str) or not is_specific_expected_output(expected):
@@ -578,7 +607,7 @@ def _check_step_contract(
                         "adding an 'Expect: <observable result>' line that names what "
                         "the command is supposed to print or exit-code",
                     ),
-                    "warning",
+                    "error" if strict else "warning",
                 )
             )
     location = step.get("location")
@@ -595,7 +624,7 @@ def _check_step_contract(
                     "rewriting 'Location:' with a concrete relative path "
                     "(e.g. 'reports/api-proof.json' not 'the report')",
                 ),
-                "warning",
+                "error" if strict else "warning",
             )
         )
 
@@ -1023,6 +1052,15 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
                 ),
             )
         )
+    if document.sections_named("Validation Overrides"):
+        diagnostics.append(
+            Diagnostic(
+                document.sections_named("Validation Overrides")[0].line,
+                "Validation Overrides",
+                "PLAN025",
+                "Validation Overrides is not supported; repair the plan instead of bypassing a diagnostic",
+            )
+        )
     numbers = step_number_map(document, diagnostics)
     verification_expectations = _verification_expectations(document)
     steps = _steps_content(
@@ -1030,6 +1068,7 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
         numbers,
         verification_expectations,
         diagnostics,
+        strict=True,
     )
     if not steps:
         diagnostics.append(
@@ -1044,6 +1083,19 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
                     "marking the plan as 'noop: true' in the frontmatter",
                     _DEVELOPMENT_RESULT_PROOF_CONSUMER,
                 ),
+            )
+        )
+    elif any(
+        block.identifier.startswith(("S-", "STEP-"))
+        for section in document.sections
+        for block in section.blocks
+    ) and len(steps) != sum(len(section.blocks) for section in document.sections):
+        diagnostics.append(
+            Diagnostic(
+                1,
+                "Steps",
+                "PLAN022",
+                "every active plan step must use the exact '### [S-n] Title' stable-ID form",
             )
         )
     content: Content = {"steps": steps}
@@ -1062,33 +1114,15 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
     verification = _verification_content(document, diagnostics)
     if verification:
         content["verification_strategy"] = verification
-    schema_version = document.frontmatter.get("schema_version")
-    if schema_version is not None:
-        try:
-            content["schema_version"] = int(schema_version)
-        except ValueError:
-            # A non-integer schema_version is content-shape, not routing
-            # — the markdown side already routes the document to the
-            # plan validator on the frontmatter 'type' field, and the
-            # pydantic normalizer is the canonical schema source. Emit
-            # a cost-named warning so the agent sees the cost but the
-            # plan still reaches downstream consumers.
-            diagnostics.append(
-                Diagnostic(
-                    document.frontmatter_lines.get("schema_version", 1),
-                    None,
-                    "PLAN020",
-                    _advisory_message(
-                        "PLAN020",
-                        "frontmatter 'schema_version' is not an integer",
-                        "the canonical plan pydantic schema expects an integer "
-                        "schema_version; a non-integer value is dropped at "
-                        "normalization time and the executor sees a default of 0",
-                        "rewriting 'schema_version:' with an integer value (e.g. '1')",
-                    ),
-                    "warning",
-                )
+    if "schema_version" in document.frontmatter:
+        diagnostics.append(
+            Diagnostic(
+                document.frontmatter_lines["schema_version"],
+                None,
+                "PLAN027",
+                "frontmatter 'schema_version' is no longer supported; remove it because every active plan uses the current mandatory contract",
             )
+        )
     constraints = _constraints_content(document, diagnostics)
     if constraints is not None:
         content["constraints"] = constraints
@@ -1111,9 +1145,14 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
     return content, diagnostics
 
 
+def _apply_document_severity_policy(document: ParsedDocument, diagnostics: list[Diagnostic]) -> None:
+    del document
+    apply_plan_severity_policy(diagnostics)
+
+
 def _to_content(document: ParsedDocument) -> Content:
     content, diagnostics = _analyze(document)
-    apply_plan_severity_policy(diagnostics)
+    _apply_document_severity_policy(document, diagnostics)
     errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
     if errors:
         raise MarkdownArtifactError(errors)
@@ -1129,8 +1168,12 @@ def _document_warnings(document: ParsedDocument) -> list[Diagnostic]:
     ``REF004``) reach the diagnostic list and override ledger.
     """
     _, diagnostics = _analyze(document)
-    apply_plan_severity_policy(diagnostics)
-    return [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
+    _apply_document_severity_policy(document, diagnostics)
+    return [
+        diagnostic
+        for diagnostic in diagnostics
+        if diagnostic.severity in {"warning", "error"}
+    ]
 
 
 def analyze_plan_document(
@@ -1180,7 +1223,7 @@ def analyze_plan_document(
     # applied to diagnostics surfaced later (MarkdownArtifactError from
     # ``to_content``, the pydantic-branch SPEC010) so warnings-only
     # documents still produce best-effort canonical content.
-    apply_plan_severity_policy(diagnostics)
+    _apply_document_severity_policy(document, diagnostics)
     content: Content
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         content = {}
@@ -1200,7 +1243,7 @@ def analyze_plan_document(
             content = PLAN_SPEC.normalize_content(analyzed_content)
         except PlanArtifactValidationError as exc:
             diagnostics.append(_normalizer_diagnostic(document, str(exc), "plan"))
-            apply_plan_severity_policy(diagnostics)
+            _apply_document_severity_policy(document, diagnostics)
             content = analyzed_content
     else:
         # The analyzed content is reused as the best-effort payload when
@@ -1218,7 +1261,7 @@ def analyze_plan_document(
             # the executor / analysis phase.
             pydantic_diagnostic = _normalizer_diagnostic(document, str(exc), "plan")
             diagnostics.append(pydantic_diagnostic)
-            apply_plan_severity_policy(diagnostics)
+            _apply_document_severity_policy(document, diagnostics)
             if any(diagnostic.severity == "error" for diagnostic in diagnostics):
                 content = {}
             else:
@@ -1277,8 +1320,7 @@ def _collect_diagnostics_with_overrides(
         # would re-emit diagnostics the override ledger already consumed).
         analyzed_content, analyze_diagnostics = _analyze(document)
         diagnostics.extend(analyze_diagnostics)
-    overridden = _apply_validation_overrides(document, diagnostics)
-    return diagnostics, overridden, minimal_content, analyzed_content
+    return diagnostics, [], minimal_content, analyzed_content
 
 
 def document_text_for_validation(document: ParsedDocument) -> str:
@@ -1382,12 +1424,24 @@ def _parse_override_items(
                     )
                 )
                 continue
+            reason = as_str(match.group("reason"), field="reason").strip()
+            if len(reason) < _MIN_OVERRIDE_REASON_LENGTH or reason.casefold() == "none":
+                diagnostics.append(
+                    Diagnostic(
+                        item.line,
+                        "Validation Overrides",
+                        "PLAN025",
+                        "Validation Overrides requires a non-trivial justification",
+                        "error",
+                    )
+                )
+                continue
             override_section = optional_str(match.group("section"), field="section")
             entries.append(
                 (
                     as_str(match.group("rule"), field="rule"),
                     override_section.strip() if override_section is not None else None,
-                    as_str(match.group("reason"), field="reason").strip(),
+                    reason,
                 )
             )
     return entries
@@ -1545,7 +1599,7 @@ _FAN_OUT_SECTION_RULE = SectionRule(
 PLAN_SPEC = MdArtifactSpec(
     artifact_type=PLAN_ARTIFACT_TYPE,
     required_frontmatter=frozenset({"type"}),
-    optional_frontmatter=frozenset({"schema_version", "noop"}),
+    optional_frontmatter=frozenset({"noop"}),
     allow_unknown_frontmatter=True,
     allow_nested_headings=True,
     sections={
