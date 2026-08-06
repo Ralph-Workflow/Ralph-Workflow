@@ -9,11 +9,14 @@ constants (``COMPACT_HEADLINE_MAX_CHARS`` etc.) are removed.
 
 from __future__ import annotations
 
+import io
+
 import pytest
 from rich.console import Console
 
 from ralph.display import DisplayContext as DisplayContextExport
 from ralph.display import make_display_context as make_display_context_export
+from ralph.display import theme as _theme
 from ralph.display._mode_adaptive_limits import (
     CONDENSER_HARD_LIMIT,
     CONDENSER_SOFT_LIMIT,
@@ -23,7 +26,7 @@ from ralph.display._mode_adaptive_limits import (
     TOOL_RESULT_HEADLINE_MIN_CHARS,
 )
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.theme import theme_for_background
+from ralph.display.theme import pick_status_styles, theme_for_background
 
 _NARROW_TEST_WIDTH = 40
 _WIDE_TEST_WIDTH = 200
@@ -195,3 +198,32 @@ def test_body_measure_survives_refreshed() -> None:
     refreshed = ctx.refreshed()
     assert refreshed.body_measure_cap == ctx.body_measure_cap == BODY_MEASURE_CAP
     assert refreshed.body_measure() == BODY_MEASURE_CAP
+
+
+# --- DA-003 / DA-004: measured-surface hex validation and threading. -------
+
+
+@pytest.mark.parametrize("malformed", ["#zzzzzz", "#12345"])
+def test_display_context_rejects_malformed_terminal_background_hex(malformed: str) -> None:
+    """DA-003: a malformed RALPH_TERMINAL_BG hex must not crash display
+    construction and must not be threaded, unvalidated, into the palette
+    solver."""
+    ctx = make_display_context(
+        env={"RALPH_TERMINAL_BG": malformed}, console=Console(file=io.StringIO())
+    )
+    assert ctx.terminal_background_hex is None
+
+
+def test_display_context_threads_measured_surface_hex_through_resolved_theme() -> None:
+    """DA-004: a valid RALPH_TERMINAL_BG hex is carried onto the context, and
+    the resolved theme resolves the same pigment as the surface-aware status
+    resolver for the same surface."""
+    ctx = make_display_context(
+        env={"RALPH_TERMINAL_BG": "#2D2A2E"}, console=Console(file=io.StringIO())
+    )
+    assert ctx.terminal_background_hex == "#2D2A2E"
+
+    expected_style = pick_status_styles(False, surface_hex="#2D2A2E")["warning"][0]
+    expected_hex = _theme._extract_hex(expected_style)
+    actual_hex = _theme._extract_hex(str(ctx.theme.styles["theme.status.warning"]))
+    assert expected_hex and actual_hex.lower() == expected_hex.lower()

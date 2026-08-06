@@ -360,6 +360,22 @@ def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surfac
             for foreground in foregrounds
         )
 
+    # DA-004: also exercise the S-4 measured-surface route, not only the
+    # canonical booleans -- SyntaxThemes.for_surface previously escaped this
+    # test entirely.
+    for surface_hex in ("#2D2A2E", "#1E1E1E", "#FAF8F5"):
+        style_type = SyntaxThemes.for_surface(surface_hex)
+        foregrounds = {
+            foreground
+            for color in style_type.styles.values()
+            if isinstance(color, str) and (foreground := theme._extract_hex(color))
+        }
+        assert foregrounds
+        fill = preview_background_for_background(None, surface_hex=surface_hex)
+        assert all(
+            theme.contrast_ratio(foreground, fill) >= CONTRAST_FLOOR for foreground in foregrounds
+        )
+
 
 def test_visual_floor_syntax_tokens_on_undetermined_background_clear_contrast_dual_safe() -> None:
     """S-5: every foreground in SyntaxThemes.unknown() clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
@@ -696,6 +712,40 @@ def _check_surface_contrast_failures(surface_hex: str) -> list[str]:
             failures.append(f"pick_status_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
 
     return failures
+
+
+def test_visual_floor_preview_and_diff_foregrounds_clear_contrast_on_their_own_fills() -> None:
+    """DA-001: preview and diff foregrounds must clear CONTRAST_FLOOR against
+    the fill they are actually painted on, not merely against the raw
+    terminal surface."""
+    cases: tuple[bool | str, ...] = (False, True, "#2D2A2E", "#1E1E1E", "#FAF8F5", "#282C34")
+    for case in cases:
+        is_bool = isinstance(case, bool)
+        terminal_bg_is_light: bool | None = case if is_bool else None
+        surface_hex: str | None = None if is_bool else case
+
+        preview_fg = theme.preview_foreground_for_background(
+            terminal_bg_is_light, surface_hex=surface_hex
+        )
+        preview_fill = theme.preview_background_for_background(
+            terminal_bg_is_light, surface_hex=surface_hex
+        )
+        assert theme.contrast_ratio(preview_fg, preview_fill) >= CONTRAST_FLOOR, (
+            f"preview foreground {preview_fg} on fill {preview_fill} for {case!r}"
+        )
+
+        removed_fg, added_fg = theme.diff_token_foregrounds(
+            terminal_bg_is_light, surface_hex=surface_hex
+        )
+        fills = theme.diff_fill_styles(terminal_bg_is_light, surface_hex=surface_hex)
+        assert fills is not None, f"expected an owned diff fill for {case!r}"
+        removed_fill, added_fill = fills
+        assert theme.contrast_ratio(removed_fg, removed_fill) >= CONTRAST_FLOOR, (
+            f"diff removed foreground {removed_fg} on fill {removed_fill} for {case!r}"
+        )
+        assert theme.contrast_ratio(added_fg, added_fill) >= CONTRAST_FLOOR, (
+            f"diff added foreground {added_fg} on fill {added_fill} for {case!r}"
+        )
 
 
 def test_visual_floor_all_resolvers_clear_contrast_on_realistic_surfaces() -> None:

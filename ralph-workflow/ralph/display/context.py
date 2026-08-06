@@ -178,7 +178,22 @@ def _build_console(
     *,
     output_stream: TextIO | None = None,
 ) -> Console:
-    """Create a console based on resolved NO_COLOR / FORCE_COLOR settings."""
+    """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
+
+    Ralph keeps ANSI in durable redirected transcripts when the destination
+    supports it.  ``FORCE_COLOR`` explicitly opts into that behaviour, while
+    the ordinary path still uses Rich's terminal detection for real streams.
+    ``NO_COLOR`` is checked first and always wins.
+
+    Args:
+        resolved_env: Pre-resolved environment settings.
+        terminal_bg_is_light: Resolved terminal background.
+        surface_hex: The measured terminal background surface, when known.
+        output_stream: Destination stream for rendered output.
+
+    Returns:
+        Configured Console instance.
+    """
     if resolved_env.no_color:
         return make_console(
             file=output_stream,
@@ -382,7 +397,7 @@ class DisplayContext:
 
     Attributes:
         console: Rich Console instance for all rendering.
-        theme: Rich Theme with Ralph's Okabe-Ito color palette.
+        theme: Rich Theme with Ralph's Monokai-derived color palette.
         width: Effective terminal width in characters.
         mode: Display mode. Always ``'default'`` (the single mode).
         color_enabled: True when color output is enabled.
@@ -595,7 +610,23 @@ def make_display_context(
     force_glyphs: bool | None = None,
     force_height: int | None = None,
 ) -> DisplayContext:
-    """Create a DisplayContext with resolved terminal metrics and adaptive limits."""
+    """Create a DisplayContext with resolved terminal metrics and adaptive limits.
+
+    Args:
+        env: Environment mapping (defaults to os.environ).
+        console: Console to use (defaults to make_console() with env-aware color policy).
+        output_stream: Destination used when Ralph constructs the console. Defaults to stdout.
+        force_width: Override terminal width detection.
+        force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
+        force_height: Override terminal height detection. ``None``
+            falls back to ``console.size.height`` (the canonical
+            Rich Console contract); ``None`` disables height-aware
+            rendering for callers that don't consume the height
+            field.
+
+    Returns:
+        Fully initialised DisplayContext.
+    """
     if console is not None and output_stream is not None:
         msg = "output_stream cannot be combined with an injected console"
         raise ValueError(msg)
@@ -622,6 +653,10 @@ def make_display_context(
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
         if isinstance(resolved_console, Console):
+            # Every injected console must receive Ralph's resolved theme. A
+            # caller-owned theme may contain stale Rich style caches (the
+            # historical all-colour-off regression), so push a fresh palette
+            # even when a Ralph role already exists.
             resolved_console.push_theme(
                 theme_for_background(resolved_background, surface_hex=resolved_background_hex)
             )
@@ -636,9 +671,20 @@ def make_display_context(
         _set_injected_console_width(resolved_console, width)
     mode = _compute_default_mode()
     limits = _DEFAULT_LIMITS
+    # P0 (wt-028-display S-5 / AC-06): height is resolved the same
+    # way as width -- an explicit ``force_height`` wins, otherwise we
+    # read the console's own ``size.height`` (Rich keeps it fresh).
+    # A non-positive or missing height disables height-aware
+    # rendering (the legacy contract); callers that want the
+    # explicit ``None`` contract pass ``force_height=-1`` so the
+    # resolved value is ``None``.
     if force_height is not None and force_height > 0:
         height_value = force_height
     elif force_height is not None:
+        # Explicit ``force_height=0`` or negative is treated as the
+        # legacy ``None`` opt-out (callers that want to disable
+        # height-aware rendering). ``force_height=None`` falls
+        # through to the Console's own ``size.height``.
         height_value = None
     else:
         size_obj: object = getattr(resolved_console, "size", None)
@@ -650,11 +696,13 @@ def make_display_context(
         positive_height: int | None = height_attr
         height_value = positive_height
 
+    # NO_COLOR wins over FORCE_COLOR per CLI conventions.
     color_enabled = not resolved_env.no_color and not _console_has_no_color(
         resolved_console,
         injected_console=injected_console,
     )
 
+    # Glyph capability detection: force_glyphs > RALPH_FORCE_ASCII > stream encoding > TERM=dumb
     if force_glyphs is not None:
         glyphs_enabled = force_glyphs
     elif injected_console and not env_was_provided and not resolved_env.force_ascii:

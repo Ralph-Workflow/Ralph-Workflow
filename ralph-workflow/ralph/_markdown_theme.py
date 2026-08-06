@@ -1,4 +1,8 @@
-"""Fixed-RGB Markdown styles for background-aware previews."""
+"""Monokai-derived Markdown styles for background-aware previews.
+
+Each palette is solved per surface by :mod:`ralph.display._palette` rather
+than read from a fixed table.
+"""
 
 from __future__ import annotations
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from ralph.display import theme
 from ralph.display._identity import (
     _DEUTERANOPIA_MATRIX,
     _PROTANOPIA_MATRIX,
@@ -14,11 +15,15 @@ from ralph.display._identity import (
 from ralph.display._palette import (
     ROLE_ANCHORS,
     contrast_ratio,
+    derive_preview_background,
     hex_to_rgb,
     oklab_to_oklch,
     resolve_palette,
     rgb_to_oklab,
 )
+from ralph.syntax_theme import SyntaxThemes
+
+_DA_002_SURFACES: tuple[str, ...] = ("#7A7A7A", "#808080", "#8A8A8A", "#909090", "#2D2A2E", "#FAF8F5")
 
 
 def _hex_to_oklch(hex_str: str) -> tuple[float, float, float]:
@@ -112,3 +117,31 @@ def test_palette_cvd_separability() -> None:
                 sim1 = simulate_cvd(p1, matrix)
                 sim2 = simulate_cvd(p2, matrix)
                 assert sim1 != sim2, f"{r1} vs {r2} collapse under CVD simulation on {surface_hex}"
+
+
+def test_derive_preview_background_matches_theme_module() -> None:
+    """DA-002: theme.py and _palette.py must derive the identical preview fill
+    -- previously they disagreed because each carried its own light/dark
+    luminance crossover."""
+    for surface_hex in _DA_002_SURFACES:
+        assert theme.preview_background_for_background(
+            None, surface_hex=surface_hex
+        ) == derive_preview_background(surface_hex), surface_hex
+
+
+def test_syntax_theme_for_surface_clears_contrast_on_its_owned_preview_fill() -> None:
+    """DA-002: every SyntaxThemes.for_surface foreground clears 4.5:1 against
+    the preview fill it is actually painted on, across the crossover band
+    where the two derivations previously disagreed."""
+    for surface_hex in _DA_002_SURFACES:
+        fill = theme.preview_background_for_background(None, surface_hex=surface_hex)
+        style_type = SyntaxThemes.for_surface(surface_hex)
+        foregrounds = {
+            foreground
+            for color in style_type.styles.values()
+            if isinstance(color, str) and (foreground := theme._extract_hex(color))
+        }
+        assert foregrounds
+        for foreground in foregrounds:
+            ratio = contrast_ratio(foreground, fill)
+            assert ratio >= 4.5, f"{foreground} on {fill} for surface {surface_hex}: {ratio:.2f}"

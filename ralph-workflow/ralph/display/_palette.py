@@ -35,7 +35,10 @@ _CONTRAST_FLOOR: Final[float] = 4.5
 _SRGB_THRESHOLD: Final[float] = 0.04045
 _LINEAR_THRESHOLD: Final[float] = 0.0031308
 _SHORT_HEX_LEN: Final[int] = 3
-_LIGHT_BG_LUMINANCE_CROSSOVER: Final[float] = 0.4
+#: WCAG crossover luminance, matching ``ralph.display.theme``'s own
+#: crossover so a preview fill derived here and one derived through
+#: ``theme.py`` never disagree on which side of "light" a surface falls.
+_LIGHT_BG_LUMINANCE_CROSSOVER: Final[float] = 0.1791
 
 
 # --- Color Space Conversions ---

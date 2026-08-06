@@ -1,16 +1,22 @@
-"""Okabe-Ito theme helpers for Ralph CLI display.
+"""Monokai Pro-derived theme helpers for Ralph CLI display.
 
-Fixed-RGB, background-aware Rich and Pygments theme helpers.
+Background-aware Rich and Pygments theme helpers built from a deterministic
+palette generator (:mod:`ralph.display._palette`). Every semantic colour is
+solved against the resolved terminal surface -- rather than read from a fixed
+RGB table -- so contrast and hue identity are preserved on light, dark, and
+unknown terminal backgrounds.
 
 All semantic colors are selected from the resolved terminal background and
 must preserve contrast and non-color structural carriers.
 
-The palette is Okabe-Ito, so semantic states are not distinguished by hue
-alone. ``STATUS_STYLES`` carries a ``(rich_style, unicode_icon, ascii_label)``
-tuple per semantic state so display code can retain every meaning carrier on
-colorblind and no-color consoles. Semantic roles are defined once here;
-background-aware role tables preserve contrast and hue identity on light,
-dark, and unknown terminal backgrounds.
+Semantic states are distinguished by hue, using OKLCh hue anchors seeded
+from Monokai Pro's measured characteristics
+(``ralph.display._palette.ROLE_ANCHORS``). ``STATUS_STYLES`` carries a
+``(rich_style, unicode_icon, ascii_label)`` tuple per semantic state so
+display code can retain every meaning carrier on colorblind and no-color
+consoles. Semantic roles are defined once here; background-aware role
+tables preserve contrast and hue identity on light, dark, and unknown
+terminal backgrounds.
 """
 
 from __future__ import annotations
@@ -511,10 +517,22 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
 
 
 def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
-    """Resolve the measured or explicitly declared terminal background surface hex."""
+    """Resolve the measured or explicitly declared terminal background surface hex.
+
+    A ``RALPH_TERMINAL_BG`` hex is only trusted when it is a valid
+    ``#RGB`` / ``#RRGGBB`` colour (``relative_luminance`` already raises
+    ``ValueError`` for malformed or wrong-length bodies). A malformed
+    override falls through to the OSC 11 probe rather than being
+    threaded, unvalidated, into the palette solver.
+    """
     explicit = env.get("RALPH_TERMINAL_BG", "").strip()
     if explicit.startswith("#"):
-        return explicit
+        try:
+            relative_luminance(explicit)
+        except ValueError:
+            pass
+        else:
+            return explicit
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
     return query_terminal_background_hex(
@@ -522,7 +540,7 @@ def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
     )
 
 
-#: Fixed-RGB syntax palettes for each terminal background.
+#: Monokai-derived syntax palettes solved for each terminal background.
 SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.dark())
 SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.light())
 SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.unknown())
@@ -535,24 +553,12 @@ _PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = "#101417"
 _PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = "#F7F9FB"
 
 
-def _derive_preview_background(surface_hex: str) -> str:
-    r, g, b = _palette.hex_to_rgb(surface_hex)
-    lab_l, a, b_lab = _palette.rgb_to_oklab(r, g, b)
-    is_light = _palette.relative_luminance(r, g, b) > _LIGHT_BG_LUMINANCE_CROSSOVER
-    new_l = lab_l - 0.025 if is_light else lab_l + 0.035
-    new_l = max(0.0, min(1.0, new_l))
-    pr, pg, pb = _palette.oklab_to_rgb(new_l, a, b_lab)
-    return _palette.rgb_to_hex(pr, pg, pb)
-
-
 def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
-    r, g, b = _palette.hex_to_rgb(surface_hex)
-    lab_l, a, b_lab = _palette.rgb_to_oklab(r, g, b)
-    is_light = _palette.relative_luminance(r, g, b) > _LIGHT_BG_LUMINANCE_CROSSOVER
-    new_l = lab_l - 0.025 if is_light else lab_l + 0.035
-    new_l = max(0.0, min(1.0, new_l))
-    rem_r, rem_g, rem_b = _palette.oklab_to_rgb(new_l, a + 0.012, b_lab)
-    add_r, add_g, add_b = _palette.oklab_to_rgb(new_l, a - 0.012, b_lab + 0.008)
+    """Derive removed/added diff fills from the single-sourced preview fill."""
+    preview_hex = _palette.derive_preview_background(surface_hex)
+    lab_l, a, b_lab = _palette.rgb_to_oklab(*_palette.hex_to_rgb(preview_hex))
+    rem_r, rem_g, rem_b = _palette.oklab_to_rgb(lab_l, a + 0.012, b_lab)
+    add_r, add_g, add_b = _palette.oklab_to_rgb(lab_l, a - 0.012, b_lab + 0.008)
     return _palette.rgb_to_hex(rem_r, rem_g, rem_b), _palette.rgb_to_hex(add_r, add_g, add_b)
 
 
@@ -560,10 +566,15 @@ def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
 def preview_foreground_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> str:
-    """Return the body foreground for an owned or transparent preview."""
+    """Return the body foreground for an owned or transparent preview.
+
+    Solved against the actual owned preview fill (not the raw terminal
+    surface) so the result clears contrast on the surface it is really
+    painted on.
+    """
     if surface_hex is not None:
-        p = _palette.resolve_palette(surface_hex)
-        return p["chrome"]
+        fill = preview_background_for_background(None, surface_hex=surface_hex)
+        return _palette.solve_for_surface(_palette.ROLE_ANCHORS["chrome"], fill)
     if terminal_bg_is_light is True:
         return "#202020"
     if terminal_bg_is_light is False:
@@ -576,7 +587,7 @@ def preview_background_for_background(
 ) -> str:
     """Return the complete owned preview surface for a resolved background."""
     if surface_hex is not None:
-        return _derive_preview_background(surface_hex)
+        return _palette.derive_preview_background(surface_hex)
     if terminal_bg_is_light is True:
         return _PREVIEW_BACKGROUND_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -607,9 +618,23 @@ def display_styles_for_background(
 def diff_token_foregrounds(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> tuple[str, str]:
-    """Return deleted and inserted foregrounds distinct from failure/success states."""
-    styles = display_styles_for_background(terminal_bg_is_light, surface_hex=surface_hex)
-    return styles["diff_removed"], styles["diff_added"]
+    """Return deleted and inserted foregrounds distinct from failure/success states.
+
+    On a known background (canonical boolean or measured ``surface_hex``)
+    the markers are painted on their owned diff fill
+    (:func:`diff_fill_styles`), so each foreground is solved against that
+    fill rather than against the raw terminal surface. On an unknown
+    background there is no owned fill -- the markers fall back to the
+    dual-safe display-style pigments.
+    """
+    fills = diff_fill_styles(terminal_bg_is_light, surface_hex=surface_hex)
+    if fills is None:
+        styles = display_styles_for_background(terminal_bg_is_light, surface_hex=surface_hex)
+        return styles["diff_removed"], styles["diff_added"]
+    removed_fill, added_fill = fills
+    removed = _palette.solve_for_surface(_palette.ROLE_ANCHORS["diff_removed"], removed_fill)
+    added = _palette.solve_for_surface(_palette.ROLE_ANCHORS["diff_added"], added_fill)
+    return removed, added
 
 
 def diff_fill_styles(
