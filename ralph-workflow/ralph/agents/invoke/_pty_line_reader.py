@@ -65,9 +65,10 @@ from ralph.agents.invoke._pty_helpers import (
     _write_pty_input,
 )
 from ralph.agents.invoke._pty_transcript import (
+    existing_transcript_names,
     find_claude_transcript_entry,
     find_latest_claude_transcript_entry,
-    transcript_lines_from_event,
+    transcript_lines_from_events,
 )
 from ralph.agents.invoke._session import (
     _TURN_BOUNDARY_MARKER,
@@ -198,6 +199,42 @@ class _ReadLoopSetup(NamedTuple):
     subagent_token: Token[Callable[[str], None] | None]
 
 
+def _resolve_pre_existing_transcript_names(
+    extras: _PtyExtras, workspace_path: Path | None
+) -> frozenset[str]:
+    """Resolve the transcript names to exclude from live discovery.
+
+    wt-04-claude-parsing: the orchestrating session (or any sibling
+    session) already lives in the same ``~/.claude/projects/<key>``
+    directory a freshly-spawned child writes into, so
+    ``find_latest_claude_transcript_entry``'s "touched since start"
+    floor alone cannot tell the two apart -- an already-active sibling
+    keeps satisfying that floor for as long as it stays active, and
+    "latest mtime wins" can lock the transcript thread onto the wrong
+    file for the entire run.
+
+    Prefer the caller's PRE-SPAWN snapshot (``extras.pre_existing_transcript_names``,
+    taken by ``run_pty_and_read_lines`` before the child process
+    existed) when available. A snapshot taken here instead, inside
+    ``PtyLineReader.__init__`` -- which only runs AFTER the caller has
+    already spawned the child -- could already see the child's own
+    freshly-created transcript file and wrongly self-exclude it, so
+    that live snapshot is only a best-effort default for direct
+    construction (e.g. tests), not the primary path.
+    """
+    # ``getattr`` (not direct attribute access): some test doubles
+    # duck-type ``_PtyExtras`` with a bare ``SimpleNamespace`` that
+    # predates this field.
+    snapshot = cast(
+        "frozenset[str] | None", getattr(extras, "pre_existing_transcript_names", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    if snapshot is not None:
+        return snapshot
+    if workspace_path is not None:
+        return existing_transcript_names(workspace_path)
+    return frozenset()
+
+
 class PtyLineReader:
     def __init__(
         self,
@@ -219,6 +256,13 @@ class PtyLineReader:
         self._workspace_path = cast(
             "Path | None", getattr(ctx, "workspace_path", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        # wt-04-claude-parsing: the transcript names already on disk for
+        # this workspace, so the transcript thread's discovery fallback
+        # can exclude them (see ``_resolve_pre_existing_transcript_names``
+        # and ``existing_transcript_names``).
+        self._pre_existing_transcript_names: frozenset[str] = (
+            _resolve_pre_existing_transcript_names(_extras, self._workspace_path)
+        )
         self._clock = clock
         self._max_pending_chars = max_pending_chars
         self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
@@ -682,6 +726,7 @@ class PtyLineReader:
                         entry = find_latest_claude_transcript_entry(
                             self._workspace_path,
                             min_mtime=self._started_at_wall_clock,
+                            exclude_names=self._pre_existing_transcript_names,
                         )
                     if entry is None:
                         self._monitor_stop.wait(0.1)
@@ -698,16 +743,19 @@ class PtyLineReader:
                 if not line:
                     self._monitor_stop.wait(0.1)
                     continue
-                # wt-04-claude-parsing: surface every parent record
-                # to the subagent tailer (RC2 envelope + R7 dispatch
-                # detection + R1 lifecycle). The helper is a thin
-                # for-loop wrapper that mutates the ``active_tails``
-                # local in-place via the closure contract; extracting
-                # the dispatch here keeps the loop body below the
-                # PLR0912 branch limit while the helper still
-                # re-uses the surrounding locals through a single
-                # ``list[event]`` argument.
-                for event in transcript_parser.feed(line):
+                # wt-04-claude-parsing: feed the line through the
+                # parser EXACTLY ONCE. ``ClaudeInteractiveTranscriptParser``
+                # is stateful (``session_id``, the dedup signature
+                # cache), so a second ``feed`` call on the same raw
+                # line silently returns fewer or zero events -- that
+                # regression previously starved the operator-facing
+                # ``_lines_queue`` of every parent event (session id,
+                # tool_use, tool_result, output) because this loop's
+                # own ``feed`` call had already consumed them. The
+                # SAME ``events`` list now feeds both the subagent-tailer
+                # routing below AND ``transcript_lines_from_events``.
+                events = transcript_parser.feed(line)
+                for event in events:
                     active_tails = self._route_parent_event(
                         event=event,
                         active_tails=active_tails,
@@ -721,7 +769,7 @@ class PtyLineReader:
                 # ``obj.version`` directly.
                 if active_tails is not None:
                     self._capture_parent_record_metadata(line, active_tails)
-                emitted_lines = transcript_lines_from_event(line, parser=transcript_parser)
+                emitted_lines = transcript_lines_from_events(line, events)
                 if emitted_lines:
                     with self._lines_lock:
                         self._lines_queue.extend(emitted_lines)
@@ -884,11 +932,13 @@ class PtyLineReader:
     ) -> None:
         """Parse the raw parent record once and surface the version to the tailer.
 
-        The transcript parser already consumed the line and the
-        downstream ``transcript_lines_from_event`` reroute the raw
-        line through the parser again. We do not want to double-parse
-        the JSON here; we just read the top-level ``version`` field
-        for the tailer's R7 diagnostic.
+        The transcript parser already consumed the line (its events are
+        reused for both subagent-tailer routing and
+        ``transcript_lines_from_events`` -- see ``_transcript_thread``;
+        the line is never fed through the parser twice). We do not want
+        to double-parse the JSON here either, so this reads the
+        top-level ``version`` field directly via ``json.loads`` for the
+        tailer's R7 diagnostic instead of going through the parser.
         """
         try:
             obj: object = json.loads(raw_line)

@@ -101,6 +101,62 @@ transport. Do not delete the PID channel — other transports depend on
 it — but do not rely on it to grade the interactive Claude Code
 transport's liveness.
 
+## 4. Two silent-observation traps discovered via live smoke evidence
+
+Fixing sections 1–3 is necessary but not sufficient: two further defects
+kept the live `smoke-interactive-claude --subagents` run from ever
+observing ANY parent transcript activity, even though the underlying
+`claude` process was doing real, substantial work. Both were found by
+comparing the smoke report's claim ("session ID was not observed", "no
+tool activity was observed") against the actual `~/.claude/projects/...`
+transcript file on disk, which had real content the whole time.
+
+### 4a. Transcript discovery must exclude sessions that already existed
+
+`find_latest_claude_transcript_entry`'s `min_mtime` floor only proves a
+candidate `*.jsonl` file was *touched* since the floor, not that it was
+*created* since the floor. The orchestrating session that launches a
+`claude` interactive child lives in the EXACT SAME
+`~/.claude/projects/<project-key>` directory as the child (both are
+sessions for the same workspace) and keeps appending to its own
+transcript for as long as it stays active — which satisfies the same
+"touched since start" floor just as well as the freshly-spawned child.
+"Latest mtime wins" then locks the transcript thread onto the
+orchestrator's own (unrelated) transcript for the entire run, and the
+child's real activity is never read.
+
+The fix (`ralph/agents/invoke/_pty_transcript.py:existing_transcript_names`)
+snapshots the `*.jsonl` names already on disk for the workspace BEFORE
+the child process is spawned (`run_pty_and_read_lines`, before
+`spawn_pty`, NOT inside `PtyLineReader.__init__`, which only runs AFTER
+the child already exists and could already see the child's own file).
+The snapshot is threaded through `_PtyExtras.pre_existing_transcript_names`
+and passed to `find_latest_claude_transcript_entry(..., exclude_names=...)`.
+
+### 4b. Feed a stateful parser instance exactly once per line
+
+`ClaudeInteractiveTranscriptParser` is stateful: it tracks
+`self.session_id` and a `_last_emitted_signature` dedup cache across
+calls to `feed()`. `_transcript_thread` fed each parent transcript line
+through the SAME parser instance TWICE per loop iteration — once
+directly (to route parsed events to the subagent tailer) and again
+inside `transcript_lines_from_event(line, parser=transcript_parser)`
+(to build the lines pushed to the operator-facing output queue). The
+SECOND `feed()` call on an ALREADY-CONSUMED line sees a parser that has
+already advanced past that line's session id / dedup signature, so it
+silently returns fewer or zero events — starving the ENTIRE
+operator-facing output stream (no session ID, no tool activity, nothing)
+even while the transcript file on disk grew with real content.
+
+The fix: feed each line through the parser exactly once, and reuse the
+resulting `events` list for both purposes.
+`transcript_lines_from_events(raw_line, events)` is the pure half of
+`transcript_lines_from_event` that takes an already-computed `events`
+list instead of calling `feed()` itself; `transcript_lines_from_event`
+remains available for a caller that has not already fed the line.
+**Key rule: never call `.feed()` on the same raw line twice through the
+same `ClaudeInteractiveTranscriptParser` instance.**
+
 ## Cross-references
 
 * `tests/agents/invoke/test_claude_interactive_real_capture_replay.py`
