@@ -36,6 +36,7 @@ from ralph.timeout_defaults import (
     REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
+    SAME_SHAPE_RETRY_DEFAULT,
     SESSION_SOFT_WRAPUP_SECONDS,
     SUBAGENT_OUTPUT_CAPTURE_ENABLED,
     SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
@@ -80,6 +81,38 @@ class GeneralConfig(RalphBaseModel):
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
     max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)
+    # R6 (Trustworthy Idle Watchdog spec): the same-shape retry loop
+    # bound. Consecutive ``AgentInactivityTimeoutError`` resumes that
+    # fingerprint identically on ``(watchdog_reason, failure_reason,
+    # no-new-artifact-since-prior, no-workspace-change-since-prior)``
+    # raise ``SameShapeRetryLoopError`` instead of resuming when
+    # the consecutive counter reaches this ceiling. The default
+    # (``SAME_SHAPE_RETRY_DEFAULT = 3``) is small enough to catch the
+    # 25-minute four-cycle burn that motivated this task after the
+    # 3rd consecutive identical fire (well before the 4th), leaving
+    # one full retry of headroom. Operators extend the leash via
+    # ``[general] agent_max_same_shape_resumes = N`` in
+    # ``ralph-workflow.toml``; the loader routes that value into
+    # ``RecoveryControllerOptions.same_shape_retry_limit`` so the
+    # configuration surface is single-sourced. ``ge=1`` rejects ``0``
+    # and negative values with a clear field-name error so an
+    # operator who tries to silently disable the R6 contract sees the
+    # rejection at config-load time.
+    agent_max_same_shape_resumes: int = Field(
+        default=SAME_SHAPE_RETRY_DEFAULT,
+        ge=1,
+        description=(
+            "Same-shape retry loop bound. Consecutive AgentInactivityTimeoutError"
+            " resumes that fingerprint identically on (watchdog_reason,"
+            " failure_reason, no-new-artifact, no-workspace-change) raise"
+            " SameShapeRetryLoopError instead of resuming when the consecutive"
+            " counter reaches this ceiling. The default is small enough to"
+            " catch the 25-minute four-cycle burn that motivated this task."
+            " Operators extend the leash by raising this value in"
+            " ralph-workflow.toml; setting it to 0 or a negative value is"
+            " rejected by the validator."
+        ),
+    )
     max_retries: int = Field(default=3, ge=0)
     retry_delay_ms: int = Field(default=1000, ge=0)
     backoff_multiplier: float = Field(default=2.0, ge=1.0)

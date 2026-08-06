@@ -10,6 +10,12 @@ from typing import cast
 from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, BoundedTextBuffer
 from ralph.display.vt_normalizer import normalize_vt_text
 
+from ._assistant_envelope import (
+    ENVELOPE_API_ERROR,
+    ENVELOPE_SYNTHETIC,
+    AssistantEnvelopeDecision,
+    classify_assistant_record,
+)
 from .interactive_transcript_event import InteractiveTranscriptEvent
 
 _SESSION_ID_PATTERNS = (
@@ -380,6 +386,41 @@ class ClaudeInteractiveTranscriptParser:
             self.session_id = session_id
             self._append_if_new(events, InteractiveTranscriptEvent(kind="session", text=session_id))
         if event_type == "assistant":
+            # RC2: classify the full top-level record via the shared
+            # envelope classifier BEFORE per-item content extraction.
+            # The shared classifier handles BOTH the top-level
+            # ``isApiErrorMessage`` placement (current Claude Code 2.1.x)
+            # and the nested ``message.isApiErrorMessage`` placement
+            # (legacy wire) so a future wire change does not silently
+            # route the record to the normal path. The synthetic
+            # envelope emits exactly one ``lifecycle`` event carrying
+            # the bookkeeping text as payload; ``is_lifecycle_kind``
+            # in ``claude_interactive.parse()`` drops the event from
+            # the agent-text stream so the watchdog's ``_record_event``
+            # path cannot reach it and the retry-context excerpt
+            # builder cannot reach it (R4 contract: no surface to
+            # operator output, no surface to retry-context excerpt,
+            # no idle-baseline reset). The error envelope emits
+            # exactly one ``error`` event with the wire-shape error
+            # text and never produces a ``text`` / ``output`` event.
+            decision: AssistantEnvelopeDecision = classify_assistant_record(obj)
+            if decision.envelope == ENVELOPE_API_ERROR:
+                if decision.error_text:
+                    self._append_if_new(
+                        events,
+                        InteractiveTranscriptEvent(
+                            kind="error",
+                            text=decision.error_text,
+                        ),
+                    )
+                return events
+            if decision.envelope == ENVELOPE_SYNTHETIC:
+                payload = decision.synthetic_text or "synthetic bookkeeping turn"
+                self._append_if_new(
+                    events,
+                    InteractiveTranscriptEvent(kind="lifecycle", text=payload),
+                )
+                return events
             for event in self._events_from_assistant_message(obj.get("message")):
                 self._append_if_new(events, event)
         elif event_type == "user":

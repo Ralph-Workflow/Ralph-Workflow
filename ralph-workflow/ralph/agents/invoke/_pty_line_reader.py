@@ -11,7 +11,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 import psutil
 from loguru import logger
@@ -104,13 +104,17 @@ from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from contextvars import Token
 
     from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx, _EvalCompletionFn
+    from ralph.agents.invoke._subagent_transcript import R7AbsentLayoutDiagnostic
     from ralph.agents.timeout_clock import Clock
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
+
+from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
@@ -169,6 +173,25 @@ def _tool_use_display_name(
         return tool_call[0]
     stripped = raw.strip()
     return stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+
+
+class _ReadLoopSetup(NamedTuple):
+    """Bundle of resources the read_lines loop creates during setup.
+
+    Held in a NamedTuple so the setup helper has a single return value rather
+    than threading ten locals back into ``read_lines`` (which would push the
+    caller back over the PLR0915 too-many-statements ceiling).
+    """
+
+    reader: threading.Thread
+    transcript_reader: threading.Thread
+    sentinel_reader: threading.Thread
+    completion_reader: threading.Thread
+    watchdog: IdleWatchdog
+    subagent_tails: ClaudeSubagentTranscriptTails | None
+    unsubscribe: Callable[[], None]
+    sink_token: Token[Callable[[str], None] | None]
+    subagent_token: Token[Callable[[str], None] | None]
 
 
 class PtyLineReader:
@@ -1201,6 +1224,77 @@ class PtyLineReader:
             prefix = ""
         return registry, prefix or ""
 
+    def _build_subagent_transcript_tails(
+        self,
+    ) -> ClaudeSubagentTranscriptTails | None:
+        """Construct the subagent transcript tailer for this invocation.
+
+        Returns ``None`` when no captured session id is available so a
+        pre-resolution invocation does not crash. The tailer reads
+        ``subagents/agent-*.jsonl`` files from the canonical Claude
+        Code directory and forwards events through the subagent sink
+        (the existing ``record_subagent_work`` channel). The R7
+        sink is wired to ``logger.warning`` so an absent ``subagents/``
+        layout surfaces a structured diagnostic visible to operators.
+        """
+
+        session_id = self._captured_session_id
+        if not session_id:
+            return None
+        workspace_path = self._workspace_path
+        if workspace_path is None:
+            return None
+        try:
+            project_key = str(workspace_path.resolve()).replace("/", "-").replace(" ", "-")
+        except OSError:
+            return None
+
+        def _r7_sink(diag: R7AbsentLayoutDiagnostic) -> None:
+            logger.warning(
+                "R7 absent subagent layout: code={} claude_code_version={!r}"
+                " project_key={!r} session_id={!r} probed_path={!r}"
+                " dispatch_tool_use_id={!r} dispatch_tool_name={!r}",
+                diag.code,
+                diag.claude_code_version,
+                diag.project_key,
+                diag.session_id,
+                diag.probed_path,
+                diag.dispatch_tool_use_id,
+                diag.dispatch_tool_name,
+            )
+
+        # The subagent sink is wired below in ``read_lines`` once the
+        # watchdog is constructed; the tailer holds a closure that
+        # captures ``watchdog`` by name. For now, return a sentinel
+        # that ``read_lines`` re-binds before ``start()``.
+        subagent_sink_holder: dict[str, Callable[[str], None]] = {}
+
+        def _subagent_sink(summary: str) -> None:
+            sink = subagent_sink_holder.get("sink")
+            if sink is None:
+                return
+            sink(summary)
+
+        # The dispatch observer is wired below in ``read_lines``
+        # because the parent's transcript parser hands events to
+        # ``_forward_event`` AFTER the watchdog is constructed. For
+        # now the tailer is constructed with an empty observer; the
+        # ``note_dispatch`` method on the tailer is the public surface
+        # that the parent parser calls once wired.
+        tails = ClaudeSubagentTranscriptTails(
+            session_id=session_id,
+            project_key=project_key,
+            monitor_stop=self._monitor_stop,
+            subagent_sink=_subagent_sink,
+            r7_sink=_r7_sink,
+            clock=lambda: float(self._clock.monotonic()),
+        )
+        # Stash the holder so ``read_lines`` can swap in the real
+        # sink once the watchdog is constructed.
+        self._subagent_sink_holder = subagent_sink_holder
+        self._subagent_tails = tails
+        return tails
+
     def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
         """Build a PID source from the strategy's child-liveness registry, if any.
 
@@ -1221,10 +1315,50 @@ class PtyLineReader:
         return ChildLivenessSubagentPidSource(registry, prefix)
 
     def read_lines(self) -> Iterator[str]:
+        setup = self._setup_read_loop()
+        interrupted = [False]
+        try:
+            yield from self._run_read_loop(setup.watchdog)
+        except BaseException:
+            interrupted[0] = True
+            self._on_interrupt()
+            raise
+        finally:
+            self._teardown_read_loop(setup, interrupted[0])
+
+    def _run_read_loop(self, watchdog: IdleWatchdog) -> Iterator[str]:
+        while True:
+            self._lines_event.clear()
+            queued_line: str | None = None
+            is_done = False
+            with self._lines_lock:
+                if self._lines_queue:
+                    # BoundedLinesQueue exposes O(1) popleft; raw lists fall back to pop(0).
+                    queued_line = _pop_queue_line(self._lines_queue)
+                elif self._reader_done[0]:
+                    is_done = True
+
+            if queued_line is not None:
+                yield from self._handle_queued_line(queued_line, watchdog)
+                continue
+
+            if is_done:
+                yield from self._handle_done_path(watchdog)
+                break
+
+            yield from self._idle_check_and_wait(watchdog)
+
+    def _setup_read_loop(self) -> _ReadLoopSetup:
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
         completion_reader = self._start_thread(self._completion_evidence_thread)
+        # RC1 + RC3 (wt-04-claude-parsing): mount the subagent transcript
+        # tailer so child Claude Code ``subagents/agent-*.jsonl`` files
+        # feed the watchdog's ``record_subagent_work`` channel. The
+        # tailer is constructed lazily here (after the parent tail
+        # has resolved the session id) and torn down in ``finally``.
+        subagent_tails = self._build_subagent_transcript_tails()
         subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
         process_monitor = _make_process_monitor(
@@ -1265,7 +1399,35 @@ class PtyLineReader:
         # AFTER the iterator exhausts (post-read at
         # ``_pty_runner.py``).
         self._watchdog = watchdog
+        self._bind_workspace_monitor(watchdog)
+        sink_token, subagent_token, subagent_sink = self._register_active_sinks(watchdog)
+        # RC1 + RC3 (wt-04-claude-parsing): bind the watchdog's
+        # ``record_subagent_work`` channel into the subagent
+        # transcript tailer constructed above. The tailer holds a
+        # closure that consults ``self._subagent_sink_holder`` so the
+        # watchdog binding is a one-line swap rather than a
+        # constructor re-wire. ``start()`` begins polling the
+        # ``subagents/`` directory at the canonical cadence; ``stop()``
+        # in the ``finally`` block closes every open file handle.
+        if subagent_tails is not None:
+            holder: object = getattr(self, "_subagent_sink_holder", None)
+            if isinstance(holder, dict):
+                holder["sink"] = subagent_sink
+            subagent_tails.start()
+        unsubscribe = get_process_manager().register_listener(self._on_process_event)
+        return _ReadLoopSetup(
+            reader=reader,
+            transcript_reader=transcript_reader,
+            sentinel_reader=sentinel_reader,
+            completion_reader=completion_reader,
+            watchdog=watchdog,
+            subagent_tails=subagent_tails,
+            unsubscribe=unsubscribe,
+            sink_token=sink_token,
+            subagent_token=subagent_token,
+        )
 
+    def _bind_workspace_monitor(self, watchdog: IdleWatchdog) -> None:
         # Register the watchdog's workspace channel recorder as the
         # on-event callback on the WorkspaceMonitor so every file
         # change in the monitored workspace is visible to the
@@ -1277,16 +1439,21 @@ class PtyLineReader:
         # happens here, immediately after the watchdog exists. The
         # binding is cleared in the finally block below so a stale
         # callback can never fire after the run ends.
-        if self._monitor is not None:
-            # Forward (kind, weight) so the watchdog's per-kind
-            # counter receives the real classification; the
-            # 0-arg bound method form would always yield
-            # (OTHER, 1.0) and miss the AC #7 contract.
-            def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
-                watchdog.record_workspace_event(kind=kind, weight=weight)
+        if self._monitor is None:
+            return
+        # Forward (kind, weight) so the watchdog's per-kind
+        # counter receives the real classification; the
+        # 0-arg bound method form would always yield
+        # (OTHER, 1.0) and miss the AC #7 contract.
+        def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
+            watchdog.record_workspace_event(kind=kind, weight=weight)
 
-            self._monitor.set_on_event(_forward_event)
+        self._monitor.set_on_event(_forward_event)
 
+    @staticmethod
+    def _register_active_sinks(
+        watchdog: IdleWatchdog,
+    ) -> tuple[Token[Callable[[str], None] | None], Token[Callable[[str], None] | None], Callable[[str], None]]:
         # Register the watchdog's MCP activity recorder as the active sink
         # for the in-process Ralph MCP server so each tools/call invocation
         # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
@@ -1304,46 +1471,31 @@ class PtyLineReader:
 
         sink_token = set_active_sink(_mcp_sink)
         subagent_token = set_subagent_sink(_subagent_sink)
-        unsubscribe = get_process_manager().register_listener(self._on_process_event)
-        interrupted = [False]
-        try:
-            while True:
-                self._lines_event.clear()
-                queued_line: str | None = None
-                is_done = False
-                with self._lines_lock:
-                    if self._lines_queue:
-                        # BoundedLinesQueue exposes O(1) popleft; raw lists fall back to pop(0).
-                        queued_line = _pop_queue_line(self._lines_queue)
-                    elif self._reader_done[0]:
-                        is_done = True
+        return sink_token, subagent_token, _subagent_sink
 
-                if queued_line is not None:
-                    yield from self._handle_queued_line(queued_line, watchdog)
-                    continue
-
-                if is_done:
-                    yield from self._handle_done_path(watchdog)
-                    break
-
-                yield from self._idle_check_and_wait(watchdog)
-        except BaseException:
-            interrupted[0] = True
-            self._on_interrupt()
-            raise
-        finally:
-            watchdog.record_invocation_end()
-            reset_active_sink(sink_token)
-            reset_subagent_sink(subagent_token)
-            if self._monitor is not None:
-                self._monitor.set_on_event(None)
-            self._cleanup(
-                [reader, transcript_reader, sentinel_reader, completion_reader],
-                unsubscribe,
-                interrupted[0],
-            )
-            # Flush and release the raw-overflow log so buffered tail bytes
-            # reach disk deterministically (RFC-013 P1: per-line open/close
-            # churn on .agent/raw/*.log was a top engine event source).
-            # close() is idempotent and never raises.
+    def _teardown_read_loop(self, setup: _ReadLoopSetup, interrupted: bool) -> None:
+        setup.watchdog.record_invocation_end()
+        reset_active_sink(setup.sink_token)
+        reset_subagent_sink(setup.subagent_token)
+        if self._monitor is not None:
+            self._monitor.set_on_event(None)
+        if setup.subagent_tails is not None:
+            setup.subagent_tails.stop()
+        self._cleanup(
+            [
+                setup.reader,
+                setup.transcript_reader,
+                setup.sentinel_reader,
+                setup.completion_reader,
+            ],
+            setup.unsubscribe,
+            interrupted,
+        )
+        # Flush and release the raw-overflow log so buffered tail bytes
+        # reach disk deterministically (RFC-013 P1: per-line open/close
+        # churn on .agent/raw/*.log was a top engine event source).
+        # close() is idempotent and never raises. The optional guard
+        # covers the rare setup-throws-mid-init case where the log was
+        # never constructed.
+        if self._raw_overflow is not None:
             self._raw_overflow.close()

@@ -68,6 +68,9 @@ _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
 _INTERACTIVE_AGENT = "claude/haiku"
 _SMOKE_RUN_ID = "interactive-claude-smoke"
+_HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR = Path("tmp/headless-claude-smoke")
+_HEADLESS_CLAUDE_SMOKE_OUTPUT_FILE = _HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR / "todo-list.js"
+_HEADLESS_CLAUDE_SMOKE_RUN_ID = "headless-claude-smoke"
 _AGY_SMOKE_RELATIVE_DIR = Path("tmp/interactive-agy-smoke")
 _AGY_SMOKE_OUTPUT_FILE = _AGY_SMOKE_RELATIVE_DIR / "todo-list.js"
 _NANOCODER_SMOKE_RELATIVE_DIR = Path("tmp/interactive-nanocoder-smoke")
@@ -90,31 +93,8 @@ class SmokeHarnessSpec:
     run_id: str
 
 
-def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
-    """Return the smoke harness layout for ``agent_name``.
-
-    The ``claude/haiku`` branch preserves the legacy layout so existing
-    on-disk artifacts and tests are not orphaned. The ``agy/<model>`` branch
-    uses a separate ``tmp/interactive-agy-smoke`` directory so the two
-    harnesses can run side by side without collisions.
-    """
-    if agent_name == _INTERACTIVE_AGENT:
-        return SmokeHarnessSpec(
-            agent_name=agent_name,
-            relative_dir=_SMOKE_RELATIVE_DIR,
-            output_file=_SMOKE_OUTPUT_FILE,
-            run_id=_SMOKE_RUN_ID,
-        )
-    if agent_name.startswith("agy/"):
-        model = agent_name.removeprefix("agy/")
-        sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model).strip("-")
-        run_id = f"interactive-agy-smoke-{sanitized}"
-        return SmokeHarnessSpec(
-            agent_name=agent_name,
-            relative_dir=_AGY_SMOKE_RELATIVE_DIR,
-            output_file=_AGY_SMOKE_OUTPUT_FILE,
-            run_id=run_id,
-        )
+def _resolve_nanocoder_spec(agent_name: str) -> SmokeHarnessSpec | None:
+    """Resolve the nanocoder smoke harness spec, or ``None`` if not nanocoder."""
     if agent_name == "nanocoder":
         return SmokeHarnessSpec(
             agent_name=agent_name,
@@ -131,6 +111,66 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             output_file=_NANOCODER_SMOKE_OUTPUT_FILE,
             run_id=f"{_NANOCODER_SMOKE_RUN_ID}-{sanitized}",
         )
+    return None
+
+
+def _resolve_headless_claude_spec(agent_name: str) -> SmokeHarnessSpec:
+    """Resolve the headless-Claude smoke harness spec.
+
+    The headless-Claude smoke harness shares the same scenario as
+    the interactive smoke (todo-list.js output, run-id prefix
+    ``headless-claude-smoke-``) so the two transports can be checked
+    by one shared scenario rather than two divergent ones (per R8
+    of wt-04-claude-parsing). ``<model>`` (e.g. ``haiku``) is
+    sanitized into the run_id so two concurrent headless smoke
+    runs with different model aliases do not collide on the
+    completion-sentinel / receipt paths.
+    """
+    suffix = agent_name.removeprefix("claude-headless/")
+    sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+    run_id = (
+        _HEADLESS_CLAUDE_SMOKE_RUN_ID
+        if not sanitized
+        else f"{_HEADLESS_CLAUDE_SMOKE_RUN_ID}-{sanitized}"
+    )
+    return SmokeHarnessSpec(
+        agent_name=agent_name,
+        relative_dir=_HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR,
+        output_file=_HEADLESS_CLAUDE_SMOKE_OUTPUT_FILE,
+        run_id=run_id,
+    )
+
+
+def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
+    """Return the smoke harness layout for ``agent_name``.
+
+    The ``claude/haiku`` branch preserves the legacy layout so existing
+    on-disk artifacts and tests are not orphaned. The ``agy/<model>`` branch
+    uses a separate ``tmp/interactive-agy-smoke`` directory so the two
+    harnesses can run side by side without collisions.
+    """
+    if agent_name == _INTERACTIVE_AGENT:
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_SMOKE_RELATIVE_DIR,
+            output_file=_SMOKE_OUTPUT_FILE,
+            run_id=_SMOKE_RUN_ID,
+        )
+    if agent_name.startswith("claude-headless/"):
+        return _resolve_headless_claude_spec(agent_name)
+    if agent_name.startswith("agy/"):
+        model = agent_name.removeprefix("agy/")
+        sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model).strip("-")
+        run_id = f"interactive-agy-smoke-{sanitized}"
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_AGY_SMOKE_RELATIVE_DIR,
+            output_file=_AGY_SMOKE_OUTPUT_FILE,
+            run_id=run_id,
+        )
+    nanocoder_spec = _resolve_nanocoder_spec(agent_name)
+    if nanocoder_spec is not None:
+        return nanocoder_spec
     if agent_name == "cursor" or agent_name.startswith("cursor/"):
         # Bare ``cursor`` uses the base cursor harness layout so on-disk
         # artifacts stay co-located with the shared output; ``cursor/<model>``

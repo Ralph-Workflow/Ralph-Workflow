@@ -32,6 +32,7 @@ from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import (
+    smoke_headless_claude_command,
     smoke_interactive_agy_command,
     smoke_interactive_claude_command,
     smoke_interactive_cursor_command,
@@ -1087,6 +1088,36 @@ def smoke_interactive_claude(
 
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
+
+
+def smoke_headless_claude(
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual NDJSON smoke test for headless Claude using claude-headless/haiku."""
+    raise typer.Exit(
+        code=smoke_headless_claude_command(
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+        )
+    )
+
+
+app.command(name="smoke-headless-claude")(smoke_headless_claude)
 
 
 def smoke_interactive_agy(

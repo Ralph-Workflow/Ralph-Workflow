@@ -58,6 +58,10 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
+from ralph.recovery._same_shape_retry_tracker import (
+    SameShapeRetryLoopError,
+    SameShapeRetryTracker,
+)
 from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityStore,
@@ -508,6 +512,27 @@ class RecoveryController:
         self._technical_retry_cap = max(0, opts.technical_retry_cap)
         self._clock: Clock = opts.clock or SystemClock()
         self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
+        # R6: same-shape retry loop bound. The tracker is constructed
+        # eagerly here so the limit is validated at controller
+        # construction time (the tracker's own ``__post_init__`` rejects
+        # limits < 1) instead of at the first fire. The per-fire
+        # ``prior_fingerprint`` / ``prior_consecutive`` arguments are
+        # keyed by ``failure.watchdog_reason`` so a multi-phase run
+        # tracks the bound per-watchdog-reason: a no_output_at_start
+        # loop in development and a no_progress_quiet loop in commit
+        # are independent shapes.
+        self._same_shape_tracker = SameShapeRetryTracker(limit=opts.same_shape_retry_limit)
+        # The per-(phase, watchdog_reason) tracker state: each entry
+        # stores the prior fingerprint four-tuple, the consecutive
+        # count, and a progress snapshot (total_retries,
+        # total_agent_calls) the controller uses to compute the
+        # ``no_new_artifact_since_prior`` and
+        # ``workspace_change_since_prior`` booleans for the next fire.
+        # The booleans are derived (not stored) so the next call only
+        # needs the prior metrics to compare against.
+        self._same_shape_state: dict[
+            str, tuple[tuple[str, str, bool, bool], int, tuple[int, int]]
+        ] = {}  # bounded-accumulator-ok: bounded by phase x fire_reason; lives only for the controller instance
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -708,6 +733,45 @@ class RecoveryController:
                 key = f"{phase}:{agent}"
                 self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
 
+        # R6: same-shape retry loop bound. The check fires only for
+        # watchdog-driven kills on the AGENT path (``watchdog_reason``
+        # populated and ``category == AGENT``) AND when the controller
+        # is about to RESUME the prior session (``retry_in_session``
+        # is True). Non-watchdog failures do not loop on the same
+        # shape and are unaffected. The wait-state branch
+        # (all-agents-unavailable) is excluded because no resume is
+        # happening there -- the controller is sleeping on the
+        # earliest cooldown, not retrying the same session. A test
+        # that loops ``handle()`` 30 times against a chain where every
+        # agent is on cooldown would otherwise fire the bound even
+        # though the controller never resumes; the never-crash
+        # invariant is the contract being tested there. The check
+        # runs BEFORE the retry/resume decision so a bound loop on
+        # the resume path raises ``SameShapeRetryLoopError``
+        # instead of resuming. The exception is converted into a
+        # terminal failure here so the pipeline emits an exit-failure
+        # effect with the fingerprint evidence rather than silently
+        # discarding the loop.
+        if retry_in_session:
+            bound_exception = self._check_same_shape_bound(phase, failure, state)
+            if bound_exception is not None:
+                logger.error(
+                    "same-shape retry loop exceeded in phase={} agent={} reason={}: {}",
+                    phase,
+                    agent,
+                    failure.watchdog_reason,
+                    bound_exception,
+                )
+                return (
+                    self._enter_phase_failed(
+                        new_state,
+                        str(bound_exception),
+                        failure.category,
+                    ),
+                    [],
+                    failure_evt,
+                )
+
         new_state, effects, failure_evt = self._handle_agent_budget_exhaustion(
             new_state,
             failure,
@@ -754,6 +818,80 @@ class RecoveryController:
     def _is_agent_available(self, phase: str, agent: str) -> bool:
         """Return True when the agent is not currently marked unavailable."""
         return self._unavailability_tracker.is_available(phase, agent)
+
+    def _check_same_shape_bound(
+        self,
+        phase: str,
+        failure: ClassifiedFailure,
+        state: PipelineState,
+    ) -> SameShapeRetryLoopError | None:
+        """Return a ``SameShapeRetryLoopError`` when the bound fires, else None.
+
+        The check is the R6 contract. It fires ONLY for watchdog-driven
+        kills on the AGENT path (``failure.watchdog_reason`` populated);
+        a non-watchdog failure (network, artifact validation, user config)
+        does not loop on the same shape and is unaffected. The check
+        also updates ``self._same_shape_state`` with the new
+        fingerprint and progress snapshot so the NEXT fire compares
+        against the right prior.
+
+        Progress signals used for the fingerprint booleans:
+
+          - ``no_new_artifact_since_prior`` -- True when no artifact
+            landed between the prior fire and the current one. The
+            controller does not have a direct artifact-creation
+            counter in state; the conservative default is True
+            (assume no artifact landed) when prior state is missing.
+            The fingerprint still detects a loop on ``watchdog_reason``
+            + ``failure.reason`` regardless of artifact changes.
+          - ``workspace_change_since_prior`` -- True when the metrics
+            counters (``total_retries``, ``total_agent_calls``) did
+            NOT advance between the prior fire and the current one.
+            ``total_retries`` increments on every watchdog-driven
+            retry attempt and ``total_agent_calls`` increments on
+            every agent invocation, so a flat (or absent) prior
+            snapshot is the conservative default (True: no progress).
+
+        Both booleans are pessimistic defaults: when prior state is
+        absent (first fire) or progress cannot be determined (the
+        metrics counters are unavailable), we assume no progress so
+        the bound still catches a genuine loop. A run that DID make
+        progress between fires will record the advanced metrics in
+        ``_same_shape_state`` and the NEXT call will see False.
+        """
+        if failure.watchdog_reason is None:
+            return None
+        if failure.category != FailureCategory.AGENT:
+            return None
+
+        key = f"{phase}:{failure.watchdog_reason}"
+        prior_state = self._same_shape_state.get(key)
+        prior_fingerprint = prior_state[0] if prior_state is not None else None
+        prior_consecutive = prior_state[1] if prior_state is not None else 0
+
+        current_metrics: tuple[int, int] = (
+            int(state.metrics.total_retries),
+            int(state.metrics.total_agent_calls),
+        )
+        prior_metrics = prior_state[2] if prior_state is not None else current_metrics
+
+        no_new_artifact: bool = current_metrics == prior_metrics
+        workspace_change: bool = not no_new_artifact
+
+        try:
+            new_fingerprint, new_consecutive = self._same_shape_tracker.record_fire(
+                fire_reason=str(failure.watchdog_reason),
+                diagnostic_signature=str(failure.reason),
+                no_new_artifact_since_prior=no_new_artifact,
+                workspace_change_since_prior=not workspace_change,
+                prior_fingerprint=prior_fingerprint,
+                prior_consecutive=prior_consecutive,
+            )
+        except SameShapeRetryLoopError as exc:
+            return exc
+
+        self._same_shape_state[key] = (new_fingerprint, new_consecutive, current_metrics)
+        return None
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
         """Increment chain.retries for the given phase without debiting the budget."""

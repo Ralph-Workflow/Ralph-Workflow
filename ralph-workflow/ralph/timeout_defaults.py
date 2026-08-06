@@ -345,6 +345,23 @@ NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS: float | None = None
 #: churn.
 WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS: float = 30.0
 
+#: Default ceiling for consecutive same-shape retry attempts in the
+#: ``SameShapeRetryTracker`` (R6 contract). Each consecutive
+#: ``AgentInactivityTimeoutError`` resume that fingerprints identically on
+#: ``(last_fire_reason, fire_diagnostic_signature, no-new-artifact-since-prior,
+#: workspace-change-since-prior)`` advances the counter; when the counter
+#: reaches this ceiling the controller raises
+#: ``SameShapeRetryLoopError`` instead of resuming. The default of 3
+#: is intentionally small: the 25-minute four-cycle burn that motivated
+#: this task would have been caught after the 3rd consecutive identical
+#: fire (well before the 4th), leaving one full retry of headroom. Operators
+#: who want a longer leash override via
+#: ``[general] agent_max_same_shape_resumes`` in ralph-workflow.toml; the
+#: loader routes that value through
+#: ``RecoveryControllerOptions.same_shape_retry_limit`` so the
+#: configuration surface is single-sourced.
+SAME_SHAPE_RETRY_DEFAULT: int = 3
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

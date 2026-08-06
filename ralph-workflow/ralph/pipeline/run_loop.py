@@ -49,7 +49,7 @@ from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, 
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
-from ralph.timeout_defaults import WAITING_STATUS_INTERVAL_SECONDS
+from ralph.timeout_defaults import SAME_SHAPE_RETRY_DEFAULT, WAITING_STATUS_INTERVAL_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1349,12 +1349,23 @@ def _build_recovery_controller(
         if isinstance(raw_technical_retry_cap, int) and raw_technical_retry_cap >= 0
         else 10
     )
+    raw_same_shape_limit: object = getattr(
+        config.general,
+        "agent_max_same_shape_resumes",
+        None,
+    )
+    same_shape_limit = (
+        raw_same_shape_limit
+        if isinstance(raw_same_shape_limit, int) and raw_same_shape_limit >= 1
+        else SAME_SHAPE_RETRY_DEFAULT
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
             policy_bundle=policy_bundle,
             budget_registry=_seed_budget_registry(policy_bundle),
             technical_retry_cap=technical_retry_cap,
+            same_shape_retry_limit=same_shape_limit,
         )
     )
     return controller, _cycle_cap

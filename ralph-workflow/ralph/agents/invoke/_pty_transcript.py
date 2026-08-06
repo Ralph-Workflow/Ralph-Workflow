@@ -72,6 +72,69 @@ def find_claude_transcript_path(session_id: str) -> Path | None:
     return entry[0] if entry is not None else None
 
 
+def find_claude_subagent_transcripts(session_id: str) -> list[tuple[Path, Path | None]]:
+    """Return the live ``agent-<id>.jsonl`` files for ``session_id``, with their sibling ``.meta.json`` when present.
+
+    RC1 (wt-04-claude-parsing): Claude Code writes subagent turns to a
+    sibling directory (``subagents/``) rather than inline. The discovery
+    helper resolves the parent ``<session-id>.jsonl`` location, then
+    lists the ``subagents/agent-*.jsonl`` files under it. Each entry is
+    a ``(transcript_path, meta_path_or_None)`` tuple; ``meta_path`` is
+    ``None`` when the sibling ``agent-<id>.meta.json`` is missing (the
+    tailer continues with best-effort correlation; see RC1 acceptance
+    test 3 in ``tests/agents/invoke/test_subagent_transcript_tail.py``).
+
+    Files are returned in mtime-ascending order (oldest first) so the
+    tailer processes them in deterministic order across runs. Files
+    whose mtime cannot be read are sorted to the end of the list so
+    they still get tailed (the tailer does not require a parseable
+    mtime; it reads the file regardless).
+
+    The function does not raise on a missing parent directory or
+    ``subagents/`` directory; an empty list is returned in those
+    cases. The caller (the R7 absent-layout probe) treats an empty
+    list as "layout absent" and emits the diagnostic.
+    """
+    parent_path = find_claude_transcript_path(session_id)
+    if parent_path is None:
+        return []
+    subagents_dir = parent_path.parent / session_id / "subagents"
+    if not subagents_dir.is_dir():
+        return []
+    files: list[Path] = sorted(
+        subagents_dir.glob("agent-*.jsonl"),
+        key=_sort_subagent_key,
+    )
+    result: list[tuple[Path, Path | None]] = []
+    for transcript_path in files:
+        meta_path = transcript_path.with_suffix(".meta.json")
+        result.append((transcript_path, meta_path if meta_path.is_file() else None))
+    return result
+
+
+def _safe_mtime(path: Path) -> float:
+    """Return ``path``'s mtime or ``0.0`` when the stat call fails.
+
+    A failed stat on a transient file (e.g. an in-flight write) does
+    not stop the discovery; the file still gets tailed, just with an
+    arbitrary sort position.
+    """
+    try:
+        return float(path.stat().st_mtime)
+    except OSError:
+        return 0.0
+
+
+def _sort_subagent_key(path: Path) -> tuple[float, str]:
+    """Sort key for subagent transcripts: oldest-mtime first, name tie-breaker.
+
+    Extracted to a named function so the lambda parameter type is
+    explicit (mypy ``disallow_any_expr`` rejects the implicit ``Any``
+    that ``sorted``'s ``key=`` callable would otherwise infer).
+    """
+    return (_safe_mtime(path), path.name)
+
+
 def transcript_lines_from_event(
     raw_line: str,
     parser: ClaudeInteractiveTranscriptParser | None = None,
