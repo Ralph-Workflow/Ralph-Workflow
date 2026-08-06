@@ -18,6 +18,7 @@ from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._wire_ledger import (
     WIRE_LEDGER_RELPATH,
+    WireLedgerRecord,
     append_wire_record,
     verify_chain,
     wire_evidence_for,
@@ -265,3 +266,50 @@ def test_append_wire_record_returns_none_without_secret(tmp_path: Path) -> None:
     )
     assert record is None
     assert not (tmp_path / WIRE_LEDGER_RELPATH).exists()
+
+
+def test_concurrent_appends_chain_safely(tmp_path: Path) -> None:
+    """Concurrent MCP server instances writing to the same ledger must not break the chain.
+
+    The restart-aware bridge tears down a previous server and starts a new one
+    in the same turn, and the smoke harness drives a sequence of
+    restart-aware turns. Two writers reading the same prior_hmac and both
+    appending would leave the on-disk chain with two children of the same
+    parent; ``verify_chain`` then fails at the first non-contiguous row, so
+    even a fully-correct run never grades ``WIRE``. The non-blocking
+    ``fcntl.flock`` in ``append_wire_record`` serializes the read + write
+    so every append sees the previous record's hmac as its prior_hmac.
+
+    Best-effort: a writer that loses the ``LOCK_NB`` race returns ``None``
+    (its frame is dropped; the surviving frames in the same run still
+    grade ``WIRE``). The chain MUST verify regardless of which writer
+    won the race.
+    """
+    import threading
+
+    barrier = threading.Barrier(2)
+    results: list[WireLedgerRecord | None] = []
+
+    def writer(label: str) -> None:
+        barrier.wait(timeout=10.0)
+        record = append_wire_record(
+            tmp_path,
+            method="tools/call",
+            tool_name=f"ralph_{label}",
+            params={"label": label},
+            run_id="run-1",
+            secret="s3cr3t",
+        )
+        results.append(record)
+
+    threads = [threading.Thread(target=writer, args=(f"t{idx}",)) for idx in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10.0)
+
+    successful = [result for result in results if result is not None]
+    assert successful, "At least one concurrent append must succeed"
+    assert verify_chain(tmp_path, "s3cr3t") is True
+    assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is True
+

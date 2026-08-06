@@ -18,7 +18,9 @@ never mistaken for a ledger (A5).
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import fcntl
 import hashlib
 import hmac
 import json
@@ -213,35 +215,68 @@ def append_wire_record(
     Returns ``None`` (no record appended, nothing written) when ``secret``
     is ``None``: an unsigned server cannot produce a WIRE-grade witness —
     "an unchained ledger is not a ledger" (F2 / A5).
+
+    Two concurrent MCP server instances writing to the same
+    ``WIRE_LEDGER_RELPATH`` (the restart-aware bridge tears down a
+    previous server and starts a new one in the same turn, and the
+    smoke harness drives a sequence of restart-aware turns) would
+    otherwise each read the same prior_hmac, each compute a new
+    record, and each append — leaving the on-disk chain with two
+    children of the same parent. ``verify_chain`` then fails at the
+    first non-contiguous row, so even a fully-correct run never grades
+    ``WIRE``. Acquire an exclusive ``fcntl.flock`` on a sidecar lock
+    file and hold it across the read + write so every append is
+    serialized. The lock file lives next to the ledger; it is created
+    on first use and never removed (its presence is a feature, not
+    garbage). The lock is non-blocking best-effort: a lock that cannot
+    be acquired is treated as a no-op append for that frame, since
+    dropping a single tool-call witness is preferable to corrupting
+    the chain (the dropped frame never grades ``WIRE``, but the
+    surviving frames in the same run still can).
     """
     if secret is None:
         return None
     ledger_path = workspace_root / WIRE_LEDGER_RELPATH
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    prior_hmac = _read_last_hmac(ledger_path)
-    timestamp = clock()
-    digest = _params_digest(params)
-    record_hmac = _record_hmac(
-        secret,
-        method=method,
-        tool_name=tool_name,
-        params_digest=digest,
-        run_id=run_id,
-        timestamp=timestamp,
-        prior_hmac=prior_hmac,
-    )
-    record = WireLedgerRecord(
-        method=method,
-        tool_name=tool_name,
-        params_digest=digest,
-        run_id=run_id,
-        timestamp=timestamp,
-        prior_hmac=prior_hmac,
-        record_hmac=record_hmac,
-    )
-    # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
-    with ledger_path.open("a", encoding="utf-8") as handle:
-        handle.write(record.to_json_line() + "\n")
+    lock_path = workspace_root / (str(WIRE_LEDGER_RELPATH) + ".lock")
+    # filesystem-write-ok: lock-file sidecar used only to coordinate concurrent appends; the file's contents are never read back, so write_text_if_changed's whole-file replace contract does not fit (it would clobber any in-flight fcntl owner).
+    lock_handle = lock_path.open("w", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            # Another writer holds the lock; the racing frame never
+            # grades WIRE but we MUST NOT corrupt the chain by writing
+            # without reading the current prior_hmac.
+            return None
+        prior_hmac = _read_last_hmac(ledger_path)
+        timestamp = clock()
+        digest = _params_digest(params)
+        record_hmac = _record_hmac(
+            secret,
+            method=method,
+            tool_name=tool_name,
+            params_digest=digest,
+            run_id=run_id,
+            timestamp=timestamp,
+            prior_hmac=prior_hmac,
+        )
+        record = WireLedgerRecord(
+            method=method,
+            tool_name=tool_name,
+            params_digest=digest,
+            run_id=run_id,
+            timestamp=timestamp,
+            prior_hmac=prior_hmac,
+            record_hmac=record_hmac,
+        )
+        # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
+        with ledger_path.open("a", encoding="utf-8") as handle:
+            handle.write(record.to_json_line() + "\n")
+    finally:
+        with contextlib.suppress(OSError, ValueError):
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        lock_handle.close()
     return record
 
 
