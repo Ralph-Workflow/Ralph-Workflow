@@ -102,6 +102,16 @@ path = "ralph/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ralph"]
+# `_sitecustomize_shim.py` is force-included at the wheel ROOT under the
+# renamed `sitecustomize.py` (not inside the `ralph` package, and not
+# under that literal source name -- see its docstring for why) so it
+# lands directly in the venv's site-packages directory, where CPython's
+# `site` module auto-imports it during interpreter startup -- before any
+# `-m ralph...` invocation resolves the target package. Hatchling applies
+# `force-include` for both regular and editable (PEP 660) wheel builds, so
+# `uv sync`'s local editable install carries this file too, not just a
+# packaged release.
+force-include = { "_sitecustomize_shim.py" = "sitecustomize.py" }
 include = [
   "ralph/prompts/templates/**/*.jinja",
   "ralph/policy/defaults/*.toml",
