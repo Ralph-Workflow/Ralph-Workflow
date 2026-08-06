@@ -408,6 +408,19 @@ ROLE_ANCHORS: Final[dict[str, RoleAnchor]] = {
 _CONTRAST_FLOOR: Final[float] = 4.5
 #: Negligible-chroma guard for _surface_adaptive_chroma's division safety net.
 _CHROMA_EPSILON: Final[float] = 1e-9
+#: B-4/DA-001: max-in-gamut chroma headroom (at a role's surface-resolved
+#: target lightness) below which _surface_adaptive_chroma spends all of the
+#: remaining headroom instead of the anchor's own dark-surface fraction of
+#: it. Sized from the measured worst case: on #747474 (within 0.005 OKLab
+#: luminance of ``_LIGHT_BG_LUMINANCE_CROSSOVER`` -- the single hardest
+#: point, where neither polarity has meaningful headroom), the lightest
+#: color that still clears the 4.5:1 floor sits within ~0.015 OKLab L of
+#: pure white, so the *maximum* headroom any hue can have there is itself
+#: under 0.02. A role whose own dark-surface chroma is well above
+#: ``TIER_1_CHROMA_BUDGET`` (i.e. not a deliberately near-neutral tier-1
+#: role) gains nothing from preserving a fraction of a budget already this
+#: small -- see ``test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces``.
+_SQUEEZE_HEADROOM_THRESHOLD: Final[float] = 0.02
 #: C-5 characterization: a percentage safety margin on the truecolor
 #: contrast ratio was tried here and reverted -- it regressed A-2 (exact
 #: Monokai Pro reference-surface fidelity) and DA-001 (narrow-band
@@ -525,6 +538,18 @@ def _surface_adaptive_chroma(anchor: RoleAnchor, target_l: float) -> float:
         return anchor.chroma
     fraction = min(1.0, anchor.chroma / ref_max_chroma)
     target_max_chroma = _max_in_gamut_chroma(target_l, anchor.hue)
+    if target_max_chroma <= _SQUEEZE_HEADROOM_THRESHOLD and anchor.chroma > TIER_1_CHROMA_BUDGET:
+        # B-4/DA-001: below _SQUEEZE_HEADROOM_THRESHOLD there is no
+        # meaningful "over-saturation" risk left to guard against by
+        # preserving a fraction -- the whole remaining budget is already
+        # smaller than a deliberately near-neutral tier-1 role would use.
+        # Spending all of it (rather than the anchor's own dark-surface
+        # fraction of it) is what keeps an accent role distinguishable from
+        # a near-neutral one on mid-grey surfaces near the WCAG crossover,
+        # where headroom for every hue collapses toward zero regardless.
+        # See _SQUEEZE_HEADROOM_THRESHOLD's own docstring and
+        # ``test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces``.
+        fraction = 1.0
     return fraction * target_max_chroma
 
 

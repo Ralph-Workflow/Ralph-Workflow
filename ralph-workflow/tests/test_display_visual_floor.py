@@ -9,7 +9,17 @@ from io import StringIO
 from typing import ClassVar
 
 import pytest
-from pygments.token import Comment, Generic, Keyword, Name, Number, Operator, Punctuation, String
+from pygments.token import (
+    Comment,
+    Generic,
+    Keyword,
+    Name,
+    Number,
+    Operator,
+    Punctuation,
+    String,
+    Token,
+)
 
 from ralph.display import theme
 from ralph.display._identity import (
@@ -49,6 +59,21 @@ _REQUIRED_TOKENS = (
     Punctuation,
     Generic.Deleted,
     Generic.Inserted,
+    # DA-002/D-3: previously fell through to Pygments' own color-less
+    # default, which Rich then hardcodes to non-adaptive black -- see
+    # ralph/syntax_theme.py's _GENERIC_HEADING-and-friends comment.
+    # Generic.Heading/Generic.Strong are what Pygments' DiffLexer emits,
+    # so this is production-reachable through edit_preview.py, not just a
+    # theoretical Pygments token nobody hits.
+    Generic.Heading,
+    Generic.Strong,
+    Generic.Prompt,
+    Generic.Output,
+    Generic.Traceback,
+    Generic.Error,
+    Generic.Emph,
+    Token.Other,
+    Token.Escape,
 )
 
 
@@ -74,6 +99,18 @@ def _assert_complete_token_classes(style_type: type[object]) -> None:
     missing = [token for token in _REQUIRED_TOKENS if token not in styles or not styles[token]]
     if missing:
         raise AssertionError(f"missing syntax token classes: {missing}")
+    # DA-002: a token can be present in the ``styles`` dict source (the
+    # check above) yet still resolve to Pygments' own ``color: None`` at
+    # lookup time if the style class wasn't actually instantiated with it --
+    # style_for_token is what Rich's PygmentsSyntaxTheme actually calls, so
+    # this is the check that would have caught DA-002 (every one of these
+    # tokens resolved to a colour-less style that Rich then hardcodes to a
+    # fixed, non-adaptive black).
+    colourless = [
+        token for token in _REQUIRED_TOKENS if style_type.style_for_token(token).get("color") is None
+    ]
+    if colourless:
+        raise AssertionError(f"syntax token classes resolve to no colour: {colourless}")
 
 
 def test_visual_floor_semantic_palettes_use_fixed_contrast_safe_foregrounds() -> None:

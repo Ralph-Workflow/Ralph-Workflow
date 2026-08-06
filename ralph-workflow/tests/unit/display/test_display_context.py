@@ -14,6 +14,7 @@ import io
 import pytest
 from rich.console import Console
 
+import ralph.display._terminal_bg_query as _bg_query
 from ralph.display import DisplayContext as DisplayContextExport
 from ralph.display import make_display_context as make_display_context_export
 from ralph.display import theme as _theme
@@ -337,3 +338,32 @@ def test_explicit_override_is_honored_only_when_the_probe_cannot_measure(
         # `#000000`/`#FFFFFF` endpoint (zero headroom) instead of the
         # representative surface.
         assert _theme.contrast_ratio(pigment, real_dark_surface) >= CONTRAST_FLOOR
+
+
+def test_make_display_context_probes_the_terminal_at_most_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-3/DA-008: the OSC 11 probe's timeout is documented as the *entire*
+    startup budget (see ``_terminal_bg_query.py``'s module docstring), which
+    only holds if ``make_display_context`` triggers at most one real probe.
+    It calls both ``detect_terminal_background_is_light`` and
+    ``detect_terminal_background_hex`` (``context.py``'s own comment says
+    this relies on ``query_terminal_background_hex``'s process-lifetime
+    cache to collapse to one real probe) -- so this spies on
+    ``_terminal_bg_query._probe`` itself, the actual tty-touching seam
+    beneath the cache, rather than ``query_terminal_background_hex`` (which
+    legitimately gets called twice by design; the cache is what is under
+    test, not the call count at that boundary)."""
+    _bg_query.reset_cache()
+    calls: list[float] = []
+
+    def _fake_probe(timeout: float) -> tuple[bool, str | None]:
+        calls.append(timeout)
+        return True, "#2D2A2E"
+
+    monkeypatch.setattr(_bg_query, "_probe", _fake_probe)
+    try:
+        make_display_context(env={}, output_stream=io.StringIO())
+        assert len(calls) == 1, f"expected exactly one real OSC 11 probe, got {len(calls)}"
+    finally:
+        _bg_query.reset_cache()

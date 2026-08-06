@@ -4971,6 +4971,9 @@ class ParallelDisplay:
                 for item in content:
                     self._console.print(item)
             else:
+                # E-7/DA-007: documented Panel exception (1 of 3, see
+                # tests/unit/display/test_vertical_rhythm.py) -- shown at
+                # most once per machine, never inside the iteration loop.
                 panel = Panel(
                     Group(*content),
                     title="Ralph Workflow first-run setup",
@@ -5117,6 +5120,10 @@ class ParallelDisplay:
                 else:
                     self._console.print(Text("(no fields)", style="theme.text.muted"))
             else:
+                # E-7/DA-007: documented Panel exception (2 of 3, see
+                # tests/unit/display/test_vertical_rhythm.py) -- a
+                # startup-only config dump, printed once per run, never
+                # once per iteration.
                 config_json = config.model_dump_json(indent=2)
                 self._console.print(
                     Panel(
@@ -5336,6 +5343,11 @@ class ParallelDisplay:
                 # fixed at the cap (Rich's default ``expand=True``
                 # would still let the wrapped body reach the
                 # terminal width through the panel's title bar).
+                # E-7/DA-007: documented Panel exception (3 of 3, see
+                # tests/unit/display/test_vertical_rhythm.py) -- an
+                # explicit, user-requested one-shot report (e.g.
+                # ``diagnose``'s "Next steps"), not routine scrolling
+                # output from the main pipeline loop.
                 panel = Panel(
                     Text(content, style="theme.text.muted"),
                     title=title,

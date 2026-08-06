@@ -20,6 +20,7 @@ from ralph.display._palette import (
     derive_preview_background,
     hex_to_rgb,
     oklab_to_oklch,
+    relative_luminance,
     resolve_palette,
     rgb_to_oklab,
 )
@@ -546,18 +547,164 @@ def test_palette_five_structural_roles_stay_mutually_distinct() -> None:
         assert len(set(values)) == len(values), (surface_hex, disp)
 
 
+#: DA-001: on #747474 -- within 0.005 OKLab luminance of
+#: ``_LIGHT_BG_LUMINANCE_CROSSOVER``, i.e. the single hardest point on the
+#: WCAG-crossover band, where neither polarity has meaningful headroom --
+#: the lightest colour that still clears 4.5:1 sits within ~0.015 OKLab L
+#: of pure white, so the *maximum* chroma headroom any hue can have there
+#: is itself under 0.02 (see ``_SQUEEZE_HEADROOM_THRESHOLD`` in
+#: ``_palette.py``). B-4 asks for "mutually distinguishable", not
+#: "as separable as a roomy surface" -- a floor sized for the other five
+#: (less pathological) surfaces below would be unreachable here without
+#: either violating C-1's 4.5:1 floor or fabricating chroma the sRGB gamut
+#: does not have at that lightness. This floor is deliberately far below
+#: ``_C3_MIN_DELTA_E`` (0.015, used for role pairs on roomier canonical
+#: surfaces) for that reason -- it is sized just under the measured
+#: post-fix worst case (0.00302, skipped vs foreground on #747474) so it
+#: still fails loudly on a future regression back toward the pre-fix
+#: near-zero collisions (worst case was 0.00179 before the
+#: ``_SQUEEZE_HEADROOM_THRESHOLD`` fix landed), without being a tautology.
+_NARROW_BAND_MIN_DELTA_E: float = 0.0025
+
+
 def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
-    """DA-001: on mid-grey surfaces where headroom is too narrow to carry
-    every role's full reference offset, solve_for_surface must compress
-    offsets into the feasible band instead of clipping every undershooting
-    role to the identical floor lightness. Before the fix this collapsed up
-    to 5 of these 9 roles onto the same pixel (e.g. #808080 solved skipped
-    and foreground both to #000000)."""
+    """DA-001/B-4: on mid-grey surfaces where headroom is too narrow to
+    carry every role's full reference offset, solve_for_surface must
+    compress offsets into the feasible band instead of clipping every
+    undershooting role to the identical floor lightness (no two of these 9
+    roles may resolve to the same hex; before that fix this collapsed up to
+    5 of them onto the same pixel, e.g. #808080 solved skipped and
+    foreground both to #000000). That alone is not sufficient for B-4:
+    a set of *distinct but imperceptibly close* hexes is exactly the "stack
+    of near-identical near-white values" B-4 bans, so every pair must also
+    clear a minimum OKLab ΔE -- not merely differ in the least-significant
+    hex digit."""
     roles = ("success", "error", "warning", "skipped", "info", "pending", "foreground", "muted", "comment")
     for surface_hex in ("#484848", "#5F5F5F", "#6C6C6C", "#747474", "#808080", "#8C8C8C"):
         palette = resolve_palette(surface_hex)
         values = [palette[role] for role in roles]
         assert len(set(values)) == len(values), (surface_hex, dict(zip(roles, values, strict=True)))
+        for r1, r2 in combinations(roles, 2):
+            de = _oklab_delta_e(palette[r1], palette[r2])
+            assert de >= _NARROW_BAND_MIN_DELTA_E, (
+                f"{r1} vs {r2} on {surface_hex}: ΔE {de:.5f} < {_NARROW_BAND_MIN_DELTA_E}"
+            )
+
+
+def test_palette_lightness_hierarchy_ranks_field_over_structure_over_recessive() -> None:
+    """E-4/DA-003: lightness carries hierarchy -- primary content must resolve
+    brighter (more contrast off the surface) than structural chrome, which
+    must in turn resolve brighter than the deliberately recessive metadata
+    roles (`muted`/`comment`). This is E-4's own distinct claim, not A-3's
+    (Monokai's own accent-role spacing) or E-2's (chrome must not share
+    info's full chroma) -- it is specifically about the *lightness* band
+    each frequency tier occupies, so a reader could rank importance with
+    the display blurred (E-4's own phrasing)."""
+    for surface_hex in ("#2D2A2E", "#FAF8F5", "#1E1E1E", "#000000", "#FFFFFF"):
+        palette = resolve_palette(surface_hex)
+        primary_contrast = contrast_ratio(palette["foreground"], surface_hex)
+        structure_contrast = contrast_ratio(palette["chrome"], surface_hex)
+        recessive_contrasts = [
+            contrast_ratio(palette["muted"], surface_hex),
+            contrast_ratio(palette["comment"], surface_hex),
+        ]
+        assert primary_contrast > structure_contrast, (
+            f"{surface_hex}: primary {primary_contrast:.3f} <= structure {structure_contrast:.3f}"
+        )
+        for recessive_contrast in recessive_contrasts:
+            assert structure_contrast > recessive_contrast, (
+                f"{surface_hex}: structure {structure_contrast:.3f} <= recessive {recessive_contrast:.3f}"
+            )
+
+
+#: E-5/DA-004: derive_preview_background's own fixed offsets (0.025 lighter
+#: on a light surface, 0.035 darker on a dark one) are the contract this
+#: bound protects -- sized with headroom above both so a future retune
+#: within the documented "bounded ΔL" intent does not spuriously fail, but
+#: a fill that drifted into reading as a wholly separate plane would.
+_MAX_OWNED_FILL_DELTA_L: float = 0.06
+
+
+@settings(max_examples=30)
+@given(
+    r=st.integers(min_value=0, max_value=255),
+    g=st.integers(min_value=0, max_value=255),
+    b=st.integers(min_value=0, max_value=255),
+)
+def test_owned_fills_stay_a_bounded_delta_l_from_the_surface(r: int, g: int, b: int) -> None:
+    """E-5/DA-004: every owned fill this module derives (the preview fill,
+    and the diff fills nested one level inside it) must sit a *bounded* ΔL
+    from the terminal surface it was derived from -- far enough to read as
+    a distinct plane, close enough that the terminal still feels like one
+    surface. Also pins E-5's "at most 2 nested fill levels" claim
+    structurally: the diff fills are derived from the preview fill (one
+    level of nesting), never from another owned fill, so their ΔL from the
+    *original* surface stays bounded by the same constant rather than
+    compounding across a third level."""
+    surface_hex = f"#{r:02X}{g:02X}{b:02X}"
+    surface_l = _oklab_l(surface_hex)
+
+    preview_hex = derive_preview_background(surface_hex)
+    preview_l = _oklab_l(preview_hex)
+    assert abs(preview_l - surface_l) <= _MAX_OWNED_FILL_DELTA_L, (
+        f"{surface_hex}: preview fill ΔL {abs(preview_l - surface_l):.4f} exceeds bound"
+    )
+
+    removed_hex, added_hex = theme._derive_diff_fills(surface_hex)
+    for label, diff_hex in (("removed", removed_hex), ("added", added_hex)):
+        diff_l = _oklab_l(diff_hex)
+        assert abs(diff_l - surface_l) <= _MAX_OWNED_FILL_DELTA_L, (
+            f"{surface_hex}: diff {label} fill ΔL {abs(diff_l - surface_l):.4f} exceeds bound"
+        )
+
+
+def test_diff_fills_are_hue_tinted_not_lightness_shifted() -> None:
+    """E-6/DA-005: `_derive_diff_fills` must hold the preview fill's own
+    OKLab L constant and shift only a/b -- otherwise contrast for text
+    painted on a diff row silently drifts from what was solved against the
+    preview fill, and diff rows start reading as brightness noise instead
+    of a hue-tinted variant of the same plane. `_derive_diff_fills` gets
+    this right today (see its own docstring), but nothing previously
+    guarded it: a future edit reintroducing a lightness shift would have
+    passed every other suite in `make verify`."""
+    # 1e-3, not 1e-6: both fills round-trip through an 8-bit #RRGGBB hex
+    # (rgb_to_hex rounds each channel to the nearest integer), so decoding
+    # the hex back to OKLab L carries a small, expected quantisation
+    # residual (measured up to ~6e-4) even though the underlying solve held
+    # L exactly constant before rounding. 1e-3 comfortably clears that
+    # residual while still catching a real lightness shift (E-6's own
+    # `_derive_diff_fills` shift constants, 0.012/0.008 in the a/b plane,
+    # are over an order of magnitude larger than this floor).
+    for surface_hex in _ALL_PAIRS_CANONICAL_SURFACES:
+        preview_hex = derive_preview_background(surface_hex)
+        preview_l = _oklab_l(preview_hex)
+        removed_hex, added_hex = theme._derive_diff_fills(surface_hex)
+        for label, diff_hex in (("removed", removed_hex), ("added", added_hex)):
+            diff_l = _oklab_l(diff_hex)
+            assert abs(diff_l - preview_l) < 1e-3, (
+                f"{surface_hex}: diff {label} fill L {diff_l:.6f} != preview fill L {preview_l:.6f}"
+            )
+
+
+def test_dual_safe_band_preserves_reference_offset_ordering() -> None:
+    """E-8/DA-006: the undetermined-background (`resolve_palette(None)`)
+    fallback must keep roles ordered and tiered by the same reference-offset
+    order `test_palette_lightness_structure_preserves_monokai_spacing`
+    proves for concrete surfaces -- not packed together by contrast alone
+    (E-8's own phrasing). `solve_dual_safe` targets WCAG relative luminance
+    Y directly (not OKLab L, which the concrete-surface solver targets), so
+    this asserts ordering on Y -- the metric the dual-safe solver actually
+    optimizes -- with a tolerance sized for the dual-safe band's own
+    narrowness (only ~0.008 of Y total, by construction: the intersection
+    that clears 4.5:1 against both #000000 and #FFFFFF), rather than
+    reusing the concrete-surface test's much tighter OKLab-L epsilon, which
+    does not apply to a different target metric."""
+    palette = resolve_palette(None)
+    y_values = [relative_luminance(*hex_to_rgb(palette[role])) for role in _ACCENT_OFFSET_ORDER]
+    for prev, nxt in pairwise(y_values):
+        assert nxt >= prev - 1e-3, (_ACCENT_OFFSET_ORDER, y_values)
+    spread = max(y_values) - min(y_values)
+    assert spread > 0.002, f"dual-safe band: spread {spread:.5f} too small -- roles packed together"
 
 
 def test_palette_identity_palette_stays_separable_after_quantisation() -> None:

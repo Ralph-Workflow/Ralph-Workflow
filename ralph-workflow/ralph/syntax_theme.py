@@ -53,6 +53,24 @@ _KEYWORD_NAMESPACE = _child_token(Keyword, "Namespace")
 _TEXT_WHITESPACE = _child_token(Text, "Whitespace")
 _LITERAL = _child_token(_child_token(pygments_token, "Token"), "Literal")
 _ERROR = _child_token(_child_token(pygments_token, "Token"), "Error")
+#: DA-002/D-3: these nine token classes previously had no explicit mapping,
+#: so Pygments' own ``StyleMeta`` built them with ``color: None`` -- Rich's
+#: ``PygmentsSyntaxTheme.get_style_for_token`` then hardcodes ``#000000``
+#: for a falsy colour, a fixed non-adaptive black that bypasses the palette
+#: entirely (not merely "the terminal default", which D-3 already bans, but
+#: worse: a colour that is wrong on a dark surface and invisible on one).
+#: ``Generic.Heading``/``Generic.Strong`` are exactly the tokens Pygments'
+#: ``DiffLexer`` emits for a ``.diff``/``.patch`` preview, so this is
+#: production-reachable through ``edit_preview.py``, not hypothetical.
+_GENERIC_HEADING = _child_token(Generic, "Heading")
+_GENERIC_STRONG = _child_token(Generic, "Strong")
+_GENERIC_PROMPT = _child_token(Generic, "Prompt")
+_GENERIC_OUTPUT = _child_token(Generic, "Output")
+_GENERIC_TRACEBACK = _child_token(Generic, "Traceback")
+_GENERIC_ERROR = _child_token(Generic, "Error")
+_GENERIC_EMPH = _child_token(Generic, "Emph")
+_TOKEN_OTHER = _child_token(_child_token(pygments_token, "Token"), "Other")
+_TOKEN_ESCAPE = _child_token(_child_token(pygments_token, "Token"), "Escape")
 
 #: The semantic roles every syntax colour is solved from, per surface.
 #: Matches Monokai Pro's own scope convention (D-1):
@@ -160,6 +178,19 @@ def _style(colors: dict[str, str]) -> type[PygmentsStyle]:
                 Generic.Subheading: subheading,
                 Generic.Deleted: deleted,
                 Generic.Inserted: inserted,
+                # DA-002/D-3: complete the token range -- see this module's
+                # _GENERIC_HEADING-and-friends comment above for why these
+                # nine were previously falling through to a hardcoded,
+                # non-adaptive black instead of a palette role.
+                _GENERIC_HEADING: subheading,
+                _GENERIC_STRONG: subheading,
+                _GENERIC_PROMPT: foreground,
+                _GENERIC_OUTPUT: foreground,
+                _GENERIC_EMPH: foreground,
+                _GENERIC_TRACEBACK: keyword,
+                _GENERIC_ERROR: keyword,
+                _TOKEN_OTHER: foreground,
+                _TOKEN_ESCAPE: string,
             },
         ),
     }
