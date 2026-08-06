@@ -203,6 +203,20 @@ def test_palette_five_structural_roles_stay_mutually_distinct() -> None:
         assert len(set(values)) == len(values), (surface_hex, disp)
 
 
+def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
+    """DA-001: on mid-grey surfaces where headroom is too narrow to carry
+    every role's full reference offset, solve_for_surface must compress
+    offsets into the feasible band instead of clipping every undershooting
+    role to the identical floor lightness. Before the fix this collapsed up
+    to 5 of these 9 roles onto the same pixel (e.g. #808080 solved skipped
+    and foreground both to #000000)."""
+    roles = ("success", "error", "warning", "skipped", "info", "pending", "foreground", "muted", "comment")
+    for surface_hex in ("#484848", "#5F5F5F", "#6C6C6C", "#747474", "#808080", "#8C8C8C"):
+        palette = resolve_palette(surface_hex)
+        values = [palette[role] for role in roles]
+        assert len(set(values)) == len(values), (surface_hex, dict(zip(roles, values, strict=True)))
+
+
 def test_palette_identity_palette_stays_separable_after_quantisation() -> None:
     """IDENTITY_PALETTE and its light/unknown siblings must keep all 12 slots
     distinct as hex, after 6x6x6 quantisation, and under every CVD matrix.

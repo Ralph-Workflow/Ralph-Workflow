@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import functools
 import math
 from typing import Final, NamedTuple
@@ -12,7 +13,7 @@ class RoleAnchor(NamedTuple):
     Pro's own OKLab lightness for the colour this role stands for.
 
     ``l_ref`` is measured on the same reference background
-    (``_REFERENCE_SURFACE_HEX`` / Monokai Pro's own ``#2D2A2E``) that
+    (``_CANONICAL_DARK_SURFACE_HEX`` / Monokai Pro's own ``#2D2A2E``) that
     ``_REFERENCE_BACKGROUND_L`` records, so ``l_ref - _REFERENCE_BACKGROUND_L``
     is a *portable* offset: the distance (in OKLab L) this role sits from a
     dark reference background in Monokai Pro's own palette. ``solve_for_surface``
@@ -288,6 +289,47 @@ def _floor_lightness(h: float, target_chroma: float, y_surf: float, min_ratio: f
     return best_l
 
 
+#: Every role's reference offset (``l_ref - _REFERENCE_BACKGROUND_L``),
+#: sorted ascending. ``_offset_rank`` uses this fixed, surface-independent
+#: ordering -- not raw offset magnitude -- to place out-of-band roles,
+#: because two roles can share an almost identical offset (Monokai Pro's own
+#: ``success``/``info`` sit within 0.002 OKLab L of each other) and a
+#: magnitude-proportional placement would still land them on nearly
+#: identical compressed lightnesses.
+_ROLE_OFFSETS_SORTED: Final[tuple[float, ...]] = tuple(
+    sorted(a.l_ref - _REFERENCE_BACKGROUND_L for a in ROLE_ANCHORS.values())
+)
+
+#: How far past the floor, in absolute OKLab L, an out-of-band role's rank
+#: is allowed to push it -- capped, never a fraction of whatever headroom
+#: happens to remain (measured empirically: at OKLab L within ~0.12 of a
+#: floor around L=0.2, hue is still faintly legible after gamut clamping;
+#: much further and it is not). The floor is where each role's own target
+#: chroma survives *best* (moving further from it only tightens the gamut
+#: further -- see ``solve_for_surface``'s docstring), so letting ranks span
+#: the *entire* remaining band would push the highest-ranked out-of-band
+#: roles into a gamut region so tight that hue stops mattering (every hue
+#: rounds to the same near-black/near-white 8-bit pixel there). An absolute
+#: cap -- rather than a fraction of headroom -- matters because headroom
+#: itself can be tiny (a surface whose luminance sits right at the edge of
+#: where a polarity is even viable can leave under 0.02 of OKLab L to work
+#: with); on those surfaces the cap does not bind and the rank spreads
+#: across all the headroom there is, which is exactly what is needed there.
+_COMPRESSION_REACH_ABSOLUTE: Final[float] = 0.12
+
+
+def _offset_rank(offset: float) -> float:
+    """Return ``offset``'s rank among every role's reference offset,
+    normalised to [0, 1]. Ties (roles that deliberately share an anchor,
+    e.g. ``chrome``/``info``) average to the same rank, by design -- they
+    are meant to resolve identically, not to be pried apart."""
+    lo_idx = bisect.bisect_left(_ROLE_OFFSETS_SORTED, offset)
+    hi_idx = bisect.bisect_right(_ROLE_OFFSETS_SORTED, offset) - 1
+    rank = (lo_idx + hi_idx) / 2.0
+    denom = len(_ROLE_OFFSETS_SORTED) - 1
+    return rank / denom if denom > 0 else 0.0
+
+
 def _nudge_to_floor(l_val: float, h: float, target_chroma: float, surface_hex: str, min_ratio: float, *, lighter: bool) -> str:
     """Step ``l_val`` further from the surface until contrast clears
     ``min_ratio``, as a last-resort safety net after gamut clamping."""
@@ -313,19 +355,33 @@ def solve_for_surface(
     _REFERENCE_BACKGROUND_L``), which reproduces Monokai Pro's palette
     exactly on the reference surface and preserves its relative spacing
     elsewhere. The WCAG floor is enforced as a floor, not a target: when the
-    reference-offset target already clears ``min_ratio``, it is used as-is
-    (this is what restores the lightness spread Characterize point 1
-    describes as collapsed onto one plane); when it does not, the floor
-    lightness for this specific hue/chroma is used instead, which is always
-    at least as extreme (further from the surface) as the offset target in
-    that case. Because the fallback is computed per-role from that role's own
-    hue/chroma rather than by clipping every role to the same lightness
-    boundary, it does not collapse distinct roles onto one pixel even on a
-    surface with almost no headroom (a narrow mid-grey band) -- each role's
-    floor lightness differs with its own chroma, which is exactly the
-    property that already made the pre-existing floor solver collision-free
-    (see the passing ``test_palette_quantised_separability`` /
-    ``test_palette_cvd_separability`` this rewrite must not regress).
+    reference-offset target already clears ``min_ratio`` (lands inside the
+    feasible band between the floor and the gamut boundary), it is used
+    as-is (this is what restores the lightness spread Characterize point 1
+    describes as collapsed onto one plane).
+
+    When it does not -- the offset target falls outside the feasible band,
+    which happens on narrow-headroom surfaces (mid-greys) where the floor
+    itself sits close to the gamut boundary, or where the raw offset target
+    overshoots past pure black/white -- every role that falls outside is
+    *not* clipped to the same boundary value. Clipping was the original
+    defect: on a surface where the floor is, say, L=0.97, every role whose
+    offset target landed below that collapsed onto the identical L=0.97, and
+    at lightness that extreme the sRGB gamut only tolerates near-zero chroma
+    regardless of hue, so distinct hues collapsed onto the same pixel.
+    Stretching every out-of-band role uniformly across the *entire* [0,
+    floor] / [floor, 1] band is not the fix either: most of that band is far
+    from the floor, where the gamut is just as tight as it is at 0/1 (the
+    floor is, by construction, the *least* extreme point that still clears
+    contrast -- it is where each role's own target chroma survives best;
+    moving further away only tightens the gamut further). Nor is
+    magnitude-proportional placement enough on its own -- see
+    ``_ROLE_OFFSETS_SORTED``'s docstring for why. Instead, each out-of-band
+    role is placed by its fixed, surface-independent offset **rank**
+    (``_offset_rank``) among every role, spread only across the bounded
+    region just past the floor that ``_COMPRESSION_REACH_ABSOLUTE`` still
+    keeps hue-legible, rather than the full remaining band down to 0/up to
+    1.
     """
     surf_r, surf_g, surf_b = hex_to_rgb(surface_hex)
     y_surf = relative_luminance(surf_r, surf_g, surf_b)
@@ -342,15 +398,25 @@ def solve_for_surface(
 
     surface_l, _surface_a, _surface_b = rgb_to_oklab(surf_r, surf_g, surf_b)
     offset = anchor.l_ref - _REFERENCE_BACKGROUND_L
-    offset_l = surface_l + offset if lighter else surface_l - offset
-    offset_l = max(0.0, min(1.0, offset_l))
+    offset_l_raw = surface_l + offset if lighter else surface_l - offset
 
     floor_l = _floor_lightness(h, target_chroma, y_surf, min_ratio, lighter=lighter)
 
-    # The floor is a lower (lighter) / upper (darker) bound, not a target:
-    # only fall back to it when the reference-offset target does not already
-    # clear it.
-    best_l = max(offset_l, floor_l) if lighter else min(offset_l, floor_l)
+    # Feasible band is [floor_l, 1.0] when lighter, [0.0, floor_l] when
+    # darker. Use the offset target as-is when it already lands inside it;
+    # otherwise place this role by rank, reaching at most
+    # _COMPRESSION_REACH_ABSOLUTE past the floor (or all remaining headroom,
+    # whichever is smaller) -- toward 1.0 when lighter, toward 0.0 when
+    # darker.
+    band_lo, band_hi = (floor_l, 1.0) if lighter else (0.0, floor_l)
+    if band_lo <= offset_l_raw <= band_hi:
+        best_l = offset_l_raw
+    elif lighter:
+        rank = _offset_rank(offset)
+        best_l = floor_l + rank * min(_COMPRESSION_REACH_ABSOLUTE, 1.0 - floor_l)
+    else:
+        rank = _offset_rank(offset)
+        best_l = floor_l - rank * min(_COMPRESSION_REACH_ABSOLUTE, floor_l)
 
     return _nudge_to_floor(best_l, h, target_chroma, surface_hex, min_ratio, lighter=lighter)
 
