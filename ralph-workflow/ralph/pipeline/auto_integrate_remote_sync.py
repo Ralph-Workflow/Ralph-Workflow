@@ -93,18 +93,27 @@ _MAX_REMOTE_KEYS = 128
 # ----- Helpers ---------------------------------------------------------
 
 
-def remote_sync_enabled(config: object) -> bool:
-    """Whether the opt-in configured-remote tier is enabled."""
-    general: object = getattr(config, "general", None)
-    enabled: object = getattr(general, "auto_integrate_remote_enabled", False)
+def remote_sync_enabled(config: object | None) -> bool:
+    """Whether configured-remote synchronization is explicitly enabled."""
+    if config is None:
+        return False
+    general: object = getattr(config, "general", config)
+    enabled: object = getattr(general, "auto_integrate_remote_enabled", True)
     return isinstance(enabled, bool) and enabled
 
 
 def remote_target_name(config: object, *, default: str = DEFAULT_REFRESH_REMOTE) -> str:
     """Configured remote name, or the default ``origin``."""
-    general: object = getattr(config, "general", None)
+    general: object = getattr(config, "general", config)
     remote: object = getattr(general, "auto_integrate_remote", default)
     return remote.strip() if isinstance(remote, str) and remote.strip() else default
+
+
+def reclaim_target_worktree_enabled(config: object | None) -> bool:
+    """Return the target-owner reclamation policy, defaulting safely to enabled."""
+    general: object = getattr(config, "general", config)
+    configured: object = getattr(general, "auto_integrate_reclaim_target_worktree", True)
+    return configured is not False
 
 
 # ----- Pull-side reconcile --------------------------------------------
@@ -167,7 +176,12 @@ def pull_and_reconcile_target(
 
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     if not _throttle_allows_pull(repo_root, chosen_remote, target, config, clock):
-        return None
+        return _record_remote_state(
+            target,
+            last_remote_sync="refresh suppressed",
+            last_refresh="refresh suppressed by throttle",
+            reason="remote freshness probe suppressed by configured interval",
+        )
 
     refresh = refresh_target_from_remote(
         repo_root,
@@ -175,7 +189,7 @@ def pull_and_reconcile_target(
         timeout_seconds=FETCH_TIMEOUT_SECONDS,
         remote=chosen_remote,
     )
-    state = _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock)
+    state = _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock, config)
     return state.model_copy(update={"last_remote": chosen_remote}) if state is not None else None
 
 
@@ -185,6 +199,7 @@ def _dispatch_pull_outcome(
     target: str,
     chosen_remote: str,
     clock: Callable[[], float],
+    config: UnifiedConfig | None,
 ) -> RebaseState | None:
     """Translate a pull refresh outcome into the recorded ``RebaseState`` (AC-15..20).
 
@@ -233,7 +248,7 @@ def _dispatch_pull_outcome(
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
     elif refresh == REFRESH_ORIGIN_AHEAD:
         try:
-            _fast_forward_local_target_to_remote(repo_root, target, chosen_remote)
+            _fast_forward_local_target_to_remote(repo_root, target, chosen_remote, config)
         except Exception as exc:
             logger.warning("auto_integrate: pull-side ff failed: {}", exc)
             _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
@@ -262,7 +277,12 @@ def _dispatch_pull_outcome(
     elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 
-        reconciled, reason = reconcile_target_onto_remote(repo_root, target, chosen_remote)
+        reconciled, reason = reconcile_target_onto_remote(
+            repo_root,
+            target,
+            chosen_remote,
+            reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+        )
         if reconciled:
             _arm_throttle(repo_root, chosen_remote, target, clock)
             state = _record_remote_state(
@@ -288,6 +308,7 @@ def _fast_forward_local_target_to_remote(
     repo_root: Path,
     target: str,
     remote: str,
+    config: UnifiedConfig | None,
 ) -> None:
     """Move ``refs/heads/<target>`` to ``refs/remotes/<remote>/<target>``.
 
@@ -312,7 +333,12 @@ def _fast_forward_local_target_to_remote(
         # loop. Surface as a clean RuntimeError so the caller's
         # except can record a no-op.
         raise RuntimeError(f"local/{target} diverged from {remote}/{target}")
-    ok, reason = fast_forward_target(repo_root, target, remote_sha)
+    ok, reason = fast_forward_target(
+        repo_root,
+        target,
+        remote_sha,
+        reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+    )
     if not ok:
         raise RuntimeError(reason)
 
@@ -385,7 +411,9 @@ def _throttle_allows_pull(
     config: UnifiedConfig | None,
     clock: Callable[[], float],
 ) -> bool:
-    interval = REMOTE_SYNC_INTERVAL_SECONDS
+    general: object = getattr(config, "general", config)
+    configured: object = getattr(general, "auto_integrate_remote_interval_seconds", 0.0)
+    interval = configured if isinstance(configured, (int, float)) else REMOTE_SYNC_INTERVAL_SECONDS
     return _REMOTE_PULL_THROTTLE.should_pull(
         repo_root,
         remote,

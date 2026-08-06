@@ -129,13 +129,28 @@ class GeneralConfig(RalphBaseModel):
         description="Local branch that receives integrated feature work.",
     )
     auto_integrate_remote_enabled: bool = Field(
-        default=False,
-        description="Enable opt-in remote synchronization for auto-integration.",
+        default=True,
+        description=(
+            "Enable configured-remote synchronization when that remote exists. "
+            "Set false to keep auto-integration local-only."
+        ),
     )
     auto_integrate_remote: str = Field(
         default="origin",
         min_length=1,
         description="Remote used when remote auto-integration is enabled.",
+    )
+    auto_integrate_remote_interval_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Seconds between remote freshness probes; 0 fetches at every seam.",
+    )
+    auto_integrate_reclaim_target_worktree: bool = Field(
+        default=True,
+        description=(
+            "Snapshot and reset a dirty target-owning worktree before advancing it. "
+            "Set false to retain refuse-and-retry behavior."
+        ),
     )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,

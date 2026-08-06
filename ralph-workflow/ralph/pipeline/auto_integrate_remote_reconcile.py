@@ -19,6 +19,7 @@ from ralph.git.rebase.rebase import (
     rebase_in_progress,
     rebase_onto,
 )
+from ralph.pipeline._auto_integrate_reclaim import reclaim_dirty_target_worktree
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, clear_record, write_record
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
@@ -35,6 +36,7 @@ def reconcile_target_onto_remote(
     remote: str,
     *,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    reclaim_target_worktree: bool = True,
 ) -> tuple[bool, str]:
     """Rebase unpublished local target commits onto ``remote/target`` safely.
 
@@ -42,7 +44,9 @@ def reconcile_target_onto_remote(
     every other shape is intentional: checking out or moving the feature
     worktree would make a remote retry alter unrelated local work.
     """
-    owner, pre_target_sha, reason = _reconciliation_preconditions(repo_root, target, remote)
+    owner, pre_target_sha, reason = _reconciliation_preconditions(
+        repo_root, target, remote, reclaim_target_worktree=reclaim_target_worktree
+    )
     if reason is not None or owner is None or pre_target_sha is None:
         return False, reason or f"target '{target}' is unavailable for reconciliation"
     write_record(
@@ -79,13 +83,19 @@ def reconcile_target_onto_remote(
 
 
 def _reconciliation_preconditions(
-    repo_root: Path, target: str, remote: str
+    repo_root: Path,
+    target: str,
+    remote: str,
+    *,
+    reclaim_target_worktree: bool,
 ) -> tuple[Path | None, str | None, str | None]:
     """Return a clean owning target worktree and its pre-rebase SHA."""
     verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
     if verdict != WORKTREE_FOUND or owner is None:
         return None, None, f"target '{target}' has no owning worktree for reconciliation"
-    if not is_repo_clean(owner):
+    if not is_repo_clean(owner) and (
+        not reclaim_target_worktree or reclaim_dirty_target_worktree(owner, target) is None
+    ):
         return None, None, f"target worktree is dirty; skipped reconciliation of {remote}/{target}"
     pre_target_sha = branch_sha(owner, target)
     if pre_target_sha is None:

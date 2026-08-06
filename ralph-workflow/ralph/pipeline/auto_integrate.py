@@ -124,15 +124,13 @@ def _fast_forward_target(
     repo_root: Path,
     target: str,
     feature_sha: str,
+    *,
+    reclaim_target_worktree: bool = True,
 ) -> tuple[bool, str]:
-    """Backwards-compat shim for the extracted fast-forward path.
-
-    The implementation now lives in
-    :mod:`ralph.pipeline.auto_integrate_ff`; this wrapper remains
-    so :func:`_continue_fast_forward_from_record` (and any future
-    in-module caller) can keep referencing the local symbol.
-    """
-    return fast_forward_target(repo_root, target, feature_sha)
+    """Backwards-compat shim for the extracted fast-forward path."""
+    return fast_forward_target(
+        repo_root, target, feature_sha, reclaim_target_worktree=reclaim_target_worktree
+    )
 
 
 def auto_integrate_after_commit(
@@ -584,7 +582,14 @@ def _integrate_once(
         # before the rebase/merge/resolution sequence) is what keeps the
         # landing correct under concurrency.
         refresh_outcome = _refresh_target(config, root, target)
-        ok, skip_reason = _fast_forward_target(root, target, feature_sha)
+        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
+
+        ok, skip_reason = _fast_forward_target(
+            root,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+        )
 
         # R6/AC-06: post-attempt terminal-state verification on EVERY
         # exit path. A completed rebase/merge leaves HEAD at feature_sha,

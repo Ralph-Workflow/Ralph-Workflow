@@ -223,10 +223,12 @@ class PlanArtifact(RalphBaseModel):
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
     """Return True when ``artifact`` represents a planning no-op.
 
-    Only the explicit ``noop: true`` marker is authoritative. Empty active
-    plans are malformed executor input and must reach schema validation.
+    The explicit ``noop: true`` marker and the legacy empty
+    ``steps``/``work_units`` representation both describe no planned work.
     """
-    return artifact.get("noop") is True
+    if artifact.get("noop") is True:
+        return True
+    return artifact.get("steps") == [] and artifact.get("work_units") == []
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:

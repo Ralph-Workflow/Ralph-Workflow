@@ -72,16 +72,16 @@ def _add_worktree(repo_root: Path, path: Path, branch: str) -> None:
     assert _run(repo_root, "worktree", "add", "-b", branch, str(path)).returncode == 0
 
 
-def test_dirty_checked_out_target_lands_without_losing_operator_changes(
+def test_dirty_checked_out_target_snapshots_then_lands(
     tmp_git_repo: Path,
 ) -> None:
-    """Git must update the target worktree and preserve an unrelated dirty file."""
+    """S-3: dirty target ownership is snapshotted then reclaimed before landing."""
     main = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
     feature = tmp_git_repo.parent / "feature-ff"
     _add_worktree(tmp_git_repo, feature, "feature-ff")
     _commit(feature, "feature.txt", "feature\n", "feature change")
-    dirty_file = tmp_git_repo / "tracked.txt"
+    dirty_file = tmp_git_repo / "feature.txt"
     dirty_file.write_text("operator work\n", encoding="utf-8")
 
     outcome = auto_integrate_after_commit(_config(main), WorkspaceScope(feature), RebaseState())
@@ -89,8 +89,8 @@ def test_dirty_checked_out_target_lands_without_losing_operator_changes(
     assert outcome is not None
     assert outcome.fast_forwarded is True
     assert branch_sha(tmp_git_repo, main) == _run(feature, "rev-parse", "HEAD").stdout.strip()
-    assert dirty_file.read_text(encoding="utf-8") == "operator work\n"
+    assert dirty_file.read_text(encoding="utf-8") == "feature\n"
     assert (tmp_git_repo / "feature.txt").exists()
-    status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no").stdout
-    assert "tracked.txt" in status
-    assert "feature.txt" not in status
+    assert _run(tmp_git_repo, "status", "--porcelain").stdout == ""
+    snapshots = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim").stdout
+    assert f"refs/ralph-reclaim/{main}/" in snapshots

@@ -164,7 +164,7 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a: (owner, "before", None)
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(

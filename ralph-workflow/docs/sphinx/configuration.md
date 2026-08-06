@@ -164,8 +164,10 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `git_user_email` | (from git config) | Git author email for commits |
 | `auto_integrate_enabled` | `true` | Local integration is on by default. Set to `false` for byte-identical manual git behavior: no rebase, merge, ref movement, fetch, or push from this feature. |
 | `auto_integrate_target` | `"main"` | Local mainline branch used verbatim. It must be non-empty; if the branch is absent, the step records a skip. |
-| `auto_integrate_remote_enabled` | `false` | The single opt-in for remote synchronization. When `false`, this feature issues no `git fetch` or `git push`; when `true`, it may fetch, reconcile, and publish a successful local landing. |
-| `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a skip while local integration continues. |
+| `auto_integrate_remote_enabled` | `true` when the remote exists | Enables remote freshness checks and publication when the configured remote exists. Set `false` for local-only operation. |
+| `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a local-only outcome while integration continues. |
+| `auto_integrate_remote_interval_seconds` | `0.0` | Non-negative seconds between freshness probes. `0.0` fetches at every seam; a positive interval records suppressed probes as unverified. |
+| `auto_integrate_reclaim_target_worktree` | `true` | Snapshot and reset only the worktree owning the target branch when its dirty state blocks an advance. Set `false` to retain refuse-and-retry behavior. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
@@ -183,11 +185,20 @@ worker startup/boundary, and the Ralph-managed parallel fan-out join.
 
 It never force-moves a ref, force-pushes, pushes a feature branch, leaves a
 rebase or merge in progress, or fails a run because remote synchronization
-fails. Local integration is on by default; remote synchronization is opt-in.
+fails. Local integration is on by default. Ralph Workflow refreshes the configured
+remote at every seam when it exists; set `auto_integrate_remote_enabled = false`
+for local-only operation, or set a positive interval to throttle probes.
+
+When Ralph Workflow must reclaim the target-owning worktree, it first writes a recoverable
+snapshot ref under `refs/ralph-reclaim/<target>/...`, then resets that worktree.
+Recover with `git switch <target>` followed by `git reset --hard <snapshot-ref>`.
+Feature worktrees are never reclaimed. Setting
+`auto_integrate_reclaim_target_worktree = false` retains refuse-and-retry behavior.
+
 Setting `auto_integrate_enabled = false` guarantees byte-identical manual git
 behavior from this feature: no rebase, merge, ref movement, fetch, or push.
 
-The four `[general]` keys above are the complete configuration surface, in the
+The six `[general]` keys above are the complete configuration surface, in the
 same order used by the bundled templates.
 
 ## Agent chains and drains

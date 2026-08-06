@@ -63,6 +63,7 @@ def _build_config() -> UnifiedConfig:
         {
             "general": {
                 "auto_integrate_enabled": True,
+                "auto_integrate_remote_enabled": False,
             }
         }
     )

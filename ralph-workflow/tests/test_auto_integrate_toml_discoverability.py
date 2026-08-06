@@ -44,12 +44,14 @@ def _bundled() -> Iterator[tuple[str, Path]]:
         yield path.name, path
 
 
-#: The four operator-facing auto-integration keys, in documented order.
+#: The six operator-facing auto-integration keys, in documented order.
 _AUTO_INTEGRATE_KEYS = (
     "auto_integrate_enabled",
     "auto_integrate_target",
     "auto_integrate_remote_enabled",
     "auto_integrate_remote",
+    "auto_integrate_remote_interval_seconds",
+    "auto_integrate_reclaim_target_worktree",
 )
 
 #: Removed names must not reappear in bundled operator templates.
@@ -81,7 +83,7 @@ _REQUIRED_PROSE_TOKENS: tuple[str, ...] = (
     "the seams",
     "what it never does",
     "on-by-default local tier",
-    "opt-in remote tier",
+    "configured remote tier",
 )
 
 #: Pattern to find a commented line that starts with ``# key =`` so we can
@@ -215,8 +217,8 @@ def test_general_section_contains_required_prose_tokens() -> None:
         assert not missing, f"{path}: prose missing tokens: {missing!r}"
 
 
-def test_templates_list_exactly_four_live_auto_integrate_keys_in_order() -> None:
-    """S-7: templates expose the exact four-key surface in documented order."""
+def test_templates_list_exactly_six_live_auto_integrate_keys_in_order() -> None:
+    """S-2: templates expose the exact six-key surface in documented order."""
     for _, path in _bundled():
         commented = _commented_defaults(_read_text(path))
         assert tuple(commented) == _AUTO_INTEGRATE_KEYS
@@ -274,8 +276,10 @@ def test_each_template_documents_model_defaults_in_comment_lines() -> None:
         defaults = {
             "auto_integrate_enabled": True,
             "auto_integrate_target": "main",
-            "auto_integrate_remote_enabled": False,
+            "auto_integrate_remote_enabled": True,
             "auto_integrate_remote": "origin",
+            "auto_integrate_remote_interval_seconds": 0.0,
+            "auto_integrate_reclaim_target_worktree": True,
         }
         for key, default_value in defaults.items():
             rhs = commented[key]

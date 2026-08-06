@@ -5,7 +5,7 @@ description: Use when planning a multi-step change before editing code
 
 # Writing Plans
 
-Inspect the request and repository before drafting. A plan is the next executor's instruction set, not a summary.
+Build an executor-ready instruction set for the next implementation session. Inspect the request and repository before drafting. A plan is the next executor's instruction set, not a summary: explain the outcome, current behavior, smallest safe change, and how to prove it.
 
 Cover the work in order: **Orient**, **Characterize**, **Change**, and **Verify**. Ground paths, commands, and patterns in repository evidence; write a discovery step for an honest unknown.
 

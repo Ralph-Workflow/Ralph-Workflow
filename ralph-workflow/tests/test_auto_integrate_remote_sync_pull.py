@@ -162,7 +162,7 @@ def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
     calls: list[tuple[Path, str, str]] = []
 
-    def fake_reconcile(root: Path, target: str, remote: str) -> tuple[bool, str]:
+    def fake_reconcile(root: Path, target: str, remote: str, **_kwargs: object) -> tuple[bool, str]:
         calls.append((root, target, remote))
         return True, ""
 
@@ -187,7 +187,7 @@ def test_remote_strictly_ahead_records_reconciled(
 
     called: list[str] = []
 
-    def fake_ff(_root: Path, target: str, _remote: str) -> None:
+    def fake_ff(_root: Path, target: str, _remote: str, _config: object) -> None:
         called.append(target)
 
     monkeypatch.setattr(mod, "_fast_forward_local_target_to_remote", fake_ff)
