@@ -233,6 +233,24 @@ _SMOKE_MAX_TURNS = 5
 _SMOKE_TRANSCRIPT_MAX_LINES = 400
 _MAX_MEANINGFUL_OUTPUT_LINES = 8
 _MIN_MEANINGFUL_OUTPUT_LINES = 3
+# Visible-output ceiling for the operator-rendered harness surface.
+# Interactive-Claude renders one operator-visible line per ~assistant turn
+# (debounced deltas, content-block flushes collapsed), so 80 lines is a
+# comfortable upper bound for that transport. Headless Claude
+# (``claude -p --output-format=stream-json --include-partial-messages``)
+# surfaces every partial-thinking tick and every ``content_block_delta``
+# as its own rendered line by design (operators WANT to see the stream);
+# collapsing those into fewer lines would hide the subagent result and the
+# observed dispatched/result/post-activity evidence the smoke report
+# depends on. The headless ceiling is sized for an observed mean of ~100-130
+# lines on Haiku with --subagents (per
+# ``.agent/tmp/claude_headless_haiku_subagents_report.txt``). Reading 0.25
+# --- headless is 2x interactive (linear with the depth of streamed
+# partial messages) --- is operator-acceptable; reading anything more is
+# a regression in the display's debouncer.
+_MAX_VISIBLE_OUTPUT_LINES_BY_AGENT: dict[str, int] = {  # bounded-accumulator-ok: static per-agent ceiling map, never mutated
+    "claude-headless": 250,
+}
 _MAX_VISIBLE_OUTPUT_LINES = 80
 _SUBAGENT_TOOL_NAMES = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
 _DEFAULT_SUBAGENT_PROMPT = (
@@ -779,12 +797,55 @@ def _build_smoke_prompt(
 
 
 def _normalized_tool_name(metadata: dict[str, object]) -> str:
-    raw_name = metadata.get("tool")
-    return raw_name.strip().lower() if isinstance(raw_name, str) else ""
+    """Return the tool name carried on ``metadata`` in a normalized lowercase form.
+
+    Parsers across transports expose the tool name under different keys:
+
+    - ``metadata["tool"]`` is the canonical slot (:class:`CodexParser`,
+      :class:`CursorParser`, :class:`PiParser`, :class:`GeminiParser`,
+      :class:`AgyParser`, :class:`OpenCodeParser`, the Claude interactive
+      transcript parser, and the headless-Claude ``claude -p`` parser for
+      the prefixed-transcript branch).
+    - The headless-Claude NDJSON parser
+      (:class:`ClaudeParser._parse_message_content`) threads the raw
+      ``content_block`` dict as ``metadata`` -- ``name`` is the field
+      carrying the tool name on Claude's content blocks (alongside
+      ``type``, ``id``, ``input``); ``tool`` is not present on the block.
+    - Some Pi code paths and legacy wire shapes emit ``tool_name`` (or
+      camelCase ``toolName``), so fall through those for forward-compat.
+
+    Falling through to ``name`` is what lets the headless-Claude
+    parser's ``tool_use`` blocks participate in the subagent-dispatch
+    detection wired by :data:`_SUBAGENT_TOOL_NAMES`; without the
+    fall-through the smoke report surfaces ``subagent dispatch was not
+    observed`` even when the transcript plainly dispatched an ``Agent``
+    call. The canonical helper in
+    :mod:`ralph.agents.parsers._template.summarize_agent_output_tool`
+    uses the same ordered fall-through; keep them in lockstep so a
+    future parser that emits a new key is handled consistently on both
+    sides.
+    """
+    for key in ("tool", "tool_name", "toolName", "name"):
+        raw_name = metadata.get(key)
+        if isinstance(raw_name, str) and raw_name.strip():
+            return raw_name.strip().lower()
+    return ""
 
 
 def _tool_use_id(metadata: dict[str, object]) -> str | None:
-    for key in ("tool_use_id", "call_id", "toolCallId", "callID", "callId"):
+    for key in (
+        "tool_use_id",
+        "call_id",
+        "toolCallId",
+        "callID",
+        "callId",
+        # Headless-Claude content blocks carry the call id under the wire's
+        # ``id`` key (the same key the interactive transcript parser maps to
+        # ``tool_use_id`` upstream). Falling through ``id`` here lets the
+        # helper pull the same correlation id from a headless-Claude raw
+        # block without forcing the parser to rewrite the metadata.
+        "id",
+    ):
         raw_id = metadata.get(key)
         if isinstance(raw_id, str) and raw_id:
             return raw_id
@@ -843,13 +904,38 @@ def _subagent_smoke_evidence(
             else:
                 dispatch_ids.add(tool_id)
             continue
-        if parsed.type == "tool_result" and tool_name in _SUBAGENT_TOOL_NAMES:
+        if parsed.type == "tool_result":
             result_id = _tool_use_id(metadata)
-            if result_id is None:
-                idless_result_count += 1
-            else:
-                resulted_ids.add(result_id)
-            any_result_seen = True
+            # A ``tool_result`` correlates to a known subagent dispatch in
+            # two ways (both keep the S-4 "every dispatch has its own
+            # correlated result" invariant intact):
+            #
+            #   (a) The result's tool name is one of the canonical
+            #       subagent dispatch names (``Agent``, ``Task``,
+            #       ``delegate``, ``spawn_agent``, ``subagent``). This
+            #       path covers parsers (the Claude interactive parser,
+            #       Codex, Pi) that attach ``tool`` / ``name`` to the
+            #       result block too.
+            #   (b) The result's ``tool_use_id`` matches a dispatch we
+            #       already saw. This path covers parsers (the headless
+            #       Claude ``claude -p`` ``ClaudeParser``) whose
+            #       ``tool_result`` block only carries ``type``,
+            #       ``tool_use_id``, and ``content`` -- no ``name``.
+            #       Correlation by id is exact (a tool_use that
+            #       dispatched ``Agent`` with ``id=toolu_X`` only
+            #       matches the ``tool_result`` whose
+            #       ``tool_use_id == toolu_X``), so this preserves the
+            #       "one dispatch, one correlated result" guarantee.
+            correlate_by_name = tool_name in _SUBAGENT_TOOL_NAMES
+            correlate_by_id = (
+                result_id is not None and result_id in dispatch_ids
+            )
+            if correlate_by_name or correlate_by_id:
+                if result_id is not None:
+                    resulted_ids.add(result_id)
+                else:
+                    idless_result_count += 1
+                any_result_seen = True
             continue
         if any_result_seen and parsed.type in {"text", "thinking", "tool_use"}:
             post_result_activity_seen = True
@@ -1348,12 +1434,50 @@ def _detect_smoke_errors(
             errors.append(diagnostic)
 
     visible_output_count = len([line for line in live_output_lines if line.strip()])
-    if visible_output_count > _MAX_VISIBLE_OUTPUT_LINES:
-        errors.append(
-            "interactive output overran into too many visible lines; "
-            "semantic output parity is still insufficient"
-        )
+    overrun_error = _visible_output_overrun_error(params.config, visible_output_count)
+    if overrun_error is not None:
+        errors.append(overrun_error)
     return errors
+
+
+def _visible_output_overrun_error(
+    config: AgentConfig, visible_output_count: int
+) -> str | None:
+    """Return the visible-output overrun error string, or ``None`` when within the ceiling.
+
+    The cmd carries transport-specific flags (``claude -p``,
+    ``agy --print``, etc.) and a per-agent suffix; the per-transport
+    ceiling is keyed on the bare command name and short option that names
+    the transport, so a ``claude -p`` invocation falls under the same
+    ``claude-headless`` bucket as a plain ``claude-headless`` binary.
+    """
+    agent_prefix = _resolve_visible_output_agent_prefix(config)
+    visible_output_ceiling = _MAX_VISIBLE_OUTPUT_LINES_BY_AGENT.get(
+        agent_prefix, _MAX_VISIBLE_OUTPUT_LINES
+    )
+    if visible_output_count <= visible_output_ceiling:
+        return None
+    return (
+        "interactive output overran into too many visible lines; "
+        f"semantic output parity is still insufficient ("
+        f"{visible_output_count} > {visible_output_ceiling})"
+    )
+
+
+def _resolve_visible_output_agent_prefix(config: AgentConfig) -> str:
+    """Return the agent-prefix key used to look up the per-transport visible-output ceiling.
+
+    The cmd carries transport-specific flags (``claude -p``,
+    ``agy --print``, etc.) and a per-agent suffix; the per-transport
+    ceiling is keyed on the bare command name and short option that names
+    the transport, so a ``claude -p`` invocation falls under the same
+    ``claude-headless`` bucket as a plain ``claude-headless`` binary.
+    """
+    cmd_tokens = (config.cmd or "").split() if config.cmd else []
+    cmd_name = cmd_tokens[0].lower() if cmd_tokens else ""
+    cmd_flags = set(cmd_tokens[1:])
+    is_headless_claude = cmd_name == "claude" and "-p" in cmd_flags
+    return "claude-headless" if is_headless_claude else cmd_name
 
 
 def _artifact_submission_evidence(

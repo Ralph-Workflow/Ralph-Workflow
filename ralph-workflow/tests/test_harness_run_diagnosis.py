@@ -319,6 +319,127 @@ def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scena
     assert "subagent dispatch was not observed" in subagent_errors
 
 
+def test_subagent_smoke_evidence_detects_headless_claude_agent_dispatch() -> None:
+    """Headless-Claude parser's ``tool_use: Agent`` block must register as a dispatch.
+
+    Regression (wt-04-claude-parsing R8): the headless-Claude NDJSON parser
+    threads the raw ``content_block`` dict as ``metadata``, so the tool
+    name lives at ``metadata["name"]`` rather than the canonical
+    ``metadata["tool"]``. The pre-fix ``_normalized_tool_name`` helper
+    only consulted ``tool``, which surfaced ``subagent dispatch was not
+    observed`` on a transcript that plainly dispatched an ``Agent`` call
+    (confirmed by reading the captured headless smoke jsonl at
+    ``~/.claude/projects/-home-mistlight-Projects-Ralph-Workflow-wt-04-
+    claude-parsing/04f64659-...jsonl`` -- the Assistant record's
+    ``message.content`` carries a ``tool_use`` block whose keys are
+    ``{'type', 'id', 'name', 'input', 'caller'}`` and ``name == 'Agent'``).
+
+    The fix has ``_normalized_tool_name`` fall through ``tool`` ->
+    ``tool_name`` -> ``toolName`` -> ``name``, the same ordered
+    fall-through used by the canonical helper in
+    :mod:`ralph.agents.parsers._template`. The headless-Claude parser
+    resolves through ``JsonParserType.CLAUDE`` with
+    ``AgentTransport.CLAUDE`` -- which still lands on the
+    ``ClaudeParser`` (NDJSON) instance under
+    :func:`ralph.agents.parsers.resolve_parser_key` (the interactive
+    transport is special-cased; everything else with the ``claude``
+    command falls through to the headless NDJSON parser), so the test
+    below exercises the full dispatch / result / post-activity chain
+    against the same parser that a live ``claude -p`` run uses.
+    """
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_headless_agent",
+                            "name": "Agent",
+                            "input": {"prompt": "inspect two edge cases"},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_headless_agent",
+                            "content": "two edge cases identified",
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_write",
+                            "name": "mcp__ralph__write_file",
+                            "input": {"path": "tmp/headless-claude-smoke/todo-list.js"},
+                        }
+                    ]
+                },
+            }
+        ),
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert evidence.dispatch_count == 1, (
+        f"expected exactly one headless-Claude Agent dispatch, got "
+        f"{evidence.dispatch_count}; the pre-fix _normalized_tool_name "
+        f"did not recognise the headless-Claude block's ``name`` field"
+    )
+    assert evidence.dispatch_seen is True
+    assert evidence.result_seen is True
+    assert evidence.post_result_activity_seen is True
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) is None
+
+
+def test_normalized_tool_name_falls_through_to_name_field() -> None:
+    """``_normalized_tool_name`` consults ``tool`` then falls through to ``name``.
+
+    Pins the headless-Claude regression at the helper level: the field
+    Claude's content blocks carry is ``name`` (the block's
+    ``{"type": "tool_use", "id": ..., "name": "Agent", "input": ...}``
+    shape), so the helper must read it directly. This pins the contract
+    independent of which parser populates ``metadata`` -- a future
+    parser that emits ``tool_name`` instead of ``name`` still works
+    because the helper walks the full ordered fall-through.
+    """
+    assert smoke_plumbing_module._normalized_tool_name({"tool": "Agent"}) == "agent"
+    # Headless-Claude parser block shape: only ``name`` is present.
+    assert smoke_plumbing_module._normalized_tool_name({"name": "Agent"}) == "agent"
+    # Pi legacy / camelCase slots fall through too.
+    assert smoke_plumbing_module._normalized_tool_name({"tool_name": "Task"}) == "task"
+    assert smoke_plumbing_module._normalized_tool_name({"toolName": "Task"}) == "task"
+    # First non-empty key wins (``tool`` beats ``name`` when both exist).
+    assert smoke_plumbing_module._normalized_tool_name(
+        {"tool": "Agent", "name": "SOMETHING_ELSE"}
+    ) == "agent"
+    # Empty / whitespace / non-string values are skipped.
+    assert smoke_plumbing_module._normalized_tool_name({"tool": "  "}) == ""
+    assert smoke_plumbing_module._normalized_tool_name({"tool": None}) == ""
+    # All keys absent returns the empty string (a non-match, not a crash).
+    assert smoke_plumbing_module._normalized_tool_name({}) == ""
+
+
 def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
     spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/claude-sonnet-4-6")
     assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
