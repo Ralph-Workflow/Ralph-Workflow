@@ -50,8 +50,12 @@ Behaviour specifics (measured against the live v1.1.10 binary):
     ``status``, ``num_turns``, ``duration_seconds``, and ``usage`` out of the
     nested ``result`` dict onto the top level of the event metadata (the
     nested copy under ``metadata["result"]`` is preserved for back-compat).
-    ``response`` is intentionally not re-emitted as text: its content already
-    arrived incrementally via ``text_delta``.
+    The ``stop`` event's content is a non-empty summary built from those
+    fields (e.g. ``"agy result SUCCESS (3.58s, 1 turn)"``), falling back to
+    ``"agy result"`` when the nested ``result`` dict is absent, so it never
+    renders as a bodiless lifecycle line. ``response`` is intentionally not
+    re-emitted as text: its content already arrived incrementally via
+    ``text_delta``.
   * ``step_update`` frames of ``step_type == "agent_response"`` carry
     incremental ``text_delta`` chunks; a DONE frame's ``usage`` (token counts)
     is carried onto the metadata of the eventual flushed ``text`` event
@@ -146,6 +150,31 @@ def _completion_summary(label: str, step: dict[str, object], info: dict[str, obj
     duration = step.get("duration_seconds")
     if isinstance(duration, int | float) and not isinstance(duration, bool):
         parts.append(f"({duration}s)")
+    return " ".join(parts)
+
+
+def _result_summary(res: dict[str, object]) -> str:
+    """Return a non-empty human-readable summary of a ``result`` frame (DA-002).
+
+    A bodiless ``stop`` event renders in the activity stream as a
+    content-free ``INFO <agent>`` line, the same defect D6/DA-001 already
+    fixed for text and lifecycle events. Built from the ``status`` /
+    ``duration_seconds`` / ``num_turns`` values already lifted onto the
+    event metadata, e.g. ``"agy result SUCCESS (3.58s, 1 turn)"``.
+    """
+    parts = ["agy result"]
+    status = res.get("status")
+    if isinstance(status, str) and status:
+        parts.append(status)
+    detail_parts: list[str] = []
+    duration = res.get("duration_seconds")
+    if isinstance(duration, int | float) and not isinstance(duration, bool):
+        detail_parts.append(f"{duration}s")
+    num_turns = res.get("num_turns")
+    if isinstance(num_turns, int) and not isinstance(num_turns, bool):
+        detail_parts.append(f"{num_turns} turn" + ("" if num_turns == 1 else "s"))
+    if detail_parts:
+        parts.append(f"({', '.join(detail_parts)})")
     return " ".join(parts)
 
 
@@ -345,12 +374,18 @@ class AgyParser(NdjsonParserBase):
         lifted out of the nested ``result`` dict onto the top level of the
         event metadata; the nested copy under ``metadata["result"]`` (from
         ``dict(obj)``) is preserved for back-compat.
+
+        DA-002: the emitted ``stop`` event always carries non-empty content
+        (mirrors DA-001's fix for the ``init`` lifecycle event), built from
+        the ``result`` frame's ``status`` / ``duration_seconds`` /
+        ``num_turns`` fields, falling back to a bare ``"agy result"`` when
+        the nested ``result`` dict is absent.
         """
         yield from self._flush_text()
         metadata: dict[str, object] = dict(obj)
         res = obj.get("result")
         if not isinstance(res, dict):
-            yield AgentOutputLine(type="stop", raw=raw, metadata=metadata)
+            yield AgentOutputLine(type="stop", content="agy result", raw=raw, metadata=metadata)
             return
         res_dict = cast("dict[str, object]", res)
         for key in ("status", "num_turns", "duration_seconds", "usage"):
@@ -360,7 +395,9 @@ class AgyParser(NdjsonParserBase):
         if isinstance(status, str) and status != "SUCCESS":
             err_msg = str(res_dict.get("error") or status)
             yield AgentOutputLine(type="error", content=err_msg, raw=raw, metadata=metadata)
-        yield AgentOutputLine(type="stop", raw=raw, metadata=metadata)
+        yield AgentOutputLine(
+            type="stop", content=_result_summary(res_dict), raw=raw, metadata=metadata
+        )
 
     def _dispatch_init_event(self, obj: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
         """Map an ``init`` frame to a ``lifecycle`` event (D7, DA-001).

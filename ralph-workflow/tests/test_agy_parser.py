@@ -109,7 +109,10 @@ def test_stream_json_step_updates_emit_text_and_stop() -> None:
 
     parsed = list(parser.parse(iter(lines)))
 
-    assert [(line.type, line.content) for line in parsed] == [("text", "hello"), ("stop", "")]
+    assert [(line.type, line.content) for line in parsed] == [
+        ("text", "hello"),
+        ("stop", "agy result SUCCESS"),
+    ]
 
 
 def test_agy_parser_regression_stream_json_transcript_is_not_collapsed() -> None:
@@ -128,7 +131,7 @@ def test_agy_parser_regression_stream_json_transcript_is_not_collapsed() -> None
         ("text", "creating artifact"),
         ("tool_use", "write_to_file"),
         ("tool_result", "artifact written"),
-        ("stop", ""),
+        ("stop", "agy result SUCCESS"),
     ]
 
 
@@ -226,7 +229,7 @@ def test_result_event_with_error_surfaces_error_event() -> None:
     parsed = list(parser.parse(iter(lines)))
     assert [(line.type, line.content) for line in parsed] == [
         ("error", "quota"),
-        ("stop", ""),
+        ("stop", "agy result ERROR"),
     ]
 
 
@@ -238,7 +241,7 @@ def test_result_event_with_success_yields_stop_only() -> None:
     ]
     parsed = list(parser.parse(iter(lines)))
     assert [(line.type, line.content) for line in parsed] == [
-        ("stop", ""),
+        ("stop", "agy result SUCCESS"),
     ]
 
 
@@ -355,6 +358,7 @@ def test_agy_wire_fixture_replay_yields_expected_event_sequence() -> None:
     assert parsed[5].content == "2 lines, 3 bytes"
     assert parsed[6].content == "I have created the file and confirmed its contents."
     assert parsed[7].type == "stop"
+    assert parsed[7].content == "agy result SUCCESS (3.58s, 1 turn)"
 
 
 # --- D1-D9 defect locks (Plan: Improve AGY parsing fidelity, S-2) ---------
@@ -484,6 +488,23 @@ def test_d7_init_lifecycle_event_has_nonempty_content() -> None:
         lifecycle_events = [line for line in parsed if line.type == "lifecycle"]
         assert lifecycle_events, f"expected at least one lifecycle event in {fixture.name}"
         for line in lifecycle_events:
+            assert line.content.strip() != ""
+
+
+def test_da002_stop_event_has_nonempty_content() -> None:
+    """DA-002: every emitted stop event carries non-empty content.
+
+    A bodiless ``stop`` event renders in the activity stream as a
+    trailing content-free ``INFO <agent>`` line, the same class of defect
+    D6/DA-001 already fixed for text and lifecycle events. Replays all
+    three real-capture fixtures (text, tool, subagent) so the lock covers
+    every result frame shape actually observed live.
+    """
+    for fixture in (_AGY_WIRE_TEXT_FIXTURE, _AGY_WIRE_TOOL_FIXTURE, _AGY_WIRE_SUBAGENT_FIXTURE):
+        parsed = _replay(fixture)
+        stop_events = [line for line in parsed if line.type == "stop"]
+        assert stop_events, f"expected at least one stop event in {fixture.name}"
+        for line in stop_events:
             assert line.content.strip() != ""
 
 
