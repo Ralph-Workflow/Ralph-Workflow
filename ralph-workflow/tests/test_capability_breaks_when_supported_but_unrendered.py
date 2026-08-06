@@ -45,8 +45,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-import pytest
-
 from ralph.agents.builtin_spec import BuiltinAgentSpec
 from ralph.agents.display_capabilities import DisplayCapability
 from ralph.agents.display_capability_stance import DisplayCapabilityStance
@@ -65,9 +63,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.agents.support import AgentSupport
-
-
-pytestmark = pytest.mark.smoke
 
 
 _FIXTURE_PATH: Path = (
