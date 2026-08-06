@@ -209,9 +209,16 @@ or `parallel_plan` (see the [planning prompt](../prompts/planning.jinja)
 `## Agent-Driven Parallel Execution` guidance and the
 [Parallel execution (agent-driven)](#parallel-execution-agent-driven) section
 below for the long-form contract). When AGY is selected with two or more work
-units, routing fails explicitly rather than falling back to sequential dispatch:
+units, routing fails explicitly rather than falling back to sequential dispatch
+(this routing policy is unchanged by the note below).
 `agy agents` reported no sub-agents on the measured stock v1.1.8 install. This
-is an install observation, not a universal AGY capability claim.
+is a *subcommand listing* observation, not proof AGY lacks subagent
+capability: a later v1.1.10 live-binary measurement found `define_subagent` /
+`invoke_subagent` / `manage_subagents` in AGY's own tool list, and a capture
+confirmed two subagents actually dispatched and completed in parallel through
+those tools (see
+[Agent Compatibility](agent-compatibility.md#agy) and the git-tracked
+`tests/display/_fixtures/agy_wire_provenance.md`).
 Ralph-managed fan-out is dormant. To opt back into the legacy worker flow,
 override with `dispatch_mode = "ralph_fan_out"` and the pipeline falls back
 to the same-workspace worker model with the coordination tool and per-worker
@@ -228,7 +235,7 @@ Use this when you want a planning artifact to split work into multiple developme
 
 ### What changed
 
-Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, etc.). When AGY is selected for two or more work units, routing fails explicitly: `agy agents` reported no sub-agents on the measured stock v1.1.8 install. This is an install observation, not a universal AGY capability claim. Pi.dev likewise runs `work_units` and `parallel_plan` sequentially in `unit_id` order.
+Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, etc.). When AGY is selected for two or more work units, routing fails explicitly: `agy agents` reported no sub-agents on the measured stock v1.1.8 install. This is a *subcommand listing* observation, not proof AGY lacks subagent capability -- a later v1.1.10 live-binary measurement found `define_subagent` / `invoke_subagent` / `manage_subagents` in AGY's own tool list and confirmed two subagents dispatched and completed in parallel through those tools (see [Agent Compatibility](agent-compatibility.md#agy)). This routing-policy decision -- fail explicitly rather than fall back sequentially for AGY -- is a deliberate Ralph Workflow choice, unaffected by the corrected capability fact, and stays out of scope for the corresponding parsing-fidelity fix. Pi.dev likewise runs `work_units` and `parallel_plan` sequentially in `unit_id` order.
 
 The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and produces the matching `plan_items_proven` evidence. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
 

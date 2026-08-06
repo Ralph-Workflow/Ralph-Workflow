@@ -146,7 +146,17 @@ def _write_completion_sentinel(artifact_dir: Path) -> None:
 
 
 def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
-    """Emit output based on output_format (stream-json, json, or text)."""
+    """Emit output based on output_format (stream-json, json, or text).
+
+    The stream-json branch mirrors the frame shapes measured against the
+    live v1.1.10 binary (see ``tests/display/_fixtures/agy_wire_provenance.md``):
+    ``conversation_id`` and ``step_index`` on every ``step_update``;
+    ``user_input`` / ``unknown`` / ``checkpoint`` steps; ``tool_name``
+    alongside ``tool_info``; ``tool_info.parameters``; a tool (``readSpec``)
+    whose DONE frame has no ``output``; a genuinely incremental ACTIVE/DONE
+    ``text_delta`` pair; and a ``result`` carrying ``response``,
+    ``duration_seconds``, ``num_turns``, and ``usage``.
+    """
     if output_format == "text":
         print("I will create the todo list implementation.")
         if os.environ.get("MOCK_AGY_SUBAGENT") == "1":
@@ -157,30 +167,116 @@ def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
     events: list[dict[str, object]] = [
-        {"event": "init", "conversation_id": session_id, "init": {"cwd": "."}},
         {
-            "event": "step_update",
-            "step_update": {
-                "state": "DONE",
-                "step_type": "agent_response",
-                "text_delta": "I will create the todo list implementation.\n",
+            "event": "init",
+            "conversation_id": session_id,
+            "init": {
+                "model": model or "default",
+                "cwd": ".",
+                "tools": [
+                    "ask_permission",
+                    "read_file",
+                    "write_to_file",
+                    "view_file",
+                    "define_subagent",
+                    "invoke_subagent",
+                    "manage_subagents",
+                ],
+                "permission_mode": "always-proceed",
             },
         },
         {
             "event": "step_update",
             "step_update": {
+                "conversation_id": session_id,
+                "step_index": 0,
+                "state": "DONE",
+                "step_type": "user_input",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 1,
+                "state": "DONE",
+                "step_type": "unknown",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 2,
+                "state": "ACTIVE",
+                "step_type": "agent_response",
+                "text_delta": "I will create the todo list ",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 2,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "implementation.\n",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 3,
                 "state": "ACTIVE",
                 "step_type": "tool",
-                "step_index": 1,
+                "tool_name": "readSpec",
+                "tool_info": {"name": "readSpec", "parameters": {"path": "SPEC.md"}},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 3,
+                "state": "DONE",
+                "step_type": "tool",
+                "tool_name": "readSpec",
+                "duration_seconds": 0.01,
+                # No `output` key: the measured live capture showed many
+                # tools (e.g. write_to_file) produce no output on DONE.
+                "tool_info": {"name": "readSpec", "parameters": {"path": "SPEC.md"}},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 4,
+                "state": "DONE",
+                "step_type": "checkpoint",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 5,
+                "state": "ACTIVE",
+                "step_type": "tool",
+                "tool_name": "createTodoList",
                 "tool_info": {"name": "createTodoList"},
             },
         },
         {
             "event": "step_update",
             "step_update": {
+                "conversation_id": session_id,
+                "step_index": 5,
                 "state": "DONE",
                 "step_type": "tool",
-                "step_index": 1,
+                "tool_name": "createTodoList",
+                "duration_seconds": 0.05,
                 "tool_info": {
                     "name": "createTodoList",
                     "output": "File created at tmp/interactive-agy-smoke/todo-list.js.",
@@ -189,27 +285,53 @@ def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
         },
     ]
     if os.environ.get("MOCK_AGY_SUBAGENT") == "1":
-        subagent = {
-            "conversation_id": "subagent-1",
-            "role": "research",
-            "initial_prompt": "Inspect two edge cases.",
+        # Two subagents sharing one step_index, matching the measured live
+        # multi-subagent capture: conversation_id/log_uri are added only on
+        # DONE, never on ACTIVE.
+        subagent_a = {
+            "type_name": "file_writer",
+            "role": "Write File A",
+            "initial_prompt": "Inspect edge case A.",
+        }
+        subagent_b = {
+            "type_name": "file_writer",
+            "role": "Write File B",
+            "initial_prompt": "Inspect edge case B.",
         }
         events.extend(
             [
                 {
                     "event": "step_update",
                     "step_update": {
+                        "conversation_id": session_id,
+                        "step_index": 6,
                         "state": "ACTIVE",
                         "step_type": "subagent",
-                        "subagent_info": {"subagents": [subagent]},
+                        "subagent_info": {"subagents": [subagent_a, subagent_b]},
                     },
                 },
                 {
                     "event": "step_update",
                     "step_update": {
+                        "conversation_id": session_id,
+                        "step_index": 6,
                         "state": "DONE",
                         "step_type": "subagent",
-                        "subagent_info": {"subagents": [subagent]},
+                        "duration_seconds": 0.06,
+                        "subagent_info": {
+                            "subagents": [
+                                {
+                                    **subagent_a,
+                                    "conversation_id": "mock-subagent-a",
+                                    "log_uri": "file:///mock/logs/a.log",
+                                },
+                                {
+                                    **subagent_b,
+                                    "conversation_id": "mock-subagent-b",
+                                    "log_uri": "file:///mock/logs/b.log",
+                                },
+                            ]
+                        },
                     },
                 },
             ]
@@ -219,12 +341,35 @@ def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
             {
                 "event": "step_update",
                 "step_update": {
-                    "state": "DONE",
+                    "conversation_id": session_id,
+                    "step_index": 7,
+                    "state": "ACTIVE",
                     "step_type": "agent_response",
-                    "text_delta": "Writing smoke_test_result artifact.\n",
+                    "text_delta": "Writing smoke_test_",
                 },
             },
-            {"event": "result", "result": {"conversation_id": session_id, "status": "SUCCESS"}},
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 7,
+                    "state": "DONE",
+                    "step_type": "agent_response",
+                    "text_delta": "result artifact.\n",
+                    "usage": {"input_tokens": 512, "output_tokens": 32, "total_tokens": 544},
+                },
+            },
+            {
+                "event": "result",
+                "result": {
+                    "conversation_id": session_id,
+                    "status": "SUCCESS",
+                    "response": "Writing smoke_test_result artifact.\n",
+                    "duration_seconds": 0.5,
+                    "num_turns": 1,
+                    "usage": {"input_tokens": 512, "output_tokens": 32, "total_tokens": 544},
+                },
+            },
         ]
     )
     for event in events:

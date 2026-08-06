@@ -246,6 +246,17 @@ establish a resumed-session identity, so the integration keeps AGY session reuse
 disabled. The deterministic mock verifies the Ralph Workflow harness; the
 source record preserves the separate live evidence.
 
+A later v1.1.10 live-binary measurement (see the
+[model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)'s
+AGY section and the git-tracked
+`tests/display/_fixtures/agy_wire_provenance.md`) additionally observed the
+full `step_update` `step_type` vocabulary (`user_input`, `unknown`,
+`agent_response`, `tool`, `checkpoint`, `subagent`), the PTY requirement (no
+controlling terminal means empty stdout), and confirmed that AGY's own tool
+list includes `define_subagent` / `invoke_subagent` / `manage_subagents` --
+two subagents were observed dispatched and completed in parallel through
+those tools.
+
 ## Completion and observability
 
 Completion is evaluated from **durable evidence**, not from a conversational

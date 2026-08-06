@@ -199,7 +199,14 @@ Continuation remains disabled: `--continue` and `--conversation` accepted
 prompts but did not establish that a specific earlier conversation resumed.
 Re-measure periodically because AGY updates can change published IDs and flags.
 The no-cost `agy agents` observation reported no agents on the measured
-installation; that is not a universal delegation claim.
+installation; that is a *subcommand listing* observation, not proof AGY lacks
+subagent capability -- a later v1.1.10 live-binary measurement found
+`define_subagent` / `invoke_subagent` / `manage_subagents` in the live `init`
+frame's tool list, and a capture confirmed two subagents actually dispatched
+and completed in parallel through those tools (see
+`tests/display/_fixtures/agy_wire_provenance.md`). This correction is about
+AGY's own capability only; Ralph Workflow's [parallel work-unit routing
+policy](../sphinx/advanced-pipeline-configuration.md) for AGY is unchanged.
 
 The exact free observations and manual probe ledger are in
 `tmp/agy-source-of-truth.txt`. A valid smoke artifact is stored at

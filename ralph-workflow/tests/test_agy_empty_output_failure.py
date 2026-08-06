@@ -21,6 +21,16 @@ if TYPE_CHECKING:
         ("RESOURCE_EXHAUSTED (code 429)", "quota is exhausted"),
         ("Failed to get OAuth token", "authentication failed"),
         ("Failed to resolve model flag: model x is not recognized", "model is unavailable"),
+        (
+            'jetski: no output produced — a tool required the "command" permission '
+            "that headless mode cannot prompt for, so it was auto-denied. "
+            "Alternatively, re-run with --dangerously-skip-permissions ...",
+            "auto-denied",
+        ),
+        (
+            "Print mode: timed out after 7 polls (printed=3)",
+            "print-mode polling timed out",
+        ),
     ],
 )
 def test_agy_empty_output_regression_names_actionable_upstream_cause(

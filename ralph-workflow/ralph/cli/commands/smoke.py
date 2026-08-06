@@ -271,11 +271,19 @@ def _append_subagent_working_lines(result: SmokeRunResult, working: list[str]) -
 
 
 def _subagent_status(result: SmokeRunResult) -> str:
-    """Return the table status for the complete opted-in subagent contract."""
+    """Return the table status for the complete opted-in subagent contract.
+
+    S-4: relaxed from "exactly one dispatch" to "at least one dispatch, each
+    with a correlated result" -- a real multi-subagent run (e.g. AGY
+    dispatching two subagents in one frame) previously reported ``no`` here
+    even though every dispatch had its own result and post-activity followed.
+    ``subagent_result_seen`` already carries the "every dispatch correlated"
+    signal (see ``_subagent_smoke_evidence``), so this only needs >= 1.
+    """
     if not result.subagents_requested:
         return "not requested"
     complete = (
-        result.subagent_dispatch_count == 1
+        result.subagent_dispatch_count >= 1
         and result.subagent_dispatch_seen
         and result.subagent_result_seen
         and result.post_subagent_activity_seen

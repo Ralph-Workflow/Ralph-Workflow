@@ -179,14 +179,21 @@ def test_agy_harness_subagent_stream_json_is_observed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """S-6: mock stream-json dispatch/result satisfies the subagent smoke contract."""
+    """S-6: mock stream-json dispatch/result satisfies the subagent smoke contract.
+
+    The mock emits TWO subagents in one frame (matching the measured live
+    multi-subagent capture); S-4 relaxed the contract from "exactly one
+    dispatch" to "at least one dispatch, each with a correlated result", so
+    both are expected here.
+    """
     result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, subagents=True)
 
-    assert result.subagent_dispatch_count == 1
+    assert result.subagent_dispatch_count == 2
     assert result.subagent_dispatch_seen is True
     assert result.subagent_result_seen is True
     assert result.post_subagent_activity_seen is True
     assert "subagent dispatch was not observed" not in result.errors
+    assert "not every subagent dispatch has a correlated result" not in result.errors
 
 
 def test_agy_harness_writes_artifact_with_correct_schema(

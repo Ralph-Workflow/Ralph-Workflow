@@ -46,6 +46,7 @@ tag exists yet — a link to one would be a dead link.
 ### Fixed
 
 - **fix(agy): capture stream-json wire format and align AGY tool classification** — AgyParser maps stream-json step_update frames, deduplicates tool_use events, extracts result errors, and classifies activity for the watchdog and smoke harness. Locked by `tests/test_agy_parser.py`, `tests/agents/execution_state/test_generic_child_signal.py`, and `tests/test_smoke_agy_end_to_end.py`.
+- **fix(agy): improve AGY parsing fidelity against the measured live v1.1.10 wire format** — AgyParser now correlates subagent dispatch/result by a `step_index:position` id stable across ACTIVE/DONE (AGY only adds its own id on DONE), keeps `define_subagent`/`manage_subagents` classified as ordinary tool calls instead of inflating the subagent dispatch count, surfaces a tool's identifying parameter and a non-empty completion summary when `tool_info.output` is absent, strips surrounding whitespace from flushed text so no blank or trailing-newline line reaches the display, makes the `init` frame observable as a `lifecycle` event carrying `model`/`cwd`/`tools`/`permission_mode`, lifts `status`/`num_turns`/`duration_seconds`/`usage` from `result` onto the top level of event metadata, and classifies an `error`-event frame without an `error` key as `type='error'`. The smoke plumbing's subagent contract is relaxed from "exactly one dispatch" to "at least one dispatch, each with a correlated result" across every transport, and the empty-output diagnostic recognizes the measured headless permission-auto-deny message and the `Print mode: timed out after N polls` cli.log symptom. Locked by `tests/test_agy_parser.py`, `tests/test_agy_empty_output_failure.py`, `tests/test_mock_agy_binary.py`, `tests/test_agy_harness_with_mock.py`, `tests/test_smoke_plumbing_uses_canonical_submit.py`, `tests/test_harness_run_diagnosis.py`, and `tests/integration/test_cli_plumbing_uses_factory.py`.
 - **fix(opencode): use the currently published `minimax/MiniMax-M3` provider alias for the interactive smoke default** — the smoke command now reaches the live MiniMax route while retaining configurable provider/model aliases. Locked by `tests/test_opencode_defaults.py`.
 - **fix(config): keep project-local configuration explicit opt-in** — `ralph --regenerate-config` now rewrites global configuration and refreshes only local TOMLs already present; missing `.agent/` files remain absent and are created only by `ralph --init-local-config` / `--generate-local-config`. Locked by `tests/test_config_bootstrap.py` and `tests/test_cli_commands_2.py`.
 
@@ -66,6 +67,10 @@ tag exists yet — a link to one would be a dead link.
 ### Removed
 
 - **refactor(cli)!: remove inline prompt input** — `--prompt`/`-P` and quick positional prompt injection are gone; runs use workspace `PROMPT.md`, and the ordinary preflight/readiness path always applies. Locked by `tests/test_cli_quick_mode_semantics.py` and `tests/project_policy/test_run_integration.py`.
+
+### Documentation
+
+- **docs(agy): correct the AGY subagent-capability claim and record the measured v1.1.10 wire format** — `agy agents` returning no agents is a subcommand-listing observation, not proof AGY lacks subagent capability: the live `init` frame's tool list includes `define_subagent`/`invoke_subagent`/`manage_subagents`, and a live capture confirmed two subagents dispatched and completed in parallel. The measured stream-json event vocabulary, the PTY requirement, and the real empty-output failure message are now recorded in `tests/display/_fixtures/agy_wire_provenance.md` and referenced from Agent Compatibility, the agent lifecycle guide, and the AGY architecture walkthrough. Locked by `tests/test_agy_parser.py`.
 
 ## [0.9.7] - 2026-07-29
 

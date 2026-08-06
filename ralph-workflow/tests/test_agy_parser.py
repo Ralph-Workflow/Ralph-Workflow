@@ -1,18 +1,18 @@
 """Unit tests for the AgyParser.
 
-The v1.1.10 source record at ``ralph-workflow/tmp/agy-source-of-truth.txt``
-documents the installed binary's flags and model IDs from non-paid probes
-(``--version``, ``--help``, ``models``, ``agents``). The live paid
-stream-json probe was not run because live AGY is unauthenticated on the
-measurement host, so the stream-json expectations below are driven by the
-deterministic mock (``tests/_support/mock_agy.py``) and the CLI's documented
-``--print --output-format stream-json`` interface rather than a captured
-live transcript.
+The measured v1.1.10 stream-json wire format this parser targets is recorded
+in the git-tracked ``tests/display/_fixtures/agy_wire_provenance.md`` (PTY
+capture method, probe prompts, observed frame vocabulary, PTY requirement,
+and the real empty-output stderr message). The fixtures replayed below
+(``agy_wire.jsonl``, ``agy_wire_tool.jsonl``, ``agy_wire_subagent.jsonl``,
+``agy_wire_text.jsonl``) reproduce those measured captures with volatile
+values (UUIDs, absolute paths, durations) normalized to stable placeholders.
 
-The AgyParser maps stream-json events (``init``, ``step_update``, ``result``)
-to normalized ``text`` / ``tool_use`` / ``tool_result`` / ``error`` / ``stop``
-events, and classifies plain-text fallback output as ``type='text'`` (not
-``'raw'``) so the smoke report renders model content as text.
+The AgyParser maps stream-json events (``init``, ``step_update``, ``result``,
+``error``) to normalized ``lifecycle`` / ``text`` / ``tool_use`` /
+``tool_result`` / ``error`` / ``stop`` events, and classifies plain-text
+fallback output as ``type='text'`` (not ``'raw'``) so the smoke report
+renders model content as text.
 """
 
 from __future__ import annotations
@@ -27,7 +27,17 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _meaningful_output_lines,
 )
 
-_AGY_WIRE_FIXTURE = Path(__file__).parent / "display" / "_fixtures" / "agy_wire.jsonl"
+_FIXTURES_DIR = Path(__file__).parent / "display" / "_fixtures"
+_AGY_WIRE_FIXTURE = _FIXTURES_DIR / "agy_wire.jsonl"
+_AGY_WIRE_TOOL_FIXTURE = _FIXTURES_DIR / "agy_wire_tool.jsonl"
+_AGY_WIRE_SUBAGENT_FIXTURE = _FIXTURES_DIR / "agy_wire_subagent.jsonl"
+_AGY_WIRE_TEXT_FIXTURE = _FIXTURES_DIR / "agy_wire_text.jsonl"
+
+
+def _replay(fixture: Path) -> list:
+    parser = AgyParser()
+    lines = fixture.read_text(encoding="utf-8").splitlines()
+    return list(parser.parse(iter(lines)))
 
 
 def test_plain_text_line_yields_text_event() -> None:
@@ -85,10 +95,14 @@ def test_empty_input_produces_zero_events() -> None:
 
 
 def test_stream_json_step_updates_emit_text_and_stop() -> None:
-    """S-3: AGY's measured stream-json text delta is observable."""
+    """S-3: AGY's measured stream-json text delta is observable.
+
+    The ``init`` frame is intentionally omitted here (see
+    ``test_init_frame_yields_observable_lifecycle_event`` for D7's lock):
+    this test is about the text/stop path, not lifecycle classification.
+    """
     parser = AgyParser()
     lines = [
-        '{"event":"init","conversation_id":"conv-1"}',
         '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"hello"}}',
         '{"event":"result","result":{"status":"SUCCESS"}}',
     ]
@@ -102,7 +116,6 @@ def test_agy_parser_regression_stream_json_transcript_is_not_collapsed() -> None
     """S-2: mock stream-json keeps text and correlated tool activity distinct."""
     parser = AgyParser()
     lines = [
-        '{"event":"init","conversation_id":"conv-1"}',
         '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"creating artifact"}}',
         '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file"}}}',
         '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","output":"artifact written"}}}',
@@ -120,11 +133,18 @@ def test_agy_parser_regression_stream_json_transcript_is_not_collapsed() -> None
 
 
 def test_stream_json_subagent_updates_emit_correlated_events() -> None:
-    """S-3: tool and subagent updates preserve tool name and call id."""
+    """S-3: subagent updates preserve tool name and correlate via a composite id.
+
+    Rewritten from the pre-fix expectation of ``tool_use_id == entry's
+    conversation_id`` (D1): live AGY only adds ``conversation_id`` on the DONE
+    update, so an id scheme keyed on it cannot correlate the ACTIVE dispatch.
+    Every synthetic subagent frame below carries a ``step_index`` (live AGY
+    always sets one).
+    """
     parser = AgyParser()
     lines = [
-        '{"event":"step_update","step_update":{"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"call-1","role":"research"}]}}}',
-        '{"event":"step_update","step_update":{"step_type":"subagent","state":"DONE","subagent_info":{"subagents":[{"conversation_id":"call-1","role":"research"}]}}}',
+        '{"event":"step_update","step_update":{"step_index":4,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"role":"research"}]}}}',
+        '{"event":"step_update","step_update":{"step_index":4,"step_type":"subagent","state":"DONE","subagent_info":{"subagents":[{"conversation_id":"call-1","role":"research"}]}}}',
         '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"after"}}',
     ]
 
@@ -134,15 +154,21 @@ def test_stream_json_subagent_updates_emit_correlated_events() -> None:
         (line.type, line.metadata.get("tool"), line.metadata.get("tool_use_id"))
         for line in parsed[:2]
     ] == [
-        ("tool_use", "subagent", "call-1"),
-        ("tool_result", "subagent", "call-1"),
+        ("tool_use", "subagent", "4:0"),
+        ("tool_result", "subagent", "4:0"),
     ]
+    assert parsed[1].metadata.get("conversation_id") == "call-1"
     assert parsed[2].type == "text"
     assert parsed[2].content == "after"
 
 
 def test_agy_parser_regression_stream_json_subagent_step_index_correlates_result() -> None:
-    """S-3: live AGY adds conversation_id only to the DONE subagent update."""
+    """S-3: live AGY adds conversation_id only to the DONE subagent update.
+
+    Rewritten from the pre-fix expectation of a bare ``step_index`` id (D1):
+    ``conversation_id`` is now asserted in the DONE event's metadata instead
+    of as the correlation id.
+    """
     parser = AgyParser()
     lines = [
         '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"role":"research"}]}}}',
@@ -152,9 +178,10 @@ def test_agy_parser_regression_stream_json_subagent_step_index_correlates_result
     parsed = list(parser.parse(iter(lines)))
 
     assert [(line.type, line.metadata.get("tool_use_id")) for line in parsed] == [
-        ("tool_use", "6"),
-        ("tool_result", "6"),
+        ("tool_use", "6:0"),
+        ("tool_result", "6:0"),
     ]
+    assert parsed[1].metadata.get("conversation_id") == "subagent-1"
 
 
 def test_agy_parser_regression_stream_json_tool_step_index_correlates_result() -> None:
@@ -229,7 +256,7 @@ def test_unrecognized_stream_json_frame_surfaces_in_harness_output() -> None:
 
 
 def test_subagent_update_with_multiple_entries() -> None:
-    """P-5: Subagent update with 2 entries emits correlated events for both, empty list emits none.
+    """P-5 / DA-001: Subagent update with 2 entries emits correlated events for both, empty list emits none.
 
     DA-001: entries sharing one ``step_index`` still resolve to distinct
     ids and pair correctly across ACTIVE -> DONE, instead of the shared
@@ -238,20 +265,22 @@ def test_subagent_update_with_multiple_entries() -> None:
     """
     parser = AgyParser()
     lines = [
-        '{"event":"step_update","step_update":{"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"c1","role":"agent1"},{"conversation_id":"c2","role":"agent2"}]}}}',
-        '{"event":"step_update","step_update":{"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[]}}}',
+        '{"event":"step_update","step_update":{"step_index":3,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"c1","role":"agent1"},{"conversation_id":"c2","role":"agent2"}]}}}',
+        '{"event":"step_update","step_update":{"step_index":5,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[]}}}',
         '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"c3","role":"agent3"},{"conversation_id":"c4","role":"agent4"}]}}}',
         '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"DONE","subagent_info":{"subagents":[{"conversation_id":"c3","role":"agent3"},{"conversation_id":"c4","role":"agent4"}]}}}',
     ]
     parsed = list(parser.parse(iter(lines)))
     assert [(line.type, line.metadata.get("tool_use_id")) for line in parsed] == [
-        ("tool_use", "c1"),
-        ("tool_use", "c2"),
-        ("tool_use", "c3"),
-        ("tool_use", "c4"),
-        ("tool_result", "c3"),
-        ("tool_result", "c4"),
+        ("tool_use", "3:0"),
+        ("tool_use", "3:1"),
+        ("tool_use", "6:0"),
+        ("tool_use", "6:1"),
+        ("tool_result", "6:0"),
+        ("tool_result", "6:1"),
     ]
+    assert parsed[0].metadata.get("conversation_id") == "c1"
+    assert parsed[4].metadata.get("conversation_id") == "c3"
 
 
 def test_subagent_update_multiple_entries_without_ids_use_positional_fallback() -> None:
@@ -303,27 +332,225 @@ def test_agy_parser_coalesces_plain_text_output_format_transcript() -> None:
 
 
 def test_agy_wire_fixture_replay_yields_expected_event_sequence() -> None:
-    """Replay agy_wire.jsonl through AgyParser and assert normalized event sequence."""
-    parser = AgyParser()
-    lines = _AGY_WIRE_FIXTURE.read_text(encoding="utf-8").splitlines()
-    parsed = list(parser.parse(iter(lines)))
+    """Replay agy_wire.jsonl (mirrors the real agy_wire_tool.jsonl capture) through AgyParser."""
+    parsed = _replay(_AGY_WIRE_FIXTURE)
 
     types = [line.type for line in parsed]
     assert types == [
+        "lifecycle",
         "text",
         "tool_use",
         "tool_result",
         "tool_use",
-        "tool_use",
-        "tool_result",
         "tool_result",
         "text",
-        "error",
         "stop",
     ]
-    assert parsed[0].content == "I will create the todo list implementation.\n"
-    assert parsed[1].content == "createTodoList"
-    assert parsed[2].content == "File created at tmp/interactive-agy-smoke/todo-list.js."
-    assert parsed[7].content == "Writing smoke_test_result artifact.\n"
-    assert parsed[8].content == "quota"
+    assert parsed[0].content == ""
+    assert parsed[0].metadata.get("model") == "gemini-3.6-flash-low"
+    assert parsed[1].content == "I will create the file and read it back."
+    assert parsed[2].content == "write_to_file hello.txt"
+    assert parsed[3].content == "write_to_file hello.txt (0.065s)"
+    assert parsed[4].content == "view_file hello.txt"
+    assert parsed[5].content == "2 lines, 3 bytes"
+    assert parsed[6].content == "I have created the file and confirmed its contents."
+    assert parsed[7].type == "stop"
 
+
+# --- D1-D9 defect locks (Plan: Improve AGY parsing fidelity, S-2) ---------
+
+
+def test_d1_subagent_dispatch_and_result_ids_correlate() -> None:
+    """D1: the two subagent tool_use ids equal the two tool_result ids."""
+    parsed = _replay(_AGY_WIRE_SUBAGENT_FIXTURE)
+
+    subagent_use_ids = [
+        line.metadata.get("tool_use_id")
+        for line in parsed
+        if line.type == "tool_use" and line.metadata.get("tool") == "subagent"
+    ]
+    subagent_result_ids = [
+        line.metadata.get("tool_use_id")
+        for line in parsed
+        if line.type == "tool_result" and line.metadata.get("tool") == "subagent"
+    ]
+    assert len(subagent_use_ids) == 2
+    assert len(subagent_result_ids) == 2
+    assert subagent_use_ids == subagent_result_ids
+
+
+def test_d2_subagent_events_identify_their_subagent() -> None:
+    """D2: each subagent tool_use names its role and carries identifying metadata."""
+    parsed = _replay(_AGY_WIRE_SUBAGENT_FIXTURE)
+
+    active = [
+        line
+        for line in parsed
+        if line.type == "tool_use" and line.metadata.get("tool") == "subagent"
+    ]
+    done = [
+        line
+        for line in parsed
+        if line.type == "tool_result" and line.metadata.get("tool") == "subagent"
+    ]
+    assert [line.content for line in active] == ["Write File A", "Write File B"]
+    assert active[0].metadata.get("type_name") == "file_writer"
+    assert active[0].metadata.get("role") == "Write File A"
+    assert active[0].metadata.get("conversation_id") is None
+    assert done[0].metadata.get("conversation_id") == "00000000-0000-0000-0000-00000000000a"
+    assert done[1].metadata.get("conversation_id") == "00000000-0000-0000-0000-00000000000b"
+
+
+def test_d3_define_and_manage_subagent_stay_ordinary_tool_calls() -> None:
+    """D3: define_subagent / manage_subagents stay classified as tools, not subagent dispatches."""
+    parsed = _replay(_AGY_WIRE_SUBAGENT_FIXTURE)
+
+    tool_names = {
+        line.metadata.get("tool") for line in parsed if line.type == "tool_use"
+    }
+    assert "define_subagent" in tool_names
+    assert "invoke_subagent" in tool_names
+    assert "manage_subagents" in tool_names
+
+    subagent_dispatch_count = len(
+        [
+            line
+            for line in parsed
+            if line.type == "tool_use" and line.metadata.get("tool") == "subagent"
+        ]
+    )
+    assert subagent_dispatch_count == 2
+
+
+def test_d4_write_to_file_done_yields_nonempty_tool_result() -> None:
+    """D4: a completed write with no tool_info.output still yields non-empty content."""
+    parsed = _replay(_AGY_WIRE_TOOL_FIXTURE)
+
+    results = [
+        line
+        for line in parsed
+        if line.type == "tool_result" and line.metadata.get("tool") == "write_to_file"
+    ]
+    assert len(results) == 1
+    assert results[0].content != ""
+
+
+def test_d5_write_to_file_tool_use_surfaces_target_file_parameter() -> None:
+    """D5: write_to_file's tool_use surfaces the TargetFile parameter."""
+    parsed = _replay(_AGY_WIRE_TOOL_FIXTURE)
+
+    uses = [
+        line
+        for line in parsed
+        if line.type == "tool_use" and line.metadata.get("tool") == "write_to_file"
+    ]
+    assert len(uses) == 1
+    assert "hello.txt" in uses[0].content
+
+
+def test_d6_no_text_event_has_surrounding_whitespace_or_is_empty() -> None:
+    """D6: text events never carry leading/trailing whitespace or empty content."""
+    for fixture in (_AGY_WIRE_TOOL_FIXTURE, _AGY_WIRE_SUBAGENT_FIXTURE, _AGY_WIRE_TEXT_FIXTURE):
+        parsed = _replay(fixture)
+        for line in parsed:
+            if line.type == "text":
+                assert line.content == line.content.strip()
+                assert line.content != ""
+
+
+def test_d7_init_frame_yields_observable_lifecycle_event() -> None:
+    """D7: init is no longer discarded wholesale; model/cwd/tools/permission_mode are observable."""
+    parsed = _replay(_AGY_WIRE_TOOL_FIXTURE)
+
+    lifecycle_events = [line for line in parsed if line.type == "lifecycle"]
+    assert len(lifecycle_events) == 1
+    meta = lifecycle_events[0].metadata
+    assert meta.get("model") == "gemini-3.6-flash-low"
+    assert meta.get("cwd") == "/workspace"
+    assert meta.get("permission_mode") == "always-proceed"
+    assert "define_subagent" in meta.get("tools", [])
+
+
+def test_d8_result_metadata_lifts_fields_to_top_level() -> None:
+    """D8: status/num_turns/duration_seconds/usage reach the top level of stop's metadata."""
+    parsed = _replay(_AGY_WIRE_TOOL_FIXTURE)
+
+    stop_events = [line for line in parsed if line.type == "stop"]
+    assert len(stop_events) == 1
+    meta = stop_events[0].metadata
+    assert meta.get("status") == "SUCCESS"
+    assert meta.get("num_turns") == 1
+    assert meta.get("duration_seconds") == 3.58
+    assert meta.get("usage") == {
+        "input_tokens": 5609,
+        "output_tokens": 104,
+        "total_tokens": 5713,
+    }
+    # The nested copy is preserved for back-compat.
+    assert meta.get("result", {}).get("status") == "SUCCESS"
+
+
+def test_d8_agent_response_done_usage_reaches_text_event_metadata() -> None:
+    """D8 companion: usage on an agent_response DONE frame is not dropped.
+
+    This path returns early with ``metadata == {}`` today (before the fix):
+    the accumulator flush had no seam to carry the DONE frame's usage.
+    """
+    parsed = _replay(_AGY_WIRE_TOOL_FIXTURE)
+
+    text_events = [line for line in parsed if line.type == "text"]
+    assert text_events[-1].metadata.get("usage") == {
+        "input_tokens": 5609,
+        "output_tokens": 104,
+        "total_tokens": 5713,
+    }
+
+
+def test_d9_error_event_without_error_key_yields_error_type() -> None:
+    """D9: synthetic — payload shape unmeasured (AGY's EmitError frame was not captured live).
+
+    A frame shaped ``{"event":"error","message":...}`` has no ``error`` key,
+    so it previously fell through to the generic fallback and surfaced as
+    ``type='text'`` instead of ``type='error'``.
+    """
+    parser = AgyParser()
+    lines = ['{"event":"error","message":"boom"}']
+    parsed = list(parser.parse(iter(lines)))
+    assert [(line.type, line.content) for line in parsed] == [("error", "boom")]
+
+
+def test_d9_error_event_with_error_key_still_yields_error_type() -> None:
+    """D9 companion: synthetic — payload shape unmeasured.
+
+    Pins that ``NdjsonParserBase``'s pre-dispatch ``error``-key interception
+    is intended behaviour, not an accident this parser should route around.
+    """
+    parser = AgyParser()
+    lines = ['{"event":"error","error":{"message":"boom"}}']
+    parsed = list(parser.parse(iter(lines)))
+    assert [(line.type, line.content) for line in parsed] == [("error", "boom")]
+
+
+def test_sanity_user_input_unknown_checkpoint_steps_emit_no_events() -> None:
+    """Sanity: user_input / unknown / checkpoint steps emit no spurious events."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}',
+        '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"unknown"}}',
+        '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"checkpoint"}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    assert parsed == []
+
+
+def test_sanity_crlf_line_endings_parse_identically_to_lf() -> None:
+    """Sanity: PTY-captured \\r\\n endings parse identically to \\n."""
+    body = '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"hi"}}'
+    result_line = '{"event":"result","result":{"status":"SUCCESS"}}'
+
+    parsed_lf = list(AgyParser().parse(iter([body, result_line])))
+    parsed_crlf = list(AgyParser().parse(iter([body + "\r\n", result_line + "\r\n"])))
+
+    assert [(line.type, line.content) for line in parsed_lf] == [
+        (line.type, line.content) for line in parsed_crlf
+    ]

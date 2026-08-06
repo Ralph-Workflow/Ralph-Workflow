@@ -185,7 +185,8 @@ def test_subagent_smoke_evidence_reports_first_missing_signal(
     assert smoke_plumbing_module._subagent_smoke_error(evidence) == expected_error
 
 
-def test_subagent_smoke_evidence_rejects_duplicate_dispatches() -> None:
+def test_subagent_smoke_evidence_rejects_dispatch_without_correlated_result() -> None:
+    """S-4: two real dispatches are valid; one still needs its own correlated result."""
     config = AgentConfig(
         cmd="claude",
         json_parser=JsonParserType.CLAUDE,
@@ -203,8 +204,9 @@ def test_subagent_smoke_evidence_rejects_duplicate_dispatches() -> None:
 
     evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
 
+    assert evidence.dispatch_count == 2
     assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
-        "expected exactly one subagent dispatch, observed 2"
+        "not every subagent dispatch has a correlated result"
     )
 
 
@@ -214,9 +216,9 @@ def test_subagent_smoke_evidence_collapses_streamed_opencode_task() -> None:
     OpenCode may emit an intermediate (non-completed) tool state before the
     terminal one, and for a completed tool the parser now surfaces both the
     dispatch and the result. Counting raw ``tool_use`` events would see the same
-    ``callID`` twice and reject a genuine single subagent with "expected exactly
-    one subagent dispatch, observed 2". Dispatches are counted by distinct call
-    ID, so a streamed call collapses to one.
+    ``callID`` twice and misreport a genuine single subagent as two dispatches.
+    Dispatches are counted by distinct call ID, so a streamed call collapses to
+    one.
     """
     config = AgentConfig(
         cmd="opencode",
@@ -819,7 +821,7 @@ def _fake_execute_agent_effect_for_config(
                 '{"type":"tool_use","id":"toolu_write","name":"Write",'
                 '"input":{}}]}}',
             ),
-            "expected exactly one subagent dispatch, observed 2",
+            "not every subagent dispatch has a correlated result",
         ),
     ],
 )
@@ -857,7 +859,7 @@ def test_run_smoke_plumbing_enforces_ordered_subagent_lifecycle(
         "subagent dispatch was not observed",
         "subagent result was not observed",
         "no meaningful activity was observed after the subagent result",
-        "expected exactly one subagent dispatch, observed 2",
+        "not every subagent dispatch has a correlated result",
     }
     observed_lifecycle_errors = lifecycle_errors.intersection(result.errors)
     assert observed_lifecycle_errors == ({expected_error} if expected_error else set())

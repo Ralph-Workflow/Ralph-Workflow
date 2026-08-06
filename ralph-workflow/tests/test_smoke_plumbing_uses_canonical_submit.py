@@ -14,6 +14,7 @@ neither the receipt nor a transcript marker is sufficient on its own.
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -33,12 +34,11 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunParams,
     _build_smoke_prompt,
     _run_smoke_agent,
+    _subagent_smoke_evidence,
 )
 from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from _pytest.monkeypatch import MonkeyPatch
 
 pytestmark = pytest.mark.smoke
@@ -610,3 +610,29 @@ def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence
     assert "smoke_test_result artifact was not submitted" in result.errors, (
         f"Expected 'smoke_test_result artifact was not submitted' in errors, got: {result.errors}"
     )
+
+
+def test_subagent_smoke_evidence_replays_live_multi_subagent_capture() -> None:
+    """S-4: replay agy_wire_subagent.jsonl and assert dispatch/result counts match.
+
+    The measured live capture dispatches exactly two real subagents via
+    ``define_subagent`` + ``invoke_subagent`` (ordinary tool calls, correctly
+    excluded from the subagent count per D3) and monitors them via
+    ``manage_subagents`` (also excluded). Prior to the S-3/S-4 fixes this
+    fixture replayed as ``dispatch_count=3`` through the old
+    ``_subagent_smoke_evidence`` (the pre-fix parser normalized
+    ``define_subagent`` to ``subagent``, inflating the count).
+    """
+    fixture = Path(__file__).parent / "display" / "_fixtures" / "agy_wire_subagent.jsonl"
+    lines = fixture.read_text(encoding="utf-8").splitlines()
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    evidence = _subagent_smoke_evidence(config, lines)
+
+    assert evidence.dispatch_count == 2, (
+        f"expected exactly the two real subagent dispatches (define_subagent / "
+        f"manage_subagents excluded), got {evidence.dispatch_count}"
+    )
+    assert evidence.dispatch_seen is True
+    assert evidence.result_seen is True
+    assert evidence.post_result_activity_seen is True

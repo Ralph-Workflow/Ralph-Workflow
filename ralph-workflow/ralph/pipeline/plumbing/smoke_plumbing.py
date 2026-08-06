@@ -360,64 +360,80 @@ def _subagent_smoke_evidence(
     config: AgentConfig,
     lines: list[str],
 ) -> SubagentSmokeEvidence:
-    """Return ordered, parser-derived evidence for the subagent smoke scenario."""
+    """Return ordered, parser-derived evidence for the subagent smoke scenario.
+
+    Plan (Improve AGY parsing fidelity, S-4): the contract is relaxed from
+    "exactly one dispatch" to "at least one dispatch, each with a correlated
+    result". A real multi-subagent AGY run dispatches more than one subagent
+    in a single frame (and the AGY parser correctly classifies
+    ``define_subagent`` / ``manage_subagents`` as ordinary tool calls, not
+    subagent dispatches, so they no longer inflate this count) -- the
+    previous "== 1" rule made a real two-subagent run report ``no`` on every
+    transport, not just AGY.
+
+    Dispatches are counted by DISTINCT call id, not by raw tool_use events.
+    OpenCode may stream a running state then a completed state for the same
+    call, and a completed tool now surfaces both a dispatch and a result --
+    both carry the same callID, so counting raw events would see one
+    subagent twice. Id-less dispatches (a parser that exposes no id) cannot
+    be de-duplicated or correlated by id, so they are tracked by count only.
+    """
     parser = get_parser(_parser_key_for_config(config))
-    # Count dispatches by DISTINCT call id, not by raw tool_use events. OpenCode
-    # may stream a running state then a completed state for the same call, and a
-    # completed tool now surfaces both a dispatch and a result -- both carry the
-    # same callID. Counting raw events would see one subagent twice and reject
-    # it as "observed 2". Two genuinely distinct dispatches still carry distinct
-    # ids and are still rejected. Id-less dispatches (a parser that exposes no
-    # id) cannot be de-duplicated, so each is counted, preserving the prior
-    # behaviour for those transports.
-    distinct_dispatch_ids: set[str] = set()
+    dispatch_ids: set[str] = set()
     idless_dispatch_count = 0
-    first_dispatch_seen = False
-    first_dispatch_id: str | None = None
-    result_seen = False
+    resulted_ids: set[str] = set()
+    idless_result_count = 0
+    any_result_seen = False
     post_result_activity_seen = False
     for parsed in parser.parse(iter(lines)):
         metadata = parsed.metadata or {}
         tool_name = _normalized_tool_name(metadata)
         if parsed.type == "tool_use" and tool_name in _SUBAGENT_TOOL_NAMES:
             tool_id = _tool_use_id(metadata)
-            if not first_dispatch_seen:
-                first_dispatch_seen = True
-                first_dispatch_id = tool_id
             if tool_id is None:
                 idless_dispatch_count += 1
             else:
-                distinct_dispatch_ids.add(tool_id)
+                dispatch_ids.add(tool_id)
             continue
-        running_dispatch_total = len(distinct_dispatch_ids) + idless_dispatch_count
-        if (
-            running_dispatch_total == 1
-            and not result_seen
-            and parsed.type == "tool_result"
-            and tool_name in _SUBAGENT_TOOL_NAMES
-        ):
+        if parsed.type == "tool_result" and tool_name in _SUBAGENT_TOOL_NAMES:
             result_id = _tool_use_id(metadata)
-            if (first_dispatch_id is None and result_id is None) or first_dispatch_id == result_id:
-                result_seen = True
+            if result_id is None:
+                idless_result_count += 1
+            else:
+                resulted_ids.add(result_id)
+            any_result_seen = True
             continue
-        if result_seen and parsed.type in {"text", "thinking", "tool_use"}:
+        if any_result_seen and parsed.type in {"text", "thinking", "tool_use"}:
             post_result_activity_seen = True
-    dispatch_count = len(distinct_dispatch_ids) + idless_dispatch_count
+    dispatch_count = len(dispatch_ids) + idless_dispatch_count
+    # Every id-bearing dispatch must have received its own correlated result;
+    # id-less dispatches (a parser exposing no id) can only be checked by count.
+    all_dispatches_resulted = dispatch_ids.issubset(resulted_ids) and (
+        idless_result_count >= idless_dispatch_count
+    )
     return SubagentSmokeEvidence(
         dispatch_count=dispatch_count,
         dispatch_seen=dispatch_count > 0,
-        result_seen=result_seen,
+        result_seen=dispatch_count > 0 and all_dispatches_resulted,
         post_result_activity_seen=post_result_activity_seen,
     )
 
 
 def _subagent_smoke_error(evidence: SubagentSmokeEvidence) -> str | None:
-    """Return the first missing ordered subagent signal, if any."""
+    """Return the first missing ordered subagent signal, if any.
+
+    S-4: relaxed from "exactly one dispatch" to "at least one dispatch, each
+    with a correlated result". A single dispatch whose result id does not
+    match keeps the original generic message (no result frame correlated to
+    the one dispatch observed); two-or-more dispatches where at least one
+    lacks its own correlated result get a distinct message naming the new
+    contract, so the two failure shapes remain distinguishable in reports.
+    """
     if not evidence.dispatch_seen:
         return "subagent dispatch was not observed"
-    if evidence.dispatch_count != 1:
-        return f"expected exactly one subagent dispatch, observed {evidence.dispatch_count}"
     if not evidence.result_seen:
+        if evidence.dispatch_count > 1:
+            return "not every subagent dispatch has a correlated result"
         return "subagent result was not observed"
     if not evidence.post_result_activity_seen:
         return "no meaningful activity was observed after the subagent result"

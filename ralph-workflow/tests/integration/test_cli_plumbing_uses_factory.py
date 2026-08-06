@@ -299,7 +299,8 @@ def test_smoke_report_surfaces_ordered_subagent_evidence(tmp_path: Path) -> None
     assert "post-subagent activity observed" in report
 
 
-def test_smoke_table_subagent_status_rejects_duplicate_dispatches(tmp_path: Path) -> None:
+def test_smoke_table_subagent_status_accepts_two_correlated_dispatches(tmp_path: Path) -> None:
+    """S-4: two dispatches, each with its own correlated result, report 'yes'."""
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",
         transport="claude_interactive",
@@ -312,11 +313,38 @@ def test_smoke_table_subagent_status_rejects_duplicate_dispatches(tmp_path: Path
         tool_activity_seen=True,
         artifact_submitted=True,
         meaningful_output_lines=["tool_use: Agent", "tool_result: done"],
-        errors=["expected exactly one subagent dispatch, observed 2"],
+        errors=[],
         subagents_requested=True,
         subagent_dispatch_count=2,
         subagent_dispatch_seen=True,
         subagent_result_seen=True,
+        post_subagent_activity_seen=True,
+    )
+
+    assert smoke_module._subagent_status(result) == "yes"
+
+
+def test_smoke_table_subagent_status_rejects_dispatch_without_correlated_result(
+    tmp_path: Path,
+) -> None:
+    """S-4: two dispatches where at least one lacks its own correlated result report 'no'."""
+    result = smoke_module.SmokeRunResult(
+        agent_name="claude/haiku",
+        transport="claude_interactive",
+        output_file=tmp_path / "tmp" / "todo-list.js",
+        file_created=True,
+        session_id="sess-1",
+        explicit_completion_seen=True,
+        raw_line_count=5,
+        parsed_event_count=5,
+        tool_activity_seen=True,
+        artifact_submitted=True,
+        meaningful_output_lines=["tool_use: Agent", "tool_result: done"],
+        errors=["not every subagent dispatch has a correlated result"],
+        subagents_requested=True,
+        subagent_dispatch_count=2,
+        subagent_dispatch_seen=True,
+        subagent_result_seen=False,
         post_subagent_activity_seen=True,
     )
 

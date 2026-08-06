@@ -61,6 +61,18 @@ def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
                         parent_exit_grace_seconds=0.0,
                     ),
                     completion_run_id="agy",
+                    # Isolate from the real, shared, host-global
+                    # ~/.gemini/antigravity-cli/cli.log: agy_empty_output_reason's
+                    # fallback reads that ambient file when no path is injected and
+                    # the (here, empty) bounded output gives it no other evidence.
+                    # A live AGY invocation elsewhere on this host can append a line
+                    # matching one of the diagnostic patterns (e.g. the print-mode
+                    # timeout symptom, which the CLI logs even for an otherwise
+                    # unrelated process), changing the raised message and, with it,
+                    # this test's retry-vs-no-retry outcome. Point at a nonexistent
+                    # path scoped to tmp_path so this test's result depends only on
+                    # what THIS test controls.
+                    agy_cli_log_path=tmp_path / "cli.log",
                 ),
             )
 

@@ -1,0 +1,5 @@
+{"event":"init","conversation_id":"00000000-0000-0000-0000-000000000001","init":{"model":"gemini-3.6-flash-low","cwd":"/workspace","tools":["ask_permission","read_file","write_to_file","view_file","define_subagent","invoke_subagent","manage_subagents"],"permission_mode":"always-proceed"}}
+{"event":"step_update","step_update":{"conversation_id":"00000000-0000-0000-0000-000000000001","step_index":0,"state":"DONE","step_type":"user_input"}}
+{"event":"step_update","step_update":{"conversation_id":"00000000-0000-0000-0000-000000000001","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"OK"}}
+{"event":"step_update","step_update":{"conversation_id":"00000000-0000-0000-0000-000000000001","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"","usage":{"input_tokens":120,"output_tokens":3,"total_tokens":123}}}
+{"event":"result","result":{"conversation_id":"00000000-0000-0000-0000-000000000001","status":"SUCCESS","response":"OK","duration_seconds":1.2,"num_turns":1,"usage":{"input_tokens":120,"output_tokens":3,"total_tokens":123}}}
