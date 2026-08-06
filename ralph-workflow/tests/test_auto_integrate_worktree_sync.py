@@ -11,6 +11,7 @@ proofs.
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,38 @@ def _config(target: str) -> UnifiedConfig:
 
 def _add_worktree(repo_root: Path, path: Path, branch: str) -> None:
     assert _run(repo_root, "worktree", "add", "-b", branch, str(path)).returncode == 0
+
+
+def test_reclaim_regression_snapshot_failure_restores_the_original_index(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/AC-7: a failed snapshot leaves tracked, staged, and untracked state intact."""
+    main = _base_branch(tmp_git_repo)
+    tracked = tmp_git_repo / "tracked.txt"
+    _commit(tmp_git_repo, tracked.name, "base\n", "seed tracked file")
+    tracked.write_text("unstaged\n", encoding="utf-8")
+    assert _run(tmp_git_repo, "add", tracked.name).returncode == 0
+    tracked.write_text("staged plus unstaged\n", encoding="utf-8")
+    untracked = tmp_git_repo / "untracked.txt"
+    untracked.write_text("untracked\n", encoding="utf-8")
+    before_status = _run(tmp_git_repo, "status", "--porcelain=v1", "-z").stdout
+    before_cached = _run(tmp_git_repo, "diff", "--cached", "--binary").stdout
+    reclaim_module = importlib.import_module("ralph.pipeline._auto_integrate_reclaim")
+    original_run_git = reclaim_module.run_git
+
+    def fail_commit(args: tuple[str, ...], **kwargs: object) -> object:
+        if kwargs.get("label") == "auto-integrate:reclaim-commit":
+            return subprocess.CompletedProcess(args, 1, "", "injected failure")
+        return original_run_git(args, **kwargs)
+
+    monkeypatch.setattr(reclaim_module, "run_git", fail_commit)
+
+    assert reclaim_module.reclaim_dirty_target_worktree(tmp_git_repo, main) is None
+    assert _run(tmp_git_repo, "status", "--porcelain=v1", "-z").stdout == before_status
+    assert _run(tmp_git_repo, "diff", "--cached", "--binary").stdout == before_cached
+    assert tracked.read_text(encoding="utf-8") == "staged plus unstaged\n"
+    assert untracked.read_text(encoding="utf-8") == "untracked\n"
 
 
 def test_dirty_checked_out_target_snapshots_then_lands(

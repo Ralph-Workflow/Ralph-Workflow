@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -53,10 +54,19 @@ def reclaim_dirty_target_worktree(worktree: Path, target: str) -> str | None:
 
 
 def _create_snapshot(worktree: Path, target: str) -> str | None:
+    """Create a reclaim ref without leaving the owner's index staged on failure."""
+    staged = run_git(
+        ("diff", "--cached", "--binary", "--full-index"),
+        cwd=worktree,
+        label="auto-integrate:reclaim-save-index",
+    )
+    if staged.returncode != 0:
+        return None
     if run_git(("add", "-A"), cwd=worktree, label="auto-integrate:reclaim-stage").returncode != 0:
         return None
     tree = run_git(("write-tree",), cwd=worktree, label="auto-integrate:reclaim-write-tree")
     if tree.returncode != 0 or not (tree_sha := tree.stdout.strip()):
+        _restore_index(worktree, staged.stdout)
         return None
     commit = run_git(
         (*COMMIT_PIN_CONFIG_ARGS, "commit-tree", tree_sha, "-p", "HEAD", "-m", "ralph reclaim snapshot"),
@@ -64,6 +74,7 @@ def _create_snapshot(worktree: Path, target: str) -> str | None:
         label="auto-integrate:reclaim-commit",
     )
     if commit.returncode != 0 or not (snapshot_sha := commit.stdout.strip()):
+        _restore_index(worktree, staged.stdout)
         return None
     snapshot_ref = (
         f"refs/ralph-reclaim/{target}/"
@@ -72,7 +83,26 @@ def _create_snapshot(worktree: Path, target: str) -> str | None:
     result = run_git(
         ("update-ref", snapshot_ref, snapshot_sha), cwd=worktree, label="auto-integrate:reclaim-ref"
     )
-    return snapshot_ref if result.returncode == 0 else None
+    if result.returncode != 0:
+        _restore_index(worktree, staged.stdout)
+        return None
+    return snapshot_ref
+
+
+def _restore_index(worktree: Path, staged_patch: str) -> None:
+    """Restore the pre-snapshot index while preserving working-tree bytes."""
+    if run_git(("read-tree", "HEAD"), cwd=worktree, label="auto-integrate:reclaim-restore-index").returncode != 0:
+        return
+    if not staged_patch:
+        return
+    with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".patch") as patch:
+        patch.write(staged_patch)
+        patch.flush()
+        run_git(
+            ("apply", "--cached", "--binary", patch.name),
+            cwd=worktree,
+            label="auto-integrate:reclaim-restore-staged",
+        )
 
 
 def _discard_dirty_state(worktree: Path) -> bool:
