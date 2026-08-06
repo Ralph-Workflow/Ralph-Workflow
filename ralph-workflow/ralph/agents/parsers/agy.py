@@ -58,14 +58,27 @@ def _tool_updates(step: dict[str, object]) -> list[tuple[str, dict[str, object],
         return []
     info = cast("dict[str, object]", raw_info)
     if step_type == "subagent":
-        subagents = info.get("subagents")
-        if isinstance(subagents, list):
+        raw_subagents = info.get("subagents")
+        if isinstance(raw_subagents, list):
+            subagents = cast("list[object]", raw_subagents)
+            step_index = step.get("step_index")
+            multi = len(subagents) > 1
             results: list[tuple[str, dict[str, object], object]] = []
-            for sub in subagents:
+            for position, sub in enumerate(subagents):
                 if isinstance(sub, dict):
                     details = cast("dict[str, object]", sub)
-                    cid = step.get("step_index") or details.get("conversation_id") or details.get("id")
-                    results.append(("subagent", info, cid))
+                    entry_id = details.get("conversation_id") or details.get("id")
+                    # A shared step_index correlates ACTIVE -> DONE reliably
+                    # when there is exactly one subagent per frame (the id may
+                    # only appear on the DONE update); with multiple subagents
+                    # in one frame, step_index alone collapses every entry
+                    # onto the same id, so prefer each entry's own identity
+                    # and fall back to a step_index + position composite.
+                    if multi:
+                        cid = entry_id or f"{step_index}:{position}"
+                    else:
+                        cid = step_index or entry_id
+                    results.append(("subagent", details, cid))
             return results
         return []
     tool_name = info.get("name")

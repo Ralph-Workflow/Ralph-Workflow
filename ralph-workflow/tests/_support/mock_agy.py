@@ -149,7 +149,6 @@ def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
     """Emit output based on output_format (stream-json, json, or text)."""
     if output_format == "text":
         print("I will create the todo list implementation.")
-        print("[plain] tool: createTodoList")
         if os.environ.get("MOCK_AGY_SUBAGENT") == "1":
             print("[subagent] Inspect two edge cases.")
         print("Writing smoke_test_result artifact.")

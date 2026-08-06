@@ -331,10 +331,16 @@ def test_mock_v1_1_10_flags_accepted(
 def test_mock_output_format_text_emits_plain_text(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """The mock emits plain text transcript when --output-format text is passed."""
+    """The mock emits plain text transcript when --output-format text is passed.
+
+    DA-004: the text branch must emit only plain model prose that a
+    recorded probe supports — not Ralph's own ``[plain] tool:`` marker,
+    which is a GenericParser convention (``_tool_call_extraction.py``)
+    that real AGY plain-text output never produces.
+    """
     result = mock_agy_batch["output_format_text"]
     assert result.returncode == 0
     assert "I will create the todo list implementation." in result.stdout
-    assert "[plain] tool: createTodoList" in result.stdout
+    assert "[plain] tool:" not in result.stdout
     assert "Writing smoke_test_result artifact." in result.stdout
 

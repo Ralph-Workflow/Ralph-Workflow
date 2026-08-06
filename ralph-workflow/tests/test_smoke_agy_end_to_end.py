@@ -50,10 +50,11 @@ def _run_fresh_agy_smoke(
     The mock binary is the always-green contract proof: it writes the
     ``tmp/interactive-agy-smoke/todo-list.js`` file, the fallback
     ``.agent/tmp/smoke_test_result.md`` Markdown artifact (which the
-    harness promotes to the canonical
-    canonical output lines (including step_update stream-json events that
-    AgyParser classifies as tool_use and tool_result so the authoritative
-    tool-activity signal is present in the transcript).
+    harness promotes to the canonical ``.agent/artifacts/smoke_test_result.md``
+    plus a receipt), and emits the canonical output lines (including
+    step_update stream-json events that AgyParser classifies as tool_use
+    and tool_result so the authoritative tool-activity signal is present
+    in the transcript).
     Returns the combined stdout + stderr (the smoke harness routes its
     log lines through loguru which defaults to stderr, so the report
     must be assembled from both streams).

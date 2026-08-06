@@ -229,16 +229,41 @@ def test_unrecognized_stream_json_frame_surfaces_in_harness_output() -> None:
 
 
 def test_subagent_update_with_multiple_entries() -> None:
-    """P-5: Subagent update with 2 entries emits correlated events for both, empty list emits none."""
+    """P-5: Subagent update with 2 entries emits correlated events for both, empty list emits none.
+
+    DA-001: entries sharing one ``step_index`` still resolve to distinct
+    ids and pair correctly across ACTIVE -> DONE, instead of the shared
+    ``step_index`` collapsing every entry onto the same id and dropping
+    all but the first ``tool_use`` at the dedup guard.
+    """
     parser = AgyParser()
     lines = [
         '{"event":"step_update","step_update":{"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"c1","role":"agent1"},{"conversation_id":"c2","role":"agent2"}]}}}',
         '{"event":"step_update","step_update":{"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[]}}}',
+        '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"c3","role":"agent3"},{"conversation_id":"c4","role":"agent4"}]}}}',
+        '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"DONE","subagent_info":{"subagents":[{"conversation_id":"c3","role":"agent3"},{"conversation_id":"c4","role":"agent4"}]}}}',
     ]
     parsed = list(parser.parse(iter(lines)))
     assert [(line.type, line.metadata.get("tool_use_id")) for line in parsed] == [
         ("tool_use", "c1"),
         ("tool_use", "c2"),
+        ("tool_use", "c3"),
+        ("tool_use", "c4"),
+        ("tool_result", "c3"),
+        ("tool_result", "c4"),
+    ]
+
+
+def test_subagent_update_multiple_entries_without_ids_use_positional_fallback() -> None:
+    """DA-001: entries with no conversation_id/id fall back to a step_index + position id."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":9,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"role":"agent1"},{"role":"agent2"}]}}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    assert [(line.type, line.metadata.get("tool_use_id")) for line in parsed] == [
+        ("tool_use", "9:0"),
+        ("tool_use", "9:1"),
     ]
 
 
@@ -252,6 +277,29 @@ def test_text_delta_normalizes_vt_text() -> None:
     assert len(parsed) == 1
     assert parsed[0].type == "text"
     assert parsed[0].content == "red text"
+
+
+def test_agy_parser_coalesces_plain_text_output_format_transcript() -> None:
+    """DA-004: the ``--output-format text`` mock transcript coalesces into one text event.
+
+    Proves the plain-text path end to end (P-7): the mock's two prose lines
+    (with the fabricated ``[plain] tool:`` marker removed — see DA-004) are
+    exactly what a real AGY ``--output-format text`` transcript would look
+    like, and AgyParser must coalesce them into a single ``type='text'``
+    event rather than any tool classification.
+    """
+    parser = AgyParser()
+    lines = [
+        "I will create the todo list implementation.",
+        "Writing smoke_test_result artifact.",
+    ]
+    parsed = list(parser.parse(iter(lines)))
+
+    assert len(parsed) == 1
+    assert parsed[0].type == "text"
+    assert parsed[0].content == (
+        "I will create the todo list implementation.\nWriting smoke_test_result artifact."
+    )
 
 
 def test_agy_wire_fixture_replay_yields_expected_event_sequence() -> None:
