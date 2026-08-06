@@ -13,6 +13,8 @@ Missing or inconsistent required structure blocks submission with a line- and st
 
 ## Example
 
+See the complete validator-backed example at `.agent/artifact-formats/examples/plan.md`.
+
 ```markdown
 ---
 type: plan

@@ -11,7 +11,7 @@ Type: file_create
 Files:
 - create tests/auth/test_refresh_race.py
 Verify: pytest tests/auth/test_refresh_race.py -q
-Expect: the focused regression initially demonstrates the same-key refresh race
+Expect: pytest reports one failing same-key refresh test with exit code 1
 
 ### [S-2] Serialize refreshes per token key
 Guard the check-then-refresh critical section with a bounded per-key lock lifecycle.

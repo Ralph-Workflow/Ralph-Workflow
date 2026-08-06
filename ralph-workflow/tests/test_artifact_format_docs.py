@@ -259,21 +259,21 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
         )
 
 
-def test_plan_doc_teaches_concise_advisory_contract() -> None:
+def test_plan_doc_teaches_mandatory_executor_ready_contract() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for phrase in (
-        "`PLAN001` is the sole error",
-        "Warnings and info never make a plan invalid",
-        "Validation Overrides",
-        "Orient, Characterize current behavior, Change, and Verify",
+        "Every active plan uses stable `### [S-n] Title` steps",
+        "Work steps require `Files`, a concrete `Verify`, and an observable `Expect`.",
+        "`schema_version` and `## Validation Overrides` are unsupported",
+        "Orient, Characterize, Change, and Verify",
         "ralph_edit_md_artifact",
-        "wholesale rewrite",
+        ".agent/artifact-formats/examples/plan.md",
     ):
         assert phrase in doc
     assert doc.count("```markdown") == 1
-    assert "Hard contract" not in doc
-    assert "Required sections:" not in doc
+    assert "`PLAN001` is the sole error" not in doc
+    assert "Warnings and info never make a plan invalid" not in doc
 
 
 @pytest.mark.parametrize(

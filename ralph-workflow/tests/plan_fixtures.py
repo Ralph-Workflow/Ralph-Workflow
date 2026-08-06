@@ -18,7 +18,6 @@ DEFAULT_SKILLS_MCP: dict[str, object] = {
 MINIMAL_PLAN_MARKDOWN = """\
 ---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Test plan.
@@ -43,6 +42,8 @@ Make the scoped change.
 Type: file_change
 Files:
 - modify src/example.py
+Verify: pytest -q
+Expect: the repository test suite passes with exit code 0
 
 ### [S-2] Verify the requested change
 Run the focused tests.

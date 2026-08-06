@@ -82,7 +82,6 @@ status: completed
 PLAN = """\
 ---
 type: plan
-schema_version: 1
 ---
 
 ## Summary
@@ -111,6 +110,8 @@ Type: file_change
 Files:
 - modify tests/test_canonical_artifact_submit.py
 Satisfies: AC-01
+Verify: pytest tests/test_canonical_artifact_submit.py -q
+Expect: the focused canonical submission tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] tests/test_canonical_artifact_submit.py

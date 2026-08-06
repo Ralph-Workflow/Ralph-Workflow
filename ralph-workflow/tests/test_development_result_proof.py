@@ -52,7 +52,6 @@ def _write_plan_steps(workspace: MemoryWorkspace) -> None:
         ".agent/artifacts/plan.md",
         """---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Test context.
@@ -79,6 +78,8 @@ Do the work.
 Type: file_change
 Files:
 - modify src/main.py
+Verify: pytest -q
+Expect: the repository test suite passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/main.py
@@ -108,7 +109,7 @@ status: request_changes
 - [SUM-1] Issues found.
 
 ## What Came Up Short
-- [FIX-1] Missing test.
+- [FIX-1] Plan-level: Missing test.
 
 ## How To Fix
 - [FIX-1] Add test for edge case.
@@ -134,7 +135,8 @@ def _write_nested_work_unit_plan(workspace: MemoryWorkspace) -> None:
 ### [S-{number}] Implement {name}
 Change the {name} component.
 
-Type: action
+Type: discovery
+Location: src/example.py
 """
         )
     workspace.write(
@@ -156,7 +158,8 @@ type: plan
 ### [S-1] Implement API
 Change the API component.
 
-Type: action
+Type: discovery
+Location: src/api/routes.py
 
 ## Work Units
 - [web] Implement the web unit
@@ -165,14 +168,16 @@ Type: action
 ### [S-2] Implement web
 Change the web component.
 
-Type: action
+Type: discovery
+Location: src/web/client.py
 
 ## Integration and Verification
 
 ### [S-3] Integrate and verify
 Integrate both unit results in the main session.
 
-Type: action
+Type: discovery
+Location: reports/integration-proof.json
 Depends on: S-1, S-2
 """,
     )
@@ -191,7 +196,8 @@ type: plan
 ### [S-1] Implement API
 Change the API component.
 
-Type: action
+Type: discovery
+Location: reports/api-proof.json
 
 - [AC-01] The API report proves completion
   Satisfied by: S-1
@@ -215,6 +221,8 @@ Implement the API.
 Type: file_change
 Files:
 - modify src/api/main.py
+Verify: pytest tests/api -q
+Expect: the API tests pass with exit code 0
 
 ### [S-2] Test the API
 Cover the API behavior.
@@ -222,6 +230,8 @@ Cover the API behavior.
 Type: file_change
 Files:
 - modify src/api/test_main.py
+Verify: pytest tests/api -q
+Expect: the API tests pass with exit code 0
 
 ## UI Subplan
 
@@ -231,6 +241,8 @@ Implement the UI.
 Type: file_change
 Files:
 - modify src/ui/main.py
+Verify: pytest tests/ui -q
+Expect: the UI tests pass with exit code 0
 """,
     )
 

@@ -9,7 +9,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [PR-1] verification-policy.md declares `make verify-all`, but that target does not exist.
+- [PR-1] Plan-level: verification-policy.md declares `make verify-all`, but that target does not exist.
 
 ## How To Fix
 

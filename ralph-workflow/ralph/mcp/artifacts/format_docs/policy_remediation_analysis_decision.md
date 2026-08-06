@@ -45,8 +45,8 @@ status: request_changes
 
 ## What Came Up Short
 
-- [PR-1] verification-policy.md declares 'make verify-all' but no such target exists.
-- [PR-2] scripts/check.sh invokes 'shellcheck --strict', which is not a real flag.
+- [PR-1] Plan-level: verification-policy.md declares 'make verify-all' but no such target exists.
+- [PR-2] Plan-level: scripts/check.sh invokes 'shellcheck --strict', which is not a real flag.
 
 ## How To Fix
 

@@ -9,8 +9,8 @@ status: request_changes
 
 ## What Came Up Short
 
-- [PA-001] No step exercises the exception path (backend write failure during refresh), yet the risk section names lock leakage on failure as the top risk.
-- [PA-002] Verification V-2 says "auth module passes" without a concrete expected outcome (test count or named test), so a partially-run suite would look identical to success.
+- [PA-001] Step: [S-2] does not exercise the exception path (backend write failure during refresh), yet the risk section names lock leakage on failure as the top risk.
+- [PA-002] Step: [S-3] says "auth module passes" without a concrete expected outcome (test count or named test), so a partially-run suite would look identical to success.
 
 ## How To Fix
 
