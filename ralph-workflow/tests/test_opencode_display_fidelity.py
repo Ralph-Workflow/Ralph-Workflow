@@ -343,3 +343,188 @@ def test_opencode_wire_fixture_is_loadable_json() -> None:
     ):
         json.loads(raw)  # raises ValueError if malformed
         assert line_number >= 1
+
+
+# ---------------------------------------------------------------------------
+# DA-002 regression: the live-captured fixture must drive the parser to
+# produce preview envelopes for all three display surfaces.
+# ---------------------------------------------------------------------------
+
+
+def test_captured_fixture_drives_all_three_display_surfaces() -> None:
+    """The captured read/write/edit fixture must exercise syntax, file, and diff surfaces.
+
+    DA-002 (wt-05-fix-opencode-parsing): the prior committed
+    fixture only carried bash tool calls (no read/write/edit
+    operations), so the parser-vs-display seam was not actually
+    exercised for the three display surfaces. The new captured
+    fixture replaces that with a real 1.18.14 read/write/edit
+    sequence. This test pins the contract: every captured
+    read/write/edit tool_use must produce a non-None
+    ``payload_from_tool_event`` envelope, and the captured
+    envelope's operation must route to the right catalog surface
+    (read -> file_preview, write -> syntax_preview, edit ->
+    diff_preview).
+    """
+    from tests.test_opencode_captured_wire import _FIXTURE_PATH
+
+    fixture_lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+    parser = OpenCodeParser()
+    parsed = _parse(parser, iter(fixture_lines))
+
+    operations_seen: set[str] = set()
+    for line in parsed:
+        if line.type != "tool_use":
+            continue
+        meta = line.metadata or {}
+        assert "tool" in meta, (
+            f"Tool envelope missing canonical name for {line.content!r}"
+        )
+        payload = payload_from_tool_event(line.content, meta)
+        assert payload is not None, (
+            f"payload_from_tool_event returned None for "
+            f"{line.content!r}; the captured fixture must produce a "
+            f"recognized envelope for every tool_use frame"
+        )
+        operations_seen.add(payload.operation)
+
+    # DA-002's smoking gun: the captured fixture must exercise all
+    # three display surfaces (read -> file_preview, write ->
+    # syntax_preview, edit -> diff_preview).
+    assert "read" in operations_seen, (
+        f"Captured fixture missing read operation; saw "
+        f"{sorted(operations_seen)}"
+    )
+    assert "write" in operations_seen, (
+        f"Captured fixture missing write operation; saw "
+        f"{sorted(operations_seen)}"
+    )
+    assert "replace" in operations_seen, (
+        f"Captured fixture missing edit (replace) operation; saw "
+        f"{sorted(operations_seen)}"
+    )
+
+
+def test_captured_fixture_write_envelope_has_syntax_content() -> None:
+    """The captured write tool_use must surface syntax-preview content.
+
+    Pins that the parser's ``metadata["input"]`` carries the
+    write tool's file content -- the smoking gun for the original
+    DA-002 defect was an empty content string the display layer
+    rendered as a one-line blank.
+    """
+    from tests.test_opencode_captured_wire import _FIXTURE_PATH
+
+    fixture_lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+    parser = OpenCodeParser()
+    parsed = _parse(parser, iter(fixture_lines))
+
+    write_tool_uses = [
+        line for line in parsed
+        if line.type == "tool_use" and line.content == "write"
+    ]
+    assert len(write_tool_uses) == 1, (
+        f"Captured fixture should produce exactly one write tool_use, "
+        f"got {len(write_tool_uses)}"
+    )
+    write_meta = write_tool_uses[0].metadata or {}
+    payload = payload_from_tool_event("write", write_meta)
+    assert payload is not None
+    assert payload.operation == "write"
+    assert payload.content, (
+        "Write payload content is empty; the captured fixture's "
+        "write envelope is missing the file body the syntax "
+        "preview is supposed to render"
+    )
+    assert "function TodoList" in (payload.content or ""), (
+        "Write payload content does not include the captured file "
+        "body; the captured write envelope must carry the actual "
+        "file content for the syntax preview to render"
+    )
+
+
+def test_captured_fixture_edit_envelope_has_diff_hunks() -> None:
+    """The captured edit tool_use must surface a diff-preview hunk.
+
+    Pins that the parser's metadata carries the edit tool's
+    ``oldString``/``newString`` pair so the diff preview can
+    render ``- old`` / ``+ new`` polarity rows. The captured
+    edit frame uses ``oldString``/``newString`` (the live
+    1.18.14 spelling); ``_edit_hunks`` keys off
+    ``old_string``/``new_string`` aliases to remain
+    transport-neutral.
+    """
+    from tests.test_opencode_captured_wire import _FIXTURE_PATH
+
+    fixture_lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+    parser = OpenCodeParser()
+    parsed = _parse(parser, iter(fixture_lines))
+
+    edit_tool_uses = [
+        line for line in parsed
+        if line.type == "tool_use" and line.content == "edit"
+    ]
+    assert len(edit_tool_uses) == 1, (
+        f"Captured fixture should produce exactly one edit tool_use, "
+        f"got {len(edit_tool_uses)}"
+    )
+    edit_meta = edit_tool_uses[0].metadata or {}
+    payload = payload_from_tool_event("edit", edit_meta)
+    assert payload is not None
+    assert payload.operation == "replace"
+    assert len(payload.hunks) == 1, (
+        f"Edit payload must surface exactly one diff hunk for the "
+        f"captured 1.18.14 edit frame, got {len(payload.hunks)}"
+    )
+    hunk = payload.hunks[0]
+    assert "this.items = [];" in hunk.old_text, (
+        f"Edit hunk old_text missing captured old string; got "
+        f"{hunk.old_text!r}"
+    )
+    assert "this.nextId = 0;" in hunk.new_text, (
+        f"Edit hunk new_text missing captured new string; got "
+        f"{hunk.new_text!r}"
+    )
+
+
+def test_captured_fixture_read_envelope_has_path() -> None:
+    """The captured read tool_use must surface a file-preview path.
+
+    Pins that the parser's metadata carries the read tool's
+    ``filePath`` argument (the live 1.18.14 spelling); the
+    transport-neutral ``_path`` helper keys off
+    ``path``/``file_path``/``filePath``/``filename``/``notebook_path``
+    so the file preview can render the path.
+    """
+    from tests.test_opencode_captured_wire import _FIXTURE_PATH
+
+    fixture_lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+    parser = OpenCodeParser()
+    parsed = _parse(parser, iter(fixture_lines))
+
+    read_tool_uses = [
+        line for line in parsed
+        if line.type == "tool_use" and line.content == "read"
+    ]
+    assert len(read_tool_uses) == 2, (
+        f"Captured fixture should produce 2 read tool_uses (one "
+        f"errored initial read + one successful read-back), got "
+        f"{len(read_tool_uses)}"
+    )
+    for line in read_tool_uses:
+        meta = line.metadata or {}
+        payload = payload_from_tool_event("read", meta)
+        assert payload is not None, (
+            f"Read payload is None for {meta!r}; the captured "
+            f"read envelope must produce a recognized file_preview"
+        )
+        assert payload.operation == "read"
+        assert payload.path, (
+            "Read payload path is empty; the captured read "
+            "envelope must carry the filePath argument so the "
+            "file preview can render the path"
+        )
+        assert payload.path.endswith("todo-list.js"), (
+            f"Read payload path is {payload.path!r}, expected to "
+            f"end with 'todo-list.js' (the captured file path)"
+        )

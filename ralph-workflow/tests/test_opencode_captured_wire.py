@@ -161,22 +161,37 @@ class TestOpenCodeCapturedWire:
         fixture_lines = fixture.read_text(encoding="utf-8").splitlines()
         parser = OpenCodeParser()
         parsed = _parse(parser, iter(fixture_lines))
-        # The captured fixture is 12 frames: 4 step_starts (suppressed
-        # from visible output), 4 step_finishes (suppressed), 3
-        # tool_uses (each producing a tool_use + tool_result pair =
-        # 6 visible lines), 1 text (visible). Expected visible lines:
-        # 6 tool_use/tool_result + 1 text = 7.
-        assert len(parsed) >= 7, (
+        # The captured fixture is 13 frames: 4 step_starts (suppressed
+        # from visible output), 4 step_finishes (suppressed), 4
+        # tool_uses (3 successful + 1 errored read attempt). The
+        # successful calls collapse into tool_use + tool_result pairs
+        # (3 tool_use + 3 tool_result = 6 lines), the errored call
+        # collapses into tool_use + error (2 lines), and 1 text event
+        # surfaces as visible. Total visible lines: 6 + 2 + 1 = 9.
+        assert len(parsed) >= 9, (
             f"Parser dropped frames: got {len(parsed)} AgentOutputLine "
             f"items from {len(fixture_lines)} input frames"
         )
         tool_uses = [r for r in parsed if r.type == "tool_use"]
         tool_results = [r for r in parsed if r.type == "tool_result"]
-        # Each captured bash tool_use collapses into one
-        # tool_use + one tool_result pair (OpenCode is single-frame
-        # terminal for completed calls).
-        assert len(tool_uses) == 3
-        assert len(tool_results) == 3
+        errors = [r for r in parsed if r.type == "error"]
+        # The captured fixture has 4 tool_uses (read err / write / edit
+        # / read OK), 3 tool_results (write / edit / read OK -- the
+        # errored read emits an ``error`` line instead), and 1 error
+        # (from the failed read attempt).
+        assert len(tool_uses) == 4, (
+            f"Expected 4 tool_use lines (read/write/edit/read), got "
+            f"{len(tool_uses)}"
+        )
+        assert len(tool_results) == 3, (
+            f"Expected 3 tool_result lines (write/edit/read), got "
+            f"{len(tool_results)}"
+        )
+        assert len(errors) >= 1, (
+            f"Expected at least 1 error line (the failed read attempt), "
+            f"got {len(errors)}"
+        )
+        seen_tools: set[str] = set()
         for line in tool_uses:
             meta = line.metadata or {}
             # The canonical tool name is in ``metadata["tool"]``
@@ -187,6 +202,14 @@ class TestOpenCodeCapturedWire:
                 f"Parser did not record an input envelope for {line.content!r}; "
                 f"the display layer would have no arguments to preview"
             )
+            seen_tools.add(line.content)
+        # The fixture must exercise all three display-capability surfaces
+        # (syntax_preview for ``write``, file_preview for ``read``,
+        # diff_preview for ``edit``) -- the original DA-002 defect.
+        assert {"read", "write", "edit"} <= seen_tools, (
+            f"Captured fixture did not exercise all three display surfaces: "
+            f"missing one of read/write/edit. saw={sorted(seen_tools)}"
+        )
 
     def test_captured_ralph_envelope_normalizes_at_transport_boundary(self) -> None:
         """A real wire envelope shape carrying an MCP-router-prefixed

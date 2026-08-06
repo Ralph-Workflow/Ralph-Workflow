@@ -132,8 +132,18 @@ def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[_Preview
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
             continue
-        old = item.get("oldText", item.get("old_string", ""))
-        new = item.get("newText", item.get("new_string", ""))
+        old = (
+            item.get("oldText")
+            or item.get("old_string")
+            or item.get("oldString")
+            or ""
+        )
+        new = (
+            item.get("newText")
+            or item.get("new_string")
+            or item.get("newString")
+            or ""
+        )
         hunks.append(
             _PreviewHunk(
                 old if isinstance(old, str) else "",
