@@ -427,7 +427,9 @@ def test_phase_transition_silent_when_nothing_to_integrate(
     outcome = auto_integrate_on_phase_transition(
         config, WorkspaceScope(tmp_git_repo), RebaseState()
     )
-    assert outcome is None
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_reason == "no commits beyond target"
     assert _snapshot(tmp_git_repo) == before
 
 

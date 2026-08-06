@@ -28,6 +28,8 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
+from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
+from ralph.pipeline._auto_integrate_config import missing_target_reason as _missing_target_reason
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref as _create_rebase_backup_ref,
@@ -588,11 +590,13 @@ def _integrate_once(
         refresh_outcome = _refresh_target(config, root, target)
         from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
 
-        ok, skip_reason = _fast_forward_target(
-            root,
-            target,
-            feature_sha,
-            reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+        reclaim_target_worktree = reclaim_target_worktree_enabled(config)
+        ok, skip_reason = (
+            _fast_forward_target(root, target, feature_sha)
+            if reclaim_target_worktree
+            else _fast_forward_target(
+                root, target, feature_sha, reclaim_target_worktree=False
+            )
         )
 
         # R6/AC-06: post-attempt terminal-state verification on EVERY
@@ -691,21 +695,6 @@ def _integrate_once(
         # terminal state on the abort path.
         raise
 
-
-def _configured_target(config: UnifiedConfig) -> str:
-    """Return the configured target unchanged for operator-facing skips."""
-    configured: object = getattr(config.general, "auto_integrate_target", "")
-    return configured if isinstance(configured, str) else ""
-
-
-def _missing_target_reason(config: UnifiedConfig) -> str:
-    """Name the missing local target without guessing an alternative."""
-    target = _configured_target(config)
-    return (
-        f"local integration target branch does not exist: {target}"
-        if target
-        else "no integration target configured"
-    )
 
 
 def _check_early_skips(
