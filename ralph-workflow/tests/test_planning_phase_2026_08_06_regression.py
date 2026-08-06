@@ -25,8 +25,6 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pytest
-
 from ralph.agents.completion_signals import (
     CompletionSignals,
     format_phase_verdict,
@@ -47,8 +45,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-
-pytestmark = pytest.mark.smoke
+    import pytest
 
 
 def _agy_config() -> AgentConfig:

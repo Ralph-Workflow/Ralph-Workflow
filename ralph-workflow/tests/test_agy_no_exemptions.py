@@ -28,10 +28,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
-pytestmark = pytest.mark.smoke
-
 _SMOKE_PLUMBING_PATH = (
     Path(__file__).resolve().parent.parent
     / "ralph"
