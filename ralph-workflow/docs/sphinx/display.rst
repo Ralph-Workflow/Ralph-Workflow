@@ -75,6 +75,132 @@ surface—including gutters, source rows, and padding—never a partial or
 overextended band.
 
 
+Colour model: surface-adaptive chroma, frequency tiers, and the salience budget
+---------------------------------------------------------------------------------
+
+The palette itself lives in ``ralph/display/_palette.py``: every semantic
+role (``success``, ``error``, ``warning``, ``info``, ``chrome``, ...) is a
+``RoleAnchor`` whose hue, chroma, and reference OKLab lightness are all
+measured from the same named Monokai Pro hex at import time -- never a
+hand-typed, independently rounded literal. Solving a role for a surface
+(``solve_for_surface``) keeps hue fixed (hue is role identity) and moves only
+lightness and chroma.
+
+Surface-adaptive chroma
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Monokai Pro is a dark theme, and its own accent hexes already sit close to
+the sRGB gamut's maximum achievable chroma at their own dark-surface
+lightness. Holding that *absolute* chroma number fixed while a role is
+re-solved for a very different lightness (as happens once a surface is
+light rather than dark) does not reproduce the same boundary-hugging
+saturation: the gamut's maximum chroma at a hue is not flat across
+lightness, so the same absolute number reads as muddy wherever the local
+gamut has more headroom than the anchor's own reference lightness did.
+``_surface_adaptive_chroma`` fixes this by measuring what *fraction* of the
+locally available chroma headroom the anchor hex spends at its own
+reference lightness, then spending that same fraction of the headroom
+available at the surface-resolved target lightness. A role that already
+uses nearly all its headroom in Monokai Pro keeps using nearly all of
+whatever headroom the new lightness offers, instead of collapsing toward a
+fixed absolute number. Gamut clamping remains the final safety net for edge
+cases, not the primary mechanism.
+
+Frequency tiers
+~~~~~~~~~~~~~~~~
+
+Every role is classified by how much screen it occupies in a normal run,
+and chroma budget is inversely proportional to that frequency. The four
+tiers (``ralph.display._palette.FrequencyTier``) were assigned from actual
+measured render counts across the six canonical scenes in
+``ralph.display.scene_catalog`` (a counting probe wrapping style
+resolution), not from intuition:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 20 40 25
+
+   * - Tier
+     - Renders
+     - Roles
+     - Chroma budget
+   * - 1 -- field
+     - constantly
+     - body text, chrome-adjacent neutrals, muted, comment
+     - near-neutral, C <= ~0.04
+   * - 2 -- structure
+     - per block
+     - panel borders, titles, rules, phase labels (``chrome``, ``elision``)
+     - low, C <= ~0.08
+   * - 3 -- event
+     - per state change
+     - success, warning, skipped, pending, running, info, analysis, diff
+     - full anchor chroma
+   * - 4 -- alarm
+     - rarely
+     - error
+     - full chroma, never demoted
+
+Chrome no longer borrows the semantic ``info`` state's pigment: the
+``chrome`` anchor keeps ``info``'s measured hue and reference lightness (the
+same cool axis) but its chroma is cut to the tier-2 budget, well below
+``info``'s own full tier-3 chroma. Structural roles that used to resolve to
+``palette["info"]`` directly (panel borders and titles, banner chrome, text
+emphasis, milestone markers, and the commit/planning/review-commit phase
+labels) now resolve to the dedicated ``chrome`` role instead, so the
+most-rendered on-screen accent no longer doubles as a semantic status
+signal.
+
+The salience budget (Section G)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The palette above is a *lookup*: a role resolves to one pigment for the
+lifetime of a surface. That model cannot express accent scarcity -- whether
+a screen is over-coloured is a property of what else is rendering at the
+same moment, not of any single role. ``ralph/display/_salience.py``
+implements a deterministic, frame-indexed **salience allocator**
+(``SalienceAllocator``) that sits between role resolution and Rich style
+emission for tier-3/4 (event/alarm) roles. Tier-1/2 roles are not scarce and
+always render at their own fixed budget.
+
+- **Budget derivation.** ``ACCENT_BUDGET_BY_DEPTH`` derives the number of
+  concurrently "lit" (full-chroma) accents from the active Rich colour
+  system -- more separable pigments survive quantisation at truecolour than
+  at the 256-colour cube, and fewer still at 16-colour ANSI ("standard").
+  Under ``NO_COLOR``, ``TERM=dumb``, a non-tty destination, or forced ASCII
+  the allocator is a no-op: nothing is ever demoted, since nothing carries
+  colour anyway.
+- **Decay and hysteresis.** A role lit without an underlying state change
+  for more than ``STEADY_STATE_DECAY_FRAMES`` consecutive frames decays one
+  rung toward its tier-2 chroma budget (``demote_hex``), at unchanged
+  lightness and hue -- never below its own WCAG contrast floor. Demotion is
+  one-way: a demoted role only re-lights on a genuine state change, never
+  merely because contention eased, which forecloses flicker (two roles
+  trading the last budget slot back and forth) structurally.
+- **Alarm exemption.** Tier-4 (``error``) roles are never demoted and never
+  decay. If the budget is exhausted when an alarm arrives, the lowest
+  priority tier-3 accent is evicted instead -- a failure always renders at
+  full chroma and weight regardless of contention.
+- **Per-frame decision inspection.** Every allocation call returns an
+  ``AllocationDecision`` (role, tier, lit/demoted, reason) instead of a bare
+  colour, so tests assert on lit-accent counts and demotion outcomes rather
+  than on allocator internals.
+
+**Wiring into the real render path.** The live activity stream has no
+persistent redraw loop (output is log-first, copy-paste-safe transcript
+lines, not a repainted screen), so :class:`~ralph.display.parallel_display.ParallelDisplay`
+defines one allocator "frame" as one resolved event/alarm-tier status badge
+-- the unit of "a role about to paint" in this architecture.
+``ParallelDisplay._apply_salience`` carries one ``SalienceAllocator`` per
+display instance, bids the badge role for every emitted activity/log line,
+and records each decision on ``ParallelDisplay.salience_decisions`` (the
+public G-9 inspection seam). ``ralph.display.scene_catalog.scene_salience_decisions``
+drives a scene through the same production seams as
+:func:`~ralph.display.scene_catalog.render_scene` and returns the recorded
+decision sequence, which the generated-scene test suite uses to assert the
+accent-count gate, alarm exemption, replay determinism, and the absence of
+lit/demoted oscillation across every canonical scene.
+
 The DI invariant
 ----------------
 

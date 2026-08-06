@@ -156,6 +156,10 @@ the matching solved palette. An undetermined background uses the dual-safe palet
 the `[0.175, 0.1833]` luminance band rather than assuming a dark terminal. The text label
 remains the identity carrier, so color is never required to understand an entry.
 
+See [Colour model: surface-adaptive chroma, frequency tiers, and the salience budget](display.html#colour-model-surface-adaptive-chroma-frequency-tiers-and-the-salience-budget)
+for the palette solver's surface-adaptive chroma, the E-1 render-frequency tier table, and
+the Section G per-frame salience allocator that governs how many accents may render at once.
+
 ### Display support contract
 
 The reference display supports dark, light, and undetermined backgrounds;

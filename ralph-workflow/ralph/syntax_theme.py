@@ -55,17 +55,17 @@ _LITERAL = _child_token(_child_token(pygments_token, "Token"), "Literal")
 _ERROR = _child_token(_child_token(pygments_token, "Token"), "Error")
 
 #: The semantic roles every syntax colour is solved from, per surface.
-#: Matches Monokai Pro's own scope convention (PLAN.md S-4):
+#: Matches Monokai Pro's own scope convention (D-1):
 #: - Text/Name/plain identifiers -> the near-neutral body foreground, not a
-#:   hue accent (today they render as the cyan ``chrome`` hue).
-#: - Comment -> the dimmed, floor-lifted grey (today it is ``pending``,
-#:   Monokai Pro's purple).
-#: - Keyword/Operator/Punctuation -> Monokai Pro's red (today Operator is
-#:   ``success``, green).
-#: - String -> Monokai Pro's yellow. Number/Literal -> Monokai Pro's purple
-#:   (today Number is ``warning``, orange). Function/Class -> Monokai Pro's
-#:   green (today ``info``, cyan). Attribute -> Monokai Pro's orange.
+#:   hue accent.
+#: - Comment -> the dimmed, floor-lifted grey.
+#: - Keyword/Operator/Punctuation -> Monokai Pro's red.
+#: - String -> Monokai Pro's yellow. Number/Literal -> Monokai Pro's purple.
+#:   Function/Class -> Monokai Pro's green. Attribute -> Monokai Pro's orange.
 #:   Keyword.Type/Builtin -> Monokai Pro's cyan.
+#: Verified current against the shipped ``_style`` mapping below by
+#: ``tests/unit/display/test_syntax_theme_monokai_mapping.py`` -- keep both
+#: in sync with any future token reassignment.
 _SYNTAX_ROLES: Final[tuple[str, ...]] = (
     "foreground",
     "comment",

@@ -43,6 +43,8 @@ from ralph.display._identity import (
 from ralph.display._palette import (
     _CANONICAL_DARK_SURFACE_HEX,
     _CANONICAL_LIGHT_SURFACE_HEX,
+    _PURE_BLACK_HEX,
+    _PURE_WHITE_HEX,
 )
 from ralph.syntax_theme import SyntaxThemes
 
@@ -111,10 +113,10 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     """Return False when glyphs should fall back to ASCII, True for Unicode.
 
     Heuristic order (highest to lowest precedence):
-    1. RALPH_FORCE_ASCII env var (any truthy value) → ASCII
-    2. stream.encoding exists and 'utf' not in encoding.lower() → ASCII
-    3. TERM=dumb → ASCII
-    4. Otherwise → Unicode
+    1. RALPH_FORCE_ASCII env var (any truthy value) \u2192 ASCII
+    2. stream.encoding exists and 'utf' not in encoding.lower() \u2192 ASCII
+    3. TERM=dumb \u2192 ASCII
+    4. Otherwise \u2192 Unicode
     """
     # Check explicit env override first
     force_ascii = env.get("RALPH_FORCE_ASCII", "").lower().strip()
@@ -212,10 +214,19 @@ _IDENTITY_ACCENT_ROLES: Final[tuple[str, ...]] = (
 #: be insufficient.
 _IDENTITY_HUE_OVERRIDES: Final[dict[tuple[str, str], float]] = {
     ("warning", "skipped"): 55.0,
+    # A-6 re-tune: once solve_for_surface re-solves chroma per surface
+    # instead of holding it fixed (PLAN.md S-2), the naive success->info
+    # midpoint (hue ~168.2) collides with `success` itself in the
+    # 256-colour cube on the light table. Lifting the midpoint's l_ref
+    # toward info's own (below) moves it decisively into a distinct cube
+    # cell on all three tables and all three CVD matrices at once --
+    # verified directly against solve_for_surface/solve_dual_safe.
+    ("success", "info"): 180.0,
 }
 _IDENTITY_L_REF_OVERRIDES: Final[dict[tuple[str, str], float]] = {
     ("warning", "skipped"): 0.72,
     ("skipped", "success"): 0.8361,
+    ("success", "info"): 0.89,
 }
 
 
@@ -363,28 +374,39 @@ def _build_theme_styles(palette: Mapping[str, str]) -> dict[str, str]:
         "theme.level.warn": f"bold {palette['warning']}",
         "theme.level.success": f"bold {palette['success']}",
         "theme.level.error": f"bold {palette['error']}",
-        "theme.level.milestone": f"bold {palette['info']}",
+        # E-2: milestone is a structural chrome cue (a rare beat marker),
+        # not the semantic info state -- repointed to disp["chrome"] along
+        # with the rest of this block's structural roles below.
+        "theme.level.milestone": f"bold {disp['chrome']}",
         "theme.cat.meta": disp["chrome"],
         "theme.cat.cont": disp["agent_text"],
         "theme.cat.out": disp["agent_text"],
         "theme.log.error": f"bold {palette['error']}",
         "theme.log.info": palette["info"],
-        "theme.log.milestone": f"bold {palette['info']}",
+        "theme.log.milestone": f"bold {disp['chrome']}",
         "theme.log.success": f"bold {palette['success']}",
         "theme.log.warn": f"bold {palette['warning']}",
-        "theme.panel.border": palette["info"],
-        "theme.panel.title": f"bold {palette['info']}",
-        "theme.phase.commit": palette["info"],
+        # E-2: panel chrome, banner chrome, phase labels below, text emphasis,
+        # and outer_dev are all structural (tier 2) -- they previously shared
+        # `info`'s full tier-3 chroma, which made the single most-rendered
+        # accent on screen also mean "the info status". Repointed to
+        # disp["chrome"] (a distinct, lower-chroma pigment on the same hue --
+        # see _palette.ROLE_ANCHORS["chrome"]'s docstring). The semantic
+        # `info` STATE (theme.status.info / theme.log.info / STATUS_STYLES)
+        # keeps palette["info"]'s full chroma unchanged.
+        "theme.panel.border": disp["chrome"],
+        "theme.panel.title": f"bold {disp['chrome']}",
+        "theme.phase.commit": disp["chrome"],
         "theme.phase.complete": f"bold {palette['success']}",
         "theme.phase.development": palette["success"],
         "theme.phase.development_analysis": palette["analysis"],
-        "theme.phase.development_commit": palette["info"],
+        "theme.phase.development_commit": disp["chrome"],
         "theme.phase.failed": f"bold {palette['error']}",
         "theme.phase.fix": palette["error"],
-        "theme.phase.planning": palette["info"],
+        "theme.phase.planning": disp["chrome"],
         "theme.phase.review": palette["warning"],
         "theme.phase.review_analysis": palette["analysis"],
-        "theme.phase.review_commit": palette["info"],
+        "theme.phase.review_commit": disp["chrome"],
         "theme.status.error": f"bold {palette['error']}",
         "theme.status.failure": f"bold {palette['error']}",
         "theme.status.info": palette["info"],
@@ -394,15 +416,15 @@ def _build_theme_styles(palette: Mapping[str, str]) -> dict[str, str]:
         "theme.status.success": f"bold {palette['success']}",
         "theme.status.warning": f"bold {palette['warning']}",
         "theme.text.dim_italic": f"italic {palette['analysis']}",
-        "theme.text.emphasis": f"bold {palette['info']}",
+        "theme.text.emphasis": f"bold {disp['chrome']}",
         "theme.text.muted": palette["muted"],
-        "theme.banner.ascii": f"bold {palette['info']}",
-        "theme.banner.border": palette["info"],
+        "theme.banner.ascii": f"bold {disp['chrome']}",
+        "theme.banner.border": disp["chrome"],
         "theme.banner.tagline": palette["muted"],
-        "theme.banner.title": f"bold {palette['info']}",
+        "theme.banner.title": f"bold {disp['chrome']}",
         "theme.banner.version": f"bold {palette['success']}",
-        "theme.banner.welcome": f"bold {palette['info']}",
-        "theme.outer_dev": f"bold {palette['info']}",
+        "theme.banner.welcome": f"bold {disp['chrome']}",
+        "theme.outer_dev": f"bold {disp['chrome']}",
         "theme.inner_analysis": palette["analysis"],
         "theme.review_pass": f"bold {palette['success']}",
         "theme.review_fail": f"bold {palette['error']}",
@@ -543,8 +565,11 @@ def _extract_hex(style: str) -> str:
     return ""
 
 
-_DARK_BG_HEX: Final[str] = "#000000"
-_LIGHT_BG_HEX: Final[str] = "#FFFFFF"
+# DoD #6: single-sourced from _palette._PURE_BLACK_HEX/_PURE_WHITE_HEX --
+# the same two literals solve_dual_safe checks against -- rather than a
+# second, independent "#000000"/"#FFFFFF" declaration.
+_DARK_BG_HEX: Final[str] = _PURE_BLACK_HEX
+_LIGHT_BG_HEX: Final[str] = _PURE_WHITE_HEX
 
 
 #: WCAG crossover luminance. Below this value light foregrounds
@@ -606,9 +631,18 @@ def _terminal_background_timeout_seconds(env: Mapping[str, str]) -> float:
 
 
 def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
-    """Resolve the terminal background with OSC 11 unless overridden."""
-    if env.get("RALPH_TERMINAL_BG", "").strip():
-        return terminal_background_is_light(env)
+    """Resolve the terminal background with OSC 11 unless overridden.
+
+    B-1: only an override that actually *resolves* skips the probe -- a
+    malformed ``RALPH_TERMINAL_BG`` (present but neither a recognised
+    light/dark token nor a valid hex) must fall through to OSC 11 the same
+    way :func:`detect_terminal_background_hex` already does, rather than
+    short-circuiting on the env var's mere presence and returning an
+    unmeasured ``None``.
+    """
+    explicit = _explicit_background_override(env)
+    if explicit is not None:
+        return explicit
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
     return terminal_background_is_light(

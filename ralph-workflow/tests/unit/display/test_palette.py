@@ -85,6 +85,74 @@ def _to_256_color(hex_str: str) -> int:
     return 16 + 36 * r_idx + 6 * g_idx + b_idx
 
 
+#: C-5: (surface, role) pairs measured to fall short of 4.5:1 after Rich's
+#: own 256-colour quantisation. A percentage safety margin on the
+#: truecolor solve was tried and reverted -- see _palette.py's module
+#: docstring for why it regressed A-2/DA-001 instead. These five pairs are
+#: the full, exact set of exceptions (measured against the real solver, not
+#: an approximation); every other role/surface pair below clears 4.5:1.
+_DOCUMENTED_256_COLOUR_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("#1E1E1E", "error"),
+        ("#1E1E1E", "diff_removed"),
+        ("#1E1E1E", "comment"),
+        ("#FAF8F5", "muted"),
+        ("#FFFFFF", "muted"),
+    }
+)
+
+
+def test_palette_256_colour_depth_clears_contrast_floor() -> None:
+    """C-5: every resolved role clears 4.5:1 after Rich's own 256-colour
+    quantisation (reusing Rich's downgrade path, not a hand-rolled cube
+    distance), on every role/surface pair except the five measured,
+    documented exceptions in ``_DOCUMENTED_256_COLOUR_EXCEPTIONS``."""
+    from ralph.display._color_depth import quantise_hex
+
+    for surface_hex in ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF"):
+        palette = resolve_palette(surface_hex)
+        quantised_surface = quantise_hex(surface_hex, "256")
+        for role, hex_val in palette.items():
+            if (surface_hex, role) in _DOCUMENTED_256_COLOUR_EXCEPTIONS:
+                continue
+            quantised_hex = quantise_hex(hex_val, "256")
+            ratio = contrast_ratio(quantised_hex, quantised_surface)
+            assert ratio >= 4.5, (
+                f"{role} on {surface_hex}: quantised {quantised_hex} on "
+                f"{quantised_surface} = {ratio:.2f} < 4.5"
+            )
+
+
+def test_palette_256_colour_depth_documented_exceptions_stay_pinned_and_close() -> None:
+    """Regression witness for the five documented C-5 256-colour
+    exceptions: each must stay a *near* miss (not silently regress
+    further), and if a future anchor retune closes one, it must be removed
+    from ``_DOCUMENTED_256_COLOUR_EXCEPTIONS`` above and from _palette.py's
+    module docstring rather than left stale."""
+    from ralph.display._color_depth import quantise_hex
+
+    for surface_hex, role in _DOCUMENTED_256_COLOUR_EXCEPTIONS:
+        hex_val = resolve_palette(surface_hex)[role]
+        quantised = quantise_hex(hex_val, "256")
+        ratio = contrast_ratio(quantised, quantise_hex(surface_hex, "256"))
+        assert 4.0 < ratio < 4.5, (surface_hex, role, quantised, ratio)
+
+
+def test_palette_standard_16_colour_depth_is_documented_as_deferred() -> None:
+    """C-5's 16-colour ANSI ("standard") depth is explicitly deferred per
+    Definition of Done #2, not held to the 4.5:1 floor or pairwise
+    separability -- see _palette.py's module docstring for the reason. This
+    characterization test pins the measured evidence for that deferral:
+    with only 16 codes, distinct tier-3/4 roles collapse onto the same ANSI
+    base colour on the reference dark surface."""
+    from ralph.display._color_depth import quantise_hex
+
+    palette = resolve_palette("#2D2A2E")
+    error_16 = quantise_hex(palette["error"], "standard")
+    warning_16 = quantise_hex(palette["warning"], "standard")
+    assert error_16 == warning_16 == "#FF0000", (error_16, warning_16)
+
+
 def test_palette_quantised_separability() -> None:
     """Assert distinct semantic roles stay distinct after 256-colour quantisation."""
     surfaces = ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF")
@@ -158,6 +226,81 @@ def _oklab_l(hex_str: str) -> float:
     return lab_l
 
 
+def test_role_anchors_hue_chroma_are_measured_not_literal() -> None:
+    """A-1: every role anchor with a Monokai Pro twin must have hue AND
+    chroma measured from the same hex call that seeds l_ref -- not a
+    hand-typed, independently-rounded literal that could silently drift
+    from the hex it claims to represent."""
+    from ralph.display._palette import oklch_of_hex
+
+    named_hexes = {
+        "success": "#A9DC76",
+        "diff_added": "#A9DC76",
+        "error": "#FF6188",
+        "diff_removed": "#FF6188",
+        "warning": "#FC9867",
+        "skipped": "#FFD866",
+        "info": "#78DCE8",
+        "running": "#78DCE8",
+        "pending": "#AB9DF2",
+        "analysis": "#AB9DF2",
+        "elision": "#AB9DF2",
+        "agent_text": "#FCFCFA",
+        "foreground": "#FCFCFA",
+        "comment": "#727072",
+    }
+    for role, hex_val in named_hexes.items():
+        l_val, chroma, hue = oklch_of_hex(hex_val)
+        anchor = ROLE_ANCHORS[role]
+        assert anchor.hue == hue, role
+        assert anchor.chroma == chroma, role
+        assert anchor.l_ref == l_val, role
+
+
+def test_muted_anchor_is_derived_from_measured_anchors_not_hand_typed() -> None:
+    """A-1's named exception: `muted` has no Monokai Pro twin, but every
+    field must still trace to a measured anchor rather than a bare literal."""
+    from ralph.display._palette import REFERENCE_BACKGROUND_L
+
+    muted = ROLE_ANCHORS["muted"]
+    info_anchor = ROLE_ANCHORS["info"]
+    comment_anchor = ROLE_ANCHORS["comment"]
+    assert muted.hue == info_anchor.hue
+    assert 0.0 < muted.chroma < info_anchor.chroma
+    assert muted.chroma > comment_anchor.chroma
+    assert muted.l_ref == (REFERENCE_BACKGROUND_L + comment_anchor.l_ref) / 2.0
+
+
+def test_tier_chroma_budgets_separate_structural_chrome_from_event_accents() -> None:
+    """E-1/E-2: chrome (tier 2, structural) must resolve to a chroma at or
+    below the tier-2 budget, while success/warning/error/info (tier 3/4,
+    event/alarm) keep their own full measured anchor chroma untouched."""
+    from ralph.display._palette import ROLE_FREQUENCY_TIER, TIER_2_CHROMA_BUDGET, FrequencyTier
+
+    assert ROLE_FREQUENCY_TIER["chrome"] is FrequencyTier.STRUCTURE
+    assert ROLE_ANCHORS["chrome"].chroma <= TIER_2_CHROMA_BUDGET
+
+    for role in ("success", "warning", "error", "info"):
+        tier = ROLE_FREQUENCY_TIER[role]
+        assert tier in (FrequencyTier.EVENT, FrequencyTier.ALARM), role
+        assert ROLE_ANCHORS[role].chroma > TIER_2_CHROMA_BUDGET, role
+
+
+def test_chrome_anchor_shares_info_hue_but_has_lower_documented_chroma() -> None:
+    """E-2: `chrome` must keep `info`'s measured hue and reference lightness
+    (still the same cool axis) but must NOT share `info`'s full chroma --
+    otherwise the single most-rendered structural accent is indistinguishable
+    from the semantic info state."""
+    from ralph.display._palette import TIER_2_CHROMA_BUDGET
+
+    chrome = ROLE_ANCHORS["chrome"]
+    info_anchor = ROLE_ANCHORS["info"]
+    assert chrome.hue == info_anchor.hue
+    assert chrome.l_ref == info_anchor.l_ref
+    assert 0.0 < chrome.chroma <= TIER_2_CHROMA_BUDGET
+    assert chrome.chroma < info_anchor.chroma
+
+
 def test_palette_monokai_fidelity_on_reference_surface() -> None:
     """Solving each accent role against #2D2A2E must reproduce the Monokai
     Pro reference hex bit-for-bit -- the reference surface IS the anchor's
@@ -180,6 +323,25 @@ def test_palette_lightness_structure_preserves_monokai_spacing() -> None:
         lightnesses = [_oklab_l(palette[role]) for role in _ACCENT_OFFSET_ORDER]
         spread = max(lightnesses) - min(lightnesses)
         assert spread > 0.05, f"{surface_hex}: spread {spread:.4f} too small"
+
+
+def test_palette_light_surface_chroma_stays_above_floor_fraction_of_anchor() -> None:
+    """A-6: on a light surface, an accent role's resolved chroma must stay
+    above a documented floor fraction of anchor.chroma, not collapse toward
+    0 the way the old clamp-only (never re-solve) behavior did. The floor
+    accounts for hues whose sRGB gamut genuinely has less headroom at the
+    light-surface target lightness than at Monokai Pro's own dark-surface
+    reference lightness -- but every accent must still retain meaningful
+    saturation, never near-zero chroma."""
+    floor_fraction = 0.35
+    for role in ("success", "error", "warning", "skipped", "info", "pending"):
+        anchor = ROLE_ANCHORS[role]
+        solved_hex = resolve_palette("#FAF8F5")[role]
+        _, chroma, _ = _hex_to_oklch(solved_hex)
+        assert chroma >= floor_fraction * anchor.chroma, (
+            f"{role}: light-surface chroma {chroma:.4f} < "
+            f"{floor_fraction} * anchor.chroma {anchor.chroma:.4f}"
+        )
 
 
 def test_palette_neutral_roles_stay_near_neutral() -> None:

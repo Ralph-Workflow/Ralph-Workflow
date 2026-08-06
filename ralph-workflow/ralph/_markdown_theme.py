@@ -27,15 +27,18 @@ def _build_markdown_palette(preview_surface: str | None) -> tuple[str, str, str,
         # accent -- matching Monokai Pro's own body colour and the S-4/S-5
         # repoint of the neutral display roles (PLAN.md).
         default = solve_for_surface(ROLE_ANCHORS["foreground"], preview_surface)
-        accent = solve_for_surface(ROLE_ANCHORS["info"], preview_surface)
-        link = solve_for_surface(ROLE_ANCHORS["info"], preview_surface)
+        # E-2: accent/link are structural chrome (headings, borders,
+        # blockquotes, kbd), not the semantic info state -- repointed off
+        # `info` onto the dedicated, lower-chroma `chrome` role.
+        accent = solve_for_surface(ROLE_ANCHORS["chrome"], preview_surface)
+        link = solve_for_surface(ROLE_ANCHORS["chrome"], preview_surface)
         url = solve_for_surface(ROLE_ANCHORS["skipped"], preview_surface)
         bullet = solve_for_surface(ROLE_ANCHORS["success"], preview_surface)
         rule = solve_for_surface(ROLE_ANCHORS["success"], preview_surface)
     else:
         default = solve_dual_safe(ROLE_ANCHORS["foreground"])
-        accent = solve_dual_safe(ROLE_ANCHORS["info"])
-        link = solve_dual_safe(ROLE_ANCHORS["info"])
+        accent = solve_dual_safe(ROLE_ANCHORS["chrome"])
+        link = solve_dual_safe(ROLE_ANCHORS["chrome"])
         url = solve_dual_safe(ROLE_ANCHORS["skipped"])
         bullet = solve_dual_safe(ROLE_ANCHORS["success"])
         rule = solve_dual_safe(ROLE_ANCHORS["success"])

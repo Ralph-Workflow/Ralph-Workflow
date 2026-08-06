@@ -230,6 +230,32 @@ def test_display_context_threads_measured_surface_hex_through_resolved_theme() -
     assert expected_hex and actual_hex.lower() == expected_hex.lower()
 
 
+def test_malformed_terminal_bg_hex_falls_through_to_the_osc11_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B-1: a malformed ``RALPH_TERMINAL_BG`` hex (wrong length, non-hex
+    digits) must fall through to the next precedence tier -- the OSC 11
+    probe -- rather than being threaded, unvalidated, into the palette
+    solver or raising. ``relative_luminance`` already raises ``ValueError``
+    for a malformed body; ``detect_terminal_background_hex`` must catch that
+    and continue past the ``RALPH_TERMINAL_BG`` branch instead of
+    propagating it or returning the malformed string.
+    """
+    monkeypatch.setattr(
+        "ralph.display._terminal_bg_query.query_terminal_background_hex",
+        lambda *, timeout: "#123456",
+    )
+    for malformed in ("#notahex", "#12", "#GGGGGG", "#1234567"):
+        env = {"RALPH_TERMINAL_BG": malformed}
+        resolved_hex = _theme.detect_terminal_background_hex(env)
+        assert resolved_hex == "#123456", malformed
+
+        # The boolean detector must not raise either -- it degrades to the
+        # probe/COLORFGBG tier the same way.
+        is_light = _theme.detect_terminal_background_is_light(env)
+        assert is_light is not None
+
+
 def test_explicit_dark_override_is_not_contradicted_by_a_light_probe_measurement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

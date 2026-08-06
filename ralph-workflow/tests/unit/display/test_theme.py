@@ -28,6 +28,37 @@ def test_status_styles_cover_expected_statuses() -> None:
     assert theme.STATUS_STYLES["info"] == (expected_info_color, "\u2139", "INFO")
 
 
+def test_structural_chrome_roles_no_longer_borrow_the_info_state_hex() -> None:
+    """E-2: panel/banner/emphasis/milestone/outer_dev chrome and the commit,
+    development_commit, planning, and review_commit phase labels must no
+    longer resolve to the same hex as the literal semantic info state --
+    they are structural (tier 2), not a state carrier."""
+    palettes = {False: theme._pal_dark, True: theme._pal_light, None: theme._pal_unknown}
+    for terminal_bg_is_light, palette in palettes.items():
+        styles = theme._build_theme_styles(palette)
+        info_hex = theme._extract_hex(styles["theme.log.info"])
+        chrome_keys = (
+            "theme.panel.border",
+            "theme.panel.title",
+            "theme.banner.ascii",
+            "theme.banner.border",
+            "theme.banner.title",
+            "theme.banner.welcome",
+            "theme.text.emphasis",
+            "theme.level.milestone",
+            "theme.log.milestone",
+            "theme.outer_dev",
+            "theme.phase.commit",
+            "theme.phase.development_commit",
+            "theme.phase.planning",
+            "theme.phase.review_commit",
+        )
+        for key in chrome_keys:
+            chrome_hex = theme._extract_hex(styles[key])
+            assert chrome_hex, key
+            assert chrome_hex != info_hex, (terminal_bg_is_light, key, chrome_hex, info_hex)
+
+
 def test_format_status_returns_marked_up_label() -> None:
     rendered = theme.format_status("success")
 

@@ -90,6 +90,7 @@ Migrated from (consolidation map)
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import json
 import queue
@@ -129,6 +130,13 @@ from ralph.display._plain_constants import (
     _STREAMING_KINDS,
     LEVELS,
     _sanitize,
+)
+from ralph.display._salience import (
+    AllocationDecision,
+    RoleBid,
+    SalienceAllocator,
+    demote_hex,
+    resolve_color_depth,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display._tool_correlation import tool_call_id
@@ -193,6 +201,9 @@ _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 _MAX_RENDERED_UNIT_ID_CHARS = 24
 _MAX_STREAMING_FRAGMENTS: int = 2048
+#: G-9 inspection ring-buffer cap for ``ParallelDisplay._salience_decisions``
+#: -- see the constructor's own bounded-accumulator-ok comment.
+_SALIENCE_DECISIONS_MAXLEN: int = 1000
 _SECONDS_PER_MINUTE: int = 60
 _PREVIEW_MAX_LINES: int = 40
 
@@ -512,6 +523,9 @@ class ParallelDisplay:
         "_rendered_writers",
         "_run_counters",
         "_run_start_time",
+        "_salience_allocator",
+        "_salience_decisions",
+        "_salience_last_role",
         "_status_bar",
         "_subscriber",
         "_terminal_background_hex",
@@ -551,6 +565,22 @@ class ParallelDisplay:
             if isinstance(display_context, DisplayContext)
             else None
         )
+        # PLAN.md S-7: one allocator per ParallelDisplay instance -- its
+        # lifetime is the render session, matching G-6's "frame-indexed
+        # sequence" model. ``_salience_last_role`` is the previous call's
+        # resolved event/alarm role (G-3's "state changed" signal, see
+        # ``_apply_salience``). ``_salience_decisions`` is the G-9 record:
+        # every AllocationDecision this instance has produced, in order,
+        # so a scene driver can assert on lit-accent counts, alarm
+        # exemption, and oscillation without touching allocator internals.
+        # bounded-accumulator-ok: deque(maxlen=_SALIENCE_DECISIONS_MAXLEN);
+        # a long-running display session emits far more lines than any
+        # single G-9 inspection needs, so this is a bounded ring buffer
+        # (drop-oldest) matching ring_buffer.RingBuffer's own policy, not
+        # an unbounded append-only log.
+        self._salience_allocator = SalienceAllocator()
+        self._salience_last_role: str | None = None
+        self._salience_decisions: collections.deque[AllocationDecision] = collections.deque(maxlen=_SALIENCE_DECISIONS_MAXLEN)  # bounded-accumulator-ok: drop-oldest ring buffer, matching ring_buffer.RingBuffer's own policy
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else (lambda: datetime.now(UTC))
         )
@@ -753,6 +783,15 @@ class ParallelDisplay:
     def _console(self) -> Console:
         return self._ctx.console
 
+    @property
+    def salience_decisions(self) -> tuple[AllocationDecision, ...]:
+        """G-9: every per-frame salience decision this instance has made
+        so far, in call order -- the public inspection seam a scene driver
+        or test uses to assert on lit-accent counts, alarm exemption, and
+        oscillation without reaching into allocator internals (F-4).
+        """
+        return tuple(self._salience_decisions)
+
     # -- Pure helpers (inlined from _PlainLogRendererBase) ----------------
 
     def _format_timestamp(self, ts: datetime) -> str:
@@ -783,6 +822,49 @@ class ParallelDisplay:
         ``datetime`` value (the production clock returns a UTC value).
         """
         return ts.strftime("%H:%M:%S")
+
+    def _apply_salience(self, role: str, style_str: str) -> str:
+        """PLAN.md Section G / S-7: run one event/alarm-tier style string
+        through the per-frame salience allocator before it paints.
+
+        Each call to this method is one allocator "frame" (G-1): the live
+        activity stream has no persistent redraw loop to key frames off
+        of (see this module's own docstring -- output is log-first,
+        copy-paste-safe transcript lines, not a repainted screen), so a
+        frame is defined as one resolved status badge -- the unit of
+        "a role about to paint" in this architecture. ``role`` is the
+        looked-up STATUS_STYLES key (``success``/``warning``/``error``/
+        ``running``/``skipped``/``pending``/``info``); ``state_changed``
+        (G-3/G-4) is true whenever this call's role differs from the
+        immediately preceding call's role on this same instance, so a run
+        of consecutive same-role lines (e.g. many ``running`` tool_use
+        rows) decays per G-4 while a genuine transition re-lights
+        instantly. Field/structure-tier roles are not part of this
+        competition (the allocator always reports them lit) and this
+        method is only ever called with an event/alarm-tier role.
+
+        ``style_str`` is a full Style spec (``"#RRGGBB"`` or
+        ``"bold #RRGGBB"``, per ``_build_status_styles``); only the hex
+        portion is demoted (G-2), and any ``"bold "`` weight prefix is
+        preserved untouched, since demotion is a chroma-ladder move, never
+        a weight or contrast change.
+        """
+        depth = resolve_color_depth(self._console)
+        if depth == "none":
+            # B-6/G-8 tail: no colour reaches this console at all, so the
+            # allocator is a no-op -- nothing to demote either.
+            return style_str
+        state_changed = role != self._salience_last_role
+        self._salience_last_role = role
+        decision = self._salience_allocator.allocate_frame(
+            (RoleBid(role, state_changed),), depth=depth
+        )[0]
+        self._salience_decisions.append(decision)
+        if decision.lit:
+            return style_str
+        prefix, _, hex_part = style_str.rpartition(" ")
+        demoted_hex = demote_hex(hex_part, surface_hex=self._terminal_background_hex)
+        return f"{prefix} {demoted_hex}" if prefix else demoted_hex
 
     def _build_line(
         self,
@@ -817,7 +899,7 @@ class ParallelDisplay:
         # ``bright cyan`` fallback because an earlier ``color_system=
         # "standard"`` console cached the Style's ANSI on its own hash).
         timestamp_style = _display_theme._fresh_style(statuses["info"][0])
-        suffix_style = _display_theme._fresh_style(statuses[state][0])
+        suffix_style = _display_theme._fresh_style(self._apply_salience(state, statuses[state][0]))
         t = Text()
         if leading_indent:
             t.append(leading_indent)
@@ -866,7 +948,7 @@ class ParallelDisplay:
         # "standard"`` console cached the Style's ANSI on its own hash).
         # ``_fresh_style`` mints a per-instance ``_hash`` so the second
         # console re-derives the ANSI against its own color system.
-        state_style = _display_theme._fresh_style(statuses[state][0])
+        state_style = _display_theme._fresh_style(self._apply_salience(state, statuses[state][0]))
         chrome_style = _display_theme._fresh_style(statuses["info"][0])
         if kind in _BODY_SEMANTIC_KINDS:
             body_default_style = state_style

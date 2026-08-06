@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from ralph.display._salience import AllocationDecision
+
 from rich.text import Text
 
 from ralph.config.models import UnifiedConfig
@@ -148,6 +150,57 @@ def render_scene(
         _render_scene_previews(console, terminal_bg_is_light=terminal_bg_is_light)
     display.stop()
     return stream.getvalue()
+
+
+def scene_salience_decisions(
+    scene_name: str,
+    case: SupportCase,
+    *,
+    terminal_bg_is_light: bool | None,
+) -> tuple[AllocationDecision, ...]:
+    """G-9/S-8: drive one scene through the same production seams as
+    :func:`render_scene` and return the per-frame salience decisions the
+    real ``ParallelDisplay`` instance recorded (PLAN.md S-7's allocator
+    wiring in ``ParallelDisplay._apply_salience``), so tests can assert on
+    lit-accent counts, alarm exemption, and oscillation without
+    reaching into allocator internals (F-4). Mirrors ``render_scene``'s
+    setup exactly, minus the parts (SCENE header, preview rendering) that
+    do not themselves bid for salience.
+    """
+    if scene_name not in SCENE_NAMES:
+        raise ValueError(f"unknown scene {scene_name!r}")
+    if terminal_bg_is_light != case.terminal_background_is_light:
+        raise ValueError("terminal background must match the support case")
+    stream = StringIO()
+    console = make_console(
+        file=stream,
+        no_color=case.colour == "none",
+        force_terminal=case.destination in {"tty", "ci"} and case.colour != "none",
+        color_system=case.color_system,
+        width=case.width,
+        height=case.height,
+        terminal_bg_is_light=terminal_bg_is_light,
+    )
+    context = make_display_context(
+        console=console,
+        env=_scene_environment(case),
+        force_width=case.width,
+        force_height=case.height,
+    )
+    display = ParallelDisplay(
+        context,
+        clock=lambda: datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
+        monotonic=lambda: 123.0,
+    )
+    _drive_production_scene(
+        display,
+        console,
+        context,
+        scene_name,
+        include_capability_summary=case.width == FULL_LAYOUT_WIDTH,
+    )
+    display.stop()
+    return display.salience_decisions
 
 
 def _scene_environment(case: SupportCase) -> dict[str, str]:
@@ -487,5 +540,6 @@ __all__ = [
     "compact_matrix",
     "floor_matrix",
     "render_scene",
+    "scene_salience_decisions",
     "support_matrix",
 ]
