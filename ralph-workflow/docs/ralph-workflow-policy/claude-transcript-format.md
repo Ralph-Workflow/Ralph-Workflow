@@ -63,13 +63,35 @@ Claude Code subagents are in-process: no PID is ever registered, so
 interactive transport. The watchdog's `record_subagent_work` channel
 in `ralph/agents/idle_watchdog/_activity_methods.py` is the
 in-process-only liveness feed. The subagent transcript tailer
-(`ralph/agents/invoke/_subagent_transcript.py`,
-`_pty_line_reader.py:_subagent_transcript_thread`) tails every
+(`ralph/agents/invoke/_subagent_transcript.py`) tails every
 `agent-*.jsonl` discovered under the parent's `subagents/` directory
 and forwards each parsed event through the same channel the parent's
 events use. Without that feed, a fully-productive subagent is
 indistinguishable from a hung process from the watchdog's point of
 view, and the classifier returns `SILENT_SUBAGENT` (the gate fires).
+
+The tailer is constructed lazily inside
+`ralph/agents/invoke/_pty_line_reader.py:_transcript_thread` the
+first time a parent `session` event is observed (NOT at reader-thread
+start, which is before the visible-TUI extractor has populated
+`_captured_session_id`). The parent thread wires three calls per
+parsed event so the tailer's bookkeeping stays in lock-step with
+the parent-side event stream:
+
+* `note_parent_record(obj)` captures the Claude Code `version`
+  from the first user / assistant record (used by the R7 diagnostic
+  to name the build that emitted the layout).
+* `note_dispatch(tool_use_id, tool_name)` probes the `subagents/`
+  layout the moment a `tool_use:Agent` / `tool_use:Task` block lands
+  (R7 dispatch-driven probe) and starts the tailer the first time
+  a dispatch is observed.
+* `note_completion(tool_use_id)` drops the matching child file the
+  moment the parent's `tool_result` block lands (R1 lifecycle
+  ownership). The child `toolUseId` is correlated via
+  `agent-*.meta.json`; a child that appears AFTER the parent's
+  `tool_result` (the fast-returning-child case) is dropped on its
+  first discovery tick via the tailer's
+  `_completed_dispatch_ids` registry.
 
 The PID-based channel (`make_claude_interactive_subagent_pid_source`,
 `ralph/process/monitor/_subagent_pid_source_providers.py:114`) is

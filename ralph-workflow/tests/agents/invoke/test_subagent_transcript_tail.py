@@ -677,3 +677,133 @@ def test_r7_diagnostic_carries_version_field_when_parent_record_present() -> Non
         clock=lambda: 0.0,
     )
     assert tails_no_version._claude_code_version is None
+
+
+# ---------------------------------------------------------------------------
+# AC #6 — note_completion drops a child on the matching parent's tool_result
+# ---------------------------------------------------------------------------
+
+
+def test_note_completion_drops_child_matching_parent_tool_use_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``note_completion`` drops the child whose ``toolUseId`` matches the parent ``tool_result``.
+
+    The parent emits ``tool_use:Agent`` with a tool_use_id, the
+    child file is discovered with a ``.meta.json`` whose
+    ``toolUseId`` is the same string, and the parent emits a
+    ``tool_result`` block whose ``tool_use_id`` matches. The
+    tailer's ``note_completion`` MUST drop the child file
+    deterministically and return ``True`` so the caller can
+    confirm the lifecycle boundary fired.
+
+    Pair assertion: ``note_completion`` returns ``False`` when
+    the ``tool_use_id`` does not match any tracked child, and
+    returns ``False`` for an empty ``tool_use_id``.
+    """
+    project_dir = _setup_shadow_home(
+        monkeypatch,
+        tmp_path,
+        project_key="-home-test-workspace",
+        session_id="sess_completion",
+    )
+    sub_path = project_dir / "sess_completion" / "subagents" / "agent-completed.jsonl"
+    sub_path.write_text(
+        json.dumps({
+            "type": "assistant",
+            "isSidechain": True,
+            "agentId": "completed",
+            "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_c1"}]},
+        }) + "\n",
+        encoding="utf-8",
+    )
+    meta_path = sub_path.with_suffix(".meta.json")
+    meta_path.write_text(
+        json.dumps({
+            "agentType": "general-purpose",
+            "description": "test child for completion",
+            "toolUseId": "tu_dispatch_completed",
+            "spawnDepth": 1,
+        }),
+        encoding="utf-8",
+    )
+    stop = threading.Event()
+    tails = ClaudeSubagentTranscriptTails(
+        session_id="sess_completion",
+        project_key="-home-test-workspace",
+        monitor_stop=stop,
+        subagent_sink=lambda summary: None,
+        r7_sink=lambda diag: None,
+        poll_interval_seconds=0.01,
+        clock=lambda: 0.0,
+    )
+    try:
+        tails._discover_new_files()
+        assert len(tails._tails) == 1
+        # The completion fires for the matching tool_use_id and
+        # the tailer drops the child.
+        dropped = tails.note_completion(tool_use_id="tu_dispatch_completed")
+        assert dropped is True
+        assert len(tails._tails) == 0
+        # The pair assertion: a non-matching tool_use_id does
+        # NOT drop anything. We use a fresh child file with a
+        # DIFFERENT toolUseId so the completed-id registry does
+        # not affect the discovery.
+        other_sub_path = (
+            project_dir / "sess_completion" / "subagents" / "agent-other.jsonl"
+        )
+        other_sub_path.write_text(
+            json.dumps({
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "other",
+                "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "id": "tu_o1"}]},
+            }) + "\n",
+            encoding="utf-8",
+        )
+        (other_sub_path.with_suffix(".meta.json")).write_text(
+            json.dumps({
+                "agentType": "general-purpose",
+                "description": "other child",
+                "toolUseId": "tu_other_dispatch",
+                "spawnDepth": 1,
+            }),
+            encoding="utf-8",
+        )
+        tails._discover_new_files()
+        assert len(tails._tails) == 1
+        not_dropped = tails.note_completion(tool_use_id="tu_other_dispatch")
+        assert not_dropped is True
+        assert len(tails._tails) == 0
+        # An empty tool_use_id is a no-op (returns False) and
+        # does not mark anything completed. Add a fresh child
+        # to verify.
+        third_sub_path = (
+            project_dir / "sess_completion" / "subagents" / "agent-third.jsonl"
+        )
+        third_sub_path.write_text(
+            json.dumps({
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "third",
+                "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_t1"}]},
+            }) + "\n",
+            encoding="utf-8",
+        )
+        (third_sub_path.with_suffix(".meta.json")).write_text(
+            json.dumps({
+                "agentType": "general-purpose",
+                "description": "third child",
+                "toolUseId": "tu_third_dispatch",
+                "spawnDepth": 1,
+            }),
+            encoding="utf-8",
+        )
+        tails._discover_new_files()
+        assert len(tails._tails) == 1
+        empty = tails.note_completion(tool_use_id="")
+        assert empty is False
+        assert len(tails._tails) == 1
+    finally:
+        stop.set()
+        tails.stop()

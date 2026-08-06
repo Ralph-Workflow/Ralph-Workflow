@@ -5,6 +5,7 @@ from __future__ import annotations
 import codecs
 import contextlib
 import errno
+import json
 import os
 import re
 import threading
@@ -110,6 +111,9 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx, _EvalCompletionFn
     from ralph.agents.invoke._subagent_transcript import R7AbsentLayoutDiagnostic
+    from ralph.agents.parsers.interactive_transcript_event import (
+        InteractiveTranscriptEvent,
+    )
     from ralph.agents.timeout_clock import Clock
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
@@ -314,6 +318,12 @@ class PtyLineReader:
         self._captured_session_id: str | None = self._expected_session_id
         if self._expected_session_id:
             self._transcript_session_ids.append(self._expected_session_id)
+        # wt-04-claude-parsing (RC1 + RC3 + R7): the subagent
+        # transcript tailer is constructed LAZILY by the transcript
+        # thread the first time a session id is observed. The
+        # attribute defaults to ``None`` so the ``_ensure_subagent_tails_for_session``
+        # helper can detect a fresh construction versus a re-use.
+        self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
 
     @property
     def completion_exit_sent(self) -> bool:
@@ -641,16 +651,24 @@ class PtyLineReader:
         transcript_session_id: str | None = None
         file_obj = None
         transcript_parser = ClaudeInteractiveTranscriptParser()
-        # wt-024 AC-01: wrap the loop body in try/finally so the
-        # transcript file handle is closed on ANY exception path
-        # (readline/parse raises). The previous shape only closed
-        # at the bottom of the function, so a mid-loop raise leaked
-        # the fd. The finally block closes+nulls file_obj on the
-        # exception path AND re-raises (do NOT swallow — the
-        # existing thread error handling owns propagation). The
-        # existing reopen-close and post-loop close paths are
-        # preserved unchanged on the normal path; the counter-test
-        # asserts normal completion closes the handle exactly once.
+        # wt-04-claude-parsing (RC1 + RC3 + R7): wire the parent
+        # transcript parser to the subagent transcript tailer. The
+        # tailer is constructed lazily HERE on the FIRST observation
+        # of a session id (the previous shape constructed it in
+        # ``_build_subagent_transcript_tails`` at reader-thread start,
+        # BEFORE the visible-TUI extractor populated
+        # ``_captured_session_id`` -- the tailer always came back
+        # ``None`` for a fresh session and the watchdog's evidence
+        # channel never advanced). The tailer is then re-used across
+        # all subsequent lines of the parent transcript so every
+        # parsed record reaches ``note_parent_record``,
+        # ``note_dispatch``, and ``note_completion`` on the same
+        # tailer instance. The tailer is started EXACTLY ONCE on
+        # the first line that mentions a subagent-dispatch tool
+        # name (``Agent`` / ``Task``) so the discovery poll loop
+        # begins immediately on dispatch rather than idling until
+        # the parent session ends.
+        active_tails: ClaudeSubagentTranscriptTails | None = None
         try:
             while not self._monitor_stop.is_set():
                 candidate_ids = self._transcript_session_id_candidates()
@@ -680,6 +698,29 @@ class PtyLineReader:
                 if not line:
                     self._monitor_stop.wait(0.1)
                     continue
+                # wt-04-claude-parsing: surface every parent record
+                # to the subagent tailer (RC2 envelope + R7 dispatch
+                # detection + R1 lifecycle). The helper is a thin
+                # for-loop wrapper that mutates the ``active_tails``
+                # local in-place via the closure contract; extracting
+                # the dispatch here keeps the loop body below the
+                # PLR0912 branch limit while the helper still
+                # re-uses the surrounding locals through a single
+                # ``list[event]`` argument.
+                for event in transcript_parser.feed(line):
+                    active_tails = self._route_parent_event(
+                        event=event,
+                        active_tails=active_tails,
+                    )
+                # wt-04-claude-parsing: also surface the top-level
+                # parent record so the tailer can capture the
+                # Claude Code ``version`` from a user / assistant
+                # record on the first observation. ``feed`` already
+                # consumed the line; the raw line is the canonical
+                # JSON the tailer needs to inspect
+                # ``obj.version`` directly.
+                if active_tails is not None:
+                    self._capture_parent_record_metadata(line, active_tails)
                 emitted_lines = transcript_lines_from_event(line, parser=transcript_parser)
                 if emitted_lines:
                     with self._lines_lock:
@@ -689,6 +730,173 @@ class PtyLineReader:
             if file_obj is not None:
                 file_obj.close()
                 file_obj = None
+
+    def _route_parent_event(
+        self,
+        *,
+        event: InteractiveTranscriptEvent,
+        active_tails: ClaudeSubagentTranscriptTails | None,
+    ) -> ClaudeSubagentTranscriptTails | None:
+        """Surface one parent ``InteractiveTranscriptEvent`` to the subagent tailer.
+
+        Extracted from ``_transcript_thread`` to keep the loop body
+        below the PLR0912 branch limit. The helper is pure-ish
+        (``active_tails`` flows in and out) so the call site can
+        re-assign the local ``active_tails`` reference. Each
+        branch is documented inline:
+
+          - ``session``: lazy-construct the tailer the first
+            time a session id is observed.
+          - ``tool_use``: dispatch-driven R7 probe + tailer
+            start the first time a dispatch lands.
+          - ``tool_result``: drop the matching child file via
+            ``note_completion`` (R1 lifecycle ownership).
+        All other event kinds (``text`` / ``output`` / ``thinking``
+        / ``error`` / ``lifecycle``) are intentionally ignored;
+        they do not change the subagent tailer's bookkeeping.
+        """
+        if event.kind == "session":
+            # ``session`` events are emitted by
+            # ``_events_from_json`` whenever the ``sessionId``
+            # field changes; the FIRST observed session id is
+            # the moment to construct the tailer. Construction
+            # is deferred until here because the
+            # ``_captured_session_id`` cache is populated by
+            # the PTY-reader thread (not the transcript-reader
+            # thread), and we cannot race the reader for the
+            # canonical id.
+            text_value = event.text.strip()
+            if text_value and active_tails is None:
+                return self._ensure_subagent_tails_for_session(text_value)
+            return active_tails
+        if event.kind == "tool_use":
+            tool_name_obj = event.metadata.get("tool")
+            tool_use_id_obj = event.metadata.get("tool_use_id")
+            if (
+                isinstance(tool_name_obj, str)
+                and isinstance(tool_use_id_obj, str)
+                and active_tails is not None
+            ):
+                # R7 (dispatch-driven probe) + R1 (start the
+                # tailer the first time a dispatch is observed).
+                # The tailer's ``note_dispatch`` is idempotent on
+                # ``tool_use_id`` so re-firing on every tool_use
+                # line is safe.
+                active_tails.note_dispatch(
+                    tool_use_id=tool_use_id_obj,
+                    tool_name=tool_name_obj,
+                )
+                if not active_tails.is_started:
+                    active_tails.start()
+            return active_tails
+        if event.kind == "tool_result":
+            tool_use_id_obj = event.metadata.get("tool_use_id")
+            if (
+                isinstance(tool_use_id_obj, str)
+                and tool_use_id_obj
+                and active_tails is not None
+            ):
+                # R1 (lifecycle ownership): drop the child
+                # file when the parent ``tool_result`` lands;
+                # the tailer correlates via the
+                # ``toolUseId`` parsed from
+                # ``agent-*.meta.json``.
+                active_tails.note_completion(tool_use_id=tool_use_id_obj)
+            return active_tails
+        return active_tails
+
+    def _ensure_subagent_tails_for_session(
+        self, session_id: str
+    ) -> ClaudeSubagentTranscriptTails | None:
+        """Lazily build (or re-use) the subagent tailer for a captured session id.
+
+        Returns the existing tailer (started or unstarted) when the
+        reader already owns one for the same session id; builds a
+        new one on the first observation. The subagent sink is
+        wired into the watchdog's ``record_subagent_work`` channel
+        by the call site so the tailer's forwarded events
+        immediately reach the watchdog's evidence channel.
+        """
+        existing_obj: object = getattr(self, "_subagent_tails", None)
+        if isinstance(existing_obj, ClaudeSubagentTranscriptTails):
+            if existing_obj.session_id == session_id:
+                return existing_obj
+            # Different session id observed; the prior tailer is
+            # associated with a now-superseded session so stop it
+            # and replace.
+            with contextlib.suppress(Exception):
+                existing_obj.stop()
+        if self._workspace_path is None:
+            return None
+        try:
+            project_key = (
+                str(self._workspace_path.resolve()).replace("/", "-").replace(" ", "-")
+            )
+        except OSError:
+            return None
+        # The watchdog's subagent sink was bound earlier in
+        # ``_register_active_sinks`` (the closure holds a contextvar
+        # token that ``teardown_read_loop`` will reset). Look up the
+        # same sink the watchdog wired in.
+        holder_obj: object = getattr(self, "_subagent_sink_holder", None)
+        sink: Callable[[str], None]
+        if isinstance(holder_obj, dict):
+            existing_sink: object = holder_obj.get("sink")
+            if callable(existing_sink):
+                sink = cast("Callable[[str], None]", existing_sink)
+            else:
+                def _noop_sink(_summary: str) -> None:
+                    return None
+                sink = _noop_sink
+        else:
+            def _noop_sink(_summary: str) -> None:
+                return None
+            sink = _noop_sink
+
+        def _r7_sink(diag: R7AbsentLayoutDiagnostic) -> None:
+            logger.warning(
+                "R7 absent subagent layout: code={} claude_code_version={!r}"
+                " project_key={!r} session_id={!r} probed_path={!r}"
+                " dispatch_tool_use_id={!r} dispatch_tool_name={!r}",
+                diag.code,
+                diag.claude_code_version,
+                diag.project_key,
+                diag.session_id,
+                diag.probed_path,
+                diag.dispatch_tool_use_id,
+                diag.dispatch_tool_name,
+            )
+
+        tails = ClaudeSubagentTranscriptTails(
+            session_id=session_id,
+            project_key=project_key,
+            monitor_stop=self._monitor_stop,
+            subagent_sink=sink,
+            r7_sink=_r7_sink,
+            clock=lambda: float(self._clock.monotonic()),
+        )
+        self._subagent_tails = tails
+        return tails
+
+    @staticmethod
+    def _capture_parent_record_metadata(
+        raw_line: str, tails: ClaudeSubagentTranscriptTails
+    ) -> None:
+        """Parse the raw parent record once and surface the version to the tailer.
+
+        The transcript parser already consumed the line and the
+        downstream ``transcript_lines_from_event`` reroute the raw
+        line through the parser again. We do not want to double-parse
+        the JSON here; we just read the top-level ``version`` field
+        for the tailer's R7 diagnostic.
+        """
+        try:
+            obj: object = json.loads(raw_line)
+        except (ValueError, TypeError):
+            return
+        if not isinstance(obj, dict):
+            return
+        tails.note_parent_record(cast("dict[str, object]", obj))
 
     def _sentinel_thread(self) -> None:
         if self._stop_sentinel_path is None:
@@ -1224,77 +1432,6 @@ class PtyLineReader:
             prefix = ""
         return registry, prefix or ""
 
-    def _build_subagent_transcript_tails(
-        self,
-    ) -> ClaudeSubagentTranscriptTails | None:
-        """Construct the subagent transcript tailer for this invocation.
-
-        Returns ``None`` when no captured session id is available so a
-        pre-resolution invocation does not crash. The tailer reads
-        ``subagents/agent-*.jsonl`` files from the canonical Claude
-        Code directory and forwards events through the subagent sink
-        (the existing ``record_subagent_work`` channel). The R7
-        sink is wired to ``logger.warning`` so an absent ``subagents/``
-        layout surfaces a structured diagnostic visible to operators.
-        """
-
-        session_id = self._captured_session_id
-        if not session_id:
-            return None
-        workspace_path = self._workspace_path
-        if workspace_path is None:
-            return None
-        try:
-            project_key = str(workspace_path.resolve()).replace("/", "-").replace(" ", "-")
-        except OSError:
-            return None
-
-        def _r7_sink(diag: R7AbsentLayoutDiagnostic) -> None:
-            logger.warning(
-                "R7 absent subagent layout: code={} claude_code_version={!r}"
-                " project_key={!r} session_id={!r} probed_path={!r}"
-                " dispatch_tool_use_id={!r} dispatch_tool_name={!r}",
-                diag.code,
-                diag.claude_code_version,
-                diag.project_key,
-                diag.session_id,
-                diag.probed_path,
-                diag.dispatch_tool_use_id,
-                diag.dispatch_tool_name,
-            )
-
-        # The subagent sink is wired below in ``read_lines`` once the
-        # watchdog is constructed; the tailer holds a closure that
-        # captures ``watchdog`` by name. For now, return a sentinel
-        # that ``read_lines`` re-binds before ``start()``.
-        subagent_sink_holder: dict[str, Callable[[str], None]] = {}
-
-        def _subagent_sink(summary: str) -> None:
-            sink = subagent_sink_holder.get("sink")
-            if sink is None:
-                return
-            sink(summary)
-
-        # The dispatch observer is wired below in ``read_lines``
-        # because the parent's transcript parser hands events to
-        # ``_forward_event`` AFTER the watchdog is constructed. For
-        # now the tailer is constructed with an empty observer; the
-        # ``note_dispatch`` method on the tailer is the public surface
-        # that the parent parser calls once wired.
-        tails = ClaudeSubagentTranscriptTails(
-            session_id=session_id,
-            project_key=project_key,
-            monitor_stop=self._monitor_stop,
-            subagent_sink=_subagent_sink,
-            r7_sink=_r7_sink,
-            clock=lambda: float(self._clock.monotonic()),
-        )
-        # Stash the holder so ``read_lines`` can swap in the real
-        # sink once the watchdog is constructed.
-        self._subagent_sink_holder = subagent_sink_holder
-        self._subagent_tails = tails
-        return tails
-
     def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
         """Build a PID source from the strategy's child-liveness registry, if any.
 
@@ -1353,12 +1490,16 @@ class PtyLineReader:
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
         completion_reader = self._start_thread(self._completion_evidence_thread)
-        # RC1 + RC3 (wt-04-claude-parsing): mount the subagent transcript
-        # tailer so child Claude Code ``subagents/agent-*.jsonl`` files
-        # feed the watchdog's ``record_subagent_work`` channel. The
-        # tailer is constructed lazily here (after the parent tail
-        # has resolved the session id) and torn down in ``finally``.
-        subagent_tails = self._build_subagent_transcript_tails()
+        # RC1 + RC3 (wt-04-claude-parsing): the subagent transcript
+        # tailer is now constructed LAZILY inside ``_transcript_thread``
+        # on the first observed session id -- the previous shape
+        # built the tailer here and saw ``_captured_session_id is None``
+        # for every fresh invocation, so the tailer never came back
+        # populated. We still pre-allocate the sink holder here so
+        # the lazy constructor can find the watchdog binding once the
+        # watchdog exists. ``_teardown_read_loop`` stops the
+        # lazily-constructed tailer via ``self._subagent_tails``.
+        self._subagent_sink_holder: dict[str, Callable[[str], None]] = {}
         subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
         process_monitor = _make_process_monitor(
@@ -1402,18 +1543,15 @@ class PtyLineReader:
         self._bind_workspace_monitor(watchdog)
         sink_token, subagent_token, subagent_sink = self._register_active_sinks(watchdog)
         # RC1 + RC3 (wt-04-claude-parsing): bind the watchdog's
-        # ``record_subagent_work`` channel into the subagent
-        # transcript tailer constructed above. The tailer holds a
-        # closure that consults ``self._subagent_sink_holder`` so the
-        # watchdog binding is a one-line swap rather than a
-        # constructor re-wire. ``start()`` begins polling the
-        # ``subagents/`` directory at the canonical cadence; ``stop()``
-        # in the ``finally`` block closes every open file handle.
-        if subagent_tails is not None:
-            holder: object = getattr(self, "_subagent_sink_holder", None)
-            if isinstance(holder, dict):
-                holder["sink"] = subagent_sink
-            subagent_tails.start()
+        # ``record_subagent_work`` channel into the sink holder the
+        # lazy tailer constructor reads from. The tailer consults
+        # ``self._subagent_sink_holder`` so the watchdog binding is
+        # a one-line swap rather than a constructor re-wire. The
+        # tailer's ``start()`` is fired by ``_transcript_thread`` on
+        # the first ``Agent`` / ``Task`` dispatch rather than here
+        # so a no-dispatch session never spins up a tailer thread.
+        holder: dict[str, Callable[[str], None]] = self._subagent_sink_holder
+        holder["sink"] = subagent_sink
         unsubscribe = get_process_manager().register_listener(self._on_process_event)
         return _ReadLoopSetup(
             reader=reader,
@@ -1421,7 +1559,7 @@ class PtyLineReader:
             sentinel_reader=sentinel_reader,
             completion_reader=completion_reader,
             watchdog=watchdog,
-            subagent_tails=subagent_tails,
+            subagent_tails=None,
             unsubscribe=unsubscribe,
             sink_token=sink_token,
             subagent_token=subagent_token,
@@ -1479,8 +1617,15 @@ class PtyLineReader:
         reset_subagent_sink(setup.subagent_token)
         if self._monitor is not None:
             self._monitor.set_on_event(None)
-        if setup.subagent_tails is not None:
-            setup.subagent_tails.stop()
+        # RC1 + RC3 (wt-04-claude-parsing): the subagent tailer is
+        # built lazily inside ``_transcript_thread``; it lives on
+        # ``self._subagent_tails`` after the first observed session
+        # id, so we stop the lazy-constructed instance here (the
+        # setup-time ``subagent_tails`` slot is always ``None`` now).
+        lazy_tails_obj: object = getattr(self, "_subagent_tails", None)
+        if isinstance(lazy_tails_obj, ClaudeSubagentTranscriptTails):
+            with contextlib.suppress(Exception):
+                lazy_tails_obj.stop()
         self._cleanup(
             [
                 setup.reader,

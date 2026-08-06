@@ -561,29 +561,25 @@ def smoke_harness_agent_command(
         workspace_root, transport=result.transport, evidence=_required_evidence(result)
     )
     verdict_label, _ = grade_verdict(_required_evidence(result))
-    # The subagent-contract violation
-    # ("not every subagent dispatch has a correlated result" /
-    # "no meaningful activity was observed after the subagent result") is
-    # diagnostic, not fatal. Haiku with ``--subagents`` commonly fires
-    # multiple parallel ``Agent``/``Task`` calls inside one Claude-Code
-    # turn, and the transcript only carries ``tool_use`` for the
-    # slowest-returning child before the session ceiling expires — the
-    # work the harness actually grades (artifact submission, completion
-    # sentinel, tool activity) all reach WIRE in those runs. Gating
-    # ``EXIT_CODE`` on a missing subagent tail would convert a
-    # "transport reached Ralph's MCP tools" PASS into a noisy failure
-    # every time the model races itself; the surfacing still happens
-    # in the report's "Observed breaks" cell so the operator sees it.
-    fatal_subagent_errors = frozenset(
-        {
-            "not every subagent dispatch has a correlated result",
-            "no meaningful activity was observed after the subagent result",
-        }
-    )
-    fatal_errors = [
-        err for err in result.errors if err not in fatal_subagent_errors
-    ]
-    exit_code = 0 if not fatal_errors and verdict_label == PASS else 1
+    # R8 (wt-04-claude-parsing): a missing dispatch, missing
+    # correlated result, or missing post-result activity is a
+    # HARD FAILED subagent-contract check, NOT a diagnostic. The
+    # plan and product criteria explicitly require that "a
+    # transport that cannot dispatch a subagent reports a failed
+    # check; it must not silently degrade to the basic scenario."
+    # All ``result.errors`` are treated as fatal; the previous
+    # "fatal_subagent_errors" allowlist filter was a regression
+    # that converted missing subagent-tail signals into
+    # exit-code-zero PASSes even when the model raced itself and
+    # never produced the required correlated result + post-result
+    # activity. The plan's R8 contract is that BOTH smoke runs
+    # (interactive and headless Claude) surface a subagent
+    # contract failure as a non-zero exit, with the surfacing
+    # in the per-check table AND the exit code. ``AGENTS.md``
+    # has no unrelated-failure exemption: a subagent contract
+    # violation is in the smoke plan and the exit code must
+    # reflect it.
+    exit_code = 0 if not result.errors and verdict_label == PASS else 1
     # S-14: keep the literal ``EXIT_CODE=N`` machine-line shape so
     # external smoke harnesses that grep the line keep working. The
     # line is a machine contract (not operator-visible decoration) and

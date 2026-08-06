@@ -181,6 +181,14 @@ class ClaudeSubagentTranscriptTails:
         # Per-dispatch probe registry so R7 fires once per
         # ``tool_use_id``. The key is ``dispatch_tool_use_id``.
         self._probed_dispatch_ids: set[str] = set()  # bounded-accumulator-ok: bounded by dispatch fan-out
+        # ``tool_use_id`` values the parent has marked completed via
+        # ``note_completion``. A discovered child whose ``toolUseId``
+        # is in this set is dropped immediately (the parent's
+        # ``tool_result`` already landed before the child file was
+        # discovered, which is the common case when the child wrote
+        # its transcript AFTER the parent's ``tool_result`` for the
+        # fast-returning subagent dispatch).
+        self._completed_dispatch_ids: set[str] = set()  # bounded-accumulator-ok: bounded by dispatch fan-out
         # Parent Claude Code version captured from the first user /
         # assistant record. ``None`` until observed.
         self._claude_code_version: str | None = None
@@ -214,6 +222,68 @@ class ClaudeSubagentTranscriptTails:
         if isinstance(version, str) and version:
             self._claude_code_version = version
 
+    def note_completion(self, *, tool_use_id: str) -> bool:
+        """Drop a child file whose ``toolUseId`` matches the parent's ``tool_result.tool_use_id``.
+
+        Lifecycle ownership: a discovered child file is polled
+        continuously from discovery through whichever comes first:
+
+        (a) the parent transcript emits the matching ``tool_result``
+            block for that child (the parent's ``tool_use_id`` is
+            correlated with the child's ``toolUseId`` via the
+            ``toolUseId`` parsed from ``agent-*.meta.json``), or
+        (b) the tailer shuts down (``_monitor_stop``).
+
+        The ``tool_use_id`` is recorded in
+        ``_completed_dispatch_ids`` so a child file that appears
+        AFTER the parent ``tool_result`` lands (the common case
+        when the child wrote its transcript after the parent
+        already returned) is dropped on its first discovery tick.
+
+        Returns ``True`` when a matching child file was found and
+        dropped; ``False`` otherwise. The return value is exposed
+        for the test surface so a regression can assert the
+        lifecycle boundary fires on the right ``tool_result``. The
+        dropped child file's file handle is closed deterministically
+        and the parser instance released; future reads against the
+        same child file are not attempted.
+        """
+        if not tool_use_id:
+            return False
+        self._completed_dispatch_ids.add(tool_use_id)
+        return self._drop_child_for_tool_use_id(tool_use_id)
+
+    def _drop_child_for_tool_use_id(self, tool_use_id: str) -> bool:
+        """Internal helper: scan ``_tails`` for a child whose ``toolUseId`` matches.
+
+        Used by both ``note_completion`` (eager drop) and
+        ``_discover_new_files`` (drop on first observation if the
+        parent's ``tool_result`` already landed).
+        """
+        for key in list(self._tails.keys()):
+            entry = self._tails[key]
+            _transcript_path, _meta_path, meta_dict, file_obj, _parser, _offset = entry
+            child_use_id: object = (
+                meta_dict.get("toolUseId") if isinstance(meta_dict, dict) else None
+            )
+            if not isinstance(child_use_id, str) or child_use_id != tool_use_id:
+                continue
+            with contextlib.suppress(Exception):
+                file_obj.close()
+            del self._tails[key]
+            return True
+        return False
+
+    @property
+    def is_started(self) -> bool:
+        """Return whether the tail thread is alive."""
+        return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def claude_code_version(self) -> str | None:
+        """Return the captured parent Claude Code version (``None`` until observed)."""
+        return self._claude_code_version
+
     def note_dispatch(
         self,
         *,
@@ -236,34 +306,44 @@ class ClaudeSubagentTranscriptTails:
         if tool_use_id in self._probed_dispatch_ids:
             return
         self._probed_dispatch_ids.add(tool_use_id)
-        # Probe the layout at the moment of dispatch.
-        existing = list(self._tails.keys())
-        if not existing:
-            # Either the parent hasn't started tailing yet or the
-            # ``subagents/`` directory is missing. Probe the canonical
-            # path directly so we don't depend on the poll loop's view.
-            probe_path = (
-                Path.home()
-                / ".claude"
-                / "projects"
-                / self._project_key
-                / self._session_id
-                / "subagents"
+        # Probe the canonical path directly so we don't depend on
+        # the poll loop's view of ``self._tails``. The tailer may
+        # not have started polling yet (the parent transcript
+        # thread can observe a dispatch before the tailer thread
+        # has run its first discovery tick), so the only
+        # reliable "is the layout present?" check is the canonical
+        # ``<project>/<session>/subagents/`` directory enumeration.
+        probe_path = (
+            Path.home()
+            / ".claude"
+            / "projects"
+            / self._project_key
+            / self._session_id
+            / "subagents"
+        )
+        if not probe_path.is_dir():
+            self._emit_r7(
+                tool_use_id=tool_use_id,
+                tool_name=tool_name,
+                probed_path=probe_path,
             )
-            if not probe_path.is_dir():
-                self._emit_r7(tool_use_id=tool_use_id, tool_name=tool_name,
-                              probed_path=probe_path)
-                return
-            try:
-                contents = list(probe_path.glob("agent-*.jsonl"))
-            except OSError:
-                self._emit_r7(tool_use_id=tool_use_id, tool_name=tool_name,
-                              probed_path=probe_path)
-                return
-            if not contents:
-                self._emit_r7(tool_use_id=tool_use_id, tool_name=tool_name,
-                              probed_path=probe_path)
-                return
+            return
+        try:
+            contents = list(probe_path.glob("agent-*.jsonl"))
+        except OSError:
+            self._emit_r7(
+                tool_use_id=tool_use_id,
+                tool_name=tool_name,
+                probed_path=probe_path,
+            )
+            return
+        if not contents:
+            self._emit_r7(
+                tool_use_id=tool_use_id,
+                tool_name=tool_name,
+                probed_path=probe_path,
+            )
+            return
 
     def start(self) -> threading.Thread:
         """Start the tail thread. Idempotent."""
@@ -323,7 +403,16 @@ class ClaudeSubagentTranscriptTails:
             return
 
     def _discover_new_files(self) -> None:
-        """Add any newly-discovered child files to the tail set."""
+        """Add any newly-discovered child files to the tail set.
+
+        A discovered child whose ``toolUseId`` is already in
+        ``_completed_dispatch_ids`` (the parent's ``tool_result``
+        landed before the child file appeared on disk) is NOT
+        added to ``_tails``; the parent's lifecycle boundary
+        wins. The dropped-on-discovery case is the common
+        fast-returning-child pattern and the test surface asserts
+        it explicitly.
+        """
         for transcript_path, meta_path in find_claude_subagent_transcripts(
             self._session_id
         ):
@@ -331,6 +420,17 @@ class ClaudeSubagentTranscriptTails:
             if key in self._tails:
                 continue
             meta_dict = read_meta_file(meta_path) if meta_path is not None else None
+            if isinstance(meta_dict, dict):
+                child_use_id: object = meta_dict.get("toolUseId")
+                if (
+                    isinstance(child_use_id, str)
+                    and child_use_id in self._completed_dispatch_ids
+                ):
+                    # The parent's ``tool_result`` already landed
+                    # for this child. Drop on first observation;
+                    # do not register a tail entry, do not open a
+                    # file handle, do not start a parser.
+                    continue
             parser = ClaudeInteractiveTranscriptParser()
             try:
                 file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
