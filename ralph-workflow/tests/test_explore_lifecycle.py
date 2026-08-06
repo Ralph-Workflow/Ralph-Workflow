@@ -241,7 +241,7 @@ def test_lifecycle_hook_result_dataclass_defaults() -> None:
     assert result.skipped_reason is None
 
 
-def test_runner_wires_pre_post_refresh_around_development_agent() -> None:
+def test_runner_wires_pre_post_refresh_around_development_agent(tmp_path: Path) -> None:
     """AC-04 / runner-level integration: a development drain must
     observe exactly one ``before`` refresh event before invocation
     and one ``after`` refresh event after invocation, while a
@@ -253,8 +253,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent() -> None:
     order of the hooks is not asserted because the contract is the
     pre/invocation/post ordering; implementation details are not.
     """
-    from pathlib import Path
-
     from ralph.mcp.explore import lifecycle as lifecycle_module
     from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
     from ralph.mcp.explore.lifecycle import DEFAULT_HOOK_TIMEOUT_MS
@@ -282,11 +280,18 @@ def test_runner_wires_pre_post_refresh_around_development_agent() -> None:
     lifecycle_module.__dict__["before_agent_refresh"] = _spy_before
     lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
     try:
-        # Use a tmp_path-equivalent: a hidden scratch dir under
-        # /tmp. The ExploreIndex handle is built from the
+        # Use pytest's isolated ``tmp_path`` fixture rather than a
+        # shared, hardcoded ``/tmp/.agent/ralph-explore`` path: that
+        # literal path collides with the live orchestrator's own
+        # ExploreStore in an agent-managed session (a real,
+        # concurrently-written production sqlite file at that exact
+        # location), which manifested as ``sqlite3.OperationalError:
+        # database is locked`` under ``make test``. ``tmp_path`` is
+        # unique per test invocation and cannot collide with any
+        # other writer. The ExploreIndex handle is built from the
         # underlying ExploreStore directly so the test does not
         # depend on workspace_root semantics.
-        workspace_root = Path("/tmp").resolve()
+        workspace_root = tmp_path
         store = ExploreStore(workspace_root / ".agent" / "ralph-explore")
         try:
             handle = build_sqlite_index_handle(store)

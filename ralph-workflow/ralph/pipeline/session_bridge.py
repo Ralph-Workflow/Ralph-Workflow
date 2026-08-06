@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.agents.invoke._process_reader import _parent_broker_secret
 from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -170,6 +171,21 @@ def build_session_bridge(
         worker_artifact_dir=worker_artifact_dir,
         worker_namespace=worker_namespace,
         allowed_roots=allowed_roots or (),
+        # F2/A5 (Evidence Provenance): wire the parent-only broker secret
+        # into the in-process session so ``McpServer``'s wire-ledger append
+        # (``self._session.broker_secret``) is not a permanent no-op for
+        # every caller of ``build_session_bridge`` (the main pipeline and
+        # every plumbing command, including the smoke harness). Without
+        # this, no in-process bridge could ever reach ``Provenance.WIRE``
+        # regardless of ``RALPH_BROKER_SECRET`` being set, because
+        # ``AgentSession.broker_secret`` defaults to ``None`` and nothing
+        # else populated it. ``_parent_broker_secret()`` is the single
+        # approved composition-root accessor (see
+        # ``ralph/testing/audit_di_seam.py``'s allowlist comment on
+        # ``agents/invoke/_process_reader.py``); it returns ``None`` when
+        # unset, which keeps the ledger a no-op exactly as before for any
+        # caller that never exports the secret.
+        broker_secret=_parent_broker_secret(),
     )
     workspace = workspace_fn(workspace_root)
     # Pre-render hook: materialize every bundled artifact format doc into

@@ -231,6 +231,57 @@ class TestBuildSessionBridge:
 
         assert isinstance(bridge, FakeSessionBridge)
 
+    def test_broker_secret_threaded_from_parent_env(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """F2/A5 (Evidence Provenance): ``AgentSession.broker_secret`` MUST
+        reflect ``RALPH_BROKER_SECRET`` from the parent process's own
+        environment.
+
+        Regression for the gap DA-002's live-smoke follow-up surfaced:
+        ``build_session_bridge`` constructed every ``AgentSession`` with
+        ``broker_secret`` left at its ``None`` default, so
+        ``McpServer``'s wire-ledger append
+        (``self._session.broker_secret``) was a permanent no-op for every
+        caller of ``build_session_bridge`` -- the main pipeline and every
+        plumbing command, including the smoke harness -- regardless of
+        whether the operator exported ``RALPH_BROKER_SECRET``. No fact
+        graded by ``ralph.pipeline.plumbing.smoke_evidence`` could ever
+        reach ``Provenance.WIRE``.
+        """
+        monkeypatch.setenv("RALPH_BROKER_SECRET", "a-parent-side-secret")
+        bridge = build_session_bridge(
+            workspace_root=tmp_path,
+            drain="commit",
+            agents_policy=None,
+            build_session_mcp_plan_fn=fake_build_session_mcp_plan,
+            start_mcp_server_fn=fake_start_mcp_server,
+            workspace_factory=fake_workspace_factory,
+        )
+        assert isinstance(bridge, FakeSessionBridge)
+        assert bridge.attached_session is not None
+        assert bridge.attached_session.broker_secret == "a-parent-side-secret"
+
+    def test_broker_secret_is_none_when_parent_env_unset(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """A caller that never exports ``RALPH_BROKER_SECRET`` keeps the
+        ledger a no-op exactly as before -- the fix must not fabricate a
+        secret when the parent process carries none.
+        """
+        monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
+        bridge = build_session_bridge(
+            workspace_root=tmp_path,
+            drain="commit",
+            agents_policy=None,
+            build_session_mcp_plan_fn=fake_build_session_mcp_plan,
+            start_mcp_server_fn=fake_start_mcp_server,
+            workspace_factory=fake_workspace_factory,
+        )
+        assert isinstance(bridge, FakeSessionBridge)
+        assert bridge.attached_session is not None
+        assert bridge.attached_session.broker_secret is None
+
     def test_exec_resource_resolver_attached_before_bridge_start(self, tmp_path: Path) -> None:
         """AC-11: ``session.exec_resource_resolver`` MUST be attached to the
         parent ``AgentSession`` BEFORE the subprocess is spawned.

@@ -725,6 +725,24 @@ def _build_smoke_prompt(
         if transport is not None
         else ""
     )
+    # DA-001: a live opencode/minimax/MiniMax-M3 run repeatedly hallucinated
+    # a bare `read_file` tool name (never advertised) instead of the
+    # actually-exposed `ralph_read_file`, producing a hard tool-call error
+    # the model then never recovered from -- no file created, no artifact
+    # submitted, no completion. The generic transport_requirement bullet
+    # above measurably did not prevent this. Naming the exact prefix and a
+    # concrete example (mirroring the AGY dispatcher-hint pattern below) is
+    # the same fix shape already proven to correct a live-model tool-naming
+    # miss for a different transport.
+    opencode_tool_naming_requirement = (
+        "- This transport exposes Ralph's tools with an explicit `ralph_` "
+        "prefix (for example `ralph_read_file`, `ralph_write_file`, "
+        "`ralph_edit_file`, `ralph_create_directory`). There is no bare "
+        "`read_file` / `write_file` / `edit_file` tool -- always call the "
+        "`ralph_`-prefixed name exactly as listed in your available tools.\n"
+        if transport is AgentTransport.OPENCODE
+        else ""
+    )
     # AGY does not list Ralph's tools directly (A1): its init frame advertises
     # only the generic `call_mcp_tool` dispatcher (confirmed by a live
     # v1.1.10 capture, never guessed -- see tests/display/_fixtures/
@@ -804,6 +822,7 @@ def _build_smoke_prompt(
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
         f"{transport_requirement}"
+        f"{opencode_tool_naming_requirement}"
         f"{subagent_requirements}"
         f"{submit_call_instruction}"
         f"```markdown\n{artifact_document}\n```\n"
@@ -1946,34 +1965,23 @@ def _run_smoke_agent(
     # a fake-``AgentRegistry`` registry cannot crash the resolver.
     if params.display is not None:
         observed_capabilities = params.display.capability_recorder.observed_capabilities()
+        # S-5's resolver: an injected ``support_resolver`` wins (tests feed
+        # a synthetic support without standing up a registry); the
+        # production default resolves through
+        # ``AgentRegistry.from_config(params.unified_config).catalog.get(name)``,
+        # the dynamic-alias-aware lookup that correctly synthesises an
+        # ``AgentSupport`` for aliases like ``opencode/minimax/MiniMax-M3``
+        # (see ``AgentCatalog._resolve_dynamic_support``). No ``getattr``
+        # default and no swallowed exception: a resolver that cannot find a
+        # support returns ``None`` explicitly, which is the "nobody has
+        # said" case Branch A of ``_detect_capability_breaks`` grades as
+        # ungraded rather than silently passing.
         if params.support_resolver is not None:
             resolved_support = params.support_resolver(params.agent_name)
         else:
-            # Prefer the ``AgentConfig``'s attached ``_support`` (set when
-            # the config was registered through ``AgentCatalog.add`` / the
-            # legacy ``register_agent_support`` API), which is the
-            # transport-neutral way to read the registered support and
-            # bypasses the catalog round-trip. The catalog fallback still
-            # works for dynamic-alias synthesised supports whose
-            # ``AgentConfig`` is built by ``_resolve_dynamic_agent`` and
-            # attaches the synthesised ``_support`` immediately. The
-            # try/except on ``AttributeError`` keeps existing tests that
-            # monkey-patch ``AgentRegistry`` (returning a stand-in with no
-            # ``.catalog`` attribute) hermetic; production registry mocks
-            # always expose ``.catalog``.
-            attached_support: AgentSupport | None = cast(
-                "AgentSupport | None", getattr(params.config, "_support", None)
+            resolved_support = AgentRegistry.from_config(params.unified_config).catalog.get(
+                params.agent_name
             )
-            if attached_support is not None:
-                resolved_support = attached_support
-            else:
-                try:
-                    resolved_support = (
-                        AgentRegistry.from_config(params.unified_config)
-                        .catalog.get(params.agent_name)
-                    )
-                except AttributeError:
-                    resolved_support = None
     else:
         observed_capabilities = frozenset()
         resolved_support = None

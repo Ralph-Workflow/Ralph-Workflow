@@ -548,6 +548,43 @@ def test_agy_branch_with_completion_call_passes_completion_check(
     assert "completion sentinel was not observed" not in result.errors
 
 
+def test_opencode_smoke_prompt_names_the_ralph_prefixed_tools() -> None:
+    """DA-001: the prompt must preempt the live-model hallucination of a
+    bare ``read_file`` / ``write_file`` / ``edit_file`` tool name.
+
+    A live ``opencode/minimax/MiniMax-M3`` run repeatedly called an
+    unavailable bare ``read_file`` tool and never recovered -- no file
+    created, no artifact submitted, no completion. The prompt must name
+    the actual ``ralph_``-prefixed tool names explicitly so the model has
+    the correct spelling in context, not just the generic "use the
+    transport's tool names" bullet that measurably did not prevent this.
+    """
+    prompt = _build_smoke_prompt(
+        "tmp/interactive-opencode-smoke/todo-list.js",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
+        transport=AgentTransport.OPENCODE,
+    )
+    assert "ralph_read_file" in prompt
+    assert "ralph_write_file" in prompt
+    assert "ralph_edit_file" in prompt
+    assert "no bare" in prompt
+
+
+def test_non_opencode_smoke_prompt_omits_the_opencode_tool_naming_bullet() -> None:
+    """The DA-001 bullet is opencode-specific -- it must not leak into
+    other transports' prompts (they never advertise a bare ``read_file``
+    tool to guard against, and the bullet's `ralph_read_file` example would
+    be a non sequitur for a transport whose parser vocabulary differs).
+    """
+    prompt = _build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    assert "ralph_read_file" not in prompt
+    assert "no bare" not in prompt
+
+
 def test_agy_smoke_regression_missing_artifact_is_reported_without_submit_instruction(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

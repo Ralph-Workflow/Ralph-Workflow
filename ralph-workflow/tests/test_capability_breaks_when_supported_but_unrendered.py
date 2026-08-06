@@ -230,6 +230,63 @@ class TestSmokeCapabilityBreaksWhenSupportedButUnrendered:
             for err in errors_lower
         ), result.errors
 
+    def test_production_default_resolver_resolves_dynamic_alias(
+        self, tmp_path: Path
+    ) -> None:
+        """DA-002: with ``support_resolver=None`` (the production
+        default), ``_run_smoke_agent`` MUST resolve
+        ``opencode/minimax/MiniMax-M3`` through
+        ``AgentRegistry.from_config(...).catalog.get(...)`` -- the
+        dynamic-alias-aware lookup -- and NOT through a defaulting
+        ``getattr`` / swallowed ``AttributeError`` path. This exercises
+        the real production resolver end to end (no synthetic
+        ``support_resolver`` injection), unlike the other cases in this
+        file which inject a fake support per S-5's test seam.
+
+        The resolved built-in ``opencode`` support declares all three
+        capabities as ``SUPPORTED``; a transcript with no exercising
+        tool call (an empty fixture) keeps Branch B silent, but Branch A
+        must NOT silence it either (``support is not None``), proving
+        the real resolver actually returned something rather than
+        ``None``. That is asserted indirectly: swap in a fixture-driven
+        transcript with an empty recorder and confirm the three
+        ``declared capability ... never rendered`` breaks fire -- which
+        is only possible when the resolver found a non-``None``
+        ``AgentSupport`` for the alias.
+        """
+        recorder = CapabilityObservationRecorder()
+        display = ParallelDisplay(
+            display_context=make_display_context(force_width=120, force_glyphs=False),
+            capability_recorder=recorder,
+            is_quiet=True,
+        )
+        params = _build_params(
+            workspace_root=tmp_path,
+            display=display,
+            support_resolver=None,
+        )
+        with patch.object(
+            smoke_plumbing_module,
+            "_execute_smoke_turns",
+            _fake_execute_smoke_turns,
+        ):
+            result = smoke_plumbing_module._run_smoke_agent(
+                params, run_id="regression-production-resolver"
+            )
+        errors_lower = [err.lower() for err in result.errors]
+        assert any(
+            "syntax_highlighting" in err and "never rendered" in err
+            for err in errors_lower
+        ), result.errors
+        assert any(
+            "file_preview" in err and "never rendered" in err
+            for err in errors_lower
+        ), result.errors
+        assert any(
+            "edit_diff" in err and "never rendered" in err
+            for err in errors_lower
+        ), result.errors
+
     def test_branch_a_suppression_when_no_support_declared(
         self, tmp_path: Path
     ) -> None:
