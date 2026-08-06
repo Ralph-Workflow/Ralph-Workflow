@@ -545,3 +545,105 @@ newly-observed frames via `collect_captures(...).render_capture_table_markdown(.
 without hand-editing this file; the prose sections above (and their
 synthetic labels) are kept as the historical record of what each live
 run actually showed.
+
+## 2026-08-06: Evidence Provenance closeout plan, S-4 -- live planning-phase confirmation (DoD 13) through the *normal* pipeline
+
+The S-1/S-2 entry above ("live confirmation (S-4)") proved `WIRE`-graded
+`PASS` only through the smoke gate's own code path
+(`smoke-interactive-agy`). DoD 13 is a distinct claim about the
+*pipeline's ordinary planning phase* -- the exact phase that produced the
+false `agy result SUCCESS` in the brief's measured 2026-08-06 baseline.
+This entry closes that gap with a first genuine live capture.
+
+**Setup correction to the plan's own S-4 step.** The plan's S-4 setup
+bound `[agent_chains.planning]` via a project-local
+`.agent/agents.toml` (the structured policy format). That file alone is
+**not sufficient** on a machine that already has a user-global
+`~/.config/ralph-workflow.toml` defining `[agent_chains]` /
+`[agent_drains]` (the flat legacy format) -- which is the normal
+post-`ralph --init` state, not an edge case. `ralph/policy/loader.py`'s
+`_load_agents_policy_from_path` checks `_config_defines_agent_policy(config)`
+*before* ever reading the project-local `agents.toml` path: when the
+`UnifiedConfig` passed in by `ralph/cli/commands/run.py:288`
+(`load_policy_for_workspace_scope(workspace_scope, config=config)`)
+already carries non-empty `agent_chains`/`agent_drains` -- which it does
+whenever a global `ralph-workflow.toml` defines them, per
+`ralph/config/loader.py`'s five-layer merge (embedded defaults -> global
+agents.toml -> global ralph-workflow.toml -> **project-local
+`.agent/ralph-workflow.toml`** -> CLI flags) -- `build_agents_policy_from_config(config)`
+is used instead, and the project-local *structured* `.agent/agents.toml`
+is never read at all. A direct reproduction this session (calling
+`load_policy_for_workspace_scope(scope)` with `config=None`, matching the
+plan's own preflight-assertion script) reported the desired override
+correctly; the **real** invocation path (`config=config`, matching
+`run.py:288` exactly) did not -- it invoked `claude/sonnet` for the
+planning phase, the global config's own default, silently ignoring the
+project-local `agents.toml`. This is why the plan's preflight-assertion
+script (which calls the loader with `config=None`) is not sufficient
+proof of what a real `ralph run` will do on a machine with a populated
+global config: it exercises a different code branch.
+
+**The correct override for this scenario is the *legacy flat* project-local
+file, `.agent/ralph-workflow.toml`** (not `.agent/agents.toml`), because
+its `[agent_chains]` / `[agent_drains]` tables get merged into the
+`UnifiedConfig` itself (project-local outranks global at layer 4 of 5, per
+`ralph/config/loader.py`'s own documented merge order) -- so
+`config.agent_chains['planning']` already reflects the override by the
+time `_config_defines_agent_policy` runs, and `build_agents_policy_from_config`
+faithfully reproduces it:
+
+```toml
+# .agent/ralph-workflow.toml
+[agent_chains]
+planning = ["agy/gemini-3.6-flash-low"]
+
+[agent_drains]
+planning = "planning"
+```
+
+With this file in place (and the project-policy-readiness preflight opted
+out via `<!-- ralph-workflow-policy: skip -->` in AGENTS.md, so the
+scratch workspace's 141 starter findings don't consume tokens on an
+unrelated remediation agent before planning even starts), a direct
+reproduction of `run.py:288`'s exact call
+(`load_config(workspace_scope=scope)` then
+`load_policy_for_workspace_scope(scope, config=config)`) printed
+`resolved planning-phase agents: ['agy/gemini-3.6-flash-low']`, and the
+subsequent live `ralph --quick` run (`RALPH_BROKER_SECRET` set, isolated
+`/tmp` workspace, no `--developer-agent` override) invoked
+`agy --output-format stream-json --dangerously-skip-permissions ...
+--model gemini-3.6-flash-low --print .agent/tmp/planning_prompt.md` for
+the planning phase, confirmed from the run log's own
+`[activity] Invoking agent: agy/gemini-3.6-flash-low` line immediately
+after `[phase] ◆ planning`.
+
+**Case (a) of DoD 13 confirmed: the plan was submitted through the real
+dispatcher.** The run's wire ledger (`.agent/tmp/mcp-wire-ledger.jsonl`)
+carries, for run_id `17190e6f-6e70-4158-865a-9b92c7a1fe22` (the AGY
+planning session), a `tools/call` row with `tool_name:
+"ralph_submit_md_artifact"` at `timestamp: 1786038487.145`, followed by a
+`tools/call` row with `tool_name: "declare_complete"` at `timestamp:
+1786038488.766` -- both genuine, HMAC-chained records, not host-authored.
+`.agent/state.db` carries a matching `receipts` row
+(`run_id='17190e6f-...', artifact_type='plan',
+created_at=1786038487.206`) and a matching `completion_sentinels` row
+(`run_id='17190e6f-...', created_at=1786038488.766`), both HMAC-bound
+(non-null `hmac` column, since `RALPH_BROKER_SECRET` was set). `.agent/PLAN.md`
+and `.agent/artifacts/plan.md` both exist on disk.
+
+**The phase report graded on the receipt, not the transcript.** The
+agent's own transcript for this run ended in the same sandbox-timeout
+artifact recorded in the S-1/S-2 entry above (`agy result ERROR`, cut
+short by the same environment-level watchdog kill) -- yet the
+`[phase-close]` panel immediately following reported `✓ Planning ◎ Cycle
+1/1 (outer) → produced`, because that verdict is derived from the real
+plan receipt and ledger record, not from the agent's own (this time
+error-ending) closing summary. This is a direct, live demonstration of
+DoD 14 as well as DoD 13: a broken transcript did not stop the phase from
+reporting the true, receipt-backed outcome.
+
+No new fixture file was added for this entry (unlike the B-series
+captures above); the evidence lives in the (untracked, `/tmp`-scoped)
+scratch workspace's own `.agent/tmp/mcp-wire-ledger.jsonl` and
+`.agent/state.db`, reproduced verbatim in this entry's prose per the same
+convention the S-1/S-2 entry above uses for its ledger-shape findings.
