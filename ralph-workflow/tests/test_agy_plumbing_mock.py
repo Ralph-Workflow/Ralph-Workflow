@@ -414,3 +414,115 @@ def test_execute_smoke_turns_stops_after_one_attempt_when_ceiling_below_wire(
     assert isinstance(final_exception, OpenCodeResumableExitError)
     ceiling = transport_evidence_ceiling(config, all_lines)
     assert ceiling < Provenance.WIRE
+
+
+def test_execute_smoke_turns_reports_ceiling_early_for_single_turn_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2 regression: the evidence ceiling is logged before the run ends,
+    even for a single-turn run that never enters the
+    ``OpenCodeResumableExitError`` retry branch S-3's regression covers.
+
+    Before S-2, ``transport_evidence_ceiling(...)`` was only observed inside
+    that retry branch, so an operator watching a live, possibly-long,
+    single-turn run learned the ceiling only from the final report table
+    (``smoke.py``'s "Ralph tools advertised" line) after the run finished.
+    This pins that the ceiling is now logged as soon as the first
+    ``init``-shaped frame is parsed, for the plain success path too.
+    """
+    import io
+    import json
+    from collections.abc import MutableSequence
+
+    from loguru import logger
+
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.pipeline.plumbing.smoke_plumbing import (
+        SmokeRunParams,
+        _execute_smoke_turns,
+        transport_evidence_ceiling,
+    )
+    from tests._support.mock_agy import _MOCK_INIT_TOOL_NAMES
+
+    init_line = json.dumps(
+        {
+            "event": "init",
+            "conversation_id": "00000000-0000-0000-0000-000000000000",
+            "init": {
+                "model": "default",
+                "cwd": ".",
+                "tools": list(_MOCK_INIT_TOOL_NAMES),
+                "permission_mode": "always-proceed",
+            },
+        }
+    )
+
+    call_count = 0
+
+    def _fake_execute_agent_effect(
+        effect: object,
+        unified_config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        *,
+        bridge: object,
+        display_context: object,
+        run_id: str,
+        raw_output_sink: MutableSequence[str],
+        rendered_output_sink: MutableSequence[str],
+        set_session_id_cb: object,
+        invoke_agent: object,
+        raise_resumable_exit: object,
+    ) -> object:
+        nonlocal call_count
+        call_count += 1
+        raw_output_sink.append(init_line)
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("smoke prompt", encoding="utf-8")
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    params = SmokeRunParams(
+        agent_name="agy/test-model",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+
+    buf = io.StringIO()
+    logger.remove()
+    handler_id = logger.add(buf, level="INFO")
+    try:
+        all_lines, _live_lines, _session_id, final_exception = _execute_smoke_turns(
+            params, None, run_id="interactive-agy-smoke-test-model"
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert call_count == 1
+    assert final_exception is None
+    output = buf.getvalue()
+    assert "transport evidence ceiling" in output, (
+        f"Expected the early ceiling diagnostic to be logged, got: {output!r}"
+    )
+    ceiling = transport_evidence_ceiling(config, all_lines)
+    assert ceiling.name in output

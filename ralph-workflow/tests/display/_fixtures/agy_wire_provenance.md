@@ -352,3 +352,55 @@ session and was not chased further here, since the write behaviour it
 restores is provably correct in isolation -- see
 `tests/test_agy_workspace_mcp.py`). A genuinely unattended host-machine
 cleanup of that pre-existing stray entry is out of scope for this plan.
+
+## 2026-08-06: Evidence Provenance closeout plan, S-1/S-2 -- live confirmation (S-4)
+
+Captured live against `agy` v1.1.10 (`gemini-3.6-flash-low`) in an isolated
+`/tmp/agy-ws` workspace, two consecutive full runs of
+`uv run python -m ralph smoke-interactive-agy --agent agy/gemini-3.6-flash-low`,
+run with `RALPH_BROKER_SECRET` explicitly set this time (every prior entry
+above ran with it unset). This is the first live capture in this file taken
+with the secret present, and the first to close the loop all the way to a
+genuine `WIRE`-graded `PASS`.
+
+**S-1 confirmed live: the ledger now carries rows for handler-dict methods,
+not only `tools/call`.** `.agent/tmp/mcp-wire-ledger.jsonl` in the scratch
+workspace contained `initialize` and `tools/list` rows in addition to
+`tools/call` rows in both runs (run 2: `{'initialize': 14, 'tools/list': 14,
+'tools/call': 4}`). AGY's live transport does not exercise
+`prompts/list` / `resources/list` / `resources/templates/list` /
+`resources/read` in this prompt shape, so only two of the six handler-dict
+methods are populated by a real run -- consistent with the plan's own
+Expect clause ("the live agy transport may not exercise every one of the
+six handler-dict methods in a single run, but any it does exercise must
+appear chained").
+
+**S-2 confirmed live: the ceiling line reaches the operator before the
+final report table.** Both runs logged
+`smoke: transport evidence ceiling is WIRE` (loguru INFO, emitted from
+`_report_evidence_ceiling_once`) several lines before the Rich "Detailed
+report" panel that carries the same fact as "Ralph tools advertised: WIRE";
+in the captured run-2 log the ceiling line is at output line 29, the report
+panel's matching line at 56.
+
+**With the secret present, every required fact reached `WIRE` and the run
+graded a genuine `PASS`.** Both runs: `Verdict: PASS`,
+`Ralph tools advertised: WIRE`, `completion sentinel observed [WIRE]`
+(`declare_complete` matched a `tools/call` ledger record), `tool activity
+observed [WIRE]`, `smoke_test_result artifact submitted observed [WIRE]`
+(receipt matched a `tools/call` ledger record) -- the full chain from A1
+(dispatcher reachable) through A5 (HMAC-bound receipt) resolved to the top
+rung in one run, something no entry recorded in this file before today had
+measured (every prior `RALPH_BROKER_SECRET`-unset run topped out at
+`DEGRADED (workspace-effect)` by construction, per F2/A5).
+
+**The previously-documented sandbox artifact reappeared, unchanged.** Both
+runs' transcripts again showed the `[claude turn boundary]` / `/exit` /
+`FAIL timeout waiting for response` sequence described above, and the
+process again required a watchdog kill. Consistent with the existing note:
+it is a sandbox-level artifact of this execution environment, not a defect
+in the transport or parser, and it did not prevent either run from reaching
+and recording a real, complete `PASS` result (exit code 1 both times, from
+the pre-existing "expected todo-list.js was not created" break this
+artifact triggers by killing the process after the tool calls already
+succeeded -- unrelated to S-1/S-2's ledger or ceiling-logging change).

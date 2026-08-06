@@ -845,6 +845,12 @@ def _execute_smoke_turns(
     live_output_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     final_exception: AgentInvocationError | None = None
     workspace_scope = resolve_workspace_scope(params.workspace_root)
+    # S-2 (Evidence Provenance F3): log the evidence ceiling once, the first
+    # turn an init-shaped frame is observed, regardless of which branch below
+    # observes it — so a single-turn run that never enters the
+    # OpenCodeResumableExitError retry branch still surfaces the ceiling
+    # before the run's final report table prints.
+    ceiling_reported = False
 
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
@@ -883,6 +889,8 @@ def _execute_smoke_turns(
             )
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
+            if not ceiling_reported:
+                ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
             current_session_id = observed_session_id or extract_transport_session_id(
                 tuple(raw_lines)
             )
@@ -894,6 +902,8 @@ def _execute_smoke_turns(
         except OpenCodeResumableExitError as exc:
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
+            if not ceiling_reported:
+                ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
             current_session_id = (
                 exc.resumable_session_id
                 or observed_session_id
@@ -1391,6 +1401,28 @@ def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> P
             return Provenance.WIRE
         return Provenance.TRANSCRIPT
     return Provenance.ABSENT
+
+
+def _report_evidence_ceiling_once(config: AgentConfig, lines: list[str]) -> bool:
+    """S-2 (Evidence Provenance F3): log the transport's evidence ceiling as
+    soon as an ``init``-shaped frame is observed, before further turns are
+    spent — not only inside the ``OpenCodeResumableExitError`` multi-turn
+    retry branch. Returns ``True`` once an ``init`` frame has been found and
+    the ceiling logged, so :func:`_execute_smoke_turns` logs it exactly once
+    per run; returns ``False`` when no ``init``-shaped frame is in ``lines``
+    yet, so the caller re-checks on the next turn's accumulated lines. This
+    is a diagnostic-only signal: it never changes control flow by itself
+    (the existing early-break in the retry branch is unchanged).
+    """
+    ceiling = transport_evidence_ceiling(config, lines)
+    if ceiling is Provenance.ABSENT:
+        return False
+    logger.info(
+        "smoke: transport evidence ceiling is {} — init frame's advertised "
+        "tools cap the best possible verdict at this grade for this run",
+        ceiling.name,
+    )
+    return True
 
 
 def _run_smoke_agent(

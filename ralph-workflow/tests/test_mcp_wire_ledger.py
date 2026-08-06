@@ -76,6 +76,64 @@ def _dispatch_tools_call(
     assert response.error is None
 
 
+#: S-1 (Evidence Provenance): the six request methods routed through the
+#: `_dispatch_request` `handlers` dict, each with a minimal-but-valid params
+#: payload so the handler itself does not short-circuit before the ledger
+#: append (the append happens before `handler(request)` runs either way, but
+#: a valid payload keeps these tests representative of real traffic).
+_HANDLER_DICT_METHODS: tuple[tuple[str, dict[str, object]], ...] = (
+    ("initialize", {}),
+    ("prompts/list", {}),
+    ("resources/list", {}),
+    ("resources/templates/list", {}),
+    ("resources/read", {"uri": "ralph://media/does-not-exist"}),
+    ("tools/list", {}),
+)
+
+
+def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
+    """S-1: every one of the six non-tools/call request methods gets chained too."""
+    server = McpServer(
+        session=_session("run-1", broker_secret="s3cr3t"),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    for msg_id, (method, params) in enumerate(_HANDLER_DICT_METHODS, start=1):
+        request = JsonRpcRequest(
+            jsonrpc="2.0", method=method, msg_id=str(msg_id), params=params
+        )
+        response, _ = server.handle_request(request, ServerState.RUNNING)
+        assert response is not None
+
+    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    assert ledger_path.exists()
+    assert verify_chain(tmp_path, "s3cr3t") is True
+
+    import json
+
+    lines = ledger_path.read_text(encoding="utf-8").splitlines()
+    recorded_methods = [json.loads(line)["method"] for line in lines]
+    for method, _params in _HANDLER_DICT_METHODS:
+        assert method in recorded_methods, f"no ledger row for {method}"
+
+
+def test_ledger_with_only_handler_dict_rows_grants_no_wire_evidence(tmp_path: Path) -> None:
+    """A ledger with only initialize/tools/list/... rows (no tools/call) still
+    grades below WIRE — F2's `tools/call`-only grading predicate is unchanged."""
+    server = McpServer(
+        session=_session("run-1", broker_secret="s3cr3t"),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    for msg_id, (method, params) in enumerate(_HANDLER_DICT_METHODS, start=1):
+        request = JsonRpcRequest(
+            jsonrpc="2.0", method=method, msg_id=str(msg_id), params=params
+        )
+        server.handle_request(request, ServerState.RUNNING)
+
+    assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is False
+
+
 def test_dispatch_appends_verified_wire_record(tmp_path: Path) -> None:
     _dispatch_tools_call(tmp_path, run_id="run-1", broker_secret="s3cr3t")
 
