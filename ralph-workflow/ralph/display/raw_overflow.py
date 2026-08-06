@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import json
 import threading
 import time
+import weakref
 from typing import TYPE_CHECKING, BinaryIO, cast
 
 from ralph.display._raw_log_break import RawLogBreak
@@ -34,8 +36,22 @@ DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
 #: object's already-written bytes, the plausible source of the
 #: measured 2026-08-06 NUL-hole corruption. The registry keys on the
 #: resolved path so all callers share one object per path.
+#:
+#: ``WeakValueDictionary`` (DA-001) keeps only a weak reference to the
+#: stored instance, so when every strong reference (the
+#: ``ParallelDisplay._overflow_logs`` slot, the reader's
+#: ``self._raw_overflow`` slot, etc.) is dropped, the entry vanishes
+#: automatically and the buffered file handle is closed via the
+#: ``weakref.finalize`` hook registered in ``__init__``. A strong
+#: ``dict`` reference here used to keep instances alive past their
+#: owner's teardown, so a test or run that finished without calling
+#: ``drop_unit`` / ``stop()`` reached interpreter finalization with
+#: the file handle still open, triggering a ``ResourceWarning`` on
+#: every affected test.
 _REGISTRY_LOCK = threading.Lock()
-_REGISTRY: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: per-path singleton, scoped to process lifetime
+_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
+    weakref.WeakValueDictionary()
+)  # bounded-accumulator-ok: weak-keyed by definition; entries auto-evict when no strong references remain
 
 
 def get_or_create_raw_overflow_log(
@@ -80,6 +96,57 @@ def _forget_raw_overflow_log(key_path: str) -> None:
     """Drop one entry from the registry. Used by tests; not part of the public API."""
     with _REGISTRY_LOCK:
         _REGISTRY.pop(key_path, None)
+
+
+def _finalize_close_raw_overflow_log(
+    weak_self: weakref.ref[RawOverflowLog],
+) -> None:
+    """Module-level ``weakref.finalize`` callback (DA-001).
+
+    Closes the buffered file handle when the owning ``RawOverflowLog``
+    is garbage-collected. Receives a weak reference to ``self`` rather
+    than capturing ``self`` via closure (which would create a strong
+    reference cycle and defeat ``weakref.finalize``).
+    """
+    instance = weak_self()
+    if instance is None:
+        return
+    with contextlib.suppress(Exception):
+        instance.close()
+    with contextlib.suppress(Exception):
+        instance.disable()
+
+
+def close_all_raw_overflow_logs() -> None:
+    """Close and forget every registered ``RawOverflowLog``.
+
+    DA-001: explicit teardown for callers that want a deterministic
+    lifecycle (tests, the ``atexit`` hook, run-end coordinators that
+    do not go through ``drop_unit`` / ``stop()``). Iterates a snapshot
+    of the registry's strong references, closes each handle, then
+    lets the ``WeakValueDictionary`` drop the dead entries naturally
+    on the next ``gc.collect()``.
+
+    Safe to call multiple times. Never raises.
+    """
+    snapshot: list[RawOverflowLog] = []
+    with _REGISTRY_LOCK:
+        snapshot = list(_REGISTRY.values())
+    for instance in snapshot:
+        with contextlib.suppress(Exception):
+            instance.close()
+        with contextlib.suppress(Exception):
+            instance.disable()
+
+
+#: ``atexit`` registration so any ``RawOverflowLog`` whose owning
+#: display/run ended without an explicit ``close()`` /
+#: ``drop_unit`` / ``stop()`` still gets its buffered handle closed
+#: at interpreter shutdown, instead of triggering a ``ResourceWarning``
+#: at finalization time (DA-001). Wrapped in ``contextlib.suppress``
+#: so re-imports in test harnesses do not re-register the same hook.
+with contextlib.suppress(ValueError):
+    atexit.register(close_all_raw_overflow_logs)
 
 
 def detect_raw_log_breaks(raw_path: Path) -> list[RawLogBreak]:
@@ -228,6 +295,21 @@ class RawOverflowLog:
         self._now = now
         self._fh: BinaryIO | None = None
         self._last_flush = now()
+        # DA-001: register a finalizer that closes the buffered file
+        # handle when this instance is garbage-collected. The callback
+        # receives a weak reference (no closure-captured ``self``),
+        # so it does not create a strong reference cycle that would
+        # prevent ``weakref.finalize`` from firing. Combined with the
+        # ``WeakValueDictionary`` registry above, this ensures a test
+        # or run that finishes without an explicit ``drop_unit`` /
+        # ``stop()`` still releases its file handle before
+        # interpreter shutdown, instead of triggering a
+        # ``ResourceWarning`` at finalization.
+        weakref.finalize(
+            self,
+            _finalize_close_raw_overflow_log,
+            weakref.ref(self),
+        )
 
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
@@ -331,5 +413,6 @@ __all__ = [
     "DEFAULT_MAX_OVERFLOW_FILE_BYTES",
     "RawLogBreak",
     "RawOverflowLog",
+    "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
 ]

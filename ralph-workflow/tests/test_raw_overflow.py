@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import threading
+import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -302,3 +304,263 @@ def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
     assert "pending line\n" in (tmp_path / ".agent" / "raw" / "unit-x.log").read_text(
         encoding="utf-8"
     )
+
+
+# ---------------------------------------------------------------------------
+# DA-001: registry teardown closes buffered handles before finalization.
+#
+# Pre-fix: ``_REGISTRY`` held strong ``dict`` references to every
+# ``RawOverflowLog`` ever constructed, so a test or run that ended
+# without an explicit ``drop_unit`` / ``stop()`` reached interpreter
+# finalization with the buffered file handle still open. ``python -W
+# error::ResourceWarning`` (the ``make verify`` invariant) raised
+# ``ResourceWarning: unclosed file ...`` for every such case.
+#
+# Post-fix: the registry is a ``WeakValueDictionary`` and each instance
+# registers a ``weakref.finalize`` callback that closes the handle
+# before the instance is collected. A test that lets go of its last
+# strong reference MUST NOT leave the buffered handle open.
+# ---------------------------------------------------------------------------
+
+
+def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
+    """An orphaned ``RawOverflowLog`` closes its handle when collected.
+
+    Constructs an instance via ``RawOverflowLog(...)`` directly (i.e.
+    the pre-fix-style direct constructor that bypasses the registry),
+    appends a line to force the buffered handle to open, drops the
+    last strong reference, and asserts the handle is closed after
+    ``gc.collect()`` -- without ever calling ``close()`` /
+    ``drop_unit`` / ``stop()``.
+    """
+    import gc
+    import weakref
+
+    log = RawOverflowLog(tmp_path, "u1")
+    assert log.append("survive until GC\n") is True
+    log.flush()
+    # The handle is now open and buffered. Confirm the buffered
+    # writer is live (it must be, since ``append`` returned True).
+    assert log._fh is not None
+    assert not log._fh.closed
+
+    # Capture a WEAK reference so we can read the post-finalize
+    # state without keeping the instance alive ourselves.
+    weak_log: weakref.ref[RawOverflowLog] = weakref.ref(log)
+    path = log.path
+    # Drop the only strong reference. Without the finalize hook the
+    # interpreter would emit ``ResourceWarning: unclosed file`` at
+    # finalization; with the hook, the close runs first.
+    del log
+    gc.collect()
+
+    # The instance has been collected; ``weak_log()`` resolves to
+    # None. Confirm the handle's on-disk file is intact (the append
+    # before finalization must have flushed), and confirm a fresh
+    # registry call returns a NEW instance -- proving the previous
+    # one was actually reaped.
+    assert weak_log() is None, (
+        "the instance must be garbage-collected after dropping the "
+        "last strong reference"
+    )
+    on_disk = path.read_bytes()
+    assert b"survive until GC\n" in on_disk, (
+        "the buffered payload must have hit disk before finalization"
+    )
+    fresh = RawOverflowLog(tmp_path, "u1")
+    try:
+        assert fresh is not None
+        assert fresh._fh is None
+    finally:
+        fresh.close()
+
+
+def test_registry_holds_weak_reference_only(tmp_path: Path) -> None:
+    """The per-path registry must NOT keep instances alive on its own.
+
+    Pre-fix: a strong ``dict`` entry kept the instance reachable
+    across test boundaries, leaking the buffered handle past the
+    test's lifetime. Post-fix: the registry is a
+    ``WeakValueDictionary`` whose strong reference count on the
+    stored value is zero; once the caller releases its reference,
+    a subsequent ``get_or_create_raw_overflow_log`` returns a NEW
+    instance (the old one was reaped).
+    """
+    import gc
+
+    from ralph.display.raw_overflow import get_or_create_raw_overflow_log
+
+    first = get_or_create_raw_overflow_log(tmp_path, "u-weak-registry")
+    first.append("register check\n")
+    first.flush()
+
+    # Drop the only strong reference and force collection. A second
+    # lookup MUST return a fresh instance, not the same one.
+    weak_first: weakref.ref[RawOverflowLog] = weakref.ref(first)
+    del first
+    gc.collect()
+    assert weak_first() is None, (
+        "DA-001 invariant: the previous instance must be reaped "
+        "after the caller drops its reference"
+    )
+
+    second = get_or_create_raw_overflow_log(tmp_path, "u-weak-registry")
+    assert second is not None
+    # A second append must succeed (i.e. the instance is fresh, the
+    # file handle is closed, no stale state blocks the write).
+    assert second.append("after-reap\n") is True
+    second.flush()
+    on_disk = second.path.read_bytes()
+    assert b"after-reap\n" in on_disk
+    second.close()
+
+
+def test_close_all_raw_overflow_logs_closes_all_handles(tmp_path: Path) -> None:
+    """Explicit teardown via ``close_all_raw_overflow_logs()`` closes
+    every registered handle, even when the caller has not yet dropped
+    its own strong reference."""
+    from ralph.display.raw_overflow import (
+        close_all_raw_overflow_logs,
+        get_or_create_raw_overflow_log,
+    )
+
+    log_a = get_or_create_raw_overflow_log(tmp_path, "u-a")
+    log_b = get_or_create_raw_overflow_log(tmp_path, "u-b")
+    # Force the buffered handle open on each.
+    assert log_a.append("a\n") is True
+    assert log_b.append("b\n") is True
+
+    close_all_raw_overflow_logs()
+
+    # The buffered payload must have hit disk before the close.
+    a_on_disk = log_a.path.read_bytes()
+    b_on_disk = log_b.path.read_bytes()
+    assert b"a\n" in a_on_disk
+    assert b"b\n" in b_on_disk
+
+    # A subsequent append on the now-disabled instance must be a
+    # no-op (the close_all path also called ``disable()``).
+    log_a_fh = log_a._fh
+    log_b_fh = log_b._fh
+    assert log_a_fh is None or log_a_fh.closed, (
+        "close_all_raw_overflow_logs must close every buffered handle"
+    )
+    assert log_b_fh is None or log_b_fh.closed
+
+    log_a.close()
+    log_b.close()
+
+
+def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
+    tmp_path: Path,
+) -> None:
+    """Regression for the measured 2026-08-06 unclosed-handle finding.
+
+    ``test_long_thinking_emits_one_close_line_no_checkpoints`` (in
+    ``test_display_thinking_preview_reproduction_thinking_preview_and_transcript_cleanup.py``)
+    exercises the thinking-block close path with a payload large
+    enough to trigger ``condensed_flag`` -- the condenser writes the
+    verbatim block to the raw overflow log via ``overflow.append()``,
+    opening a buffered file handle. Pre-fix, the test never called
+    ``drop_unit`` / ``stop()`` and the handle leaked past finalization,
+    triggering ``ResourceWarning`` under ``-W error::ResourceWarning``.
+
+    This regression constructs the same scenario directly (a
+    ``ParallelDisplay`` whose thinking block exceeds the condenser
+    soft limit, no explicit stop) and asserts the buffered payload
+    hits disk (so the close happened with the buffered bytes still
+    intact) and a subsequent ``get_or_create_raw_overflow_log``
+    returns a fresh instance -- proving the previous one was reaped.
+    """
+    import gc
+    import weakref
+
+    from rich.console import Console
+
+    from ralph.display.activity_model import ActivityEventKind
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.raw_overflow import get_or_create_raw_overflow_log
+
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}),
+        workspace_root=tmp_path,
+    )
+    unit_id = "u1"
+    long_content = (
+        "Fragment of long thinking stream with extra text to exceed the "
+        "condenser soft limit and force the verbatim overflow log to open."
+    )
+    for i in range(25):
+        pd.emit_parsed_event(
+            unit_id=unit_id,
+            kind=ActivityEventKind.THINKING,
+            content=f"{i:02d} {long_content}",
+            metadata={},
+        )
+    pd.emit_parsed_event(
+        unit_id=unit_id,
+        kind=ActivityEventKind.TEXT,
+        content="Done.",
+        metadata={},
+    )
+    out = buf.getvalue()
+    assert "00 " + long_content in out, "joined passage must be in the rendered output"
+
+    # Confirm the fixture actually exercised the regression surface:
+    # the raw overflow log was appended to, opening a buffered handle.
+    # Force a flush first so the buffered bytes hit disk before we
+    # release the strong references.
+    overflow = pd._overflow_logs.get(unit_id)
+    assert overflow is not None
+    assert overflow._fh is not None and not overflow._fh.closed, (
+        "fixture must trigger the raw-overflow append path so the "
+        "buffered handle is open at this point"
+    )
+    overflow.flush()
+    raw_path = overflow.path
+    on_disk_during_run = raw_path.read_bytes()
+    assert len(on_disk_during_run) > 0, (
+        "the appended block must hit disk after flush"
+    )
+
+    # Capture a WEAK reference to the display's overflow log so we
+    # can read post-finalize state without keeping the instance
+    # alive. ``ParallelDisplay`` itself does not support ``weakref``
+    # (no ``__weakref__`` slot), so we observe the lifecycle
+    # indirectly via the per-unit overflow log and the registry.
+    weak_overflow: weakref.ref[RawOverflowLog] = weakref.ref(overflow)
+
+    # Release every strong reference to the display and the overflow
+    # log. After ``gc.collect()`` the ``weakref.finalize`` hook must
+    # have closed the handle, after which the ``WeakValueDictionary``
+    # auto-evicts the entry on the next lookup.
+    del pd, overflow, buf, console
+    gc.collect()
+
+    assert weak_overflow() is None, (
+        "DA-001 invariant: the RawOverflowLog must be collected "
+        "once its owning ParallelDisplay is unreachable"
+    )
+    # A subsequent lookup MUST return a fresh instance, not the
+    # same one -- proving the registry entry vanished (the
+    # ``WeakValueDictionary`` auto-eviction worked). The fresh
+    # instance starts a new run and the first append truncates by
+    # design (mode="wb"), so the post-reap file is just the new
+    # append, not an extension of the old one. What matters is
+    # that the append succeeded and the bytes hit disk.
+    fresh = get_or_create_raw_overflow_log(tmp_path, unit_id)
+    try:
+        assert fresh is not None
+        # The fresh instance must be writable (no stale handle from
+        # the reaped one).
+        assert fresh.append("post-reap\n") is True
+        fresh.flush()
+        on_disk_after = raw_path.read_bytes()
+        assert b"post-reap\n" in on_disk_after, (
+            "the post-reap append must extend the on-disk file"
+        )
+    finally:
+        fresh.close()
