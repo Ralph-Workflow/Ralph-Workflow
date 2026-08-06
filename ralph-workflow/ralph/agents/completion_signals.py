@@ -14,7 +14,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -22,6 +22,7 @@ from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.md_draft_io import unsubmitted_draft_divergence
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
+from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent, grade_verdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -35,6 +36,30 @@ _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 _COMPLETION_SENTINEL_RELPATHFMT = COMPLETION_SENTINEL_RELPATHFMT
 
 
+def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> Evidence:
+    """Map a bare ``bool`` contract fact to a graded ``Evidence`` value.
+
+    Used by ``CompletionSignals.__post_init__`` to populate the
+    graded ``required_artifact_evidence`` and
+    ``completion_sentinel_evidence`` fields from the legacy bool
+    fields. The provenance carried by the upgrade is deliberately
+    conservative: a bool-only fact (no wire-ledger match in scope)
+    grades ``TRANSCRIPT`` when it holds, ``ABSENT`` when it does not.
+
+    Sites that know a stronger provenance (e.g. ``smoke_evidence``
+    grading with the wire ledger) construct the ``Evidence`` directly
+    and pass it to the graded field; sites that only know the bool
+    pick up the conservative default and never appear as ``WIRE``.
+    """
+    if value:
+        return Evidence(
+            holds=True,
+            provenance=Provenance.TRANSCRIPT,
+            detail=holding_detail,
+        )
+    return absent(absent_detail)
+
+
 @dataclass(frozen=True)
 class CompletionSignals:
     """Signals that indicate whether an agent run actually completed its work.
@@ -44,18 +69,32 @@ class CompletionSignals:
             tool successfully (independent of artifact presence).
         required_artifact_present: True when the required phase artifact exists
             on disk. False when the phase has no registered required artifact or
-            the artifact file does not yet exist.
+            the artifact file does not yet exist. Pre-S-4 contract; preserved
+            for backward compat with the 50+ call sites in tests + the
+            execution_state mixins that gate on ``.holds``. For graded
+            reporting use ``required_artifact_evidence`` (S-4).
         artifact_types: Tuple of artifact type names found.
         completion_sentinel_present: True when the run-scoped completion sentinel
             written by handle_declare_complete exists on disk. This is the
             authoritative proof that the agent actually invoked the
             declare_complete MCP tool; the plain-text marker alone can be
-            spoofed by agent output.
+            spoofed by agent output. Pre-S-4 contract; preserved for backward
+            compat. For graded reporting use ``completion_sentinel_evidence``
+            (S-4).
         artifact_required: True when policy requires a receipt for the phase's
             artifact before the durable completion sentinel can terminate the
             run.
         unsubmitted_draft_present: True when a retained draft differs from the
             canonical artifact, proving authored content was not submitted.
+        required_artifact_evidence: Graded ``Evidence`` for the artifact-
+            present fact. Constructed by ``__post_init__`` from
+            ``required_artifact_present`` at ``TRANSCRIPT`` provenance
+            (conservative default when no wire-ledger match is in scope).
+            Constructors that know a stronger provenance (the smoke gate,
+            ``smoke_evidence`` grading) pass an ``Evidence`` directly.
+        completion_sentinel_evidence: Graded ``Evidence`` for the sentinel-
+            present fact, same provenance rules as
+            ``required_artifact_evidence``.
     """
 
     explicit_complete: bool
@@ -64,6 +103,56 @@ class CompletionSignals:
     completion_sentinel_present: bool = False
     artifact_required: bool = False
     unsubmitted_draft_present: bool = False
+    required_artifact_evidence: Evidence = field(
+        default_factory=lambda: absent("required_artifact_evidence not yet evaluated")
+    )
+    completion_sentinel_evidence: Evidence = field(
+        default_factory=lambda: absent("completion_sentinel_evidence not yet evaluated")
+    )
+
+    def __post_init__(self) -> None:
+        # Populate the graded Evidence fields from the bool fields when
+        # the caller did not pass them explicitly. ``field(default_factory=...)``
+        # cannot detect "caller passed the default" vs "caller omitted";
+        # a sentinel provenance detail lets us tell them apart.
+        default_artifact_detail = "required_artifact_evidence not yet evaluated"
+        default_sentinel_detail = "completion_sentinel_evidence not yet evaluated"
+        artifact_eval_set = (
+            self.required_artifact_evidence.detail != default_artifact_detail
+        )
+        sentinel_eval_set = (
+            self.completion_sentinel_evidence.detail != default_sentinel_detail
+        )
+        object.__setattr__(
+            self,
+            "required_artifact_evidence",
+            self.required_artifact_evidence
+            if artifact_eval_set
+            else _bool_evidence(
+                self.required_artifact_present,
+                holding_detail=(
+                    "required artifact receipt present (graded at TRANSCRIPT "
+                    "from bool field; upgrade to WIRE via smoke_evidence "
+                    "grading when wire ledger is in scope)"
+                ),
+                absent_detail="required artifact receipt not present",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "completion_sentinel_evidence",
+            self.completion_sentinel_evidence
+            if sentinel_eval_set
+            else _bool_evidence(
+                self.completion_sentinel_present,
+                holding_detail=(
+                    "completion sentinel present (graded at TRANSCRIPT from "
+                    "bool field; upgrade to WIRE via smoke_evidence grading "
+                    "when wire ledger is in scope)"
+                ),
+                absent_detail="completion sentinel not present",
+            ),
+        )
 
 
 def completion_signals_terminal(signals: CompletionSignals) -> bool:
@@ -393,10 +482,57 @@ def evaluate_completion(
     )
 
 
+def graded_completion_signals(signals: CompletionSignals) -> dict[str, Evidence]:
+    """Return the graded evidence dict for ``CompletionSignals``.
+
+    Helper for S-5 / S-6 / phase-reporting code that wants to feed the
+    same evidence values the operator-facing verdict line uses. Maps the
+    graded ``Evidence`` fields on the dataclass to the stable fact
+    names the lattice expects (``required_artifact_present``,
+    ``completion_sentinel_present``) so the dict is interchangeable
+    with ``smoke_evidence.required_facts``.
+    """
+    return {
+        "required_artifact_present": signals.required_artifact_evidence,
+        "completion_sentinel_present": signals.completion_sentinel_evidence,
+    }
+
+
+def graded_verdict(signals: CompletionSignals) -> tuple[str, Provenance]:
+    """Grade the phase outcome against ``Provenance`` requirements.
+
+    Analogous to ``smoke_evidence.grade_verdict``: returns
+    ``(label, weakest_provenance)`` where ``label`` is one of the
+    closed-vocabulary strings ``"PASS"`` or ``"DEGRADED"`` and the
+    weakest provenance is the single ``Provenance`` member that
+    determines the label. ``PASS`` requires every required fact to
+    both hold and grade ``WIRE``; any fact below that bar demotes the
+    verdict to ``"DEGRADED"``.
+    """
+    return grade_verdict(graded_completion_signals(signals))
+
+
+def format_phase_verdict(signals: CompletionSignals) -> str:
+    """Return the operator-facing verdict string for a phase.
+
+    Used by S-5's display path. The phase verdict is a pure function
+    of the graded evidence carried by the dataclass -- transcript text
+    and the agent's own success claims carry no provenance and never
+    influence the verdict (per F6 / DoD 14).
+    """
+    label, weakest = graded_verdict(signals)
+    if label == "PASS":
+        return "PASS"
+    return f"DEGRADED ({weakest.name.lower().replace('_', '-')})"
+
+
 __all__ = [
     "CompletionSignals",
     "completion_signals_terminal",
     "evaluate_completion",
     "extract_explicit_completion",
+    "format_phase_verdict",
+    "graded_completion_signals",
+    "graded_verdict",
     "is_artifact_submitted",
 ]

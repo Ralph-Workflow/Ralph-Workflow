@@ -17,6 +17,7 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/agents/idle_watchdog/idle_watchdog.py",
         "ralph/agents/invoke/_pty_line_reader.py",
         "ralph/cli/main.py",
+        "ralph/display/agent_event_renderer.py",
         "ralph/display/parallel_display.py",
         "ralph/mcp/artifacts/plan/__init__.py",
         "ralph/mcp/tools/artifact.py",

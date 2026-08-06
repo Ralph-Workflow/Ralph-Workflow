@@ -44,7 +44,6 @@ from ralph.mcp.artifacts.smoke_test_result import (
     read_smoke_test_result_artifact,
 )
 from ralph.mcp.server._wire_ledger import wire_evidence_for
-from ralph.mcp.tools.coordination import _write_completion_sentinel
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -55,7 +54,6 @@ from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance, absent
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
-from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -284,15 +282,20 @@ type EnvGetter = Callable[[str], str | None]
 # separate, expensive, manual runs an operator makes over time (one CLI
 # invocation drives one transport per run).
 
-#: Canonical column/row order (brief F4: "agy, claude, codex, cursor and pi").
-#: A transport observed outside this set (a future addition, or a stale
-#: value) is still recorded -- it is simply sorted after the canonical five.
+#: Canonical column/row order (brief F4: "today ``claude``, ``agy``,
+#: ``nanocoder``, ``cursor`` and ``opencode``"). These are the five
+#: transports with a registered ``ralph smoke-interactive-*`` CLI command
+#: (``ralph/cli/main.py``). A transport observed outside this set (a
+#: future addition, or a stale value) is still recorded -- it is simply
+#: sorted after the canonical five. See
+#: ``tests/test_conformance_matrix.py:test_canonical_tuple_matches_registered_smoke_commands``
+#: for the regression that locks this invariant in.
 CONFORMANCE_MATRIX_TRANSPORT_ORDER: Final[tuple[str, ...]] = (
-    "agy",
     "claude",
-    "codex",
+    "agy",
+    "nanocoder",
     "cursor",
-    "pi",
+    "opencode",
 )
 
 #: The three required contract facts F1's verdict is graded from (mirrors
@@ -564,16 +567,19 @@ def _build_smoke_prompt(
     # (already visible to the model), so it is deliberately not hand-typed
     # here -- doing so would risk asserting an unmeasured shape.
     is_agy = transport is AgentTransport.AGY
+    # S-7 / C1 / DoD 13: the AGY-shaped dispatcher hint lives in a
+    # shared helper so the smoke prompt and the master prompt cannot
+    # drift (both routes must name the same tool name, server name,
+    # and "call_mcp_tool is the only first attempt" rule).
+    from ralph.prompts._mcp_dispatcher_hint import agy_dispatcher_hint_text
+
     submit_call_instruction = (
-        f"- `{submit_artifact_tool_name}` is a Ralph Workflow MCP tool; AGY does not "
-        "list it directly as a callable tool name. Call your `call_mcp_tool` tool, "
-        f"naming MCP server `{RALPH_MCP_SERVER_NAME}` and target tool "
-        f"`{submit_artifact_tool_name}`, passing artifact_type="
-        f'"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
-        "and this complete Markdown document as the content argument, to submit the "
-        "artifact below. This is your first and required attempt -- do not skip "
-        "straight to the file-fallback bullet below because the tool name isn't "
-        "directly listed:\n"
+        (
+            agy_dispatcher_hint_text(submit_artifact_tool_name)
+            + f"\n- Pass `artifact_type=\"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}\"` and "
+            "this complete Markdown document as the content argument when "
+            "you make the call. The artifact body is given to you below:\n"
+        )
         if is_agy
         else f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
@@ -603,10 +609,11 @@ def _build_smoke_prompt(
     # `call_mcp_tool` round trip and a genuine tool result), a second
     # dispatcher round trip for completion is not safe to require. Completion
     # is therefore left on the plain `declare_complete` phrasing for every
-    # transport, including AGY: when the model cannot reach it directly, the
-    # existing AGY-only host-synthesis branch a few hundred lines below
-    # (search ``host_synthesized_sentinel``) already covers the gap and grades
-    # the result ``DEGRADED (host-synthesized)`` rather than hanging the run.
+    # transport, including AGY: per F7 / DoD 19, the host writes completion
+    # evidence for no transport; when the model cannot reach
+    # ``declare_complete`` directly, the run grades
+    # ``DEGRADED (host-synthesized-or-below)`` and the gate fails, rather
+    # than hanging the run.
     completion_requirement = (
         "- After the artifact tool returns a valid receipt, call `declare_complete` "
         "as the mandatory final action. The receipt is not phase completion; do not "
@@ -997,16 +1004,12 @@ def _meaningful_output_error(
          strategy, not a signal of an under-producing agent.
     """
     meaningful_output = [line for line in live_output_lines if line.strip()]
-    if config.transport == AgentTransport.AGY and meaningful_output:
-        return None
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         meaningful_output = _meaningful_output_lines(config=config, lines=lines)
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         raw_meaningful = [line for line in lines if line.strip()]
         meaningful_output = raw_meaningful[:_MAX_MEANINGFUL_OUTPUT_LINES]
     meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
-    if config.transport == AgentTransport.AGY and meaningful_output:
-        return None
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
         return "fewer than 3 meaningful output lines were observed"
     return None
@@ -1146,21 +1149,12 @@ def _tool_activity_seen_for_errors(
     1. Parser-classified tool events from the transcript (the
        ``[plain] tool: NAME`` convention handled by ``GenericParser``,
        plus structured tool events from JSON-aware parsers like ``AgyParser``).
-    2. For AGY specifically: workspace output file existence confirms real
-       file writes inside the workspace as a secondary side-effect check.
     """
     if tool_activity_seen is not None:
         return tool_activity_seen
     if _tool_activity_seen(params.config, lines) if lines else False:
         return True
-    if params.config.transport == AgentTransport.NANOCODER and artifact_submitted:
-        return True
-    # AGY-specific authoritative signal: the expected workspace output
-    # file was created (a real file-write side effect, not a model
-    # self-report). AgyExecutionStrategy classifies AGY stream-json
-    # step_update events as TOOL_USE / TOOL_RESULT, while workspace file existence
-    # remains a secondary side-effect signal.
-    return params.config.transport == AgentTransport.AGY and params.output_file.exists()
+    return params.config.transport == AgentTransport.NANOCODER and artifact_submitted
 
 
 def _detect_smoke_errors(
@@ -1187,7 +1181,6 @@ def _detect_smoke_errors(
     if not params.output_file.exists():
         errors.append("expected todo-list.js was not created")
     if session_id is None and params.config.transport not in {
-        AgentTransport.AGY,
         AgentTransport.NANOCODER,
     }:
         errors.append("session ID was not observed")
@@ -1438,23 +1431,10 @@ def _run_smoke_agent(
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
     secret = _parent_broker_secret()
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
-    host_synthesized_sentinel = False
-    if (
-        params.config.transport == AgentTransport.AGY
-        and artifact_submitted
-        and not _explicit_completion_seen(params.workspace_root, run_id=run_id)
-    ):
-        # AGY --print has been observed writing a valid fallback artifact but
-        # not reliably calling its configured MCP tools. The host promotes that
-        # validated document, then records the same durable completion evidence
-        # the tool would have written. A transcript marker alone remains invalid.
-        _write_completion_sentinel(
-            FsWorkspace(params.workspace_root),
-            run_id,
-            sentinel_hmac=secret,
-        )
-        host_synthesized_sentinel = True
     # Authoritative completion is the durable sentinel for every transport.
+    # AGY no longer gets a host-synthesized fallback: an agent that never
+    # called ``declare_complete`` did not complete, and the gate must say so
+    # by failing. See .agent/PRODUCT_CRITERIA.md F7 / DoD 17 / DoD 19.
     explicit_completion_present = _explicit_completion_seen(
         params.workspace_root,
         run_id=run_id,
@@ -1463,7 +1443,7 @@ def _run_smoke_agent(
         params.workspace_root,
         run_id,
         present=explicit_completion_present,
-        host_synthesized=host_synthesized_sentinel,
+        host_synthesized=False,
         secret=secret,
     )
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0

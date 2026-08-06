@@ -75,7 +75,10 @@ from ralph.agents.invoke._session import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
-from ralph.display.raw_overflow import RawOverflowLog
+from ralph.display.raw_overflow import (
+    RawOverflowLog,
+    get_or_create_raw_overflow_log,
+)
 from ralph.mcp.server._activity_sink import (
     reset_active_sink,
     reset_subagent_sink,
@@ -1239,7 +1242,7 @@ class PtyLineReader:
         # is reset in the ``finally`` block so a stale monitor never
         # leaks across invocations.
         self._process_monitor = process_monitor
-        self._raw_overflow = RawOverflowLog(
+        self._raw_overflow = get_or_create_raw_overflow_log(
             self._workspace_path or Path.cwd(),
             self._agent_name,
             model=self._config.model,

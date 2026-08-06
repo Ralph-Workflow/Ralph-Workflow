@@ -577,9 +577,17 @@ def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
         bridge=None,
     )
 
+    # Post F7/DoD 17: AGY clears the same meaningful-output bar as every
+    # other transport -- the AGY-only "any non-blank line is enough"
+    # exemption has been removed. Three meaningful output lines satisfy
+    # the shared three-tier check.
     errors = smoke_plumbing_module._detect_smoke_errors(
         params,
-        ["Created the requested todo list and submitted the smoke result."],
+        [
+            "Created the requested todo list and submitted the smoke result.",
+            "Saved tmp/interactive-agy-smoke/todo-list.js to the workspace.",
+            "Called the artifact submission tool for the smoke test result.",
+        ],
         [],
         None,
         None,
@@ -1092,7 +1100,10 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
         "With no artifact and no receipt, AGY completion must fail for "
         f"missing receipt. Got errors: {errors_with_marker}"
     )
-    assert "session ID was not observed" not in errors
+    # Post F7/DoD 17: AGY no longer has a session-ID exemption. The
+    # session ID check applies uniformly to every transport.
+    assert "session ID was not observed" in errors
+    assert "session ID was not observed" in errors_with_marker
 
 
 def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
@@ -1214,7 +1225,8 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
 
     assert "completion sentinel was not observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
-    assert "session ID was not observed" not in errors
+    # Post F7/DoD 17: AGY no longer has a session-ID exemption.
+    assert "session ID was not observed" in errors
 
 
 def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(

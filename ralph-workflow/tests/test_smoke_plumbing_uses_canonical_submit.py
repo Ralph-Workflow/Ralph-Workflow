@@ -28,6 +28,7 @@ from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
 )
+from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_plumbing import (
@@ -86,6 +87,17 @@ def _agy_config() -> AgentConfig:
 class _SmokeSession:
     session_id = "sess-smoke"
     run_id = "interactive-claude-smoke"
+    drain = "development"
+    broker_secret = None
+
+    def check_capability(self, capability: str) -> object:
+        del capability
+        return "approved"
+
+
+class _AgySmokeSession:
+    session_id = "sess-agy-smoke"
+    run_id = "interactive-agy-smoke-test-model"
     drain = "development"
     broker_secret = None
 
@@ -170,7 +182,15 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY branch: a direct artifact file write is promoted to a canonical receipt."""
+    """AGY branch: a direct artifact file write is promoted to a canonical receipt.
+
+    Post F7/DoD 19, a fallback promotion alone no longer earns the completion
+    sentinel -- the host no longer writes completion evidence for any
+    transport. The receipt is stamped (the artifact is promoted), but
+    ``explicit_completion_seen`` stays False until the agent itself calls
+    ``declare_complete`` (regression covered by
+    ``test_agy_branch_with_completion_call_passes_completion_check`` below).
+    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
 
@@ -191,9 +211,10 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted.holds is True
-    assert result.explicit_completion_seen.holds is True
+    assert result.explicit_completion_seen.holds is False
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
+    assert "completion sentinel was not observed" in result.errors
 
 
 def test_smoke_artifact_submitted_false_when_no_artifact(
@@ -439,11 +460,19 @@ def test_agy_tool_activity_must_not_come_from_artifact(
     )
 
 
-def test_agy_smoke_regression_promotes_fallback_and_records_trusted_completion(
+def test_agy_smoke_regression_promotes_fallback_but_does_not_earn_completion(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY fallback artifacts earn host completion after a clean agent exit."""
+    """AGY fallback artifacts earn the receipt but NOT the completion sentinel.
+
+    Post F7/DoD 19, a clean agent exit with a fallback artifact and parser-
+    classified tool activity is no longer enough to satisfy the completion
+    contract: the host writes no completion evidence for any transport, so
+    AGY runs that reach the fallback path must call ``declare_complete``
+    themselves (regression covered by
+    ``test_agy_branch_with_completion_call_passes_completion_check`` below).
+    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
     artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
@@ -470,6 +499,51 @@ def test_agy_smoke_regression_promotes_fallback_and_records_trusted_completion(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is False
+    assert "completion sentinel was not observed" in result.errors
+
+
+def test_agy_branch_with_completion_call_passes_completion_check(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """AGY branch earns the completion sentinel when the agent itself calls ``declare_complete``.
+
+    Companion regression to
+    ``test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt``
+    and ``test_agy_smoke_regression_promotes_fallback_but_does_not_earn_completion``.
+    Together they pin the post-F7/DoD-19 invariant: AGY takes the same
+    completion path as every other transport -- the agent must call
+    ``declare_complete`` to write the durable sentinel; the host never writes
+    it on AGY's behalf.
+    """
+    workspace = MockWorkspace(tmp_path)
+    params = _make_params(tmp_path, "agy/test-model", _agy_config())
+    run_id = "interactive-agy-smoke-test-model"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        # Fallback artifact path is the same one AGY exercises in the live
+        # 2026-08-05 capture.
+        artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
+        artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(_smoke_markdown(), encoding="utf-8")
+        # The agent itself calls ``declare_complete`` -- the canonical path
+        # every transport must take post F7/DoD 19.
+        completion = handle_declare_complete(
+            _AgySmokeSession(), workspace, {"summary": "smoke done"}
+        )
+        assert completion.is_error is False, completion
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    assert result.artifact_submitted.holds is True
     assert result.explicit_completion_seen.holds is True
     assert "completion sentinel was not observed" not in result.errors
 
@@ -485,8 +559,17 @@ def test_agy_smoke_regression_missing_artifact_is_reported_without_submit_instru
         submit_artifact_tool_name="ralph_submit_md_artifact",
         transport=AgentTransport.AGY,
     )
-    stripped_prompt = prompt.split("- Call `ralph_submit_md_artifact`", maxsplit=1)[0]
+    # The AGY prompt names `call_mcp_tool` instead of calling the tool
+    # directly (post-A1). Strip the entire AGY-shaped submission bullet
+    # -- including the bullet marker and the ``ralph_submit_md_artifact``
+    # mention before the dispatcher instruction -- so the prompt has no
+    # submission route at all and the run must surface the artifact error.
+    stripped_prompt = prompt.split(
+        "- `ralph_submit_md_artifact` is a Ralph Workflow MCP tool",
+        maxsplit=1,
+    )[0]
     assert "ralph_submit_md_artifact" not in stripped_prompt
+    assert "call_mcp_tool" not in stripped_prompt
     params.prompt_file.write_text(stripped_prompt, encoding="utf-8")
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:

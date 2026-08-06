@@ -217,14 +217,14 @@ def test_2026_08_05_run_grades_degraded() -> None:
     """Pin the exact measured-run scenario from the Evidence Provenance brief.
 
     The 2026-08-05 baseline run: the AGY agent wrote a fallback artifact
-    (promoted -> ``WORKSPACE_EFFECT``), the harness synthesized the
-    completion sentinel itself because AGY never called ``declare_complete``
-    (-> ``HOST_SYNTHESIZED``), and the transcript showed 14 frames with zero
-    ``tools/call`` records (-> ``TRANSCRIPT``, since no wire-ledger match
-    exists). That run printed ``File: yes / Artifact: yes / Breaks: none``
-    under the old boolean contract. Under the lattice it must grade exactly
-    ``DEGRADED (host-synthesized)`` -- the weakest of the three required
-    facts -- and can never grade ``PASS``.
+    (promoted -> ``WORKSPACE_EFFECT``), the agent never called
+    ``declare_complete`` (-> completion stays ``ABSENT`` post-F7, since the
+    host no longer fabricates the sentinel), and the transcript showed 14
+    frames with zero ``tools/call`` records (-> ``TRANSCRIPT``, since no
+    wire-ledger match exists). That run printed ``File: yes / Artifact: yes
+    / Breaks: none`` under the old boolean contract. Under the lattice it
+    must grade exactly ``DEGRADED (absent)`` -- the weakest of the three
+    required facts -- and can never grade ``PASS``.
     """
     required_facts = {
         "artifact_submitted": Evidence(
@@ -238,17 +238,17 @@ def test_2026_08_05_run_grades_degraded() -> None:
             detail="14 frames, 0 tools/call",
         ),
         "explicit_completion_seen": Evidence(
-            holds=True,
-            provenance=Provenance.HOST_SYNTHESIZED,
-            detail="written by the harness (AGY fallback-artifact completion synthesis)",
+            holds=False,
+            provenance=Provenance.ABSENT,
+            detail="completion sentinel was not observed",
         ),
     }
 
     label, weakest = grade_verdict(required_facts)
 
     assert label == DEGRADED
-    assert weakest == Provenance.HOST_SYNTHESIZED
-    assert format_verdict(required_facts) == "DEGRADED (host-synthesized)"
+    assert weakest == Provenance.ABSENT
+    assert format_verdict(required_facts) == "DEGRADED (absent)"
     assert label != PASS, "the 2026-08-05 run must never grade PASS or print 'Breaks: none'"
 
 
@@ -333,8 +333,12 @@ def test_2026_08_05_transcript_replay_grades_degraded_host_synthesized(
     # hand-assigned -- pin the exact provenance each one actually reached.
     assert result.artifact_submitted.holds is True
     assert result.artifact_submitted.provenance == Provenance.WORKSPACE_EFFECT
-    assert result.explicit_completion_seen.holds is True
-    assert result.explicit_completion_seen.provenance == Provenance.HOST_SYNTHESIZED
+    # Post-F7/DoD 19, the host writes no completion evidence for any
+    # transport; the measured 2026-08-05 AGY run did not call
+    # ``declare_complete``, so ``explicit_completion_seen`` is now
+    # ``ABSENT`` (not ``HOST_SYNTHESIZED``).
+    assert result.explicit_completion_seen.holds is False
+    assert result.explicit_completion_seen.provenance == Provenance.ABSENT
     assert result.tool_activity_seen.holds is True
     assert result.tool_activity_seen.provenance == Provenance.TRANSCRIPT
 
@@ -345,6 +349,6 @@ def test_2026_08_05_transcript_replay_grades_degraded_host_synthesized(
     label, weakest = grade_verdict(required_facts)
 
     assert label == DEGRADED
-    assert weakest == Provenance.HOST_SYNTHESIZED
-    assert format_verdict(required_facts) == "DEGRADED (host-synthesized)"
+    assert weakest == Provenance.ABSENT
+    assert format_verdict(required_facts) == "DEGRADED (absent)"
     assert label != PASS, "the 2026-08-05 run must never grade PASS or print 'Breaks: none'"

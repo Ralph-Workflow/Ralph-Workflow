@@ -2504,9 +2504,23 @@ class ParallelDisplay:
             self._watchdog_attention = value
 
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
+        # S-8 / C4: route through the shared-by-path registry so the
+        # display's per-unit overflow log and the reader-owned
+        # overflow log (constructed in
+        # ``_process_reader.py`` / ``_pty_line_reader.py``) are the
+        # same object. Two independently-constructed writers used to
+        # share the file path but neither lock nor ``_first_write``
+        # state, leading to truncation races between the two writers.
+        # ``drop_unit`` still expects to find the per-unit instance
+        # in ``self._overflow_logs`` so the existing close/flush
+        # bookkeeping keeps working; populate that mapping here.
+        from ralph.display.raw_overflow import get_or_create_raw_overflow_log
+
         if unit_id not in self._overflow_logs:
-            self._overflow_logs[unit_id] = RawOverflowLog(
-                self._workspace_root, unit_id, max_bytes=_MAX_OVERFLOW_FILE_BYTES
+            self._overflow_logs[unit_id] = get_or_create_raw_overflow_log(
+                self._workspace_root,
+                unit_id,
+                max_bytes=_MAX_OVERFLOW_FILE_BYTES,
             )
         return self._overflow_logs[unit_id]
 
@@ -5601,12 +5615,21 @@ class ParallelDisplay:
         # S-23 (wt-028-display P1): close the overflow log AFTER
         # the streaming-block close so the buffered full payload
         # lands in the same handle drop_unit is about to close.
+        # S-8 (wt-02-agy-parsing C4): also drop the per-path registry
+        # entry so a re-spawned worker for the same unit_id gets a
+        # fresh ``RawOverflowLog`` (the closed handle above is no
+        # longer usable, and the registry short-circuit would have
+        # handed back the dead instance).
         overflow = self._overflow_logs.pop(unit_id, None)
         if overflow is not None:
             with contextlib.suppress(Exception):
                 overflow.flush()
             with contextlib.suppress(Exception):
                 overflow.close()
+            with contextlib.suppress(Exception):
+                from ralph.display.raw_overflow import _forget_raw_overflow_log
+
+                _forget_raw_overflow_log(str(overflow.path.resolve(strict=False)))
         # P0 (wt-028-display S-11 / AC-07): the rendered-record
         # writer is per-unit; ``drop_unit`` flushes the buffered
         # entries to ``.agent/raw/<safe_id>.rendered.log`` and

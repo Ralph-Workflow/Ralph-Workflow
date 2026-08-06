@@ -142,14 +142,68 @@ def test_render_conformance_matrix_markdown_has_one_row_per_transport_with_fact_
 
 def test_render_conformance_matrix_markdown_orders_rows_by_the_canonical_transport_order() -> None:
     matrix = {
-        "pi": _full_evidence(Provenance.WIRE),
+        "opencode": _full_evidence(Provenance.WIRE),
         "agy": _full_evidence(Provenance.WIRE),
         "cursor": _full_evidence(Provenance.WIRE),
     }
     rendered = render_conformance_matrix_markdown(matrix)
-    assert rendered.index("| agy ") < rendered.index("| cursor ") < rendered.index("| pi ")
-    # matches the brief's canonical F4 ordering
-    assert CONFORMANCE_MATRIX_TRANSPORT_ORDER == ("agy", "claude", "codex", "cursor", "pi")
+    assert rendered.index("| agy ") < rendered.index("| cursor ") < rendered.index("| opencode ")
+    # matches the brief's canonical F4 ordering (the five transports with a
+    # registered `ralph smoke-interactive-*` CLI command).
+    assert CONFORMANCE_MATRIX_TRANSPORT_ORDER == (
+        "claude",
+        "agy",
+        "nanocoder",
+        "cursor",
+        "opencode",
+    )
+
+
+def test_canonical_tuple_matches_registered_smoke_commands() -> None:
+    """The canonical transport tuple must equal the set of smoke-capable CLI commands.
+
+    Regression that locks in S-11's invariant: ``CONFORMANCE_MATRIX_TRANSPORT_ORDER``
+    is the single source of truth for the matrix's row/column order, and
+    must equal the set of transports with a registered
+    ``ralph smoke-interactive-*`` CLI command in ``ralph/cli/main.py``.
+    Without this regression a future contributor could silently let
+    ``codex`` or ``pi`` (no smoke command, can never be populated by a
+    real run) back into the canonical tuple, or drop ``nanocoder`` /
+    ``opencode`` (have smoke commands and can).
+    """
+    from ralph.cli.main import app  # local import: keeps the regression
+    # focused on the matrix invariant and the CLI command registry.
+
+    # Strip the ``smoke-interactive-`` prefix so we compare transport
+    # names (``claude``) against the canonical tuple rather than
+    # full CLI command names (``smoke-interactive-claude``).
+    registered_smoke_transports = {
+        cmd.name.removeprefix("smoke-interactive-")
+        for cmd in app.registered_commands
+        if getattr(cmd, "name", None) and cmd.name.startswith("smoke-interactive-")
+    }
+
+    expected_canonical = {
+        "claude",
+        "agy",
+        "nanocoder",
+        "cursor",
+        "opencode",
+    }
+    assert set(CONFORMANCE_MATRIX_TRANSPORT_ORDER) == expected_canonical
+    assert set(CONFORMANCE_MATRIX_TRANSPORT_ORDER) == registered_smoke_transports, (
+        "CONFORMANCE_MATRIX_TRANSPORT_ORDER must equal the set of "
+        "transports with a registered `ralph smoke-interactive-*` CLI "
+        f"command. canonical={set(CONFORMANCE_MATRIX_TRANSPORT_ORDER)} "
+        f"registered={registered_smoke_transports}"
+    )
+    # ``codex`` and ``pi`` must NOT appear in the canonical tuple --
+    # they have no smoke command and can never be populated by a real run.
+    for invalid in ("codex", "pi"):
+        assert invalid not in CONFORMANCE_MATRIX_TRANSPORT_ORDER, (
+            f"{invalid!r} is not smoke-capable and must not appear in "
+            f"the canonical transport tuple"
+        )
 
 
 def test_render_conformance_matrix_markdown_names_absent_for_an_unrecorded_fact() -> None:

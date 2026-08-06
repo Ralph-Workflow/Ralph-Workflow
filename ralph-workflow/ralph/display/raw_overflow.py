@@ -23,6 +23,63 @@ _BUFFER_BYTES = 64 * 1024
 DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
 
 
+#: Shared-by-path registry (S-8 / C4). Two callers constructing
+#: ``RawOverflowLog`` for the same path (a reader-owned instance and a
+#: display-owned instance, by far the common case) used to receive two
+#: independent objects that shared ``self.path`` but neither lock nor
+#: ``_first_write`` state -- whichever object's first ``append()`` ran
+#: later opened the file in ``"wb"`` mode and truncated the other
+#: object's already-written bytes, the plausible source of the
+#: measured 2026-08-06 NUL-hole corruption. The registry keys on the
+#: resolved path so all callers share one object per path.
+_REGISTRY_LOCK = threading.Lock()
+_REGISTRY: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: per-path singleton, scoped to process lifetime
+
+
+def get_or_create_raw_overflow_log(
+    workspace_root: Path,
+    unit_id: str,
+    *,
+    model: str | None = None,
+    max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
+    flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
+    now: Callable[[], float] = time.monotonic,
+) -> RawOverflowLog:
+    """Return the per-path ``RawOverflowLog`` for ``(workspace_root, unit_id, model)``.
+
+    Process-wide per-path singleton: callers constructing
+    ``RawOverflowLog`` for the same path receive the same instance so
+    the lock and ``_first_write`` state are shared and a late first
+    ``append()`` from one caller cannot truncate another caller's
+    already-written bytes (S-8 / C4 / DoD 15). Returns the existing
+    instance on a repeat call -- not a fresh one.
+    """
+    key_path = (
+        workspace_root / ".agent" / "raw" / f"{safe_id_for(unit_id, model)}.log"
+    )
+    key = str(key_path.resolve(strict=False))
+    with _REGISTRY_LOCK:
+        existing = _REGISTRY.get(key)
+        if existing is not None:
+            return existing
+        instance = RawOverflowLog(
+            workspace_root,
+            unit_id,
+            model=model,
+            max_bytes=max_bytes,
+            flush_interval_seconds=flush_interval_seconds,
+            now=now,
+        )
+        _REGISTRY[key] = instance
+        return instance
+
+
+def _forget_raw_overflow_log(key_path: str) -> None:
+    """Drop one entry from the registry. Used by tests; not part of the public API."""
+    with _REGISTRY_LOCK:
+        _REGISTRY.pop(key_path, None)
+
+
 class RawOverflowLog:
     """Append-mode raw log for a single work unit.
 
