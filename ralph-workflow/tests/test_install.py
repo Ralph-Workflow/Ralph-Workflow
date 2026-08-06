@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph import install as install_module
+from ralph._install_conflicts import ExistingInstall
+from ralph.update_check._install_kind import InstallKind
 
 _build_meta = import_module("ralph._build_meta")
 
@@ -327,21 +329,61 @@ def test_main_build_regression_writes_build_flavor_without_global_launcher(
     assert captured["launcher_dir"] == Path("/home/u/.local/bin")
 
 
-def test_main_default_install_preflights_existing_global_ralph(
+def _uv_tool_ralph() -> ExistingInstall:
+    return ExistingInstall(
+        executable=Path("/home/u/.local/bin/ralph"),
+        package_file=Path("/home/u/.local/share/uv/tools/ralph-workflow/lib/ralph/__init__.py"),
+        kind=InstallKind.UV_TOOL,
+    )
+
+
+@pytest.mark.parametrize("argv", [[], ["--build"]])
+def test_main_default_install_keeps_conflicting_ralph_and_explains_rdev(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
 ) -> None:
-    """S-2: `make install` checks an existing global Ralph before installing."""
-    preflight_calls: list[object] = []
+    """`make install` installs `rdev`, so a global `ralph` conflict never blocks it."""
+    installs: list[object] = []
+    monkeypatch.setattr(install_module, "detect_existing_ralph", lambda **_kwargs: _uv_tool_ralph())
     monkeypatch.setattr(
         install_module,
-        "_resolve_install_conflict",
-        lambda **kwargs: preflight_calls.append(kwargs["run"]),
+        "prompt_for_conflict",
+        lambda *_args, **_kwargs: pytest.fail("dev install must not prompt about `ralph`"),
     )
+    monkeypatch.setattr(
+        install_module, "install_dev_checkout", lambda **kwargs: installs.append(kwargs)
+    )
+    monkeypatch.setattr(install_module.shutil, "which", lambda _name: "/opt/bin/uv")
+
+    assert install_module.main(argv) == 0
+    assert len(installs) == 1
+
+    notice = capsys.readouterr().out
+    assert "/home/u/.local/bin/ralph" in notice
+    assert "uv-tool" in notice
+    assert "rdev" in notice
+
+
+def test_main_default_install_stays_quiet_without_a_conflicting_ralph(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(install_module, "detect_existing_ralph", lambda **_kwargs: None)
     monkeypatch.setattr(install_module, "install_dev_checkout", lambda **_kwargs: None)
     monkeypatch.setattr(install_module.shutil, "which", lambda _name: "/opt/bin/uv")
 
     assert install_module.main([]) == 0
-    assert preflight_calls == [install_module._run_command]
+    assert capsys.readouterr().out == ""
+
+
+def test_dev_launcher_notice_names_rdev_as_the_command_to_run() -> None:
+    """The notice must say `rdev` is used instead of the untouched `ralph`."""
+    notice = install_module.render_dev_launcher_notice(_uv_tool_ralph())
+
+    assert "/home/u/.local/bin/ralph" in notice
+    assert "rdev" in notice
+    assert "instead" in notice
 
 
 def test_flavored_version_reports_build_and_dev_suffixes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -588,7 +630,7 @@ def test_built_wheel_includes_policy_default_tomls(built_wheel_path: Path) -> No
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
-def test_write_dev_launcher_creates_executable_script(tmp_path: Path) -> None:
+def test_write_dev_launcher_creates_and_replaces_executable_script(tmp_path: Path) -> None:
     target = tmp_path / "nested" / "bin" / "rdev"
     content = '#!/usr/bin/env bash\nexec uv run --project /tmp/ralph ralph "$@"\n'
 
@@ -596,6 +638,13 @@ def test_write_dev_launcher_creates_executable_script(tmp_path: Path) -> None:
 
     assert target.read_text(encoding="utf-8") == content
     assert os.access(target, os.X_OK), "launcher must be executable"
+
+    # `rdev` belongs to the dev build, so a newer snapshot overwrites it outright.
+    refreshed = '#!/usr/bin/env bash\nexec uv run --project /tmp/ralph-next ralph "$@"\n'
+    install_module.write_dev_launcher(target, refreshed)
+
+    assert target.read_text(encoding="utf-8") == refreshed
+    assert os.access(target, os.X_OK), "replaced launcher must stay executable"
 
 
 _PLAIN_RALPH_BOOTSTRAP_SCRIPT = """\

@@ -32,10 +32,11 @@ make install  # `rdev --version` ends in -build
 # or: make dev  # `rdev --version` ends in -dev
 ```
 
-Before either command changes files, it detects an existing global `ralph`.
-In an interactive terminal, choose to continue, remove a pipx or `uv tool`
-installation, or abort. The source snapshot uses `rdev`, so it does not
-shadow the published `ralph` command. See the
+Both commands install the `rdev` launcher only, so they never shadow a
+published `ralph`: an existing global `ralph` is reported and left in place,
+and `rdev` is used instead of it. An `rdev` from an earlier dev build is
+replaced. `make stable` owns the global `ralph` and still asks — continue,
+remove a pipx or `uv tool` installation, or abort. See the
 [contributor setup guide](ralph-workflow/CONTRIBUTING.md#dev-build-vs-stable-build)
 for stable installs and switching builds.
 

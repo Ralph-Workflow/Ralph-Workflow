@@ -36,6 +36,8 @@ from ralph.process._spawn_env import sanitize_process_environment
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from ralph._existing_install import ExistingInstall
+
 STABLE_PACKAGE_NAME = "ralph-workflow"
 DEV_LAUNCHER_NAME = "rdev"
 
@@ -88,6 +90,23 @@ def render_dev_launcher(package_dir: Path) -> str:
         "# Runs the copied dev snapshot via uv; counterpart of the stable\n"
         "# `ralph` installed with `uv tool install`.\n"
         f'exec uv run --project "{package_dir}" ralph "$@"\n'
+    )
+
+
+def render_dev_launcher_notice(existing: ExistingInstall) -> str:
+    """Return the notice shown when a global ``ralph`` coexists with the dev build.
+
+    The dev build owns only ``rdev``, so an existing ``ralph`` is not a conflict
+    to resolve: it is left exactly as it is, and the notice tells the reader
+    which command now runs this checkout.
+    """
+    return (
+        f"Existing {existing.kind} Ralph Workflow install at {existing.executable} "
+        "is left untouched.\n"
+        f"This build installs the '{DEV_LAUNCHER_NAME}' launcher instead, replacing any "
+        f"'{DEV_LAUNCHER_NAME}' from an earlier dev build.\n"
+        f"Run '{DEV_LAUNCHER_NAME}' to use this checkout; 'ralph' keeps running the "
+        "existing install."
     )
 
 
@@ -289,7 +308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             from_path=from_path,
         )
     else:
-        _resolve_install_conflict(run=_run_command)
+        _report_dev_launcher_conflict()
         install_dev_checkout(
             run=_run_command,
             uv_executable=shutil.which("uv"),
@@ -298,6 +317,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             flavor="-build" if build else "-dev",
         )
     return 0
+
+
+def _report_dev_launcher_conflict(*, emit: Callable[[str], None] = print) -> None:
+    """Explain that a detected global ``ralph`` is kept and ``rdev`` is used instead."""
+    existing = detect_existing_ralph(
+        which_fn=shutil.which,
+        environ=real_environment(),
+        resolve_package_file=resolve_package_file,
+    )
+    if existing is None:
+        return
+    emit(render_dev_launcher_notice(existing))
 
 
 def _resolve_install_conflict(*, run: RunCommand) -> None:

@@ -22,10 +22,12 @@ make stable        # published release; ralph --version has no local suffix
 ```
 
 `make install` and `make dev` copy the checkout and its bundled templates to
-their own snapshot, so `rdev` does not depend on the cloned repository. Before
-any install changes files, Ralph Workflow detects an existing global `ralph`:
-in a terminal, choose continue, remove a pipx/uv-tool install, or abort.
-Non-interactive conflicts abort safely.
+their own snapshot, so `rdev` does not depend on the cloned repository. They
+install `rdev` only: an existing global `ralph` is reported and left untouched,
+and `rdev` is used instead. Any `rdev` from an earlier dev build is replaced.
+`make stable` owns the global `ralph`, so before it changes files you choose in
+a terminal to continue, remove a pipx/uv-tool install, or abort; non-interactive
+conflicts abort safely.
 
 Use `pipx install ralph-workflow` or `pip install ralph-workflow` only when the
 Makefile workflow is unavailable.
