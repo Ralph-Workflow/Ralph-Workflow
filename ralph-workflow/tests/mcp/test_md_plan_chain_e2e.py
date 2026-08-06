@@ -34,9 +34,7 @@ status: request_changes
 ## Summary
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
-- [PA-001] Step: [{step}] lacks an executable verification command. Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
-## How To Fix
-- [PA-001] Replace the affected plan text with a concrete command.
+- [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field.
 """
 
 
@@ -55,7 +53,9 @@ def test_public_verify_accepts_executor_ready_plan() -> None:
 
 
 def test_public_verify_rejects_incomplete_plan() -> None:
-    payload = _verify_payload(_plan().replace("Expect: the focused contract tests pass with exit code 0\n", ""))
+    payload = _verify_payload(
+        _plan().replace("Expect: the focused contract tests pass with exit code 0\n", "")
+    )
 
     assert payload["valid"] is False
     assert any(item["rule_id"] == "PLAN020" for item in payload["diagnostics"])
@@ -64,10 +64,14 @@ def test_public_verify_rejects_incomplete_plan() -> None:
 def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Path) -> None:
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
-    assert not handle_submit_md_artifact(session, workspace, {"artifact_type": "plan", "content": _plan()}).is_error
+    assert not handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": _plan()}
+    ).is_error
 
     result = handle_submit_md_artifact(
-        session, workspace, {"artifact_type": "planning_analysis_decision", "content": _decision("S-99")}
+        session,
+        workspace,
+        {"artifact_type": "planning_analysis_decision", "content": _decision("S-99")},
     )
     payload = json.loads(result.content[0].text)
 
@@ -80,7 +84,12 @@ def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Pat
 
 def test_all_planning_variants_share_the_compact_contract() -> None:
     context = TemplateContext.default()
-    for name in ("planning.jinja", "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja"):
+    for name in (
+        "planning.jinja",
+        "planning_fallback.jinja",
+        "planning_edit.jinja",
+        "planning_edit_fallback.jinja",
+    ):
         source = context.registry.get_template(name.removesuffix(".jinja"))
         assert "shared/_planning_thinking.j2" in source
         assert "shared/_planning_submission_mechanics.j2" in source

@@ -116,15 +116,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-# The record path / write_record / read_record / clear_record helpers
-# were extracted to :mod:`ralph.pipeline.auto_integrate_record`, and the
-# outcome branch table (action verbs, RebaseState builders, rebase/merge
-# classifiers) to :mod:`ralph.pipeline.auto_integrate_outcome`, to keep
-# this module under the repo-structure ``_MAX_FILE_LINES`` cap. The
-# module-level ``from ... import ... as _xxx`` aliases above expose them
-# under the original private names so the call sites in this module read
-# unchanged.
-
 
 def _fast_forward_target(
     repo_root: Path,
