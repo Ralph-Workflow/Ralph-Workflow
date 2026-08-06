@@ -51,12 +51,19 @@ def _markdown_palette_for_surface(surface_hex: str) -> tuple[str, str, str, str,
     return _markdown_palette_for_surface_cached(surface_hex)
 
 
-@lru_cache(maxsize=8)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-def _markdown_palette_for_surface_cached(
+def _markdown_palette_for_surface_uncached(
     surface_hex: str,
 ) -> tuple[str, str, str, str, str, str]:
     preview_surface = preview_background_for_background(None, surface_hex=surface_hex)
     return _build_markdown_palette(preview_surface)
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
+# disallow_any_decorated settings clean without a type: ignore suppression --
+# the same first-party idiom used by ralph.display.language_inference._cached_infer.
+_markdown_palette_for_surface_cached = lru_cache(maxsize=8)(
+    _markdown_palette_for_surface_uncached
+)
 
 
 def _styles(terminal_bg_is_light: bool | None, surface_hex: str | None = None) -> dict[str, str]:

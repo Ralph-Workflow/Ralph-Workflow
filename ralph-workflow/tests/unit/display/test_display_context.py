@@ -26,6 +26,7 @@ from ralph.display._mode_adaptive_limits import (
     TOOL_RESULT_HEADLINE_MIN_CHARS,
 )
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.scene_catalog import CONTRAST_FLOOR
 from ralph.display.theme import pick_status_styles, theme_for_background
 
 _NARROW_TEST_WIDTH = 40
@@ -227,3 +228,59 @@ def test_display_context_threads_measured_surface_hex_through_resolved_theme() -
     expected_hex = _theme._extract_hex(expected_style)
     actual_hex = _theme._extract_hex(str(ctx.theme.styles["theme.status.warning"]))
     assert expected_hex and actual_hex.lower() == expected_hex.lower()
+
+
+def test_explicit_dark_override_is_not_contradicted_by_a_light_probe_measurement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: an explicit ``RALPH_TERMINAL_BG=dark`` must resolve the same
+    canonical surface for both the boolean and the hex detector, even when the
+    OSC 11 probe (stubbed here) would answer with a contradicting light colour.
+
+    Before the fix, ``detect_terminal_background_hex`` ignored the explicit
+    non-hex declaration and threaded the probed ``#FFFFFF`` into the solver
+    while ``detect_terminal_background_is_light`` stayed ``False`` -- a
+    dark/light contradiction that resolved a *light-surface-solved* palette
+    (e.g. ``success`` at ``#568316``) onto what the operator declared a dark
+    terminal. DA-001 also moved the canonical dark/light tables off the pure
+    ``#000000``/``#FFFFFF`` endpoints onto the representative
+    ``#2D2A2E``/``#FAF8F5`` surfaces (a pigment solved to exactly the floor
+    on ``#000000`` measures only ~3.05:1 on a realistic ``#2D2A2E``
+    surface), so this declared-but-unmeasured path must resolve to that same
+    representative surface too, or it would regress below the floor exactly
+    where DA-001 restored headroom. This test pins both properties: the hex
+    and boolean resolvers agree, and the surface-aware resolution collapses
+    onto the same dark canonical table -- now solved with real headroom on
+    ``#2D2A2E`` -- used everywhere else, not a contradicting light-solved one.
+    """
+    monkeypatch.setattr(
+        "ralph.display._terminal_bg_query.query_terminal_background_hex",
+        lambda *, timeout: "#FFFFFF",
+    )
+    env = {"RALPH_TERMINAL_BG": "dark"}
+
+    resolved_hex = _theme.detect_terminal_background_hex(env)
+    assert resolved_hex == "#2D2A2E"
+    assert _theme.background_hex_is_light(resolved_hex) is False
+
+    is_light = _theme.detect_terminal_background_is_light(env)
+    assert is_light is False
+
+    surface_resolved = pick_status_styles(is_light, surface_hex=resolved_hex)
+    canonical = pick_status_styles(is_light)
+    assert surface_resolved == canonical
+
+    real_dark_surface = "#2D2A2E"
+    broken_light_solved_success = "#568316"
+    for style, _glyph, _label in surface_resolved.values():
+        pigment = _theme._extract_hex(style)
+        assert pigment.upper() != broken_light_solved_success
+        # DA-002: an absolute floor assertion, not a self-comparison against
+        # `canonical` -- `surface_resolved == canonical` above already pins
+        # the two byte-for-byte, so comparing derived values against each
+        # other proved nothing. This is a true witness once DA-001 restores
+        # canonical headroom, and it fails if the `elif explicit:` branch in
+        # `detect_terminal_background_hex` regresses to threading a pure
+        # `#000000`/`#FFFFFF` endpoint (zero headroom) instead of the
+        # representative surface.
+        assert _theme.contrast_ratio(pigment, real_dark_surface) >= CONTRAST_FLOOR

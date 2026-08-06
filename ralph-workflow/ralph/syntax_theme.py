@@ -6,6 +6,7 @@ than read from a fixed table.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import cast
 
 import pygments.token as pygments_token
@@ -100,10 +101,20 @@ class SyntaxThemes:
 
     @staticmethod
     def for_surface(surface_hex: str) -> type[PygmentsStyle]:
-        preview_surface = derive_preview_background(surface_hex)
-        default, colors, diff_colors = _generate_syntax_colors(preview_surface)
-        return _style(default, colors, diff_colors)
+        return _syntax_theme_for_surface_cached(surface_hex)
 
+
+def _syntax_theme_for_surface_uncached(surface_hex: str) -> type[PygmentsStyle]:
+    preview_surface = derive_preview_background(surface_hex)
+    default, colors, diff_colors = _generate_syntax_colors(preview_surface)
+    return _style(default, colors, diff_colors)
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
+# disallow_any_decorated settings clean without a type: ignore suppression, and
+# resolves a per-surface syntax theme once instead of on every rendered row --
+# the same first-party idiom used by ralph.display.language_inference._cached_infer.
+_syntax_theme_for_surface_cached = lru_cache(maxsize=8)(_syntax_theme_for_surface_uncached)
 
 
 def _style(

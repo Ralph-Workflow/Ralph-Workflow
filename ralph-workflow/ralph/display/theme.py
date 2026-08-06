@@ -22,6 +22,7 @@ terminal backgrounds.
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Literal
 
 from rich.console import Console
@@ -128,8 +129,24 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     return term != "dumb"
 
 
-_pal_dark = _palette.resolve_palette("#000000")
-_pal_light = _palette.resolve_palette("#FFFFFF")
+#: Representative realistic terminal surfaces used to solve the
+#: measurement-free canonical palettes -- the boolean-only dark/light
+#: tables, the identity palette, and the ``RALPH_TERMINAL_BG=dark``/
+#: ``light`` fallback used when no OSC 11 measurement is available
+#: (see :func:`detect_terminal_background_hex`). Solving against the
+#: pure endpoints (``#000000`` / ``#FFFFFF``) left zero contrast
+#: headroom: a pigment solved to exactly 4.5:1 on ``#000000`` measures
+#: only ~3.04:1 on a realistic ``#2D2A2E`` terminal (DA-001).
+#: ``#2D2A2E`` (Y=0.0242) is the lightest -- hardest -- of the common
+#: dark surfaces (``#1E1E1E`` Y=0.013 and ``#282C34`` Y=0.0238 are
+#: both covered because they are darker still); ``#FAF8F5`` (Y=0.9405)
+#: is the corresponding hardest common light surface, just under pure
+#: white.
+_CANONICAL_DARK_SURFACE_HEX: Final[str] = "#2D2A2E"
+_CANONICAL_LIGHT_SURFACE_HEX: Final[str] = "#FAF8F5"
+
+_pal_dark = _palette.resolve_palette(_CANONICAL_DARK_SURFACE_HEX)
+_pal_light = _palette.resolve_palette(_CANONICAL_LIGHT_SURFACE_HEX)
 _pal_unknown = _palette.resolve_palette(None)
 
 
@@ -177,8 +194,10 @@ def _generate_identity_palette(surface_hex: str | None) -> tuple[str, ...]:
     return tuple(slots)
 
 
-IDENTITY_PALETTE: Final[tuple[str, ...]] = _generate_identity_palette("#000000")
-IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = _generate_identity_palette("#FFFFFF")
+IDENTITY_PALETTE: Final[tuple[str, ...]] = _generate_identity_palette(_CANONICAL_DARK_SURFACE_HEX)
+IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = _generate_identity_palette(
+    _CANONICAL_LIGHT_SURFACE_HEX
+)
 IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = _generate_identity_palette(None)
 
 # The shipped roster is the baseline active set for shared surfaces. Rendering
@@ -524,6 +543,16 @@ def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
     ``ValueError`` for malformed or wrong-length bodies). A malformed
     override falls through to the OSC 11 probe rather than being
     threaded, unvalidated, into the palette solver.
+
+    A non-hex explicit declaration (``light`` / ``dark`` / ``1`` / ``true`` /
+    ``yes`` / ``0`` / ``false`` / ``no``) resolves to the same representative
+    surface the measurement-free canonical tables are solved against
+    (``_CANONICAL_LIGHT_SURFACE_HEX`` / ``_CANONICAL_DARK_SURFACE_HEX``,
+    i.e. ``#FAF8F5`` / ``#2D2A2E``) instead of falling through to the probe,
+    so this function and :func:`terminal_background_is_light` can never
+    disagree about a declared background, and this declared-but-unmeasured
+    path keeps the same contrast headroom DA-001 gave the canonical tables
+    rather than resolving fresh against a pure endpoint with none.
     """
     explicit = env.get("RALPH_TERMINAL_BG", "").strip()
     if explicit.startswith("#"):
@@ -533,6 +562,10 @@ def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
             pass
         else:
             return explicit
+    elif explicit:
+        override = _explicit_background_override(env)
+        if override is not None:
+            return _CANONICAL_LIGHT_SURFACE_HEX if override else _CANONICAL_DARK_SURFACE_HEX
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
     return query_terminal_background_hex(
@@ -563,6 +596,20 @@ def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
 
 
 
+def _preview_foreground_for_surface_uncached(surface_hex: str) -> str:
+    fill = preview_background_for_background(None, surface_hex=surface_hex)
+    return _palette.solve_for_surface(_palette.ROLE_ANCHORS["chrome"], fill)
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
+# disallow_any_decorated settings clean without a type: ignore suppression, and
+# resolves a per-surface foreground once instead of on every rendered row --
+# the same first-party idiom used by ralph.display.language_inference._cached_infer.
+_preview_foreground_for_surface_cached = lru_cache(maxsize=8)(
+    _preview_foreground_for_surface_uncached
+)
+
+
 def preview_foreground_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> str:
@@ -573,8 +620,7 @@ def preview_foreground_for_background(
     painted on.
     """
     if surface_hex is not None:
-        fill = preview_background_for_background(None, surface_hex=surface_hex)
-        return _palette.solve_for_surface(_palette.ROLE_ANCHORS["chrome"], fill)
+        return _preview_foreground_for_surface_cached(surface_hex)
     if terminal_bg_is_light is True:
         return "#202020"
     if terminal_bg_is_light is False:
@@ -615,6 +661,22 @@ def display_styles_for_background(
     return _DISPLAY_STYLES_ON_UNKNOWN_BG
 
 
+def _diff_token_foregrounds_for_surface_uncached(surface_hex: str) -> tuple[str, str]:
+    removed_fill, added_fill = _derive_diff_fills(surface_hex)
+    removed = _palette.solve_for_surface(_palette.ROLE_ANCHORS["diff_removed"], removed_fill)
+    added = _palette.solve_for_surface(_palette.ROLE_ANCHORS["diff_added"], added_fill)
+    return removed, added
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
+# disallow_any_decorated settings clean without a type: ignore suppression, and
+# resolves a per-surface diff palette once instead of on every rendered row --
+# the same first-party idiom used by ralph.display.language_inference._cached_infer.
+_diff_token_foregrounds_for_surface_cached = lru_cache(maxsize=8)(
+    _diff_token_foregrounds_for_surface_uncached
+)
+
+
 def diff_token_foregrounds(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> tuple[str, str]:
@@ -627,9 +689,11 @@ def diff_token_foregrounds(
     background there is no owned fill -- the markers fall back to the
     dual-safe display-style pigments.
     """
-    fills = diff_fill_styles(terminal_bg_is_light, surface_hex=surface_hex)
+    if surface_hex is not None:
+        return _diff_token_foregrounds_for_surface_cached(surface_hex)
+    fills = diff_fill_styles(terminal_bg_is_light)
     if fills is None:
-        styles = display_styles_for_background(terminal_bg_is_light, surface_hex=surface_hex)
+        styles = display_styles_for_background(terminal_bg_is_light)
         return styles["diff_removed"], styles["diff_added"]
     removed_fill, added_fill = fills
     removed = _palette.solve_for_surface(_palette.ROLE_ANCHORS["diff_removed"], removed_fill)
@@ -650,12 +714,23 @@ def diff_fill_styles(
     return None
 
 
+def _syntax_theme_for_surface_uncached(surface_hex: str) -> SyntaxTheme:
+    return PygmentsSyntaxTheme(SyntaxThemes.for_surface(surface_hex))
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
+# disallow_any_decorated settings clean without a type: ignore suppression, and
+# resolves a per-surface syntax theme once instead of on every rendered row --
+# the same first-party idiom used by ralph.display.language_inference._cached_infer.
+_syntax_theme_for_surface_cached = lru_cache(maxsize=8)(_syntax_theme_for_surface_uncached)
+
+
 def syntax_theme_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> SyntaxTheme:
     """Return the syntax theme resolved for this background."""
     if surface_hex is not None:
-        return PygmentsSyntaxTheme(SyntaxThemes.for_surface(surface_hex))
+        return _syntax_theme_for_surface_cached(surface_hex)
     if terminal_bg_is_light is True:
         return SYNTAX_THEME_ON_LIGHT_BG
     if terminal_bg_is_light is False:

@@ -677,11 +677,25 @@ def _cvd_separability_check(
             )
 
 
-def _check_surface_contrast_failures(surface_hex: str) -> list[str]:
+def _check_surface_contrast_failures(
+    surface_hex: str, *, use_resolver_surface: bool = True
+) -> list[str]:
+    """Sweep every Ralph-owned role and report roles below ``CONTRAST_FLOOR``.
+
+    ``use_resolver_surface=True`` (default) threads ``surface_hex`` into the
+    resolvers themselves -- the S-4 measured-surface path. ``False`` calls
+    the resolvers with the boolean only, exercising the canonical,
+    measurement-free tables used when no OSC 11 measurement is available
+    (``RALPH_TERMINAL_BG=dark``/``light`` with no probe, or a
+    COLORFGBG-only signal), while still measuring the result against
+    ``surface_hex`` as the realistic surface it is actually painted on
+    (DA-001).
+    """
     is_light = surface_hex == "#FAF8F5"
+    resolver_surface_hex = surface_hex if use_resolver_surface else None
     failures: list[str] = []
 
-    resolved_theme = theme.theme_for_background(is_light, surface_hex=surface_hex)
+    resolved_theme = theme.theme_for_background(is_light, surface_hex=resolver_surface_hex)
     for role_name in theme._THEME_STYLES:
         style_obj = resolved_theme.styles.get(role_name)
         if style_obj is None:
@@ -693,7 +707,7 @@ def _check_surface_contrast_failures(surface_hex: str) -> list[str]:
         if ratio < CONTRAST_FLOOR:
             failures.append(f"theme_for_background[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
 
-    display_styles = theme.display_styles_for_background(is_light, surface_hex=surface_hex)
+    display_styles = theme.display_styles_for_background(is_light, surface_hex=resolver_surface_hex)
     for role_name, style_str in display_styles.items():
         foreground = theme._extract_hex(style_str)
         if not foreground:
@@ -702,7 +716,7 @@ def _check_surface_contrast_failures(surface_hex: str) -> list[str]:
         if ratio < CONTRAST_FLOOR:
             failures.append(f"display_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
 
-    status_styles = theme.pick_status_styles(is_light, surface_hex=surface_hex)
+    status_styles = theme.pick_status_styles(is_light, surface_hex=resolver_surface_hex)
     for role_name, (style_str, _glyph, _label) in status_styles.items():
         foreground = theme._extract_hex(style_str)
         if not foreground:
@@ -760,5 +774,27 @@ def test_visual_floor_all_resolvers_clear_contrast_on_realistic_surfaces() -> No
         raise AssertionError(f"{len(failures)} contrast failures on realistic surfaces:\n" + "\n".join(failures))
 
 
+def test_visual_floor_boolean_resolvers_clear_contrast_on_realistic_surfaces() -> None:
+    """DA-001: the canonical measurement-free (boolean-only) tables must also
+    clear CONTRAST_FLOOR on realistic terminal surfaces, not merely on the
+    pure #000000/#FFFFFF endpoints they used to be solved against.
 
+    This is the path a terminal without an OSC 11 measurement actually uses
+    -- RALPH_TERMINAL_BG=dark/light with the probe unavailable, or a
+    COLORFGBG-only signal -- and it previously left the canonical tables
+    with zero contrast headroom: a pigment solved to exactly 4.5:1 on
+    #000000 measured only ~3.04:1 on a realistic #2D2A2E terminal.
+    """
+    realistic_surfaces = ("#2D2A2E", "#1E1E1E", "#FAF8F5")
+    failures: list[str] = []
 
+    for surface_hex in realistic_surfaces:
+        failures.extend(
+            _check_surface_contrast_failures(surface_hex, use_resolver_surface=False)
+        )
+
+    if failures:
+        raise AssertionError(
+            f"{len(failures)} contrast failures on realistic surfaces (boolean-only resolvers):\n"
+            + "\n".join(failures)
+        )

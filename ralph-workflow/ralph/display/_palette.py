@@ -289,9 +289,7 @@ def resolve_palette(surface_hex: str | None) -> dict[str, str]:
     return _resolve_palette_cached(surface_hex)
 
 
-@functools.lru_cache(maxsize=8)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-def _resolve_palette_cached(surface_hex: str | None) -> dict[str, str]:
-
+def _resolve_palette_uncached(surface_hex: str | None) -> dict[str, str]:
     table: dict[str, str] = {}
     for role, anchor in ROLE_ANCHORS.items():
         if surface_hex is not None:
@@ -299,6 +297,12 @@ def _resolve_palette_cached(surface_hex: str | None) -> dict[str, str]:
         else:
             table[role] = solve_dual_safe(anchor)
     return table
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
+# disallow_any_decorated settings clean without a type: ignore suppression --
+# the same first-party idiom used by ralph.display.language_inference._cached_infer.
+_resolve_palette_cached = functools.lru_cache(maxsize=8)(_resolve_palette_uncached)
 
 
 
