@@ -812,3 +812,45 @@ def test_b1_correlated_tool_result_record_body_omits_tool_name_and_stays_nonempt
     assert entry.body != ""
     assert "write_to_file" not in entry.body.casefold()
     assert "todo-list.js" in entry.body
+
+
+def test_b6_bracketed_markdown_link_survives_to_the_rendered_activity_line() -> None:
+    """B6: a markdown link split across two ``text_delta`` chunks must survive
+    intact all the way to the rendered live-activity line.
+
+    Measured shape: the model emitted a markdown link split across two
+    ``text_delta`` chunks (``"...implementation at [todo"`` +
+    ``"-list.js](file:///...)"``). The parser reassembles the flushed
+    ``text`` event correctly -- this test's first assertion pins that,
+    already-covered ground. The regression was downstream: the live
+    activity line rendered ``"...implementation at (file:///...)"``, with
+    the bracketed span eaten by ``strip_markup_safe``'s Rich-markup
+    reduction (an unclosed ``[todo-list.js]`` reads as an open style tag
+    with no closing tag, so ``Text.from_markup(...).plain`` drops it).
+    Runs the full ``AgyParser`` -> ``render_event_kind_text`` pipeline so
+    a regression in either stage fails this test.
+    """
+    from ralph.display.activity_provider import ActivityProvider
+    from ralph.display.agent_event_renderer import (
+        normalize_event_from_agent_output_line,
+        render_event_kind_text,
+    )
+
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":5,"state":"ACTIVE","step_type":"agent_response","text_delta":"Full implementation at [todo"}}',
+        '{"event":"step_update","step_update":{"step_index":5,"state":"DONE","step_type":"agent_response","text_delta":"-list.js](file:///workspace/todo-list.js)\\n"}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    text_line = next(line for line in parsed if line.type == "text")
+
+    # The parser itself already reassembles the split delta correctly.
+    assert "[todo-list.js](file:///workspace/todo-list.js)" in text_line.content
+
+    event = normalize_event_from_agent_output_line(
+        text_line, provider=ActivityProvider.AGY, unit_id="agy"
+    )
+    rendered = render_event_kind_text(
+        event.kind, event.content, metadata=event.metadata, agent_name="agy"
+    )
+    assert "[todo-list.js](file:///workspace/todo-list.js)" in rendered

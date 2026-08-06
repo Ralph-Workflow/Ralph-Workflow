@@ -44,6 +44,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _cursor_binary_override_env,
     _execute_smoke_turns,
     is_mock_agy_override,
+    record_conformance_matrix,
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
@@ -544,6 +545,12 @@ def smoke_harness_agent_command(
     )
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
+    # F4: fold this run's graded facts into the durable, cross-transport
+    # conformance matrix (.agent/artifacts/smoke_conformance_matrix.md) --
+    # each run replaces only its own transport's row.
+    record_conformance_matrix(
+        workspace_root, transport=result.transport, evidence=_required_evidence(result)
+    )
     exit_code = 0 if not result.errors else 1
     # S-14: keep the literal ``EXIT_CODE=N`` machine-line shape so
     # external smoke harnesses that grep the line keep working. The

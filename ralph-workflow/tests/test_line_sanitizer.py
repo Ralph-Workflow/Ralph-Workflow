@@ -1,6 +1,10 @@
 """Tests for sanitize_display_line() line truncation and unicode safety."""
 
-from ralph.display.line_sanitizer import sanitize_display_line, strip_terminal_control
+from ralph.display.line_sanitizer import (
+    sanitize_display_line,
+    strip_markup_safe,
+    strip_terminal_control,
+)
 
 MAX_TRUNCATED_RESULT_LENGTH = 203
 MAX_CHARS_WITH_ELLIPSIS = 201
@@ -211,3 +215,56 @@ def test_strip_terminal_control_keeps_color_payload_with_surrounding_text() -> N
     """Surrounding text survives: 'before\\x1b[31mred\\x1b[0mafter' -> 'before red after'."""
     text = "before\x1b[31mCOLORED\x1b[0mafter"
     assert strip_terminal_control(text) == "beforeCOLOREDafter"
+
+
+# ---------------------------------------------------------------------------
+# strip_markup_safe coverage (B6, 2026-08-05 AGY parsing-fidelity pass):
+# an unclosed "[tag]"-shaped span in agent-origin text (a markdown link
+# label, a bracketed tool name, ...) must survive verbatim -- Rich's
+# Text.from_markup treats an unclosed opening tag as extending to the end
+# of the string and drops its content from .plain, which previously ate
+# the bracketed span rather than merely stripping the brackets.
+# ---------------------------------------------------------------------------
+
+
+def test_strip_markup_safe_preserves_unclosed_bracket_markdown_link() -> None:
+    """B6 regression: a markdown link's bracketed label must survive intact.
+
+    Measured AGY frame: the model's flushed text event contained
+    ``"...implementation at [todo-list.js](file:///...)"`` after the
+    parser reassembled it correctly. The live activity line previously
+    rendered ``"...implementation at (file:///...)"`` -- the bracketed
+    span silently eaten by ``Text.from_markup`` treating the unclosed
+    ``[todo-list.js]`` as a style tag rather than literal text.
+    """
+    text = "Full implementation at [todo-list.js](file:///workspace/todo-list.js)"
+    assert strip_markup_safe(text) == text
+
+
+def test_strip_markup_safe_preserves_bracketed_tool_name() -> None:
+    """An unclosed bracket around a tool-like token must not be eaten."""
+    text = "ran [write_to_file] against todo-list.js"
+    assert strip_markup_safe(text) == text
+
+
+def test_strip_markup_safe_falls_back_to_literal_on_unmatched_closing_tag() -> None:
+    """A lone closing tag (no matching open) must still fall back to literal.
+
+    ``[/pdf /text /imageb]`` (a grep pattern naming PDF filters) is read
+    by Rich as a closing tag with no open tag and raises ``MarkupError``
+    -- the guarded parse path must still catch it and preserve the
+    literal text, not just the unclosed-tag fast path added for B6.
+    """
+    text = "grep pattern [/pdf /text /imageb] matched"
+    assert strip_markup_safe(text) == text
+
+
+def test_strip_markup_safe_reduces_genuinely_matched_markup_pair() -> None:
+    """A real matched Rich markup pair is still reduced to its plain text."""
+    assert strip_markup_safe("[bold]hello[/bold]") == "hello"
+
+
+def test_strip_markup_safe_strips_terminal_control_around_bracket_text() -> None:
+    """Terminal control bytes are removed even on the unclosed-bracket fast path."""
+    text = "\x1b[31m[todo-list.js]\x1b[0m(file:///a)"
+    assert strip_markup_safe(text) == "[todo-list.js](file:///a)"

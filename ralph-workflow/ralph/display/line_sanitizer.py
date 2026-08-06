@@ -95,7 +95,25 @@ def strip_markup_safe(text: str) -> str:
     guard is deliberately total: any parse failure falls back to the
     literal text, which stays copy-pasteable.
 
-    Terminal control bytes are stripped on BOTH paths -- the fallback must
+    B6 (2026-08-05 AGY parsing-fidelity pass): a *successful* parse can
+    lose content too, and that failure mode is worse than a raised
+    exception because nothing signals it. Agent text routinely contains
+    an unclosed ``[tag]``-shaped span that is not markup at all -- a
+    markdown link's label, e.g. ``"...at [todo-list.js](file:///...)"``.
+    Rich's grammar treats an unclosed opening tag as extending to the
+    end of the string, so ``Text.from_markup(...).plain`` silently
+    drops ``"todo-list.js"`` and the operator sees
+    ``"...at (file:///...)"`` -- the bracketed span is eaten, not just
+    the brackets. Genuine intentional Rich markup is always written as a
+    matched pair (``[bold]...[/bold]``), so gate the parse on the
+    presence of an actual closing-tag marker (``"[/"``) in the input:
+    absent, the text cannot contain a matched pair and is returned
+    literal without ever reaching the parser; present, the existing
+    parse-or-fall-back-to-literal guard still applies unchanged (so the
+    adversarial ``[/pdf /text /imageb]`` case above is unaffected -- it
+    still raises ``MarkupError`` and falls back to the literal text).
+
+    Terminal control bytes are stripped on every path -- the fallback must
     not become an escape-containment hole.
 
     Args:
@@ -103,11 +121,20 @@ def strip_markup_safe(text: str) -> str:
             bracket sequences, and terminal control bytes.
 
     Returns:
-        Plain text with valid markup reduced, malformed markup left
-        literal, and every terminal control construct removed.
+        Plain text with a genuinely matched markup pair reduced, malformed
+        or unclosed bracket sequences left literal, and every terminal
+        control construct removed.
     """
     if not text:
         return ""
+    if "[/" not in text:
+        # No closing-tag marker can be present, so no matched Rich markup
+        # pair exists in this text -- every ``[`` here is agent-origin
+        # bracket content (a markdown link, a tool name, a grep pattern).
+        # Skip the parser entirely: Text.from_markup would treat an
+        # unclosed ``[x]`` as an open tag running to end-of-string and
+        # drop ``x`` from ``.plain`` (B6).
+        return strip_terminal_control(text)
     try:
         plain = Text.from_markup(text).plain
     except Exception:  # a display sink must never raise -- see docstring

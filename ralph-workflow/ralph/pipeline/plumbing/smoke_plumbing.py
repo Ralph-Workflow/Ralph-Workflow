@@ -11,10 +11,10 @@ import json
 import os
 import re
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -37,6 +37,8 @@ from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.display.vt_normalizer import normalize_vt_text
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
@@ -268,6 +270,230 @@ class SubagentSmokeEvidence:
 
 
 type EnvGetter = Callable[[str], str | None]
+
+
+# --- F4: conformance matrix across transports -------------------------------
+#
+# The graded gate (F1) answers "is this run trustworthy" for one transport at
+# a time. F4 turns repeated single-transport runs into the shippable
+# artefact the brief asks for: a durable, cross-transport table naming which
+# runtimes reach Ralph's tools natively, which need a dispatcher, and which
+# can only ever run degraded -- on which specific contract fact. Each smoke
+# run updates its own transport's row; the matrix accumulates across the
+# separate, expensive, manual runs an operator makes over time (one CLI
+# invocation drives one transport per run).
+
+#: Canonical column/row order (brief F4: "agy, claude, codex, cursor and pi").
+#: A transport observed outside this set (a future addition, or a stale
+#: value) is still recorded -- it is simply sorted after the canonical five.
+CONFORMANCE_MATRIX_TRANSPORT_ORDER: Final[tuple[str, ...]] = (
+    "agy",
+    "claude",
+    "codex",
+    "cursor",
+    "pi",
+)
+
+#: The three required contract facts F1's verdict is graded from (mirrors
+#: ``ralph.cli.commands.smoke._required_evidence``). Kept as an explicit
+#: tuple (not derived from ``SmokeRunResult``'s fields) so the matrix's
+#: column set is a documented contract, not an accidental dataclass shape.
+CONFORMANCE_MATRIX_FACTS: Final[tuple[str, ...]] = (
+    "artifact_submitted",
+    "explicit_completion_seen",
+    "tool_activity_seen",
+)
+
+#: Durable JSON store (source of truth) and its rendered markdown sibling.
+#: Follows the ``run_time_report`` pattern (a runtime-generated file written
+#: directly to ``.agent/artifacts/``, never submitted through
+#: ``ralph_submit_md_artifact`` -- see ``.agent/artifact-formats/
+#: run_time_report.md``): no existing artifact type fits a cross-transport
+#: matrix, and adding one is out of this step's scope (checked against
+#: ``.agent/artifact-formats/artifact_formats_index.md`` first, per the
+#: plan -- recorded here as the implementation note the plan asks for).
+_CONFORMANCE_MATRIX_JSON_RELPATH: Final[str] = ".agent/artifacts/smoke_conformance_matrix.json"
+_CONFORMANCE_MATRIX_MD_RELPATH: Final[str] = ".agent/artifacts/smoke_conformance_matrix.md"
+
+
+def conformance_matrix_paths(workspace_root: Path) -> tuple[Path, Path]:
+    """Return ``(json_path, markdown_path)`` for the durable conformance matrix."""
+    return (
+        workspace_root / _CONFORMANCE_MATRIX_JSON_RELPATH,
+        workspace_root / _CONFORMANCE_MATRIX_MD_RELPATH,
+    )
+
+
+ConformanceMatrix = dict[str, dict[str, Evidence]]
+
+
+def _evidence_to_json(evidence: Evidence) -> dict[str, object]:
+    return {
+        "holds": evidence.holds,
+        "provenance": evidence.provenance.name,
+        "detail": evidence.detail,
+    }
+
+
+def _evidence_from_json(payload: object) -> Evidence | None:
+    if not isinstance(payload, dict):
+        return None
+    payload_dict = cast("dict[str, object]", payload)
+    holds = payload_dict.get("holds")
+    provenance_name = payload_dict.get("provenance")
+    detail = payload_dict.get("detail")
+    if not isinstance(holds, bool) or not isinstance(provenance_name, str):
+        return None
+    try:
+        provenance = Provenance[provenance_name]
+    except KeyError:
+        return None
+    return Evidence(
+        holds=holds,
+        provenance=provenance,
+        detail=detail if isinstance(detail, str) else "",
+    )
+
+
+def load_conformance_matrix(
+    json_path: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> ConformanceMatrix:
+    """Return the durable matrix at ``json_path``, or an empty matrix.
+
+    Read uncertainty (missing file, unreadable, malformed JSON, a row/cell
+    that does not parse as :class:`Evidence`) is fail-open -- the run that
+    reads a corrupt matrix reports what it can and rebuilds the file from
+    this run's own evidence, mirroring ``write_text_if_changed``'s
+    fail-open contract for the write side. Reads through ``backend`` (not a
+    raw ``Path.read_text``) so the whole matrix pipeline is testable against
+    an in-memory ``FileBackend`` -- no real filesystem I/O required.
+    """
+    try:
+        raw = backend.read_text(json_path, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        return {}
+    try:
+        payload = cast("object", json.loads(raw))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    matrix: ConformanceMatrix = {}
+    for transport, row in cast("dict[str, object]", payload).items():
+        if not isinstance(transport, str) or not isinstance(row, dict):
+            continue
+        parsed_row: dict[str, Evidence] = {}
+        for fact, cell in cast("dict[str, object]", row).items():
+            evidence = _evidence_from_json(cell)
+            if evidence is not None:
+                parsed_row[fact] = evidence
+        if parsed_row:
+            matrix[transport] = parsed_row
+    return matrix
+
+
+def update_conformance_matrix(
+    matrix: ConformanceMatrix,
+    *,
+    transport: str,
+    evidence: Mapping[str, Evidence],
+) -> ConformanceMatrix:
+    """Return a NEW matrix with ``transport``'s row replaced by ``evidence``.
+
+    Pure: ``matrix`` is never mutated. A later run for the same transport
+    replaces its row wholesale (the matrix reports each transport's most
+    recently observed grade, not a history), so a fixed transport can never
+    accumulate stale facts from an earlier, differently-shaped run.
+    """
+    updated = {key: dict(row) for key, row in matrix.items()}
+    updated[transport] = dict(evidence)
+    return updated
+
+
+def _ordered_transports(matrix: ConformanceMatrix) -> list[str]:
+    canonical = [t for t in CONFORMANCE_MATRIX_TRANSPORT_ORDER if t in matrix]
+    extra = sorted(t for t in matrix if t not in CONFORMANCE_MATRIX_TRANSPORT_ORDER)
+    return canonical + extra
+
+
+def render_conformance_matrix_markdown(matrix: ConformanceMatrix) -> str:
+    """Render the durable, operator-facing conformance matrix (F4).
+
+    One row per transport observed so far, one column per required contract
+    fact (F1), each cell naming the :class:`Provenance` grade that
+    transport's most recent run achieved for that fact. A transport with no
+    recorded run for a given fact renders ``ABSENT`` (never blank -- the
+    matrix's whole purpose is to make an unproven fact visible, not silent).
+    """
+    lines = [
+        "# Ralph smoke-gate conformance matrix",
+        "",
+        "Per-transport, per-fact Evidence Provenance grade (F4). Regenerated "
+        "by `ralph smoke-interactive-*`; each run replaces only its own "
+        "transport's row.",
+        "",
+    ]
+    if not matrix:
+        lines.append("No smoke runs recorded yet.")
+        return "\n".join(lines).rstrip() + "\n"
+    header = ["Transport", *CONFORMANCE_MATRIX_FACTS]
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("| " + " | ".join("---" for _ in header) + " |")
+    for transport in _ordered_transports(matrix):
+        row = matrix[transport]
+        cells = []
+        for fact in CONFORMANCE_MATRIX_FACTS:
+            evidence = row.get(fact)
+            if evidence is None:
+                cells.append(Provenance.ABSENT.name)
+            else:
+                holds_marker = "holds" if evidence.holds else "absent"
+                cells.append(f"{evidence.provenance.name} ({holds_marker})")
+        lines.append(f"| {transport} | " + " | ".join(cells) + " |")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def record_conformance_matrix(
+    workspace_root: Path,
+    *,
+    transport: str,
+    evidence: Mapping[str, Evidence],
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> Path:
+    """Update and persist the durable conformance matrix for one run (F4).
+
+    Loads the existing matrix, replaces ``transport``'s row with ``evidence``,
+    writes the JSON source of truth and the rendered markdown sibling (both
+    idempotently, via :func:`write_text_if_changed`), and returns the
+    markdown path -- the durable artefact an operator reads. ``backend``
+    defaults to the real filesystem (:data:`DEFAULT_FILE_BACKEND`) but
+    accepts an in-memory :class:`FileBackend` so the whole update-and-persist
+    pipeline is testable without real file I/O.
+    """
+    json_path, md_path = conformance_matrix_paths(workspace_root)
+    matrix = load_conformance_matrix(json_path, backend=backend)
+    updated = update_conformance_matrix(matrix, transport=transport, evidence=evidence)
+    json_payload = {
+        row_transport: {fact: _evidence_to_json(ev) for fact, ev in row.items()}
+        for row_transport, row in updated.items()
+    }
+    write_text_if_changed(
+        backend,
+        json_path,
+        json.dumps(json_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(json_path.parent, parents=True, exist_ok=True),
+    )
+    write_text_if_changed(
+        backend,
+        md_path,
+        render_conformance_matrix_markdown(updated),
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(md_path.parent, parents=True, exist_ok=True),
+    )
+    return md_path
 
 
 def _build_smoke_prompt(

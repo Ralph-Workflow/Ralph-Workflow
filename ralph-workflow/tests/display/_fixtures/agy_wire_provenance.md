@@ -188,6 +188,46 @@ B5, the step-index fallback made `tool_call_id(metadata)` truthy for nearly
 every AGY tool result, so the orphan branch was effectively dead code for
 this parser).
 
+## B6: bracketed model text eaten downstream (parsing-fidelity plan, S-8/S-10)
+
+Root cause located, confirmed with a live `rich.text.Text.from_markup`
+repro against the brief's exact measured example -- no new live capture
+was needed since the parser's own output (a flushed `text` event) was
+already known-correct per the brief; only the display-layer symptom was
+unmeasured code, not an unmeasured wire shape. `[todo-list.js]` in
+``"Full implementation at [todo-list.js](file:///workspace/todo-list.js)"``
+has no matching `[/todo-list.js]` closing tag, so Rich's markup grammar
+treats it as an *open* style tag that runs to end-of-string -- and
+`Text.from_markup(text).plain` drops the tag's own bracketed content
+entirely, not merely the bracket characters. This is
+`ralph/display/line_sanitizer.py::strip_markup_safe`, the single choke
+point both `_plain_constants._sanitize` and `parallel_display._strip_markup`
+are required to delegate through (enforced by
+`ralph/testing/audit_terminal_escape_containment.py`'s `FunctionBodyInvariant`
+for `strip_markup_safe`), reached from the live-activity-line path via
+`parallel_display.py`'s `_activity_lines` -> `_sanitize(snapshot.last_activity_line)`
+at `parallel_display.py:2213`.
+
+Fixed by gating the `Text.from_markup` parse on the presence of an actual
+closing-tag marker (`"[/"`) in the input: genuine intentional Rich markup
+is always written as a matched pair (`[bold]...[/bold]`) and is
+unaffected; text with no `"[/"` anywhere (every measured AGY case --
+markdown links, bracketed tool names, grep patterns) can contain no
+matched pair and is returned literal without ever reaching the parser,
+so an unclosed `[tag]`-shaped span can no longer be silently eaten. The
+pre-existing adversarial case the choke point exists for (`[/pdf /text
+/imageb]`, a lone unmatched *closing* tag with no preceding open) still
+contains `"[/"`, so it still reaches `Text.from_markup`, still raises
+`MarkupError`, and still falls back to the literal text unchanged --
+that regression path is untouched by this fix. Regression coverage:
+`tests/test_line_sanitizer.py` (`strip_markup_safe` unit tests covering
+the unclosed-link case, the unmatched-closing-tag case, a genuinely
+matched pair, and terminal-control stripping on the fast path) and
+`tests/test_agy_parser.py::test_b6_bracketed_markdown_link_survives_to_the_rendered_activity_line`
+(full `AgyParser` -> `normalize_event_from_agent_output_line` ->
+`render_event_kind_text` pipeline, split across two `text_delta` chunks
+exactly as measured).
+
 **B1 follow-up: the live-activity-line duplication was real, and lived in
 `ralph/display/agent_event_renderer.py`.** The brief's illustrative example
 (`✓ PASS ↳ write_to_file write_to_file todo-list.js (0.076075017s)`) is the
