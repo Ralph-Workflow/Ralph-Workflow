@@ -11,7 +11,7 @@ Read `.agent/artifact-formats/plan.md`. Submit one mandatory executor-ready plan
 ## Author and submit
 
 1. Ground the outcome, current behavior, target files, risks, and proof in repository evidence.
-2. Cover Orient, Characterize, Change, and Verify. Use a discovery step for an unknown rather than inventing a path or command. The mandatory sequence is Orient, Characterize, Change, Verify.
+2. Cover Orient, Characterize, Change, Verify. Use a discovery step for an unknown rather than inventing a path or command.
 3. Optionally check with `ralph_verify_md_artifact`, then submit with `ralph_submit_md_artifact` using `artifact_type: plan` and the full text.
 4. For a similar revision, use `ralph_edit_md_artifact` on the staged draft; it submits when valid. Use `ralph_stage_md_artifact` with `replace_all` only for a wholesale rewrite. `ralph_get_md_draft` inspects the draft and `ralph_finalize_md_artifact` submits an assembled staged draft.
 5. `ralph_discard_md_draft` is only for a genuine wholesale restart.

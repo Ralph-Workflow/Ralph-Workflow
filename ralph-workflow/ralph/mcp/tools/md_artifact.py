@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
+from ralph.mcp.artifacts.markdown.specs._plan_steps import step_number_map
 from ralph.mcp.artifacts.markdown.specs.plan import (
     _OverrideMatch,
     analyze_plan_document,
@@ -98,6 +99,7 @@ def handle_submit_md_artifact(
     artifact_type, content = _params(params)
     _write_draft(session, workspace, artifact_type, content, deps)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    diagnostics.extend(_planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps))
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
@@ -176,6 +178,9 @@ def handle_edit_md_artifact(
 
     save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, outcome.content)
+    diagnostics.extend(
+        _planning_finding_target_diagnostics(session, workspace, artifact_type, outcome.content, deps)
+    )
     submitted = not any(item.severity == "error" for item in diagnostics)
     if submitted:
         _submit_canonical(session, workspace, artifact_type, parsed_content, outcome.content, deps)
@@ -298,6 +303,7 @@ def handle_finalize_md_artifact(
             "or submit the complete document directly"
         )
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    diagnostics.extend(_planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps))
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
@@ -592,6 +598,58 @@ def _parse_with_overrides(
         return parsed_content, diagnostics, list(overridden)
     parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
     return parsed_content, diagnostics, []
+
+
+def _planning_finding_target_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    content: str,
+    deps: ArtifactHandlerDeps | None,
+) -> list[Diagnostic]:
+    """Reject planning findings that cannot bind to the submitted plan's steps."""
+    if artifact_type != "planning_analysis_decision":
+        return []
+    decision, _ = parse_markdown_document(content)
+    target_lines = {
+        item.identifier: item.line
+        for section in decision.sections_named("What Came Up Short")
+        for item in section.items
+    }
+    raw_targets = _parse_with_overrides(artifact_type, content)[0].get("finding_targets", {})
+    if not isinstance(raw_targets, dict):
+        return []
+    targets = {
+        finding_id: target
+        for finding_id, target in raw_targets.items()
+        if isinstance(finding_id, str) and isinstance(target, str)
+    }
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    plan_path = _resolve_artifact_dir(session, workspace) / "plan.md"
+    try:
+        plan_content = backend.read_text(plan_path, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        return [
+            Diagnostic(
+                target_lines.get(str(finding_id), 1),
+                "What Came Up Short",
+                "ANALYSIS004",
+                "planning finding target cannot be validated because no submitted plan is available",
+            )
+            for finding_id in targets
+        ]
+    plan, _ = parse_markdown_document(plan_content)
+    step_ids = step_number_map(plan, [])
+    return [
+        Diagnostic(
+            target_lines.get(str(finding_id), 1),
+            "What Came Up Short",
+            "ANALYSIS004",
+            f"planning finding references unknown step {target!r}; use an existing submitted plan step or 'Plan-level:'",
+        )
+        for finding_id, target in targets.items()
+        if target != "plan-level" and target not in step_ids
+    ]
 
 
 def _severity_counts(diagnostics: list[Diagnostic]) -> dict[str, int]:

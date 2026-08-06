@@ -970,7 +970,6 @@ def _handle_precondition_failure(
     )
     return _record_skip(reason=f"preconditions not met: {exc}", target=target)
 
-
 __all__ = [
     "IntegrationRecord",
     "_create_rebase_backup_ref",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ralph.mcp.tools.md_artifact import handle_verify_md_artifact
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact, handle_verify_md_artifact
 from ralph.prompts.template_context import TemplateContext
 from tests._tool_artifact_2_helper_mocksession import MockSession
 from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
@@ -23,6 +23,20 @@ Files:
 - modify ralph/mcp/artifacts/markdown/specs/plan.py
 Verify: uv run pytest -q tests/mcp/test_md_plan_chain_e2e.py
 Expect: the focused contract tests pass with exit code 0
+"""
+
+
+def _decision(step: str) -> str:
+    return f"""---
+type: planning_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] The plan needs correction.
+## What Came Up Short
+- [PA-001] Step: [{step}] lacks an executable verification command.
+## How To Fix
+- [PA-001] Replace the affected plan text with a concrete command.
 """
 
 
@@ -45,6 +59,23 @@ def test_public_verify_rejects_incomplete_plan() -> None:
 
     assert payload["valid"] is False
     assert any(item["rule_id"] == "PLAN020" for item in payload["diagnostics"])
+
+
+def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Path) -> None:
+    session = MockSession()
+    workspace = MockWorkspace(tmp_path)
+    assert not handle_submit_md_artifact(session, workspace, {"artifact_type": "plan", "content": _plan()}).is_error
+
+    result = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "planning_analysis_decision", "content": _decision("S-99")}
+    )
+    payload = json.loads(result.content[0].text)
+
+    assert result.is_error is True
+    assert any(
+        item["rule_id"] == "ANALYSIS004" and item["line"] == 8 and "S-99" in item["message"]
+        for item in payload["diagnostics"]
+    )
 
 
 def test_all_planning_variants_share_the_compact_contract() -> None:

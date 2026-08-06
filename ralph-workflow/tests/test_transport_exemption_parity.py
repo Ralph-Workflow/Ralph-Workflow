@@ -42,6 +42,10 @@ _ALLOWED_TRANSPORT_REFERENCE_PATTERNS: tuple[tuple[str, str], ...] = (
         "identification: routes to the AGY-shaped smoke prompt (dispatcher hint text)",
     ),
     (
+        r"^if transport is AgentTransport\.OPENCODE$",
+        "identification: selects OpenCode's advertised ralph_-prefixed tool naming guidance",
+    ),
+    (
         r"^if params\.config\.transport != AgentTransport\.NANOCODER or artifact_submitted:$",
         "additive diagnostic: _nanocoder_prompt_submission_error only ever ADDS an error "
         "for nanocoder's own known startup-banner-stall shape; it never skips a check "
