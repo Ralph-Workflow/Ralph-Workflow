@@ -280,18 +280,14 @@ def test_runner_wires_pre_post_refresh_around_development_agent(tmp_path: Path) 
     lifecycle_module.__dict__["before_agent_refresh"] = _spy_before
     lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
     try:
-        # Use pytest's isolated ``tmp_path`` fixture rather than a
-        # shared, hardcoded ``/tmp/.agent/ralph-explore`` path: that
-        # literal path collides with the live orchestrator's own
-        # ExploreStore in an agent-managed session (a real,
-        # concurrently-written production sqlite file at that exact
-        # location), which manifested as ``sqlite3.OperationalError:
-        # database is locked`` under ``make test``. ``tmp_path`` is
-        # unique per test invocation and cannot collide with any
-        # other writer. The ExploreIndex handle is built from the
-        # underlying ExploreStore directly so the test does not
-        # depend on workspace_root semantics.
-        workspace_root = tmp_path
+        # Isolated scratch dir from pytest's ``tmp_path`` fixture (not
+        # the real, machine-shared ``/tmp``): a hardcoded ``Path("/tmp")``
+        # here previously collided with any other live Ralph process on
+        # the same host writing to ``/tmp/.agent/ralph-explore``, causing
+        # sqlite lock contention and a spurious 1s timeout. The
+        # ExploreIndex handle is built from the underlying ExploreStore
+        # directly so the test does not depend on workspace_root semantics.
+        workspace_root = tmp_path.resolve()
         store = ExploreStore(workspace_root / ".agent" / "ralph-explore")
         try:
             handle = build_sqlite_index_handle(store)
