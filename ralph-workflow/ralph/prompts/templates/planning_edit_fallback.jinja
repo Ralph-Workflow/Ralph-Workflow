@@ -23,9 +23,10 @@ REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 ANALYSIS FEEDBACK (`{{ANALYSIS_FEEDBACK_PATH}}`):
 {{ANALYSIS_FEEDBACK}}
 
-Revise from repository evidence. Preserve sound work, fix demonstrated gaps,
-and submit the complete updated plan through the standard markdown artifact
-path. Use a subagent only for independent discovery; otherwise work sequentially.
+Revise from repository evidence. Repair every referenced `PA-###` finding in
+its target step or plan-level text, preserve only material that still satisfies
+the current contract, and submit through the standard markdown artifact path.
+Use a subagent only for independent discovery; otherwise work sequentially.
 
 A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
 After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

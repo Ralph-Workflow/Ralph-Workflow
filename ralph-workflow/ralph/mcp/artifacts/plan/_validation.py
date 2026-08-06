@@ -243,6 +243,14 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
     size_error = check_plan_size(content)
     if size_error is not None:
         raise PlanArtifactValidationError(f"plan size violation: {size_error}")
+    raw_steps = content.get("steps")
+    if isinstance(raw_steps, list):
+        raw_numbers = [step.get("number") for step in raw_steps if isinstance(step, dict)]
+        if len(raw_numbers) != len(set(raw_numbers)):
+            duplicate = next(
+                number for index, number in enumerate(raw_numbers) if number in raw_numbers[:index]
+            )
+            raise PlanArtifactValidationError(f"duplicate plan step number {duplicate}")
     try:
         validated = PlanArtifact.model_validate(content)
         return validated.model_dump(

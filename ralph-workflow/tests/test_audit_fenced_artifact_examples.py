@@ -83,11 +83,8 @@ type: invented_artifact
 def test_every_concrete_plan_fence_is_validated_without_pseudo_plan_exemptions() -> None:
     """Plan-fence examples that omit step blocks no longer fail the audit.
 
-    Under the plan-scoped severity policy, a plan that is missing its
-    step blocks is a content-shape warning rather than a blocking
-    error. The audit pipeline therefore passes such fences; the
-    reviewer's decision to omit a step block is honoured at validation
-    time, with the warning surfaced through the standard tool payload.
+    Every concrete plan fence must demonstrate the mandatory executor-ready
+    step contract, so the documentation audit catches incomplete examples.
     """
     check = getattr(audit_module, "check_source_examples", None)
     assert callable(check)
@@ -95,24 +92,27 @@ def test_every_concrete_plan_fence_is_validated_without_pseudo_plan_exemptions()
 ---
 type: plan
 ---
-## Summary
-This deliberately incomplete plan remains advisory because it identifies the desired outcome, the repository area to inspect, the smallest safe change, and the command that will verify the observable behavior after implementation.
+## Work
+### [S-1] Inspect the documented contract
+Read the documented plan contract before publishing the example.
+Type: discovery
+Location: ralph/mcp/artifacts/format_docs/plan.md
 ```
 
 ```markdown artifact=plan example-size=large
 ---
 type: plan
 ---
-## Summary
-This deliberately incomplete plan remains advisory because it identifies the desired outcome, the repository area to inspect, the smallest safe change, and the command that will verify the observable behavior after implementation.
+## Work
+### [S-1] Inspect the documented contract
+Read the documented plan contract before publishing the example.
+Type: discovery
+Location: ralph/mcp/artifacts/format_docs/plan.md
 ```
 """
 
     violations = check("plan.md", source, declared_artifact_type="plan")
 
-    # Under the plan-scoped severity policy, a plan missing step blocks
-    # is a PLAN022 warning rather than a blocking error; the audit
-    # therefore passes both fences.
     assert violations == []
 
 

@@ -68,10 +68,10 @@ def test_plan_skill_native_markdown_example_matches_validator() -> None:
     assert len(normalized["steps"]) >= 2
 
 
-def test_planning_skill_and_format_doc_keep_advice_nonblocking() -> None:
+def test_planning_skills_teach_the_mandatory_contract() -> None:
     for name in PLANNING_SKILLS:
         text = _read(name)
-        assert "Warnings and info are advice" in text or name == "writing-plans.md"
+        assert "instruction set" in text or "executor-ready" in text
         assert "advisory findings are errors" not in text
 
     format_doc = (
@@ -88,11 +88,11 @@ def test_planning_skill_and_format_doc_keep_advice_nonblocking() -> None:
     assert "Critical Files omits" not in format_doc
 
 
-def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:
+def test_plan_skill_teaches_mandatory_steps_and_submission() -> None:
     text = _read("submit-plan-artifact.md")
 
-    assert "recommended authoring pattern, not required grammar" in text
-    assert "Orient, Characterize, Change, and Verify" in text
+    assert "mandatory executor-ready plan" in text
+    assert "Orient, Characterize, Change, Verify" in text
     assert "ralph_edit_md_artifact" in text
     assert "ralph_edit_md_plan_step" not in text
 

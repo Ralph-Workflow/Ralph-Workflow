@@ -107,6 +107,8 @@ with the retained staged draft before allowing the planning phase to finish.
 
 ### [S-1] Promote fallback
 Persist this fallback through the canonical submission path.
+Type: discovery
+Location: .agent/artifacts/plan.md
 """,
         encoding="utf-8",
     )

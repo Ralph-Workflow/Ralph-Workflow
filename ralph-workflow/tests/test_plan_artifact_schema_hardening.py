@@ -539,16 +539,15 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
     }
 
 
-def test_format_doc_describes_the_advisory_plan_contract() -> None:
-    """The concise guide teaches the sole blocking rule and normal revision path."""
+def test_format_doc_describes_the_mandatory_plan_contract() -> None:
+    """The concise guide teaches required steps and the normal revision path."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for needle in (
-        "PLAN001",
+        "stable `### [S-n] Title` steps",
         "Validation Overrides",
         "ralph_edit_md_artifact",
-        "ralph_stage_md_artifact",
-        "replace_all",
+        "line- and step-anchored repair diagnostic",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
     assert "ralph_edit_md_plan_step" not in doc

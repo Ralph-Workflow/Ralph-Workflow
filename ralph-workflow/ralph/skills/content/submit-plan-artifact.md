@@ -1,7 +1,7 @@
 ---
 name: submit-plan-artifact
 description: Use when authoring or revising a markdown plan artifact
-version: 3.0.0
+version: 2.1.0
 ---
 
 # submit-plan-artifact
@@ -15,5 +15,33 @@ Read `.agent/artifact-formats/plan.md`. Submit one mandatory executor-ready plan
 3. Work steps include `Files`, concrete `Verify`, and observable `Expect`; `verify` and `discovery` include their required proof or location.
 4. Submit with `ralph_submit_md_artifact` using `artifact_type: plan`. For a similar revision, use `ralph_edit_md_artifact`; it submits when valid.
 5. Use `ralph_discard_md_draft` only for a genuine wholesale restart.
+
+Worked example:
+
+```markdown
+---
+type: plan
+---
+
+## Work
+
+### [S-1] Characterize the current behavior
+Add a focused regression that demonstrates the current result.
+Type: file_create
+Files:
+- create tests/test_feature.py
+Verify: pytest tests/test_feature.py -q
+Expect: the focused regression fails with exit code 1
+
+### [S-2] Change and verify the behavior
+Implement the smallest fix and rerun the focused regression.
+Type: file_change
+Files:
+- modify ralph/feature.py
+- modify tests/test_feature.py
+Depends on: S-1
+Verify: pytest tests/test_feature.py -q
+Expect: the focused regression passes with exit code 0
+```
 
 `schema_version` and `## Validation Overrides` are unsupported. Repair every diagnostic directly. The only step-less document is exactly `type: plan` plus `noop: true`.

@@ -111,7 +111,6 @@ _PHASE_TO_HANDLER = {
 _VALID_PLAN_MARKDOWN = """\
 ---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Test plan for the retry contract.
@@ -135,6 +134,8 @@ Type: file_change
 Files:
 - modify src/a.py
 Satisfies: AC-01
+Verify: pytest tests/test_artifact_retry_contract.py -q
+Expect: the artifact retry-contract tests pass with exit code 0
 
 ### [S-2] Verify the test change
 Run the focused retry-contract test after updating the fixture.

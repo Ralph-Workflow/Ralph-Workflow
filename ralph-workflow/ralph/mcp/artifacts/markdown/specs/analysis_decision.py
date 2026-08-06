@@ -60,22 +60,12 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
             target = _finding_target(item.text)
             if target is not None:
                 finding_targets[item.identifier] = target
-    step_references: list[str] = []
-    for shortfall in shortfalls:
-        match = _STEP_REFERENCE_PATTERN.search(shortfall)
-        if match is not None:
-            reference = match.group(1)
-            if reference not in step_references:
-                step_references.append(reference)
     status = document.frontmatter["status"]
     return {
         "status": status,
         "summary": summary[0],
         "what_came_up_short": shortfalls,
         "finding_targets": finding_targets,
-        "step_references": step_references,
-        # Keep the stable ID in the canonical string until proof consumers move
-        # from legacy prose matching to the markdown ID contract.
         "how_to_fix": []
         if how_to_fix is None
         else [
@@ -138,7 +128,7 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
         for item in fix_items
         if item.identifier not in what_ids
     )
-    if status == "request_changes" and document.frontmatter["type"] == "planning_analysis_decision":
+    if status in {"request_changes", "failed"} and document.frontmatter["type"] == "planning_analysis_decision":
         diagnostics.extend(
             Diagnostic(
                 item.line,

@@ -41,14 +41,25 @@ def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> Non
     assert content["finding_targets"] == {}
 
 
-def test_request_changes_preserves_exact_step_binding() -> None:
+def test_request_changes_preserves_exact_finding_binding() -> None:
     content, diagnostics = parse_and_validate(
         _decision("Step: [S-2] lacks an executable verification command."),
         get_spec("planning_analysis_decision"),
     )
 
     assert diagnostics == []
-    assert content["step_references"] == ["S-2"]
+    assert content["finding_targets"] == {"PA-001": "S-2"}
+
+
+def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None:
+    document = _decision("The rollout risk is unaddressed.").replace(
+        "status: request_changes", "status: failed"
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
 
 
 def test_request_changes_allows_explicit_plan_level_target() -> None:
@@ -58,4 +69,4 @@ def test_request_changes_allows_explicit_plan_level_target() -> None:
     )
 
     assert diagnostics == []
-    assert content["step_references"] == []
+    assert content["finding_targets"] == {"PA-001": "plan-level"}

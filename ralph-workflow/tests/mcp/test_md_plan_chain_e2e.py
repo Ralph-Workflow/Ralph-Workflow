@@ -57,3 +57,11 @@ def test_all_planning_variants_share_the_compact_contract() -> None:
     mechanics = context.partials["shared/_planning_submission_mechanics"]
     assert "schema_version" in mechanics
     assert "stable `### [S-n] Title` steps" in mechanics
+
+
+def test_planning_revision_variants_repair_every_finding_in_place() -> None:
+    context = TemplateContext.default()
+    for name in ("planning_edit.jinja", "planning_edit_fallback.jinja"):
+        source = context.registry.get_template(name.removesuffix(".jinja"))
+        assert "Repair every referenced `PA-###` finding" in source
+        assert "target step or plan-level text" in source

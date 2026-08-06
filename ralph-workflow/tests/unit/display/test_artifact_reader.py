@@ -20,7 +20,6 @@ EXPECTED_TOTAL_STEPS = 2
 def _plan_document() -> str:
     return """---
 type: plan
-schema_version: 1
 intent_verb: add
 ---
 ## Summary
@@ -49,6 +48,8 @@ Type: file_change
 Priority: high
 Files:
 - modify ralph/display/artifact_reader.py
+Verify: pytest tests/unit/display/test_artifact_reader.py -q
+Expect: the artifact reader tests pass with exit code 0
 
 ### [S-2] Verify the display
 Run the focused display tests.

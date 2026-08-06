@@ -72,7 +72,6 @@ def _plan_document(work_units: list[dict[str, object]]) -> str:
     )
     return f"""---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Parallel development plan.
@@ -99,6 +98,8 @@ Do the work.
 Type: file_change
 Files:
 - modify src/main.py
+Verify: pytest tests/test_effect_router_plan_work_units_fanout.py -q
+Expect: the fan-out routing tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] src/main.py
@@ -146,6 +147,8 @@ Change the {name} component.
 Type: file_change
 Files:
 - modify src/{name}/main.py
+Verify: pytest tests/test_effect_router_plan_work_units_fanout.py -q
+Expect: the fan-out routing tests pass with exit code 0
 """
         )
     return "---\ntype: plan\n---\n" + "\n".join(sections)

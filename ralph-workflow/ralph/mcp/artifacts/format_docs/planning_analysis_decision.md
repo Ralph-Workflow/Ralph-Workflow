@@ -61,7 +61,7 @@ status: request_changes
   (e.g. `PA-001` in `## What Came Up Short` and `## How To Fix`); downstream
   phases cite that ID to prove closure, so keep IDs unique and stable.
   The two sections must form a one-to-one mapping with the same stable ID for
-  each gap and fix; missing, extra, or mismatched IDs are rejected. For `request_changes`, each shortfall must include `Step: [S-n]` or `Plan-level:`. The former binds the finding to one submitted plan step; the latter explicitly records a plan-wide gap. Missing targets are rejected.
+  each gap and fix; missing, extra, or mismatched IDs are rejected. For planning `request_changes` and `failed` decisions, each shortfall must include `Step: [S-n]` or `Plan-level:`. The former binds the finding to one submitted plan step; the latter explicitly records a plan-wide gap. Missing targets are rejected.
 
 ## Hard errors vs warnings
 

@@ -70,7 +70,6 @@ def _write_plan_artifact(root: Path, work_units: list[dict[str, object]]) -> Non
     (artifact_dir / "plan.md").write_text(
         f"""---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Parallel development plan.
@@ -97,6 +96,8 @@ Do the work.
 Type: file_change
 Files:
 - modify src/main.py
+Verify: pytest tests/test_effect_router_dormant_fanout.py -q
+Expect: the dormant fan-out tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] src/main.py
@@ -372,17 +373,21 @@ type: plan
   Directories: src/a
 
 ### [S-1] Implement A
-Type: action
-Files: src/a
-Verify: run the focused A test and inspect its observable output.
+Type: file_change
+Files:
+- modify src/a/main.py
+Verify: pytest tests/test_effect_router_dormant_fanout.py -q
+Expect: the dormant fan-out tests pass with exit code 0
 
 - [unit-b] Implement B
   Directories: src/b
 
 ### [S-2] Implement B
-Type: action
-Files: src/b
-Verify: run the focused B test and inspect its observable output.
+Type: file_change
+Files:
+- modify src/b/main.py
+Verify: pytest tests/test_effect_router_dormant_fanout.py -q
+Expect: the dormant fan-out tests pass with exit code 0
 """,
         encoding="utf-8",
     )

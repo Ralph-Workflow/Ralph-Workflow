@@ -5,10 +5,7 @@ from __future__ import annotations
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.plan import is_noop_plan
-from tests._support.typed_accessors import (
-    must_dict_list,
-    must_mapping,
-)
+from tests._support.typed_accessors import must_dict_list
 from tests.mcp.test_md_plan_spec import _plan_document
 
 
@@ -23,8 +20,6 @@ def test_plan_markdown_maps_to_the_canonical_execution_model() -> None:
         {"path": "tests/mcp/test_md_plan_spec.py", "action": "create"},
     ]
     assert steps[1]["depends_on"] == [1]
-    skills_mcp = must_mapping(content["skills_mcp"])
-    assert skills_mcp["skills"] == ["test-driven-development"]
     assert is_noop_plan(content) is False
 
 
