@@ -217,6 +217,31 @@ def _result_summary(res: dict[str, object]) -> str:
     return " ".join(parts)
 
 
+def _merge_usage(older: dict[str, object], newer: dict[str, object]) -> dict[str, object]:
+    """Merge two AGY ``usage`` dicts from back-to-back bodiless steps (B4 gap).
+
+    Both usage dicts describe tokens consumed by the same in-flight turn, so
+    a numeric field present in both sums rather than the newer frame
+    silently discarding the older one's count. A key present in only one
+    dict, or holding a non-numeric value in either dict, keeps the newer
+    dict's value -- AGY has not been observed to duplicate non-token fields
+    this way, so there is no summation contract to honor for them.
+    """
+    merged: dict[str, object] = dict(older)
+    for key, new_value in newer.items():
+        old_value = older.get(key)
+        if (
+            isinstance(new_value, int | float)
+            and not isinstance(new_value, bool)
+            and isinstance(old_value, int | float)
+            and not isinstance(old_value, bool)
+        ):
+            merged[key] = old_value + new_value
+        else:
+            merged[key] = new_value
+    return merged
+
+
 def _tool_updates(
     step: dict[str, object],
 ) -> list[tuple[str, dict[str, object], str | None, bool]]:
@@ -533,6 +558,15 @@ class AgyParser(NdjsonParserBase):
         the usage is carried forward via ``_pending_text_usage``; otherwise no
         flush is coming, so the usage surfaces directly as its own
         ``lifecycle`` event.
+
+        The "never thrown away" guarantee also covers two bodiless
+        ``agent_response`` DONE frames arriving back-to-back before the next
+        flush: ``_pending_text_usage`` is a single scalar slot, so a naive
+        overwrite would silently drop the first frame's usage the moment a
+        second one lands while text is still buffered. When a value is
+        already pending, the incoming usage is merged into it (numeric
+        fields sum, since both describe tokens consumed by the same
+        in-flight turn) rather than replacing it.
         """
         step_type = step.get("step_type")
         usage = step.get("usage")
@@ -548,7 +582,11 @@ class AgyParser(NdjsonParserBase):
         if not has_usage:
             return
         if self._text_accumulator is not None:
-            self._pending_text_usage = cast("dict[str, object]", usage)
+            usage_dict = cast("dict[str, object]", usage)
+            if self._pending_text_usage is not None:
+                self._pending_text_usage = _merge_usage(self._pending_text_usage, usage_dict)
+            else:
+                self._pending_text_usage = usage_dict
             return
         label = step_type if isinstance(step_type, str) and step_type else "update"
         metadata = dict(step)

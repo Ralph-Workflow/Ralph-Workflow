@@ -387,6 +387,270 @@ def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
         print(json.dumps(event, separators=(",", ":")))
 
 
+# --- 2026-08-05 measured-baseline scenario (Evidence Provenance plan, S-1) ---
+#
+# Reconstructed from the product brief's own documented measurements of the
+# 2026-08-05 baseline run (see ".agent/PRODUCT_CRITERIA.md"'s "Measured
+# baseline" section and Workstream A), NOT a new live capture and NOT a
+# byte-for-byte replay of the original
+# ".agent/raw/agy_gemini-3.6-flash-low.log" (16 JSON frames: 1 init, 14
+# step_update, 1 result -- that log was never committed to this repo; see
+# tests/display/_fixtures/agy_wire_provenance.md for the provenance note
+# on this reconstruction). Reproduces the measured *shape*: an ``init``
+# frame advertising tools with zero ``ralph_*`` / ``call_mcp_tool`` route
+# (so ``transport_evidence_ceiling`` grades TRANSCRIPT, not WIRE), exactly
+# 14 ``step_update`` frames (matching the brief's own frame count), and a
+# single closing ``result`` frame -- no ``tools/call`` wire-ledger activity
+# and no ``declare_complete`` call anywhere in the stream, since the agent
+# never reached Ralph's MCP server on that run.
+DEGRADED_BASELINE_INIT_TOOL_NAMES: tuple[str, ...] = (
+    "ask_permission",
+    "ask_question",
+    "define_subagent",
+    "invoke_subagent",
+    "manage_subagents",
+    "view_file",
+    "write_to_file",
+    "grep_search",
+    "run_command",
+    "read_file",
+    "list_directory",
+    "edit_file",
+    "search_files",
+    "todo_write",
+)
+
+DEGRADED_BASELINE_RUN_ID = "interactive-agy-smoke-degraded-baseline"
+
+
+def degraded_baseline_stream_json_lines(model: str = "gemini-3.6-flash-low") -> list[str]:
+    """Return the 16 stream-json lines for the reconstructed 2026-08-05 shape.
+
+    1 ``init`` frame (no ``ralph_*`` / ``call_mcp_tool`` route advertised) +
+    14 ``step_update`` frames + 1 closing ``result`` frame. The
+    ``step_update`` sequence carries the measured bodiless-step vocabulary
+    (``user_input`` / ``unknown`` / ``checkpoint``), a ``write_to_file``
+    tool ACTIVE/DONE pair (so the parser classifies a real ``tool_use``
+    event -- the transcript's only authoritative tool-activity signal,
+    since no ``tools/call`` ever reached Ralph's MCP server), and two
+    ``agent_response`` text_delta pairs whose DONE frames carry ``usage``,
+    matching the brief's own description of the model's transcript text
+    ("saved the smoke test result artifact to
+    ``.agent/tmp/smoke_test_result.md`` as instructed for fallback").
+    """
+    session_id = "00000000-0000-0000-0000-0000000000ba"
+    events: list[dict[str, object]] = [
+        {
+            "event": "init",
+            "conversation_id": session_id,
+            "init": {
+                "model": model,
+                "cwd": ".",
+                "tools": list(DEGRADED_BASELINE_INIT_TOOL_NAMES),
+                "permission_mode": "always-proceed",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 0,
+                "state": "DONE",
+                "step_type": "user_input",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 1,
+                "state": "DONE",
+                "step_type": "unknown",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 2,
+                "state": "ACTIVE",
+                "step_type": "agent_response",
+                "text_delta": "I will create the todo list ",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 2,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "implementation.\n",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 3,
+                "state": "ACTIVE",
+                "step_type": "tool",
+                "tool_name": "write_to_file",
+                "tool_info": {"name": "write_to_file", "parameters": {"TargetFile": "todo-list.js"}},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 3,
+                "state": "DONE",
+                "step_type": "tool",
+                "tool_name": "write_to_file",
+                "duration_seconds": 0.076075017,
+                # No `output` key: the measured live capture showed
+                # write_to_file produces no output on DONE.
+                "tool_info": {"name": "write_to_file", "parameters": {"TargetFile": "todo-list.js"}},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 4,
+                "state": "DONE",
+                "step_type": "checkpoint",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 5,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "",
+                "usage": {"input_tokens": 9906, "output_tokens": 0, "total_tokens": 9906},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 6,
+                "state": "DONE",
+                "step_type": "user_input",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 7,
+                "state": "ACTIVE",
+                "step_type": "agent_response",
+                "text_delta": "Since ralph_submit_md_artifact is unavailable in the current ",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 7,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": (
+                    "toolset, saved the smoke test result artifact to "
+                    ".agent/tmp/smoke_test_result.md as instructed for fallback.\n"
+                ),
+                "usage": {"input_tokens": 3395, "output_tokens": 441, "total_tokens": 3836},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 8,
+                "state": "DONE",
+                "step_type": "unknown",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 9,
+                "state": "DONE",
+                "step_type": "checkpoint",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": session_id,
+                "step_index": 10,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "",
+                "usage": {"input_tokens": 2905, "output_tokens": 0, "total_tokens": 2905},
+            },
+        },
+        {
+            "event": "result",
+            "result": {
+                "conversation_id": session_id,
+                "status": "SUCCESS",
+                "response": (
+                    "Since ralph_submit_md_artifact is unavailable in the current "
+                    "toolset, saved the smoke test result artifact to "
+                    ".agent/tmp/smoke_test_result.md as instructed for fallback.\n"
+                ),
+                "duration_seconds": 3.662374617,
+                "num_turns": 1,
+                "usage": {"input_tokens": 17140, "output_tokens": 3835, "total_tokens": 20975},
+            },
+        },
+    ]
+    assert sum(1 for e in events if e["event"] == "step_update") == 14, (
+        "reconstructed scenario must match the brief's measured 14 step_update frames"
+    )
+    return [json.dumps(event, separators=(",", ":")) for event in events]
+
+
+def degraded_baseline_artifact_markdown() -> str:
+    """Return the fallback smoke_test_result markdown the 2026-08-05 run wrote directly.
+
+    The agent never called ``ralph_submit_md_artifact`` (no route to it
+    existed under AGY's dispatcher-free tool list), so per the smoke
+    prompt's documented fallback instruction it wrote this document
+    straight to ``.agent/tmp/smoke_test_result.md`` for the harness to
+    promote -- a real, on-disk artifact, but not one attributable to a
+    witnessed ``tools/call``.
+    """
+    return (
+        "---\n"
+        "type: smoke_test_result\n"
+        "status: passed\n"
+        "output_file: tmp/interactive-agy-smoke/todo-list.js\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] AGY smoke test completed successfully\n"
+        "\n"
+        "## Observed Working\n"
+        "\n"
+        "- [OK-1] created todo-list.js\n"
+        "- [OK-2] wrote smoke_test_result artifact\n"
+        "\n"
+        "## Headless Guide Checks\n"
+        "\n"
+        "- [HG-1] tool activity\n"
+        "- [HG-2] parser events\n"
+        "- [HG-3] tmp artifact creation\n"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_argument_parser()
     args = parser.parse_args(argv)

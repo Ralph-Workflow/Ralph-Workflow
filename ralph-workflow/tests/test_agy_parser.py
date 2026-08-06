@@ -748,6 +748,35 @@ def test_b4_bodiless_agent_response_done_usage_reaches_pending_flush() -> None:
     }
 
 
+def test_s2_back_to_back_bodiless_usage_frames_merge_instead_of_overwriting() -> None:
+    """S-2 (B4 gap): two bodiless ``agent_response`` DONE frames carrying
+    ``usage`` arriving back-to-back before the next flush must not lose the
+    first frame's usage. ``_pending_text_usage`` is a single scalar slot, so
+    the pre-fix behaviour (a naive overwrite) silently discarded the first
+    frame's token counts the moment the second one landed while text was
+    still buffered. The two usage dicts are merged (numeric fields sum,
+    since both describe tokens consumed by the same in-flight turn) and the
+    merged usage reaches the eventual flushed ``text`` event -- neither
+    frame's usage is lost.
+    """
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Working"}}',
+        '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"","usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}',
+        '{"event":"step_update","step_update":{"step_index":3,"state":"DONE","step_type":"agent_response","text_delta":"","usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6}}}',
+        '{"event":"result","result":{"status":"SUCCESS"}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    text_events = [line for line in parsed if line.type == "text"]
+    assert len(text_events) == 1
+    assert text_events[0].content == "Working"
+    assert text_events[0].metadata.get("usage") == {
+        "input_tokens": 15,
+        "output_tokens": 3,
+        "total_tokens": 18,
+    }
+
+
 def test_b1_orphan_tool_result_record_body_names_tool_without_duplicating_it() -> None:
     """B1: runs the full agy.py -> agent_event_renderer -> presented_entry.py
     pipeline for an ordinary AGY tool result. After B5, this tool result has

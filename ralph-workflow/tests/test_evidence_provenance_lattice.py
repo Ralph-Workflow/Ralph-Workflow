@@ -9,16 +9,27 @@ Covers:
 - A regression pinning a captured on-disk AGY transcript's grading to
   ``DEGRADED (host-synthesized)`` — the exact shape of run that previously
   printed ``Breaks: none`` (S-5, DoD #6).
+- An end-to-end replay of that same 2026-08-05 shape through the real
+  ``_run_smoke_agent`` harness path, proving the grading functions
+  themselves derive ``DEGRADED (host-synthesized)`` from a transcript —
+  not just that ``grade_verdict`` arithmetic is correct in isolation
+  (Evidence Provenance closeout plan, S-1).
 """
 
 from __future__ import annotations
 
 import json
+from collections import deque
+from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.invoke import InvokeOptions
+from ralph.cli.commands.smoke import _required_evidence
 from ralph.config.enums import AgentTransport
-from ralph.config.models import AgentConfig
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_evidence import (
     DEGRADED,
     PASS,
@@ -28,7 +39,21 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     format_verdict,
     grade_verdict,
 )
-from ralph.pipeline.plumbing.smoke_plumbing import transport_evidence_ceiling
+from ralph.pipeline.plumbing.smoke_plumbing import (
+    SmokeRunParams,
+    _run_smoke_agent,
+    transport_evidence_ceiling,
+)
+from tests._support.mock_agy import (
+    DEGRADED_BASELINE_RUN_ID,
+    degraded_baseline_artifact_markdown,
+    degraded_baseline_stream_json_lines,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from _pytest.monkeypatch import MonkeyPatch
 
 
 def test_provenance_ordering_is_least_to_most_trustworthy() -> None:
@@ -219,6 +244,104 @@ def test_2026_08_05_run_grades_degraded() -> None:
         ),
     }
 
+    label, weakest = grade_verdict(required_facts)
+
+    assert label == DEGRADED
+    assert weakest == Provenance.HOST_SYNTHESIZED
+    assert format_verdict(required_facts) == "DEGRADED (host-synthesized)"
+    assert label != PASS, "the 2026-08-05 run must never grade PASS or print 'Breaks: none'"
+
+
+# --- Evidence Provenance closeout plan, S-1: end-to-end transcript replay --
+
+
+def test_2026_08_05_transcript_replay_grades_degraded_host_synthesized(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Replay the reconstructed 2026-08-05 shape through the REAL harness path.
+
+    ``test_2026_08_05_run_grades_degraded`` above hand-constructs three
+    ``Evidence`` objects directly and proves the lattice arithmetic
+    (``grade_verdict``) is right. It does not prove the grading *functions*
+    (``_artifact_submission_evidence``, ``_completion_evidence``,
+    ``_tool_activity_evidence``, ``transport_evidence_ceiling``) actually
+    derive those three provenances from a transcript shaped like the real
+    run. This test closes that gap: it feeds
+    ``tests._support.mock_agy.degraded_baseline_stream_json_lines`` (a
+    reconstruction of the measured 2026-08-05 shape -- see that function's
+    docstring and ``tests/display/_fixtures/agy_wire_provenance.md`` for the
+    provenance note) through ``_run_smoke_agent`` via the same
+    monkeypatched-``execute_agent_effect`` pattern
+    ``tests/test_smoke_plumbing_uses_canonical_submit.py`` uses, then grades
+    the resulting ``SmokeRunResult`` through the real
+    ``grade_verdict(_required_evidence(result))`` path -- not a
+    hand-assembled mapping.
+    """
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
+
+    config = _agy_config()
+    output_dir = tmp_path / "tmp" / "interactive-agy-smoke"
+    output_dir.mkdir(parents=True)
+    output_file = output_dir / "todo-list.js"
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("smoke prompt", encoding="utf-8")
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+    run_id = DEGRADED_BASELINE_RUN_ID
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.extend(degraded_baseline_stream_json_lines())
+        # The write_to_file tool call in the transcript above is a real
+        # workspace effect (matches the measured run's "File created" fact).
+        output_file.write_text("// smoke output\n", encoding="utf-8")
+        # Artifact reaches disk only via fallback promotion: no route to
+        # ``ralph_submit_md_artifact`` existed, so the agent wrote the
+        # fallback markdown directly instead, per the brief's own quoted
+        # transcript text.
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(degraded_baseline_artifact_markdown(), encoding="utf-8")
+        # CRUCIALLY: no completion sentinel is written here -- the agent
+        # never called declare_complete either, matching the measured run.
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    # The transport ceiling is derived from the init frame, not asserted --
+    # the measured AGY shape (no ralph_*/call_mcp_tool route) caps below WIRE.
+    assert result.transport_evidence_ceiling == Provenance.TRANSCRIPT
+
+    # Each required fact is derived by the real grading functions, not
+    # hand-assigned -- pin the exact provenance each one actually reached.
+    assert result.artifact_submitted.holds is True
+    assert result.artifact_submitted.provenance == Provenance.WORKSPACE_EFFECT
+    assert result.explicit_completion_seen.holds is True
+    assert result.explicit_completion_seen.provenance == Provenance.HOST_SYNTHESIZED
+    assert result.tool_activity_seen.holds is True
+    assert result.tool_activity_seen.provenance == Provenance.TRANSCRIPT
+
+    # The overall verdict is derived through the same path the CLI report
+    # uses -- grade_verdict(_required_evidence(result)) -- not asserted
+    # directly against a hand-built mapping.
+    required_facts = _required_evidence(result)
     label, weakest = grade_verdict(required_facts)
 
     assert label == DEGRADED

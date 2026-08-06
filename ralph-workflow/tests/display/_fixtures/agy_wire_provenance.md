@@ -404,3 +404,29 @@ and recording a real, complete `PASS` result (exit code 1 both times, from
 the pre-existing "expected todo-list.js was not created" break this
 artifact triggers by killing the process after the tool calls already
 succeeded -- unrelated to S-1/S-2's ledger or ceiling-logging change).
+
+## 2026-08-06: Evidence Provenance closeout plan, S-1 -- reconstructed 2026-08-05 transcript replay
+
+`tests/_support/mock_agy.py::degraded_baseline_stream_json_lines` (and its
+companion `degraded_baseline_artifact_markdown`) is a **reconstruction**
+built from the product brief's own documented measurements of the
+2026-08-05 baseline run (`.agent/PRODUCT_CRITERIA.md`'s "Measured baseline"
+section and Workstream A) -- it is explicitly **not** a new live capture,
+and **not** a byte-for-byte replay of the original
+`.agent/raw/agy_gemini-3.6-flash-low.log` (16 JSON frames: 1 `init`, 14
+`step_update`, 1 `result`), which was never committed to this repository.
+
+The reconstruction reproduces the measured run's *shape* -- an `init` frame
+advertising tools with no `ralph_*` / `call_mcp_tool` route, exactly 14
+`step_update` frames (matching the brief's own cited frame count), a
+`write_to_file` tool call as the transcript's only authoritative
+tool-activity signal, and a closing `result` frame -- rather than the exact
+byte content of the original capture. `tests/test_evidence_provenance_lattice.py::test_2026_08_05_transcript_replay_grades_degraded_host_synthesized`
+feeds this reconstruction through the real `_run_smoke_agent` harness path
+(not hand-built `Evidence` objects) and asserts the resulting
+`SmokeRunResult` grades `DEGRADED (host-synthesized)` via
+`grade_verdict(_required_evidence(result))` -- proving the grading
+functions themselves (`_artifact_submission_evidence`, `_completion_evidence`,
+`_tool_activity_evidence`, `transport_evidence_ceiling`), not just the
+lattice arithmetic, derive that verdict from a transcript shaped like the
+real run.
