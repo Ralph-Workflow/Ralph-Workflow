@@ -45,6 +45,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(agy): capture stream-json wire format and align AGY tool classification** — AgyParser maps stream-json step_update frames, deduplicates tool_use events, extracts result errors, and classifies activity for the watchdog and smoke harness. Locked by `tests/test_agy_parser.py`, `tests/agents/execution_state/test_generic_child_signal.py`, and `tests/test_smoke_agy_end_to_end.py`.
 - **fix(opencode): use the currently published `minimax/MiniMax-M3` provider alias for the interactive smoke default** — the smoke command now reaches the live MiniMax route while retaining configurable provider/model aliases. Locked by `tests/test_opencode_defaults.py`.
 - **fix(config): keep project-local configuration explicit opt-in** — `ralph --regenerate-config` now rewrites global configuration and refreshes only local TOMLs already present; missing `.agent/` files remain absent and are created only by `ralph --init-local-config` / `--generate-local-config`. Locked by `tests/test_config_bootstrap.py` and `tests/test_cli_commands_2.py`.
 

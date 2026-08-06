@@ -120,6 +120,8 @@ def mock_agy_batch(
             "missing_print",
             "gemini_model",
             "bad_model",
+            "v1_1_10_flags",
+            "output_format_text",
         )
     }
     for case_dir in case_dirs.values():
@@ -178,6 +180,36 @@ def mock_agy_batch(
                     "hello",
                 ),
                 case_dirs["bad_model"],
+            ),
+            (
+                "v1_1_10_flags",
+                "normal",
+                (
+                    "--print",
+                    "--output-format",
+                    "stream-json",
+                    "--agent",
+                    "default",
+                    "--mode",
+                    "accept-edits",
+                    "--disable-slash-commands",
+                    "-c",
+                    "--project",
+                    "proj-1",
+                    "hello",
+                ),
+                case_dirs["v1_1_10_flags"],
+            ),
+            (
+                "output_format_text",
+                "normal",
+                (
+                    "--print",
+                    "--output-format",
+                    "text",
+                    "hello",
+                ),
+                case_dirs["output_format_text"],
             ),
         ]
     )
@@ -285,3 +317,24 @@ def test_mock_writes_todo_list_file(
     text = todo_path.read_text(encoding="utf-8")
     assert "function createTodoList" in text
     assert "module.exports" in text
+
+
+def test_mock_v1_1_10_flags_accepted(
+    mock_agy_batch: dict[str, _MockAgyCaseResult],
+) -> None:
+    """The mock accepts v1.1.10 flags without exit code 2."""
+    result = mock_agy_batch["v1_1_10_flags"]
+    assert result.returncode == 0
+    assert '"step_type":"tool"' in result.stdout
+
+
+def test_mock_output_format_text_emits_plain_text(
+    mock_agy_batch: dict[str, _MockAgyCaseResult],
+) -> None:
+    """The mock emits plain text transcript when --output-format text is passed."""
+    result = mock_agy_batch["output_format_text"]
+    assert result.returncode == 0
+    assert "I will create the todo list implementation." in result.stdout
+    assert "[plain] tool: createTodoList" in result.stdout
+    assert "Writing smoke_test_result artifact." in result.stdout
+

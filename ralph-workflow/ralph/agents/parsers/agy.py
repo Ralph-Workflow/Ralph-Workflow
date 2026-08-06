@@ -1,30 +1,22 @@
-"""Parser for the AGY v1.1.9 ``--output-format stream-json`` wire format.
+"""Parser for the AGY v1.1.10 ``--output-format stream-json`` wire format.
 
 Source of truth: ``ralph-workflow/tmp/agy-source-of-truth.txt``.
 
-AGY --print mode emits plain-text model responses on stdout, one line at a
-time. The parser classifies every plain-text line as
-``AgentOutputLine(type='text')`` (NOT ``type='raw'``) so the smoke report's
-"Observed output:" section renders model content via ``_render_text_line``
-(in ``ralph.pipeline.activity_stream``) instead of the literal ``raw`` type
-label via ``_render_metadata_event_line``.
+The parser maps AGY v1.1.10 stream-json events (``init``, ``step_update``,
+``result``) to normalized parser events (``text``, ``tool_use``, ``tool_result``,
+``error``, ``stop``). For plain-text fallback streams, the parser classifies
+plain-text lines as ``AgentOutputLine(type='text')`` (NOT ``type='raw'``) so the
+smoke report and activity stream render model content clearly.
 
 The parser inherits from :class:`NdjsonParserBase`, which owns the 6 shared
 NDJSON behaviours: ``data:`` SSE prefix strip, ``[DONE]`` short-circuit,
 non-dict-JSON-to-raw fallback, lifecycle-event suppression, error
-extraction, and JSON-dict dispatch. AGY v1.0.8 --print mode does NOT emit
-JSON lifecycle or error events; the inherited behaviour is preserved as a
-safe default for any future AGY --json flag.
-
-The ``[plain] tool: NAME`` convention from :class:`GenericParser` is
-intentionally NOT classified as ``tool_use`` here. That convention is a
-GenericParser convention, not an AGY wire-format fact documented in the
-source of truth. The smoke harness instead treats the expected workspace file
-write as authoritative AGY tool activity; model-authored artifact claims are
-never trusted for that check.
+extraction, and JSON-dict dispatch.
 
 Behaviour specifics:
 
+  * AGY ``step_update`` frames yield structured ``tool_use`` and ``tool_result``
+    events, correlated by step index or call ID.
   * A single plain-text line is buffered, then emitted at iterator
     exhaustion (or at the next paragraph-boundary flush) as a single
     ``text`` event. This coalesces consecutive short lines into one
@@ -57,24 +49,51 @@ if TYPE_CHECKING:
 __all__ = ["AgyParser"]
 
 
-def _tool_update(step: dict[str, object]) -> tuple[str, dict[str, object], object] | None:
-    """Return normalized AGY tool or subagent update fields."""
+def _tool_updates(step: dict[str, object]) -> list[tuple[str, dict[str, object], object]]:
+    """Return normalized AGY tool or subagent update tuples."""
     step_type = step.get("step_type")
     info_key = "subagent_info" if step_type == "subagent" else "tool_info"
     raw_info = step.get(info_key)
     if not isinstance(raw_info, dict):
-        return None
+        return []
     info = cast("dict[str, object]", raw_info)
     if step_type == "subagent":
         subagents = info.get("subagents")
-        if isinstance(subagents, list) and len(subagents) == 1 and isinstance(subagents[0], dict):
-            details = cast("dict[str, object]", subagents[0])
-            return "subagent", info, step.get("step_index") or details.get("conversation_id")
-        return None
+        if isinstance(subagents, list):
+            results: list[tuple[str, dict[str, object], object]] = []
+            for sub in subagents:
+                if isinstance(sub, dict):
+                    details = cast("dict[str, object]", sub)
+                    cid = step.get("step_index") or details.get("conversation_id") or details.get("id")
+                    results.append(("subagent", info, cid))
+            return results
+        return []
     tool_name = info.get("name")
     if step_type == "tool" and isinstance(tool_name, str) and tool_name:
-        return tool_name, info, info.get("call_id") or info.get("id") or step.get("step_index")
-    return None
+        cid = info.get("call_id") or info.get("id") or step.get("step_index")
+        return [(tool_name, info, cid)]
+    return []
+
+
+def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
+    """Extract a compact human-readable text payload from an unrecognized JSON frame."""
+    if not obj:
+        return None
+    data = obj.get("data")
+    if isinstance(data, dict):
+        msg = data.get("message") or data.get("text") or data.get("content")
+        payload: object = msg if msg is not None else data
+    elif data is not None:
+        payload = data
+    else:
+        payload = next(
+            (obj[k] for k in ("message", "text", "content", "error") if k in obj),
+            None,
+        )
+        if payload is None:
+            items = {k: v for k, v in obj.items() if k not in {"event", "type", "timestamp", "ts"}}
+            payload = items if items else None
+    return str(payload) if payload is not None else None
 
 
 class AgyParser(NdjsonParserBase):
@@ -102,6 +121,7 @@ class AgyParser(NdjsonParserBase):
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
+        self._emitted_tool_use_ids: set[str] = set()  # bounded-accumulator-ok: bounded set for deduplicating tool_use events per parse run
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
         """Classify an AGY plain-text line as ``type='text'`` and coalesce.
@@ -146,10 +166,16 @@ class AgyParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        """Map AGY v1.1.9 stream-json events to normalized output events."""
+        """Map AGY v1.1.10 stream-json events to normalized output events."""
         event = obj.get("event")
         if event == "result":
             yield from self._flush_text()
+            res = obj.get("result")
+            if isinstance(res, dict):
+                status = res.get("status")
+                if isinstance(status, str) and status != "SUCCESS":
+                    err_msg = str(res.get("error") or status)
+                    yield AgentOutputLine(type="error", content=err_msg, raw=raw, metadata=obj)
             yield AgentOutputLine(type="stop", raw=raw, metadata=obj)
         elif event == "step_update":
             update = obj.get("step_update")
@@ -164,36 +190,47 @@ class AgyParser(NdjsonParserBase):
                     type="tool_use", content=tool_name, raw=raw, metadata={"tool": tool_name, **obj}
                 )
         else:
-            yield AgentOutputLine(type=str(obj.get("type", "unknown")), raw=raw, metadata=obj)
+            payload = _extract_fallback_payload(obj)
+            if payload:
+                yield AgentOutputLine(type="text", content=payload, raw=raw, metadata=obj)
 
     def _dispatch_step_update(self, step: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
         """Map one AGY incremental update to semantic parser events."""
         text_delta = step.get("text_delta")
         if isinstance(text_delta, str) and text_delta:
-            if self._text_accumulator is None:
-                self._text_accumulator = TextAccumulator()
-            yield from self._text_accumulator.accumulate(
-                text_delta, raw, kind="text", keep_current_when_empty=False
-            )
+            normalized_delta = normalize_vt_text(text_delta)
+            if normalized_delta:
+                if self._text_accumulator is None:
+                    self._text_accumulator = TextAccumulator()
+                yield from self._text_accumulator.accumulate(
+                    normalized_delta, raw, kind="text", keep_current_when_empty=False
+                )
             return
-        tool_update = _tool_update(step)
-        if tool_update is None:
+        tool_updates = _tool_updates(step)
+        if not tool_updates:
             return
-        tool_name, info, call_id = tool_update
         yield from self._flush_text()
-        normalized_name = (
-            "subagent" if tool_name in {"invoke_subagent", "define_subagent"} else tool_name
-        )
-        metadata: dict[str, object] = {"tool": normalized_name, "tool_info": info}
-        if isinstance(call_id, str | int) and str(call_id):
-            metadata["tool_use_id"] = str(call_id)
-        if step.get("state") == "DONE":
-            output = info.get("output", "")
-            yield AgentOutputLine(
-                type="tool_result", content=str(output), raw=raw, metadata=metadata
+        for tool_name, info, call_id in tool_updates:
+            normalized_name = (
+                "subagent" if tool_name in {"invoke_subagent", "define_subagent"} else tool_name
             )
-            return
-        yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+            metadata: dict[str, object] = {"tool": normalized_name, "tool_info": info}
+            use_id: str | None = None
+            if isinstance(call_id, str | int) and str(call_id):
+                use_id = str(call_id)
+                metadata["tool_use_id"] = use_id
+
+            if step.get("state") == "DONE":
+                output = info.get("output", "")
+                yield AgentOutputLine(
+                    type="tool_result", content=str(output), raw=raw, metadata=metadata
+                )
+            else:
+                if use_id:
+                    if use_id in self._emitted_tool_use_ids:
+                        continue
+                    self._emitted_tool_use_ids.add(use_id)
+                yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         """Drain the text accumulator and yield the buffered text event."""

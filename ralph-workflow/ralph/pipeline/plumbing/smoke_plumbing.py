@@ -814,15 +814,9 @@ def _tool_activity_seen_for_errors(
 
     1. Parser-classified tool events from the transcript (the
        ``[plain] tool: NAME`` convention handled by ``GenericParser``,
-       plus structured tool events from the JSON-aware parsers).
-    2. For AGY specifically: a workspace file write. The AGY source of
-       truth at ``ralph-workflow/tmp/agy-source-of-truth.txt`` documents
-       that AGY ``--print`` mode does not emit structured tool events on
-       stdout; tool activity surfaces as side-effect file writes inside
-       the workspace. The expected ``tmp/interactive-agy-smoke/todo-list.js``
-       file is the canonical authoritative write; its presence proves the
-       agent actually performed a tool action rather than only emitting
-       text.
+       plus structured tool events from JSON-aware parsers like ``AgyParser``).
+    2. For AGY specifically: workspace output file existence confirms real
+       file writes inside the workspace as a secondary side-effect check.
     """
     if tool_activity_seen is not None:
         return tool_activity_seen
@@ -832,8 +826,9 @@ def _tool_activity_seen_for_errors(
         return True
     # AGY-specific authoritative signal: the expected workspace output
     # file was created (a real file-write side effect, not a model
-    # self-report). Per the source-of-truth, AGY --print wires tool
-    # activity through file writes rather than structured stdout events.
+    # self-report). AgyExecutionStrategy classifies AGY stream-json
+    # step_update events as TOOL_USE / TOOL_RESULT, while workspace file existence
+    # remains a secondary side-effect signal.
     return params.config.transport == AgentTransport.AGY and params.output_file.exists()
 
 

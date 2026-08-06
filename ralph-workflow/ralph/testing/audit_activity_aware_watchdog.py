@@ -662,13 +662,20 @@ def _compute_fingerprint(package_root: Path) -> str | None:
                 continue
             path = Path(parent) / name
             try:
-                mtime = path.stat().st_mtime_ns
+                st = path.stat()
+                mtime = st.st_mtime_ns
+                size = st.st_size
+                content = path.read_bytes()
             except OSError:
                 continue
             posix = path.as_posix()
             hasher.update(posix.encode("utf-8"))
             hasher.update(b"\x00")
             hasher.update(str(mtime).encode("utf-8"))
+            hasher.update(b"\x00")
+            hasher.update(str(size).encode("utf-8"))
+            hasher.update(b"\x00")
+            hasher.update(content)
             hasher.update(b"\n")
     return hasher.hexdigest()
 

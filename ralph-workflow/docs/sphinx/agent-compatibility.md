@@ -68,17 +68,17 @@ availability remains the CLI provider's responsibility.
 - **CLI**: `agy`
 - **Install / auth**: <https://github.com/google-antigravity/antigravity-cli>
 - **Transport**: `agy`
-- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.8 publishes model IDs and `--effort low|medium|high`. Live probes accepted both `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`.
-- **Parser**: `generic` (native AGY parser; plain-text, not NDJSON)
+- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.10 publishes model IDs and `--effort low|medium|high`. Live probes accepted both `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`.
+- **Parser**: `agy` (`AgyParser`; maps `--output-format stream-json` events including `step_update` tool activity and multi-subagent updates, with plain-text fallback)
 - **Caveats**:
     - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
     - With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions` (AGY reuses the Claude flag; the earlier docs incorrectly attributed Codex's `--dangerously-bypass-approvals-and-sandbox` to AGY).
     - Completion contract: AGY normally supplies the durable `declare_complete` sentinel; when its observed `--print` fallback produces a valid required artifact but misses the MCP completion call, Ralph Workflow writes the same host-owned durable sentinel after canonical promotion. Required-artifact phases still need the run-scoped receipt.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
-    - Session continuation remains unavailable in Ralph Workflow. The v1.1.8 continuation and conversation-id probes accepted one-word `--print` prompts, but neither exposed the resumed-session identity; the integration therefore does not claim or reuse AGY sessions.
-    - `agy agents` reported no available agents on the measured stock v1.1.8 install. This is an install observation, not a universal capability claim; with `agent_subagents` and two or more work units, routing fails explicitly rather than falling back to sequential dispatch.
-    - The latest v1.1.8 manual live smoke exited 0 after creating its requested file, showing parser/tool activity without a permission prompt, and producing a valid fallback `smoke_test_result`. Ralph Workflow validated and canonically promoted it, recorded the receipt and host completion sentinel. Its plain-text parser reports observed output; stream-json separately emitted `init`, `step_update`, and successful `result` events.
+    - Session continuation remains unavailable in Ralph Workflow. The v1.1.10 continuation and conversation-id probes accepted one-word `--print` prompts, but neither exposed the resumed-session identity; the integration therefore does not claim or reuse AGY sessions.
+    - `agy agents` reported no available agents on the measured stock v1.1.10 CLI installation. This is an install observation, not a universal capability claim; with `agent_subagents` and two or more work units, routing fails explicitly rather than falling back to sequential dispatch.
+    - The measured v1.1.10 mock live smoke exited 0 after creating its requested file, showing parser/tool activity without a permission prompt, and producing a valid fallback `smoke_test_result`. Ralph Workflow validated and canonically promoted it, recorded the receipt and host completion sentinel. `AgyParser` maps stream-json `init`, `step_update`, and `result` events.
     - AGY is a supported integration, not a replacement for Ralph Workflow.
 
 ```toml
@@ -88,6 +88,7 @@ print_flag = "--print"
 yolo_flag = "--dangerously-skip-permissions"
 can_commit = true
 json_parser = "generic"
+
 ```
 
 <a id="pi-pidev"></a>

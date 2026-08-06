@@ -66,6 +66,17 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--print-timeout", default=None)
     parser.add_argument("--conversation", default=None)
     parser.add_argument("--sandbox", action="store_true")
+    # v1.1.10 flags
+    parser.add_argument("--agent", default=None)
+    parser.add_argument("--mode", default=None)
+    parser.add_argument("--json-schema", default=None)
+    parser.add_argument("--disable-slash-commands", action="store_true")
+    parser.add_argument("--prompt", default=None)
+    parser.add_argument("--continue", "-c", action="store_true", dest="continue_session")
+    parser.add_argument("--project", default=None)
+    parser.add_argument("--new-project", action="store_true")
+    parser.add_argument("--log-file", default=None)
+    parser.add_argument("--prompt-interactive", "-i", default=None)
     parser.add_argument("prompt", nargs="?", default=None)
     return parser
 
@@ -134,8 +145,16 @@ def _write_completion_sentinel(artifact_dir: Path) -> None:
     sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
 
-def _emit_normal_stdout(model: str | None) -> None:
-    """Emit the measured v1.1.9 stream-json vocabulary deterministically."""
+def _emit_normal_stdout(model: str | None, output_format: str = "text") -> None:
+    """Emit output based on output_format (stream-json, json, or text)."""
+    if output_format == "text":
+        print("I will create the todo list implementation.")
+        print("[plain] tool: createTodoList")
+        if os.environ.get("MOCK_AGY_SUBAGENT") == "1":
+            print("[subagent] Inspect two edge cases.")
+        print("Writing smoke_test_result artifact.")
+        return
+
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
     events: list[dict[str, object]] = [
@@ -238,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_prompt_received(artifact_dir, args.prompt)
     _write_smoke_test_result_artifact(artifact_dir)
     _write_completion_sentinel(artifact_dir)
-    _emit_normal_stdout(args.model)
+    _emit_normal_stdout(args.model, args.output_format)
     return 0
 
 

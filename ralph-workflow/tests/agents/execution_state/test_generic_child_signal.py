@@ -28,6 +28,7 @@ from ralph.agents.execution_state import (
     ClaudeInteractiveExecutionStrategy,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
+    strategy_for_command,
     strategy_for_transport,
 )
 from ralph.agents.execution_state._factory import _make_agy_strategy
@@ -858,6 +859,21 @@ class TestStrategyInheritanceUsesBaseChildSignalPath:
             f"expected exactly one sink invocation for Agy strategy on"
             f" child_progress line, got {len(subagent_sink_spy)} invocations"
         )
+
+    def test_agy_strategy_classifies_tool_activity(self) -> None:
+        """S-3 / P-1: AGY stream-json tool step_update frames classify as TOOL_USE and TOOL_RESULT."""
+        strategy = strategy_for_command("agy", AgentTransport.AGY)
+        active_line = '{"event":"step_update","step_update":{"state":"ACTIVE","step_type":"tool","step_index":1,"tool_info":{"name":"createTodoList"}}}'
+        done_line = '{"event":"step_update","step_update":{"state":"DONE","step_type":"tool","step_index":1,"tool_info":{"name":"createTodoList","output":"File created"}}}'
+
+        active_signal = strategy.classify_activity_line(active_line)
+        done_signal = strategy.classify_activity_line(done_line)
+
+        assert active_signal is not None
+        assert active_signal.kind == AgentActivityKind.TOOL_USE
+
+        assert done_signal is not None
+        assert done_signal.kind == AgentActivityKind.TOOL_RESULT
 
 
 # ---------------------------------------------------------------------------

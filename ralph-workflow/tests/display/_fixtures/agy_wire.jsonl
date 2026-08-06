@@ -1,2 +1,8 @@
-AGY checks the display.
-The record keeps one entry per event.
+{"event":"init","conversation_id":"conv-1"}
+{"event":"step_update","step_update":{"state":"DONE","step_type":"agent_response","text_delta":"I will create the todo list implementation.\n"}}
+{"event":"step_update","step_update":{"state":"ACTIVE","step_type":"tool","step_index":1,"tool_info":{"name":"createTodoList"}}}
+{"event":"step_update","step_update":{"state":"DONE","step_type":"tool","step_index":1,"tool_info":{"name":"createTodoList","output":"File created at tmp/interactive-agy-smoke/todo-list.js."}}}
+{"event":"step_update","step_update":{"state":"ACTIVE","step_type":"subagent","subagent_info":{"subagents":[{"conversation_id":"c1","role":"agent1"},{"conversation_id":"c2","role":"agent2"}]}}}
+{"event":"step_update","step_update":{"state":"DONE","step_type":"subagent","subagent_info":{"subagents":[{"conversation_id":"c1","role":"agent1"},{"conversation_id":"c2","role":"agent2"}]}}}
+{"event":"step_update","step_update":{"state":"DONE","step_type":"agent_response","text_delta":"Writing smoke_test_result artifact.\n"}}
+{"event":"result","result":{"status":"ERROR","error":"quota"}}

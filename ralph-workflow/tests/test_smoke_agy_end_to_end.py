@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+from ralph.display.vt_normalizer import normalize_vt_text
+
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.subprocess_e2e,
@@ -49,15 +51,15 @@ def _run_fresh_agy_smoke(
     ``tmp/interactive-agy-smoke/todo-list.js`` file, the fallback
     ``.agent/tmp/smoke_test_result.md`` Markdown artifact (which the
     harness promotes to the canonical
-    ``.agent/artifacts/smoke_test_result.md`` plus a receipt), and emits the
-    canonical output lines (including the ``[plain] tool: createTodoList``
-    line the GenericParser classifies as ``type='tool_use'`` so the
-    authoritative tool-activity signal is present in the transcript).
+    canonical output lines (including step_update stream-json events that
+    AgyParser classifies as tool_use and tool_result so the authoritative
+    tool-activity signal is present in the transcript).
     Returns the combined stdout + stderr (the smoke harness routes its
     log lines through loguru which defaults to stderr, so the report
     must be assembled from both streams).
     """
     mock_path = _mock_agy_path()
+    assert mock_path.is_file(), f"Mock AGY script not found at {mock_path}"
     env = os.environ.copy()
     env["RALPH_AGY_BINARY"] = str(mock_path)
     env["MOCK_AGY_BEHAVIOR"] = "normal"
@@ -73,7 +75,7 @@ def _run_fresh_agy_smoke(
             "ralph",
             "smoke-interactive-agy",
             "--agent",
-            "agy/gemini-3.5-flash-medium",
+            "agy/gemini-3.6-flash-low",
         ],
         cwd=tmp_path,
         env=env,
@@ -110,14 +112,15 @@ def _read_breaks_from_report(report_text: str) -> str:
     lines = report_text.splitlines()
     in_breaks = False
     breaks_lines: list[str] = []
-    for line in lines:
+    for raw_line in lines:
+        line = normalize_vt_text(raw_line)
         if "Observed breaks:" in line:
             in_breaks = True
             continue
         if in_breaks:
             if not line.strip() or line.startswith("  Agent:") or "parity smoke report" in line:
                 break
-            stripped = line.lstrip(" -│┃")
+            stripped = line.lstrip(" -│┃").strip()
             if stripped:
                 breaks_lines.append(stripped)
     return " ".join(breaks_lines)
@@ -172,6 +175,7 @@ def test_mock_smoke_invoking_line_uses_single_model_argv_token(tmp_path: Path) -
         "claude-sonnet-4-6",
         "claude-opus-4-6-thinking",
         "gpt-oss-120b-medium",
+        "gemini-3.6-flash-low",
     )
     matched_model = next(
         (m for m in canonical_models if f"--model {m} --print" in invoking_line),
@@ -196,7 +200,8 @@ def test_mock_smoke_report_shows_text_output(tmp_path: Path) -> None:
     rendered_text_lines: list[str] = []
     raw_lines: list[str] = []
     parser_classified_lines: list[str] = []
-    for line in log_text.splitlines():
+    for raw_line in log_text.splitlines():
+        line = normalize_vt_text(raw_line)
         if "Observed output:" in line:
             in_observed_output = True
             continue

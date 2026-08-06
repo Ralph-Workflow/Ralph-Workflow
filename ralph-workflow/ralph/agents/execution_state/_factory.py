@@ -62,13 +62,35 @@ def _make_agy_strategy(
     """
 
     class AgyExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
-        pass
+        def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+            signal = _classify_agy_activity(line)
+            if signal is not None:
+                return signal
+            return super().classify_activity_line(line)
 
     return AgyExecutionStrategy(
         label_scope=label_scope,
         registry=registry,
         subagent_pid_source=subagent_pid_source,
     )
+
+
+def _classify_agy_activity(line: str) -> AgentActivitySignal | None:
+    """Classify AGY stream-json step_update tool events for watchdog control."""
+    obj = _parse_json_object(line)
+    if obj is None or obj.get("event") != "step_update":
+        return None
+    raw_step = obj.get("step_update")
+    if not isinstance(raw_step, dict):
+        return None
+    step_update = cast("dict[str, object]", raw_step)
+    step_type = step_update.get("step_type")
+    if step_type not in {"tool", "subagent"}:
+        return None
+    state = step_update.get("state")
+    if isinstance(state, str) and state == "DONE":
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
+    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
 
 
 def _make_cursor_strategy(
