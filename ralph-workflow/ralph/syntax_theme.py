@@ -18,6 +18,13 @@ from pygments.token import (
     Text,
 )
 
+from ralph.display._palette import (
+    ROLE_ANCHORS,
+    derive_preview_background,
+    solve_dual_safe,
+    solve_for_surface,
+)
+
 
 def _child_token(parent: object, name: str) -> object:
     """Resolve a Pygments child token despite its incomplete type stubs."""
@@ -38,32 +45,61 @@ _LITERAL = _child_token(_child_token(pygments_token, "Token"), "Literal")
 _ERROR = _child_token(_child_token(pygments_token, "Token"), "Error")
 
 
+def _generate_syntax_colors(
+    preview_surface: str | None,
+) -> tuple[str, tuple[str, str, str, str, str, str], tuple[str, str, str]]:
+    if preview_surface is not None:
+        default = solve_for_surface(ROLE_ANCHORS["chrome"], preview_surface)
+        comment = solve_for_surface(ROLE_ANCHORS["pending"], preview_surface)
+        keyword = solve_for_surface(ROLE_ANCHORS["error"], preview_surface)
+        function = solve_for_surface(ROLE_ANCHORS["info"], preview_surface)
+        string = solve_for_surface(ROLE_ANCHORS["skipped"], preview_surface)
+        number = solve_for_surface(ROLE_ANCHORS["warning"], preview_surface)
+        operator = solve_for_surface(ROLE_ANCHORS["success"], preview_surface)
+        deleted = solve_for_surface(ROLE_ANCHORS["diff_removed"], preview_surface)
+        inserted = solve_for_surface(ROLE_ANCHORS["diff_added"], preview_surface)
+        subheading = solve_for_surface(ROLE_ANCHORS["info"], preview_surface)
+    else:
+        default = solve_dual_safe(ROLE_ANCHORS["chrome"])
+        comment = solve_dual_safe(ROLE_ANCHORS["pending"])
+        keyword = solve_dual_safe(ROLE_ANCHORS["error"])
+        function = solve_dual_safe(ROLE_ANCHORS["info"])
+        string = solve_dual_safe(ROLE_ANCHORS["skipped"])
+        number = solve_dual_safe(ROLE_ANCHORS["warning"])
+        operator = solve_dual_safe(ROLE_ANCHORS["success"])
+        deleted = solve_dual_safe(ROLE_ANCHORS["diff_removed"])
+        inserted = solve_dual_safe(ROLE_ANCHORS["diff_added"])
+        subheading = solve_dual_safe(ROLE_ANCHORS["info"])
+
+    colors = (comment, keyword, function, string, number, operator)
+    diff_colors = (deleted, inserted, subheading)
+    return default, colors, diff_colors
+
+
 class SyntaxThemes:
     """Create the fixed palettes used by the display theme selector."""
 
     @staticmethod
     def dark() -> type[PygmentsStyle]:
-        return _style(
-            "#D0D0D0",
-            ("#0CB9F2", "#C85BD0", "#6DDCF2", "#77D9B0", "#C9D921", "#94D90B"),
-            ("#94D90B", "#0CB9F2", "#77D9B0"),
-        )
+        default, colors, diff_colors = _generate_syntax_colors("#101417")
+        return _style(default, colors, diff_colors)
 
     @staticmethod
     def light() -> type[PygmentsStyle]:
-        return _style(
-            "#202020",
-            ("#854985", "#251947", "#36747A", "#3E4712", "#70703E", "#330B03"),
-            ("#330B03", "#3E4712", "#36747A"),
-        )
+        default, colors, diff_colors = _generate_syntax_colors("#F7F9FB")
+        return _style(default, colors, diff_colors)
 
     @staticmethod
     def unknown() -> type[PygmentsStyle]:
-        return _style(
-            "#757575",
-            ("#2070F0", "#2080A0", "#408070", "#5070D0", "#608020", "#7070A0"),
-            ("#2070F0", "#408070", "#7070A0"),
-        )
+        default, colors, diff_colors = _generate_syntax_colors(None)
+        return _style(default, colors, diff_colors)
+
+    @staticmethod
+    def for_surface(surface_hex: str) -> type[PygmentsStyle]:
+        preview_surface = derive_preview_background(surface_hex)
+        default, colors, diff_colors = _generate_syntax_colors(preview_surface)
+        return _style(default, colors, diff_colors)
+
 
 
 def _style(

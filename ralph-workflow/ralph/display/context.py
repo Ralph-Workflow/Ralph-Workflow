@@ -48,6 +48,7 @@ from ralph.display.theme import (
     ASCII_GLYPHS,
     UNICODE_GLYPHS,
     detect_glyph_capability,
+    detect_terminal_background_hex,
     detect_terminal_background_is_light,
     make_console,
     theme_for_background,
@@ -173,30 +174,18 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
 def _build_console(
     resolved_env: _ResolvedEnv,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
     *,
     output_stream: TextIO | None = None,
 ) -> Console:
-    """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
-
-    Ralph keeps ANSI in durable redirected transcripts when the destination
-    supports it.  ``FORCE_COLOR`` explicitly opts into that behaviour, while
-    the ordinary path still uses Rich's terminal detection for real streams.
-    ``NO_COLOR`` is checked first and always wins.
-
-    Args:
-        resolved_env: Pre-resolved environment settings.
-        terminal_bg_is_light: Resolved terminal background.
-        output_stream: Destination stream for rendered output.
-
-    Returns:
-        Configured Console instance.
-    """
+    """Create a console based on resolved NO_COLOR / FORCE_COLOR settings."""
     if resolved_env.no_color:
         return make_console(
             file=output_stream,
             no_color=True,
             force_terminal=False,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
         )
     if resolved_env.force_color:
         return make_console(
@@ -204,6 +193,7 @@ def _build_console(
             no_color=False,
             force_terminal=True,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
         )
     return make_console(
         file=output_stream,
@@ -211,6 +201,7 @@ def _build_console(
         force_terminal=True,
         color_system="truecolor",
         terminal_bg_is_light=terminal_bg_is_light,
+        surface_hex=surface_hex,
     )
 
 
@@ -434,6 +425,7 @@ class DisplayContext:
     # Resolved once at context construction so every renderer selects the
     # same accessible palette without probing the terminal independently.
     terminal_background_is_light: bool | None = None
+    terminal_background_hex: str | None = None
     # P0 (wt-028-display S-5 / AC-06): the vertical dimension of the
     # terminal is consumed by height-aware presentation -- boxed
     # panels degrade to unboxed headed text below a row threshold
@@ -583,6 +575,7 @@ class DisplayContext:
             tool_result_headline_min_chars=self.tool_result_headline_min_chars,
             body_measure_cap=self.body_measure_cap,
             terminal_background_is_light=self.terminal_background_is_light,
+            terminal_background_hex=self.terminal_background_hex,
             height=new_height,
             _resolved_env=self._resolved_env,
             env=self.env,
@@ -602,23 +595,7 @@ def make_display_context(
     force_glyphs: bool | None = None,
     force_height: int | None = None,
 ) -> DisplayContext:
-    """Create a DisplayContext with resolved terminal metrics and adaptive limits.
-
-    Args:
-        env: Environment mapping (defaults to os.environ).
-        console: Console to use (defaults to make_console() with env-aware color policy).
-        output_stream: Destination used when Ralph constructs the console. Defaults to stdout.
-        force_width: Override terminal width detection.
-        force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
-        force_height: Override terminal height detection. ``None``
-            falls back to ``console.size.height`` (the canonical
-            Rich Console contract); ``None`` disables height-aware
-            rendering for callers that don't consume the height
-            field.
-
-    Returns:
-        Fully initialised DisplayContext.
-    """
+    """Create a DisplayContext with resolved terminal metrics and adaptive limits."""
     if console is not None and output_stream is not None:
         msg = "output_stream cannot be combined with an injected console"
         raise ValueError(msg)
@@ -626,13 +603,16 @@ def make_display_context(
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)
     resolved_background: bool | None = None
+    resolved_background_hex: str | None = None
     with contextlib.suppress(Exception):
         resolved_background = detect_terminal_background_is_light(env_dict)
+        resolved_background_hex = detect_terminal_background_hex(env_dict)
     if console is None:
         injected_console = False
         resolved_console = _build_console(
             resolved_env,
             resolved_background,
+            surface_hex=resolved_background_hex,
             output_stream=sys.stdout if output_stream is None else output_stream,
         )
     else:
@@ -642,11 +622,9 @@ def make_display_context(
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
         if isinstance(resolved_console, Console):
-            # Every injected console must receive Ralph's resolved theme. A
-            # caller-owned theme may contain stale Rich style caches (the
-            # historical all-colour-off regression), so push a fresh palette
-            # even when a Ralph role already exists.
-            resolved_console.push_theme(theme_for_background(resolved_background))
+            resolved_console.push_theme(
+                theme_for_background(resolved_background, surface_hex=resolved_background_hex)
+            )
     width = _compute_width(
         resolved_env,
         resolved_console,
@@ -658,20 +636,9 @@ def make_display_context(
         _set_injected_console_width(resolved_console, width)
     mode = _compute_default_mode()
     limits = _DEFAULT_LIMITS
-    # P0 (wt-028-display S-5 / AC-06): height is resolved the same
-    # way as width -- an explicit ``force_height`` wins, otherwise we
-    # read the console's own ``size.height`` (Rich keeps it fresh).
-    # A non-positive or missing height disables height-aware
-    # rendering (the legacy contract); callers that want the
-    # explicit ``None`` contract pass ``force_height=-1`` so the
-    # resolved value is ``None``.
     if force_height is not None and force_height > 0:
         height_value = force_height
     elif force_height is not None:
-        # Explicit ``force_height=0`` or negative is treated as the
-        # legacy ``None`` opt-out (callers that want to disable
-        # height-aware rendering). ``force_height=None`` falls
-        # through to the Console's own ``size.height``.
         height_value = None
     else:
         size_obj: object = getattr(resolved_console, "size", None)
@@ -683,13 +650,11 @@ def make_display_context(
         positive_height: int | None = height_attr
         height_value = positive_height
 
-    # NO_COLOR wins over FORCE_COLOR per CLI conventions.
     color_enabled = not resolved_env.no_color and not _console_has_no_color(
         resolved_console,
         injected_console=injected_console,
     )
 
-    # Glyph capability detection: force_glyphs > RALPH_FORCE_ASCII > stream encoding > TERM=dumb
     if force_glyphs is not None:
         glyphs_enabled = force_glyphs
     elif injected_console and not env_was_provided and not resolved_env.force_ascii:
@@ -703,7 +668,7 @@ def make_display_context(
 
     return DisplayContext(
         console=resolved_console,
-        theme=theme_for_background(resolved_background),
+        theme=theme_for_background(resolved_background, surface_hex=resolved_background_hex),
         width=width,
         mode=mode,
         height=height_value,
@@ -720,6 +685,7 @@ def make_display_context(
         tool_result_headline_min_chars=limits.tool_result_headline_min_chars,
         body_measure_cap=limits.body_measure_cap,
         terminal_background_is_light=resolved_background,
+        terminal_background_hex=resolved_background_hex,
         env=env_dict,
         _resolved_env=resolved_env,
         _force_width=force_width,

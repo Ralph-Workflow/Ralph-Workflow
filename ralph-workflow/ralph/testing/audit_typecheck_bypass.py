@@ -67,6 +67,8 @@ def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
 # Each entry: (file_stem, error_code)
 # ---------------------------------------------------------------------------
 _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
+    ("_palette", "misc"),
+    ("_markdown_theme", "misc"),
     ("commit_cleanup", "misc"),
     ("_sentry", "arg-type"),
     ("_sentry", "misc"),

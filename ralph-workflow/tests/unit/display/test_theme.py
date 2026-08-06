@@ -14,17 +14,6 @@ theme = importlib.import_module("ralph.display.theme")
 DEFAULT_WIDTH = 80
 
 
-def test_okabe_ito_constants_match_canonical_hex() -> None:
-    assert theme.ORANGE == "#E69F00"
-    assert theme.SKY_BLUE == "#56B4E9"
-    assert theme.BLUISH_GREEN == "#009E73"
-    assert theme.YELLOW == "#F0E442"
-    assert theme.BLUE == "#0080CC"
-    assert theme.VERMILLION == "#D55E00"
-    assert theme.REDDISH_PURPLE == "#CC79A7"
-    assert theme.BLACK == "#000000"
-
-
 def test_status_styles_cover_expected_statuses() -> None:
     assert set(theme.STATUS_STYLES) == {
         "success",
@@ -35,7 +24,8 @@ def test_status_styles_cover_expected_statuses() -> None:
         "pending",
         "info",
     }
-    assert theme.STATUS_STYLES["info"] == ("#0080CC", "\u2139", "INFO")
+    expected_info_color = theme.pick_status_styles(False)["info"][0]
+    assert theme.STATUS_STYLES["info"] == (expected_info_color, "\u2139", "INFO")
 
 
 def test_format_status_returns_marked_up_label() -> None:
@@ -43,7 +33,7 @@ def test_format_status_returns_marked_up_label() -> None:
 
     assert "✓" in rendered
     assert "PASS" in rendered
-    assert "#009E73" in rendered
+    assert theme.pick_status_styles(False)["success"][0] in rendered
 
 
 def test_format_status_unknown_status_raises_key_error() -> None:

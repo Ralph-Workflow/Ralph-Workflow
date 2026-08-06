@@ -146,14 +146,15 @@ immediately, including 12-row and temporarily below-floor terminals.
 
 ### Background-aware presentation
 
-`DisplayContext` resolves `RALPH_TERMINAL_BG` (`light`, `dark`, or a hex
-background) once during construction. Code and diff previews use a complete
-fixed surface when that background is known, including source rows, gutters,
-and padding; an unknown background deliberately falls back to transparency.
-Event identities, semantic event states, and the Status Bar use the matching
-palette. An undetermined background uses the explicit dual-safe palette rather
-than assuming a dark terminal. The text label remains the identity carrier, so
-color is never required to understand an entry.
+`DisplayContext` resolves `RALPH_TERMINAL_BG` (`light`, `dark`, or a measured `#RRGGBB`
+background hex) or probes via OSC 11. Monokai Pro-derived role anchors are dynamically
+solved against the measured or declared terminal surface to guarantee WCAG AA (4.5:1)
+contrast. Code and diff previews use a complete surface derived from the measured background
+when known, including source rows, gutters, and padding; an unknown background deliberately
+falls back to transparency. Event identities, semantic event states, and the Status Bar use
+the matching solved palette. An undetermined background uses the dual-safe palette targeting
+the `[0.175, 0.1833]` luminance band rather than assuming a dark terminal. The text label
+remains the identity carrier, so color is never required to understand an entry.
 
 ### Display support contract
 
@@ -162,11 +163,12 @@ truecolour, reduced-colour, and no-colour output; Unicode and ASCII glyphs;
 and TTY, redirected, and CI destinations. Fully laid-out composition begins at
 80 columns and degrades intentionally to the 40-column floor (including a
 12-row terminal). Semantic and preview foregrounds target a 4.5:1 contrast
-ratio on their resolved surface. `NO_COLOR` disables escapes; `FORCE_COLOR`
+ratio solved dynamically against their resolved surface. `NO_COLOR` disables escapes; `FORCE_COLOR`
 retains ANSI colour for render-capable redirected or CI capture. Motion is
 reserved for a real TTY; redirected and CI output instead records durable state
 transitions and elapsed-time heartbeats. Condensed output identifies its count,
 byte size, and `.agent/raw/` recovery destination.
+
 
 ### Canonical activity presentation
 

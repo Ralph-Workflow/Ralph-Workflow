@@ -24,6 +24,7 @@ from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
 
 import ralph.display._identity as identity_helpers
+from ralph.display import _palette
 from ralph.display._identity import (
     _DEUTERANOPIA_MATRIX,
     _PROTANOPIA_MATRIX,
@@ -37,15 +38,6 @@ from ralph.syntax_theme import SyntaxThemes
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from typing import TextIO
-
-ORANGE: Final[str] = "#E69F00"
-SKY_BLUE: Final[str] = "#56B4E9"
-BLUISH_GREEN: Final[str] = "#009E73"
-YELLOW: Final[str] = "#F0E442"
-BLUE: Final[str] = "#0080CC"
-VERMILLION: Final[str] = "#D55E00"
-REDDISH_PURPLE: Final[str] = "#CC79A7"
-BLACK: Final[str] = "#000000"
 
 UNICODE_GLYPHS: Final[dict[str, str]] = {
     "success": "\u2713",
@@ -130,97 +122,58 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     return term != "dumb"
 
 
-STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
-    "success": (f"bold {BLUISH_GREEN}", "\u2713", "PASS"),
-    "running": (SKY_BLUE, "\u25d0", "RUN"),
-    "warning": (f"bold {ORANGE}", "\u26a0", "WARN"),
-    "error": (f"bold {VERMILLION}", "\u2717", "FAIL"),
-    "skipped": (YELLOW, "\u25cb", "SKIP"),
-    "pending": ("#B8A7E8", "\u25cb", "WAIT"),
-    "info": (BLUE, "\u2139", "INFO"),
-}
-
-# Named display meaning roles are deliberately separate from event states.
-# They let production renderers and generated-output checks prove that every
-# operator-facing category is coloured without confusing a diff deletion with
-# a failed run.
-_DISPLAY_STYLES: Final[dict[str, str]] = {
-    "chrome": "#178383",
-    "agent_text": "#0080CC",
-    "elision": "#CC79A7",
-    "diff_added": "#0CB9F2",
-    "diff_removed": "#E69F00",
-}
-_DISPLAY_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
-    "chrome": "#006A6A",
-    "agent_text": "#002B5C",
-    "elision": "#6B2C6E",
-    "diff_added": "#1F5F8B",
-    "diff_removed": "#7A3D00",
-}
-_DISPLAY_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
-    "chrome": "#178383",
-    "agent_text": "#0074E8",
-    "elision": "#9060C0",
-    "diff_added": "#0074E8",
-    "diff_removed": "#BA5D00",
-}
+_pal_dark = _palette.resolve_palette("#000000")
+_pal_light = _palette.resolve_palette("#FFFFFF")
+_pal_unknown = _palette.resolve_palette(None)
 
 
-STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
-    "success": ("bold #006B4D", "\u2713", "PASS"),
-    "running": ("bold #1F5F8B", "\u25d0", "RUN"),
-    "warning": ("bold #A06A00", "\u26a0", "WARN"),
-    "error": ("bold #993F00", "\u2717", "FAIL"),
-    "skipped": ("bold #5A6200", "\u25cb", "SKIP"),
-    "pending": ("bold #555555", "\u25cb", "WAIT"),
-    "info": ("bold #002B5C", "\u2139", "INFO"),
-}
+def _build_status_styles(palette: Mapping[str, str]) -> dict[str, tuple[str, str, str]]:
+    return {
+        "success": (f"bold {palette['success']}", "\u2713", "PASS"),
+        "running": (palette["running"], "\u25d0", "RUN"),
+        "warning": (f"bold {palette['warning']}", "\u26a0", "WARN"),
+        "error": (f"bold {palette['error']}", "\u2717", "FAIL"),
+        "skipped": (palette["skipped"], "\u25cb", "SKIP"),
+        "pending": (palette["pending"], "\u25cb", "WAIT"),
+        "info": (palette["info"], "\u2139", "INFO"),
+    }
 
-IDENTITY_PALETTE: Final[tuple[str, ...]] = (
-    "#E31A1C",
-    "#3288BD",
-    "#33A02C",
-    "#6A3D9A",
-    "#FF7F00",
-    "#B15928",
-    "#E7298A",
-    "#B2DF8A",
-    "#FDBF6F",
-    "#CAB2D6",
-    "#FFFF99",
-    "#A6CEE3",
-)
 
-IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
-    "#8B0000",
-    "#00008B",
-    "#006400",
-    "#4B0082",
-    "#663300",
-    "#8B008B",
-    "#556B2F",
-    "#5A4FCF",
-    "#483D8B",
-    "#A52A2A",
-    "#3D3D3D",
-    "#1A1A1A",
-)
+STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(_pal_dark)
+STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(_pal_light)
+STATUS_STYLES_ON_UNKNOWN_BG: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(_pal_unknown)
 
-IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
-    "#0070F0",
-    "#0080A0",
-    "#3070E0",
-    "#308080",
-    "#508040",
-    "#6070C0",
-    "#608000",
-    "#7060F0",
-    "#807080",
-    "#9060C0",
-    "#907000",
-    "#907030",
-)
+
+def _build_display_styles(palette: Mapping[str, str]) -> dict[str, str]:
+    return {
+        "chrome": palette["chrome"],
+        "agent_text": palette["agent_text"],
+        "elision": palette["elision"],
+        "diff_added": palette["diff_added"],
+        "diff_removed": palette["diff_removed"],
+    }
+
+
+_DISPLAY_STYLES: Final[dict[str, str]] = _build_display_styles(_pal_dark)
+_DISPLAY_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = _build_display_styles(_pal_light)
+_DISPLAY_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = _build_display_styles(_pal_unknown)
+
+
+def _generate_identity_palette(surface_hex: str | None) -> tuple[str, ...]:
+    slots: list[str] = []
+    for i in range(12):
+        anchor = _palette.RoleAnchor(hue=i * 30.0, chroma=0.12)
+        if surface_hex is not None:
+            hex_val = _palette.solve_for_surface(anchor, surface_hex)
+        else:
+            hex_val = _palette.solve_dual_safe(anchor)
+        slots.append(hex_val)
+    return tuple(slots)
+
+
+IDENTITY_PALETTE: Final[tuple[str, ...]] = _generate_identity_palette("#000000")
+IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = _generate_identity_palette("#FFFFFF")
+IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = _generate_identity_palette(None)
 
 # The shipped roster is the baseline active set for shared surfaces. Rendering
 # it collision-aware prevents a hash collision before a particular display
@@ -280,24 +233,12 @@ def identity_color(
     *,
     active: Iterable[str] | None = None,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
 ) -> str:
-    """Return the hex color for an identity, with collision-nudge.
-
-    When ``active`` is supplied, the helper nudges the chosen slot
-    to the first palette position whose hex does not match the
-    resolved hex of any OTHER active identity AND whose simulated
-    hex under each of the three documented CVD deficiencies
-    (deuteranopia / protanopia / tritanopia) does not match either.
-    AC-15 (wt-028-display P3) pins this contract: two
-    simultaneously-rendered identities can never read as the same
-    color under any of the three simulations.
-
-    Active names resolve in deterministic sorted order. Each identity
-    reserves its first CVD-safe slot before the next one is considered,
-    so it never competes with its own base colour and active-set order
-    cannot change the result.
-    """
-    if terminal_bg_is_light is True:
+    """Return the hex color for an identity, with collision-nudge."""
+    if surface_hex is not None:
+        palette = _generate_identity_palette(surface_hex)
+    elif terminal_bg_is_light is True:
         palette = IDENTITY_PALETTE_ON_LIGHT_BG
     elif terminal_bg_is_light is False:
         palette = IDENTITY_PALETTE
@@ -306,196 +247,75 @@ def identity_color(
     return identity_helpers.identity_color(name, palette=palette, active=active, rgb=_rgb)
 
 
-_THEME_STYLES: Final[dict[str, str]] = {
-    "theme.level.info": BLUE,
-    "theme.level.success": f"bold {BLUISH_GREEN}",
-    "theme.level.warn": f"bold {ORANGE}",
-    "theme.level.error": f"bold {VERMILLION}",
-    "theme.level.milestone": f"bold {SKY_BLUE}",
-    "theme.cat.meta": "#178383",
-    "theme.cat.cont": BLUE,
-    "theme.cat.out": BLUE,
-    "theme.log.error": f"bold {VERMILLION}",
-    "theme.log.info": BLUE,
-    "theme.log.milestone": f"bold {SKY_BLUE}",
-    "theme.log.success": f"bold {BLUISH_GREEN}",
-    "theme.log.warn": f"bold {ORANGE}",
-    "theme.panel.border": SKY_BLUE,
-    "theme.panel.title": f"bold {SKY_BLUE}",
-    "theme.phase.commit": BLUE,
-    "theme.phase.complete": f"bold {BLUISH_GREEN}",
-    "theme.phase.development": BLUISH_GREEN,
-    "theme.phase.development_analysis": REDDISH_PURPLE,
-    "theme.phase.development_commit": BLUE,
-    "theme.phase.failed": f"bold {VERMILLION}",
-    "theme.phase.fix": VERMILLION,
-    "theme.phase.planning": SKY_BLUE,
-    "theme.phase.review": ORANGE,
-    "theme.phase.review_analysis": REDDISH_PURPLE,
-    "theme.phase.review_commit": BLUE,
-    "theme.status.error": f"bold {VERMILLION}",
-    "theme.status.failure": f"bold {VERMILLION}",
-    "theme.status.info": BLUE,
-    "theme.status.pending": "#B8A7E8",
-    "theme.status.running": SKY_BLUE,
-    "theme.status.skipped": YELLOW,
-    "theme.status.success": f"bold {BLUISH_GREEN}",
-    "theme.status.warning": f"bold {ORANGE}",
-    "theme.text.dim_italic": f"italic {REDDISH_PURPLE}",
-    "theme.text.emphasis": f"bold {SKY_BLUE}",
-    "theme.text.muted": "#178383",
-    "theme.banner.ascii": f"bold {SKY_BLUE}",
-    "theme.banner.border": SKY_BLUE,
-    "theme.banner.tagline": "#178383",
-    "theme.banner.title": f"bold {SKY_BLUE}",
-    "theme.banner.version": f"bold {BLUISH_GREEN}",
-    "theme.banner.welcome": f"bold {SKY_BLUE}",
-    "theme.outer_dev": f"bold {SKY_BLUE}",
-    "theme.inner_analysis": REDDISH_PURPLE,
-    "theme.review_pass": f"bold {BLUISH_GREEN}",
-    "theme.review_fail": f"bold {VERMILLION}",
-    "theme.proceed": f"bold {BLUISH_GREEN}",
-    "theme.revise": f"bold {ORANGE}",
-    "theme.status.bar_marker": "#178383",
-    "theme.status.path_marker": "#178383",
-    "theme.status.path": "#178383",
-    "theme.display.chrome": _DISPLAY_STYLES["chrome"],
-    "theme.display.agent_text": _DISPLAY_STYLES["agent_text"],
-    "theme.display.elision": _DISPLAY_STYLES["elision"],
-    "theme.diff.added": _DISPLAY_STYLES["diff_added"],
-    "theme.diff.removed": _DISPLAY_STYLES["diff_removed"],
-}
+def _build_theme_styles(palette: Mapping[str, str]) -> dict[str, str]:
+    disp = _build_display_styles(palette)
+    return {
+        "theme.level.info": disp["agent_text"],
+        "theme.level.warn": f"bold {palette['warning']}",
+        "theme.level.success": f"bold {palette['success']}",
+        "theme.level.error": f"bold {palette['error']}",
+        "theme.level.milestone": f"bold {palette['info']}",
+        "theme.cat.meta": disp["chrome"],
+        "theme.cat.cont": disp["agent_text"],
+        "theme.cat.out": disp["agent_text"],
+        "theme.log.error": f"bold {palette['error']}",
+        "theme.log.info": palette["info"],
+        "theme.log.milestone": f"bold {palette['info']}",
+        "theme.log.success": f"bold {palette['success']}",
+        "theme.log.warn": f"bold {palette['warning']}",
+        "theme.panel.border": palette["info"],
+        "theme.panel.title": f"bold {palette['info']}",
+        "theme.phase.commit": palette["info"],
+        "theme.phase.complete": f"bold {palette['success']}",
+        "theme.phase.development": palette["success"],
+        "theme.phase.development_analysis": palette["analysis"],
+        "theme.phase.development_commit": palette["info"],
+        "theme.phase.failed": f"bold {palette['error']}",
+        "theme.phase.fix": palette["error"],
+        "theme.phase.planning": palette["info"],
+        "theme.phase.review": palette["warning"],
+        "theme.phase.review_analysis": palette["analysis"],
+        "theme.phase.review_commit": palette["info"],
+        "theme.status.error": f"bold {palette['error']}",
+        "theme.status.failure": f"bold {palette['error']}",
+        "theme.status.info": palette["info"],
+        "theme.status.pending": palette["pending"],
+        "theme.status.running": palette["running"],
+        "theme.status.skipped": palette["skipped"],
+        "theme.status.success": f"bold {palette['success']}",
+        "theme.status.warning": f"bold {palette['warning']}",
+        "theme.text.dim_italic": f"italic {palette['analysis']}",
+        "theme.text.emphasis": f"bold {palette['info']}",
+        "theme.text.muted": palette["muted"],
+        "theme.banner.ascii": f"bold {palette['info']}",
+        "theme.banner.border": palette["info"],
+        "theme.banner.tagline": palette["muted"],
+        "theme.banner.title": f"bold {palette['info']}",
+        "theme.banner.version": f"bold {palette['success']}",
+        "theme.banner.welcome": f"bold {palette['info']}",
+        "theme.outer_dev": f"bold {palette['info']}",
+        "theme.inner_analysis": palette["analysis"],
+        "theme.review_pass": f"bold {palette['success']}",
+        "theme.review_fail": f"bold {palette['error']}",
+        "theme.proceed": f"bold {palette['success']}",
+        "theme.revise": f"bold {palette['warning']}",
+        "theme.status.bar_marker": palette["muted"],
+        "theme.status.path_marker": palette["muted"],
+        "theme.status.path": palette["muted"],
+        "theme.display.chrome": disp["chrome"],
+        "theme.display.agent_text": disp["agent_text"],
+        "theme.display.elision": disp["elision"],
+        "theme.diff.added": disp["diff_added"],
+        "theme.diff.removed": disp["diff_removed"],
+    }
+
+
+_THEME_STYLES: Final[dict[str, str]] = _build_theme_styles(_pal_dark)
+_THEME_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = _build_theme_styles(_pal_light)
+_THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = _build_theme_styles(_pal_unknown)
 
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
-
-# Semantic chrome has its own light-background palette. These roles are used by
-# banners, panels, phase rules, tables, and completion summaries, so resolving
-# only status labels would leave large parts of a light terminal illegible.
-# Keep role names stable: renderers select meaning, while this module selects
-# the contrast-tested pigment for the resolved surface.
-_THEME_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
-    **_THEME_STYLES,
-    "theme.level.info": "#002B5C",
-    "theme.level.success": "bold #006B4D",
-    "theme.level.warn": "bold #A06A00",
-    "theme.level.error": "bold #993F00",
-    "theme.level.milestone": "bold #1F5F8B",
-    "theme.cat.meta": "#006A6A",
-    "theme.cat.cont": "#002B5C",
-    "theme.cat.out": "#002B5C",
-    "theme.log.error": "bold #993F00",
-    "theme.log.info": "#002B5C",
-    "theme.log.milestone": "bold #1F5F8B",
-    "theme.log.success": "bold #006B4D",
-    "theme.log.warn": "bold #A06A00",
-    "theme.panel.border": "#1F5F8B",
-    "theme.panel.title": "bold #1F5F8B",
-    "theme.phase.commit": "#002B5C",
-    "theme.phase.complete": "bold #006B4D",
-    "theme.phase.development": "#006B4D",
-    "theme.phase.development_analysis": "#6B2C6E",
-    "theme.phase.development_commit": "#002B5C",
-    "theme.phase.failed": "bold #993F00",
-    "theme.phase.fix": "#993F00",
-    "theme.phase.planning": "#1F5F8B",
-    "theme.phase.review": "#A06A00",
-    "theme.phase.review_analysis": "#6B2C6E",
-    "theme.phase.review_commit": "#002B5C",
-    "theme.status.error": "bold #993F00",
-    "theme.status.failure": "bold #993F00",
-    "theme.status.info": "#002B5C",
-    "theme.status.pending": "#555555",
-    "theme.status.running": "#1F5F8B",
-    "theme.status.skipped": "#5A6200",
-    "theme.status.success": "bold #006B4D",
-    "theme.status.warning": "bold #A06A00",
-    "theme.text.dim_italic": "italic #6B2C6E",
-    "theme.text.emphasis": "bold #1F5F8B",
-    "theme.text.muted": "#006A6A",
-    "theme.banner.ascii": "bold #1F5F8B",
-    "theme.banner.border": "#1F5F8B",
-    "theme.banner.tagline": "#006A6A",
-    "theme.banner.title": "bold #1F5F8B",
-    "theme.banner.version": "bold #006B4D",
-    "theme.banner.welcome": "bold #1F5F8B",
-    "theme.outer_dev": "bold #1F5F8B",
-    "theme.inner_analysis": "#6B2C6E",
-    "theme.review_pass": "bold #006B4D",
-    "theme.review_fail": "bold #993F00",
-    "theme.proceed": "bold #006B4D",
-    "theme.revise": "bold #A06A00",
-    "theme.status.bar_marker": "#006A6A",
-    "theme.status.path_marker": "#006A6A",
-    "theme.status.path": "#006A6A",
-    "theme.display.chrome": _DISPLAY_STYLES_ON_LIGHT_BG["chrome"],
-    "theme.display.agent_text": _DISPLAY_STYLES_ON_LIGHT_BG["agent_text"],
-    "theme.display.elision": _DISPLAY_STYLES_ON_LIGHT_BG["elision"],
-    "theme.diff.added": _DISPLAY_STYLES_ON_LIGHT_BG["diff_added"],
-    "theme.diff.removed": _DISPLAY_STYLES_ON_LIGHT_BG["diff_removed"],
-}
 RALPH_THEME_ON_LIGHT_BG: Final[Theme] = Theme(_THEME_STYLES_ON_LIGHT_BG)
-
-# Unknown backgrounds use fixed mid-luminance pigments readable on black and white.
-_THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
-    **_THEME_STYLES,
-    "theme.level.info": "bold #178383",
-    "theme.level.success": "bold #13884E",
-    "theme.level.warn": "bold #BA5D00",
-    "theme.level.error": "bold #B05C5C",
-    "theme.level.milestone": "bold #0074E8",
-    "theme.cat.meta": "#178383",
-    "theme.cat.cont": "#0074E8",
-    "theme.cat.out": "#0074E8",
-    "theme.log.error": "bold #B05C5C",
-    "theme.log.info": "#178383",
-    "theme.log.milestone": "bold #0074E8",
-    "theme.log.success": "bold #13884E",
-    "theme.log.warn": "bold #BA5D00",
-    "theme.panel.border": "#0074E8",
-    "theme.panel.title": "bold #0074E8",
-    "theme.phase.commit": "#0074E8",
-    "theme.phase.complete": "bold #13884E",
-    "theme.phase.development": "#13884E",
-    "theme.phase.development_analysis": "#9060C0",
-    "theme.phase.development_commit": "#0074E8",
-    "theme.phase.failed": "bold #B05C5C",
-    "theme.phase.fix": "#B05C5C",
-    "theme.phase.planning": "#0074E8",
-    "theme.phase.review": "#BA5D00",
-    "theme.phase.review_analysis": "#9060C0",
-    "theme.phase.review_commit": "#0074E8",
-    "theme.status.error": "bold #B05C5C",
-    "theme.status.failure": "bold #B05C5C",
-    "theme.status.info": "#178383",
-    "theme.status.pending": "#757575",
-    "theme.status.running": "#0074E8",
-    "theme.status.skipped": "#79773A",
-    "theme.status.success": "bold #13884E",
-    "theme.status.warning": "bold #BA5D00",
-    "theme.text.dim_italic": "italic #9060C0",
-    "theme.text.emphasis": "bold #0074E8",
-    "theme.text.muted": "#178383",
-    "theme.banner.ascii": "bold #0074E8",
-    "theme.banner.border": "#0074E8",
-    "theme.banner.tagline": "#178383",
-    "theme.banner.title": "bold #0074E8",
-    "theme.banner.version": "bold #13884E",
-    "theme.banner.welcome": "bold #0074E8",
-    "theme.outer_dev": "bold #0074E8",
-    "theme.inner_analysis": "#9060C0",
-    "theme.review_pass": "bold #13884E",
-    "theme.review_fail": "bold #B05C5C",
-    "theme.proceed": "bold #13884E",
-    "theme.revise": "bold #BA5D00",
-    "theme.status.bar_marker": "#178383",
-    "theme.status.path_marker": "#178383",
-    "theme.status.path": "#178383",
-    "theme.display.chrome": _DISPLAY_STYLES_ON_UNKNOWN_BG["chrome"],
-    "theme.display.agent_text": _DISPLAY_STYLES_ON_UNKNOWN_BG["agent_text"],
-    "theme.display.elision": _DISPLAY_STYLES_ON_UNKNOWN_BG["elision"],
-    "theme.diff.added": _DISPLAY_STYLES_ON_UNKNOWN_BG["diff_added"],
-    "theme.diff.removed": _DISPLAY_STYLES_ON_UNKNOWN_BG["diff_removed"],
-}
 RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
 def _fresh_style(style: str) -> Style:
@@ -514,8 +334,12 @@ def _fresh_theme(styles: Mapping[str, str]) -> Theme:
     return Theme({name: _fresh_style(style) for name, style in styles.items()})
 
 
-def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
+def theme_for_background(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> Theme:
     """Return a new theme so ANSI caching cannot downgrade another console."""
+    if surface_hex is not None:
+        return _fresh_theme(_build_theme_styles(_palette.resolve_palette(surface_hex)))
     if terminal_bg_is_light is True:
         return _fresh_theme(_THEME_STYLES_ON_LIGHT_BG)
     if terminal_bg_is_light is False:
@@ -686,6 +510,18 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
     )
 
 
+def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
+    """Resolve the measured or explicitly declared terminal background surface hex."""
+    explicit = env.get("RALPH_TERMINAL_BG", "").strip()
+    if explicit.startswith("#"):
+        return explicit
+    from ralph.display._terminal_bg_query import query_terminal_background_hex
+
+    return query_terminal_background_hex(
+        timeout=_terminal_background_timeout_seconds(env)
+    )
+
+
 #: Fixed-RGB syntax palettes for each terminal background.
 SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.dark())
 SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.light())
@@ -699,13 +535,35 @@ _PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = "#101417"
 _PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = "#F7F9FB"
 
 
-def preview_foreground_for_background(terminal_bg_is_light: bool | None) -> str:
-    """Return the fixed body foreground for an owned or transparent preview.
+def _derive_preview_background(surface_hex: str) -> str:
+    r, g, b = _palette.hex_to_rgb(surface_hex)
+    lab_l, a, b_lab = _palette.rgb_to_oklab(r, g, b)
+    is_light = _palette.relative_luminance(r, g, b) > _LIGHT_BG_LUMINANCE_CROSSOVER
+    new_l = lab_l - 0.025 if is_light else lab_l + 0.035
+    new_l = max(0.0, min(1.0, new_l))
+    pr, pg, pb = _palette.oklab_to_rgb(new_l, a, b_lab)
+    return _palette.rgb_to_hex(pr, pg, pb)
 
-    The transparent unknown-background fallback remains readable against both
-    black and white terminals; known preview surfaces use their corresponding
-    syntax default foreground.
-    """
+
+def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
+    r, g, b = _palette.hex_to_rgb(surface_hex)
+    lab_l, a, b_lab = _palette.rgb_to_oklab(r, g, b)
+    is_light = _palette.relative_luminance(r, g, b) > _LIGHT_BG_LUMINANCE_CROSSOVER
+    new_l = lab_l - 0.025 if is_light else lab_l + 0.035
+    new_l = max(0.0, min(1.0, new_l))
+    rem_r, rem_g, rem_b = _palette.oklab_to_rgb(new_l, a + 0.012, b_lab)
+    add_r, add_g, add_b = _palette.oklab_to_rgb(new_l, a - 0.012, b_lab + 0.008)
+    return _palette.rgb_to_hex(rem_r, rem_g, rem_b), _palette.rgb_to_hex(add_r, add_g, add_b)
+
+
+
+def preview_foreground_for_background(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> str:
+    """Return the body foreground for an owned or transparent preview."""
+    if surface_hex is not None:
+        p = _palette.resolve_palette(surface_hex)
+        return p["chrome"]
     if terminal_bg_is_light is True:
         return "#202020"
     if terminal_bg_is_light is False:
@@ -713,13 +571,12 @@ def preview_foreground_for_background(terminal_bg_is_light: bool | None) -> str:
     return "#757575"
 
 
-def preview_background_for_background(terminal_bg_is_light: bool | None) -> str:
-    """Return the complete owned preview surface for a resolved background.
-
-    Known backgrounds use a fixed fill shared by code, markdown, and diff
-    previews. The unknown path returns Rich's transparent ``default`` sentinel
-    because no terminal surface can be safely assumed.
-    """
+def preview_background_for_background(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> str:
+    """Return the complete owned preview surface for a resolved background."""
+    if surface_hex is not None:
+        return _derive_preview_background(surface_hex)
     if terminal_bg_is_light is True:
         return _PREVIEW_BACKGROUND_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -734,8 +591,12 @@ _DIFF_REMOVED_FILL_ON_LIGHT_BG: Final[str] = "#F5F1F0"
 _DIFF_ADDED_FILL_ON_LIGHT_BG: Final[str] = "#F0F4F5"
 
 
-def display_styles_for_background(terminal_bg_is_light: bool | None) -> Mapping[str, str]:
-    """Return fixed-RGB meaning pigments for named console categories."""
+def display_styles_for_background(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> Mapping[str, str]:
+    """Return meaning pigments for named console categories."""
+    if surface_hex is not None:
+        return _build_display_styles(_palette.resolve_palette(surface_hex))
     if terminal_bg_is_light is True:
         return _DISPLAY_STYLES_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -743,14 +604,20 @@ def display_styles_for_background(terminal_bg_is_light: bool | None) -> Mapping[
     return _DISPLAY_STYLES_ON_UNKNOWN_BG
 
 
-def diff_token_foregrounds(terminal_bg_is_light: bool | None) -> tuple[str, str]:
+def diff_token_foregrounds(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> tuple[str, str]:
     """Return deleted and inserted foregrounds distinct from failure/success states."""
-    styles = display_styles_for_background(terminal_bg_is_light)
+    styles = display_styles_for_background(terminal_bg_is_light, surface_hex=surface_hex)
     return styles["diff_removed"], styles["diff_added"]
 
 
-def diff_fill_styles(terminal_bg_is_light: bool | None) -> tuple[str, str] | None:
+def diff_fill_styles(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> tuple[str, str] | None:
     """Return derived removed/added diff fills, or transparent for unknown backgrounds."""
+    if surface_hex is not None:
+        return _derive_diff_fills(surface_hex)
     if terminal_bg_is_light is True:
         return _DIFF_REMOVED_FILL_ON_LIGHT_BG, _DIFF_ADDED_FILL_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -758,8 +625,12 @@ def diff_fill_styles(terminal_bg_is_light: bool | None) -> tuple[str, str] | Non
     return None
 
 
-def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxTheme:
-    """Return the fixed-RGB syntax theme resolved for this background."""
+def syntax_theme_for_background(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> SyntaxTheme:
+    """Return the syntax theme resolved for this background."""
+    if surface_hex is not None:
+        return PygmentsSyntaxTheme(SyntaxThemes.for_surface(surface_hex))
     if terminal_bg_is_light is True:
         return SYNTAX_THEME_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -767,31 +638,12 @@ def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxThem
     return SYNTAX_THEME_ON_UNKNOWN_BG
 
 
-STATUS_STYLES_ON_UNKNOWN_BG: Final[dict[str, tuple[str, str, str]]] = {
-    "success": ("bold #13884E", "\u2713", "PASS"),
-    "running": ("bold #0074E8", "\u25d0", "RUN"),
-    "warning": ("bold #BA5D00", "\u26a0", "WARN"),
-    "error": ("bold #B05C5C", "\u2717", "FAIL"),
-    "skipped": ("bold #79773A", "\u25cb", "SKIP"),
-    "pending": ("bold #757575", "\u25cb", "WAIT"),
-    "info": ("bold #178383", "\u2139", "INFO"),
-}
-
-
-def pick_status_styles(terminal_bg_is_light: bool | None) -> dict[str, tuple[str, str, str]]:
-    """Return the status style table for the given background.
-
-    Maps the boolean/None flag to the matching palette table. A
-    ``None`` selects the unknown-background table, whose colours clear
-    the contrast floor on both black and white terminals.
-
-    Parameters:
-        terminal_bg_is_light: ``True`` for light backgrounds,
-            ``False`` for dark, ``None`` for unknown.
-
-    Returns:
-        A mapping from status name to ``(label, glyph, style)``.
-    """
+def pick_status_styles(
+    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+) -> dict[str, tuple[str, str, str]]:
+    """Return the status style table for the given background."""
+    if surface_hex is not None:
+        return _build_status_styles(_palette.resolve_palette(surface_hex))
     if terminal_bg_is_light is True:
         return STATUS_STYLES_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -914,35 +766,10 @@ def make_console(
     width: int | None = None,
     height: int | None = None,
     terminal_bg_is_light: bool | None = None,
+    surface_hex: str | None = None,
 ) -> Console:
-    """Construct a Rich ``Console`` wired with the Ralph theme.
-
-    Centralizes the console construction so every display
-    surface inherits the same theme, ``highlight=False`` (which
-    keeps plaintext inside tool output uncoloured), and the
-    same ``no_color`` / ``force_terminal`` / ``width`` resolver
-    semantics. Rich interprets ``color_system=None`` as no ANSI
-    output, so Ralph resolves an unspecified system to ``"truecolor"``;
-    use ``no_color=True`` to disable colour. Tests and runtime code
-    use this helper to keep the colour behaviour consistent.
-
-    Parameters:
-        file: Optional output stream.
-        no_color: When ``True``, strip colour from the console.
-        force_terminal: When ``True``, treat the console as a
-            TTY even when it is not (useful for tests).
-        color_system: Rich colour-system override; omitted resolves to ``"truecolor"``.
-        width: Override the console width (default: auto-detect).
-        height: Override the console height (default: auto-detect).
-        terminal_bg_is_light: Resolved terminal background for semantic roles.
-
-    Returns:
-        A ``rich.console.Console`` instance with the Ralph theme.
-    """
+    """Construct a Rich ``Console`` wired with the Ralph theme."""
     resolved_no_color = no_color if no_color is not None else False
-    # A colour system must remain concrete by default: Rich treats ``None`` as
-    # monochrome even when the destination is a capable TTY or a forced
-    # transcript. NO_COLOR is the only intentional path to that state.
     resolved_force_terminal = force_terminal if force_terminal is not None else True
     resolved_color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = (
         color_system if color_system is not None else "truecolor"
@@ -951,7 +778,7 @@ def make_console(
         resolved_color_system = None
     return Console(
         file=file,
-        theme=theme_for_background(terminal_bg_is_light),
+        theme=theme_for_background(terminal_bg_is_light, surface_hex=surface_hex),
         no_color=resolved_no_color,
         force_terminal=resolved_force_terminal,
         color_system=resolved_color_system,
@@ -963,17 +790,12 @@ def make_console(
 
 __all__ = [
     "ASCII_GLYPHS",
-    "BLACK",
-    "BLUE",
-    "BLUISH_GREEN",
     "IDENTITY_PALETTE",
     "IDENTITY_PALETTE_ON_LIGHT_BG",
     "IDENTITY_PALETTE_ON_UNKNOWN_BG",
-    "ORANGE",
     "RALPH_THEME",
     "RALPH_THEME_ON_LIGHT_BG",
-    "REDDISH_PURPLE",
-    "SKY_BLUE",
+    "RALPH_THEME_ON_UNKNOWN_BG",
     "STATUS_STYLES",
     "STATUS_STYLES_ON_LIGHT_BG",
     "STATUS_STYLES_ON_UNKNOWN_BG",
@@ -982,8 +804,6 @@ __all__ = [
     "SYNTAX_THEME_ON_LIGHT_BG",
     "SYNTAX_THEME_ON_UNKNOWN_BG",
     "UNICODE_GLYPHS",
-    "VERMILLION",
-    "YELLOW",
     # Backwards-compatible CVD-matrix aliases (see imports near top).
     "_DEUTERANOPIA_MATRIX",
     "_DIFF_ADDED_FILL_ON_DARK_BG",
@@ -995,6 +815,7 @@ __all__ = [
     "_normalize_identity_name",
     "background_hex_is_light",
     "detect_glyph_capability",
+    "detect_terminal_background_hex",
     "detect_terminal_background_is_light",
     "diff_fill_styles",
     "diff_token_foregrounds",

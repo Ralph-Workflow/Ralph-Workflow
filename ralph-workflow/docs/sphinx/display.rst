@@ -46,9 +46,9 @@ matrix is an implementation input rather than a post-hoc description:
 
 Every fixed foreground clears WCAG 4.5:1 against its actual surface. The
 meaning tier colours chrome, agent content, running, waiting, warning, failure,
-success, elision, and identity with fixed RGB resolved from the detected or
-operator-declared background; banners, panels, tables, phase rules, and the
-closing summary use that same resolved semantic theme. Syntax and diff remain a
+success, elision, and identity with colors solved against the detected or
+operator-declared background surface; banners, panels, tables, phase rules, and the
+closing summary use that same surface-derived semantic theme. Syntax and diff remain a
 separate content tier.
 Semantic states retain a glyph or label when colour is unavailable. ``NO_COLOR``
 wins over ``FORCE_COLOR``; forced colour may remain in render-capable redirected
@@ -64,11 +64,13 @@ fold at cell boundaries rather than silently clipping their recovery tail.
 
 Syntax and diff previews use complete background-aware token palettes for
 comments, keywords and types, names and functions, strings, numbers, operators,
-punctuation, and diff polarity. Known dark and light terminals select the
-matching contrast-tested palette; unknown backgrounds use the dual-safe
-fallback. Preview fills are opt-in and, when used, cover the complete preview
+punctuation, and diff polarity, solved against the preview surface. Known dark and
+light terminals or measured surfaces select the matching surface-derived palette;
+unknown backgrounds use the dual-safe fallback targeting ``[0.175, 0.1833]`` luminance.
+Preview fills are opt-in and, when used, cover the complete preview
 surface—including gutters, source rows, and padding—never a partial or
 overextended band.
+
 
 The DI invariant
 ----------------
@@ -329,7 +331,7 @@ visual section breaks (a ``───`` rule in Unicode mode, an ASCII ``---``
 fallback otherwise) between run-start, phase-close, and run-end blocks.
 The rule glyph is sourced from ``ralph/display/theme.py`` via
 :meth:`~ralph.display.context.DisplayContext.glyph_for` so it is
-substitutable per the existing Okabe-Ito discipline. Quiet mode
+substitutable per the Monokai-derived hue anchor discipline. Quiet mode
 (``is_quiet=True``) short-circuits every emit method that owns a banner
 so no banner or log line leaks when
 :func:`~ralph.display.parallel_display.resolve_active_display` is called
@@ -379,7 +381,8 @@ environment after that.
    * - ``FORCE_COLOR``
      - Any value forces color on render-capable non-TTY streams.
    * - ``RALPH_TERMINAL_BG``
-     - Declares the terminal background as ``light`` or ``dark`` (or a ``#RRGGBB`` value) when automatic detection is unavailable. This selects the corresponding fixed-RGB semantic and preview palette; an unresolved background uses the dual-safe fallback.
+     - Declares the terminal background as ``light`` or ``dark`` (or a ``#RRGGBB`` surface) when automatic detection is unavailable. This provides the surface against which the semantic and preview palette is solved; an unresolved background uses the dual-safe fallback.
+
    * - ``RALPH_TERMINAL_BG_TIMEOUT_MS``
      - A positive integer override for the bounded OSC 11 background-query deadline; defaults to 100 ms. Invalid or non-positive values retain the 100 ms deadline.
 

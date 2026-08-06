@@ -195,7 +195,12 @@ def test_visual_floor_regression_measured_dark_background_emits_vivid_activity_c
             make_event_for_emit(ActivityEventKind.ERROR, "operator-visible failure"), ctx=context
         )
     )
-    assert "38;2;213;94;0m" in stream.getvalue()
+    error_hex = theme._extract_hex(pick_status_styles(False)["error"][0])
+    assert error_hex is not None
+    r, g, b = theme._palette.hex_to_rgb(error_hex)
+    expected_escape = f"38;2;{round(r * 255)};{round(g * 255)};{round(b * 255)}m"
+    assert expected_escape in stream.getvalue()
+
 
 
 def test_visual_floor_error_event_resolves_identity_against_light_background() -> None:
@@ -356,6 +361,33 @@ def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surfac
         )
 
 
+def test_visual_floor_syntax_tokens_on_undetermined_background_clear_contrast_dual_safe() -> None:
+    """S-5: every foreground in SyntaxThemes.unknown() clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
+    foregrounds = {
+        foreground
+        for color in SyntaxThemes.unknown().styles.values()
+        if isinstance(color, str) and (foreground := theme._extract_hex(color))
+    }
+    assert foregrounds
+    for fg in foregrounds:
+        assert theme.contrast_ratio(fg, "#000000") >= CONTRAST_FLOOR
+        assert theme.contrast_ratio(fg, "#FFFFFF") >= CONTRAST_FLOOR
+
+
+def test_visual_floor_markdown_palette_on_undetermined_background_clears_contrast_dual_safe() -> None:
+    """S-5: every entry of _markdown_theme._PALETTES[None] clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
+    from importlib import import_module
+
+    _markdown_theme = import_module("ralph._markdown_theme")
+
+    palette = _markdown_theme._PALETTES[None]
+    assert palette
+    for hex_code in palette:
+        assert theme.contrast_ratio(hex_code, "#000000") >= CONTRAST_FLOOR
+        assert theme.contrast_ratio(hex_code, "#FFFFFF") >= CONTRAST_FLOOR
+
+
+
 def test_visual_floor_bad_syntax_foreground_fixture_is_rejected() -> None:
     class BadStyle:
         styles: ClassVar[dict[object, str]] = {Comment: "#222222"}
@@ -461,14 +493,17 @@ def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
     )
 
     code = "def render() -> int:\n    return 1\n"
-    syntax = Syntax(code, "python", background_color="#101417", theme="monokai")
+    bg_color = preview_background_for_background(False)
+    syntax = Syntax(code, "python", background_color=bg_color, theme="monokai")
     console.print(syntax)
     rendered = stream.getvalue()
 
     # Sanity: production preview paints every row.
-    preview_fill = "48;2;16;20;23"
+    r, g, b = theme._palette.hex_to_rgb(bg_color)
+    preview_fill = f"48;2;{round(r * 255)};{round(g * 255)};{round(b * 255)}"
     production_count = rendered.count(preview_fill)
     assert production_count >= 2
+
 
     # Mutation: drop the fill from one source row. The fill count must fall
     # below the production baseline; if it doesn't, the partial-fill check
@@ -624,5 +659,56 @@ def _cvd_separability_check(
             raise AssertionError(
                 f"pigments {pigments!r} collapse under {matrix_name} simulation"
             )
+
+
+def _check_surface_contrast_failures(surface_hex: str) -> list[str]:
+    is_light = surface_hex == "#FAF8F5"
+    failures: list[str] = []
+
+    resolved_theme = theme.theme_for_background(is_light, surface_hex=surface_hex)
+    for role_name in theme._THEME_STYLES:
+        style_obj = resolved_theme.styles.get(role_name)
+        if style_obj is None:
+            continue
+        foreground = theme._extract_hex(str(style_obj))
+        if not foreground:
+            continue
+        ratio = theme.contrast_ratio(foreground, surface_hex)
+        if ratio < CONTRAST_FLOOR:
+            failures.append(f"theme_for_background[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
+
+    display_styles = theme.display_styles_for_background(is_light, surface_hex=surface_hex)
+    for role_name, style_str in display_styles.items():
+        foreground = theme._extract_hex(style_str)
+        if not foreground:
+            continue
+        ratio = theme.contrast_ratio(foreground, surface_hex)
+        if ratio < CONTRAST_FLOOR:
+            failures.append(f"display_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
+
+    status_styles = theme.pick_status_styles(is_light, surface_hex=surface_hex)
+    for role_name, (style_str, _glyph, _label) in status_styles.items():
+        foreground = theme._extract_hex(style_str)
+        if not foreground:
+            continue
+        ratio = theme.contrast_ratio(foreground, surface_hex)
+        if ratio < CONTRAST_FLOOR:
+            failures.append(f"pick_status_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
+
+    return failures
+
+
+def test_visual_floor_all_resolvers_clear_contrast_on_realistic_surfaces() -> None:
+    """S-1 regression: assert every resolved role clears CONTRAST_FLOOR on realistic terminal surfaces."""
+    realistic_surfaces = ("#2D2A2E", "#1E1E1E", "#FAF8F5")
+    failures: list[str] = []
+
+    for surface_hex in realistic_surfaces:
+        failures.extend(_check_surface_contrast_failures(surface_hex))
+
+    if failures:
+        raise AssertionError(f"{len(failures)} contrast failures on realistic surfaces:\n" + "\n".join(failures))
+
+
 
 

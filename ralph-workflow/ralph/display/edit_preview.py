@@ -58,7 +58,7 @@ Design:
   color is disabled.
 
 * A bounded preview cap (``_MAX_PREVIEW_LINES = 40``) trims long
-  content and appends a muted ``\u2026 (N more lines)`` elision line
+  content and appends a muted ``… (N more lines)`` elision line
   so the operator knows the file is bigger than what is shown.
 
 * Zero hex color literals: the new module references named
@@ -85,7 +85,11 @@ by the display owner via
 :func:`ralph.display.theme.detect_terminal_background_is_light` -- which
 asks the terminal for its actual background colour rather than assuming
 one -- and threaded in as ``terminal_bg_is_light``; this module stays
-pure and reads no env.
+pure and reads no env. An optional ``surface_hex`` carries the actual
+measured terminal background so every colour solves against the real
+surface instead of only the canonical ``#000000`` / ``#FFFFFF`` endpoints;
+``None`` keeps the legacy fixed-endpoint behaviour for the given
+``terminal_bg_is_light`` value.
 
 The diff ``-`` / ``+`` markers are resolved the same way, through
 :func:`ralph.display.theme.pick_status_styles`, so the marker colours
@@ -109,11 +113,21 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 from ralph._markdown_theme import markdown_theme_context
+from ralph.display._edit_preview_render import (
+    _ELISION_GLYPH,
+    _MAX_PREVIEW_LINES,
+    _MIN_RENDER_ROWS_FOR_BLOCK,
+    _binary_note,
+    _diff_marker_style,
+    _elision_line,
+    _elision_text,
+    _make_syntax,
+    _safe_lines,
+)
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
-    diff_token_foregrounds,
     preview_background_for_background,
     preview_foreground_for_background,
     syntax_theme_for_background,
@@ -126,30 +140,6 @@ if TYPE_CHECKING:
 #: longer ``mcp__ralph__`` prefix is checked first.
 _MCP_RALPH_PREFIX: Final[str] = "mcp__ralph__"
 _RA_PREFIX: Final[str] = "ralph."
-
-#: Maximum number of lines a preview may show. Anything longer is
-#: truncated and replaced with a muted elision line so the preview
-#: stays scannable and the panel cannot grow without bound.
-_MAX_PREVIEW_LINES: Final[int] = 40
-
-#: A diff block needs one marker row and at least one source row.
-_MIN_RENDER_ROWS_FOR_BLOCK: Final[int] = 2
-
-#: Elision line shown when the content exceeds ``_MAX_PREVIEW_LINES``.
-#: Uses the Unicode horizontal-ellipsis glyph so the operator sees a
-#: clear truncation cue.
-_ELISION_GLYPH: Final[str] = "\u2026"
-
-#: Muted style used for the ``… (N more lines)`` elision line. It is an
-#: explicit semantic role, rather than a default-foreground fallback.
-_ELISION_STYLE: Final[str] = "theme.display.elision"
-
-
-def _diff_marker_style(removed: bool, *, terminal_bg_is_light: bool | None) -> str:
-    """Return the distinct resolved diff-polarity marker foreground."""
-    old_style, new_style = diff_token_foregrounds(terminal_bg_is_light)
-    return old_style if removed else new_style
-
 
 def _normalize_tool_name(name: str) -> str:
     """Strip the MCP / alias prefix and return the bare tool name."""
@@ -173,38 +163,6 @@ def _is_markdown_lexer(lexer_name: str) -> bool:
     must NOT wrap or indentation breaks.
     """
     return lexer_name.lower() in _MARKDOWN_LEXER_ALIASES
-
-
-def _safe_lines(content: str, *, max_lines: int) -> tuple[list[str], list[str], int | None]:
-    """Sanitize and middle-trim content into head, tail, and omitted count."""
-    sanitized = strip_terminal_control(content)
-    if not sanitized:
-        return [], [], None
-    raw_lines = sanitized.splitlines()
-    if len(raw_lines) <= max_lines:
-        return raw_lines, [], None
-    head_count = max_lines // 2
-    tail_count = max_lines - head_count
-    return raw_lines[:head_count], raw_lines[-tail_count:], len(raw_lines) - max_lines
-
-
-def _elision_line(omitted: int, glyph: str, overflow_ref: str | None, source: str) -> str:
-    """Return the shared count, size, and destination elision contract."""
-    noun = "line" if omitted == 1 else "lines"
-    citation = f" [see {overflow_ref}]" if overflow_ref else ""
-    return f"{glyph} ({omitted} more {noun} · {len(source.encode('utf-8'))} B){citation}"
-
-
-def _elision_text(
-    omitted: int, glyph: str = _ELISION_GLYPH, overflow_ref: str | None = None, source: str = ""
-) -> Text:
-    """Build a muted elision Text for the truncation marker."""
-    return Text(_elision_line(omitted, glyph, overflow_ref, source), style=_ELISION_STYLE)
-
-
-def _binary_note(content: str) -> Text | None:
-    """Return a safe note instead of rendering NUL-containing binary content."""
-    return Text("[binary content omitted]", style=_ELISION_STYLE) if "\x00" in content else None
 
 
 def preview_header(tool_name: str, path: str | None, *, glyphs_enabled: bool = True) -> Text:
@@ -308,19 +266,31 @@ class _BackgroundAwareCodeBlock(CodeBlock):
         node_info = str(cast("object", getattr(token, "info", "")) or "")
         candidate = cast("object", getattr(markdown, "terminal_bg_is_light", None))
         background = candidate if isinstance(candidate, bool) else None
-        return cls(node_info.partition(" ")[0] or "text", background)
+        surface_candidate = cast("object", getattr(markdown, "surface_hex", None))
+        surface_hex = surface_candidate if isinstance(surface_candidate, str) else None
+        return cls(node_info.partition(" ")[0] or "text", background, surface_hex)
 
-    def __init__(self, lexer_name: str, terminal_bg_is_light: bool | None) -> None:
+    def __init__(
+        self,
+        lexer_name: str,
+        terminal_bg_is_light: bool | None,
+        surface_hex: str | None = None,
+    ) -> None:
         self.lexer_name = lexer_name
         self.terminal_bg_is_light = terminal_bg_is_light
+        self.surface_hex = surface_hex
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         del console, options
         yield Syntax(
             str(self.text).rstrip(),
             self.lexer_name,
-            theme=syntax_theme_for_background(self.terminal_bg_is_light),
-            background_color=preview_background_for_background(self.terminal_bg_is_light),
+            theme=syntax_theme_for_background(
+                self.terminal_bg_is_light, surface_hex=self.surface_hex
+            ),
+            background_color=preview_background_for_background(
+                self.terminal_bg_is_light, surface_hex=self.surface_hex
+            ),
             padding=1,
         )
 
@@ -334,14 +304,25 @@ class _BackgroundAwareMarkdown(Markdown):
         "code_block": _BackgroundAwareCodeBlock,
     }
 
-    def __init__(self, markup: str, *, terminal_bg_is_light: bool | None) -> None:
+    def __init__(
+        self,
+        markup: str,
+        *,
+        terminal_bg_is_light: bool | None,
+        surface_hex: str | None = None,
+    ) -> None:
         super().__init__(markup)
         self.terminal_bg_is_light = terminal_bg_is_light
+        self.surface_hex = surface_hex
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        with markdown_theme_context(console, terminal_bg_is_light=self.terminal_bg_is_light):
+        with markdown_theme_context(
+            console, terminal_bg_is_light=self.terminal_bg_is_light, surface_hex=self.surface_hex
+        ):
             content = tuple(super().__rich_console__(console, options))
-        surface = preview_background_for_background(self.terminal_bg_is_light)
+        surface = preview_background_for_background(
+            self.terminal_bg_is_light, surface_hex=self.surface_hex
+        )
         # An expanded style wrapper paints every Markdown row (including prose,
         # padding, and fenced code) without introducing body-frame chrome. On
         # unknown backgrounds it remains transparent but still supplies a
@@ -350,7 +331,9 @@ class _BackgroundAwareMarkdown(Markdown):
             _MarkdownContent(content),
             pad=(0, 0),
             style=Style(
-                color=preview_foreground_for_background(self.terminal_bg_is_light),
+                color=preview_foreground_for_background(
+                    self.terminal_bg_is_light, surface_hex=self.surface_hex
+                ),
                 bgcolor=None if surface == "default" else surface,
             ),
             expand=True,
@@ -373,38 +356,14 @@ def render_markdown_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
 ) -> Markdown:
     """Return the shared, sanitized Markdown renderer used by display previews."""
     del width
     return _BackgroundAwareMarkdown(
-        strip_terminal_control(text), terminal_bg_is_light=terminal_bg_is_light
-    )
-
-
-def _make_syntax(
-    body: str,
-    lexer_name: str,
-    *,
-    is_markdown: bool,
-    terminal_bg_is_light: bool | None,
-    start_line: int = 1,
-    background_color: str | None = None,
-) -> Syntax:
-    """Build the themed ``Syntax`` renderable used by both preview shapes.
-
-    Known backgrounds are an owned, complete preview surface while the theme
-    uses fixed RGB token colours. Unknown backgrounds intentionally use the
-    dual-safe transparent fallback rather than terminal-defined ANSI slots.
-    """
-    return Syntax(
-        body,
-        lexer_name,
-        theme=syntax_theme_for_background(terminal_bg_is_light),
-        line_numbers=True,
-        word_wrap=is_markdown,
-        background_color=background_color
-        or preview_background_for_background(terminal_bg_is_light),
-        start_line=start_line,
+        strip_terminal_control(text),
+        terminal_bg_is_light=terminal_bg_is_light,
+        surface_hex=surface_hex,
     )
 
 
@@ -415,6 +374,7 @@ def _build_write_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
     start_line: int = 1,
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
@@ -436,13 +396,19 @@ def _build_write_preview(
     def render(lines: list[str], line: int) -> RenderableType:
         body = "\n".join(lines)
         return (
-            render_markdown_preview(body, width=width, terminal_bg_is_light=terminal_bg_is_light)
+            render_markdown_preview(
+                body,
+                width=width,
+                terminal_bg_is_light=terminal_bg_is_light,
+                surface_hex=surface_hex,
+            )
             if is_markdown
             else _make_syntax(
                 body,
                 lexer_name,
                 is_markdown=False,
                 terminal_bg_is_light=terminal_bg_is_light,
+                surface_hex=surface_hex,
                 start_line=line,
             )
         )
@@ -464,6 +430,7 @@ def _build_multiple_read_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None,
     glyphs_enabled: bool,
     overflow_ref: str | None,
 ) -> RenderableType | None:
@@ -500,6 +467,7 @@ def _build_multiple_read_preview(
             body,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
             start_line=line_start if isinstance(line_start, int) and line_start > 0 else 1,
             glyphs_enabled=glyphs_enabled,
             max_lines=shown,
@@ -550,6 +518,7 @@ def _build_search_result_preview(
     *,
     pattern: str | None,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None,
     glyphs_enabled: bool,
     overflow_ref: str | None,
 ) -> RenderableType | None:
@@ -589,11 +558,15 @@ def _build_search_result_preview(
             lexer_for_path(strip_terminal_control(path), safe),
             is_markdown=False,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
             start_line=line,
         )
         if pattern and (start := safe.find(pattern)) >= 0:
+            marker_style = _diff_marker_style(
+                False, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
+            )
             syntax.stylize_range(
-                f"bold {_diff_marker_style(False, terminal_bg_is_light=terminal_bg_is_light)}",
+                f"bold {marker_style}",
                 (1, start),
                 (1, start + len(pattern)),
                 style_before=False,
@@ -614,6 +587,7 @@ def _build_edit_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
     diff_fills: tuple[str, str] | None = None,
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
@@ -638,8 +612,12 @@ def _build_edit_preview(
         return None
     lexer_name = "markdown" if path is None else lexer_for_path(path or "")
     is_markdown = _is_markdown_lexer(lexer_name)
-    old_style = _diff_marker_style(True, terminal_bg_is_light=terminal_bg_is_light)
-    new_style = _diff_marker_style(False, terminal_bg_is_light=terminal_bg_is_light)
+    old_style = _diff_marker_style(
+        True, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
+    )
+    new_style = _diff_marker_style(
+        False, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
+    )
     old_fill, new_fill = diff_fills or (None, None)
     safe_edits = [
         (
@@ -701,6 +679,7 @@ def _build_edit_preview(
                         lexer_name,
                         is_markdown=is_markdown,
                         terminal_bg_is_light=terminal_bg_is_light,
+                        surface_hex=surface_hex,
                         start_line=start_line,
                         background_color=fill,
                     ),
@@ -714,6 +693,7 @@ def _build_edit_preview(
                         lexer_name,
                         is_markdown=is_markdown,
                         terminal_bg_is_light=terminal_bg_is_light,
+                        surface_hex=surface_hex,
                         start_line=tail_start,
                         background_color=fill,
                     )
@@ -739,6 +719,7 @@ def _build_content_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None,
     diff_fills: tuple[str, str] | None,
     overflow_ref: str | None,
     glyphs_enabled: bool,
@@ -772,6 +753,7 @@ def _build_content_preview(
                         lexer,
                         is_markdown=False,
                         terminal_bg_is_light=terminal_bg_is_light,
+                        surface_hex=surface_hex,
                         start_line=line_number,
                         background_color=(
                             old_fill
@@ -829,6 +811,7 @@ def _build_content_preview(
         content,
         width=width,
         terminal_bg_is_light=terminal_bg_is_light,
+        surface_hex=surface_hex,
         overflow_ref=overflow_ref,
         glyphs_enabled=glyphs_enabled,
         start_line=preview_start,
@@ -848,6 +831,7 @@ def build_edit_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
     diff_fills: tuple[str, str] | None = None,
@@ -875,6 +859,10 @@ def build_edit_preview(
             ``None`` selects the fixed-RGB palette proven safe on both
             black and white backgrounds; the value also selects the
             diff-marker styles.
+        surface_hex: The measured terminal background, when known.
+            When given, every colour solves against this real surface
+            instead of the canonical ``#000000`` / ``#FFFFFF`` endpoints
+            implied by ``terminal_bg_is_light``.
 
     Returns:
         A rich renderable, or ``None`` when there is nothing to preview.
@@ -921,6 +909,7 @@ def build_edit_preview(
             ],
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
             diff_fills=diff_fills,
             overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,
@@ -933,6 +922,7 @@ def build_edit_preview(
             content_obj,
             pattern=pattern if isinstance(pattern, str) else None,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
             glyphs_enabled=glyphs_enabled,
             overflow_ref=overflow_ref,
         )
@@ -941,6 +931,7 @@ def build_edit_preview(
             content_obj,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
             glyphs_enabled=glyphs_enabled,
             overflow_ref=overflow_ref,
         )
@@ -953,6 +944,7 @@ def build_edit_preview(
             start_line,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            surface_hex=surface_hex,
             diff_fills=diff_fills,
             overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,

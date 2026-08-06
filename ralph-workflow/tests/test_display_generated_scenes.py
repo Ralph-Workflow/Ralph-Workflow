@@ -9,6 +9,7 @@ import pytest
 from rich.cells import cell_len
 from rich.console import Console
 
+from ralph.display import theme
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import make_display_context
 from ralph.display.edit_preview import build_edit_preview
@@ -26,7 +27,11 @@ from ralph.display.scene_catalog import (
     render_scene,
     support_matrix,
 )
-from ralph.display.theme import preview_background_for_background
+from ralph.display.theme import (
+    display_styles_for_background,
+    pick_status_styles,
+    preview_background_for_background,
+)
 
 
 def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> None:
@@ -102,6 +107,12 @@ def test_generated_scene_renderer_requires_the_resolved_case_background() -> Non
     assert "(no plan artifact on disk)" in rendered
 
 
+def _rgb_escape(style_or_hex: str) -> str:
+    hex_code = theme._extract_hex(style_or_hex) or style_or_hex
+    r, g, b = theme._palette.hex_to_rgb(hex_code)
+    return f"38;2;{round(r * 255)};{round(g * 255)};{round(b * 255)}"
+
+
 def test_generated_scene_light_background_uses_the_light_semantic_theme() -> None:
     """S-3 regression: a light scene must not render through the unknown theme."""
     rendered = render_scene(
@@ -110,14 +121,16 @@ def test_generated_scene_light_background_uses_the_light_semantic_theme() -> Non
         terminal_bg_is_light=True,
     )
 
-    # ``theme.cat.meta`` is the first semantic carrier in every scene. Its
-    # light-background pigment is distinct from the dual-safe unknown fallback.
-    assert "\x1b[38;2;0;106;106mSCENE clean_run" in rendered
+    meta_hex = theme._extract_hex(str(theme.theme_for_background(True).styles["theme.cat.meta"]))
+    assert meta_hex is not None
+    r, g, b = theme._palette.hex_to_rgb(meta_hex)
+    expected_esc = f"\x1b[38;2;{round(r * 255)};{round(g * 255)};{round(b * 255)}mSCENE clean_run"
+    assert expected_esc in rendered
 
 
-@pytest.mark.parametrize(("background", "rgb"), ((False, "16;20;23"), (True, "247;249;251")))
+@pytest.mark.parametrize("background", (False, True))
 def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
-    background: bool, rgb: str
+    background: bool,
 ) -> None:
     """S-4: generated scenes render every preview row on the declared owned fill."""
     rendered = render_scene(
@@ -126,12 +139,12 @@ def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
         terminal_bg_is_light=background,
     )
 
-    preview_fill = f"\x1b[48;2;{rgb}m"
+    bg_hex = preview_background_for_background(background)
+    r, g, b = theme._palette.hex_to_rgb(bg_hex)
+    preview_fill = f"\x1b[48;2;{round(r * 255)};{round(g * 255)};{round(b * 255)}m"
     visible = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
 
-    assert preview_background_for_background(background) != "default"
-    # Both source rows own the same complete surface. A partial syntax-token
-    # fill would emit fewer than two row fills and leave the gutter/row band ragged.
+    assert bg_hex != "default"
     assert rendered.count(preview_fill) >= 2
     assert "def " in visible
     assert "return len(value)" in visible
@@ -169,22 +182,34 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
 
 def test_generated_scene_colours_every_named_semantic_category() -> None:
     """S-3 regression: named categories have a non-default foreground on their real surface."""
+    meta_esc = _rgb_escape(str(theme.theme_for_background(None).styles["theme.cat.meta"]))
+    agent_esc = _rgb_escape(display_styles_for_background(None)["agent_text"])
+    chrome_esc = _rgb_escape(display_styles_for_background(None)["chrome"])
+    success_esc = _rgb_escape(pick_status_styles(None)["success"][0])
+    elision_esc = _rgb_escape(display_styles_for_background(None)["elision"])
+    diff_rem_esc = _rgb_escape(display_styles_for_background(None)["diff_removed"])
+    diff_add_esc = _rgb_escape(display_styles_for_background(None)["diff_added"])
+    error_esc = _rgb_escape(pick_status_styles(None)["error"][0])
+    warning_esc = _rgb_escape(pick_status_styles(None)["warning"][0])
+
+
     cases = (
-        ("first_screen", (("SCENE first_screen", "38;2;23;131;131"),)),
+        ("first_screen", (("SCENE first_screen", meta_esc),)),
         ("clean_run", (
-            ("implemented Unicode-safe output", "38;2;23;131;131"),
-            ("waiting for an external review response", "38;2;23;131;131"),
+            ("implemented Unicode-safe output", agent_esc),
+            ("waiting for an external review response", agent_esc),
         )),
         ("burst", (
-            ("edit_file path=café-00.py", "38;2;0;116;232"),
-            ("edit_file complete", "38;2;19;136;78"),
-            ("output condensed count=24 bytes=768", "38;2;144;96;192"),
-            ("-", "38;2;186;93;0"),
-            ("+", "38;2;0;116;232"),
+            ("edit_file path=café-00.py", chrome_esc),
+            ("edit_file complete", success_esc),
+            ("output condensed count=24 bytes=768", elision_esc),
+            ("-", diff_rem_esc),
+            ("+", diff_add_esc),
         )),
-        ("failure", (("tests failed", "38;2;176;92;92"),)),
-        ("idle_stretch", (("WAITING", "38;2;186;93;0"),)),
+        ("failure", (("tests failed", error_esc),)),
+        ("idle_stretch", (("WAITING", warning_esc),)),
     )
+
     sgr = r"\x1b\[[0-9;]*"
     for scene_name, assertions in cases:
         rendered = render_scene(
@@ -199,6 +224,7 @@ def test_generated_scene_colours_every_named_semantic_category() -> None:
                 rf"{sgr}{foreground}m(?:[^\x1b]*?){re.escape(carrier)}",
                 rendered,
             ), carrier
+
 
 
 def test_generated_scene_named_category_keeps_foreground_in_reduced_colour() -> None:
@@ -279,8 +305,9 @@ def test_generated_scene_opening_capabilities_and_closing_success_use_semantic_c
         terminal_bg_is_light=False,
     )
 
-    assert re.search(r"\x1b\[1;38;2;0;158;115mOK — always available", opening)
-    assert re.search(r"\x1b\[1;38;2;0;158;115m\[PASS\]", closing)
+    success_esc = _rgb_escape(pick_status_styles(False)["success"][0])
+    assert re.search(rf"\x1b\[1;{success_esc}mOK — always available", opening)
+    assert re.search(rf"\x1b\[1;{success_esc}m\[PASS\]", closing)
     for destination in ("redirect", "ci"):
         captured_opening = render_scene(
             "first_screen",
@@ -288,7 +315,7 @@ def test_generated_scene_opening_capabilities_and_closing_success_use_semantic_c
             terminal_bg_is_light=False,
         )
         assert re.search(
-            r"\x1b\[1;38;2;0;158;115mOK — always available", captured_opening
+            rf"\x1b\[1;{success_esc}mOK — always available", captured_opening
         ), destination
 
 
@@ -318,7 +345,9 @@ def test_generated_scene_elision_body_uses_its_named_semantic_colour() -> None:
         terminal_bg_is_light=False,
     )
 
-    assert re.search(r"\x1b\[38;2;204;121;167moutput condensed count=24 bytes=768", rendered)
+    elision_esc = _rgb_escape(display_styles_for_background(False)["elision"])
+    assert re.search(rf"\x1b\[{elision_esc}moutput condensed count=24 bytes=768", rendered)
+
 
 
 def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -> None:

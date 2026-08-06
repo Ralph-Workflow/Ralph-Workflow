@@ -102,6 +102,7 @@ def _run_reindex(
         previous = store.get_file(relative_path)
         if (
             previous is not None
+            and not previous.is_deleted
             and previous.size_bytes == size_bytes
             and previous.mtime_ns == mtime_ns
             and not _dirty_paths_contain(store, relative_path)

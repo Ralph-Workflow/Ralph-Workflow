@@ -81,15 +81,12 @@ def _state_payload(state: str) -> tuple[str, str, str]:
 
 
 def _state_payload_for_context(
-    state: str, terminal_bg_is_light: bool | None
+    state: str,
+    terminal_bg_is_light: bool | None,
+    surface_hex: str | None = None,
 ) -> tuple[str, str, str]:
-    """Resolve a semantic state through the caller's resolved terminal palette.
-
-    Plain-text callers explicitly pass ``False`` for the canonical dark
-    compatibility palette. Rich renderers pass the value that their
-    ``DisplayContext`` resolved once for the active terminal.
-    """
-    payload = pick_status_styles(terminal_bg_is_light)[state]
+    """Resolve a semantic state through the caller's resolved terminal palette."""
+    payload = pick_status_styles(terminal_bg_is_light, surface_hex=surface_hex)[state]
     return (payload[0], payload[1], payload[2])
 
 
@@ -221,8 +218,14 @@ def _identity_style_for(
     if not unit_id:
         return ""
     terminal_bg_is_light = ctx.terminal_background_is_light if ctx is not None else None
+    surface_hex = ctx.terminal_background_hex if ctx is not None else None
     active_names = active if active is not None else (*_DISPLAY_IDENTITY_ACTIVE_SET, unit_id)
-    return identity_color(unit_id, active=active_names, terminal_bg_is_light=terminal_bg_is_light)
+    return identity_color(
+        unit_id,
+        active=active_names,
+        terminal_bg_is_light=terminal_bg_is_light,
+        surface_hex=surface_hex,
+    )
 
 
 def _split_body_with_unit(body: str, unit_id: str | None) -> tuple[str, str]:
@@ -332,7 +335,7 @@ def _render_text_event(
     if event.kind is ActivityEventKind.THINKING:
         style_name = "running"
     style, icon, label = _state_payload_for_context(
-        style_name, ctx.terminal_background_is_light if ctx is not None else None
+        style_name, ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -361,7 +364,7 @@ def _render_status_event(
     ``running``; subagent_progress uses ``info``.
     """
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else None
+        "info", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -420,7 +423,7 @@ def _render_tool_use_event(
     body remains tool name plus arguments so all consumers share one shape.
     """
     style, icon, label = _state_payload_for_context(
-        "running", ctx.terminal_background_is_light if ctx is not None else None
+        "running", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     raw_name = _normalized_event_content(event) or "tool"
     tool_name = friendly_tool_name(raw_name)
@@ -491,7 +494,7 @@ def _render_tool_result_event(
     is_error = outcome_is_failure(event.metadata)
     state = "error" if is_error else "success"
     style, icon, label = _state_payload_for_context(
-        state, ctx.terminal_background_is_light if ctx is not None else None
+        state, ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     raw_body = _normalized_event_content(event)
     if not raw_body:
@@ -549,11 +552,11 @@ def _render_error_event(
 ) -> Text:
     """Render an error event.
 
-    The ``error`` carrier (VERMILLION + ✗ + FAIL) is paired with the
+    The ``error`` carrier (error style + ✗ + FAIL) is paired with the
     body so the meaning persists with color disabled.
     """
     style, icon, label = _state_payload_for_context(
-        "error", ctx.terminal_background_is_light if ctx is not None else None
+        "error", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _normalized_event_content(event) or "unknown error"
     text = Text()
@@ -571,7 +574,7 @@ def _render_lifecycle_event(
 ) -> Text:
     """Render a lifecycle event (phase transitions, run start / end)."""
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else None
+        "info", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -593,7 +596,7 @@ def _render_progress_event(
     in-progress signal never accidentally reads as success/failure.
     """
     style, icon, label = _state_payload_for_context(
-        "running", ctx.terminal_background_is_light if ctx is not None else None
+        "running", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -611,7 +614,7 @@ def _render_heartbeat_event(
 ) -> Text:
     """Render a heartbeat event (idle-waitdog liveness ping)."""
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else None
+        "info", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event) or "alive", unit_id)
     text = Text()
@@ -640,7 +643,7 @@ def _render_unknown_event(
     key=value context.
     """
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else None
+        "info", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _normalized_event_content(event)
     text = Text()

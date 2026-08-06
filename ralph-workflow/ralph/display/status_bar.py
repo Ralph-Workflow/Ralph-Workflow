@@ -1151,9 +1151,15 @@ def _append_attention_slot(
         }[style]
         text.append(
             f"{glyph} {label}",
-            style=_fresh_style(pick_status_styles(ctx.terminal_background_is_light)[status_name][0]),
+            style=_fresh_style(
+                pick_status_styles(
+                    ctx.terminal_background_is_light,
+                    surface_hex=ctx.terminal_background_hex,
+                )[status_name][0]
+            ),
         )
         text.append(separator, style=ctx.theme.styles["theme.status.path_marker"])
+
         # Pad to the reserved width when the rendered state is
         # shorter than the worst case (e.g. ``DONE`` is shorter
         # than ``STALLED``) so the trailing separator lands at

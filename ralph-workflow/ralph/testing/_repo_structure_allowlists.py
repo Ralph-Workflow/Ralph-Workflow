@@ -1179,8 +1179,8 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/telemetry/_sentry.py", 814),
         ("ralph/testing/audit_skill_auto_commit.py", 183),
         ("ralph/testing/audit_skill_auto_commit.py", 282),
-        ("ralph/testing/audit_typecheck_bypass.py", 100),
-        ("ralph/testing/audit_typecheck_bypass.py", 340),
+        ("ralph/testing/audit_typecheck_bypass.py", 102),
+        ("ralph/testing/audit_typecheck_bypass.py", 342),
         # audit_test_policy.py: pre-existing noqa markers for justifiable
         # complexity in the test-policy audit walker itself. Re-anchored after
         # the template-body invariant allowlist entry.

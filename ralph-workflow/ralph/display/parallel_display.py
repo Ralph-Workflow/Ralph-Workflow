@@ -503,6 +503,7 @@ class ParallelDisplay:
         "_run_start_time",
         "_status_bar",
         "_subscriber",
+        "_terminal_background_hex",
         "_terminal_bg_is_light",
         "_watchdog_attention",
         "_watchdog_attention_lock",
@@ -531,6 +532,11 @@ class ParallelDisplay:
         self._is_quiet: bool = is_quiet
         self._terminal_bg_is_light = (
             display_context.terminal_background_is_light
+            if isinstance(display_context, DisplayContext)
+            else None
+        )
+        self._terminal_background_hex = (
+            display_context.terminal_background_hex
             if isinstance(display_context, DisplayContext)
             else None
         )
@@ -785,7 +791,9 @@ class ParallelDisplay:
         and ``cat`` parameters are kept (so existing call sites
         still typecheck) but rendered as nothing.
         """
-        statuses = pick_status_styles(self._terminal_bg_is_light)
+        statuses = pick_status_styles(
+            self._terminal_bg_is_light, surface_hex=self._terminal_background_hex
+        )
         state = {
             "ERROR": "error",
             "WARN": "warning",
@@ -830,7 +838,9 @@ class ParallelDisplay:
         colour is unavailable, so the same line remains independently useful
         in a plain transcript.
         """
-        statuses = pick_status_styles(self._terminal_bg_is_light)
+        statuses = pick_status_styles(
+            self._terminal_bg_is_light, surface_hex=self._terminal_background_hex
+        )
         state = {
             "error": "error",
             "warning": "warning",
@@ -848,7 +858,13 @@ class ParallelDisplay:
         state_style = _display_theme._fresh_style(statuses[state][0])
         chrome_style = _display_theme._fresh_style(statuses["info"][0])
         unit_style = _display_theme._fresh_style(
-            f"bold {identity_color(unit_id, terminal_bg_is_light=self._terminal_bg_is_light)}"
+            f"bold {
+                identity_color(
+                    unit_id,
+                    terminal_bg_is_light=self._terminal_bg_is_light,
+                    surface_hex=self._terminal_background_hex,
+                )
+            }"
         )
         # The ``body_style`` argument can be a hex/style string or a theme
         # role name (e.g. ``theme.display.elision``). When it is a theme
@@ -2447,9 +2463,12 @@ class ParallelDisplay:
             preview_input,
             width=self._ctx.width,
             terminal_bg_is_light=self._terminal_bg_is_light,
+            surface_hex=self._terminal_background_hex,
             overflow_ref=overflow_ref,
             glyphs_enabled=self._ctx.glyphs_enabled,
-            diff_fills=diff_fill_styles(self._terminal_bg_is_light),
+            diff_fills=diff_fill_styles(
+                self._terminal_bg_is_light, surface_hex=self._terminal_background_hex
+            ),
         )
         if preview is None:
             return
@@ -3010,9 +3029,12 @@ class ParallelDisplay:
                     result_preview_input,
                     width=self._ctx.width,
                     terminal_bg_is_light=self._terminal_bg_is_light,
+                    surface_hex=self._terminal_background_hex,
                     overflow_ref=overflow_ref,
                     glyphs_enabled=self._ctx.glyphs_enabled,
-                    diff_fills=diff_fill_styles(self._terminal_bg_is_light),
+                    diff_fills=diff_fill_styles(
+                        self._terminal_bg_is_light, surface_hex=self._terminal_background_hex
+                    ),
                 )
                 is not None
             )
@@ -3897,7 +3919,9 @@ class ParallelDisplay:
             body_measure=self._ctx.width,
         ).split("\n")
         carrier_style = _display_theme._fresh_style(
-            pick_status_styles(self._terminal_bg_is_light)["info"][0]
+            pick_status_styles(
+                self._terminal_bg_is_light, surface_hex=self._terminal_background_hex
+            )["info"][0]
         )
         for row in folded_rows:
             self._console.print(
@@ -4766,6 +4790,7 @@ class ParallelDisplay:
                 body,
                 width=self._ctx.width,
                 terminal_bg_is_light=self._terminal_bg_is_light,
+                surface_hex=self._terminal_background_hex,
             )
         )
         self._console.print(Rule(style=_phase_style(style_phase)))
