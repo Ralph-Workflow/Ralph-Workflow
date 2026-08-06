@@ -63,10 +63,13 @@ all remain visible; wider layouts retain ``phase=<name>``. Long unbroken values
 fold at cell boundaries rather than silently clipping their recovery tail.
 
 Syntax and diff previews use complete background-aware token palettes for
-comments, keywords and types, names and functions, strings, numbers, operators,
-punctuation, and diff polarity, solved against the preview surface. Known dark and
-light terminals or measured surfaces select the matching surface-derived palette;
-unknown backgrounds use the dual-safe fallback targeting ``[0.175, 0.1833]`` luminance.
+plain text and identifiers (the near-neutral ``foreground`` role), comments
+(the dimmed, floor-lifted ``comment`` role), keywords and operators, types and
+builtins, names and functions, strings, numbers, attributes, and diff
+polarity, solved against the preview surface following Monokai Pro's own
+scope convention. Known dark and light terminals or measured surfaces select
+the matching surface-derived palette; unknown backgrounds use the dual-safe
+fallback targeting ``[0.175, 0.1833]`` luminance.
 Preview fills are opt-in and, when used, cover the complete preview
 surface—including gutters, source rows, and padding—never a partial or
 overextended band.
@@ -331,7 +334,12 @@ visual section breaks (a ``───`` rule in Unicode mode, an ASCII ``---``
 fallback otherwise) between run-start, phase-close, and run-end blocks.
 The rule glyph is sourced from ``ralph/display/theme.py`` via
 :meth:`~ralph.display.context.DisplayContext.glyph_for` so it is
-substitutable per the Monokai-derived hue anchor discipline. Quiet mode
+substitutable per the Monokai-derived hue *and lightness* anchor discipline:
+each semantic role's ``RoleAnchor`` carries not only Monokai Pro's own OKLCh
+hue and chroma but its measured OKLab lightness, so the generator reproduces
+Monokai Pro's own lightness structure (dark accents stay darker, light
+accents stay lighter) instead of collapsing every role onto the single
+lightness that just clears the WCAG floor. Quiet mode
 (``is_quiet=True``) short-circuits every emit method that owns a banner
 so no banner or log line leaks when
 :func:`~ralph.display.parallel_display.resolve_active_display` is called

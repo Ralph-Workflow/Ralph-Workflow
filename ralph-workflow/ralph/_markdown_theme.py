@@ -23,14 +23,17 @@ from ralph.display.theme import preview_background_for_background
 
 def _build_markdown_palette(preview_surface: str | None) -> tuple[str, str, str, str, str, str]:
     if preview_surface is not None:
-        default = solve_for_surface(ROLE_ANCHORS["chrome"], preview_surface)
+        # Body text (default) is the near-neutral foreground, not a hue
+        # accent -- matching Monokai Pro's own body colour and the S-4/S-5
+        # repoint of the neutral display roles (PLAN.md).
+        default = solve_for_surface(ROLE_ANCHORS["foreground"], preview_surface)
         accent = solve_for_surface(ROLE_ANCHORS["info"], preview_surface)
         link = solve_for_surface(ROLE_ANCHORS["info"], preview_surface)
         url = solve_for_surface(ROLE_ANCHORS["skipped"], preview_surface)
         bullet = solve_for_surface(ROLE_ANCHORS["success"], preview_surface)
         rule = solve_for_surface(ROLE_ANCHORS["success"], preview_surface)
     else:
-        default = solve_dual_safe(ROLE_ANCHORS["chrome"])
+        default = solve_dual_safe(ROLE_ANCHORS["foreground"])
         accent = solve_dual_safe(ROLE_ANCHORS["info"])
         link = solve_dual_safe(ROLE_ANCHORS["info"])
         url = solve_dual_safe(ROLE_ANCHORS["skipped"])
@@ -40,8 +43,12 @@ def _build_markdown_palette(preview_surface: str | None) -> tuple[str, str, str,
 
 
 _PALETTES: dict[bool | None, tuple[str, str, str, str, str, str]] = {
-    False: _build_markdown_palette("#101417"),
-    True: _build_markdown_palette("#F7F9FB"),
+    # Single-sourced through the same canonical-surface derivation the
+    # measured (surface_hex) path uses, via preview_background_for_background
+    # (S-6) -- rather than the raw #101417/#F7F9FB literals that previously
+    # disagreed with it.
+    False: _build_markdown_palette(preview_background_for_background(False)),
+    True: _build_markdown_palette(preview_background_for_background(True)),
     None: _build_markdown_palette(None),
 }
 

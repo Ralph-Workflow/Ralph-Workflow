@@ -162,8 +162,16 @@ The reference display supports dark, light, and undetermined backgrounds;
 truecolour, reduced-colour, and no-colour output; Unicode and ASCII glyphs;
 and TTY, redirected, and CI destinations. Fully laid-out composition begins at
 80 columns and degrades intentionally to the 40-column floor (including a
-12-row terminal). Semantic and preview foregrounds target a 4.5:1 contrast
-ratio solved dynamically against their resolved surface. `NO_COLOR` disables escapes; `FORCE_COLOR`
+12-row terminal). Semantic and preview foregrounds are solved dynamically
+against their resolved surface toward each role's own Monokai Pro reference
+lightness -- reproducing Monokai Pro's own lightness structure (dark accents
+stay darker, light accents stay lighter) instead of every role converging on
+one plane. The 4.5:1 WCAG AA ratio is enforced as a **floor beneath** that
+Monokai-derived target, not the target itself: a role only moves off its
+reference lightness when accessibility demands it. The one deliberate
+exception is the dimmed `comment` role, whose Monokai Pro reference
+(`#727072` on `#2D2A2E`) measures only 2.88:1 -- below the floor -- so it is
+deliberately lifted to 4.5:1 rather than reproduced bit-for-bit. `NO_COLOR` disables escapes; `FORCE_COLOR`
 retains ANSI colour for render-capable redirected or CI capture. Motion is
 reserved for a real TTY; redirected and CI output instead records durable state
 transitions and elapsed-time heartbeats. Condensed output identifies its count,

@@ -40,6 +40,10 @@ from ralph.display._identity import (
 from ralph.display._identity import (
     normalize_identity_name as _normalize_identity_name,
 )
+from ralph.display._palette import (
+    _CANONICAL_DARK_SURFACE_HEX,
+    _CANONICAL_LIGHT_SURFACE_HEX,
+)
 from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
@@ -142,9 +146,6 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
 #: both covered because they are darker still); ``#FAF8F5`` (Y=0.9405)
 #: is the corresponding hardest common light surface, just under pure
 #: white.
-_CANONICAL_DARK_SURFACE_HEX: Final[str] = "#2D2A2E"
-_CANONICAL_LIGHT_SURFACE_HEX: Final[str] = "#FAF8F5"
-
 _pal_dark = _palette.resolve_palette(_CANONICAL_DARK_SURFACE_HEX)
 _pal_light = _palette.resolve_palette(_CANONICAL_LIGHT_SURFACE_HEX)
 _pal_unknown = _palette.resolve_palette(None)
@@ -182,10 +183,93 @@ _DISPLAY_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = _build_display_styles(_pal_
 _DISPLAY_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = _build_display_styles(_pal_unknown)
 
 
+#: The six Monokai Pro accent roles the identity palette is seeded from.
+_IDENTITY_ACCENT_ROLES: Final[tuple[str, ...]] = (
+    "error",
+    "warning",
+    "skipped",
+    "success",
+    "info",
+    "pending",
+)
+
+
+#: Two naive pairwise midpoints, at the two accents' averaged hue and/or
+#: reference lightness, land in the same 6x6x6 colour-cube index as a
+#: neighbouring anchor -- across all three of the dark, light, and
+#: dual-safe (unknown) tables together, not any single one of them alone:
+#: warning->skipped (hue ~68.3, L 0.834) collides with skipped itself
+#: (L 0.894) on the dark and unknown tables, both pinning the red channel
+#: at 255 in the saturated yellow-orange corner; skipped->success
+#: (hue 110.6, L 0.865) collides with success (L 0.836) on the light table,
+#: where mirroring the large skipped offset pushes both into the same
+#: too-dark corner. Pulling warning->skipped further toward warning (both
+#: hue and lightness) and skipped->success down to success's own reference
+#: lightness clears every collision on all three tables and all three CVD
+#: matrices at once -- verified directly against
+#: ``solve_for_surface``/``solve_dual_safe``. This is the tuning PLAN.md S-7
+#: anticipates budgeting for -- equal-spaced midpoints alone are measured to
+#: be insufficient.
+_IDENTITY_HUE_OVERRIDES: Final[dict[tuple[str, str], float]] = {
+    ("warning", "skipped"): 55.0,
+}
+_IDENTITY_L_REF_OVERRIDES: Final[dict[tuple[str, str], float]] = {
+    ("warning", "skipped"): 0.72,
+    ("skipped", "success"): 0.8361,
+}
+
+
+def _named_anchor_hue(pair: tuple[str, _palette.RoleAnchor]) -> float:
+    """Sort key: order a (role, anchor) pair by the anchor's hue."""
+    return pair[1].hue
+
+
+def _identity_seed_anchors() -> tuple[_palette.RoleAnchor, ...]:
+    """Build twelve identity slots from the six Monokai Pro accent anchors:
+    the six anchors themselves, plus their six pairwise midpoints -- hue,
+    chroma AND reference lightness together, not hue/chroma alone -- closing
+    the full hue wheel including the wrap segment from ``pending`` back
+    around to ``error``. Carrying reference lightness through the
+    interpolation is what gives the identity palette the accents' own
+    lightness spread (L 0.706-0.894) instead of the flat single-plane
+    chroma-only interpolation that left neighbouring slots colliding after
+    256-colour quantisation (see PLAN.md S-7's Characterize measurements).
+    """
+    named: list[tuple[str, _palette.RoleAnchor]] = [
+        (role, _palette.ROLE_ANCHORS[role]) for role in _IDENTITY_ACCENT_ROLES
+    ]
+    named.sort(key=_named_anchor_hue)
+    count = len(named)
+    slots: list[_palette.RoleAnchor] = []
+    for index in range(count):
+        first_role, first = named[index]
+        second_role, second = named[(index + 1) % count]
+        # Unwrap the wrap segment (pending -> error) past 360 degrees so the
+        # midpoint lands between them rather than on the short way around.
+        second_hue = second.hue + 360.0 if second.hue <= first.hue else second.hue
+        midpoint_hue = _IDENTITY_HUE_OVERRIDES.get(
+            (first_role, second_role), (first.hue + second_hue) / 2.0
+        )
+        midpoint_l_ref = _IDENTITY_L_REF_OVERRIDES.get(
+            (first_role, second_role), (first.l_ref + second.l_ref) / 2.0
+        )
+        slots.append(first)
+        slots.append(
+            _palette.RoleAnchor(
+                hue=midpoint_hue % 360.0,
+                chroma=(first.chroma + second.chroma) / 2.0,
+                l_ref=midpoint_l_ref,
+            )
+        )
+    return tuple(slots)
+
+
+_IDENTITY_SEED_ANCHORS: Final[tuple[_palette.RoleAnchor, ...]] = _identity_seed_anchors()
+
+
 def _generate_identity_palette(surface_hex: str | None) -> tuple[str, ...]:
     slots: list[str] = []
-    for i in range(12):
-        anchor = _palette.RoleAnchor(hue=i * 30.0, chroma=0.12)
+    for anchor in _IDENTITY_SEED_ANCHORS:
         if surface_hex is not None:
             hex_val = _palette.solve_for_surface(anchor, surface_hex)
         else:
@@ -581,9 +665,17 @@ SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxTheme
 #: Rich's transparent syntax-background sentinel.
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
-# Known backgrounds own previews; unknown terminals stay transparent.
-_PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = "#101417"
-_PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = "#F7F9FB"
+# Known backgrounds own previews; unknown terminals stay transparent. Both
+# single-source through _palette.derive_preview_background against the same
+# canonical surfaces the measured path (preview_background_for_background's
+# surface_hex branch) uses, so the boolean and measured paths can no longer
+# disagree (S-6 / DA-002).
+_PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = _palette.derive_preview_background(
+    _CANONICAL_DARK_SURFACE_HEX
+)
+_PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = _palette.derive_preview_background(
+    _CANONICAL_LIGHT_SURFACE_HEX
+)
 
 
 def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
@@ -595,9 +687,8 @@ def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
     return _palette.rgb_to_hex(rem_r, rem_g, rem_b), _palette.rgb_to_hex(add_r, add_g, add_b)
 
 
-
 def _preview_foreground_for_surface_uncached(surface_hex: str) -> str:
-    fill = preview_background_for_background(None, surface_hex=surface_hex)
+    fill = _palette.derive_preview_background(surface_hex)
     return _palette.solve_for_surface(_palette.ROLE_ANCHORS["chrome"], fill)
 
 
@@ -607,6 +698,18 @@ def _preview_foreground_for_surface_uncached(surface_hex: str) -> str:
 # the same first-party idiom used by ralph.display.language_inference._cached_infer.
 _preview_foreground_for_surface_cached = lru_cache(maxsize=8)(
     _preview_foreground_for_surface_uncached
+)
+
+# Boolean and unknown-background preview foregrounds single-source through
+# the same measured resolvers as surface_hex callers (S-6).
+_PREVIEW_FOREGROUND_ON_DARK_BG: Final[str] = _preview_foreground_for_surface_cached(
+    _CANONICAL_DARK_SURFACE_HEX
+)
+_PREVIEW_FOREGROUND_ON_LIGHT_BG: Final[str] = _preview_foreground_for_surface_cached(
+    _CANONICAL_LIGHT_SURFACE_HEX
+)
+_PREVIEW_FOREGROUND_ON_UNKNOWN_BG: Final[str] = _palette.solve_dual_safe(
+    _palette.ROLE_ANCHORS["chrome"]
 )
 
 
@@ -622,10 +725,10 @@ def preview_foreground_for_background(
     if surface_hex is not None:
         return _preview_foreground_for_surface_cached(surface_hex)
     if terminal_bg_is_light is True:
-        return "#202020"
+        return _PREVIEW_FOREGROUND_ON_LIGHT_BG
     if terminal_bg_is_light is False:
-        return "#D0D0D0"
-    return "#757575"
+        return _PREVIEW_FOREGROUND_ON_DARK_BG
+    return _PREVIEW_FOREGROUND_ON_UNKNOWN_BG
 
 
 def preview_background_for_background(
@@ -641,11 +744,15 @@ def preview_background_for_background(
     return SYNTAX_BACKGROUND_TRANSPARENT
 
 
-# Unknown-background diffs remain transparent.
-_DIFF_REMOVED_FILL_ON_DARK_BG: Final[str] = "#101112"
-_DIFF_ADDED_FILL_ON_DARK_BG: Final[str] = "#121110"
-_DIFF_REMOVED_FILL_ON_LIGHT_BG: Final[str] = "#F5F1F0"
-_DIFF_ADDED_FILL_ON_LIGHT_BG: Final[str] = "#F0F4F5"
+# Unknown-background diffs remain transparent. The known-background fills
+# single-source through _derive_diff_fills against the same canonical
+# surfaces the measured path uses (S-6).
+_DIFF_REMOVED_FILL_ON_DARK_BG, _DIFF_ADDED_FILL_ON_DARK_BG = _derive_diff_fills(
+    _CANONICAL_DARK_SURFACE_HEX
+)
+_DIFF_REMOVED_FILL_ON_LIGHT_BG, _DIFF_ADDED_FILL_ON_LIGHT_BG = _derive_diff_fills(
+    _CANONICAL_LIGHT_SURFACE_HEX
+)
 
 
 def display_styles_for_background(

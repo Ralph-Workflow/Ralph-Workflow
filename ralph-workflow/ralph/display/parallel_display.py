@@ -446,6 +446,17 @@ def _record_tool_call_body(record_body: str, source_content: str) -> str:
     return record_body
 
 
+#: ``_activity_text`` kinds that carry a real semantic state -- their body
+#: colours with that state. Every other kind (plain "text" prose, progress,
+#: status, raw, ...) is body text, not a state carrier, so it takes the
+#: near-neutral ``agent_text`` role instead of the tag's "info" chrome
+#: colour (PLAN.md S-5: "Agent output and body text should read as
+#: near-neutral foreground, with hue reserved for semantic state").
+_BODY_SEMANTIC_KINDS: frozenset[str] = frozenset(
+    {"error", "warning", "tool_use", "tool_result", "thinking"}
+)
+
+
 class ParallelDisplay:
     """Multiplexed terminal display for parallel pipeline workers.
 
@@ -857,6 +868,13 @@ class ParallelDisplay:
         # console re-derives the ANSI against its own color system.
         state_style = _display_theme._fresh_style(statuses[state][0])
         chrome_style = _display_theme._fresh_style(statuses["info"][0])
+        if kind in _BODY_SEMANTIC_KINDS:
+            body_default_style = state_style
+        else:
+            disp_styles = _display_theme.display_styles_for_background(
+                self._terminal_bg_is_light, surface_hex=self._terminal_background_hex
+            )
+            body_default_style = _display_theme._fresh_style(disp_styles["agent_text"])
         unit_style = _display_theme._fresh_style(
             f"bold {
                 identity_color(
@@ -886,7 +904,7 @@ class ParallelDisplay:
         text.append(f"[{tag}]", style=state_style)
         text.append(f"[{unit_id}]", style=unit_style)
         text.append(" ")
-        text.append(body, style=body_style_obj or state_style)
+        text.append(body, style=body_style_obj or body_default_style)
         return text
 
     def _close_hang_prefix(self, timestamp: str, tag: str, unit_id: str) -> str:
