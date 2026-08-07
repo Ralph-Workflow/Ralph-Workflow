@@ -182,6 +182,39 @@ def test_rejected_push_honors_target_reclaim_opt_out(
     assert result.last_remote_sync == remote_sync.REMOTE_PULL_FAILED
 
 
+def test_target_reconciliation_regression_restores_owner_sha_after_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4/E9: a conflicted target rebase restores its pre-attempt target SHA."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    states = iter((True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
+    restored: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        remote_reconcile,
+        "reset_hard",
+        lambda root, sha: restored.append((root, sha)),
+        raising=False,
+    )
+
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "conflicted" in reason
+    assert restored == [(owner, "before")]
+
+
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

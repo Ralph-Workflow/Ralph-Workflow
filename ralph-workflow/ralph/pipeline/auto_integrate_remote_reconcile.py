@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
+from ralph.git.merge import WORKTREE_FOUND, branch_sha, reset_hard, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, is_repo_clean
 from ralph.git.rebase.rebase import (
     RebaseNoOp,
@@ -75,11 +75,12 @@ def reconcile_target_onto_remote(
         if rebase_in_progress(owner):
             abort_rebase(repo_root=owner)
     except Exception as exc:
-        return _abort_or_retain_record(repo_root, owner, target, remote, str(exc))
-    if rebase_in_progress(owner):
-        return _abort_or_retain_record(repo_root, owner, target, remote, "conflicted")
-    clear_record(repo_root)
-    return False, f"reconciliation of {target} with {remote}/{target} conflicted"
+        return _abort_restore_or_retain_record(
+            repo_root, owner, target, remote, pre_target_sha, str(exc)
+        )
+    return _abort_restore_or_retain_record(
+        repo_root, owner, target, remote, pre_target_sha, "conflicted"
+    )
 
 
 def _reconciliation_preconditions(
@@ -103,26 +104,32 @@ def _reconciliation_preconditions(
     return owner, pre_target_sha, None
 
 
-def _abort_or_retain_record(
+def _abort_restore_or_retain_record(
     repo_root: Path,
     owner: Path,
     target: str,
     remote: str,
+    pre_target_sha: str,
     detail: str,
 ) -> tuple[bool, str]:
-    """Abort a failed reconciliation, retaining crash ownership if cleanup cannot be proven."""
+    """Abort a failed reconciliation and restore the target before clearing ownership."""
     try:
         if rebase_in_progress(owner):
             abort_rebase(repo_root=owner)
-    except Exception:
-        pass
-    if rebase_in_progress(owner):
+        if rebase_in_progress(owner):
+            return (
+                False,
+                f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
+            )
+        reset_hard(owner, pre_target_sha)
+    except Exception as exc:
         return (
             False,
-            f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
+            f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+            f"restore failed: {exc}",
         )
     clear_record(repo_root)
-    return False, f"reconciliation of {target} with {remote}/{target} failed: {detail}"
+    return False, f"reconciliation of {target} with {remote}/{target} conflicted: {detail}"
 
 
 __all__ = ["reconcile_target_onto_remote"]
