@@ -4,20 +4,32 @@
     "artifact_type": "planning_analysis_decision",
     "template_name": "planning_analysis",
     "criterion_ids": ["PA-001"],
-    "defect_locations": []
+    "defect_locations": [],
+    "request": "# Request\n\nThe plan must name a runnable verification command.",
+    "plan_or_policy": "# Plan\n\n## Work\n\n### [S-1] Verify the command\nVerify: uv run pytest -q tests/test_plan.py",
+    "workspace_files": {"tests/test_plan.py": "def test_plan() -> None:\n    assert True\n"},
+    "expected_artifact_type": "planning_analysis_decision"
   },
   {
     "case_id": "development-planted-defect",
     "artifact_type": "development_analysis_decision",
     "template_name": "development_analysis",
     "criterion_ids": ["DA-001"],
-    "defect_locations": ["src/example.py:10"]
+    "defect_locations": ["src/example.py:10"],
+    "request": "# Request\n\nThe public behavior must remain available.",
+    "plan_or_policy": "# Plan\n\n## Work\n\n### [S-1] Preserve public behavior",
+    "workspace_files": {"src/example.py": "def public_behavior() -> None:\n    return None\n"},
+    "expected_artifact_type": "development_analysis_decision"
   },
   {
     "case_id": "policy-planted-defect",
     "artifact_type": "policy_remediation_analysis_decision",
     "template_name": "policy_remediation_analysis",
     "criterion_ids": ["PR-001"],
-    "defect_locations": ["docs/policy.md:10"]
+    "defect_locations": ["docs/policy.md:10"],
+    "request": "# Policy request\n\nDeclared commands must resolve.",
+    "plan_or_policy": "# Policy\n\nRALPH-COMMAND: make verify-all",
+    "workspace_files": {"docs/policy.md": "# Policy\n\nRALPH-COMMAND: make verify-all\n"},
+    "expected_artifact_type": "policy_remediation_analysis_decision"
   }
 ]

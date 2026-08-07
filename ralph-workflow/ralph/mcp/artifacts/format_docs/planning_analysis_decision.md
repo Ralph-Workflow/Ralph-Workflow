@@ -48,7 +48,8 @@ status: request_changes
 - `## Criterion Verdicts` is required and non-empty for every decision. Each
   item has a unique `PA-###` ID, `Step: [S-n]` or `Plan-level:`, and
   `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`,
-  non-empty `Evidence:`, `Location:`, and `Cost:` fields.
+  non-empty `Evidence:`, non-empty `Location:`, and `Cost:` fields. Every
+  non-met verdict has a same-ID mirror in `## What Came Up Short`.
 - `## What Came Up Short` is required and non-empty for `request_changes` and
   `failed`; it mirrors localized non-met criterion verdicts and is omitted for
   `completed`.

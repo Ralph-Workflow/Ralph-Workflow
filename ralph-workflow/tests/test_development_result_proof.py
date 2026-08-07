@@ -109,7 +109,7 @@ status: request_changes
 - [SUM-1] Issues found.
 
 ## What Came Up Short
-- [FIX-1] Plan-level: Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
+- [DA-001] Plan-level: Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
 
 ## Criterion Verdicts
 - [DA-001] Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
@@ -698,8 +698,8 @@ def test_analysis_feedback_rejects_duplicate_finding_entries() -> None:
         workspace,
         plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
         analysis_items=[
-            {"how_to_fix_item": "FIX-1", "proof": "Added test 1."},
-            {"how_to_fix_item": "FIX-1", "proof": "Added test 2."},
+            {"how_to_fix_item": "DA-001", "proof": "Added test 1."},
+            {"how_to_fix_item": "DA-001", "proof": "Added test 2."},
         ],
     )
     ctx = _make_context(workspace)
@@ -718,7 +718,7 @@ def test_analysis_feedback_rejects_wrong_finding_id_even_when_counts_match() -> 
     _write_dev_result(
         workspace,
         plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
-        analysis_items=[{"how_to_fix_item": "FIX-99", "proof": "Evidence"}],
+        analysis_items=[{"how_to_fix_item": "DA-099", "proof": "Evidence"}],
     )
     ctx = _make_context(workspace)
 
@@ -738,7 +738,7 @@ def test_analysis_feedback_passes_with_exact_finding_id() -> None:
         workspace,
         plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
         analysis_items=[
-            {"how_to_fix_item": "FIX-1", "proof": "Added test."},
+            {"how_to_fix_item": "DA-001", "proof": "Added test."},
         ],
     )
     ctx = _make_context(workspace)

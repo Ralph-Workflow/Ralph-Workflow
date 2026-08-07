@@ -44,8 +44,7 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
 ) -> None:
     context = TemplateContext.default()
     source = context.registry.get_template(template_name)
-    if template_name != "policy_remediation_analysis":
-        source += context.partials["shared/_criterion_verification_procedure"]
+    source += context.partials["shared/_criterion_verification_procedure"]
 
     for required in (
         "one yes/no question per criterion",
@@ -61,6 +60,7 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         "full gate",
         "## Criterion Verdicts",
         "do not propose remedies",
+        "Report only material, localized findings",
     ):
         assert required in source, (template_name, required)
 
@@ -82,6 +82,7 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
             "no counterexample found",
             "Correctness outranks a passing proxy",
             "do not propose remedies",
+            "Report only material, localized findings",
         ):
             assert required in rendered[contract_start:final_action], (template_name, required)
 

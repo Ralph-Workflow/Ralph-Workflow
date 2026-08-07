@@ -47,7 +47,8 @@ status: request_changes
 - `## Summary` is required and has exactly one item.
 - `## Criterion Verdicts` is required and non-empty for every decision. Each
   item has a unique `DA-###` ID and `Criterion:`, `Expected observation:`,
-  `Verdict:`, non-empty `Evidence:`, and `Location:` fields.
+  `Verdict:`, non-empty `Evidence:`, and non-empty `Location:` fields. Every
+  non-met verdict has a same-ID mirror in `## What Came Up Short`.
 - `## What Came Up Short` is required and non-empty for `request_changes` and
   `failed`; it mirrors localized non-met criterion verdicts and is omitted for
   `completed`.

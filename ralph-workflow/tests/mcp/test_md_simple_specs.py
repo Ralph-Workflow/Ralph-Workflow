@@ -218,6 +218,45 @@ def test_not_evaluable_verdict_requires_failed_status() -> None:
     ]
 
 
+def test_verification_decision_rejects_empty_location() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the API is available. Expected observation: the export exists. Verdict: met. Evidence: src/api.py:10. Location:
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS013", "error")]
+
+
+def test_verification_decision_requires_each_non_met_verdict_to_be_mirrored() -> None:
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] One fixed criterion is not met.
+
+## What Came Up Short
+- [DA-002] Criterion: another behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:11.
+
+## Criterion Verdicts
+- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [item.rule_id for item in diagnostics] == ["ANALYSIS014", "ANALYSIS014"]
+
+
 def test_request_changes_allows_explicit_plan_level_target() -> None:
     content, diagnostics = parse_and_validate(
         _decision("Plan-level: The outcome omits an out-of-scope boundary."),

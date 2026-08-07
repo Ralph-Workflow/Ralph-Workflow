@@ -27,6 +27,7 @@ _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
 _REQUIRED_VERDICT_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
 _EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
+_LOCATION_PATTERN = re.compile(r"Location:\s*(.*?)\s*$", re.IGNORECASE)
 _VERIFICATION_ID_PATTERNS = {
     "planning_analysis_decision": re.compile(r"PA-[0-9]+"),
     "development_analysis_decision": re.compile(r"DA-[0-9]+"),
@@ -150,6 +151,17 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     "criterion verdict must cite non-empty Evidence:",
                 )
             )
+        location_match = _LOCATION_PATTERN.search(item.text)
+        location = "" if location_match is None else str(location_match.group(1)).strip().rstrip(".")
+        if not location:
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "Criterion Verdicts",
+                    "ANALYSIS013",
+                    "criterion verdict must cite a non-empty Location:",
+                )
+            )
         if status == "completed" and verdict != "met":
             diagnostics.append(
                 _validation_diagnostic(
@@ -269,6 +281,37 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
             for item in what_items
             if not _FINDING_TARGET_PATTERN.search(item.text)
         )
+    if artifact_type in _VERIFICATION_TYPES:
+        verdict_section = document.section("Criterion Verdicts")
+        if verdict_section is None:
+            return diagnostics
+        verdict_items = verdict_section.items
+        verdict_by_id = {item.identifier: item.text for item in verdict_items}
+        shortfall_by_id = {item.identifier: item.text for item in what_items}
+        diagnostics.extend(
+            _validation_diagnostic(
+                item.line,
+                "Criterion Verdicts",
+                "ANALYSIS014",
+                "each non-met criterion verdict must have a matching localized What Came Up Short item",
+            )
+            for item in verdict_items
+            if "verdict: not met" in item.text.casefold()
+            and all(field in item.text for field in _REQUIRED_VERDICT_FIELDS)
+            and item.identifier not in shortfall_by_id
+        )
+        diagnostics.extend(
+            _validation_diagnostic(
+                item.line,
+                "What Came Up Short",
+                "ANALYSIS014",
+                "each What Came Up Short item must mirror a non-met criterion verdict",
+            )
+            for item in what_items
+            if all(field in item.text for field in _REQUIRED_VERDICT_FIELDS)
+            and item.identifier not in verdict_by_id
+        )
+        return diagnostics
     if artifact_type != "review_analysis_decision":
         return diagnostics
     fix_items = () if fix_section is None else fix_section.items

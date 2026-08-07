@@ -46,7 +46,7 @@ def _submit_decision(
     verdict_evidence = shortcomings[0] if shortcomings else "declared policy probes were inspected"
     if shortcomings:
         short_items = "\n".join(
-            f"- [W-{index}] Criterion: declared policy fact holds. Expected observation: "
+            f"- [PR-{index:03d}] Criterion: declared policy fact holds. Expected observation: "
             f"the declared probe resolves. Verdict: not met. Evidence: {item}. "
             "Location: policy declaration."
             for index, item in enumerate(shortcomings, start=1)

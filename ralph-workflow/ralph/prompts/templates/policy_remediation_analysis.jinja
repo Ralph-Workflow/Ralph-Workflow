@@ -6,8 +6,6 @@ Review the policy corpus, not product code. Treat declared facts, commands, mark
 
 Run each `RALPH-COMMAND` as a bounded probe. Inspect each resolved `RALPH-FACT:`, `RALPH-PENDING` marker, and declared script against `{{ gate_script_policy_path }}`. For `RALPH-PENDING`, verify the approved first token, date, concrete trigger, and truthful deferral instead of probing its deferred gate (approved first tokens: {{ approved_tools }}). A truthful `RALPH-PENDING` marker is compatible with `completed`. reconcile independent evidence with read-only subagents when helpful, then submit from the main session. A gate that reports a product-code failure is attribution: Record the attribution; do not request changes. Discover and run the project's fast path first and full gate where applicable; a green gate means no counterexample found, not proof.
 
-Correctness outranks a passing proxy. Stop and escalate a conflict, invalid test, unsatisfiable declaration, or insufficient policy criterion; do not special-case code, weaken or edit a test, or narrow a criterion. Report only material, localized findings and do not propose remedies.
-
 ## Criteria and verdicts
 
 {% include 'shared/_criterion_verification_procedure.j2' %}

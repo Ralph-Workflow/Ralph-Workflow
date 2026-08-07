@@ -57,7 +57,7 @@ def _load_default_pipeline_policy() -> object:
 def _development_analysis_markdown(status: str) -> str:
     feedback = (
         "\n## What Came Up Short\n\n"
-        "- [W-1] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: not met. Evidence: focused command output. Location: relevant source.\n"
+        "- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: not met. Evidence: focused command output. Location: relevant source.\n"
         if status in {"request_changes", "failed"}
         else ""
     )
@@ -70,19 +70,19 @@ def _development_analysis_markdown(status: str) -> str:
         "- [SUM-1] Development analysis reached a policy-defined decision. Evidence: command output was inspected.\n"
         f"{feedback}"
         "\n## Criterion Verdicts\n\n"
-        "- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: met. Evidence: focused command output. Location: relevant source.\n"
+        f"- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: {'not met' if status in {'request_changes', 'failed'} else 'met'}. Evidence: focused command output. Location: relevant source.\n"
     )
 
 
 def _analysis_decision_markdown(artifact_type: str, status: str) -> str:
     review_fix = (
-        "\n## How To Fix\n\n- [W-1] Address the remaining implementation gap.\n"
+        "\n## How To Fix\n\n- [DA-001] Address the remaining implementation gap.\n"
         if artifact_type == "review_analysis_decision" and status in {"request_changes", "failed"}
         else ""
     )
     feedback = (
         "\n## What Came Up Short\n\n"
-        "- [W-1] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: not met. Evidence: focused command output. Location: relevant source.\n"
+        "- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: not met. Evidence: focused command output. Location: relevant source.\n"
         f"{review_fix}"
         if status in {"request_changes", "failed"}
         else ""
