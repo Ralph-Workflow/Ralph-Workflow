@@ -20,6 +20,9 @@ from ralph.git.operations import find_main_worktree_root
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
 
+_RECLAIM_REF_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+_RECLAIM_REF_MAX_COUNT = 20
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -110,7 +113,59 @@ def _create_snapshot(worktree: Path, target: str) -> _Snapshot | None:
     if result.returncode != 0:
         _restore_index(worktree, staged.stdout)
         return None
+    _prune_reclaim_refs(worktree, target, snapshot_ref)
     return _Snapshot(snapshot_ref, staged.stdout, unstaged.stdout)
+
+
+def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
+    """Best-effort bound reclaim refs without ever deleting the new snapshot."""
+    prefix = f"refs/ralph-reclaim/{target}/"
+    try:
+        listed = run_git(
+            ("for-each-ref", "--format=%(refname) %(creatordate:unix)", prefix),
+            cwd=worktree,
+            label="auto-integrate:reclaim-list-refs",
+        )
+    except Exception as exc:  # pragma: no cover -- defensive cleanup
+        logger.warning("auto_integrate: reclaim-ref listing failed: {}", exc)
+        return
+    if listed.returncode != 0:
+        logger.warning("auto_integrate: reclaim-ref listing failed (rc={})", listed.returncode)
+        return
+    refs: list[tuple[str, int]] = []
+    for line in listed.stdout.splitlines():
+        ref, separator, timestamp_text = line.rpartition(" ")
+        if not separator or not ref.startswith(prefix):
+            continue
+        try:
+            refs.append((ref, int(timestamp_text)))
+        except ValueError:
+            logger.warning("auto_integrate: reclaim-ref has invalid timestamp: {}", ref)
+    cutoff = int(datetime.now(UTC).timestamp()) - _RECLAIM_REF_MAX_AGE_SECONDS
+    retained = {snapshot_ref}
+    refs.sort(key=_reclaim_ref_timestamp, reverse=True)
+    for ref, ref_timestamp in refs:
+        if ref != snapshot_ref and ref_timestamp >= cutoff and len(retained) < _RECLAIM_REF_MAX_COUNT:
+            retained.add(ref)
+    for ref, _timestamp in refs:
+        if ref in retained:
+            continue
+        try:
+            deleted = run_git(
+                ("update-ref", "-d", ref),
+                cwd=worktree,
+                label="auto-integrate:reclaim-delete-ref",
+            )
+        except Exception as exc:  # pragma: no cover -- defensive cleanup
+            logger.warning("auto_integrate: reclaim-ref deletion failed for {}: {}", ref, exc)
+            continue
+        if deleted.returncode != 0:
+            logger.warning("auto_integrate: reclaim-ref deletion failed for {} (rc={})", ref, deleted.returncode)
+
+
+def _reclaim_ref_timestamp(ref: tuple[str, int]) -> int:
+    """Return a reclaim ref's parsed creation timestamp for retention ordering."""
+    return ref[1]
 
 
 def _restore_discarded_state(worktree: Path, snapshot: _Snapshot) -> None:

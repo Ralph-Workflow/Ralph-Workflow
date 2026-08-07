@@ -12,6 +12,7 @@ proofs.
 from __future__ import annotations
 
 import importlib
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -36,7 +37,9 @@ def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
     return _auto_integrate_after_commit(*args, **kwargs)
 
 
-def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    repo_root: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ("git", *args),
         cwd=repo_root,
@@ -44,6 +47,7 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
         timeout=5,
+        env=None if env is None else {**os.environ, **env},
     )
 
 
@@ -120,6 +124,48 @@ def test_reclaim_refuses_a_feature_worktree(
 
     assert reclaim_module.reclaim_dirty_target_worktree(feature, main) is None
     assert dirty.read_text(encoding="utf-8") == "must survive\n"
+
+
+def test_reclaim_regression_prunes_expired_and_excess_snapshot_refs(
+    tmp_git_repo: Path,
+) -> None:
+    """DA-001: reclaim snapshots retain only recent refs within the per-target cap."""
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
+    reclaim_module = importlib.import_module("ralph.pipeline._auto_integrate_reclaim")
+    prefix = f"refs/ralph-reclaim/{main}/"
+    old_ref = f"{prefix}old"
+    other_ref = "refs/ralph-reclaim/other-target/keep"
+    tree = _run(tmp_git_repo, "write-tree").stdout.strip()
+    old_commit = _run(
+        tmp_git_repo,
+        "commit-tree",
+        tree,
+        "-p",
+        "HEAD",
+        "-m",
+        "old snapshot",
+        env={"GIT_AUTHOR_DATE": "2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2000-01-01T00:00:00Z"},
+    ).stdout.strip()
+    assert _run(tmp_git_repo, "update-ref", old_ref, old_commit).returncode == 0
+    assert _run(tmp_git_repo, "update-ref", other_ref, "HEAD").returncode == 0
+    for index in range(reclaim_module._RECLAIM_REF_MAX_COUNT):
+        ref = f"{prefix}recent-{index}"
+        assert _run(tmp_git_repo, "update-ref", ref, "HEAD").returncode == 0
+
+    dirty = tmp_git_repo / "tracked.txt"
+    dirty.write_text("operator work\n", encoding="utf-8")
+
+    snapshot_ref = reclaim_module.reclaim_dirty_target_worktree(tmp_git_repo, main)
+
+    assert snapshot_ref is not None
+    refs = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)", prefix).stdout.splitlines()
+    assert snapshot_ref in refs
+    assert old_ref not in refs
+    assert len(refs) <= reclaim_module._RECLAIM_REF_MAX_COUNT
+    assert other_ref in _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim/other-target/"
+    ).stdout.splitlines()
 
 
 def test_dirty_checked_out_target_snapshots_then_lands(
