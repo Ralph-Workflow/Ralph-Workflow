@@ -9,4 +9,8 @@ status: request_changes
 
 ## What Came Up Short
 
-- [PR-1] Criterion: the declared verification command resolves. Expected observation: `make verify-all` invokes a target. Verdict: not met. Evidence: make reports no rule for `verify-all`. Location: verification-policy.md RALPH-COMMAND.
+- [PR-001] Criterion: the declared verification command resolves. Expected observation: `make verify-all` invokes a target. Verdict: not met. Evidence: make reports no rule for `verify-all`. Location: verification-policy.md RALPH-COMMAND.
+
+## Criterion Verdicts
+
+- [PR-001] Criterion: the declared verification command resolves. Expected observation: `make verify-all` invokes a target. Verdict: not met. Evidence: make reports no rule for `verify-all`. Location: verification-policy.md RALPH-COMMAND.

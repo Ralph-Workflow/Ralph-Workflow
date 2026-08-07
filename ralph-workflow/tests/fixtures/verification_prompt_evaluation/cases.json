@@ -1,0 +1,12 @@
+[
+  {
+    "case_id": "correct",
+    "criterion_ids": ["DA-001"],
+    "defect_locations": []
+  },
+  {
+    "case_id": "planted-defect",
+    "criterion_ids": ["DA-001"],
+    "defect_locations": ["src/example.py:10"]
+  }
+]

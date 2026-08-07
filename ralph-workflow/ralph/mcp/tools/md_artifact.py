@@ -613,7 +613,8 @@ def _planning_finding_target_diagnostics(
     decision, _ = parse_markdown_document(content)
     target_lines = {
         item.identifier: item.line
-        for section in decision.sections_named("What Came Up Short")
+        for section_name in ("What Came Up Short", "Criterion Verdicts")
+        for section in decision.sections_named(section_name)
         for item in section.items
     }
     raw_targets = _parse_with_overrides(artifact_type, content)[0].get("finding_targets", {})

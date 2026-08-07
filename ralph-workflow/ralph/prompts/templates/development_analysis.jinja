@@ -22,11 +22,11 @@ Retrieve PROMPT and PLAN. Use parallel or subagent evidence gathering when it im
 
 ## Criteria and verdicts
 
-For each unchanged request/plan criterion, emit one stable `DA-###` finding with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. Use `request_changes` for a localized `not met`; use `failed` when proof cannot be performed or a conflict requires escalation. A `not evaluable` criterion cannot aggregate to `completed`.
+For each unchanged request/plan criterion, emit one stable `DA-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not request or prescribe a remedy. A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 
-Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. For `completed`, provide one evidence-citing `## Summary` item. Otherwise, use `DA-###` entries only in `## What Came Up Short`; do not request or prescribe a remedy.
+Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. Include one evidence-citing `## Summary` item and the criterion verdict block; do not read or use development-result/history narrative as evidence.
 
 {% set development_decision_example %}
 ---
@@ -38,6 +38,9 @@ status: request_changes
 - [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
+
+## Criterion Verdicts
 - [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
 {% endset %}
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}

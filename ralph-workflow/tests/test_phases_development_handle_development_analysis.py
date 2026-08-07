@@ -24,6 +24,7 @@ def _decision_markdown(status: str) -> str:
         f"status: {status}\n---\n"
         "## Summary\n- [SUM-1] Analysis complete. Evidence: command output was inspected.\n"
         f"{feedback}"
+        "## Criterion Verdicts\n- [DA-001] Criterion: required behavior exists. Expected observation: focused check observes it. Verdict: met. Evidence: command output. Location: source.\n"
     )
 
 

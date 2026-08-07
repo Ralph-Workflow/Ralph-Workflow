@@ -1,6 +1,6 @@
 # planning_analysis_decision artifact format
 
-Report whether the fixed request and plan criteria are executor-ready. Submit
+Report whether each fixed request and plan criterion is executor-ready. Submit
 markdown with `ralph_submit_md_artifact`
 (`artifact_type: planning_analysis_decision`).
 
@@ -14,7 +14,11 @@ status: completed
 
 ## Summary
 
-- [SUM-1] Every fixed criterion has evidence; no counterexample was found. Evidence: `pytest tests/test_plan.py -q` reports 12 passed.
+- [SUM-1] No counterexample was found for the fixed criteria.
+
+## Criterion Verdicts
+
+- [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: met. Evidence: `pytest tests/test_plan.py -q` reports 12 passed. Location: S-2 Verify field.
 ```
 
 ## Request-changes example
@@ -32,23 +36,28 @@ status: request_changes
 ## What Came Up Short
 
 - [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Observation: the command does not resolve. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field. Cost: the executor cannot run the promised proof.
+
+## Criterion Verdicts
+
+- [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Observation: the command does not resolve. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field. Cost: the executor cannot run the promised proof.
 ```
 
 ## Sections
 
 - `## Summary` is required and has exactly one item.
-- `## What Came Up Short` is required and non-empty for `request_changes`
-  and `failed`, omitted for `completed`.
-- Each finding has a unique stable ID and states `Criterion:`, `Expected
-  observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and
-  `Cost:`. Planning findings also identify `Step: [S-n]` or `Plan-level:`.
-- `## How To Fix` is optional for compatibility; verification decisions omit
-  it. The finding ID, not a verifier-authored remedy, is the closure reference.
+- `## Criterion Verdicts` is required and non-empty for every decision. Each
+  item has a unique `PA-###` ID, `Step: [S-n]` or `Plan-level:`, and
+  `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`,
+  `Evidence:`, `Location:`, and `Cost:` fields.
+- `## What Came Up Short` is required and non-empty for `request_changes` and
+  `failed`; it mirrors localized non-met criterion verdicts and is omitted for
+  `completed`.
+- `## How To Fix` is not permitted. A later phase uses the stable finding ID,
+  not a verifier-authored remedy, as its closure reference.
 
-`status` is `completed`, `request_changes`, or `failed`. `completed` cannot
-contain findings; `not evaluable` findings require `failed` rather than
+`status` is `completed`, `request_changes`, or `failed`. `met` means no
+counterexample was found. `not evaluable` requires `failed` rather than
 completion.
 
-See `.agent/artifact-formats/examples/planning_analysis_decision.md` for the validator-backed complete example.
-
-A `completed` decision that includes either remediation section is a hard error. A status outside `completed`, `request_changes`, or `failed` (including `done` or `wrong`) is a hard error.
+See `.agent/artifact-formats/examples/planning_analysis_decision.md` for the
+validator-backed complete example.

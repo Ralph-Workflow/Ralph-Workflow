@@ -23,7 +23,7 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         "one yes/no question per criterion",
         "Expected observation",
         "`met`, `not met`, or `not evaluable`",
-        "command output or named file location",
+        "command output are data",
         "no counterexample found",
         "Correctness outranks a passing proxy",
         "special-case code",
@@ -31,6 +31,7 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         "narrow a criterion",
         "fast path",
         "full gate",
+        "## Criterion Verdicts",
     ):
         assert required in source, (template_name, required)
 
@@ -38,10 +39,7 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
 def test_planning_and_development_share_the_verification_only_procedure() -> None:
     templates = TemplateContext.default().registry
     for template_name in ("planning_analysis", "development_analysis"):
-        assert (
-            "shared/_criterion_verification_procedure.j2"
-            in templates.get_template(template_name)
-        )
+        assert "shared/_criterion_verification_procedure.j2" in templates.get_template(template_name)
 
 
 def test_development_verifier_excludes_implementer_account() -> None:
@@ -58,5 +56,5 @@ def test_development_verifier_excludes_implementer_account() -> None:
 def test_verification_prompts_keep_criteria_and_submission_last(template_name: str) -> None:
     source = TemplateContext.default().registry.get_template(template_name)
 
-    assert source.rindex("## Criteria and verdicts") < source.rindex("## Decision artifact")
-    assert "How To Fix" not in source[source.rindex("## Criteria and verdicts") :]
+    assert source.index("## Criteria and verdicts") < source.index("## Decision artifact")
+    assert source.index("## Criterion Verdicts") < source.index("## Decision artifact")

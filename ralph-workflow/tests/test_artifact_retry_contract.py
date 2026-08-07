@@ -208,6 +208,9 @@ status: completed
 ---
 ## Summary
 - [SUM-1] No counterexample found for the fixed plan criteria. Evidence: focused command output was inspected.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the fixed plan criteria hold. Expected observation: focused command output observes them. Verdict: met. Evidence: focused command output was inspected. Location: tests/test_artifact_retry_contract.py.
 """
 
 _PHASE_VALID_ARTIFACT: dict[str, str] = {

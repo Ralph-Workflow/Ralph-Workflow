@@ -97,6 +97,10 @@ status: {status}
 ## Summary
 
 - [SUM-1] {summary}
+
+## Criterion Verdicts
+
+- [DA-001] Criterion: behavior holds. Expected observation: command output observes it. Verdict: met. Evidence: command output was inspected. Location: source.
 """
 
 

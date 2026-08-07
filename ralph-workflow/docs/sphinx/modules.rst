@@ -4126,3 +4126,10 @@ These static verification audits protect repository-wide contributor
 contracts. They are invoked by ``make verify`` and expose their diagnostics as
 Python modules for maintainers who need to run a focused audit locally.
 
+ralph.testing.verification_prompt_evaluation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.verification_prompt_evaluation
+   :members:
+   :show-inheritance:
+

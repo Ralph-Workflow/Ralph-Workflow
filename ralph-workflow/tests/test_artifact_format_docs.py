@@ -90,11 +90,13 @@ def test_analysis_format_docs_teach_evidence_first_decision_invariants(
 
     assert doc is not None
     normalized = " ".join(doc.split())
-    assert "A `completed` decision that includes either remediation section" in normalized
     if artifact_type != "review_analysis_decision":
+        assert "## Criterion Verdicts" in normalized
         assert "Criterion:" in normalized
         assert "Expected observation:" in normalized
-    assert "stable ID" in normalized
+        assert "not permitted" in normalized
+    if artifact_type != _POLICY_REMEDIATION_ANALYSIS_DECISION:
+        assert "stable" in normalized
 
 
 def test_development_analysis_example_uses_self_run_current_evidence() -> None:
@@ -111,9 +113,10 @@ def test_policy_remediation_inline_example_uses_a_localized_verdict() -> None:
     doc = load_bundled_format_doc(_POLICY_REMEDIATION_ANALYSIS_DECISION)
 
     assert doc is not None
-    assert doc.count("- [PR-001]") == 1
+    assert doc.count("- [PR-001]") == 3
     assert "Verdict: not met" in doc
-    assert "verification decisions omit" in doc
+    assert "## Criterion Verdicts" in doc
+    assert "not permitted" in doc
 
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
@@ -288,9 +291,12 @@ def test_consumed_status_docs_teach_closed_vocabulary(
 ) -> None:
     doc = load_bundled_format_doc(artifact_type)
     assert doc is not None
-    assert "hard error" in doc.lower()
-    assert "`done`" in doc
-    assert "`wrong`" in doc
+    if artifact_type.endswith("analysis_decision") and artifact_type != "review_analysis_decision":
+        assert "not evaluable" in doc
+    else:
+        assert "hard error" in doc.lower()
+        assert "`done`" in doc
+        assert "`wrong`" in doc
     assert "coerc" not in doc.lower()
     for value in accepted_values:
         assert f"`{value}`" in doc

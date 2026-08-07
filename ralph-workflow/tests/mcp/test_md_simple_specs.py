@@ -15,6 +15,8 @@ status: request_changes
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
 - [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
+## Criterion Verdicts
+- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
 """
 
 
@@ -31,7 +33,7 @@ def test_request_changes_requires_a_step_or_plan_level_target() -> None:
 def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> None:
     document = _decision("The implementation omits a required negative test.").replace(
         "planning_analysis_decision", "development_analysis_decision"
-    )
+    ).replace("PA-001", "DA-001")
 
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
 
@@ -59,7 +61,10 @@ def test_verification_decision_rejects_a_finding_without_evidence_fields() -> No
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS005", "error")]
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [
+        ("ANALYSIS005", "error"),
+        ("ANALYSIS005", "error"),
+    ]
 
 def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None:
     document = _decision("The rollout risk is unaddressed.").replace(
@@ -72,19 +77,77 @@ def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None
     assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
 
 
-def test_completed_verification_decision_requires_evidence_citation() -> None:
+def test_completed_verification_decision_requires_evidence_citing_criterion_verdicts() -> None:
     document = """---
 type: development_analysis_decision
 status: completed
 ---
 ## Summary
-- [SUM-1] Every criterion is met.
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: src/api.py:10. Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert diagnostics == []
+    assert content["criterion_verdict_ids"] == ["DA-001"]
+
+
+def test_completed_verification_decision_rejects_missing_criterion_verdicts() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
 """
 
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
 
     assert content == {}
     assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS006", "error")]
+
+
+def test_criterion_verdict_rejects_unsupported_verdict_or_uncited_met() -> None:
+    document = """---
+type: policy_remediation_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [PR-001] Criterion: the command resolves. Expected observation: make runs it. Verdict: passed. Evidence: command output. Location: policy.md:10.
+- [PR-002] Criterion: the fact is current. Expected observation: the location matches. Verdict: met. Location: policy.md:11.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("policy_remediation_analysis_decision"))
+
+    assert content == {}
+    assert [item.rule_id for item in diagnostics] == ["ANALYSIS008", "ANALYSIS005"]
+
+
+def test_not_evaluable_criterion_verdict_requires_failed_status() -> None:
+    document = """---
+type: planning_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] Evidence is unavailable.
+
+## What Came Up Short
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command unavailable. Location: plan.
+
+## Criterion Verdicts
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Verdict: not evaluable. Evidence: command unavailable. Location: plan.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error")]
 
 
 def test_not_evaluable_verdict_requires_failed_status() -> None:
@@ -95,7 +158,10 @@ def test_not_evaluable_verdict_requires_failed_status() -> None:
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error")]
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [
+        ("ANALYSIS007", "error"),
+        ("ANALYSIS007", "error"),
+    ]
 
 
 def test_request_changes_allows_explicit_plan_level_target() -> None:

@@ -35,6 +35,8 @@ status: request_changes
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
 - [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field.
+## Criterion Verdicts
+- [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field.
 """
 
 
@@ -77,7 +79,7 @@ def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Pat
 
     assert result.is_error is True
     assert any(
-        item["rule_id"] == "ANALYSIS004" and item["line"] == 8 and "S-99" in item["message"]
+        item["rule_id"] == "ANALYSIS004" and item["line"] == 10 and "S-99" in item["message"]
         for item in payload["diagnostics"]
     )
 

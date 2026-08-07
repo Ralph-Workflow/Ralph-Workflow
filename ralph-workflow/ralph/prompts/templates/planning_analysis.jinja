@@ -21,7 +21,7 @@ Bring fresh repository evidence; verify substantive executor-ready claims rather
 
 ## Criteria and verdicts
 
-Quote each fixed plan/request criterion next to a stable `PA-###` finding. Use `Step: [S-n]` with the canonical step ID or `Plan-level:`. Record `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. Use `request_changes` for a localized `not met`; use `failed` when proof cannot be performed or a conflict requires escalation. A `not evaluable` criterion cannot aggregate to `completed`.
+Use one stable `PA-###` item per fixed criterion in `## Criterion Verdicts`. Include `Step: [S-n]` with the canonical step ID or `Plan-level:`, then `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not add `How To Fix`. A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 
@@ -39,6 +39,9 @@ status: request_changes
 
 ## What Came Up Short
 - [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Observation: the command does not resolve. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field. Cost: the executor cannot run the promised proof.
+
+## Criterion Verdicts
+- [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field.
 {% endset %}
 
 {{ render_artifact_submission('planning_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, planning_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}

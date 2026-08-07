@@ -1,7 +1,7 @@
 # development_analysis_decision artifact format
 
-Report whether the implementation meets criteria fixed by the request and plan.
-Submit markdown with `ralph_submit_md_artifact`
+Report whether each criterion fixed by the request and plan is met. Submit
+markdown with `ralph_submit_md_artifact`
 (`artifact_type: development_analysis_decision`).
 
 ## Completed example
@@ -14,7 +14,11 @@ status: completed
 
 ## Summary
 
-- [SUM-1] Every fixed criterion has evidence; no counterexample was found. Evidence: `pytest tests/test_feature.py -q` reports 12 passed.
+- [SUM-1] No counterexample was found for the fixed criteria.
+
+## Criterion Verdicts
+
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: met. Evidence: `pytest tests/test_feature.py -q` reports 12 passed. Location: tests/test_feature.py:42.
 ```
 
 ## Request-changes example
@@ -32,23 +36,28 @@ status: request_changes
 ## What Came Up Short
 
 - [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
+
+## Criterion Verdicts
+
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
 ```
 
 ## Sections
 
 - `## Summary` is required and has exactly one item.
-- `## What Came Up Short` is required and non-empty for `request_changes`
-  and `failed`, omitted for `completed`.
-- Each finding has a unique stable ID and states `Criterion:`, `Expected
-  observation:`, `Verdict:`, `Evidence:`, and `Location:`.
-- `## How To Fix` is optional for compatibility; verification decisions omit
-  it. `## Analysis Items Addressed` cites the finding ID as its closure
-  reference, not a remedy authored by the verifier.
+- `## Criterion Verdicts` is required and non-empty for every decision. Each
+  item has a unique `DA-###` ID and `Criterion:`, `Expected observation:`,
+  `Verdict:`, `Evidence:`, and `Location:` fields.
+- `## What Came Up Short` is required and non-empty for `request_changes` and
+  `failed`; it mirrors localized non-met criterion verdicts and is omitted for
+  `completed`.
+- `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
+  stable finding ID as its closure reference, not a remedy authored by the
+  verifier.
 
-`status` is `completed`, `request_changes`, or `failed`. `completed` cannot
-contain findings; `not evaluable` findings require `failed` rather than
+`status` is `completed`, `request_changes`, or `failed`. `met` means no
+counterexample was found. `not evaluable` requires `failed` rather than
 completion.
 
-See `.agent/artifact-formats/examples/development_analysis_decision.md` for the validator-backed complete example.
-
-A `completed` decision that includes either remediation section is a hard error. A status outside `completed`, `request_changes`, or `failed` (including `done` or `wrong`) is a hard error.
+See `.agent/artifact-formats/examples/development_analysis_decision.md` for the
+validator-backed complete example.

@@ -69,6 +69,8 @@ def _development_analysis_markdown(status: str) -> str:
         "\n## Summary\n\n"
         "- [SUM-1] Development analysis reached a policy-defined decision. Evidence: command output was inspected.\n"
         f"{feedback}"
+        "\n## Criterion Verdicts\n\n"
+        "- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: met. Evidence: focused command output. Location: relevant source.\n"
     )
 
 
@@ -93,6 +95,8 @@ def _analysis_decision_markdown(artifact_type: str, status: str) -> str:
         "\n## Summary\n\n"
         "- [SUM-1] Analysis reached a decision. Evidence: command output was inspected.\n"
         f"{feedback}"
+        "\n## Criterion Verdicts\n\n"
+        "- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: met. Evidence: focused command output. Location: relevant source.\n"
     )
 
 
@@ -105,6 +109,10 @@ status: completed
 ## Summary
 
 - [SUM-1] Development analysis completed. Evidence: command output was inspected.
+
+## Criterion Verdicts
+
+- [DA-001] Criterion: required implementation behavior exists. Expected observation: the relevant focused check observes it. Verdict: met. Evidence: focused command output. Location: relevant source.
 """
 
 

@@ -42,6 +42,8 @@ def _submit_decision(
     if status in {"request_changes", "failed"} and not shortcomings:
         shortcomings = ["The policy review found a concrete gap."]
     extra_sections = ""
+    verdict = "not met" if shortcomings else "met"
+    verdict_evidence = shortcomings[0] if shortcomings else "declared policy probes were inspected"
     if shortcomings:
         short_items = "\n".join(
             f"- [W-{index}] Criterion: declared policy fact holds. Expected observation: "
@@ -60,6 +62,8 @@ def _submit_decision(
             "## Summary\n\n"
             "- [SUM-1] Review complete. Evidence: declared policy probes were inspected.\n"
             f"{extra_sections}"
+            "\n## Criterion Verdicts\n\n"
+            f"- [PR-001] Criterion: declared policy fact holds. Expected observation: the declared probe resolves. Verdict: {verdict}. Evidence: {verdict_evidence}. Location: policy declaration.\n"
         ),
     )
 
