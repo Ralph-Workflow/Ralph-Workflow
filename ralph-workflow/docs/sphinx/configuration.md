@@ -191,7 +191,8 @@ for local-only operation, or set a positive interval to throttle probes.
 
 When Ralph Workflow must reclaim the target-owning worktree, it first writes a recoverable
 snapshot ref under `refs/ralph-reclaim/<target>/...`, then resets that worktree.
-Recover with `git switch <target>` followed by `git reset --hard <snapshot-ref>`.
+Recover contents without replacing target history with
+`git -C <target-owner-path> restore --source=<snapshot-ref> --staged --worktree .`.
 Ralph Workflow retains at most 20 snapshots per target and prunes snapshots older than 30 days; the
 newest snapshot is always retained. Feature worktrees are never reclaimed. Setting
 `auto_integrate_reclaim_target_worktree = false` retains refuse-and-retry behavior.

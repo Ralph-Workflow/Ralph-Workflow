@@ -301,6 +301,23 @@ def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
     assert out.last_reason == "conflicted"
 
 
+def test_rebase_state_preserves_structured_reclamation_metadata() -> None:
+    """S-4: reclamation facts survive checkpoint serialization without parsing warnings."""
+    from ralph.pipeline.rebase_state import RebaseState
+
+    restored = RebaseState.model_validate_json(
+        RebaseState(
+            reclaimed_worktree_path="/repo/main",
+            reclaim_snapshot_ref="refs/ralph-reclaim/main/example",
+            reclaim_discarded_path_count=3,
+        ).model_dump_json()
+    )
+
+    assert restored.reclaimed_worktree_path == "/repo/main"
+    assert restored.reclaim_snapshot_ref == "refs/ralph-reclaim/main/example"
+    assert restored.reclaim_discarded_path_count == 3
+
+
 def test_unreachable_remote_degrades_without_failing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

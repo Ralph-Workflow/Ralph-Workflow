@@ -36,6 +36,15 @@ def target_worktree_lookup(repo_root: Path, target: str) -> tuple[str, Path | No
 
 
 @dataclass(frozen=True)
+class ReclaimResult:
+    """Structured successful target-owner reclamation evidence."""
+
+    worktree_path: str
+    snapshot_ref: str
+    discarded_path_count: int
+
+
+@dataclass(frozen=True)
 class _Snapshot:
     """Durable snapshot plus the patches needed to restore the exact pre-discard state."""
 
@@ -44,7 +53,7 @@ class _Snapshot:
     unstaged_patch: str
 
 
-def reclaim_dirty_target_worktree(worktree: Path, target: str) -> str | None:
+def reclaim_dirty_target_worktree(worktree: Path, target: str) -> ReclaimResult | None:
     """Snapshot and transactionally discard dirty state only from the target owner."""
     verdict, owner = target_worktree_lookup(worktree, target)
     if verdict != WORKTREE_FOUND or owner is None or owner.resolve() != worktree.resolve():
@@ -65,14 +74,14 @@ def reclaim_dirty_target_worktree(worktree: Path, target: str) -> str | None:
     discarded = len(status.stdout.rstrip("\0").split("\0"))
     logger.warning(
         "auto_integrate: reclaimed dirty target worktree {} into {}; discarded {} path(s). "
-        "Recover with: git -C {} checkout {} -- .",
+        "Recover with: git -C {} restore --source={} --staged --worktree .",
         worktree,
         snapshot.ref,
         discarded,
         worktree,
         snapshot.ref,
     )
-    return snapshot.ref
+    return ReclaimResult(str(worktree), snapshot.ref, discarded)
 
 
 def _create_snapshot(worktree: Path, target: str) -> _Snapshot | None:
@@ -215,4 +224,4 @@ def _discard_dirty_state(worktree: Path) -> bool:
     return clean.returncode == 0
 
 
-__all__ = ["reclaim_dirty_target_worktree", "target_worktree_lookup"]
+__all__ = ["ReclaimResult", "reclaim_dirty_target_worktree", "target_worktree_lookup"]

@@ -1,15 +1,4 @@
-"""Auto-integration seam: rebase a feature branch and fast-forward its target safely.
-# AC-14 rationale: B10
-# ladder rung: 1
-# AC-14 rationale: E4
-# ladder rung: 4
-The workflow rebases the feature branch onto its live local target. On conflict,
-it hands the stop to the conflict-resolution pipeline to resolve the rebase in
-place, prove and stage the result, then run ``git rebase --continue``. Only when
-that cannot land does it merge on unresolved conflict as the endpoint fallback.
-The phase hook reuses a clean worktree and records each attempt before the target
-advances.
-"""
+"""Auto-integrate safely: resolve the rebase in place before any merge on unresolved conflict."""
 
 from __future__ import annotations
 
@@ -54,8 +43,8 @@ from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     record_when_stale,
 )
+from ralph.pipeline.auto_integrate_ff import fast_forward_target as _fast_forward_target
 from ralph.pipeline.auto_integrate_ff import (
-    fast_forward_target,
     is_retryable_fast_forward_failure,
     maybe_push_target,
     retry_pending_remote_publish,
@@ -110,25 +99,11 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
-
-
-# Record/outcome helpers live in focused modules; aliases preserve call-site names.
-
-def _fast_forward_target(
-    repo_root: Path,
-    target: str,
-    feature_sha: str,
-    *,
-    reclaim_target_worktree: bool = True,
-) -> tuple[bool, str]:
-    """Backwards-compat shim for the extracted fast-forward path."""
-    return fast_forward_target(
-        repo_root, target, feature_sha, reclaim_target_worktree=reclaim_target_worktree
-    )
 
 
 def auto_integrate_after_commit(
@@ -597,12 +572,18 @@ def _integrate_once(
         from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
 
         reclaim_target_worktree = reclaim_target_worktree_enabled(config)
-        ok, skip_reason = (
-            _fast_forward_target(root, target, feature_sha)
-            if reclaim_target_worktree
-            else _fast_forward_target(
-                root, target, feature_sha, reclaim_target_worktree=False
-            )
+        reclamation: ReclaimResult | None = None
+
+        def remember_reclamation(result: ReclaimResult) -> None:
+            nonlocal reclamation
+            reclamation = result
+
+        ok, skip_reason = _fast_forward_target(
+            root,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=remember_reclamation,
         )
 
         # R6/AC-06: post-attempt terminal-state verification on EVERY
@@ -638,7 +619,18 @@ def _integrate_once(
             merge_attempted=rebase_result.merge_attempted,
             merge_outcome=rebase_result.merge_outcome,
             target=target,
-        ).model_copy(update={"last_refresh": refresh_outcome})
+        ).model_copy(
+            update={
+                "last_refresh": refresh_outcome,
+                "reclaimed_worktree_path": (
+                    reclamation.worktree_path if reclamation is not None else None
+                ),
+                "reclaim_snapshot_ref": reclamation.snapshot_ref if reclamation is not None else None,
+                "reclaim_discarded_path_count": (
+                    reclamation.discarded_path_count if reclamation is not None else 0
+                ),
+            }
+        )
         if not ok:
             # Fast-forward skipped: reason is appended but we keep
             # the rebase/merged action as the headline so the log line
@@ -981,13 +973,7 @@ __all__ = [
     "resolve_integration_target",
 ]
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
-
+# AC-14 catalog evidence
 # AC-14 rationale: B10
 # ladder rung: 1
 # AC-14 rationale: B11
@@ -996,4 +982,3 @@ __all__ = [
 # ladder rung: 4
 # AC-14 rationale: E5
 # ladder rung: 1
-# ----- end AC-14 catalog evidence -----

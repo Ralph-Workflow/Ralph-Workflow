@@ -46,7 +46,7 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
-from ralph.pipeline._auto_integrate_reclaim import reclaim_dirty_target_worktree
+from ralph.pipeline._auto_integrate_reclaim import ReclaimResult, reclaim_dirty_target_worktree
 
 _TARGET_MISSING = "target branch missing at fast-forward time"
 _TARGET_QUERY_FAILED = "target branch could not be read at fast-forward time"
@@ -82,6 +82,7 @@ _RETRYABLE_REASONS = frozenset(
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -120,6 +121,7 @@ def fast_forward_target(
     feature_sha: str,
     *,
     reclaim_target_worktree: bool = True,
+    on_reclaimed: Callable[[ReclaimResult], None] | None = None,
 ) -> tuple[bool, str]:
     """Move the local mainline ref to ``feature_sha`` via CAS or worktree ff.
 
@@ -179,7 +181,12 @@ def fast_forward_target(
         return False, _TARGET_WORKTREE_QUERY_FAILED
     if verdict == WORKTREE_FOUND and wt is not None:
         return _fast_forward_via_target_worktree(
-            repo_root, wt, target, feature_sha, reclaim_target_worktree=reclaim_target_worktree
+            repo_root,
+            wt,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=on_reclaimed,
         )
     return _fast_forward_via_cas(repo_root, target, feature_sha)
 
@@ -244,6 +251,7 @@ def _fast_forward_via_target_worktree(
     feature_sha: str,
     *,
     reclaim_target_worktree: bool,
+    on_reclaimed: Callable[[ReclaimResult], None] | None,
 ) -> tuple[bool, str]:
     """Fast-forward the target branch checked out in ``worktree_root`` (AC-09/AC-10).
 
@@ -266,12 +274,15 @@ def _fast_forward_via_target_worktree(
     """
     if fast_forward_via_worktree(worktree_root, feature_sha):
         return True, ""
+    reclaimed: ReclaimResult | None = None
     if reclaim_target_worktree:
         try:
             reclaimed = reclaim_dirty_target_worktree(worktree_root, target)
         except OSError:
             reclaimed = None
         if reclaimed is not None and fast_forward_via_worktree(worktree_root, feature_sha):
+            if on_reclaimed is not None:
+                on_reclaimed(reclaimed)
             return True, ""
     logger.warning(
         "auto_integrate: target '{}' is checked out in {} and refused "

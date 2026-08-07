@@ -189,11 +189,14 @@ def test_reclaim_regression_prunes_expired_and_excess_snapshot_refs(
     dirty = tmp_git_repo / "tracked.txt"
     dirty.write_text("operator work\n", encoding="utf-8")
 
-    snapshot_ref = reclaim_module.reclaim_dirty_target_worktree(tmp_git_repo, main)
+    reclamation = reclaim_module.reclaim_dirty_target_worktree(tmp_git_repo, main)
 
-    assert snapshot_ref is not None
+    assert reclamation is not None
+    assert reclamation.snapshot_ref.startswith(prefix)
+    assert reclamation.worktree_path == str(tmp_git_repo)
+    assert reclamation.discarded_path_count == 1
     refs = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)", prefix).stdout.splitlines()
-    assert snapshot_ref in refs
+    assert reclamation.snapshot_ref in refs
     assert old_ref not in refs
     assert len(refs) <= reclaim_module._RECLAIM_REF_MAX_COUNT
     assert other_ref in _run(
@@ -217,6 +220,10 @@ def test_dirty_checked_out_target_snapshots_then_lands(
 
     assert outcome is not None
     assert outcome.fast_forwarded is True
+    assert outcome.reclaimed_worktree_path == str(tmp_git_repo)
+    assert outcome.reclaim_snapshot_ref is not None
+    assert outcome.reclaim_snapshot_ref.startswith(f"refs/ralph-reclaim/{main}/")
+    assert outcome.reclaim_discarded_path_count == 1
     assert branch_sha(tmp_git_repo, main) == _run(feature, "rev-parse", "HEAD").stdout.strip()
     assert dirty_file.read_text(encoding="utf-8") == "feature\n"
     assert (tmp_git_repo / "feature.txt").exists()

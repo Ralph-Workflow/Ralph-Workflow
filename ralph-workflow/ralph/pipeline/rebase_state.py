@@ -63,6 +63,13 @@ class RebaseState(RalphBaseModel):
     freshness_safe: bool = True
     freshness_target_sha: str | None = None
 
+    # Reclamation is structured separately from warning prose so checkpoints,
+    # summaries, and recovery tooling can report destructive target-owner work
+    # without parsing a log line. ``None`` / 0 preserve legacy checkpoints.
+    reclaimed_worktree_path: str | None = None
+    reclaim_snapshot_ref: str | None = None
+    reclaim_discarded_path_count: int = 0
+
     # ``last_push`` records the fail-open configured-remote push after a
     # successful local landing. The summary is operator-visible but never
     # changes the landing result. The field is None when sync is disabled
