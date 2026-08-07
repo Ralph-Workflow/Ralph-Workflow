@@ -344,7 +344,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert second_push.outer_dev_iteration == 1
     assert second_push.outer_dev_cap == 5
     assert second_push.inner_analysis == 3
-    assert second_push.inner_analysis_cap == 3
+    assert second_push.inner_analysis_cap == 5
 
     # AC-03 invariant: the StatusBar's observable ``last_model``
     # reflects the final push (the ``update_status_bar`` patch
@@ -358,7 +358,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert last.workspace_root == workspace_root_str
     assert last.phase_label == "Development Analysis"
     assert last.inner_analysis == 3
-    assert last.inner_analysis_cap == 3
+    assert last.inner_analysis_cap == 5
 
 
 def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(

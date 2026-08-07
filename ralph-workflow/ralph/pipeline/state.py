@@ -150,6 +150,7 @@ class PipelineState(_FrozenPipelineStateModel):
     policy_format_version: int | None = None
     current_drain: str | None = None
     post_commit_phase_override: PipelinePhase | None = None
+    execution_cycle_charged: bool = False
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)

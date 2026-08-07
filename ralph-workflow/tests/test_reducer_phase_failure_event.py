@@ -525,6 +525,27 @@ class TestPhaseFailureEvent:
         assert new_state.recovery_epoch == 1
         assert effects == []
 
+    def test_development_failure_regression_terminal_error_consumes_one_analysis_cycle(
+        self,
+    ) -> None:
+        """S-1: terminal development failures advance the declared analysis counter once."""
+        policy = _policy_with_post_commit_routes()
+        policy.phases["development"] = policy.phases["development"].model_copy(
+            update={"workflow_fallback": PhaseWorkflowFallback(target="development_analysis")}
+        )
+        state = PipelineState(phase="development")
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="non-recoverable agent error",
+            recoverable=False,
+        )
+
+        new_state, effects = _reduce(state, event, policy)
+
+        assert new_state.phase == "development_analysis"
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 1
+        assert effects == []
+
     def test_commit_failure_does_not_reuse_stale_last_error(self) -> None:
         policy = PipelinePolicy(
             phases={
