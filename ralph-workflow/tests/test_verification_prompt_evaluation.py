@@ -70,6 +70,24 @@ def test_scoring_counts_false_rejection_and_unsupported_met() -> None:
     assert metrics["unsupported_met_rate"] == 1.0
 
 
+def test_runner_scores_repeated_agent_runs_for_disagreement() -> None:
+    case = EvaluationCase("correct", frozenset({"DA-001"}), frozenset())
+    calls = 0
+
+    def invoke(_agent: tuple[str, str], _prompt: str, _case: EvaluationCase) -> str:
+        nonlocal calls
+        calls += 1
+        return _markdown(
+            "met" if calls == 1 else "not met",
+            "test output. ",
+            "src/example.py:10",
+        )
+
+    results = run_evaluation((case,), (("weakest", "provider/weak"),), invoke, runs_per_agent=2)
+
+    assert results["weakest"]["correct"]["verdict_disagreement_rate"] == 1.0
+
+
 def test_scoring_reports_repeated_run_disagreement() -> None:
     case = EvaluationCase("correct", frozenset({"DA-001"}), frozenset())
 

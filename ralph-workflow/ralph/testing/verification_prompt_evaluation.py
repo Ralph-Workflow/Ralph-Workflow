@@ -55,24 +55,31 @@ def run_evaluation(
     cases: Iterable[EvaluationCase],
     agents: Iterable[tuple[str, str]],
     invoke: Callable[[tuple[str, str], str, EvaluationCase], str],
+    *,
+    runs_per_agent: int = 1,
 ) -> dict[str, dict[str, dict[str, float]]]:
-    """Run supplied agents through production prompts and validate every submission.
+    """Run and score one or more validated decisions per agent and fixture.
 
-    Callers explicitly opt in to live invocation; this seam keeps the default
-    suite hermetic while ensuring evaluator output uses the production Markdown
-    contract before scoring.
+    Callers explicitly opt in to live invocation; repeated runs expose verdict
+    disagreement while the default suite remains hermetic.
     """
+    if runs_per_agent < 1:
+        raise ValueError("runs_per_agent must be positive")
     results: dict[str, dict[str, dict[str, float]]] = {}
     for agent in agents:
         name, _model = agent
         agent_results: dict[str, dict[str, float]] = {}
         for case in cases:
-            content, diagnostics = parse_and_validate(
-                invoke(agent, render_evaluation_prompt(case), case), get_spec(case.artifact_type)
-            )
-            if diagnostics:
-                raise ValueError(f"invalid submitted decision for {name}/{case.case_id}")
-            agent_results[case.case_id] = score_decisions(case, [content])
+            decisions: list[dict[str, object]] = []
+            prompt = render_evaluation_prompt(case)
+            for _ in range(runs_per_agent):
+                content, diagnostics = parse_and_validate(
+                    invoke(agent, prompt, case), get_spec(case.artifact_type)
+                )
+                if diagnostics:
+                    raise ValueError(f"invalid submitted decision for {name}/{case.case_id}")
+                decisions.append(content)
+            agent_results[case.case_id] = score_decisions(case, decisions)
         results[name] = agent_results
     return results
 

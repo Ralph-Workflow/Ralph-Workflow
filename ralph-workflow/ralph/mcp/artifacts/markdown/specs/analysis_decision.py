@@ -27,10 +27,10 @@ _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
 _REQUIRED_VERDICT_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
 _EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
-_VERIFICATION_ID_PREFIXES = {
-    "planning_analysis_decision": "PA-",
-    "development_analysis_decision": "DA-",
-    "policy_remediation_analysis_decision": "PR-",
+_VERIFICATION_ID_PATTERNS = {
+    "planning_analysis_decision": re.compile(r"PA-[0-9]+"),
+    "development_analysis_decision": re.compile(r"DA-[0-9]+"),
+    "policy_remediation_analysis_decision": re.compile(r"PR-[0-9]+"),
 }
 
 
@@ -103,15 +103,15 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
         )
         return diagnostics
 
-    prefix = _VERIFICATION_ID_PREFIXES[artifact_type]
+    identifier_pattern = _VERIFICATION_ID_PATTERNS[artifact_type]
     for item in verdict_items:
-        if not item.identifier.startswith(prefix):
+        if identifier_pattern.fullmatch(item.identifier) is None:
             diagnostics.append(
                 _validation_diagnostic(
                     item.line,
                     "Criterion Verdicts",
                     "ANALYSIS010",
-                    f"criterion verdict IDs for {artifact_type} must start with '{prefix}'",
+                    f"criterion verdict IDs for {artifact_type} must use its numeric phase ID pattern",
                 )
             )
         if any(field not in item.text for field in _REQUIRED_VERDICT_FIELDS):

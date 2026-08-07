@@ -17,8 +17,6 @@ Read the submitted plan (or its staged draft with {{ GET_MD_DRAFT_TOOL_REFERENCE
 
 Bring fresh repository evidence; verify substantive executor-ready claims rather than a holistic quality rating.
 
-{% include 'shared/_criterion_verification_procedure.j2' %}
-
 {% set planning_decision_example %}
 ---
 type: planning_analysis_decision
@@ -36,6 +34,8 @@ status: request_changes
 {% endset %}
 
 ## Criteria and verdicts
+
+{% include 'shared/_criterion_verification_procedure.j2' %}
 
 Use one stable `PA-###` item per fixed criterion in `## Criterion Verdicts`. Include `Step: [S-n]` with the canonical step ID or `Plan-level:`, then `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not add `How To Fix`. A `not evaluable` criterion requires `failed`.
 

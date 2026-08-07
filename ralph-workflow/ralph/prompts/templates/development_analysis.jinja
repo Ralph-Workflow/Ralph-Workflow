@@ -18,8 +18,6 @@ Submit the required artifact on this attempt.
 
 Retrieve PROMPT and PLAN. Use parallel or subagent evidence gathering when it improves the decision; reconcile findings in this session, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. Do not read or use an implementer summary, rationale, or completion claim as evidence.
 
-{% include 'shared/_criterion_verification_procedure.j2' %}
-
 {% set development_decision_example %}
 ---
 type: development_analysis_decision
@@ -37,6 +35,8 @@ status: request_changes
 {% endset %}
 
 ## Criteria and verdicts
+
+{% include 'shared/_criterion_verification_procedure.j2' %}
 
 For each unchanged request/plan criterion, emit one stable `DA-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not request or prescribe a remedy. A `not evaluable` criterion requires `failed`.
 

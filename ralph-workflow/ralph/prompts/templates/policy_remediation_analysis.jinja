@@ -10,6 +10,8 @@ Correctness outranks a passing proxy. Stop and escalate a conflict, invalid test
 
 ## Criteria and verdicts
 
+{% include 'shared/_criterion_verification_procedure.j2' %}
+
 For every declared fact, command, marker, and script, use one stable `PR-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Verdicts are exactly `met`, `not met`, or `not evaluable`; cite command output or named file location. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each attributable localized non-met verdict in `## What Came Up Short`; `not evaluable` requires `failed`.
 
 ## Decision artifact
