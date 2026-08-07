@@ -268,6 +268,8 @@ def _dispatch_pull_outcome(
             ),
             last_refresh=refresh,
             reason=None,
+            freshness_verdict="verified" if refresh == REFRESH_NO_REMOTE else "degraded",
+            freshness_source="shared local ref" if refresh == REFRESH_NO_REMOTE else "fetch",
         )
     elif refresh == REFRESH_NO_LOCAL_BRANCH:
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)

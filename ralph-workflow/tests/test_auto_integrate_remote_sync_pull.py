@@ -335,6 +335,8 @@ def test_unknown_remote_records_skip_not_crash(
     out = remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
     assert out is not None
     assert out.last_remote_sync == remote_sync.REMOTE_NO_REMOTE
+    assert out.freshness_verdict == "verified"
+    assert out.freshness_source == "shared local ref"
 
 
 def test_remote_failure_does_not_arm_throttle(

@@ -229,17 +229,15 @@ def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     assert events == ["remote refresh", "integrate", "backoff", "remote refresh", "integrate"]
 
 
-def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(
+def test_refresh_observation_never_moves_the_local_ref_even_when_origin_is_ahead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Remote observation is read-only for LOCAL refs, with no exception.
+    """The read-only probe reports an ahead remote; its caller applies it safely.
 
-    Auto-integration is a local-only feature: the mainline pointer every
-    rebase and landing decision uses is ``refs/heads/<target>``, owned by
-    the local fleet. A fetch may observe origin, but an origin that is
-    strictly ahead must NOT be applied to the local ref -- the previous
-    behaviour, which let a remote nobody asked about rewrite the base of
-    every local rebase.
+    Remote target movement belongs exclusively to the worktree-aware
+    ``pull_and_reconcile_target`` seam. The observation helper itself remains
+    read-only, preserving local-target resolution and preventing a fetch from
+    silently changing the base before the shared advancement contract runs.
     """
     _inject_remote_position(monkeypatch, ancestor=True)
     assert (

@@ -90,6 +90,7 @@ def _create_snapshot(worktree: Path, target: str) -> _Snapshot | None:
     if staged.returncode != 0 or unstaged.returncode != 0:
         return None
     if run_git(("add", "-A"), cwd=worktree, label="auto-integrate:reclaim-stage").returncode != 0:
+        _restore_index(worktree, staged.stdout)
         return None
     tree = run_git(("write-tree",), cwd=worktree, label="auto-integrate:reclaim-write-tree")
     if tree.returncode != 0 or not (tree_sha := tree.stdout.strip()):

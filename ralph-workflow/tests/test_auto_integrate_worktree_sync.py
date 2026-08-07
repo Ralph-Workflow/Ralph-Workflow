@@ -109,6 +109,39 @@ def test_reclaim_regression_snapshot_failure_restores_the_original_index(
     assert untracked.read_text(encoding="utf-8") == "untracked\n"
 
 
+def test_reclaim_regression_stage_failure_restores_the_original_index(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/AC-7: a failed staging snapshot leaves every owner byte intact."""
+    main = _base_branch(tmp_git_repo)
+    tracked = tmp_git_repo / "tracked.txt"
+    _commit(tmp_git_repo, tracked.name, "base\n", "seed tracked file")
+    tracked.write_text("staged\n", encoding="utf-8")
+    assert _run(tmp_git_repo, "add", tracked.name).returncode == 0
+    tracked.write_text("staged plus unstaged\n", encoding="utf-8")
+    untracked = tmp_git_repo / "untracked.txt"
+    untracked.write_text("untracked\n", encoding="utf-8")
+    before_status = _run(tmp_git_repo, "status", "--porcelain=v1", "-z").stdout
+    before_cached = _run(tmp_git_repo, "diff", "--cached", "--binary").stdout
+    reclaim_module = importlib.import_module("ralph.pipeline._auto_integrate_reclaim")
+    original_run_git = reclaim_module.run_git
+
+    def fail_stage(args: tuple[str, ...], **kwargs: object) -> object:
+        result = original_run_git(args, **kwargs)
+        if kwargs.get("label") == "auto-integrate:reclaim-stage":
+            return subprocess.CompletedProcess(args, 1, "", "injected failure after staging")
+        return result
+
+    monkeypatch.setattr(reclaim_module, "run_git", fail_stage)
+
+    assert reclaim_module.reclaim_dirty_target_worktree(tmp_git_repo, main) is None
+    assert _run(tmp_git_repo, "status", "--porcelain=v1", "-z").stdout == before_status
+    assert _run(tmp_git_repo, "diff", "--cached", "--binary").stdout == before_cached
+    assert tracked.read_text(encoding="utf-8") == "staged plus unstaged\n"
+    assert untracked.read_text(encoding="utf-8") == "untracked\n"
+
+
 def test_reclaim_refuses_a_feature_worktree(
     tmp_git_repo: Path,
 ) -> None:
