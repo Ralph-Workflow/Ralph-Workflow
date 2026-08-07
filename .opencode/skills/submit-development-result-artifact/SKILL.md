@@ -11,7 +11,7 @@ version: 2.1.0
 A development result is one markdown document
 (`artifact_type: "development_result"`) reporting what was done, which
 files changed, and — as stable-ID list items — the proof that plan steps
-and analysis findings were actually addressed.
+and analysis fixes were actually addressed.
 
 Submit with `ralph_submit_md_artifact`; pre-check with
 `ralph_verify_md_artifact`.
@@ -36,7 +36,7 @@ present and are the most useful things to include.
 | `## Plan Items Proven` | no | one per plan step proven |
 | `## Next Steps` | no | exactly 1 |
 | `## Continuation` | no | exactly 1: the prior session ID |
-| `## Analysis Items Addressed` | no | one per analysis finding addressed |
+| `## Analysis Items Addressed` | no | one per analysis fix addressed |
 
 ## ID-Based Proof References
 
@@ -47,8 +47,8 @@ goes in the `[ID]` slot and the proof is the item text:
   (`S-1`, `S-2`, …) exactly as it appears in the plan's `## Steps`
   section. The text states the concrete evidence that the step is done.
 - `## Analysis Items Addressed`: the item ID is the stable ID of the
-  `## What Came Up Short` finding in the analysis-decision artifact you are
-  answering. The text states concrete evidence that the finding is closed.
+  `## How To Fix` item in the analysis-decision artifact you are
+  answering. The text states the concrete evidence for that fix.
 
 Copy the IDs from the source artifact — do not invent or renumber them.
 
@@ -86,7 +86,7 @@ status: completed
 
 ## Analysis Items Addressed
 
-- [DA-001] pytest tests/test_foo.py -q passes with the new regression test included.
+- [FIX-1] pytest tests/test_foo.py -q passes with the new regression test included.
 ```
 
 ## Error Recovery
@@ -99,5 +99,5 @@ status: completed
   these sections are single-item; merge extra items into one line.
 - `section requires list items` on `## Files Changed` — list at least one
   changed file.
-- Duplicate-ID diagnostics in a proof section — each plan step or finding
-  may appear only once; merge the proof text into one item.
+- Duplicate-ID diagnostics in a proof section — each plan step or fix
+  item may appear only once; merge the proof text into one item.
