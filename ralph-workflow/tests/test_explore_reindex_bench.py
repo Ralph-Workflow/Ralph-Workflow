@@ -370,6 +370,8 @@ def test_cli_compare_emits_machine_readable_summary() -> None:
     assert "scalar" in workload
     assert "accelerated" in workload
     assert "scalar_vs_accelerated_speedup" in workload
+    assert workload["file_count"] == 8
+    assert workload["lines_per_file"] == 12
     assert "metadata" in payload
     assert "platform" in payload["metadata"]
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from git import GitCommandError, Repo
+from git import GitCommandError
 
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
@@ -29,7 +29,6 @@ from ralph.git.operations import (
     push,
     stage_all,
 )
-from ralph.git.subprocess_runner import run_git
 
 
 def _unused_pid() -> int:
@@ -89,16 +88,18 @@ def test_find_repo_root_not_git() -> None:
         find_repo_root(Path("/tmp"))
 
 
-@pytest.mark.subprocess_e2e
-def test_is_repo_clean(tmp_git_repo: Path) -> None:
-    """Test checking if repository is clean."""
-    assert is_repo_clean(tmp_git_repo) is True
+def test_is_repo_clean(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A successful porcelain status determines clean state without Git I/O."""
+    outputs = iter(("", " M README.md\n"))
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args), returncode=0, stdout=next(outputs), stderr=""
+        ),
+    )
 
-    # Make a change
-    readme = tmp_git_repo / "README.md"
-    readme.write_text("updated content")
-
-    assert is_repo_clean(tmp_git_repo) is False
+    assert is_repo_clean(Path("/tmp/repo")) is True
+    assert is_repo_clean(Path("/tmp/repo")) is False
 
 
 def test_is_repo_clean_prefers_bounded_subprocess_status(
@@ -188,10 +189,18 @@ def test_has_commits_since_no_baseline_returns_true(tmp_git_repo: Path) -> None:
     assert has_commits_since(tmp_git_repo, None) is True
 
 
-@pytest.mark.subprocess_e2e
-def test_has_commits_since_head_equals_baseline_returns_false(tmp_git_repo: Path) -> None:
-    head = get_head_sha(tmp_git_repo)
-    assert has_commits_since(tmp_git_repo, head) is False
+def test_has_commits_since_head_equals_baseline_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty successful ``rev-list`` result reports no newer commit without Git I/O."""
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args), returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    assert has_commits_since(Path("/tmp/repo"), "a" * FULL_SHA_LENGTH) is False
 
 
 def test_has_commits_since_prefers_bounded_subprocess_rev_list(
@@ -216,35 +225,41 @@ def test_has_commits_since_prefers_bounded_subprocess_rev_list(
     assert has_commits_since(Path("/tmp/repo"), "abc123") is False
 
 
-@pytest.mark.subprocess_e2e
-def test_has_commits_since_new_commit_returns_true(tmp_git_repo: Path) -> None:
-    baseline = get_head_sha(tmp_git_repo)
-    (tmp_git_repo / "extra.txt").write_text("more")
-    add_result = run_git(("add", "extra.txt"), cwd=tmp_git_repo, label="git-add-test")
-    assert add_result.returncode == 0
-    commit_result = run_git(
-        ("commit", "-m", "another commit"),
-        cwd=tmp_git_repo,
-        label="git-commit-test",
+def test_has_commits_since_new_commit_returns_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A nonempty bounded ``rev-list`` result reports a newer commit without Git I/O."""
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout="a" * FULL_SHA_LENGTH + "\n",
+            stderr="",
+        ),
     )
-    assert commit_result.returncode == 0
-    assert has_commits_since(tmp_git_repo, baseline) is True
+
+    assert has_commits_since(Path("/tmp/repo"), "b" * FULL_SHA_LENGTH) is True
 
 
-@pytest.mark.subprocess_e2e
-def test_stage_all(tmp_git_repo: Path) -> None:
-    """Test staging all changes."""
-    readme = tmp_git_repo / "README.md"
-    readme.write_text("updated content")
+def test_stage_all() -> None:
+    """Staging delegates to GitPython's all-files operation without Git I/O."""
+    calls: list[bool] = []
 
-    stage_all(tmp_git_repo)
+    class FakeGit:
+        def add(self, **kwargs: bool) -> str:
+            calls.append(kwargs["A"])
+            return ""
 
-    repo = Repo(tmp_git_repo)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "ralph.git.operations.Repo",
+        lambda *_args, **_kwargs: SimpleNamespace(git=FakeGit(), close=lambda: None),
+    )
     try:
-        staged = repo.index.diff("HEAD")
-        assert len(staged) > 0
+        stage_all(Path("/tmp/repo"))
     finally:
-        repo.close()
+        monkeypatch.undo()
+
+    assert calls == [True]
 
 
 @pytest.mark.subprocess_e2e
@@ -458,11 +473,21 @@ def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
     assert author.email == "repo@example.com"
 
 
-@pytest.mark.subprocess_e2e
-def test_get_head_sha(tmp_git_repo: Path) -> None:
-    """Test getting HEAD SHA."""
-    sha = get_head_sha(tmp_git_repo)
-    assert len(sha) == FULL_SHA_LENGTH
+def test_get_head_sha() -> None:
+    """HEAD reads return the commit SHA through the GitPython boundary."""
+    expected = "a" * FULL_SHA_LENGTH
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "ralph.git.operations.Repo",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            head=SimpleNamespace(commit=SimpleNamespace(hexsha=expected)),
+            close=lambda: None,
+        ),
+    )
+    try:
+        assert get_head_sha(Path("/tmp/repo")) == expected
+    finally:
+        monkeypatch.undo()
 
 
 @pytest.mark.subprocess_e2e
@@ -520,17 +545,19 @@ def test_merge_base() -> None:
     assert base == base2
 
 
-@pytest.mark.subprocess_e2e
-def test_push_without_remote(tmp_git_repo: Path) -> None:
-    """Test that push fails gracefully without remote."""
-    repo = Repo(tmp_git_repo)
+def test_push_without_remote() -> None:
+    """An absent remote raises the public push error without a Git subprocess."""
+    fake_repo = SimpleNamespace(
+        remote=lambda _name: (_ for _ in ()).throw(ValueError("no such remote")),
+        close=lambda: None,
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
     try:
-        repo.create_head("test-branch")
+        with pytest.raises(GitOperationError, match="no such remote"):
+            push(Path("/tmp/repo"), remote="no-such-remote", branch="test-branch")
     finally:
-        repo.close()
-
-    with pytest.raises(GitOperationError):
-        push(tmp_git_repo, remote="no-such-remote", branch="test-branch")
+        monkeypatch.undo()
 
 
 # --- Phase 5 edge-case tests for _atomic_append_text ---
@@ -819,15 +846,21 @@ def test_git_status_porcelain_lines_raises_on_nonzero_return(
         monkeypatch.undo()
 
 
-@pytest.mark.subprocess_e2e
 def test_git_status_porcelain_lines_returns_lines_on_zero_return(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A zero ``git status --porcelain`` return returns the split lines."""
-    lines = _git_status_porcelain_lines(tmp_git_repo)
-    assert isinstance(lines, list)
-    # A freshly cloned template has a clean working tree.
-    assert lines == []
+    """A successful bounded status call exposes its porcelain lines without Git I/O."""
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout=" M README.md\n?? untracked.txt\n",
+            stderr="",
+        ),
+    )
+
+    assert _git_status_porcelain_lines(Path("/tmp/repo")) == [" M README.md", "?? untracked.txt"]
 
 
 @pytest.mark.subprocess_e2e
