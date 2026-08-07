@@ -150,6 +150,15 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     "criterion verdict must cite non-empty Evidence:",
                 )
             )
+        if status == "completed" and verdict != "met":
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "Criterion Verdicts",
+                    "ANALYSIS012",
+                    "a completed verification decision requires every criterion verdict to be 'met'",
+                )
+            )
         if verdict == "not evaluable" and status != "failed":
             diagnostics.append(
                 _validation_diagnostic(

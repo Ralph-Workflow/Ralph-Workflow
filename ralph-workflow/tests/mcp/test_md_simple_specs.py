@@ -95,6 +95,24 @@ status: completed
     assert content["criterion_verdict_ids"] == ["DA-001"]
 
 
+def test_completed_verification_decision_rejects_non_met_verdict() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: not met. Evidence: src/api.py:10. Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS012", "error")]
+
+
 def test_completed_verification_decision_rejects_missing_criterion_verdicts() -> None:
     document = """---
 type: development_analysis_decision

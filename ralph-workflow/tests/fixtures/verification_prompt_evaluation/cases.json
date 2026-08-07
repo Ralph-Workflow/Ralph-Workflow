@@ -1,12 +1,23 @@
 [
   {
-    "case_id": "correct",
-    "criterion_ids": ["DA-001"],
+    "case_id": "planning-correct",
+    "artifact_type": "planning_analysis_decision",
+    "template_name": "planning_analysis",
+    "criterion_ids": ["PA-001"],
     "defect_locations": []
   },
   {
-    "case_id": "planted-defect",
+    "case_id": "development-planted-defect",
+    "artifact_type": "development_analysis_decision",
+    "template_name": "development_analysis",
     "criterion_ids": ["DA-001"],
     "defect_locations": ["src/example.py:10"]
+  },
+  {
+    "case_id": "policy-planted-defect",
+    "artifact_type": "policy_remediation_analysis_decision",
+    "template_name": "policy_remediation_analysis",
+    "criterion_ids": ["PR-001"],
+    "defect_locations": ["docs/policy.md:10"]
   }
 ]
