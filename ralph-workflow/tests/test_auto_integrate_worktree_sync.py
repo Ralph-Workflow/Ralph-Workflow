@@ -127,3 +127,35 @@ def test_dirty_checked_out_target_snapshots_then_lands(
     assert _run(tmp_git_repo, "status", "--porcelain").stdout == ""
     snapshots = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim").stdout
     assert f"refs/ralph-reclaim/{main}/" in snapshots
+
+
+def test_reclaim_regression_discard_failure_restores_owner_state(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/E15: a failed clean rolls the target owner back byte-for-byte."""
+    main = _base_branch(tmp_git_repo)
+    tracked = tmp_git_repo / "tracked.txt"
+    _commit(tmp_git_repo, tracked.name, "base\n", "seed tracked file")
+    tracked.write_text("staged\n", encoding="utf-8")
+    assert _run(tmp_git_repo, "add", tracked.name).returncode == 0
+    tracked.write_text("staged plus unstaged\n", encoding="utf-8")
+    untracked = tmp_git_repo / "untracked.txt"
+    untracked.write_text("untracked\n", encoding="utf-8")
+    before_status = _run(tmp_git_repo, "status", "--porcelain=v1", "-z").stdout
+    before_cached = _run(tmp_git_repo, "diff", "--cached", "--binary").stdout
+    reclaim_module = importlib.import_module("ralph.pipeline._auto_integrate_reclaim")
+    original_run_git = reclaim_module.run_git
+
+    def fail_clean(args: tuple[str, ...], **kwargs: object) -> object:
+        if kwargs.get("label") == "auto-integrate:reclaim-clean":
+            return subprocess.CompletedProcess(args, 1, "", "injected failure")
+        return original_run_git(args, **kwargs)
+
+    monkeypatch.setattr(reclaim_module, "run_git", fail_clean)
+
+    assert reclaim_module.reclaim_dirty_target_worktree(tmp_git_repo, main) is None
+    assert _run(tmp_git_repo, "status", "--porcelain=v1", "-z").stdout == before_status
+    assert _run(tmp_git_repo, "diff", "--cached", "--binary").stdout == before_cached
+    assert tracked.read_text(encoding="utf-8") == "staged plus unstaged\n"
+    assert untracked.read_text(encoding="utf-8") == "untracked\n"

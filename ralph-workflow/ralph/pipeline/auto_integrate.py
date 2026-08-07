@@ -195,23 +195,9 @@ def auto_integrate_on_phase_transition(
             )
         if not _worktree_is_clean(root):
             return _defer_dirty_boundary(config, root, target)
-        # A stale remote pointer must not let this cheap hook conclude
-        # 'nothing to do'. Every free early return above still costs
-        # nothing.
-        # Opted-in sync owns its configured remote fetch. Do not issue the
-        # legacy origin-only observation alongside it.
-        refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
-        target_sha = branch_sha(root, target)
-        if target_sha is not None and target_sha == get_head_sha(root):
-            pending = retry_pending_remote_publish(config, root, target, state)
-            if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
-                # Fully integrated and landed: the frequent-boundary case.
-                # Quiet only while the refreshed pointer that verdict was
-                # read through can be trusted (see ``record_when_stale``).
-                return pending or record_when_stale(
-                    _record_skip(reason="no commits beyond target", target=target),
-                    refresh,
-                )
+        boundary_outcome = _boundary_freshness_outcome(config, root, target, state)
+        if boundary_outcome is not None:
+            return boundary_outcome
     except Exception as exc:
         # AC-08: never silently swallow a phase-transition pre-check
         # exception while ``auto_integrate_enabled`` is true. Surface
@@ -247,6 +233,34 @@ def auto_integrate_on_phase_transition(
         sleep=sleep,
         jitter=jitter,
     )
+
+
+def _boundary_freshness_outcome(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    state: RebaseState,
+) -> RebaseState | None:
+    """Return a freshness-gated no-commit boundary result, if the seam is done."""
+    remote_record = pull_and_reconcile_target(config, root, target)
+    if remote_record is not None and not remote_record.freshness_safe:
+        return remote_record
+    refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
+    if branch_sha(root, target) != get_head_sha(root):
+        return None
+    pending = retry_pending_remote_publish(config, root, target, state)
+    if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
+        if pending is not None:
+            return pending
+        if remote_record is not None:
+            return remote_record.model_copy(
+                update={
+                    "last_reason": "no commits beyond target",
+                    "last_action": "skipped",
+                }
+            )
+        return record_when_stale(_record_skip(reason="no commits beyond target", target=target), refresh)
+    return None
 
 
 def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
@@ -342,11 +356,6 @@ def _auto_integrate_after_commit_inner(
     if remote_record is not None and not remote_record.freshness_safe:
         return remote_record
 
-    # Budget check BEFORE any git mutation: an exhausted budget still
-    # runs the rebase and the endpoint merge (and still aborts them
-    # cleanly), it merely stops paying for another agent invocation.
-    # The identity is observed here, before the rebase moves anything,
-    # so it names the endpoints this attempt is about to reconcile.
     identity = observe_conflict_identity(root, target)
     allowed = resolver_allowed(state, target, identity)
     effective_resolver = conflict_resolver if allowed else None
@@ -386,13 +395,6 @@ def _auto_integrate_after_commit_inner(
             )
             if not retry_ff:
                 break
-            # Only a merge-producing attempt suppresses the next
-            # rebase: a plain ``git rebase`` carries no merge commits,
-            # so replaying over the merge this attempt just created
-            # would discard a resolution an agent was paid to produce and
-            # walk straight back into the same conflict. A clean
-            # rebase-only attempt still retries as a rebase and keeps
-            # the history linear.
             prefer_merge = record is not None and record.last_action == _ACTION_MERGED
             if attempt + 1 < _MAX_INTEGRATION_ATTEMPTS:
                 logger.info(

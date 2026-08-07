@@ -193,7 +193,19 @@ def pull_and_reconcile_target(
         remote=chosen_remote,
     )
     state = _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock, config)
-    return state.model_copy(update={"last_remote": chosen_remote}) if state is not None else None
+    if state is None:
+        return None
+    from ralph.git.merge import branch_sha
+
+    try:
+        target_sha = branch_sha(repo_root, target)
+    except OSError:
+        # Test/dry-run callers can provide an unmaterialized path; freshness
+        # classification remains valid but no target SHA may be claimed.
+        target_sha = None
+    return state.model_copy(
+        update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
+    )
 
 
 def _dispatch_pull_outcome(
@@ -281,6 +293,8 @@ def _dispatch_pull_outcome(
                 last_remote_sync=REMOTE_PULLED,
                 last_refresh=refresh,
                 reason=None,
+                freshness_verdict="verified",
+                freshness_source="fetch",
             )
     elif refresh == REFRESH_LOCAL_AHEAD:
         _arm_throttle(repo_root, chosen_remote, target, clock)
@@ -289,6 +303,8 @@ def _dispatch_pull_outcome(
             last_remote_sync=REMOTE_LOCAL_AHEAD,
             last_refresh=refresh,
             reason=None,
+            freshness_verdict="verified",
+            freshness_source="fetch",
         )
     elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
@@ -306,6 +322,8 @@ def _dispatch_pull_outcome(
                 last_remote_sync=REMOTE_RECONCILED,
                 last_refresh=refresh,
                 reason=None,
+                freshness_verdict="verified",
+                freshness_source="fetch",
             )
         else:
             _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
