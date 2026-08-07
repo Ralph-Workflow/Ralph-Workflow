@@ -102,6 +102,31 @@ def test_init_warns_when_current_worktree_owns_main(
     assert "uncommitted" in output
 
 
+def test_init_ownership_warning_uses_configured_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The volatile-worktree warning names the configured mainline, not main."""
+    observed: list[str] = []
+    monkeypatch.setattr(
+        init_module,
+        "_load_config_loader",
+        lambda: lambda *_args, **_kwargs: type(
+            "Config", (), {"general": type("General", (), {"auto_integrate_target": "release"})()}
+        )(),
+    )
+    monkeypatch.setattr(
+        init_module,
+        "target_worktree_lookup",
+        lambda _root, target: (observed.append(target) and "not-found", None),
+    )
+
+    init_module._emit_target_worktree_warning(
+        type("Display", (), {"emit_warning": lambda *_args: None})(), tmp_path
+    )
+
+    assert observed == ["release"]
+
+
 def test_try_load_registry_uses_the_current_workspace_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

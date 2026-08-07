@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
-from ralph.git.merge import WORKTREE_QUERY_FAILED, merge_in_progress, worktree_lookup
+from ralph.git.merge import (
+    WORKTREE_FOUND,
+    WORKTREE_QUERY_FAILED,
+    merge_in_progress,
+    worktree_lookup,
+)
 from ralph.git.operations import find_main_worktree_root
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
@@ -37,7 +42,10 @@ class _Snapshot:
 
 
 def reclaim_dirty_target_worktree(worktree: Path, target: str) -> str | None:
-    """Snapshot and transactionally discard dirty target-owner state."""
+    """Snapshot and transactionally discard dirty state only from the target owner."""
+    verdict, owner = target_worktree_lookup(worktree, target)
+    if verdict != WORKTREE_FOUND or owner is None or owner.resolve() != worktree.resolve():
+        return None
     if merge_in_progress(worktree) or rebase_in_progress(worktree):
         return None
     status = run_git(

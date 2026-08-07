@@ -105,6 +105,23 @@ def test_reclaim_regression_snapshot_failure_restores_the_original_index(
     assert untracked.read_text(encoding="utf-8") == "untracked\n"
 
 
+def test_reclaim_refuses_a_feature_worktree(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-8: reclamation can discard only the worktree owning the target."""
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
+    feature = tmp_git_repo.parent / "feature-owner"
+    _add_worktree(tmp_git_repo, feature, "feature-owner")
+    dirty = feature / "feature.txt"
+    dirty.write_text("must survive\n", encoding="utf-8")
+
+    reclaim_module = importlib.import_module("ralph.pipeline._auto_integrate_reclaim")
+
+    assert reclaim_module.reclaim_dirty_target_worktree(feature, main) is None
+    assert dirty.read_text(encoding="utf-8") == "must survive\n"
+
+
 def test_dirty_checked_out_target_snapshots_then_lands(
     tmp_git_repo: Path,
 ) -> None:

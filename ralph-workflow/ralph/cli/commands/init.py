@@ -207,8 +207,14 @@ def init_command(
 
 
 def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> None:
-    """Explain the target-worktree ownership contract when the path is resolvable."""
-    _verdict, owner = target_worktree_lookup(target, "main")
+    """Explain the configured target-worktree ownership contract when resolvable."""
+    configured_target = "main"
+    try:
+        config = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
+        configured_target = config.general.auto_integrate_target
+    except Exception:
+        pass
+    _verdict, owner = target_worktree_lookup(target, configured_target)
     if owner is not None:
         display.emit_warning(
             f"Auto-integration owns {owner}: Ralph Workflow may snapshot and reset uncommitted content there."
