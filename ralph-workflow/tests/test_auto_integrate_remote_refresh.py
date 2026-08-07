@@ -1,11 +1,10 @@
 """Regression coverage for remote-sync target refresh.
 
-Auto-integration is a LOCAL feature: every rebase, merge and landing
-decision is made against the local ``refs/heads/<target>`` the fleet of
-linked worktrees advances directly. The opt-in remote-sync path may fetch its configured remote purely to
-observe and reconcile it; local-only integration never fetches. These tests
-prove both halves: the observation stays read-only, and integration
-proceeds against the local pointer regardless of what origin holds.
+Auto-integration resolves targets from local refs only, then uses a configured
+remote to prove freshness at each seam. The read-only probe reports the remote
+position; the shared worktree-aware sync seam applies a safe fast-forward or
+reconciliation before feature integration. Local-only operation remains an
+explicit opt-out and never fetches.
 
 Every remote in this module is a local bare repository path or a path
 that does not exist: no test reaches a real network host.
