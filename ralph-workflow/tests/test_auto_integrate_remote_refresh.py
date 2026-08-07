@@ -58,12 +58,12 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _build_config() -> UnifiedConfig:
+def _build_config(*, remote_enabled: bool = False) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_enabled": True,
-                "auto_integrate_remote_enabled": False,
+                "auto_integrate_remote_enabled": remote_enabled,
             }
         }
     )
@@ -165,15 +165,14 @@ def test_diverged_remote_is_not_force_moved(
     )
 
 
-def test_retry_attempt_reintegrates_locally_without_pulling_origin(
+def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A bounded retry re-observes the LOCAL pointer, never origin.
+    """Regression S-4: every retry refreshes the configured remote base.
 
-    The first attempt loses the landing race exactly as it would in
-    production. The retry must integrate onto the local mainline as it
-    is NOW -- and only the local mainline: a commit pushed to origin
-    between the attempts must stay on origin.
+    A first landing can lose its CAS race after a healthy fetch. The retry must
+    re-run the same remote freshness pipeline before it rebases again rather
+    than treating a local ref observation as proof that origin is still fresh.
     """
     assert is_retryable_fast_forward_failure(_CONCURRENT_MOVE) is True
 
@@ -196,8 +195,13 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
     monkeypatch.setattr(auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True)
     monkeypatch.setattr(
         auto_integrate,
-        "_refresh_target",
-        lambda _config, _root, _target: events.append("refresh") or "origin ahead",
+        "pull_and_reconcile_target",
+        lambda *_args, **_kwargs: events.append("remote refresh")
+        or RebaseState(
+            last_remote_sync="already current",
+            freshness_verdict="verified",
+            freshness_source="fetch",
+        ),
     )
 
     def _integrate_once(*_args: object, **_kwargs: object) -> tuple[RebaseState, bool]:
@@ -213,7 +217,7 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
 
     monkeypatch.setattr(auto_integrate, "_integrate_once", _integrate_once)
     outcome = auto_integrate_after_commit(
-        _build_config(),
+        _build_config(remote_enabled=True),
         WorkspaceScope(root),
         RebaseState(),
         sleep=lambda _seconds: events.append("backoff"),
@@ -222,7 +226,7 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
 
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    assert events == ["integrate", "backoff", "refresh", "integrate"]
+    assert events == ["remote refresh", "integrate", "backoff", "remote refresh", "integrate"]
 
 
 def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(

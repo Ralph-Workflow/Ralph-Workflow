@@ -25,7 +25,10 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 def _default_config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}})
+    """Build the local-fleet fixture; remote freshness is covered separately."""
+    return UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": False}}
+    )
 
 
 def _stub_ff_environment(monkeypatch, root: Path) -> None:

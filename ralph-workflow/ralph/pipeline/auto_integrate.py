@@ -91,6 +91,7 @@ from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
+    REMOTE_NO_REMOTE,
     REMOTE_PUSH_REJECTED,
     pull_and_reconcile_target,
     reconcile_after_rejected_push,
@@ -345,17 +346,7 @@ def _auto_integrate_after_commit_inner(
         return None
     root, _current_branch, target = usable_ctx
 
-    # Remote sync is deliberately opt-in.  Run its pull side before the
-    # ordinary feature rebase so a fetched remote tip becomes the base this
-    # seam integrates against.  A remote failure is only operator state: the
-    # local transaction below remains authoritative and fail-open.
-    remote_record = pull_and_reconcile_target(config, root, target)
-    # A remote outage is deliberately fail-open, but a target that could not
-    # be safely advanced or reconciled is not a usable rebase base. Keep the
-    # typed distinction at the seam instead of guessing from display prose.
-    if remote_record is not None and not remote_record.freshness_safe:
-        return remote_record
-
+    remote_record: RebaseState | None = None
     identity = observe_conflict_identity(root, target)
     allowed = resolver_allowed(state, target, identity)
     effective_resolver = conflict_resolver if allowed else None
@@ -373,16 +364,13 @@ def _auto_integrate_after_commit_inner(
     try:
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
-                # Wait BEFORE the re-read, never after: the point of the
-                # delay is that the retry observes a pointer read once
-                # the collision has had time to settle.
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
-                # A retry only happens because the target moved under
-                # us: re-read it from origin (AC-03) and re-observe the
-                # identity, so a conflict recorded by a later attempt
-                # is not stamped with attempt 0's endpoint pair.
-                refresh = _refresh_target(config, root, target)
-                identity = observe_conflict_identity(root, target)
+            remote_record, refresh = _freshen_attempt_target(
+                config, root, target, attempt=attempt, initial_refresh=refresh
+            )
+            if remote_record is not None and not remote_record.freshness_safe:
+                return remote_record
+            identity = observe_conflict_identity(root, target)
             record, retry_ff = _integrate_once(
                 config,
                 root,
@@ -466,6 +454,28 @@ def _auto_integrate_after_commit_inner(
         resolver_suppressed=resolver_suppressed,
         identity=identity,
     )
+
+
+def _freshen_attempt_target(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    *,
+    attempt: int,
+    initial_refresh: str | None,
+) -> tuple[RebaseState | None, str | None]:
+    """Return the current remote verdict or local-fleet observation."""
+    if not remote_sync_enabled(config):
+        if attempt:
+            return None, _refresh_target(config, root, target)
+        return None, initial_refresh
+    record = pull_and_reconcile_target(config, root, target)
+    if record is None:
+        return None, None
+    refresh = record.last_refresh
+    if record.last_remote_sync == REMOTE_NO_REMOTE:
+        refresh = _refresh_target(config, root, target)
+    return record, refresh
 
 
 def _record_attempt_budget_spent(record: RebaseState) -> RebaseState:
@@ -583,13 +593,7 @@ def _integrate_once(
             ),
         )
 
-        # Re-read the mainline pointer from origin IMMEDIATELY before the
-        # fast-forward observes it. Several agents land on the same
-        # mainline continuously, so binding the ancestry decision inside
-        # fast_forward_target to a pointer read seconds ago (rather than
-        # before the rebase/merge/resolution sequence) is what keeps the
-        # landing correct under concurrency.
-        refresh_outcome = _refresh_target(config, root, target)
+        refresh_outcome = refresh
         from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
 
         reclaim_target_worktree = reclaim_target_worktree_enabled(config)
