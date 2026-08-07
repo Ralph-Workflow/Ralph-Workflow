@@ -48,8 +48,13 @@ def _fast_forward_suffix(
 
 
 def _freshness_suffix(verdict: str | None) -> str:
-    """Render the operator-visible freshness class without parsing prose."""
-    return f" [base: {verdict}-fresh]" if verdict else ""
+    """Render the three operator-visible freshness classes without parsing prose."""
+    labels = {
+        "verified": "verified-fresh",
+        "degraded": "degraded",
+        "unverified": "unverified",
+    }
+    return f" [base: {labels.get(verdict, verdict)}]" if verdict else ""
 
 
 def _refresh_suffix(refresh: str | None) -> str:

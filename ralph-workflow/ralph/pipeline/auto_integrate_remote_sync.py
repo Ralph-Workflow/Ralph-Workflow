@@ -1,7 +1,7 @@
-"""Fail-open, opt-in pull, reconcile, push, and retry helpers.
+"""Fail-open remote freshness, reconciliation, publication, and retries.
 
-Remote work is disabled by default. When enabled, every operation records a
-bounded outcome and leaves local integration intact on failure.
+Configured remotes are checked by default; absent or unreachable remotes record
+local-fleet or degraded provenance without interrupting local integration.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ _MAX_REMOTE_KEYS = 128
 
 
 def remote_sync_enabled(config: object | None) -> bool:
-    """Whether configured-remote synchronization is explicitly enabled."""
+    """Whether configured-remote synchronization is enabled by policy."""
     if config is None:
         return False
     general: object = getattr(config, "general", config)
@@ -130,8 +130,8 @@ def pull_and_reconcile_target(
 ) -> RebaseState | None:
     """Run the throttled pull side; reconcile the local target from the remote.
 
-    Uses the configured remote when remote integration is enabled; otherwise
-    it performs no remote operation.
+    Uses the configured remote when synchronization is enabled; otherwise it
+    performs no remote operation.
 
     The throttle is keyed ``(root, remote, target)`` and armed only
     by a HEALTHY fetch: a transient blip cannot buy a whole window
@@ -156,7 +156,7 @@ def pull_and_reconcile_target(
 
     Args:
         config: Unified run configuration; ``None`` skips every
-            remote call. The opt-in flag and the configured remote
+            remote call. The enablement flag and configured remote
             are read here so the helper is the single source of
             truth for the gated-on check.
         repo_root: Repository root in which to run the probe.

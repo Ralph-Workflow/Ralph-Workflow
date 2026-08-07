@@ -1,7 +1,7 @@
-"""Safe target-branch reconciliation for opt-in remote sync.
+"""Safe target-branch reconciliation for configured remote sync.
 
 A diverged local target is rebased only in the clean worktree that owns the
-target branch.  This keeps checked-out indexes coherent and never rewrites the
+target branch. This keeps checked-out indexes coherent and never rewrites the
 fetched remote commit; a failed or conflicted rebase is aborted before the
 normal local integration continues.
 """
