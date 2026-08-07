@@ -20,14 +20,6 @@ Retrieve PROMPT and PLAN. Use parallel or subagent evidence gathering when it im
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-## Criteria and verdicts
-
-For each unchanged request/plan criterion, emit one stable `DA-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not request or prescribe a remedy. A `not evaluable` criterion requires `failed`.
-
-## Decision artifact
-
-Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. Include one evidence-citing `## Summary` item and the criterion verdict block; do not read or use development-result/history narrative as evidence.
-
 {% set development_decision_example %}
 ---
 type: development_analysis_decision
@@ -43,5 +35,14 @@ status: request_changes
 ## Criterion Verdicts
 - [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
 {% endset %}
+
+## Criteria and verdicts
+
+For each unchanged request/plan criterion, emit one stable `DA-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not request or prescribe a remedy. A `not evaluable` criterion requires `failed`.
+
+## Decision artifact
+
+Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. Include one evidence-citing `## Summary` item and the criterion verdict block; do not read or use development-result/history narrative as evidence.
+
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 {{ render_artifact_submission('development_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}

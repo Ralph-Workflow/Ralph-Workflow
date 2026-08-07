@@ -26,6 +26,7 @@ _FINDING_TARGET_PATTERN = re.compile(r"(?:Step:\s*)?\[(S-[1-9][0-9]*)\]|Plan-lev
 _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
 _REQUIRED_VERDICT_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
+_EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
 _VERIFICATION_ID_PREFIXES = {
     "planning_analysis_decision": "PA-",
     "development_analysis_decision": "DA-",
@@ -138,6 +139,17 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
         if not isinstance(matched_verdict, str):
             continue
         verdict = matched_verdict.casefold()
+        evidence_match = _EVIDENCE_PATTERN.search(item.text)
+        evidence = "" if evidence_match is None else str(evidence_match.group(1)).strip()
+        if not evidence:
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "Criterion Verdicts",
+                    "ANALYSIS009",
+                    "criterion verdict must cite non-empty Evidence:",
+                )
+            )
         if verdict == "not evaluable" and status != "failed":
             diagnostics.append(
                 _validation_diagnostic(

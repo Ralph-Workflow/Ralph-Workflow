@@ -129,6 +129,24 @@ status: completed
     assert [item.rule_id for item in diagnostics] == ["ANALYSIS008", "ANALYSIS005"]
 
 
+def test_criterion_verdict_rejects_empty_evidence_for_met() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS009", "error")]
+
+
 def test_not_evaluable_criterion_verdict_requires_failed_status() -> None:
     document = """---
 type: planning_analysis_decision

@@ -19,15 +19,6 @@ Bring fresh repository evidence; verify substantive executor-ready claims rather
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-## Criteria and verdicts
-
-Use one stable `PA-###` item per fixed criterion in `## Criterion Verdicts`. Include `Step: [S-n]` with the canonical step ID or `Plan-level:`, then `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not add `How To Fix`. A `not evaluable` criterion requires `failed`.
-
-## Decision artifact
-
-Submit one `planning_analysis_decision` markdown artifact through
-{{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}, then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
-
 {% set planning_decision_example %}
 ---
 type: planning_analysis_decision
@@ -43,5 +34,14 @@ status: request_changes
 ## Criterion Verdicts
 - [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field.
 {% endset %}
+
+## Criteria and verdicts
+
+Use one stable `PA-###` item per fixed criterion in `## Criterion Verdicts`. Include `Step: [S-n]` with the canonical step ID or `Plan-level:`, then `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not add `How To Fix`. A `not evaluable` criterion requires `failed`.
+
+## Decision artifact
+
+Submit one `planning_analysis_decision` markdown artifact through
+{{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}, then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 
 {{ render_artifact_submission('planning_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, planning_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}

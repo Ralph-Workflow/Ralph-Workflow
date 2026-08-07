@@ -32,6 +32,7 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         "fast path",
         "full gate",
         "## Criterion Verdicts",
+        "do not propose remedies",
     ):
         assert required in source, (template_name, required)
 
