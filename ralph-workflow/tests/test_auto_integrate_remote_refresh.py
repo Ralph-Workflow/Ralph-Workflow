@@ -128,6 +128,30 @@ def test_unreachable_remote_degrades_to_local_integration(
     )
 
 
+@pytest.mark.parametrize("seam", ("remote lookup", "classification"))
+def test_refresh_regression_git_observation_failure_degrades_without_raising(
+    monkeypatch: pytest.MonkeyPatch,
+    seam: str,
+) -> None:
+    """S-4/E12: every failed observation is a typed degraded freshness result."""
+    if seam == "remote lookup":
+        monkeypatch.setattr(
+            auto_integrate_sync,
+            "_has_remote",
+            lambda *_args: (_ for _ in ()).throw(OSError("remote lookup failed")),
+        )
+    else:
+        monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda *_args: True)
+        monkeypatch.setattr(auto_integrate_sync, "_fetch_target", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(
+            auto_integrate_sync,
+            "_classify_remote_position",
+            lambda *_args: (_ for _ in ()).throw(OSError("ref query failed")),
+        )
+
+    assert refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0) == REFRESH_UNREACHABLE
+
+
 def _inject_remote_position(
     monkeypatch: pytest.MonkeyPatch,
     *,

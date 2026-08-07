@@ -91,7 +91,10 @@ def _reconciliation_preconditions(
     reclaim_target_worktree: bool,
 ) -> tuple[Path | None, str | None, str | None]:
     """Return a clean owning target worktree and its pre-rebase SHA."""
-    verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
+    try:
+        verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
+    except Exception:
+        return None, None, f"target '{target}' is unavailable for reconciliation"
     if verdict != WORKTREE_FOUND or owner is None:
         return None, None, f"target '{target}' has no owning worktree for reconciliation"
     if not is_repo_clean(owner) and (

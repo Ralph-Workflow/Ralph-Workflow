@@ -196,6 +196,13 @@ Ralph Workflow retains at most 20 snapshots per target and prunes snapshots olde
 newest snapshot is always retained. Feature worktrees are never reclaimed. Setting
 `auto_integrate_reclaim_target_worktree = false` retains refuse-and-retry behavior.
 
+The auto-integrate line shows `[base: verified-fresh]` after a healthy fetch
+or shared-local-ref read, `[base: degraded]` when an unavailable remote leaves
+the local target in use, and `[base: unverified]` when a configured interval
+suppresses a probe. An unsafe target reconciliation renders `[base: unsafe]`
+and skips feature integration for that seam; `[target refresh: ...]` and
+`[remote: ...]` name the recorded source outcome.
+
 Setting `auto_integrate_enabled = false` guarantees byte-identical manual git
 behavior from this feature: no rebase, merge, ref movement, fetch, or push.
 

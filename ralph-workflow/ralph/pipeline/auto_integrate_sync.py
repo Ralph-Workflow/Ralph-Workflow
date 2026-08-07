@@ -134,7 +134,12 @@ def refresh_target_from_remote(
         remote: The remote to fetch from. Defaults to ``origin`` for
             the configured remote-sync tier passes its configured remote here.
     """
-    if not _has_remote(repo_root, remote):
+    try:
+        has_remote = _has_remote(repo_root, remote)
+    except Exception as remote_exc:
+        logger.debug("auto_integrate: remote lookup for '{}' failed: {}", remote, remote_exc)
+        return REFRESH_UNREACHABLE
+    if not has_remote:
         return _observe_without_remote(repo_root, target, remote)
 
     if not _fetch_target(repo_root, target, timeout_seconds, remote=remote):
@@ -149,7 +154,16 @@ def refresh_target_from_remote(
         )
         return REFRESH_UNREACHABLE
 
-    return _classify_remote_position(repo_root, target, remote)
+    try:
+        return _classify_remote_position(repo_root, target, remote)
+    except Exception as classify_exc:
+        logger.debug(
+            "auto_integrate: could not classify '{}' against '{}': {}",
+            target,
+            remote,
+            classify_exc,
+        )
+        return REFRESH_UNREACHABLE
 
 
 def _observe_without_remote(repo_root: Path, target: str, remote: str) -> str:

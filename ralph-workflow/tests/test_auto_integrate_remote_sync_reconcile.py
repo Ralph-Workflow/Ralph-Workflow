@@ -215,6 +215,22 @@ def test_target_reconciliation_regression_restores_owner_sha_after_conflict(
     assert restored == [(owner, "before")]
 
 
+def test_target_reconciliation_regression_worktree_lookup_failure_is_deferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4/E6: an unknown target owner cannot be treated as safely absent."""
+    monkeypatch.setattr(
+        remote_reconcile,
+        "find_main_worktree_root",
+        lambda *_args: (_ for _ in ()).throw(OSError("worktree query failed")),
+    )
+
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "unavailable" in reason
+
+
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
