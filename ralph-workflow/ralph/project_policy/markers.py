@@ -24,9 +24,35 @@ from __future__ import annotations
 from typing import Final
 
 # Schema versioning
-SCHEMA_VERSION: Final[str] = "v2"
-POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v2 -->"
-POLICY_CONTRACT_VERSION: Final[str] = "2026-07-13.1"
+#
+# v3 (2026-08-08) changed the policy contract in TWO ways, and both bind
+# existing projects — ``_check_required_fact_keys`` derives its required set
+# live from the bundled starter, so a starter's fact lines are contract, not
+# content.
+#
+# 1. Two new REQUIRED headings carrying rules no other section can hold:
+#    "Suite admission" in the testing policy (which criteria become automated
+#    tests at all, and where the rest are verified instead) and "Gate lanes"
+#    in the verification policy (the declared home for a check that cannot
+#    meet the default gate's constraints).
+# 2. A revised RALPH-FACT key set in those two starters: testing gained
+#    parallel_execution_mechanism, slow_test_report_command,
+#    suite_test_count_command, assertion_quality_check,
+#    supported_platform_matrix, external_dependency_test_approach,
+#    clean_clone_setup_command, quarantine_mechanism_expiry_and_max_size and
+#    suite_review_cadence_and_owner; verification gained fast_path_command,
+#    fast_path_selection_mechanism, gate_parallelism_mechanism,
+#    gate_cache_mechanism_and_key and gate_duration_report_location.
+#    The project's named profiles are recorded ONCE, in verification's
+#    required_verification_profiles, so the two policies cannot drift.
+#
+# Consequence for an existing v2 project: it validates NOT READY until a
+# remediation pass resolves the new keys and adds the two headings, or the
+# pack is frozen at v2. That is the point of the marker bump — it forces the
+# upgrade-or-freeze consent gate rather than changing files under the user.
+SCHEMA_VERSION: Final[str] = "v3"
+POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v3 -->"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-08-08.1"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring of
 # AGENTS.md; near-miss prose, additional words, or any whitespace/case change
@@ -134,9 +160,16 @@ CONDITIONAL_SIGNAL_PATHS: Final[dict[str, tuple[str, ...]]] = {
 # specific (memory safety vs CSRF vs subprocess hygiene): the section that
 # enumerates the project's own surfaces must survive every amendment.
 REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
+    # The testing policy additionally requires "Suite admission": the section
+    # that decides which acceptance criteria become automated tests at all.
+    # Without it the policy is a one-way ratchet — every rule obliges MORE
+    # coverage and none routes a perceptual, third-party, or unrepeatable
+    # criterion to the lane that actually owns it, so suites accrete tests
+    # that assert subjective judgments or depend on expiring credentials.
     "testing-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Suite admission",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -179,9 +212,16 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Research basis",
         "Ralph markers",
     ),
+    # The verification policy additionally requires "Gate lanes": the declared
+    # home for a check that cannot meet the default gate's constraints (live
+    # third-party service, device matrix, long soak). Without a lane that
+    # demands an owner and a trigger, "wire it in or delete it" leaves such a
+    # check nowhere legitimate to live, so it lands in the default gate and
+    # charges its cost and its outages to every change.
     "verification-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Gate lanes",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",

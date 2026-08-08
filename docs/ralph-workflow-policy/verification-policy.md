@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: verification-policy.md -->
 
 # Verification Policy
@@ -50,12 +50,14 @@ The four commitments are: **fast path first**, **a slow gate is a defect**, **do
   worth investigating ONLY when it is genuinely diagnostic — when the
   triggering change tells you what the bug IS — never to decide whether
   the failure is yours to own. It is always yours to own.
-* Every gate MUST be wired into the authoritative entry point. A check
-  that exists only in a suite the default gate excludes (an opt-in
-  marker, a manual script) WILL rot unnoticed and is non-compliant:
-  either wire it into `make verify` or delete it. `audit_repo_structure`
-  exists because its rules previously lived only in a `subprocess_e2e`
-  test that `make verify` never ran, and they silently decayed.
+* Every check MUST sit in a declared lane (see "Gate lanes" below). A
+  check that exists only in a suite the default gate excludes, with no
+  declared owner and no declared trigger (an undeclared opt-in marker, a
+  manual script), WILL rot unnoticed and is non-compliant: wire it into
+  `make verify`, declare it as a named profile, or delete it.
+  `audit_repo_structure` exists because its rules previously lived only in
+  a `subprocess_e2e` test that `make verify` never ran, and they silently
+  decayed.
 * Verification MUST complete within a bounded, gate-enforced time budget
   (see `verification_time_budget` below). The generic sizing guide is
   ~1 second per 1k LOC with a **HARD CAP of 2 minutes** regardless of
@@ -78,6 +80,38 @@ The four commitments are: **fast path first**, **a slow gate is a defect**, **do
 * Bypass detection (lint/typecheck/audit bypasses) MUST be enforced
   when the selected tools permit such checks. See "Bypass detection"
   below.
+
+## Gate lanes
+
+Every check this project owns sits in exactly one lane. The lane system
+keeps `make verify` fast and trusted without pushing real checks into an
+unowned opt-in suite where they decay silently — the failure mode that
+produced `audit_repo_structure`.
+
+1. DEFAULT GATE — `make -C ralph-workflow verify`, the authoritative
+   pre-merge entry point: the `docs` and `verify-drift` prerequisites
+   followed by the full `ralph/verify.py:_VERIFY_STEPS` chain, under the
+   60 s combined test budget. This is the lane for everything that can
+   run deterministically from a clean clone with in-process fakes, and a
+   check that can meet those constraints MUST NOT be demoted to a profile
+   because it is inconvenient.
+2. NAMED PROFILE — a check that is genuinely valuable and repeatable but
+   cannot meet the default gate's constraints: real subprocesses and
+   sockets, a network-backed agent lifecycle, or a developer-only sweep.
+   A profile is legitimate ONLY when its command, its owner, and its
+   trigger or schedule are declared in `required_verification_profiles`
+   below, and only when it fails hard on the run. The declared set is
+   `default`, `pre-commit`, `subprocess-e2e`, and `live-agy`; a profile
+   selected by its Make target and recorded here is wired in, whereas an
+   opt-in marker nobody declared and nobody owns is not.
+3. DELETED — the correct destination for a check with no owner, no
+   trigger, and no lane. Deleting a decayed check is honest; leaving it
+   in an unobserved corner is not, because a permanently unread check
+   reports a safety it never verified.
+
+A check MUST NOT be moved from lane 1 to lane 2 to escape a red result or
+a budget breach. Demotion is a design decision with an owner, recorded
+with its reason; it is never a way to make the gate green today.
 
 ## Project facts to resolve
 
@@ -261,4 +295,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`

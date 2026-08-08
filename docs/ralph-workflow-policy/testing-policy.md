@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: testing-policy.md -->
 
 # Testing Policy
@@ -46,6 +46,59 @@ treated as a distribution artefact, not a behaviour surface).
 * Smoke tests (`@pytest.mark.smoke`) are one-off manual debug harnesses
   for a SPECIFIC agent issue. They MUST NOT run in any suite. Excluded
   by default in `pytest.ini` (`addopts = -m "not smoke"`).
+
+## Suite admission
+
+Not every acceptance criterion belongs in the default suite. Forcing one
+in is how a suite grows large and slow while proving less, and the 60 s
+combined budget leaves no room for tests that carry no distinct failure.
+Route each criterion to exactly one lane before writing a test.
+
+1. DEFAULT SUITE — the default lane, run by `make test` under the
+   selection `(not subprocess_e2e and not smoke) or
+   required_auto_integrate_e2e`. Use it when the criterion is objective,
+   decidable by the machine, and reproducible from a clean clone with the
+   in-process fakes named in `io_mocking_approach`. A criterion that could
+   meet those constraints MUST NOT be routed elsewhere to dodge the work
+   of building a seam.
+2. HUMAN REVIEW — use it when the criterion is perceptual, ergonomic, or
+   editorial: whether terminal output reads clearly, whether a status line
+   is legible at width, whether documentation prose is accurate and
+   unpadded. These are judgments, not assertions. Encoding one as a
+   machine constant produces the worst kind of test — it fails on every
+   legitimate redesign and never fails on a genuinely bad result. Record a
+   dated review on the change instead. Automation MAY supply supporting
+   evidence (rendered snapshots, width measurements); it MUST NOT supply
+   the verdict.
+3. NAMED PROFILE — use it when the check is genuinely repeatable and worth
+   keeping but cannot meet the default suite's constraints: real
+   subprocesses and sockets (`subprocess_e2e`, run by
+   `make test-subprocess-e2e`) or a network-backed agent lifecycle
+   (`live_agy`, run by `make test-live-agy`). Every profile is declared in
+   `required_verification_profiles` in the verification policy with its
+   Make target, and it fails hard when it runs. A profile is not a place
+   to park a test that went red.
+4. ONE-OFF EVIDENCE — use it when the verification is not repeatable and
+   is not meant to be: a debug harness for a specific agent issue
+   (`@pytest.mark.smoke`, excluded from every suite), a credential that
+   expires, a sandbox that will be torn down, a one-time migration probe.
+   Perform the check, record the dated command and its actual output on
+   the change, and do not commit it as suite coverage. A check that
+   cannot pass six months from now on a clean clone is not a test; it is
+   a receipt, and filing it in the suite converts it into a scheduled
+   failure a future agent will "fix" by deleting the assertion.
+
+Two consequences bind:
+
+* Liveness of a third party is a monitoring question, not a pre-merge
+  question. "Does the vendor's API respond right now" belongs to
+  operational alerting; "does our client handle the vendor's documented
+  responses and failures" belongs to lane 1 against a fake. A default-suite
+  test that fails during someone else's outage is testing their uptime
+  with our gate.
+* Routing to lane 2, 3, or 4 NEVER means the criterion goes unverified.
+  Each lane carries its own evidence. A criterion with no lane, no owner,
+  and no record is unverified, and that is a blocker.
 
 ## Project facts to resolve
 
@@ -231,4 +284,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`
