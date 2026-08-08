@@ -1,16 +1,20 @@
-"""Commit plumbing must clear stale receipts at the start of each attempt.
+"""Commit plumbing must start each attempt from clean completion state.
 
 The commit path uses a fixed ``run_id="commit-plumbing"`` and reuses it
-across retries (because the gate keys every receipt on the same value the
-bridge exposes as ``run_id``). A prior attempt that left a successful
-receipt on disk would otherwise leak into a new attempt and cause false
-completion: the gate would see "receipt present" and declare done, even
-when the new attempt's agent never submitted an artifact.
+across retries *and across separate ``--generate-commit`` invocations*
+(because the gate keys every receipt on the same value the bridge exposes
+as ``run_id``). Two kinds of durable evidence are keyed on that run id —
+the artifact submission *receipt* and the ``declare_complete``
+*completion sentinel* — and either one left behind by an earlier run
+leaks into the next attempt as false completion: the gate sees the
+evidence, declares the phase terminal, and kills the agent process
+before it emits a single line.
 
-The fix mirrors the AGY branch's per-attempt receipt clear in
-:mod:`ralph.agents.invoke` so a retry that reuses ``run_id`` cannot
-inherit the prior attempt's success signal. This is the regression
-test that pins the contract.
+Both are cleared per attempt, mirroring the AGY branch's per-attempt
+clear in :mod:`ralph.agents.invoke`. The attempt also declares the
+``commit_message`` artifact contract on the invocation, so the gate
+requires a fresh receipt and cannot be satisfied by a sentinel alone.
+These are the regression tests that pin those contracts.
 """
 
 from __future__ import annotations
@@ -19,11 +23,13 @@ import importlib
 import json
 from typing import TYPE_CHECKING
 
+from ralph.agents.completion_signals import evaluate_completion
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
-from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_TYPE
+from ralph.mcp.artifacts.state_db import RunStateDB
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
@@ -77,6 +83,59 @@ def _seed_receipt(workspace_root: Path, run_id: str, artifact_type: str) -> None
     )
 
 
+def _seed_completion_sentinel(workspace_root: Path, run_id: str) -> None:
+    """Pre-populate the sentinel a prior run's ``declare_complete`` wrote."""
+    db = RunStateDB(workspace_root)
+    try:
+        db.upsert_completion_sentinel(run_id, None)
+    finally:
+        db.close()
+
+
+def _sentinel_holds(workspace_root: Path, run_id: str) -> bool:
+    """Report whether the completion gate still sees a sentinel for ``run_id``."""
+    signals = evaluate_completion(workspace_root, run_id=run_id)
+    return signals.completion_sentinel_evidence.holds
+
+
+def _run_attempt(
+    plumbing_module: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    *,
+    on_effect: Callable[[dict[str, object]], None] | None = None,
+) -> None:
+    """Drive one commit attempt with the agent invocation stubbed out."""
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        del args
+        if on_effect is not None:
+            on_effect(kwargs)
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        plumbing_module,
+        "execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    plumbing_module._run_commit_agent_attempt_with_recovery(
+        "agent1",
+        AgentConfig(cmd="claude", transport="claude", json_parser="generic"),
+        prompt_file=str(tmp_path / "PROMPT.md"),
+        attempt_context=CommitAttemptContext(
+            repo_root=tmp_path,
+            verbose=False,
+            extra_env={},
+            general_config=None,
+            bridge=_StubBridge(),
+        ),
+        display_context=make_display_context(),
+        max_retries=1,
+        pipeline_deps=_StubPipelineDeps(),
+    )
+
+
 def test_commit_attempt_clears_stale_receipt(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -97,54 +156,66 @@ def test_commit_attempt_clears_stale_receipt(
     )
     assert receipt_path.exists(), "test setup: receipt should be on disk before the attempt"
 
-    clear_calls: list[tuple[Path, str]] = []
+    _run_attempt(plumbing_module, tmp_path, monkeypatch)
 
-    def _fake_clear_run_receipts(
-        workspace_root: Path,
-        run_id: str,
-        *,
-        backend: object = None,
-    ) -> None:
-        clear_calls.append((workspace_root, run_id))
-        clear_run_receipts(workspace_root, run_id, backend=DEFAULT_FILE_BACKEND)
-
-    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        return PipelineEvent.AGENT_SUCCESS
-
-    agent_cfg = AgentConfig(cmd="claude", transport="claude", json_parser="generic")
-    attempt_ctx = CommitAttemptContext(
-        repo_root=tmp_path,
-        verbose=False,
-        extra_env={},
-        general_config=None,
-        bridge=_StubBridge(),
-    )
-
-    monkeypatch.setattr(
-        plumbing_module,
-        "clear_run_receipts",
-        _fake_clear_run_receipts,
-    )
-    monkeypatch.setattr(
-        plumbing_module,
-        "execute_agent_effect",
-        _fake_execute_agent_effect,
-    )
-
-    plumbing_module._run_commit_agent_attempt_with_recovery(
-        "agent1",
-        agent_cfg,
-        prompt_file=str(tmp_path / "PROMPT.md"),
-        attempt_context=attempt_ctx,
-        display_context=make_display_context(),
-        max_retries=1,
-        pipeline_deps=_StubPipelineDeps(),
-    )
-
-    assert clear_calls, "commit attempt must call clear_run_receipts at the start"
-    assert clear_calls[0][0] == tmp_path
-    assert clear_calls[0][1] == plumbing_module._COMMIT_RUN_ID
     assert not receipt_path.exists(), (
         "stale receipt must be deleted by the per-attempt clear; the gate "
         "would otherwise see 'already submitted' and skip the new attempt"
     )
+
+
+def test_commit_attempt_clears_stale_completion_sentinel(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A prior run's completion sentinel MUST NOT survive into a new attempt.
+
+    ``declare_complete`` writes a sentinel keyed on the fixed commit run id,
+    so a --generate-commit run that succeeds leaves one behind for the next
+    one to inherit. An inherited sentinel makes the completion gate call the
+    phase terminal within milliseconds of spawn, killing every drain agent
+    before it can produce a commit_message artifact.
+    """
+    plumbing_module = _plumbing_module()
+    run_id = plumbing_module._COMMIT_RUN_ID
+    _seed_completion_sentinel(tmp_path, run_id)
+    assert _sentinel_holds(tmp_path, run_id), (
+        "test setup: the seeded sentinel should be visible to the gate"
+    )
+
+    _run_attempt(plumbing_module, tmp_path, monkeypatch)
+
+    assert not _sentinel_holds(tmp_path, run_id), (
+        "stale completion sentinel must be cleared by the per-attempt clear; "
+        "the gate would otherwise declare the phase complete before the agent runs"
+    )
+
+
+def test_commit_attempt_declares_commit_artifact_contract(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """The attempt MUST carry the commit_message artifact contract.
+
+    Without it the invocation reports ``artifact_required=False`` and the
+    completion gate settles for a bare sentinel, so no submitted artifact is
+    ever required of the agent.
+    """
+    plumbing_module = _plumbing_module()
+    seen: list[object] = []
+
+    _run_attempt(
+        plumbing_module,
+        tmp_path,
+        monkeypatch,
+        on_effect=lambda kwargs: seen.append(kwargs.get("required_artifact")),
+    )
+
+    assert seen, "the attempt must execute the agent effect"
+    required_artifact = seen[0]
+    assert isinstance(required_artifact, RequiredArtifact), (
+        "commit attempts must declare a required artifact so the completion "
+        "gate demands a fresh submission receipt"
+    )
+    assert required_artifact.artifact_type == COMMIT_MESSAGE_TYPE
+    assert required_artifact.artifact_required is True

@@ -68,11 +68,22 @@ def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
         assert not matches, f"Found direct write to protected path matching {pattern}: {matches}"
 
 
+#: Sanctioned helpers for wiping run-scoped completion evidence. Both live
+#: outside commit plumbing so the deletes stay in one audited place;
+#: ``_clear_session_completion_sentinel`` is the superset (it delegates to
+#: ``clear_run_receipts`` and additionally drops the completion sentinel).
+_SANCTIONED_RUN_STATE_CLEARS = frozenset(
+    {"clear_run_receipts", "_clear_session_completion_sentinel"}
+)
+
+
 @pytest.mark.timeout_seconds(5)
 def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
-    """Clear run receipts is called at the start of _run_commit_agent_attempt_with_recovery.
+    """Run-scoped completion evidence is wiped at the start of each attempt.
 
-    This protects against stale-receipt contamination between attempts.
+    This protects against stale-evidence contamination between attempts —
+    both a leftover submission receipt and a leftover completion sentinel
+    satisfy the completion gate on an attempt whose agent never ran.
     """
     # Read the source of _run_commit_agent_attempt_with_recovery
     plumbing_path = (
@@ -95,19 +106,20 @@ def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
 
     assert target_func is not None, "Function _run_commit_agent_attempt_with_recovery not found"
 
-    # Check if clear_run_receipts is called in the function body
-    calls_clear_run_receipts = False
+    # Check that a sanctioned clear helper is called in the function body
+    clears_run_state = False
     for node in ast.walk(target_func):
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
-            and node.func.id == "clear_run_receipts"
+            and node.func.id in _SANCTIONED_RUN_STATE_CLEARS
         ):
-            calls_clear_run_receipts = True
+            clears_run_state = True
             break
 
-    assert calls_clear_run_receipts, (
-        "_run_commit_agent_attempt_with_recovery does not call clear_run_receipts"
+    assert clears_run_state, (
+        "_run_commit_agent_attempt_with_recovery does not call a sanctioned "
+        f"run-state clear helper (one of {sorted(_SANCTIONED_RUN_STATE_CLEARS)})"
     )
 
 

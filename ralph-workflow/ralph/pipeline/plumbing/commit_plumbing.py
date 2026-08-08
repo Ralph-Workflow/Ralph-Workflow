@@ -45,6 +45,7 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
     InvokeRuntimeOptions,
+    _clear_session_completion_sentinel,
     build_invoke_options_from_config,
     extract_transport_session_id,
     invoke_agent,
@@ -72,7 +73,6 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     read_commit_message_artifact,
 )
-from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -81,7 +81,6 @@ from ralph.pipeline.factory import (
     MaterializeMasterPromptFn,
     PipelineCore,
     PipelineDeps,
-    _resolve_phase_required_artifact,
 )
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.session_bridge import (
@@ -169,17 +168,6 @@ def _commit_required_artifact() -> RequiredArtifact:
     )
 
 
-def _commit_artifact_requirements_resolver(
-    pipeline_policy: object,
-    artifacts_policy: object,
-    *,
-    phase: str,
-    drain: str | None = None,
-) -> RequiredArtifact | None:
-    del pipeline_policy, artifacts_policy, phase, drain
-    return _commit_required_artifact()
-
-
 def _apply_commit_deps_overrides(
     deps: PipelineDeps,
     *,
@@ -188,24 +176,21 @@ def _apply_commit_deps_overrides(
 ) -> PipelineDeps:
     """Apply commit-specific overrides to a ``PipelineDeps`` bundle.
 
-    Ensures the commit plumbing path uses the commit-specific artifact
-    resolver only when no custom resolver was injected, composes the chain
-    registry, and swaps in the late-bound test-patch bridge factory when the
-    default production bridge is in use. Core collaborators are replaced on
-    the embedded :class:`PipelineCore`; extended fields are replaced on
-    ``deps`` itself.
+    Composes the chain registry and swaps in the late-bound test-patch
+    bridge factory when the default production bridge is in use. Core
+    collaborators are replaced on the embedded :class:`PipelineCore`;
+    extended fields are replaced on ``deps`` itself.
+
+    The artifact contract is NOT wired through
+    ``core.artifact_requirements_resolver``: that resolver is only ever
+    consulted when the invocation carries a ``policy_bundle``, which the
+    standalone commit path never does. The contract is declared directly
+    on the ``execute_agent_effect`` call instead — see
+    :func:`_run_commit_agent_attempt_with_recovery`.
     """
     core = deps.core
     if materializer is not None:
         core = dataclasses.replace(core, master_prompt_materializer=materializer)
-    # Only replace the default artifact resolver. If Pro or a test injected a
-    # custom resolver via PipelineCore/ProPipelineHooks, preserve it so the
-    # commit path shares the same injectable collaborator contract as the
-    # main pipeline.
-    if core.artifact_requirements_resolver is _resolve_phase_required_artifact:
-        core = dataclasses.replace(
-            core, artifact_requirements_resolver=_commit_artifact_requirements_resolver
-        )
 
     if registry is not None:
 
@@ -608,13 +593,17 @@ def _run_commit_agent_attempt_with_recovery(
     )
     delete_artifacts(attempt_context.repo_root)
     # The commit run_id is fixed ("commit-plumbing") and reused across
-    # attempts so the receipt ↔ gate key stays stable. A receipt left
-    # over from a prior attempt would otherwise satisfy the gate's
-    # "already submitted → done" check on a fresh attempt whose agent
-    # never even ran, producing a false completion. Mirrors the AGY
-    # branch's per-attempt clear in :mod:`ralph.agents.invoke` so a
-    # retry that reuses ``run_id`` cannot inherit stale success state.
-    clear_run_receipts(attempt_context.repo_root, _COMMIT_RUN_ID)
+    # attempts -- and across separate ``--generate-commit`` invocations --
+    # so the evidence ↔ gate key stays stable. Both kinds of durable
+    # evidence keyed on it must go: a submission receipt satisfies the
+    # gate's "already submitted → done" check, and a ``declare_complete``
+    # sentinel written by an earlier run makes the gate terminal on the
+    # first poll, killing the agent process milliseconds after spawn
+    # before it can emit a line. Clearing only receipts left the sentinel
+    # to poison every subsequent run permanently. Mirrors the AGY branch's
+    # per-attempt clear in :mod:`ralph.agents.invoke` so a reused
+    # ``run_id`` cannot inherit stale success state.
+    _clear_session_completion_sentinel(attempt_context.repo_root, _COMMIT_RUN_ID)
 
     try:
         effect = InvokeAgentEffect(
@@ -650,6 +639,14 @@ def _run_commit_agent_attempt_with_recovery(
             ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
+            # The commit path carries no ``policy_bundle``, so the effect
+            # executor cannot resolve the phase contract from policy and
+            # would fall through to ``required_artifact=None``. That makes
+            # the completion gate report ``artifact_required=False`` and
+            # settle for a bare sentinel, so nothing ever obliges the agent
+            # to submit. Declaring the contract here is what keeps a fresh
+            # submission receipt mandatory for this invocation.
+            required_artifact=_commit_required_artifact(),
             session_id=prior_session_id,
             raw_output_sink=raw_output,
             rendered_output_sink=rendered_output,
