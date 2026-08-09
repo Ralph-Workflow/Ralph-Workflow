@@ -224,6 +224,7 @@ def test_target_reconciliation_regression_restores_owner_sha_after_conflict(
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
     monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
     restored: list[tuple[Path, str]] = []
     monkeypatch.setattr(
@@ -254,6 +255,37 @@ def test_target_reconciliation_regression_worktree_lookup_failure_is_deferred(
 
     assert success is False
     assert "unavailable" in reason
+
+
+def test_target_reconciliation_regression_retains_record_when_abort_cannot_restore_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/S-3: never overwrite a target that moved while reconciliation aborted."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    states = iter((True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "moved")
+    cleared: list[bool] = []
+    monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: cleared.append(True))
+    resets: list[tuple[object, ...]] = []
+    monkeypatch.setattr(remote_reconcile, "reset_hard", lambda *_a: resets.append(_a))
+
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "retained for recovery" in reason
+    assert cleared == []
+    assert resets == []
 
 
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(

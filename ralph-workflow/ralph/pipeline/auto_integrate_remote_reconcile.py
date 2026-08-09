@@ -124,7 +124,20 @@ def _abort_restore_or_retain_record(
                 False,
                 f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
             )
+        current_target_sha = branch_sha(owner, target)
+        if current_target_sha != pre_target_sha:
+            return (
+                False,
+                f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+                "target moved during reconciliation",
+            )
         reset_hard(owner, pre_target_sha)
+        if branch_sha(owner, target) != pre_target_sha:
+            return (
+                False,
+                f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+                "target restore could not be verified",
+            )
     except Exception as exc:
         return (
             False,
