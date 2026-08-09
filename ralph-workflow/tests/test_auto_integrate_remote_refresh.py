@@ -19,6 +19,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
+from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline import auto_integrate, auto_integrate_sync
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
@@ -57,15 +58,14 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _build_config(*, remote_enabled: bool = False) -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": True,
-                "auto_integrate_remote_enabled": remote_enabled,
-            }
-        }
-    )
+def _build_config(*, remote_enabled: bool = False, target: str | None = None) -> UnifiedConfig:
+    general: dict[str, object] = {
+        "auto_integrate_enabled": True,
+        "auto_integrate_remote_enabled": remote_enabled,
+    }
+    if target is not None:
+        general["auto_integrate_target"] = target
+    return UnifiedConfig.model_validate({"general": general})
 
 
 def _make_clone(bare: Path, path: Path, main: str, *, branch: str) -> Path:
@@ -109,6 +109,46 @@ def test_remote_ahead_refresh_keeps_the_local_target_unchanged(
     assert outcome == REFRESH_ORIGIN_AHEAD
     assert branch_sha(agent, main) == local_main
     assert not (agent / "remote.txt").exists()
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_resolver_reconciles_target_then_lands_feature(
+    tmp_git_repo: Path,
+) -> None:
+    """S-3: a resolved target rebase preserves remote history and lands the feature."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "shared.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+
+    remote_sha = _commit(tmp_git_repo, "shared.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    def resolve_target(root: Path, _target: str, _stop: object) -> bool:
+        (root / "shared.txt").write_text("resolved target\n", encoding="utf-8")
+        return True
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        rebase_stop_resolver=resolve_target,
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 0
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, f"origin/{main}").returncode == 0
+    assert (owner / "shared.txt").read_text(encoding="utf-8") == "resolved target\n"
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert _run(owner, "status", "--porcelain").stdout == ""
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
 
 
 def test_unreachable_remote_degrades_to_local_integration(

@@ -179,17 +179,22 @@ def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
-    calls: list[tuple[Path, str, str]] = []
+    def resolver(*_args: object) -> bool:
+        return True
 
-    def fake_reconcile(root: Path, target: str, remote: str, **_kwargs: object) -> tuple[bool, str]:
-        calls.append((root, target, remote))
+    calls: list[tuple[Path, str, str, object | None]] = []
+
+    def fake_reconcile(root: Path, target: str, remote: str, **kwargs: object) -> tuple[bool, str]:
+        calls.append((root, target, remote, kwargs.get("rebase_stop_resolver")))
         return True, ""
 
     monkeypatch.setattr(reconcile, "reconcile_target_onto_remote", fake_reconcile)
-    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+    out = remote_sync.pull_and_reconcile_target(
+        _config(), Path("/repo"), "main", rebase_stop_resolver=resolver
+    )
     assert out is not None
     assert out.last_remote_sync == remote_sync.REMOTE_RECONCILED
-    assert calls == [(Path("/repo"), "main", "origin")]
+    assert calls == [(Path("/repo"), "main", "origin", resolver)]
 
 
 def test_remote_strictly_ahead_records_reconciled(

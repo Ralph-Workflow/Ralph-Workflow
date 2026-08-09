@@ -171,7 +171,9 @@ def auto_integrate_on_phase_transition(
             )
         if not _worktree_is_clean(root):
             return _defer_dirty_boundary(config, root, target)
-        boundary_outcome = _boundary_freshness_outcome(config, root, target, state)
+        boundary_outcome = _boundary_freshness_outcome(
+            config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
+        )
         if boundary_outcome is not None:
             return boundary_outcome
     except Exception as exc:
@@ -216,9 +218,13 @@ def _boundary_freshness_outcome(
     root: Path,
     target: str,
     state: RebaseState,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
     """Return a freshness-gated no-commit boundary result, if the seam is done."""
-    remote_record = pull_and_reconcile_target(config, root, target)
+    remote_record = pull_and_reconcile_target(
+        config, root, target, rebase_stop_resolver=rebase_stop_resolver
+    )
     if remote_record is not None and not remote_record.freshness_safe:
         return remote_record
     refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
@@ -341,7 +347,12 @@ def _auto_integrate_after_commit_inner(
             if attempt:
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
             remote_record, refresh = _freshen_attempt_target(
-                config, root, target, attempt=attempt, initial_refresh=refresh
+                config,
+                root,
+                target,
+                attempt=attempt,
+                initial_refresh=refresh,
+                rebase_stop_resolver=rebase_stop_resolver if allowed else None,
             )
             if remote_record is not None and not remote_record.freshness_safe:
                 return remote_record
@@ -438,13 +449,16 @@ def _freshen_attempt_target(
     *,
     attempt: int,
     initial_refresh: str | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
 ) -> tuple[RebaseState | None, str | None]:
     """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
         if attempt:
             return None, _refresh_target(config, root, target)
         return None, initial_refresh
-    record = pull_and_reconcile_target(config, root, target)
+    record = pull_and_reconcile_target(
+        config, root, target, rebase_stop_resolver=rebase_stop_resolver
+    )
     if record is None:
         return None, None
     refresh = record.last_refresh
@@ -664,6 +678,7 @@ def _integrate_once(
                     root,
                     target,
                     record,
+                    rebase_stop_resolver=rebase_stop_resolver,
                     reintegrate=lambda: _reintegrate_after_remote_reconcile(
                         config,
                         root,

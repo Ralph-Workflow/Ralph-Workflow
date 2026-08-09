@@ -156,6 +156,31 @@ def test_unreachable_remote_does_not_attempt_push(
     assert out.last_push_status == remote_push_module.PushStatus.UNREACHABLE.value
 
 
+def test_rejected_push_passes_resolver_to_target_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression S-1: rejected-push reconciliation keeps the shared resolver."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+    from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *_a, **_kw: REFRESH_DIVERGED)
+    def resolver(*_args: object) -> bool:
+        return True
+
+    received: list[object | None] = []
+    monkeypatch.setattr(
+        remote_reconcile,
+        "reconcile_target_onto_remote",
+        lambda *_a, **kwargs: received.append(kwargs.get("rebase_stop_resolver")) or (False, "blocked"),
+    )
+
+    reconcile_after_rejected_push(
+        _config(), Path("/repo"), "main", _record(), rebase_stop_resolver=resolver
+    )
+
+    assert received == [resolver]
+
+
 def test_rejected_push_honors_target_reclaim_opt_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

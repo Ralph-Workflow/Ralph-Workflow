@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 
 # -- Public outcome strings carried on RebaseState.last_remote_sync -----
@@ -127,6 +128,7 @@ def pull_and_reconcile_target(
     *,
     remote: str | None = None,
     clock: Callable[[], float] = time.monotonic,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState | None:
     """Run the throttled pull side; reconcile the local target from the remote.
 
@@ -192,7 +194,9 @@ def pull_and_reconcile_target(
         timeout_seconds=FETCH_TIMEOUT_SECONDS,
         remote=chosen_remote,
     )
-    state = _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock, config)
+    state = _dispatch_pull_outcome(
+        refresh, repo_root, target, chosen_remote, clock, config, rebase_stop_resolver
+    )
     if state is None:
         return None
     from ralph.git.merge import branch_sha
@@ -215,6 +219,7 @@ def _dispatch_pull_outcome(
     chosen_remote: str,
     clock: Callable[[], float],
     config: UnifiedConfig | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
     """Translate a pull refresh outcome into the recorded ``RebaseState`` (AC-15..20).
 
@@ -316,6 +321,7 @@ def _dispatch_pull_outcome(
             target,
             chosen_remote,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+            rebase_stop_resolver=rebase_stop_resolver,
         )
         if reconciled:
             _arm_throttle(repo_root, chosen_remote, target, clock)
@@ -581,6 +587,7 @@ def reconcile_after_rejected_push(
     remote: str | None = None,
     max_attempts: int = _MAX_REMOTE_SYNC_ATTEMPTS,
     reintegrate: Callable[[], bool] | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
     """Try a bounded reconcile-then-push cycle after a non-fast-forward.
 
@@ -602,6 +609,7 @@ def reconcile_after_rejected_push(
             remote=chosen_remote,
             config=config,
             reintegrate=reintegrate,
+            rebase_stop_resolver=rebase_stop_resolver,
         )
         final_record = final_record.model_copy(
             update={
@@ -629,6 +637,7 @@ def _attempt_reconcile_and_push(
     remote: str,
     config: UnifiedConfig | None,
     reintegrate: Callable[[], bool] | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
 ) -> _PushOutcome:
     """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
     refresh = refresh_target_from_remote(
@@ -659,6 +668,7 @@ def _attempt_reconcile_and_push(
             target,
             remote,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+            rebase_stop_resolver=rebase_stop_resolver,
         )
         if not reconciled:
             return _PushOutcome(success=False, summary=reason, pushed=False)
