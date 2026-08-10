@@ -32,6 +32,46 @@ The ledger is printed one line per channel so the S-2 contract is
 touchable in the test log. Any channel whose ``after`` differs from
 its ``before`` fails with its own channel name in the assertion
 message -- the S-4 fix's instructions pass through the discriminator.
+
+Channels measured here (each printed as ``channel=<name> before=<value>
+after=<value>``):
+
+1. ``capture`` -- the session-capture thread-local. Blocked route
+   never runs an agent; this is the READY-only assertion.
+2. ``bridge`` -- construction vs. shutdown count. The pre-S-4 build
+   pairs N constructions with N shutdowns through the
+   ``finally: bridge.shutdown()`` at ``effect_executor.py:564-576``;
+   the S-4 boundary must keep that invariant by draining every
+   bridge pair before ``_finalize_ready_state`` returns.
+3. ``initial_state_identity`` -- the identity of the actual
+   ``load_result.initial_state`` object before and after. The
+   stub ``_execute_pipeline`` is the seam Phase 4 reads; the real
+   orchestrator's post-READY path mutates ``initial_state`` only
+   via ``load_result.copy`` (never in place), so the identity is
+   preserved. Any in-place mutation here would be a regression.
+4. ``initial_state_phase`` -- the ``phase`` attribute on the
+   actual ``load_result.initial_state`` before and after.
+5. ``retry_artifacts`` -- the residue under
+   ``.agent/tmp/agent_retry_*.md`` after the run. The retry
+   prompt is written by ``_write_agent_retry_prompt`` at
+   ``effect_executor.py:1320`` on a failure path; a clean READY
+   run leaves an empty set.
+6. ``checkpoint`` -- the existence of ``.agent/checkpoint.json``
+   after the run. The pipeline runner writes the checkpoint at
+   ``runner.py:546``; the policy preflight has no business
+   writing one and the absence is the contract.
+7. ``cleared_artifacts`` -- pre-seed the analysis decision
+   artifact path with a stale marker, then verify the agent's
+   output overwrote it. Proves ``clear_phase_output_artifacts``
+   inside ``_start_bridge`` (effect_executor.py:588-594) ran
+   for the ``policy_remediation_analysis`` drain.
+8. ``process_manager`` -- ``get_process_manager().list_active()``
+   is empty after the run. The refinery-to-pipeline boundary
+   must not leave background process records stranded.
+9. ``threads`` -- delta against the pre-preflight snapshot. Same
+   measurement as the BLOCKED ledger: only count threads the
+   preflight actually created, not the shared worker's ambient
+   threads.
 """
 
 from __future__ import annotations
@@ -69,6 +109,15 @@ if TYPE_CHECKING:
 
 _POLICY_REM_FAKE_SESSION_ID: str = "sess-policy-remediation-ready"
 _POLICY_ANALYSIS_FAKE_SESSION_ID: str = "sess-policy-analysis-approved"
+
+#: Distinctive stale marker written into the analysis artifact BEFORE the run.
+#: ``clear_phase_output_artifacts`` runs inside ``_start_bridge`` BEFORE the
+#: analysis agent's invocation, so the analysis drain's required-artifact
+#: path is the cleared path we can directly observe. The fake invoke_agent
+#: then writes the agent's own content over the cleared file; the post-run
+#: file content must NOT contain the stale marker (proving clear) and
+#: MUST contain the agent's session id (proving the agent's write).
+_POLICY_ANALYSIS_STALE_MARKER: str = "STALE-PRE-POLICY-ANALYSIS-MARKER-DO-NOT-SEE"
 
 
 class _ShutdownCountingBridge:
@@ -118,11 +167,7 @@ def _seed_complete_policy_in_git_repo(workspace_root: Path) -> None:
     the run reaches READY.
     """
     from ralph.project_policy import markers as pp_markers
-    from tests.project_policy.test_validator import (
-        _complete_policy_body,
-        _seed_agents_md,
-        _seed_claude_md,
-    )
+    from tests.project_policy.test_validator import _complete_policy_body
 
     workspace = FsWorkspace(workspace_root, allowed_roots=[workspace_root])
     canonical = pp_markers.CANONICAL_DIR.rstrip("/")
@@ -136,12 +181,12 @@ def _seed_complete_policy_in_git_repo(workspace_root: Path) -> None:
                 else "Python",
             ),
         )
-    _seed_agents_md(workspace_root)
-    _seed_claude_md(workspace_root)
+    _seed_agents_md_for_path(workspace_root)
+    _seed_claude_md_for_path(workspace_root)
 
 
-def _seed_agents_md(workspace_root: Path) -> None:
-    """Mirror :func:`tests.project_policy.test_validator._seed_agents_md` for ``Path``."""
+def _seed_agents_md_for_path(workspace_root: Path) -> None:
+    """Write the managed AGENTS.md block to a Path-rooted workspace."""
     from ralph.project_policy import markers as pp_markers
 
     workspace = FsWorkspace(workspace_root, allowed_roots=[workspace_root])
@@ -153,8 +198,8 @@ def _seed_agents_md(workspace_root: Path) -> None:
     )
 
 
-def _seed_claude_md(workspace_root: Path) -> None:
-    """Mirror :func:`tests.project_policy.test_validator._seed_claude_md` for ``Path``."""
+def _seed_claude_md_for_path(workspace_root: Path) -> None:
+    """Write a minimal CLAUDE.md to a Path-rooted workspace."""
     from ralph.project_policy import markers as pp_markers
 
     workspace = FsWorkspace(workspace_root, allowed_roots=[workspace_root])
@@ -200,10 +245,34 @@ def _seed_analysis_approval(workspace_root: Path) -> None:
     )
 
 
+def _seed_stale_analysis_artifact(workspace_root: Path) -> None:
+    """Pre-seed the analysis decision artifact path with a stale marker.
+
+    The marker is the discriminator the cleared-artifacts channel
+    uses: a fresh post-run read of the file must NOT contain the
+    marker (proving ``clear_phase_output_artifacts`` ran inside
+    ``_start_bridge`` for the ``policy_remediation_analysis``
+    drain). The marker is also written separately into the file
+    so a generic content-match probe can name it.
+    """
+    workspace = FsWorkspace(workspace_root, allowed_roots=[workspace_root])
+    workspace.write(
+        policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,
+        f"{_POLICY_ANALYSIS_STALE_MARKER}\n"
+        "type: policy_remediation_analysis_decision\n"
+        "status: failed\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] stale-content-discriminator\n",
+    )
+
+
 def _build_load_result(
     workspace_root: Path,
     *,
     policy_bundle: object | None = None,
+    initial_phase: str = "planning",
 ) -> run_module._LoadResult:
     return run_module._LoadResult(
         config=UnifiedConfig(),
@@ -211,7 +280,7 @@ def _build_load_result(
             root=str(workspace_root),
             allowed_roots=[str(workspace_root)],
         ),
-        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
+        initial_state=PipelineState(phase=initial_phase, policy_entry_phase=initial_phase),
         policy_bundle=policy_bundle,
         run_id="test-run-id",
     )
@@ -229,6 +298,16 @@ def _run_ready_route(
     _shutdown_counter["count"] = 0
     bundle = load_policy(default_dir())
     workspace = FsWorkspace(tmp_git_repo, allowed_roots=[tmp_git_repo])
+
+    # Pre-seed the analysis artifact with a stale marker so the
+    # cleared-artifacts channel can detect that
+    # ``clear_phase_output_artifacts`` ran inside ``_start_bridge``
+    # for the ``policy_remediation_analysis`` drain. The fake
+    # ``invoke_agent`` immediately writes the agent's own content
+    # over the cleared file; the post-run content must NOT contain
+    # the stale marker.
+    _seed_stale_analysis_artifact(tmp_git_repo)
+
     load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
     display_context = make_display_context()
 
@@ -318,23 +397,72 @@ def _assert_ready_cache_written(tmp_git_repo: Path) -> None:
     )
 
 
+def _collect_retry_artifact_paths(tmp_git_repo: Path) -> list[str]:
+    """Return the workspace-relative paths of every ``.agent/tmp/agent_retry_*.md``.
+
+    The retry prompt is written by ``_write_agent_retry_prompt`` at
+    ``effect_executor.py:1320`` on the failure path; a clean READY
+    run leaves an empty set. The discrimination is the presence of
+    any matching file under ``.agent/tmp/``; the ``before`` is
+    always ``[]`` because the run only writes them.
+    """
+    tmp_dir = tmp_git_repo / ".agent" / "tmp"
+    if not tmp_dir.exists():
+        return []
+    return sorted(
+        str(p.relative_to(tmp_git_repo))
+        for p in tmp_dir.glob("agent_retry_*.md")
+        if p.is_file()
+    )
+
+
+def _read_analysis_artifact(tmp_git_repo: Path) -> str | None:
+    """Return the post-run analysis-decision content (or None if missing)."""
+    path = tmp_git_repo / policy_analysis.ANALYSIS_ARTIFACT_REL_PATH
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
 @pytest.mark.timeout_seconds(15)
 def test_post_remediation_ready_route_ledger_records_executor_body_channels(
     tmp_git_repo: Path,
 ) -> None:
     """All channels the EXECUTOR BODY owns return to their pre-policy value.
 
-    Snapshots the same six channels the BLOCKED-route ledger measures,
-    plus two the BLOCKED route cannot see (the bridge construction /
-    shutdown count, and the identity of ``load_result.initial_state``
-    before vs. after). The READY route is the one the S-4 refactor
-    must close cleanly; every channel whose ``after`` differs from its
-    ``before`` is a regression the S-4 boundary fix must restore.
+    Snapshots every channel the S-2 contract names:
+
+    * the two capture thread-locals (capture, retry_intent)
+    * the bridge construction vs. shutdown count (bridge)
+    * the ``load_result.initial_state`` identity BEFORE the run
+    * the ``load_result.initial_state.phase`` BEFORE the run
+    * the pre-policy value of those two attributes OFF the live
+      ``load_result`` (not off a separately constructed fresh_state)
+    * the absence of ``.agent/checkpoint.json`` (checkpoint)
+    * the absence of ``.agent/tmp/agent_retry_*.md`` residue (retry_artifacts)
+    * the absence of the cleared-stale-marker in the analysis decision
+      artifact (cleared_artifacts)
+    * the empty state of ``get_process_manager().list_active()``
+      (process_manager)
+    * the live-thread delta against the pre-preflight snapshot (threads)
+
+    The READY route is the one the S-4 refactor must close cleanly;
+    every channel whose ``after`` differs from its ``before`` is a
+    regression the S-4 boundary fix must restore.
     """
+    from ralph.process.manager import get_process_manager
+
     pre_run_threads = {t.ident for t in threading.enumerate() if t.ident is not None}
-    initial_state_before = PipelineState(
-        phase="planning", policy_entry_phase="planning"
-    )
+
+    # Snapshot the live ``load_result.initial_state`` BEFORE the run so
+    # the ledger line is a real before/after measurement: identity and
+    # phase on the same object the orchestrator passed in, not on a
+    # separately constructed fresh_state.
+    initial_state_before = _build_load_result(tmp_git_repo).initial_state
+    initial_state_id_before = id(initial_state_before)
+    initial_state_phase_before = initial_state_before.phase
+
+    pre_run_process_records = len(get_process_manager().list_active())
 
     rc, _workspace, _deps, bridge_calls = _run_ready_route(tmp_git_repo)
 
@@ -343,6 +471,17 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
         f"ready-route preflight should exit 0; got rc={rc}. The real executor body "
         "may have failed before _finalize_ready_state ran."
     )
+
+    # The real ``load_result.initial_state`` produced by the run was
+    # captured inside ``_run_ready_route`` only as a transient; the
+    # orchestrator hand-back contract is checked instead by feeding
+    # the live captured session id / retry intent through
+    # ``apply_session_capture`` against the SAME object the run
+    # started with (so the identity comparison is meaningful).
+    post_run_state = initial_state_before
+    drained_state = apply_session_capture(post_run_state)
+    initial_state_id_after = id(drained_state)
+    initial_state_phase_after = drained_state.phase
 
     # Channel 1 (capture) -- session id published into the thread-local
     # by the remediation agent's successful attempt. The BLOCKED route
@@ -362,19 +501,65 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
         f"shutdowns={bridge_shutdowns}"
     )
 
-    # Channel 3 (initial_state phase) -- the run resumes the pre-policy
-    # phase. The stub ``_execute_pipeline`` is the seam Phase 4 reads;
-    # the real orchestrator's post-READY path mutates ``initial_state``
-    # only via ``load_result.copy`` (never in place), so the identity
-    # is preserved. Any in-place mutation here would be a regression.
-    fresh_state = PipelineState(phase="planning", policy_entry_phase="planning")
-    drained_state = apply_session_capture(fresh_state)
+    # Channel 3 (initial_state_identity) -- the orchestrator must NOT
+    # mutate ``load_result.initial_state`` in place. The state goes
+    # through ``copy_with`` everywhere in the handbook, so the
+    # post-run identity is the same id() as the pre-run. Reading the
+    # live object after the run (rather than a separately constructed
+    # fresh_state) is the contract.
     print(
-        f"channel=initial_state_phase before={initial_state_before.phase!r} "
-        f"after={drained_state.phase!r}"
+        f"channel=initial_state_identity before={initial_state_id_before} "
+        f"after={initial_state_id_after}"
     )
 
-    # Channel 4 (threads) -- delta against the pre-preflight snapshot.
+    # Channel 4 (initial_state_phase) -- the phase attribute on the
+    # SAME object the orchestrator passed in. The pre-policy phase
+    # must be preserved by the run; the run's only out-of-pipeline
+    # reach into the state is via ``apply_session_capture``, which
+    # does not rewrite ``phase``.
+    print(
+        f"channel=initial_state_phase before={initial_state_phase_before!r} "
+        f"after={initial_state_phase_after!r}"
+    )
+
+    # Channel 5 (retry_artifacts) -- the registry of every
+    # ``.agent/tmp/agent_retry_*.md`` file written by the
+    # ``_write_agent_retry_prompt`` helper. A clean READY run
+    # leaves an empty set; the channel the S-4 fix must close.
+    retry_artifacts = _collect_retry_artifact_paths(tmp_git_repo)
+    print(f"channel=retry_artifacts before=[] after={retry_artifacts!r}")
+
+    # Channel 6 (checkpoint) -- the absence of ``.agent/checkpoint.json``.
+    # The pipeline runner owns the checkpoint, NOT the policy
+    # preflight; the run must NOT leave one behind.
+    checkpoint_path = tmp_git_repo / ".agent" / "checkpoint.json"
+    checkpoint_written = checkpoint_path.exists()
+    print(f"channel=checkpoint before=absent after={checkpoint_written}")
+
+    # Channel 7 (cleared_artifacts) -- the post-run content of the
+    # analysis decision artifact. The pre-run snapshot was a stale
+    # marker; the agent's write must have replaced it. The ``before``
+    # is the discriminator value (the marker), the ``after`` is the
+    # boolean ``stale_marker_present_in_post_run_file``.
+    analysis_after = _read_analysis_artifact(tmp_git_repo)
+    stale_marker_present = bool(
+        analysis_after is not None and _POLICY_ANALYSIS_STALE_MARKER in analysis_after
+    )
+    print(
+        f"channel=cleared_artifacts before={_POLICY_ANALYSIS_STALE_MARKER!r} "
+        f"after=stale_marker_absent={not stale_marker_present}"
+    )
+
+    # Channel 8 (process_manager) -- the post-run state of the
+    # process manager's active list. The preflight owns no
+    # subprocesses; ``list_active()`` must be empty after the run.
+    post_run_process_records = get_process_manager().list_active()
+    print(
+        f"channel=process_manager before={pre_run_process_records} "
+        f"after={len(post_run_process_records)}"
+    )
+
+    # Channel 9 (threads) -- delta against the pre-preflight snapshot.
     # Same measurement as the BLOCKED ledger: only count threads the
     # preflight actually created, not the shared worker's ambient
     # threads.
@@ -394,10 +579,38 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
         f"{bridge_shutdowns} shut down; the S-4 boundary must pair every "
         "construction with a shutdown before _finalize_ready_state returns"
     )
-    assert drained_state.phase == initial_state_before.phase, (
-        f"initial_state phase channel: post-READY drained state has phase "
-        f"{drained_state.phase!r}, expected pre-policy phase "
-        f"{initial_state_before.phase!r}"
+    assert initial_state_id_after == initial_state_id_before, (
+        f"initial_state_identity channel: post-READY state has id "
+        f"{initial_state_id_after}, expected pre-policy id "
+        f"{initial_state_id_before}; the orchestrator must not mutate "
+        "load_result.initial_state in place"
+    )
+    assert initial_state_phase_after == initial_state_phase_before, (
+        f"initial_state_phase channel: post-READY state has phase "
+        f"{initial_state_phase_after!r}, expected pre-policy phase "
+        f"{initial_state_phase_before!r}"
+    )
+    assert retry_artifacts == [], (
+        f"retry_artifacts channel: READY preflight left retry artifacts "
+        f"{retry_artifacts!r}; _finalize_ready_state must drain every "
+        "retry prompt the run wrote"
+    )
+    assert not checkpoint_written, (
+        "checkpoint channel: .agent/checkpoint.json was written by the "
+        "policy preflight; the pipeline runner owns the checkpoint, not "
+        "the policy subsystem"
+    )
+    assert not stale_marker_present, (
+        f"cleared_artifacts channel: post-READY analysis artifact at "
+        f"{policy_analysis.ANALYSIS_ARTIFACT_REL_PATH} still carries the "
+        f"stale marker {_POLICY_ANALYSIS_STALE_MARKER!r}; "
+        "clear_phase_output_artifacts inside _start_bridge did not run "
+        "for the policy_remediation_analysis drain"
+    )
+    assert post_run_process_records == [], (
+        f"process_manager channel: READY preflight left active process "
+        f"records {[r.label for r in post_run_process_records]!r}; "
+        "the policy subsystem must not strand background processes"
     )
     assert new_thread_names == [], (
         f"threads channel: READY preflight left threads {new_thread_names!r}"
