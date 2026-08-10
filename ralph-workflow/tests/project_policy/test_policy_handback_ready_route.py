@@ -288,15 +288,22 @@ def _build_load_result(
 
 def _run_ready_route(
     tmp_git_repo: Path,
-) -> tuple[int, FsWorkspace, object, list[object]]:
+    load_result: run_module._LoadResult,
+) -> tuple[int, FsWorkspace, object, list[object], run_module._LoadResult]:
     """Drive the policy preflight to a READY cache write on ``tmp_git_repo``.
 
-    Returns ``(rc, workspace, deps, bridge_calls)``. ``rc == 0`` and a
-    non-empty ``bridge_calls`` proves the real executor body ran (each
-    recorded bridge call is one ``_start_bridge`` invocation).
+    The caller owns ``load_result`` so its ``initial_state`` is the
+    SAME object the orchestrator receives and the surrounding test
+    can snapshot identity and phase on the live object the run uses
+    (the DA-002 fix). The returned ``load_result`` is the same
+    reference passed in, returned for the test's convenience.
+
+    Returns ``(rc, workspace, deps, bridge_calls, load_result)``.
+    ``rc == 0`` and a non-empty ``bridge_calls`` proves the real
+    executor body ran (each recorded bridge call is one
+    ``_start_bridge`` invocation).
     """
     _shutdown_counter["count"] = 0
-    bundle = load_policy(default_dir())
     workspace = FsWorkspace(tmp_git_repo, allowed_roots=[tmp_git_repo])
 
     # Pre-seed the analysis artifact with a stale marker so the
@@ -308,7 +315,6 @@ def _run_ready_route(
     # the stale marker.
     _seed_stale_analysis_artifact(tmp_git_repo)
 
-    load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
     display_context = make_display_context()
 
     deps = make_test_pipeline_deps(
@@ -380,7 +386,7 @@ def _run_ready_route(
         cli_integration._build_pipeline_deps_for_remediation = original_deps_factory
 
     calls: list[dict[str, object]] = list(deps.bridge_factory.calls)
-    return rc, workspace, deps, calls
+    return rc, workspace, deps, calls, load_result
 
 
 def _assert_ready_cache_written(tmp_git_repo: Path) -> None:
@@ -454,17 +460,21 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
 
     pre_run_threads = {t.ident for t in threading.enumerate() if t.ident is not None}
 
-    # Snapshot the live ``load_result.initial_state`` BEFORE the run so
-    # the ledger line is a real before/after measurement: identity and
-    # phase on the same object the orchestrator passed in, not on a
-    # separately constructed fresh_state.
-    initial_state_before = _build_load_result(tmp_git_repo).initial_state
+    # Build the ``load_result`` the same orchestrator will receive and
+    # snapshot its ``initial_state`` BEFORE the run starts. The ledger
+    # then reads identity and phase off the SAME object the run uses,
+    # not off a separately constructed fresh_state (DA-002).
+    bundle = load_policy(default_dir())
+    load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
+    initial_state_before = load_result.initial_state
     initial_state_id_before = id(initial_state_before)
     initial_state_phase_before = initial_state_before.phase
 
     pre_run_process_records = len(get_process_manager().list_active())
 
-    rc, _workspace, _deps, bridge_calls = _run_ready_route(tmp_git_repo)
+    rc, _workspace, _deps, bridge_calls, load_result = _run_ready_route(
+        tmp_git_repo, load_result
+    )
 
     _assert_ready_cache_written(tmp_git_repo)
     assert rc == 0, (
@@ -472,16 +482,26 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
         "may have failed before _finalize_ready_state ran."
     )
 
-    # The real ``load_result.initial_state`` produced by the run was
-    # captured inside ``_run_ready_route`` only as a transient; the
-    # orchestrator hand-back contract is checked instead by feeding
-    # the live captured session id / retry intent through
-    # ``apply_session_capture`` against the SAME object the run
-    # started with (so the identity comparison is meaningful).
-    post_run_state = initial_state_before
-    drained_state = apply_session_capture(post_run_state)
-    initial_state_id_after = id(drained_state)
-    initial_state_phase_after = drained_state.phase
+    # Read identity and phase off the SAME object the orchestrator was
+    # given (``load_result.initial_state``). The run must NOT mutate
+    # the object in place; if it does, the identity diverges and the
+    # identity-channel assertion fails with the mismatched id.
+    initial_state_after = load_result.initial_state
+    initial_state_id_after = id(initial_state_after)
+    initial_state_phase_after = initial_state_after.phase
+
+    # The same identity-preservation contract also requires the
+    # drained session-capture payload to fold back through
+    # ``apply_session_capture`` on the LIVE object the run received,
+    # not on a separately constructed copy. The post-run state
+    # therefore is the same object as ``initial_state_before``; the
+    # identity comparison is the discriminating measurement.
+    _drained_check = apply_session_capture(initial_state_after)
+    assert id(_drained_check) == initial_state_id_before, (
+        "apply_session_capture returned a fresh state instead of "
+        "mutating the live one in place; the hand-back contract is "
+        "expecting identity-preserving replay"
+    )
 
     # Channel 1 (capture) -- session id published into the thread-local
     # by the remediation agent's successful attempt. The BLOCKED route
