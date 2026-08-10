@@ -27,6 +27,10 @@ from ralph.git.operations import create_commit
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
+from ralph.pipeline._runner_session import (
+    pop_last_captured_session_id,
+    set_last_captured_session_id,
+)
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
@@ -54,6 +58,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
+    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.factory import PipelineDeps
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.models import ReadinessResult
@@ -508,10 +513,19 @@ def _make_production_invoke_agent(
     :func:`execute_agent_effect` until one succeeds. A chain that ran and failed
     returns ``False`` (the driver loops within its budget); a launch crash raises
     :class:`RemediationInvocationError` so the driver stops looping rather than
-    spinning through the budget in milliseconds.
+    spinning through the budget in milliseconds. Both policy phases are named
+    identically to their drains, so the phase name IS the drain name.
 
-    Both policy phases are named identically to their drains, so the phase name
-    IS the drain name — there is no mapping table to keep in sync.
+    The policy phases are OUT-OF-GRAPH: they share the
+    :func:`execute_agent_effect` seam with the pipeline runner but are
+    not part of the pipeline graph itself. ``execute_agent_effect``
+    publishes the session id and next-attempt retry intent into
+    thread-locals that the pipeline runner drains via
+    :func:`apply_session_capture`. Without a snapshot/restore wrapper,
+    the first pipeline agent effect picks up the remediation session id
+    and resumes the remediation conversation in Phase 4. The wrapper
+    around each policy invocation closes that leak at the out-of-graph
+    boundary.
     """
 
     def invoke_agent(*, phase: str, prompt_path: str) -> bool:
@@ -539,6 +553,9 @@ def _make_production_invoke_agent(
                 # its completion evidence is required.
                 requires_completion_evidence=(phase == PHASE_ANALYSIS),
             )
+            # Snapshot/restore the pipeline runner's capture thread-locals around
+            # the policy invocation so its writes do not leak.
+            capture_snapshot = _snapshot_pipeline_capture()
             try:
                 event = _effect_executor_module.execute_agent_effect(
                     effect,
@@ -555,11 +572,13 @@ def _make_production_invoke_agent(
                 # the next fallback, exactly as a pipeline drain would. Only when
                 # every agent in the chain has crashed is this real infrastructure
                 # breakage worth reporting to the driver.
+                _restore_pipeline_capture(capture_snapshot)
                 logger.warning(
                     "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
                 )
                 last_error = exc
                 continue
+            _restore_pipeline_capture(capture_snapshot)
             if event == PipelineEvent.AGENT_SUCCESS:
                 return True
         if last_error is not None:
@@ -568,6 +587,31 @@ def _make_production_invoke_agent(
 
     typed: InvokePolicyAgent = invoke_agent
     return typed
+
+
+def _snapshot_pipeline_capture() -> tuple[str | None, AgentRetryIntent]:
+    """Read and clear the pipeline runner's session-capture thread-locals.
+
+    The captured session id (:mod:`ralph.pipeline._runner_session`) and
+    retry intent (:mod:`ralph.pipeline.effect_executor`) are populated by
+    :func:`execute_agent_effect` and drained by the pipeline runner via
+    :func:`apply_session_capture`. The policy preflight runs OUT-OF-GRAPH
+    so its invocations populate those thread-locals without anyone
+    draining them. Snapshotting reads AND clears the slot; any
+    pre-existing value belongs to a caller outside the closure and must
+    be restored unchanged after the work returns.
+    """
+    return (
+        pop_last_captured_session_id(),
+        _effect_executor_module.pop_last_captured_retry_intent(),
+    )
+
+
+def _restore_pipeline_capture(snapshot: tuple[str | None, AgentRetryIntent]) -> None:
+    """Restore the pipeline runner's session-capture thread-locals."""
+    session_id, retry_intent = snapshot
+    _effect_executor_module._set_last_captured_retry_intent(retry_intent)
+    set_last_captured_session_id(session_id)
 
 
 def _build_workspace(
