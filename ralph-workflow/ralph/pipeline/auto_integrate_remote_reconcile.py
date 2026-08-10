@@ -139,7 +139,14 @@ def _abort_restore_or_retain_record(
             f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
             f"restore failed: {exc}",
         )
-    clear_record(repo_root)
+    try:
+        clear_record(repo_root)
+    except Exception as exc:
+        return (
+            False,
+            f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+            f"record cleanup failed: {exc}",
+        )
     return False, f"reconciliation of {target} with {remote}/{target} conflicted: {detail}"
 
 

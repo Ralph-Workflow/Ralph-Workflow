@@ -259,6 +259,37 @@ def test_target_reconciliation_regression_abort_restores_without_destructive_res
     assert cleared == [True]
 
 
+def test_target_reconciliation_regression_clear_record_failure_is_retained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: cleanup failure preserves recovery ownership instead of escaping."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    states = iter((True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
+    monkeypatch.setattr(
+        remote_reconcile,
+        "clear_record",
+        lambda *_a: (_ for _ in ()).throw(OSError("record cleanup failed")),
+    )
+
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "retained for recovery" in reason
+    assert "record cleanup failed" in reason
+
+
 def test_target_reconciliation_regression_record_write_failure_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
