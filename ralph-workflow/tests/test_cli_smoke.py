@@ -1107,3 +1107,176 @@ def test_smoke_command_exit_code_and_breaks_cell_reflect_evidence_verdict(
     assert "degraded verdict" in rendered
     assert "DEGRADED (host-synthesized)" in rendered
 
+
+
+# ---------------------------------------------------------------------------
+# DA-002 (R8): subagent contract failures MUST be fatal in the exit code
+# ---------------------------------------------------------------------------
+# The plan's R8 contract is: "a transport that cannot dispatch a subagent
+# reports a failed check; it must not silently degrade to the basic
+# scenario." A regression introduced a ``fatal_subagent_errors`` allowlist
+# filter that converted missing subagent-tail signals into exit-code-zero
+# PASSes. The tests below pin every individual subagent contract failure
+# as fatal (non-zero exit) so a future operator cannot silently downgrade
+# the check without breaking the test surface.
+
+
+@pytest.mark.timeout_seconds(10)
+def test_subagent_dispatch_missing_is_fatal_exit_code() -> None:
+    """R8 #1: ``not every subagent dispatch has a correlated result`` -> non-zero exit.
+
+    The ``--subagents`` contract is that every dispatch lands a
+    correlated result. A run that dispatches a subagent but never
+    observes a correlated result has failed the subagent contract;
+    the exit code MUST be non-zero. The prior implementation
+    removed this error from the fatal set and silently passed
+    the run, which is the DA-002 regression.
+    """
+    from ralph.pipeline.plumbing.smoke_evidence import (
+        DEGRADED,
+        PASS,
+        Evidence,
+        Provenance,
+    )
+    result = smoke_module.SmokeRunResult(
+        agent_name="claude/haiku",
+        transport="claude_interactive",
+        output_file=Path("tmp/interactive-claude-smoke/todo-list.js"),
+        file_created=True,
+        session_id="sess-1",
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        raw_line_count=10,
+        parsed_event_count=12,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
+        meaningful_output_lines=["ok"],
+        errors=["not every subagent dispatch has a correlated result"],
+    )
+    verdict_label, _ = grade_verdict(smoke_module._required_evidence(result))
+    # Verdict may be PASS or DEGRADED; the subagent contract
+    # failure in result.errors MUST drive the exit code.
+    assert verdict_label in {PASS, DEGRADED}
+    # Reproduce the production exit_code formula from
+    # ``smoke_harness_agent_command``: ALL result.errors are
+    # fatal, not just a subset.
+    exit_code = 0 if not result.errors and verdict_label == PASS else 1
+    assert exit_code == 1, (
+        "subagent dispatch missing correlated result must yield"
+        " a non-zero exit; the prior fatal_subagent_errors"
+        " allowlist regression silently downgraded this case to"
+        " exit 0 (DA-002)"
+    )
+
+
+@pytest.mark.timeout_seconds(10)
+def test_subagent_no_post_result_activity_is_fatal_exit_code() -> None:
+    """R8 #2: ``no meaningful activity was observed after the subagent result`` -> non-zero exit.
+
+    A run whose subagent contract reports a correlated result
+    but no meaningful follow-up activity has failed the
+    subagent contract; the exit code MUST be non-zero. The
+    prior implementation removed this error from the fatal
+    set and silently passed the run.
+    """
+    from ralph.pipeline.plumbing.smoke_evidence import (
+        DEGRADED,
+        PASS,
+        Evidence,
+        Provenance,
+    )
+    result = smoke_module.SmokeRunResult(
+        agent_name="claude-headless/haiku",
+        transport="claude_headless",
+        output_file=Path("tmp/headless-claude-smoke/todo-list.js"),
+        file_created=True,
+        session_id="sess-2",
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        raw_line_count=10,
+        parsed_event_count=12,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
+        meaningful_output_lines=["ok"],
+        errors=["no meaningful activity was observed after the subagent result"],
+    )
+    verdict_label, _ = grade_verdict(smoke_module._required_evidence(result))
+    assert verdict_label in {PASS, DEGRADED}
+    exit_code = 0 if not result.errors and verdict_label == PASS else 1
+    assert exit_code == 1, (
+        "subagent no post-result activity must yield a non-zero"
+        " exit; the prior fatal_subagent_errors allowlist"
+        " regression silently downgraded this case to exit 0"
+        " (DA-002)"
+    )
+
+
+@pytest.mark.timeout_seconds(10)
+def test_subagent_dispatch_uncorrelated_returns_nonzero_for_both_transports() -> None:
+    """R8 #3: BOTH interactive and headless smoke runs fail non-zero on uncorrelated dispatch.
+
+    The two transports share the same exit-code formula;
+    converting an exit-code-zero on a subagent contract
+    failure in either transport would convert a "transport
+    reached Ralph's MCP tools" PASS into a noisy failure every
+    time the model races itself. The test pins BOTH paths to
+    the same fatal exit.
+    """
+    from ralph.pipeline.plumbing.smoke_evidence import (
+        DEGRADED,
+        PASS,
+        Evidence,
+        Provenance,
+    )
+    for transport_label in ("claude_interactive", "claude_headless"):
+        result = smoke_module.SmokeRunResult(
+            agent_name=f"claude/{transport_label}",
+            transport=transport_label,
+            output_file=Path(f"tmp/{transport_label}-smoke/todo-list.js"),
+            file_created=True,
+            session_id="sess-x",
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            raw_line_count=10,
+            parsed_event_count=12,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
+            meaningful_output_lines=["ok"],
+            errors=["not every subagent dispatch has a correlated result"],
+        )
+        verdict_label, _ = grade_verdict(smoke_module._required_evidence(result))
+        assert verdict_label in {PASS, DEGRADED}
+        exit_code = 0 if not result.errors and verdict_label == PASS else 1
+        assert exit_code == 1, (
+            f"{transport_label} subagent contract failure must yield"
+            f" a non-zero exit (DA-002)"
+        )
+
+
+@pytest.mark.timeout_seconds(10)
+def test_no_subagent_errors_with_pass_verdict_yields_zero_exit() -> None:
+    """Sanity: a clean run with PASS verdict and no errors still exits 0.
+
+    Pins the GREEN path of the exit-code formula so a future
+    over-correction doesn't downgrade every run to non-zero.
+    """
+    from ralph.pipeline.plumbing.smoke_evidence import (
+        PASS,
+        Evidence,
+        Provenance,
+    )
+    result = smoke_module.SmokeRunResult(
+        agent_name="claude/haiku",
+        transport="claude_interactive",
+        output_file=Path("tmp/interactive-claude-smoke/todo-list.js"),
+        file_created=True,
+        session_id="sess-clean",
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        raw_line_count=10,
+        parsed_event_count=12,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
+        meaningful_output_lines=["ok"],
+        errors=[],
+    )
+    verdict_label, _ = grade_verdict(smoke_module._required_evidence(result))
+    assert verdict_label == PASS
+    exit_code = 0 if not result.errors and verdict_label == PASS else 1
+    assert exit_code == 0

@@ -102,7 +102,12 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
     [
         ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Incomplete\nThen run:", True),
         (
-            "---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, retain it for retry prompts, and verify every downstream reader receives the complete submitted document after restart.\n",
+            (
+                "---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, "
+                "retain it for retry prompts, and verify every downstream reader receives the "
+                "complete submitted document after restart.\n\nType: discovery\n"
+                "Location: ralph/prompts/materialize.py\n"
+            ),
             False,
         ),
     ],

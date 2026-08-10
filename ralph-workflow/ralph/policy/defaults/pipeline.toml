@@ -16,10 +16,10 @@ terminal_phase = "complete"
 # Loop counters
 # ---------------------------------------------------------------------------
 
-# Raise this if development-analysis reviews keep looping past 3 passes before approving a change;
+# Raise this if development-analysis reviews keep looping past 5 passes before approving a change;
 # lower it to fail fast on a weaker development agent instead of grinding through retries.
 [loop_counters.development_analysis_iteration]
-default_max = 3
+default_max = 5
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]

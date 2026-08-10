@@ -1,77 +1,47 @@
 # plan artifact format
 
-A plan is one readable Markdown document. Use the structure that makes the
-work clearest; headings and step IDs are optional unless a downstream reader
-uses them. Keep it short enough to reread, and state each commitment once next
-to the work it describes.
+A plan is the executor's instruction set. Every active plan uses stable `### [S-n] Title` steps. The only step-less form is exactly `type: plan` with `noop: true`.
 
-## The only blocking rule
+Each step has a `Type` from `file_change`, `file_create`, `file_delete`, `refactor`, `config_change`, `discovery`, or `verify`.
 
-`PLAN001` is the sole error. It means the submission is not a plan: it is
-empty or markup-only, has fewer than 100 characters of actual content, is
-recognizably truncated (an unterminated frontmatter block, unclosed code fence,
-dangling plan field label, final comma or function word, unclosed inline
-bracket/parenthesis/backtick, or empty list bullet at EOF), or is clearly a
-refusal, question, status update,
-tool output, stack trace, or placeholder. Analysis and execution cannot proceed
-without a plan to read.
+- Work steps require `Files`, a concrete `Verify`, and an observable `Expect`.
+- `verify` requires `Verify` plus `Expect` or `Location`.
+- `discovery` requires `Verify`, `Location`, or `Evidence`.
+- Use `Depends on: S-n` only where ordering exists. `Satisfies`, `Rationale`, and `Evidence` add useful execution context.
 
-Every other finding is advisory:
+Missing or inconsistent required structure blocks submission with a line- and step-anchored repair diagnostic. `schema_version` and `## Validation Overrides` are unsupported; repair the plan instead of bypassing validation.
 
-- **Warning** predicts a concrete cost to this run and says how to resolve it.
-- **Info** is an observation worth a second look.
+## Example
 
-Warnings and info never make a plan invalid. If proceeding is the informed
-choice, record the reason under `## Validation Overrides` as
-`- [RULE-ID] reason`. Override reasons remain visible in tool responses and
-plan history; stale overrides are reported as info.
-
-## Useful default shape
-
-A good plan normally makes four phases visible in the order they will happen:
-Orient, Characterize current behavior, Change, and Verify. It should state the
-outcome, real files or areas already inspected, risks or unknowns, and
-completion evidence. These are authoring guidance, not required headings.
+See the complete validator-backed example at `.agent/artifact-formats/examples/plan.md`.
 
 ```markdown
 ---
 type: plan
 ---
+
 ## Work
 
-### [S-1] Characterize the current retry behavior
-Inspect the current default and add a focused regression that captures it.
+### [S-1] Characterize current retry behavior
+Inspect the current default and preserve it in a focused regression.
 
-Files:
-- modify tests/test_retry.py
+Type: discovery
+Location: tests/test_retry.py
 
 ### [S-2] Change and prove the default
-Update the retry implementation and run the focused test.
+Update retry handling and run the focused regression.
 
+Type: file_change
 Files:
 - modify ralph/retry.py
+- modify tests/test_retry.py
 Depends on: S-1
 Verify: pytest tests/test_retry.py -q
 Expect: the focused retry tests pass with exit code 0
 ```
 
-Custom headings, prose plans, and an omitted conventional section are valid
-when the plan remains understandable. For a larger conventional sample, see
-`.agent/artifact-formats/examples/plan.md`. For parallel work, use `## Work Units`
-or `## Parallel Plan` only when the executor will consume those markers;
-otherwise describe independent work naturally.
+Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. For parallel work, use `## Work Units` or `## Parallel Plan` only when the executor will consume them.
 
-## Standard artifact tools
+## Submission
 
-Submit a complete document with `ralph_submit_md_artifact` using
-`artifact_type: plan`; `ralph_verify_md_artifact` previews the same result.
-For a similar revision, use `ralph_edit_md_artifact` on the staged draft. It
-submits automatically when the edited draft has no errors. Use
-`ralph_stage_md_artifact` with `mode="replace_all"` only for a wholesale rewrite;
-inspect with `ralph_get_md_draft` and submit an assembled draft with
-`ralph_finalize_md_artifact`. Staging is not submission: a retained draft that
-differs from the canonical document blocks phase completion until it is
-resubmitted or deliberately abandoned with `ralph_discard_md_draft`.
-
-Do not write `.agent/artifacts/plan.md` directly. After a valid submission,
-call `declare_complete` as the final action.
+Submit the complete document with `ralph_submit_md_artifact` using `artifact_type: plan`. Use `ralph_edit_md_artifact` for a similar revision; it submits when the repaired draft validates. Staging is not submission. Do not write `.agent/artifacts/plan.md` directly. After a valid submission, call `declare_complete` as the final action.

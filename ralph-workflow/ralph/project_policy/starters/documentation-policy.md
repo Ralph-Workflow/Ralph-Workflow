@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: documentation-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -167,4 +167,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`

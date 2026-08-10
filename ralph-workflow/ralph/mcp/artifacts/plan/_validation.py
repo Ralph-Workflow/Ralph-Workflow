@@ -84,7 +84,6 @@ class PlanArtifact(RalphBaseModel):
     risks_mitigations: list[RiskMitigation] = Field(default_factory=list)
     constraints: PlanConstraints | None = None
     noop: bool | None = Field(default=None, exclude=True)
-    schema_version: int = Field(default=0, ge=0)
     design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(default_factory=list)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
@@ -224,23 +223,12 @@ class PlanArtifact(RalphBaseModel):
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
     """Return True when ``artifact`` represents a planning no-op.
 
-    An explicit ``noop: true`` marker is authoritative. As a defensive fallback,
-    a plan with no ``steps`` and no ``work_units`` is also treated as a no-op
-    so badly-shaped empty plans short-circuit cleanly instead of blowing up in
-    schema validation downstream.
+    The explicit ``noop: true`` marker and the legacy empty
+    ``steps``/``work_units`` representation both describe no planned work.
     """
     if artifact.get("noop") is True:
         return True
-    steps = artifact.get("steps")
-    work_units = artifact.get("work_units")
-    steps_empty = steps is None or (isinstance(steps, list) and len(steps) == 0)
-    work_units_empty = work_units is None or (isinstance(work_units, list) and len(work_units) == 0)
-    return (
-        steps_empty
-        and work_units_empty
-        and isinstance(steps, list)
-        and isinstance(work_units, list)
-    )
+    return artifact.get("steps") == [] and artifact.get("work_units") == []
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:
@@ -257,6 +245,14 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
     size_error = check_plan_size(content)
     if size_error is not None:
         raise PlanArtifactValidationError(f"plan size violation: {size_error}")
+    raw_steps = content.get("steps")
+    if isinstance(raw_steps, list):
+        raw_numbers = [step.get("number") for step in raw_steps if isinstance(step, dict)]
+        if len(raw_numbers) != len(set(raw_numbers)):
+            duplicate = next(
+                number for index, number in enumerate(raw_numbers) if number in raw_numbers[:index]
+            )
+            raise PlanArtifactValidationError(f"duplicate plan step number {duplicate}")
     try:
         validated = PlanArtifact.model_validate(content)
         return validated.model_dump(

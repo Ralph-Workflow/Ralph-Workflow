@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.agents._contracts import StrategyFactory
+    from ralph.agents.display_capability_stance import DisplayCapabilityStance
     from ralph.agents.parsers.base import AgentParser
 
 
@@ -63,6 +64,11 @@ class BuiltinAgentSpec:
             ``--resume {}`` session template that would otherwise be set
             by :meth:`AgentSupport.from_registration_kwargs` for
             interactive agents.  Used for agy.
+        session_identifier_observable: S-6 (G6 / DoD 20). Whether this
+            transport's output can ever carry an observable session
+            identifier. Defaults to True; nanocoder is the one documented
+            False case (see :class:`ralph.agents.support.AgentSupport`'s
+            docstring for the full reasoning and its evidence source).
     """
 
     transport: AgentTransport
@@ -82,6 +88,8 @@ class BuiltinAgentSpec:
     interactive: bool = False
     subagent_capability: bool | None = None
     no_default_session_flag: bool = False
+    session_identifier_observable: bool = True
+    display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:
         """Materialize the dataclass into an :class:`AgentSupport`.
@@ -106,6 +114,12 @@ class BuiltinAgentSpec:
             for field, value in asdict_result.items()
             if field not in _BUILTIN_SPEC_POSITIONAL_FIELDS
         }
+        # ``dataclasses.asdict`` recursively converts nested dataclasses
+        # to plain dicts, which would lose the ``DisplayCapabilityStance``
+        # class identity the downstream validator relies on. Pass the
+        # original tuple through explicitly so the validator sees real
+        # ``DisplayCapabilityStance`` instances.
+        kwargs["display_capabilities"] = self.display_capabilities
         return AgentSupport.from_registration_kwargs(
             name,
             transport=self.transport,

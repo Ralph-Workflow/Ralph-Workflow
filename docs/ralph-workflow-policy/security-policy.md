@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: security-policy.md -->
 
 # Security Policy
@@ -336,4 +336,4 @@ new commands, new structure). Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: security-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`

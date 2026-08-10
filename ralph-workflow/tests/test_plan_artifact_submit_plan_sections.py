@@ -67,31 +67,18 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
     resumed = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
 
     assert first.is_error is False
-    # The head-only draft lacks step blocks, which is a PLAN022 warning
-    # under the plan-scoped severity policy. The chunk still validates
-    # as a plan (advisory demotion, not blocking). The tail chunk adds
-    # the step body and the assembled plan is valid.
-    assert _payload(first)["valid"] is True
+    # The head-only draft has no executor-ready step, so it stays editable
+    # but cannot finalize until the tail completes the required contract.
+    assert _payload(first)["valid"] is False
     first_diagnostics = _payload(first).get("diagnostics", [])
     assert any(
-        diagnostic.get("rule_id") == "PLAN022" and diagnostic.get("severity") == "warning"
+        diagnostic.get("rule_id") == "PLAN001" and diagnostic.get("severity") == "error"
         for diagnostic in first_diagnostics
     )
     assert second.is_error is False
     assert _payload(second)["valid"] is True
     assert _payload(resumed)["content"] == document
-    assert _payload(resumed)["sections"] == [
-        "Summary",
-        "Scope",
-        "Skills MCP",
-        "Steps",
-        "Critical Files",
-        "Constraints",
-        "Design",
-        "Acceptance Criteria",
-        "Risks",
-        "Verification",
-    ]
+    assert _payload(resumed)["sections"] == ["Skills MCP", "Steps"]
 
 
 def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> None:
@@ -128,13 +115,7 @@ def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> 
 
 
 def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:
-    """A warnings-only plan finalizes; a repaired replacement finalizes cleanly.
-
-    Under the plan-scoped severity policy, a dangling ``Depends on:``
-    is a PLAN021 warning, not a blocking error. The plan still finalizes
-    (the warning lives in the diagnostic list) and the replace_all
-    step repairs the warning before the second finalize.
-    """
+    """A dangling dependency blocks finalization until replacement repairs it."""
     workspace = FsWorkspace(tmp_path)
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
     handle_stage_md_artifact(
@@ -152,10 +133,10 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
     )
     finalized = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
 
-    assert rejected.is_error is False
+    assert rejected.is_error is True
     rejected_payload = _payload(rejected)
     assert any(
-        diagnostic.get("rule_id") == "PLAN021" and diagnostic.get("severity") == "warning"
+        diagnostic.get("rule_id") == "PLAN021" and diagnostic.get("severity") == "error"
         for diagnostic in rejected_payload.get("diagnostics", [])
     )
     assert _payload(kept)["content"] == invalid

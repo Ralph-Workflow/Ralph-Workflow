@@ -235,6 +235,7 @@ def _apply_cursor_binary_override_to_config(config: UnifiedConfig) -> UnifiedCon
 
 
 _INTERACTIVE_AGENT = "claude/haiku"
+_HEADLESS_CLAUDE_AGENT = "claude-headless/haiku"
 _HEADLESS_SEMANTIC_GUIDE = (
     "session capture, tool activity, completion signal, parser events, and tmp/ artifact creation"
 )
@@ -250,6 +251,7 @@ __all__ = [
     "_execute_smoke_turns",
     "build_smoke_prompt",
     "render_smoke_report",
+    "smoke_headless_claude_command",
     "smoke_interactive_agy_command",
     "smoke_interactive_claude_command",
     "smoke_interactive_cursor_command",
@@ -559,6 +561,24 @@ def smoke_harness_agent_command(
         workspace_root, transport=result.transport, evidence=_required_evidence(result)
     )
     verdict_label, _ = grade_verdict(_required_evidence(result))
+    # R8 (wt-04-claude-parsing): a missing dispatch, missing
+    # correlated result, or missing post-result activity is a
+    # HARD FAILED subagent-contract check, NOT a diagnostic. The
+    # plan and product criteria explicitly require that "a
+    # transport that cannot dispatch a subagent reports a failed
+    # check; it must not silently degrade to the basic scenario."
+    # All ``result.errors`` are treated as fatal; the previous
+    # "fatal_subagent_errors" allowlist filter was a regression
+    # that converted missing subagent-tail signals into
+    # exit-code-zero PASSes even when the model raced itself and
+    # never produced the required correlated result + post-result
+    # activity. The plan's R8 contract is that BOTH smoke runs
+    # (interactive and headless Claude) surface a subagent
+    # contract failure as a non-zero exit, with the surfacing
+    # in the per-check table AND the exit code. ``AGENTS.md``
+    # has no unrelated-failure exemption: a subagent contract
+    # violation is in the smoke plan and the exit code must
+    # reflect it.
     exit_code = 0 if not result.errors and verdict_label == PASS else 1
     # S-14: keep the literal ``EXIT_CODE=N`` machine-line shape so
     # external smoke harnesses that grep the line keep working. The
@@ -602,6 +622,39 @@ def smoke_interactive_claude_command(
     """Run a token-consuming manual parity smoke test for interactive Claude."""
     return smoke_harness_agent_command(
         _INTERACTIVE_AGENT,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
+    )
+
+
+def smoke_headless_claude_command(
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
+) -> int:
+    """Run a token-consuming manual parity smoke test for headless Claude.
+
+    Thin pass-through to ``smoke_harness_agent_command`` with the
+    default headless-Claude alias ``claude-headless/haiku``. The
+    command exposes the same ``--subagents`` / ``--subagent-prompt-file``
+    options as ``smoke_interactive_claude`` so the two transports
+    share one scenario surface. The headless transport does NOT
+    emit a visible TUI; the harness detects the subagent dispatch
+    via the parsed tool metadata (see
+    ``ralph.pipeline.plumbing.smoke_evidence.SmokeRunResult``).
+
+    The command is OUTSIDE ``make verify`` per the headless smoke
+    exclusion (the harness only runs when an operator explicitly
+    invokes it).
+    """
+    return smoke_harness_agent_command(
+        _HEADLESS_CLAUDE_AGENT,
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,

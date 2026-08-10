@@ -64,6 +64,7 @@ def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> No
         "panel",
         "artifact",
         "syntax_preview",
+        "file_preview",
         "diff_preview",
         "elision",
         "status_bar",

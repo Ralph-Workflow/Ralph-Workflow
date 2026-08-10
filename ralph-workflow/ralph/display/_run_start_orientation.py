@@ -24,3 +24,4 @@ class RunStartOrientation:
     plan_present: bool = False
     verbosity: str | None = None
     workspace_root: str | None = None
+    target_worktree_path: str | None = None

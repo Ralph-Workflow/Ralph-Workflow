@@ -11,6 +11,8 @@ _LIVE_KEYS = (
     "auto_integrate_target",
     "auto_integrate_remote_enabled",
     "auto_integrate_remote",
+    "auto_integrate_remote_interval_seconds",
+    "auto_integrate_reclaim_target_worktree",
 )
 _RETIRED_KEYS = (
     "auto_integrate_fetch_enabled",
@@ -31,8 +33,8 @@ def _general_rows(content: str) -> list[str]:
     return [line for line in content.splitlines() if line.startswith("| `auto_integrate_")]
 
 
-def test_configuration_md_documents_exactly_the_four_live_auto_integrate_keys_in_order() -> None:
-    """S-8: the operator reference matches the four-key configuration surface."""
+def test_configuration_md_documents_exactly_the_six_live_auto_integrate_keys_in_order() -> None:
+    """S-2: the operator reference matches the six-key configuration surface."""
     rows = _general_rows(_CONTENT)
     assert [row.split("`")[1] for row in rows] == list(_LIVE_KEYS)
 
@@ -43,14 +45,16 @@ def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
     rows = _general_rows(content)
     assert "`true`" in rows[0]
     assert '`"main"`' in rows[1]
-    assert "`false`" in rows[2]
+    assert "when the remote exists" in rows[2]
     assert '`"origin"`' in rows[3]
+    assert "`0.0`" in rows[4]
+    assert "`true`" in rows[5]
     section = (
         content.partition("## Auto-integration")[2]
         .partition("## Agent chains and drains")[0]
         .lower()
     )
-    for token in ("five seams", "force-push", "remote synchronization is opt-in"):
+    for token in ("five seams", "force-push", "snapshot", "local-only"):
         assert token in section
 
 

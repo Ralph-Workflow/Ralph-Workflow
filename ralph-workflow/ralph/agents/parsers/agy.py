@@ -457,6 +457,17 @@ class AgyParser(NdjsonParserBase):
         the ``result`` frame's ``status`` / ``duration_seconds`` /
         ``num_turns`` fields, falling back to a bare ``"agy result"`` when
         the nested ``result`` dict is absent.
+
+        S-5/C3: the emitted ``stop`` event is marked
+        ``metadata["_transcript_claimed_outcome"] = True`` so the display
+        layer can qualify the rendered line as transcript-sourced and the
+        report path can cross-check it against the graded verdict from
+        ``ralph.agents.completion_signals.graded_verdict``. The model is
+        free to emit ``"agy result SUCCESS (...)"`` even when the phase
+        produced no artifact and never called ``declare_complete``; the
+        rendered line carries that transcript claim explicitly so the
+        operator does not mistake the agent's own success assertion for
+        the harness's graded verdict.
         """
         yield from self._flush_text()
         metadata: dict[str, object] = dict(obj)
@@ -469,6 +480,11 @@ class AgyParser(NdjsonParserBase):
             if key in res_dict:
                 metadata[key] = res_dict[key]
         status = res_dict.get("status")
+        # Mark the ``stop`` event as carrying a transcript-claimed
+        # outcome so downstream renderers and reports know the
+        # ``SUCCESS``/``FAILURE`` text is the agent's own stream, not a
+        # graded verdict from Ralph's tooling (see C3 / DoD 14).
+        metadata["_transcript_claimed_outcome"] = True
         if isinstance(status, str) and status != "SUCCESS":
             err_msg = str(res_dict.get("error") or status)
             yield AgentOutputLine(type="error", content=err_msg, raw=raw, metadata=metadata)

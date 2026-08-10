@@ -253,6 +253,7 @@ class McpServer:
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         if request.method == "notifications/initialized":
+            self._append_wire_record_best_effort(request)
             return (None, ServerState.RUNNING)
         if request.method == "notifications/reset_wrapup":
             # Wire-level seam for the per-attempt reset contract. The
@@ -260,6 +261,7 @@ class McpServer:
             # inner subprocess over HTTP at the start of every _run_attempt
             # so the soft nag does not carry over from a prior attempt.
             # Fire-and-forget: no payload, no error, no state change.
+            self._append_wire_record_best_effort(request)
             self.reset_session_budget()
             return (None, state)
         if request.method == "tools/call":
@@ -278,30 +280,41 @@ class McpServer:
             # F2/S-1 (Evidence Provenance): chain every dispatched JSON-RPC
             # request method on the wire ledger, not only tools/call, so the
             # ledger is a fixture generator for a whole session (F5) rather
-            # than a single method. Same best-effort pattern as the tools/call
-            # append above: append_wire_record() is a no-op without a broker
-            # secret (A5), and a test double lacking the full McpSession/
-            # FsWorkspace surface must not turn a real dispatch into an error
-            # — the ledger is diagnostic evidence, never load-bearing.
-            try:
-                append_wire_record(
-                    self._workspace.root,
-                    method=request.method,
-                    tool_name=None,
-                    params=dict(request.params or {}),
-                    run_id=self._session.run_id,
-                    secret=self._session.broker_secret,
-                )
-            except (AttributeError, OSError, TypeError):
-                logger.opt(exception=True).debug(
-                    "MCP server: wire-ledger append failed (suppressed); "
-                    "{} dispatch proceeds",
-                    request.method,
-                )
+            # than a single method.
+            self._append_wire_record_best_effort(request)
             return handler(request)
 
         error = {"code": -32601, "message": f"Method not found: {request.method}"}
         return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+    def _append_wire_record_best_effort(self, request: JsonRpcRequest) -> None:
+        """Chain ``request`` onto the wire ledger, never raising into dispatch.
+
+        S-2 (Evidence Provenance G2): every dispatched JSON-RPC frame is
+        chained, including the two notification methods
+        (``notifications/initialized``, ``notifications/reset_wrapup``) that
+        are handled before the generic ``handlers`` dict below — without this
+        helper those two frames never reached the ledger, unlike every other
+        method. ``append_wire_record()`` is a no-op without a broker secret
+        (A5), and a test double lacking the full McpSession/FsWorkspace
+        surface must not turn a real dispatch into an error — the ledger is
+        diagnostic evidence, never load-bearing.
+        """
+        try:
+            append_wire_record(
+                self._workspace.root,
+                method=request.method,
+                tool_name=None,
+                params=dict(request.params or {}),
+                run_id=self._session.run_id,
+                secret=self._session.broker_secret,
+            )
+        except (AttributeError, OSError, TypeError):
+            logger.opt(exception=True).debug(
+                "MCP server: wire-ledger append failed (suppressed); "
+                "{} dispatch proceeds",
+                request.method,
+            )
 
     def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         self._client_capabilities = _extract_client_capabilities(request.params)

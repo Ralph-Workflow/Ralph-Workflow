@@ -58,6 +58,19 @@ model-string formats, see
 configuration after the first run, open the
 [operator manual](docs/sphinx/index.rst).
 
+### Auto-integration ownership
+
+Ralph Workflow refreshes the configured mainline before integration seams. The worktree
+that owns that branch is infrastructure: with the default configuration Ralph Workflow
+may snapshot and reset its uncommitted content to keep the mainline current.
+Recover discarded contents with
+`git -C <target-owner-path> restore --source=<snapshot-ref> --staged --worktree .`.
+Snapshots remain under `refs/ralph-reclaim/<target>/...`; feature worktrees are never reclaimed. Set
+`auto_integrate_reclaim_target_worktree = false` in `ralph-workflow.toml` to
+keep the older refuse-and-retry behavior. See the
+[configuration reference](docs/sphinx/configuration.md#auto-integration) for
+all six settings.
+
 ## Supported agents
 
 Eight built-in agents ship with Ralph Workflow:

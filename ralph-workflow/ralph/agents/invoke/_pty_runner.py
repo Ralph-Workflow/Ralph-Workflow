@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 from collections import deque
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
@@ -29,6 +30,7 @@ from ralph.agents.invoke._process_reader import (
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
+from ralph.agents.invoke._pty_transcript import existing_transcript_names
 from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
@@ -106,6 +108,29 @@ def run_pty_and_read_lines(
         with contextlib.suppress(FileNotFoundError):
             _extras.stop_sentinel_path.unlink()
     clock: Clock = ctx.clock or SystemClock()
+    # wt-04-claude-parsing: snapshot the transcript names already on disk
+    # for this workspace BEFORE ``spawn_pty`` below creates the child. The
+    # orchestrating session (or any sibling session) already lives in the
+    # same ``~/.claude/projects/<key>`` directory the child will write
+    # into; a snapshot taken any later -- e.g. inside
+    # ``PtyLineReader.__init__``, which only runs AFTER ``spawn_pty``
+    # returns -- could already include the child's own freshly-created
+    # transcript file and self-exclude the very file discovery needs to
+    # find (see ``ralph.agents.invoke._pty_transcript.existing_transcript_names``).
+    # ``isinstance`` gates a real ``_PtyExtras`` (typed attribute access
+    # below) from a test double that duck-types it with a bare
+    # ``SimpleNamespace`` predating this field -- such a double simply
+    # skips the pre-spawn snapshot and falls back to ``PtyLineReader``'s
+    # own (later, best-effort) live snapshot.
+    if (
+        isinstance(_extras, _PtyExtras)
+        and _extras.pre_existing_transcript_names is None
+        and ctx.workspace_path is not None
+    ):
+        _extras = dataclasses.replace(
+            _extras,
+            pre_existing_transcript_names=existing_transcript_names(ctx.workspace_path),
+        )
     handle = get_process_manager().spawn_pty(
         cmd,
         PtySpawnOptions(

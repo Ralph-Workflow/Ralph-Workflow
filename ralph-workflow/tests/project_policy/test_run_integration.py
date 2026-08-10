@@ -97,12 +97,19 @@ def _restore_run_module_collaborators() -> None:
     run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
-def _stub_load_result(workspace_root: str) -> _LoadResult:
+def _stub_load_result(workspace_root: str, *, phase: str = "planning") -> _LoadResult:
     """Build a minimal ``_LoadResult`` that exercises the helper seam.
 
     The ``workspace_scope`` uses an in-memory path; the helper itself is
     short-circuited from touching the real filesystem because tests inject
     a ``workspace_factory`` that returns a ``MemoryWorkspace``.
+
+    The ``phase`` parameter carries the persisted phase the load result
+    holds on its :class:`PipelineState`. Existing callers all default to
+    ``"planning"`` so their assertions are unchanged; the persisted-phase
+    hand-back test in this file parameterizes over the non-terminal phases
+    the pipeline persists, asserting the run returns to ``phase`` rather
+    than collapsing into the policy session id.
     """
     config = UnifiedConfig()
     workspace_scope = WorkspaceScope(root=workspace_root, allowed_roots=[workspace_root])
@@ -110,8 +117,8 @@ def _stub_load_result(workspace_root: str) -> _LoadResult:
         config=config,
         workspace_scope=workspace_scope,
         initial_state=PipelineState(
-            phase="planning",
-            policy_entry_phase="planning",
+            phase=phase,
+            policy_entry_phase=phase,
         ),
         policy_bundle=None,
         run_id="test-run-id",
@@ -763,8 +770,3 @@ def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness()
     assert "run_project_policy_readiness" not in runners.calls
     assert "load_configuration" not in runners.calls
 
-
-# Compile-time guard: assert no FsWorkspace, no Path, no tmp_path leaked
-# into this module. ``Path`` is imported only at module level for type
-# hints but never instantiated for I/O. The audit_test_policy AST scanner
-# verifies the absence of Path.read_text / .write_text / open() calls.

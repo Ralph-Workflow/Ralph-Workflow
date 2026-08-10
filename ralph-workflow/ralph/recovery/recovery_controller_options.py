@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.timeout_defaults import SAME_SHAPE_RETRY_DEFAULT
+
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
@@ -29,6 +31,17 @@ class RecoveryControllerOptions:
     policy_bundle: PolicyBundle | None = None
     backoff_attempts: dict[str, int] | None = None
     technical_retry_cap: int = 10
+    # R6 (Trustworthy Idle Watchdog spec): same-shape retry loop bound.
+    # When consecutive ``AgentInactivityTimeoutError`` resumes fingerprint
+    # identically on ``(fire_reason, diagnostic_signature, no-new-artifact,
+    # workspace-change)``, the controller raises
+    # ``SameShapeRetryLoopError`` instead of resuming. The default is
+    # :data:`SAME_SHAPE_RETRY_DEFAULT` (3); operators extend the leash via
+    # ``[general] agent_max_same_shape_resumes`` in ``ralph-workflow.toml``,
+    # which is routed through this field by the runtime builder in
+    # ``ralph/pipeline/run_loop.py::_build_recovery_controller``. Must be
+    # >= 1; a bound of 0 would silently disable the R6 contract.
+    same_shape_retry_limit: int = SAME_SHAPE_RETRY_DEFAULT
     # Initial unavailable timeout state, keyed by "phase:agent" with values as
     # monotonic timestamps in milliseconds. Used to inject test state; in
     # production this starts empty and is populated by the controller.

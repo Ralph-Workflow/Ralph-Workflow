@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import atexit
 import contextlib
+import json
 import threading
 import time
+import weakref
 from typing import TYPE_CHECKING, BinaryIO, cast
 
+from ralph.display._raw_log_break import RawLogBreak
 from ralph.display.record_writer import safe_id_for
 
 if TYPE_CHECKING:
@@ -21,6 +25,249 @@ _BUFFER_BYTES = 64 * 1024
 #: ralph.timeout_defaults.LOG_GROWTH_SECONDS (30.0): operators tail this
 #: file and the on-disk copy must never look wedged while the unit is live.
 DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
+
+
+#: Shared-by-path registry (S-8 / C4). Two callers constructing
+#: ``RawOverflowLog`` for the same path (a reader-owned instance and a
+#: display-owned instance, by far the common case) used to receive two
+#: independent objects that shared ``self.path`` but neither lock nor
+#: ``_first_write`` state -- whichever object's first ``append()`` ran
+#: later opened the file in ``"wb"`` mode and truncated the other
+#: object's already-written bytes, the plausible source of the
+#: measured 2026-08-06 NUL-hole corruption. The registry keys on the
+#: resolved path so all callers share one object per path.
+#:
+#: ``WeakValueDictionary`` (DA-001) keeps only a weak reference to the
+#: stored instance, so when every strong reference (the
+#: ``ParallelDisplay._overflow_logs`` slot, the reader's
+#: ``self._raw_overflow`` slot, etc.) is dropped, the entry vanishes
+#: automatically and the buffered file handle is closed via the
+#: ``weakref.finalize`` hook registered in ``__init__``. A strong
+#: ``dict`` reference here used to keep instances alive past their
+#: owner's teardown, so a test or run that finished without calling
+#: ``drop_unit`` / ``stop()`` reached interpreter finalization with
+#: the file handle still open, triggering a ``ResourceWarning`` on
+#: every affected test.
+_REGISTRY_LOCK = threading.Lock()
+_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
+    weakref.WeakValueDictionary()
+)  # bounded-accumulator-ok: weak-keyed by definition; entries auto-evict when no strong references remain
+
+
+def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = None) -> Path:
+    """Return the on-disk path a real ``RawOverflowLog`` writer uses for this unit.
+
+    S-4 (G4 / DoD 15): named so every caller that needs to *find* an
+    already-written raw log (not just create/append to one) derives the
+    exact same path the real writer used, instead of each caller
+    re-deriving the ``safe_id_for(unit_id, model)`` formula inline and
+    risking drift. Factored out of :func:`get_or_create_raw_overflow_log`,
+    which now calls this helper instead of inlining the expression --
+    a refactor, not a behavior change.
+    """
+    return workspace_root / ".agent" / "raw" / f"{safe_id_for(unit_id, model)}.log"
+
+
+def get_or_create_raw_overflow_log(
+    workspace_root: Path,
+    unit_id: str,
+    *,
+    model: str | None = None,
+    max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
+    flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
+    now: Callable[[], float] = time.monotonic,
+) -> RawOverflowLog:
+    """Return the per-path ``RawOverflowLog`` for ``(workspace_root, unit_id, model)``.
+
+    Process-wide per-path singleton: callers constructing
+    ``RawOverflowLog`` for the same path receive the same instance so
+    the lock and ``_first_write`` state are shared and a late first
+    ``append()`` from one caller cannot truncate another caller's
+    already-written bytes (S-8 / C4 / DoD 15). Returns the existing
+    instance on a repeat call -- not a fresh one.
+    """
+    key_path = raw_log_path_for(workspace_root, unit_id, model=model)
+    key = str(key_path.resolve(strict=False))
+    with _REGISTRY_LOCK:
+        existing = _REGISTRY.get(key)
+        if existing is not None:
+            return existing
+        instance = RawOverflowLog(
+            workspace_root,
+            unit_id,
+            model=model,
+            max_bytes=max_bytes,
+            flush_interval_seconds=flush_interval_seconds,
+            now=now,
+        )
+        _REGISTRY[key] = instance
+        return instance
+
+
+def _forget_raw_overflow_log(key_path: str) -> None:
+    """Drop one entry from the registry. Used by tests; not part of the public API."""
+    with _REGISTRY_LOCK:
+        _REGISTRY.pop(key_path, None)
+
+
+def _finalize_close_raw_overflow_log(
+    weak_self: weakref.ref[RawOverflowLog],
+) -> None:
+    """Module-level ``weakref.finalize`` callback (DA-001).
+
+    Closes the buffered file handle when the owning ``RawOverflowLog``
+    is garbage-collected. Receives a weak reference to ``self`` rather
+    than capturing ``self`` via closure (which would create a strong
+    reference cycle and defeat ``weakref.finalize``).
+    """
+    instance = weak_self()
+    if instance is None:
+        return
+    with contextlib.suppress(Exception):
+        instance.close()
+    with contextlib.suppress(Exception):
+        instance.disable()
+
+
+def close_all_raw_overflow_logs() -> None:
+    """Close and forget every registered ``RawOverflowLog``.
+
+    DA-001: explicit teardown for callers that want a deterministic
+    lifecycle (tests, the ``atexit`` hook, run-end coordinators that
+    do not go through ``drop_unit`` / ``stop()``). Iterates a snapshot
+    of the registry's strong references, closes each handle, then
+    lets the ``WeakValueDictionary`` drop the dead entries naturally
+    on the next ``gc.collect()``.
+
+    Safe to call multiple times. Never raises.
+    """
+    snapshot: list[RawOverflowLog] = []
+    with _REGISTRY_LOCK:
+        snapshot = list(_REGISTRY.values())
+    for instance in snapshot:
+        with contextlib.suppress(Exception):
+            instance.close()
+        with contextlib.suppress(Exception):
+            instance.disable()
+
+
+#: ``atexit`` registration so any ``RawOverflowLog`` whose owning
+#: display/run ended without an explicit ``close()`` /
+#: ``drop_unit`` / ``stop()`` still gets its buffered handle closed
+#: at interpreter shutdown, instead of triggering a ``ResourceWarning``
+#: at finalization time (DA-001). Wrapped in ``contextlib.suppress``
+#: so re-imports in test harnesses do not re-register the same hook.
+with contextlib.suppress(ValueError):
+    atexit.register(close_all_raw_overflow_logs)
+
+
+def detect_raw_log_breaks(raw_path: Path) -> list[RawLogBreak]:
+    """Read ``raw_path`` back as JSONL and return every corruption break.
+
+    S-8 / C4 / DoD 15: a corrupted or truncated transcript is a reported
+    break, not a silent skip. Two break shapes are detected:
+
+    - ``NUL_BYTES``: any NUL byte anywhere in the file. The parser
+      cannot recover the next JSON frame's start (it cannot tell where
+      the JSON ends, since JSON itself permits ``\\\\u0000`` as an
+      escaped sequence inside a string but a bare NUL cannot appear in
+      a well-formed JSON document on the wire).
+    - ``NON_JSONL``: a line that is not a parseable JSON object. This
+      catches the 2026-08-06 captured shape where a separate writer
+      (the display layer's ``_get_overflow_log``) appended rendered
+      ``\u2713 PASS\u2026`` text into the same verbatim capture.
+
+    The function reads the file in binary mode so a NUL-byte break is
+    observable. ``read_text(errors='replace')`` would silently swallow
+    the NUL bytes; the binary read keeps the byte-level fingerprint
+    visible.
+
+    An absent file returns an empty break list (no break observed, no
+    break reported). A read error (locked file, missing parent) is
+    reported as a break with detail naming the OSError so the operator
+    sees the I/O failure rather than a silent empty result.
+    """
+    breaks: list[RawLogBreak] = []
+    if not raw_path.exists():
+        return breaks
+    try:
+        payload = raw_path.read_bytes()
+    except OSError as exc:
+        return [
+            RawLogBreak(
+                kind="READ_ERROR",
+                offset=0,
+                detail=f"failed to read raw log: {exc}",
+            )
+        ]
+    nul_offset = payload.find(b"\x00")
+    if nul_offset >= 0:
+        breaks.append(
+            RawLogBreak(
+                kind="NUL_BYTES",
+                offset=nul_offset,
+                detail=(
+                    f"NUL-byte run begins at byte {nul_offset}; the "
+                    "transcript is unparseable as JSONL past this point"
+                ),
+            )
+        )
+    return breaks + _detect_non_jsonl_breaks(payload)
+
+
+def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
+    """Return one ``NON_JSONL`` break per unparseable line.
+
+    Splits the payload on NUL bytes first so a measured NUL-hole run
+    does not silently swallow rendered text that follows the hole on
+    the same line. Each chunk between NUL runs is then parsed as
+    JSONL: lines that parse as JSON objects are skipped, and every
+    other non-empty line (rendered ``\u2713 PASS\u2026`` text, control
+    codes, malformed JSON) is a break.
+    """
+    breaks: list[RawLogBreak] = []
+    offset = 0
+    nul_chunks = payload.split(b"\x00")
+    for chunk_index, chunk in enumerate(nul_chunks):
+        # Advance offset past the chunk and (if not the last chunk)
+        # past the NUL byte that terminated it.
+        chunk_offset = offset
+        offset += len(chunk)
+        if chunk_index < len(nul_chunks) - 1:
+            offset += 1  # the NUL byte itself
+        for raw_line in chunk.splitlines(keepends=True):
+            line_offset = chunk_offset
+            chunk_offset += len(raw_line)
+            line_bytes = raw_line.rstrip(b"\n").rstrip(b"\r")
+            line_text = line_bytes.decode("utf-8", errors="replace").strip()
+            if not line_text:
+                continue
+            try:
+                parsed: object = json.loads(line_text)
+            except json.JSONDecodeError:
+                breaks.append(
+                    RawLogBreak(
+                        kind="NON_JSONL",
+                        offset=line_offset,
+                        detail=(
+                            f"line at byte {line_offset} is not parseable "
+                            f"JSON (first 60 chars: {line_text[:60]!r})"
+                        ),
+                    )
+                )
+                continue
+            if not isinstance(parsed, dict):
+                breaks.append(
+                    RawLogBreak(
+                        kind="NON_JSONL",
+                        offset=line_offset,
+                        detail=(
+                            f"line at byte {line_offset} parses as JSON but "
+                            f"is not a JSON object (type={type(parsed).__name__})"
+                        ),
+                    )
+                )
+    return breaks
 
 
 class RawOverflowLog:
@@ -60,6 +307,21 @@ class RawOverflowLog:
         self._now = now
         self._fh: BinaryIO | None = None
         self._last_flush = now()
+        # DA-001: register a finalizer that closes the buffered file
+        # handle when this instance is garbage-collected. The callback
+        # receives a weak reference (no closure-captured ``self``),
+        # so it does not create a strong reference cycle that would
+        # prevent ``weakref.finalize`` from firing. Combined with the
+        # ``WeakValueDictionary`` registry above, this ensures a test
+        # or run that finishes without an explicit ``drop_unit`` /
+        # ``stop()`` still releases its file handle before
+        # interpreter shutdown, instead of triggering a
+        # ``ResourceWarning`` at finalization.
+        weakref.finalize(
+            self,
+            _finalize_close_raw_overflow_log,
+            weakref.ref(self),
+        )
 
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
@@ -161,5 +423,9 @@ class RawOverflowLog:
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "DEFAULT_MAX_OVERFLOW_FILE_BYTES",
+    "RawLogBreak",
     "RawOverflowLog",
+    "close_all_raw_overflow_logs",
+    "detect_raw_log_breaks",
+    "raw_log_path_for",
 ]

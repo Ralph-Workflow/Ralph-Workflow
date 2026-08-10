@@ -88,7 +88,9 @@ def test_submit_artifact_does_not_write_sentinel_for_planning_decision(
             "status: completed\n"
             "---\n"
             "## Summary\n\n"
-            "- [SUM-1] x\n"
+            "- [SUM-1] x. Evidence: command output was inspected.\n\n"
+            "## Criterion Verdicts\n\n"
+            "- [DA-001] Criterion: behavior holds. Expected observation: command output observes it. Verdict: met. Evidence: command output was inspected. Location: source.\n"
         ),
     }
     result = handle_submit_md_artifact(_Session(), workspace, planning_params, deps=deps)

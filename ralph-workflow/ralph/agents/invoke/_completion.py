@@ -29,6 +29,7 @@ from ralph.agents.invoke._session import (
 )
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
+from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import teardown_subtree
@@ -348,16 +349,32 @@ def _apply_sentinel_signal(
             sentinel_secret=opts.sentinel_secret,
         )
     if sentinel_found:
+        sentinel_evidence = Evidence(
+            holds=True,
+            provenance=Provenance.WORKSPACE_EFFECT,
+            detail=(
+                "completion sentinel present (graded at "
+                "WORKSPACE_EFFECT; upgrade to WIRE via smoke_evidence "
+                "grading when wire ledger is in scope)"
+            ),
+        )
         return replace(
             signals,
             explicit_complete=True,
-            completion_sentinel_present=True,
+            completion_sentinel_present=sentinel_evidence,
+            completion_sentinel_evidence=sentinel_evidence,
         )
     if not signals.explicit_complete:
+        absent_evidence = Evidence(
+            holds=False,
+            provenance=Provenance.ABSENT,
+            detail="completion sentinel not present",
+        )
         return replace(
             signals,
             explicit_complete=False,
-            completion_sentinel_present=False,
+            completion_sentinel_present=absent_evidence,
+            completion_sentinel_evidence=absent_evidence,
         )
     return signals
 

@@ -573,13 +573,23 @@ def _render_lifecycle_event(
     unit_id: str | None = None,
     escape_body: bool = True,
 ) -> Text:
-    """Render a lifecycle event (phase transitions, run start / end)."""
+    """Render a lifecycle event (phase transitions, run start / end).
+
+    Per C3 / DoD 14: when the lifecycle event's content is the agent's
+    own transcript-claimed outcome (e.g. ``agy result SUCCESS (...turns)``),
+    qualify the rendered line with a ``[transcript]`` prefix so the
+    operator knows the assertion is the model's own and not Ralph's
+    graded verdict. The graded verdict is rendered separately by the
+    phase report path.
+    """
     style, icon, label = _state_payload_for_context(
         "info", ctx.terminal_background_is_light if ctx is not None else None, surface_hex=ctx.terminal_background_hex if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
+    if event.metadata.get("_transcript_claimed_outcome") is True:
+        text.append("[transcript] ", style="theme.text.muted")
     _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     return text
 

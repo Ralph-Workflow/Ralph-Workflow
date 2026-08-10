@@ -163,9 +163,11 @@ _OPENCODE_CHILD_SCOPE_KEYS = ("child_id", "childId", "subagent_id", "subagentId"
 
 #: OpenCode's native subagent dispatch tools. A call to one of these IS a
 #: child-scope signal: it is how OpenCode delegates to a subagent. ``task`` is
-#: the tool the live runtime actually emits (verified against OpenCode 1.17.15
-#: via ``ralph smoke-interactive-opencode --subagents``); the rest are accepted
-#: so a runtime rename does not silently blind the watchdog again.
+#: the tool the live runtime actually emits (verified against ``opencode
+#: 1.18.14`` on 2025-11-19 via
+#: ``tests/display/_fixtures/opencode_wire_provenance.md``; the original
+#: observation was against 1.17.15); the rest are accepted so a runtime
+#: rename does not silently blind the watchdog again.
 _OPENCODE_SUBAGENT_TOOLS = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
 
 _OPENCODE_CHILD_KIND = {  # bounded-accumulator-ok: static

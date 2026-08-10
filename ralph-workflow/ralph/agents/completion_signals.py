@@ -14,7 +14,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -22,6 +22,14 @@ from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.md_draft_io import unsubmitted_draft_divergence
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
+from ralph.pipeline.plumbing.smoke_evidence import (
+    Evidence,
+    Provenance,
+    absent,
+    grade_artifact_submission_evidence,
+    grade_completion_sentinel_evidence,
+    grade_verdict,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -35,6 +43,32 @@ _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 _COMPLETION_SENTINEL_RELPATHFMT = COMPLETION_SENTINEL_RELPATHFMT
 
 
+def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> Evidence:
+    """Map a bare ``bool`` contract fact to a graded ``Evidence`` value.
+
+    Used by ``CompletionSignals.__post_init__`` to populate the
+    graded ``required_artifact_evidence`` and
+    ``completion_sentinel_evidence`` fields from the legacy bool
+    fields. The provenance carried by the upgrade is deliberately
+    conservative: a bool-only fact (no wire-ledger match in scope)
+    grades ``WORKSPACE_EFFECT`` when it holds (a receipt row
+    stamped by the canonical-submit path, not a tools/call ledger
+    match), ``ABSENT`` when it does not.
+
+    Sites that know a stronger provenance (e.g. ``smoke_evidence``
+    grading with the wire ledger) construct the ``Evidence`` directly
+    and pass it to the graded field; sites that only know the bool
+    pick up the conservative default and never appear as ``WIRE``.
+    """
+    if value:
+        return Evidence(
+            holds=True,
+            provenance=Provenance.WORKSPACE_EFFECT,
+            detail=holding_detail,
+        )
+    return absent(absent_detail)
+
+
 @dataclass(frozen=True)
 class CompletionSignals:
     """Signals that indicate whether an agent run actually completed its work.
@@ -42,28 +76,97 @@ class CompletionSignals:
     Attributes:
         explicit_complete: True when the agent called the declare_complete MCP
             tool successfully (independent of artifact presence).
-        required_artifact_present: True when the required phase artifact exists
-            on disk. False when the phase has no registered required artifact or
-            the artifact file does not yet exist.
+        required_artifact_present: ``Evidence`` value for the artifact-present
+            fact. ``holds=True`` only when the run-scoped canonical submission
+            receipt exists. ``Evidence``-typed (S-4): a bare ``bool`` cannot
+            construct this field; ``__post_init__`` coerces a legacy ``bool``
+            to ``Evidence`` at ``WORKSPACE_EFFECT`` provenance to keep the
+            older call sites compiling, but new code MUST pass an ``Evidence``
+            directly.
         artifact_types: Tuple of artifact type names found.
-        completion_sentinel_present: True when the run-scoped completion sentinel
-            written by handle_declare_complete exists on disk. This is the
-            authoritative proof that the agent actually invoked the
-            declare_complete MCP tool; the plain-text marker alone can be
-            spoofed by agent output.
+        completion_sentinel_present: ``Evidence`` value for the sentinel-
+            present fact. ``holds=True`` only when the run-scoped completion
+            sentinel written by ``handle_declare_complete`` exists on disk and
+            HMAC-verifies when ``sentinel_secret`` is in scope. The
+            plain-text marker alone can be spoofed by agent output and so
+            never grades above ``WORKSPACE_EFFECT``. ``Evidence``-typed (S-4).
         artifact_required: True when policy requires a receipt for the phase's
             artifact before the durable completion sentinel can terminate the
             run.
         unsubmitted_draft_present: True when a retained draft differs from the
             canonical artifact, proving authored content was not submitted.
+        required_artifact_evidence: Alias for ``required_artifact_present``;
+            kept for backward compat with code that reads
+            ``signals.required_artifact_evidence``. New code should read
+            ``required_artifact_present`` directly.
+        completion_sentinel_evidence: Alias for ``completion_sentinel_present``;
+            same compat rationale.
     """
 
     explicit_complete: bool
-    required_artifact_present: bool
+    required_artifact_present: Evidence | bool
     artifact_types: tuple[str, ...]
-    completion_sentinel_present: bool = False
+    completion_sentinel_present: Evidence | bool = False
     artifact_required: bool = False
     unsubmitted_draft_present: bool = False
+    required_artifact_evidence: Evidence = field(
+        default_factory=lambda: absent("required_artifact_evidence not yet evaluated")
+    )
+    completion_sentinel_evidence: Evidence = field(
+        default_factory=lambda: absent("completion_sentinel_evidence not yet evaluated")
+    )
+
+    def __post_init__(self) -> None:
+        # Coerce legacy bool contract fields to ``Evidence`` at the
+        # conservative ``WORKSPACE_EFFECT`` provenance. New code MUST
+        # pass ``Evidence`` directly; this coercion is purely to keep
+        # the ~50+ legacy test/execution_state call sites compiling
+        # while the type annotation is tightened. Sites that know a
+        # stronger provenance (the smoke gate with the wire ledger)
+        # construct ``Evidence`` directly and pass it to
+        # ``required_artifact_present`` instead.
+        if not isinstance(self.required_artifact_present, Evidence):
+            coerced = _bool_evidence(
+                bool(self.required_artifact_present),
+                holding_detail=(
+                    "required artifact receipt present (graded at "
+                    "WORKSPACE_EFFECT from legacy bool field; upgrade "
+                    "to WIRE via smoke_evidence grading when wire "
+                    "ledger is in scope)"
+                ),
+                absent_detail="required artifact receipt not present",
+            )
+            object.__setattr__(self, "required_artifact_present", coerced)
+        if not isinstance(self.completion_sentinel_present, Evidence):
+            coerced = _bool_evidence(
+                bool(self.completion_sentinel_present),
+                holding_detail=(
+                    "completion sentinel present (graded at "
+                    "WORKSPACE_EFFECT from legacy bool field; upgrade "
+                    "to WIRE via smoke_evidence grading when wire "
+                    "ledger is in scope)"
+                ),
+                absent_detail="completion sentinel not present",
+            )
+            object.__setattr__(self, "completion_sentinel_present", coerced)
+        # Keep the alias fields in sync with the contract fields when
+        # the caller did not pass them explicitly. The default-detail
+        # sentinel distinguishes "caller omitted" from "caller passed
+        # the default".
+        default_artifact_detail = "required_artifact_evidence not yet evaluated"
+        default_sentinel_detail = "completion_sentinel_evidence not yet evaluated"
+        if self.required_artifact_evidence.detail == default_artifact_detail:
+            object.__setattr__(
+                self,
+                "required_artifact_evidence",
+                self.required_artifact_present,
+            )
+        if self.completion_sentinel_evidence.detail == default_sentinel_detail:
+            object.__setattr__(
+                self,
+                "completion_sentinel_evidence",
+                self.completion_sentinel_present,
+            )
 
 
 def completion_signals_terminal(signals: CompletionSignals) -> bool:
@@ -73,11 +176,24 @@ def completion_signals_terminal(signals: CompletionSignals) -> bool:
     valid sentinel is always required. Required-artifact phases additionally
     require their canonical submission receipt. Optional-artifact and
     artifact-free phases require no receipt.
+
+    S-4: gates on ``.holds`` of the ``Evidence``-typed contract fields, not
+    on a bare ``bool``. A holding fact graded below ``WIRE`` still ends the
+    phase (the gate's job is binary completion, not trust grading); grading
+    lives in ``graded_verdict`` / ``format_phase_verdict``.
     """
-    if not signals.completion_sentinel_present or signals.unsubmitted_draft_present:
+    # The dataclass field is annotated ``Evidence | bool`` so legacy
+    # callers that pass ``True``/``False`` keep compiling; ``__post_init__``
+    # coerces those into ``Evidence`` at ``WORKSPACE_EFFECT`` provenance.
+    # mypy's static type does not see that coercion, so we re-derive the
+    # graded ``Evidence`` here via the alias fields, which ARE always
+    # ``Evidence`` after ``__post_init__``.
+    sentinel_evidence = signals.completion_sentinel_evidence
+    artifact_evidence = signals.required_artifact_evidence
+    if not sentinel_evidence.holds or signals.unsubmitted_draft_present:
         return False
     if signals.artifact_required:
-        return signals.required_artifact_present
+        return artifact_evidence.holds
     return True
 
 
@@ -348,17 +464,31 @@ def evaluate_completion(
     """
     explicit = extract_explicit_completion(raw_output or [])
     ra = required_artifact
-    sentinel_present = (
-        _check_completion_sentinel(workspace, run_id, sentinel_secret=sentinel_secret)
-        if run_id is not None
-        else False
-    )
+    if run_id is not None:
+        sentinel_present = _check_completion_sentinel(
+            workspace, run_id, sentinel_secret=sentinel_secret
+        )
+        # A holding sentinel backed by a matching ``declare_complete``
+        # wire-ledger record grades WIRE, not the WORKSPACE_EFFECT ceiling
+        # the bare bool used to impose (F1 / DoD 2). Shares the exact
+        # grading decision the smoke gate uses (S-2), extracted to
+        # ``smoke_evidence.grade_completion_sentinel_evidence`` so both
+        # callers agree.
+        sentinel_evidence = grade_completion_sentinel_evidence(
+            workspace,
+            run_id,
+            present=sentinel_present,
+            host_synthesized=False,
+            secret=sentinel_secret,
+        )
+    else:
+        sentinel_evidence = absent("completion sentinel receipt not present (no run_id)")
     if ra is None:
         return CompletionSignals(
             explicit_complete=explicit,
-            required_artifact_present=False,
+            required_artifact_present=absent("phase has no registered required artifact"),
             artifact_types=(),
-            completion_sentinel_present=sentinel_present,
+            completion_sentinel_present=sentinel_evidence,
         )
     # A run-scoped submission receipt is the authoritative proof that the
     # artifact was persisted for this run. A raw canonical artifact file
@@ -367,17 +497,29 @@ def evaluate_completion(
     # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
     # cannot be determined from the artifact alone.
     artifact_path = workspace / ra.artifact_path
-    present = (
-        is_artifact_submitted(
+    if run_id is not None:
+        present = is_artifact_submitted(
             workspace,
             run_id,
             ra.artifact_type,
             receipt_secret=receipt_secret,
             artifact_path=ra.artifact_path,
         )
-        if (run_id is not None)
-        else False
-    )
+        # A holding receipt backed by a matching ``tools/call`` wire-ledger
+        # record grades WIRE, not the WORKSPACE_EFFECT ceiling the bare bool
+        # used to impose (F1 / DoD 2). Shares the exact grading decision the
+        # smoke gate uses (S-2), extracted to
+        # ``smoke_evidence.grade_artifact_submission_evidence`` so both
+        # callers agree.
+        artifact_evidence = grade_artifact_submission_evidence(
+            workspace,
+            run_id,
+            submitted=present,
+            secret=receipt_secret,
+        )
+    else:
+        present = False
+        artifact_evidence = absent("artifact submission receipt not present (no run_id)")
     divergence = unsubmitted_draft_divergence(
         artifact_path.parent,
         ra.artifact_type,
@@ -385,12 +527,99 @@ def evaluate_completion(
     )
     return CompletionSignals(
         explicit_complete=explicit,
-        required_artifact_present=present,
+        required_artifact_present=artifact_evidence,
         artifact_types=(ra.artifact_type,) if present else (),
-        completion_sentinel_present=sentinel_present,
+        completion_sentinel_present=sentinel_evidence,
         artifact_required=ra.artifact_required,
         unsubmitted_draft_present=divergence is not None,
     )
+
+
+def graded_completion_signals(signals: CompletionSignals) -> dict[str, Evidence]:
+    """Return the graded evidence dict for ``CompletionSignals``.
+
+    Helper for S-5 / S-6 / phase-reporting code that wants to feed the
+    same evidence values the operator-facing verdict line uses. Maps the
+    graded ``Evidence`` fields on the dataclass to the stable fact
+    names the lattice expects (``required_artifact_present``,
+    ``completion_sentinel_present``) so the dict is interchangeable
+    with ``smoke_evidence.required_facts``.
+    """
+    return {
+        "required_artifact_present": signals.required_artifact_evidence,
+        "completion_sentinel_present": signals.completion_sentinel_evidence,
+    }
+
+
+def graded_verdict(signals: CompletionSignals) -> tuple[str, Provenance]:
+    """Grade the phase outcome against ``Provenance`` requirements.
+
+    Analogous to ``smoke_evidence.grade_verdict``: returns
+    ``(label, weakest_provenance)`` where ``label`` is one of the
+    closed-vocabulary strings ``"PASS"`` or ``"DEGRADED"`` and the
+    weakest provenance is the single ``Provenance`` member that
+    determines the label. ``PASS`` requires every required fact to
+    both hold and grade ``WIRE``; any fact below that bar demotes the
+    verdict to ``"DEGRADED"``.
+    """
+    return grade_verdict(graded_completion_signals(signals))
+
+
+def format_phase_verdict(signals: CompletionSignals) -> str:
+    """Return the operator-facing verdict string for a phase.
+
+    Used by S-5's display path. The phase verdict is a pure function
+    of the graded evidence carried by the dataclass -- transcript text
+    and the agent's own success claims carry no provenance and never
+    influence the verdict (per F6 / DoD 14).
+    """
+    label, weakest = graded_verdict(signals)
+    if label == "PASS":
+        return "PASS"
+    return f"DEGRADED ({weakest.name.lower().replace('_', '-')})"
+
+
+def graded_phase_verdict(
+    signals: CompletionSignals,
+    *,
+    required_artifact: RequiredArtifact | None = None,
+) -> tuple[str, Provenance, str]:
+    """Grade a phase's outcome, adding the FAILED-no-artifact case (F6).
+
+    A phase that exists to produce an artifact and produced none is not a
+    demoted rung of evidence -- ``ABSENT`` cannot grade to success, and the
+    absence of the fact the phase exists to produce is a failure, not a
+    degradation (brief F6 / DoD 12). Returns
+    ``("FAILED", Provenance.ABSENT, <missing-artifact detail>)`` when
+    ``signals.artifact_required`` is True and the required-artifact fact
+    does not hold. Otherwise delegates to the unchanged ``graded_verdict``
+    for the existing closed PASS/DEGRADED vocabulary, with an empty detail
+    string (``format_phase_verdict`` already formats that case).
+
+    ``graded_verdict`` itself is intentionally left unchanged so the
+    existing DoD 16 regression assertion
+    (``graded_verdict(...) == ("DEGRADED", Provenance.ABSENT)``) keeps
+    passing unmodified -- ``FAILED`` is a phase-render-layer label added on
+    top, not a change to the shared lattice primitive.
+
+    Args:
+        signals: The phase's graded completion evidence.
+        required_artifact: When given, names the missing artifact
+            (``artifact_type`` / ``artifact_path``) in the FAILED detail.
+            Falls back to the graded evidence's own (generic) detail text
+            when omitted.
+    """
+    if signals.artifact_required and not signals.required_artifact_evidence.holds:
+        if required_artifact is not None:
+            detail = (
+                f"no receipt for '{required_artifact.artifact_type}'; "
+                f"{required_artifact.artifact_path} absent"
+            )
+        else:
+            detail = signals.required_artifact_evidence.detail
+        return "FAILED", Provenance.ABSENT, detail
+    label, weakest = graded_verdict(signals)
+    return label, weakest, ""
 
 
 __all__ = [
@@ -398,5 +627,9 @@ __all__ = [
     "completion_signals_terminal",
     "evaluate_completion",
     "extract_explicit_completion",
+    "format_phase_verdict",
+    "graded_completion_signals",
+    "graded_phase_verdict",
+    "graded_verdict",
     "is_artifact_submitted",
 ]

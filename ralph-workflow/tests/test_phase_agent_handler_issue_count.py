@@ -77,13 +77,17 @@ def test_issue_count_comes_from_markdown_artifact(tmp_path: Path) -> None:
 
     recorded = _render_and_capture(tmp_path)
 
-    assert recorded["outcome"] == "2 issue(s)"
+    # S-2 (F6) additively appends a graded verdict suffix (e.g. "— PASS" /
+    # "— FAILED (no artifact) — ...") after the issue-count text this test
+    # pins; the count itself -- what this regression actually guards -- is
+    # asserted as a prefix so the additive suffix does not break it.
+    assert recorded["outcome"].startswith("2 issue(s)")
 
 
 def test_issue_count_is_zero_when_artifact_missing(tmp_path: Path) -> None:
     recorded = _render_and_capture(tmp_path)
 
-    assert recorded["outcome"] == "0 issue(s)"
+    assert recorded["outcome"].startswith("0 issue(s)")
 
 
 def test_issue_count_ignores_legacy_json_envelope(tmp_path: Path) -> None:
@@ -97,4 +101,4 @@ def test_issue_count_ignores_legacy_json_envelope(tmp_path: Path) -> None:
 
     recorded = _render_and_capture(tmp_path)
 
-    assert recorded["outcome"] == "0 issue(s)"
+    assert recorded["outcome"].startswith("0 issue(s)")

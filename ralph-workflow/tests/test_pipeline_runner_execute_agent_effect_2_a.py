@@ -105,7 +105,7 @@ def _write_minimal_plan_artifacts(
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
     (root / ".agent" / "artifacts" / "plan.md").write_text(
-        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
+        f"---\ntype: plan\n---\n## Work\n### [S-1] Preserve {context}\nInspect the existing plan handoff.\nType: discovery\nLocation: .agent/artifacts/plan.md\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -118,7 +118,7 @@ def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") ->
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / ".plan.draft.md").write_text(
-        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
+        f"---\ntype: plan\n---\n## Work\n### [S-1] Preserve {context}\nInspect the existing plan handoff.\nType: discovery\nLocation: .agent/artifacts/plan.md\n",
         encoding="utf-8",
     )
 
@@ -701,6 +701,78 @@ class TestExecuteAgentEffectA:
         assert result == "master.md"
         assert captured["name"] == "blueprint"
         assert captured["planning_style"] is True
+
+    def test_master_prompt_materialization_threads_agent_transport(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """S-3 (G3/C1): ``_materialize_master_prompt`` forwards
+        ``ctx.agent_config.transport`` to the injected materializer,
+        independently of the managed-session path
+        (``tests/test_managed_agent_sessions.py``'s
+        ``test_managed_session_with_agy_transport_threads_dispatcher_hint``).
+        This is the phase-invocation route every real pipeline phase (plan,
+        development, commit) uses via ``execute_agent_effect`` ->
+        ``_invoke_agent_with_recovery`` -> ``_materialize_master_prompt``.
+        """
+        captured: dict[str, object] = {}
+        ctx = MagicMock()
+        ctx.workspace_scope.root = tmp_path
+        ctx.effect.phase = "plan"
+        ctx.effect.drain = "plan"
+        ctx.worker_namespace = None
+        ctx.policy_bundle = None
+        ctx.agent_config.transport = AgentTransport.AGY
+
+        def _fake_materialize_master_prompt(**kwargs: object) -> str:
+            captured.update(kwargs)
+            return "master.md"
+
+        required_artifact = MagicMock()
+        required_artifact.artifact_type = "plan"
+        pipeline_deps = MagicMock()
+        pipeline_deps.master_prompt_materializer = _fake_materialize_master_prompt
+        result = effect_executor_module._materialize_master_prompt(
+            ctx,
+            pipeline_deps,
+            required_artifact=required_artifact,
+        )
+
+        assert result == "master.md"
+        assert captured["transport"] == AgentTransport.AGY
+
+    def test_master_prompt_materialization_omits_transport_when_materializer_does_not_accept_it(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """An injected materializer with a narrower signature (no ``transport``
+        keyword, e.g. a bare-bones test fake) must not be called with an
+        argument it cannot handle -- the same runtime-introspection guard
+        ``worker_namespace``/``planning_style`` already rely on.
+        """
+        ctx = MagicMock()
+        ctx.workspace_scope.root = tmp_path
+        ctx.effect.phase = "plan"
+        ctx.effect.drain = "plan"
+        ctx.worker_namespace = None
+        ctx.policy_bundle = None
+        ctx.agent_config.transport = AgentTransport.AGY
+
+        def _narrow_materializer(workspace_root: Path, name: str) -> str:
+            del workspace_root, name
+            return "master.md"
+
+        required_artifact = MagicMock()
+        required_artifact.artifact_type = "plan"
+        pipeline_deps = MagicMock()
+        pipeline_deps.master_prompt_materializer = _narrow_materializer
+        result = effect_executor_module._materialize_master_prompt(
+            ctx,
+            pipeline_deps,
+            required_artifact=required_artifact,
+        )
+
+        assert result == "master.md"
 
     def test_master_prompt_materializer_internal_type_error_is_not_retried(
         self,

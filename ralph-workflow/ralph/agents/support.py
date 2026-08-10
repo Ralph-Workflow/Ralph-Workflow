@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from ralph.agents.display_capabilities import DisplayCapability, all_display_capabilities
+from ralph.agents.display_capability_stance import DisplayCapabilityStance
 from ralph.agents.spec import AgentSpec
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -37,6 +39,33 @@ class AgentSupport:
         no_default_session_flag: When True, the agent opts out of the
             default ``--resume {}`` session template that would otherwise
             be applied for interactive agents.  Set by agy.
+        session_identifier_observable: S-6 (Evidence Provenance G6 / DoD 20).
+            Whether this transport's documented output can ever carry an
+            observable session/conversation identifier at all -- a
+            structural property of the transport's wire protocol, distinct
+            from ``no_default_session_flag`` (which is about a CLI
+            ``--resume``-style flag, not about whether an identifier is
+            ever emitted). AGY has ``no_default_session_flag=True`` (no
+            ``--resume`` flag) but DOES emit an observable identifier (its
+            JSON ``init`` frame's ``conversation_id``), so it is NOT
+            exempted from the smoke gate's "session ID was not observed"
+            check. Nanocoder is the one documented ``False`` case: its
+            design doc (``docs/superpowers/specs/2026-06-07-nanocoder-support-design.md``)
+            found no documented unattended ``run``-mode session/resume
+            output of any kind during upstream documentation review, and
+            its parser (plain-text PTY redraw, no JSON session protocol)
+            confirms there is no mechanism to observe one. Defaults to
+            ``True`` so every other built-in and every custom agent is
+            held to the same bar unless it declares otherwise.
+        display_capabilities: Per-capability tri-state stance; the
+            mapping's keys must match
+            :func:`ralph.agents.display_capabilities.all_display_capabilities`
+            exactly (no extras, no missing). Custom agents that omit the
+            field get an empty mapping; the built-in spec enforcement in
+            :meth:`AgentSupport.from_registration_kwargs` requires a
+            complete declaration whenever ``is_builtin=True`` so the
+            gate that audits built-in declarations cannot route around
+            the contract.
     """
 
     name: str
@@ -46,11 +75,14 @@ class AgentSupport:
     config: AgentConfig
     is_builtin: bool = False
     no_default_session_flag: bool = False
+    session_identifier_observable: bool = True
+    display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
 
     _name_lower: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "_name_lower", self.name.lower())
+        _validate_display_capabilities(self.display_capabilities, is_builtin=self.is_builtin)
 
     @property
     def cmd(self) -> str:
@@ -59,6 +91,24 @@ class AgentSupport:
     @property
     def transport(self) -> AgentTransport:
         return self.spec.transport
+
+    def capability(self, capability: object) -> DisplayCapabilityStance | None:
+        """Return the declared stance for ``capability``, or ``None``.
+
+        The lookup uses the capability enum value as the key (which is
+        the canonical ``SurfaceSpec.name``) so callers do not need to
+        import the capability enum directly.
+        """
+        if isinstance(capability, DisplayCapability):
+            value: str = capability.value
+        else:
+            if not isinstance(capability, str):
+                return None
+            value = capability
+        for stance in self.display_capabilities:
+            if isinstance(stance, DisplayCapabilityStance) and stance.capability.value == value:
+                return stance
+        return None
 
     @classmethod
     def from_registration_kwargs(
@@ -84,6 +134,8 @@ class AgentSupport:
         subagent_capability: bool | None = None,
         is_builtin: bool = False,
         no_default_session_flag: bool = False,
+        session_identifier_observable: bool = True,
+        display_capabilities: tuple[DisplayCapabilityStance, ...] = (),
     ) -> AgentSupport:
         """Build an AgentSupport from the legacy register_agent_support kwargs.
 
@@ -114,6 +166,17 @@ class AgentSupport:
             no_default_session_flag: When True, suppress the default
                 ``--resume {}`` template.  Replaces the historical hidden
                 ``name != "agy"`` special case; agy sets this to True.
+            session_identifier_observable: S-6 (G6 / DoD 20). Whether this
+                transport's output can ever carry an observable session
+                identifier at all. Defaults to True; nanocoder is the one
+                documented False case (see :class:`AgentSupport`'s
+                docstring).
+            display_capabilities: Per-capability stance tuple; built-in
+                agents (is_builtin=True) must declare exactly one stance
+                per catalog-derived capability. Custom agents may omit
+                the field (empty tuple). The validation rejects empty
+                reasons for non-SUPPORTED stances and rejects duplicate
+                or out-of-vocabulary capabilities.
 
         Returns:
             An AgentSupport instance ready for AgentCatalog.add().
@@ -153,6 +216,80 @@ class AgentSupport:
             config=config,
             is_builtin=is_builtin,
             no_default_session_flag=no_default_session_flag,
+            session_identifier_observable=session_identifier_observable,
+            display_capabilities=display_capabilities,
         )
         object.__setattr__(config, "_support", support)
         return support
+
+
+def _validate_display_capabilities(
+    stances: tuple[DisplayCapabilityStance, ...],
+    *,
+    is_builtin: bool,
+) -> None:
+    """Reject duplicates, missing capabilities, and reasonless non-support stances.
+
+    Built-in agents (is_builtin=True) must declare exactly one stance per
+    catalog-derived capability: nothing extra, nothing missing. Custom
+    agents (is_builtin=False) are permitted to declare any subset; the
+    empty tuple is the documented default for custom agents that predate
+    the capability contract. Reasons for ``NOT_APPLICABLE`` and
+    ``UNIMPLEMENTED`` must be non-empty strings; ``SUPPORTED`` may carry
+    an optional detail. Importing the capability module here is
+    intentional: the validation runs at dataclass construction time so a
+    built-in shipped with a missing stance fails closed at first import
+    rather than at first smoke run.
+    """
+    required = tuple(all_display_capabilities())
+    if is_builtin:
+        if not stances:
+            msg = (
+                "Built-in AgentSupport must declare display_capabilities "
+                "covering every catalog-derived capability; got an empty tuple"
+            )
+            raise ValueError(msg)
+        seen: set[str] = set()
+        for stance in stances:
+            if stance.capability in seen:
+                msg = (
+                    f"Duplicate display_capabilities entry for "
+                    f"{stance.capability.name!r}; built-in agents must declare "
+                    f"exactly one stance per capability"
+                )
+                raise ValueError(msg)
+            seen.add(stance.capability)
+        declared = {stance.capability for stance in stances}
+        missing = [c for c in required if c not in declared]
+        if missing:
+            names = ", ".join(repr(c.name) for c in missing)
+            msg = (
+                f"Built-in AgentSupport is missing display_capabilities for "
+                f"{names}; every catalog-derived capability must be declared"
+            )
+            raise ValueError(msg)
+        extra = declared - set(required)
+        if extra:
+            names = ", ".join(repr(c.name) for c in extra)
+            msg = (
+                f"Built-in AgentSupport carries display_capabilities not in "
+                f"the catalog-derived vocabulary: {names}"
+            )
+            raise ValueError(msg)
+    else:
+        for stance in stances:
+            if stance.capability not in set(required):
+                msg = (
+                    f"Custom-agent display_capabilities entry "
+                    f"{stance.capability!r} is not in the catalog-derived vocabulary"
+                )
+                raise ValueError(msg)
+        seen_custom: set[str] = set()
+        for stance in stances:
+            if stance.capability in seen_custom:
+                msg = (
+                    f"Duplicate display_capabilities entry for "
+                    f"{stance.capability.name!r}; each capability must appear at most once"
+                )
+                raise ValueError(msg)
+            seen_custom.add(stance.capability)

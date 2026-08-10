@@ -472,16 +472,16 @@ def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[s
     submitted = frozenset(submitted_list)
     if len(submitted) < len(submitted_list):
         errors.append(
-            "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed."
+            "PROOF INVALID: Duplicate analysis finding entries found in analysis_items_addressed."
         )
     missing = required_refs - submitted
     extra = submitted - required_refs
     if missing:
         errors.append(
-            f"PROOF INCOMPLETE: Missing proof for analysis item ID(s): {sorted(missing)}."
+            f"PROOF INCOMPLETE: Missing proof for analysis finding ID(s): {sorted(missing)}."
         )
     if extra:
-        errors.append(f"PROOF INVALID: Unknown how_to_fix_item ID(s): {sorted(extra)}.")
+        errors.append(f"PROOF INVALID: Unknown analysis finding ID(s): {sorted(extra)}.")
     return errors
 
 
@@ -571,7 +571,8 @@ def _get_canonical_work_unit_refs(
         return frozenset(), frozenset()
 
 
-def _get_canonical_analysis_how_to_fix_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:
+def _get_canonical_analysis_finding_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:
+    """Return stable IDs from the prior analysis's localized findings."""
     try:
         for phase_def in ctx.pipeline_policy.phases.values():
             if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
@@ -583,14 +584,10 @@ def _get_canonical_analysis_how_to_fix_refs(ctx: PhaseContext, phase: str) -> fr
             content = unwrap_phase_artifact_content(
                 artifact_wrapper, expected_type=ra.artifact_type
             )
-            how_to_fix = content.get("how_to_fix")
-            if not isinstance(how_to_fix, list):
+            finding_ids = content.get("finding_ids")
+            if not isinstance(finding_ids, list):
                 return frozenset()
-            return frozenset(
-                item.split(":", 1)[0]
-                for item in how_to_fix
-                if isinstance(item, str) and ":" in item
-            )
+            return frozenset(item for item in finding_ids if isinstance(item, str))
         return frozenset()
     except Exception:
         return frozenset()
@@ -615,7 +612,7 @@ def _validate_development_result_proof(
             )
         )
     if proof_policy.require_analysis_proof:
-        required_refs = _get_canonical_analysis_how_to_fix_refs(ctx, phase)
+        required_refs = _get_canonical_analysis_finding_refs(ctx, phase)
         if required_refs:
             errors.extend(
                 _analysis_proof_errors(

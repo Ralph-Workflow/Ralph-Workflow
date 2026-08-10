@@ -9,7 +9,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [RA-001] The review did not report that tests/auth/test_refresh_race.py contains a 0.1s sleep and asserts on elapsed time.
+- [RA-001] Plan-level: The review did not report that tests/auth/test_refresh_race.py contains a 0.1s sleep and asserts on elapsed time.
 
 ## How To Fix
 

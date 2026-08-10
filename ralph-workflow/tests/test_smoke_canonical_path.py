@@ -168,7 +168,14 @@ def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY branch: direct file write is promoted to canonical receipt."""
+    """AGY branch: direct file write is promoted to canonical receipt.
+
+    Post F7/DoD 19: a fallback artifact promotion no longer earns the
+    completion sentinel -- the host writes no completion evidence for
+    any transport. The receipt is stamped (the artifact is promoted),
+    but ``explicit_completion_seen`` stays False until the agent itself
+    calls ``declare_complete``.
+    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
 
@@ -187,6 +194,6 @@ def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted.holds is True
-    assert result.explicit_completion_seen.holds is True
+    assert result.explicit_completion_seen.holds is False
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)

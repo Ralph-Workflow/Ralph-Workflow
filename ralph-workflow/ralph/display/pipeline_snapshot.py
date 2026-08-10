@@ -94,3 +94,4 @@ class PipelineSnapshot:
     #: push summary so both live and completion surfaces render it uniformly.
     auto_integrate_remote_sync: str | None = None
     auto_integrate_remote: str | None = None
+    auto_integrate_freshness_verdict: str | None = None

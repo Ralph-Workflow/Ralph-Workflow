@@ -42,17 +42,16 @@ def _submit_decision(
     if status in {"request_changes", "failed"} and not shortcomings:
         shortcomings = ["The policy review found a concrete gap."]
     extra_sections = ""
+    verdict = "not met" if shortcomings else "met"
+    verdict_evidence = shortcomings[0] if shortcomings else "declared policy probes were inspected"
     if shortcomings:
         short_items = "\n".join(
-            f"- [W-{index}] {item}" for index, item in enumerate(shortcomings, start=1)
+            f"- [PR-{index:03d}] Criterion: declared policy fact holds. Expected observation: "
+            f"the declared probe resolves. Verdict: not met. Evidence: {item}. "
+            "Location: policy declaration."
+            for index, item in enumerate(shortcomings, start=1)
         )
-        fix_items = "\n".join(
-            f"- [W-{index}] Resolve this policy gap."
-            for index, _item in enumerate(shortcomings, start=1)
-        )
-        extra_sections = (
-            f"\n## What Came Up Short\n\n{short_items}\n\n## How To Fix\n\n{fix_items}\n"
-        )
+        extra_sections = f"\n## What Came Up Short\n\n{short_items}\n"
     workspace.write(
         analysis.ANALYSIS_ARTIFACT_REL_PATH,
         (
@@ -61,8 +60,10 @@ def _submit_decision(
             f"status: {status}\n"
             "---\n\n"
             "## Summary\n\n"
-            "- [SUM-1] Review complete.\n"
+            "- [SUM-1] Review complete. Evidence: declared policy probes were inspected.\n"
             f"{extra_sections}"
+            "\n## Criterion Verdicts\n\n"
+            f"- [PR-001] Criterion: declared policy fact holds. Expected observation: the declared probe resolves. Verdict: {verdict}. Evidence: {verdict_evidence}. Location: policy declaration.\n"
         ),
     )
 
@@ -179,8 +180,8 @@ def test_request_changes_loops_back_and_carries_feedback_forward() -> None:
     assert result.status is ReadinessStatus.READY
     assert len(prompts) == 2
     assert "make verify does not resolve" not in prompts[0]
-    assert "make verify does not resolve" in prompts[1], (
-        "the second remediation prompt must carry the reviewer's findings"
+    assert "Evidence: make verify does not resolve" in prompts[1], (
+        "the second remediation prompt must carry the reviewer's finding"
     )
 
 

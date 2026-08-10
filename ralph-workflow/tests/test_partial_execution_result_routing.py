@@ -150,3 +150,40 @@ def test_default_policy_routes_partial_development_result_back_after_commit() ->
     development = load_policy(defaults_dir).pipeline.phases["development"]
 
     assert development.result_status_post_commit == {"partial": "development"}
+
+
+@pytest.mark.parametrize("status", ["completed", "partial"])
+def test_development_result_regression_every_terminal_result_consumes_one_analysis_cycle(
+    status: str,
+) -> None:
+    """S-1: terminal development results advance the declared analysis counter once."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    next_state, _ = reducer_reduce(
+        PipelineState(phase="development"),
+        _execution_result_event("development", status),
+        policy,
+    )
+
+    assert next_state.phase == "development_commit_cleanup"
+    assert next_state.get_loop_iteration("development_analysis_iteration") == 1
+
+
+def test_development_result_regression_analysis_loopback_does_not_double_charge_cycle() -> None:
+    """S-1: the charged result cycle remains one when its analysis requests changes."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    cleanup_state, _ = reducer_reduce(
+        PipelineState(phase="development"),
+        _execution_result_event("development", "completed"),
+        policy,
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    analysis_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(analysis_state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+
+    assert analysis_state.phase == "development_analysis"
+    assert next_state.phase == "development"
+    assert next_state.get_loop_iteration("development_analysis_iteration") == 1

@@ -1,30 +1,13 @@
-"""Bounded, OBSERVE-ONLY freshness probe for the auto-integrate target.
+"""Bounded remote freshness observation for the auto-integrate target.
 
-This is the ONLY code path in ``ralph/`` that may contact a remote, and
-it contacts it strictly read-only: ``git fetch`` updates
-``refs/remotes/<remote>/<target>`` and NOTHING else. Remote state must
-never affect a local rebase, merge or landing: the module never moves
-``refs/heads/<target>``, never touches a worktree, never pushes. The
-authoritative mainline pointer is always the LOCAL ref -- in the
-linked-worktree fleet this feature exists for, every agent shares one
-git common directory and sibling agents advance ``refs/heads/<target>``
-directly, so re-reading that ref IS the freshness primitive.
+This module fetches only ``refs/remotes/<remote>/<target>`` and classifies it
+against the local target without moving either worktree or local branch. The
+remote-sync seam consumes :data:`REFRESH_ORIGIN_AHEAD` deliberately through
+its shared worktree-aware advance routine; this probe itself remains read-only.
 
-The refresh used to fast-forward the local target ref from a strictly-
-ahead ``origin/<target>`` (a clone-topology convenience). That let a
-remote nobody asked about rewrite the base of every local rebase, so
-the advance was removed: an origin observed ahead is now REPORTED
-(:data:`REFRESH_ORIGIN_AHEAD`) and the local ref is left alone.
-
-Every failure is fail-open: an absent remote, an unreachable host, a
-timeout or a diverged history all leave the repository untouched, so
-integration proceeds against the local ref exactly as it would have
-without the probe.
-
-The remote name is parameterized (``origin`` by default for
-backwards compatibility, any configured remote name when remote sync is
-opted into) so the same probe services both the legacy observe-only
-the opt-in configured-remote sync.
+Every failure is fail-open: an absent or unreachable remote leaves the local
+ref untouched and records degraded provenance. Repositories without a remote
+use the shared local target ref as their fleet freshness primitive.
 """
 
 from __future__ import annotations
@@ -56,14 +39,13 @@ REFRESH_NO_REMOTE_BRANCH = "no remote branch"
 REFRESH_NO_LOCAL_BRANCH = "no local branch"
 REFRESH_ALREADY_CURRENT = "already current"
 REFRESH_DIVERGED = "diverged from origin"
-#: Historical outcome retained for records persisted by earlier
-#: versions, which fast-forwarded the local ref from origin. The
-#: observe-only refresh never produces it: remote state no longer
-#: moves any local ref.
+#: Historical outcome retained for records persisted by earlier versions.
+#: This read-only probe never emits it; application of an ahead remote is owned
+#: by the remote-sync seam's worktree-aware advance routine.
 REFRESH_REFRESHED = "refreshed from origin"
-#: Origin holds commits the local ref lacks. Observation ONLY: the
-#: local ref is authoritative for every local rebase and landing
-#: decision, so nothing is applied and nothing local moves.
+#: The fetched remote holds commits the local target lacks. This probe only
+#: reports that fact; the remote-sync seam applies it through the safe advance
+#: routine before the feature rebase.
 REFRESH_ORIGIN_AHEAD = "origin ahead (local ref kept)"
 #: Local target contains the fetched remote target. This matters only to the
 #: opt-in sync path: it must publish later, not rebase local history.
@@ -140,14 +122,10 @@ def refresh_target_from_remote(
 ) -> str:
     """Observe the freshness of ``refs/heads/<target>``, fetching ``remote`` if any.
 
-    Returns one of the ``REFRESH_*`` outcomes. Never raises, never
-    pushes, and NEVER moves a local ref: the fetch updates only the
-    remote-tracking ref, and the comparison below is pure reporting.
-    Remote state must not affect local rebase operations, so an
-    origin observed strictly ahead is recorded as
-    :data:`REFRESH_ORIGIN_AHEAD` and the local ref -- the authoritative
-    pointer every local decision uses -- is left exactly where the
-    local fleet put it.
+    Returns one of the ``REFRESH_*`` outcomes. Never raises, pushes, or
+    moves a local ref: fetch updates only the remote-tracking ref and the
+    comparison is pure reporting. The caller may apply an ahead outcome through
+    the shared worktree-aware advance routine.
 
     Args:
         repo_root: Repository root in which to run the probe.
@@ -156,7 +134,12 @@ def refresh_target_from_remote(
         remote: The remote to fetch from. Defaults to ``origin`` for
             the configured remote-sync tier passes its configured remote here.
     """
-    if not _has_remote(repo_root, remote):
+    try:
+        has_remote = _has_remote(repo_root, remote)
+    except Exception as remote_exc:
+        logger.debug("auto_integrate: remote lookup for '{}' failed: {}", remote, remote_exc)
+        return REFRESH_UNREACHABLE
+    if not has_remote:
         return _observe_without_remote(repo_root, target, remote)
 
     if not _fetch_target(repo_root, target, timeout_seconds, remote=remote):
@@ -171,7 +154,16 @@ def refresh_target_from_remote(
         )
         return REFRESH_UNREACHABLE
 
-    return _classify_remote_position(repo_root, target, remote)
+    try:
+        return _classify_remote_position(repo_root, target, remote)
+    except Exception as classify_exc:
+        logger.debug(
+            "auto_integrate: could not classify '{}' against '{}': {}",
+            target,
+            remote,
+            classify_exc,
+        )
+        return REFRESH_UNREACHABLE
 
 
 def _observe_without_remote(repo_root: Path, target: str, remote: str) -> str:
@@ -206,11 +198,10 @@ def _observe_without_remote(repo_root: Path, target: str, remote: str) -> str:
 def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
     """Name where ``remote`` sits relative to the authoritative local ref.
 
-    Pure observation over refs a successful fetch just updated: no
-    branch in this function mutates anything. The strict-ancestor probe
-    distinguishes a remote that is simply ahead (reported, not
-    applied) from one that diverged; both leave the local ref alone,
-    because the local ref is the pointer local rebases are FOR.
+    Pure observation over refs a successful fetch just updated: no branch in
+    this function mutates anything. The strict-ancestor probe distinguishes a
+    remote that is simply ahead (for the caller to apply safely) from one that
+    diverged (for the caller to reconcile).
     """
     remote_sha = _remote_tracking_sha(repo_root, target, remote)
     if remote_sha is None:

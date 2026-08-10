@@ -194,6 +194,7 @@ def snapshot_from_state(
         auto_integrate_push=state.rebase.last_push,
         auto_integrate_remote_sync=state.rebase.last_remote_sync,
         auto_integrate_remote=state.rebase.last_remote,
+        auto_integrate_freshness_verdict=state.rebase.freshness_verdict,
     )
 
 

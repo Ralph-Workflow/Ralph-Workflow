@@ -163,7 +163,7 @@ Expect: the focused settings tests pass with exit code 0
     assert content != {}
 
 
-def test_prose_plan_under_custom_headings_is_a_plan() -> None:
+def test_prose_plan_under_custom_headings_is_rejected_without_executor_steps() -> None:
     """An unconventional prose plan under custom headings is still a plan."""
     text = """---
 type: plan
@@ -188,14 +188,7 @@ Run `pytest tests/mcp/ -q`; the new not-a-plan tests must pass and every
 existing relaxation test must still pass.
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
-    assert plan001_errors == [], (
-        f"prose plan under custom headings should not trip PLAN001, got: "
-        f"{[(d.rule_id, d.severity) for d in diagnostics]}"
-    )
-    # A prose-only plan without an `### [S-n]` block legitimately draws
-    # PLAN022 — but at warning severity, not error.
-    assert any(d.rule_id == "PLAN022" and d.severity == "warning" for d in diagnostics)
+    assert any(d.rule_id in {"PLAN001", "PLAN022"} and d.severity == "error" for d in diagnostics)
 
 
 def test_minimal_noop_plan_is_exempt_from_length_floor() -> None:
@@ -212,7 +205,7 @@ noop: true
     assert content == {"noop": True}
 
 
-def test_plan_with_dangling_depends_on_is_a_plan() -> None:
+def test_plan_with_dangling_depends_on_is_rejected() -> None:
     """A dangling Depends on is a warning, never a PLAN001 error.
 
     The plan is substantive (>100 chars of actual content) so the
@@ -239,12 +232,11 @@ deviation as a single warning diagnostic that names the line and the rule.
         f"dangling Depends on should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
-    assert content != {}
-    # The dangling reference surfaces at warning severity, not error.
-    assert any(d.rule_id in {"PLAN021", "REF003"} and d.severity == "warning" for d in diagnostics)
+    assert content == {}
+    assert any(d.rule_id in {"PLAN010", "PLAN020", "PLAN021", "REF003"} and d.severity == "error" for d in diagnostics)
 
 
-def test_plan_with_dependency_cycle_is_a_plan() -> None:
+def test_plan_with_dependency_cycle_is_rejected() -> None:
     """A dependency cycle is a warning, never a PLAN001 error.
 
     Substantive (>100 chars of actual content) so the length floor does
@@ -271,13 +263,10 @@ Depends on: S-1
         f"dependency cycle should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
-    # The step dependency cycle is detected on the pydantic side
-    # (SPEC010 with a cycle message); the plan-scoped severity policy
-    # demotes the pydantic branch from error to warning.
-    assert any(d.rule_id == "SPEC010" and d.severity == "warning" for d in diagnostics)
+    assert any(d.severity == "error" for d in diagnostics)
 
 
-def test_file_change_step_without_files_is_a_plan() -> None:
+def test_file_change_step_without_files_is_rejected() -> None:
     """A missing Files: line is a warning, never a PLAN001 error.
 
     Substantive (>100 chars of actual content) so the length floor does
@@ -300,7 +289,7 @@ Type: file_change
         f"missing Files: should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
-    assert any(d.rule_id == "PLAN010" and d.severity == "warning" for d in diagnostics)
+    assert any(d.rule_id == "PLAN010" and d.severity == "error" for d in diagnostics)
 
 
 def test_plan_with_malformed_step_id_is_a_plan() -> None:

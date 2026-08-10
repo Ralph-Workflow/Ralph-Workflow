@@ -97,8 +97,13 @@ def run_policy_readiness_preflight(
     migrated_sources = _collect_migrated_sources(workspace, findings)
 
     if not findings:
-        cache.write_cache(workspace, stack, ReadinessStatus.READY)
-        # READY (after work): run-loop owns the single brief line.
+        # Cache write is owned by the OUTER boundary in
+        # ``_finalize_ready_state`` (cli_integration.py) so the cached
+        # signature is taken over the tree the run actually leaves
+        # behind -- after ``agents_md.condense_placeholder_block`` and
+        # the auto-commit. Writing here would race those post-READY
+        # mutations and produce a stale cache signature that flunks
+        # the very next preflight into a full re-validation.
         return ReadinessResult(
             status=ReadinessStatus.READY,
             changed_files=changed_files,

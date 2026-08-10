@@ -685,6 +685,92 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     )
 
 
+def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
+    """S-3 Part C (closes PLANNING_ANALYSIS_DECISION.md PA-001, the live half).
+
+    ``test_transcript_replay_with_real_mcp_dispatch_grades_wire_pass``
+    (``tests/test_evidence_provenance_lattice.py``, S-3 Part A) proves the
+    protocol boundary grades ``WIRE``/``PASS`` correctly WHEN DRIVEN
+    CORRECTLY, using a reconstructed transcript run through a real in-process
+    ``McpServer``. It does not prove AGY's actual ``call_mcp_tool`` argument
+    shape maps onto a real dispatch. This test proves that residual: it
+    drives the live ``agy`` binary once more, in its own workspace, with
+    ``RALPH_BROKER_SECRET`` forced into the subprocess env via its own
+    ``_build_live_env()``-derived dict -- never dependent on ambient shell
+    state, unlike ``live_smoke_session`` (whose
+    ``test_live_agy_produces_green_parity_table`` /
+    ``test_live_agy_no_breaks_and_tool_artifact_activity`` companions only
+    assert the WIRE-eligible branch conditionally, when the ambient
+    environment happens to already have the secret set).
+
+    Unlike every other test in this file, the assertion here is
+    unconditional: ``WORKSPACE_EFFECT`` / ``HOST_SYNTHESIZED`` / ``TRANSCRIPT``
+    do NOT satisfy this test -- only a genuine ``tools/call`` dispatch
+    reaching ``WIRE`` does. The ``_xfail_if_upstream_blocked`` gate is kept
+    for genuine auth/quota failures (this is a live, network-bound,
+    credential-dependent test), but a fallback-promoted or host-synthesized
+    run must NOT pass silently once the secret is forced -- that shape of
+    run fails this test loudly, closing the gap PLANNING_ANALYSIS_DECISION.md
+    PA-001 names: a hand-built test that fabricates the receipt/sentinel/
+    ledger directly stays green even if AGY's dispatcher route regresses to
+    zero real MCP calls; only a live run driven under a forced secret can
+    prove the real binary's dispatch route still reaches ``WIRE``.
+    """
+    workspace = Path(tempfile.mkdtemp(prefix="agy-live-smoke-wire-"))
+    prompt_file = workspace / "tmp" / "interactive-agy-smoke" / "PROMPT.md"
+    _write_smoke_prompt(prompt_file)
+
+    env = _build_live_env()
+    # Force the secret explicitly rather than relying on ambient shell
+    # state -- the point of this test is that it is unconditional, not that
+    # it happens to observe a favorable environment.
+    env["RALPH_BROKER_SECRET"] = "test-live-wire-dispatch-secret"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
+        capture_output=True,
+        text=True,
+        cwd=workspace,
+        env=env,
+        timeout=240,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+    cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+
+    _xfail_if_upstream_blocked(cli_log_tail)
+
+    assert "- smoke_test_result artifact submitted observed [WIRE]" in output, (
+        "Expected the artifact-submission fact to reach WIRE provenance with "
+        f"RALPH_BROKER_SECRET forced. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+    assert "- completion sentinel observed [WIRE]" in output, (
+        "Expected the completion-sentinel fact to reach WIRE provenance with "
+        f"RALPH_BROKER_SECRET forced. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+    assert "No breaks observed" in output or "Breaks: none" in output, (
+        f"Expected a clean PASS with the secret forced. cli.log tail: "
+        f"{cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    )
+
+    demoted_ranks = ("WORKSPACE_EFFECT", "HOST_SYNTHESIZED", "TRANSCRIPT", "ABSENT")
+    for demoted_rank in demoted_ranks:
+        assert (
+            f"- smoke_test_result artifact submitted observed [{demoted_rank}]" not in output
+        ), (
+            f"Artifact submission graded {demoted_rank}, not WIRE, even with the "
+            f"secret forced -- a real tools/call dispatch did not happen. "
+            f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+        )
+        assert f"- completion sentinel observed [{demoted_rank}]" not in output, (
+            f"Completion sentinel graded {demoted_rank}, not WIRE, even with the "
+            f"secret forced -- declare_complete was not dispatched via a real "
+            f"tools/call. cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+        )
+
+
 def test_live_agy_environment_diagnostic_records_upstream_block(
     live_smoke_session: _LiveSmokeResult,
 ) -> None:

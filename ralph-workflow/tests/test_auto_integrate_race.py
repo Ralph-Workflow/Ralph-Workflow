@@ -68,11 +68,13 @@ def _build_config(
     *,
     enabled: bool = True,
     target: str | None = None,
+    reclaim_target_worktree: bool = True,
 ) -> UnifiedConfig:
     """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
     payload: dict[str, object] = {
         "general": {
             "auto_integrate_enabled": enabled,
+            "auto_integrate_reclaim_target_worktree": reclaim_target_worktree,
         }
     }
     if target is not None:
@@ -385,10 +387,10 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
+def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-10/E2: a dirty checked-out target worktree is LEFT UNTOUCHED.
+    """DA-001/AC-9: opt-out leaves a dirty checked-out target untouched.
 
     The previous behaviour CAS-advanced ``refs/heads/<target>`` while
     a sibling worktree held the target with uncommitted changes. That
@@ -473,7 +475,9 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
         assert "conflict.txt" in wt_status, (
             f"preflight: linked worktree must report the tracked dirty file, got {wt_status!r}"
         )
-        config = _build_config(tmp_git_repo, target=wt_branch)
+        config = _build_config(
+            tmp_git_repo, target=wt_branch, reclaim_target_worktree=False
+        )
         scope = WorkspaceScope(tmp_git_repo)
         outcome = auto_integrate_after_commit(
             config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF

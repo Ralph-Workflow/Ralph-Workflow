@@ -122,14 +122,16 @@ commit = "commit"
 #
 # What it never does: force-move a ref, force-push, push a feature branch,
 # leave a rebase or merge in progress, or fail the run because remote sync
-# failed. The on-by-default local tier is safe; the opt-in remote tier syncs.
-# Set auto_integrate_enabled = false for byte-identical manual git behavior:
+# failed. The on-by-default local tier is safe; the configured remote tier
+# refreshes whenever that remote exists. Set auto_integrate_enabled = false for byte-identical manual git behavior:
 # no rebase, merge, ref movement, fetch, or push from this feature.
 # =============================================================================
 # auto_integrate_enabled = true     # local integration at every seam; set false for manual git control.
 # auto_integrate_target = "main"    # required local mainline branch; a missing branch records a skip.
-# auto_integrate_remote_enabled = false  # opt-in remote tier: fetch, reconcile, and push after a local landing.
-# auto_integrate_remote = "origin"  # configured remote used only when remote integration is enabled.
+# auto_integrate_remote_enabled = true   # refresh the configured remote when it exists; set false for local-only operation.
+# auto_integrate_remote = "origin"       # configured remote used when remote integration is enabled.
+# auto_integrate_remote_interval_seconds = 0.0  # seconds between probes; 0 fetches at every seam.
+# auto_integrate_reclaim_target_worktree = true # snapshot/reset a dirty mainline worktree; false refuses and retries.
 
 # verbosity = 2                         # Leave this alone for normal runs; change only when output is too noisy or too sparse.
 # telemetry_enabled = true              # Leave on unless you want to opt out of anonymous reliability telemetry.

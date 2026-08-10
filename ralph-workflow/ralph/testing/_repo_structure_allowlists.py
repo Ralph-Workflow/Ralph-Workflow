@@ -17,6 +17,7 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/agents/idle_watchdog/idle_watchdog.py",
         "ralph/agents/invoke/_pty_line_reader.py",
         "ralph/cli/main.py",
+        "ralph/display/agent_event_renderer.py",
         "ralph/display/parallel_display.py",
         "ralph/mcp/artifacts/plan/__init__.py",
         "ralph/mcp/tools/artifact.py",
@@ -558,6 +559,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         ),
         (
             "tests/project_policy/test_skip_inline_policy_prompt.py",
+            "ralph.project_policy",
+            ("_schema_upgrade",),
+        ),
+        (
+            "tests/project_policy/test_skip_inline_policy_prompt.py",
             "ralph.cli.commands._load_result",
             ("_LoadResult",),
         ),
@@ -692,6 +698,16 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/test_evidence_provenance_lattice.py",
             "ralph.cli.commands.smoke",
             ("_required_evidence",),
+        ),
+        # S-3 Part B (Evidence Provenance closeout plan, PA-001): the narrow
+        # grading-correlation test calls the private sentinel-check helper
+        # directly to pin the completion-evidence arithmetic in isolation
+        # from any dispatch, mirroring the existing
+        # tests/test_submit_artifact_writes_receipt.py grant below.
+        (
+            "tests/test_evidence_provenance_lattice.py",
+            "ralph.agents.completion_signals",
+            ("_check_completion_sentinel",),
         ),
         # Grandfathered: pre-existing private-ralph imports in
         # unrelated test files. These have not been touched by wt-024.

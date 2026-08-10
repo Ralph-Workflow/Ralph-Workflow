@@ -83,16 +83,20 @@ def test_policy_remediation_analysis_decision_ships_a_validated_format_contract(
 
 
 @pytest.mark.parametrize("artifact_type", _ANALYSIS_DECISION_TYPES)
-def test_analysis_format_docs_teach_relational_decision_invariants(
+def test_analysis_format_docs_teach_evidence_first_decision_invariants(
     artifact_type: str,
 ) -> None:
     doc = load_bundled_format_doc(artifact_type)
 
     assert doc is not None
     normalized = " ".join(doc.split())
-    assert "A `completed` decision that includes either remediation section" in normalized
-    assert "missing, extra, or mismatched IDs" in normalized
-    assert "same stable ID" in normalized
+    if artifact_type != "review_analysis_decision":
+        assert "## Criterion Verdicts" in normalized
+        assert "Criterion:" in normalized
+        assert "Expected observation:" in normalized
+        assert "not permitted" in normalized
+    if artifact_type != _POLICY_REMEDIATION_ANALYSIS_DECISION:
+        assert "stable" in normalized
 
 
 def test_development_analysis_example_uses_self_run_current_evidence() -> None:
@@ -100,18 +104,19 @@ def test_development_analysis_example_uses_self_run_current_evidence() -> None:
 
     assert doc is not None
     assert "was not executed" not in doc
-    assert ("Running `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` reports") in doc
+    assert "Expected observation:" in doc
+    assert "Evidence:" in doc
     assert "Run the exact pytest target for the parser and record the output." not in doc
 
 
-def test_policy_remediation_inline_example_matches_problem_and_fix_ids() -> None:
+def test_policy_remediation_inline_example_uses_a_localized_verdict() -> None:
     doc = load_bundled_format_doc(_POLICY_REMEDIATION_ANALYSIS_DECISION)
 
     assert doc is not None
-    assert doc.count("- [PR-1]") == 2
-    assert doc.count("- [PR-2]") == 2
-    assert "- [W-1]" not in doc
-    assert "- [FIX-1]" not in doc
+    assert doc.count("- [PR-001]") == 3
+    assert "Verdict: not met" in doc
+    assert "## Criterion Verdicts" in doc
+    assert "not permitted" in doc
 
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
@@ -259,21 +264,21 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
         )
 
 
-def test_plan_doc_teaches_concise_advisory_contract() -> None:
+def test_plan_doc_teaches_mandatory_executor_ready_contract() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for phrase in (
-        "`PLAN001` is the sole error",
-        "Warnings and info never make a plan invalid",
-        "Validation Overrides",
-        "Orient, Characterize current behavior, Change, and Verify",
+        "Every active plan uses stable `### [S-n] Title` steps",
+        "Work steps require `Files`, a concrete `Verify`, and an observable `Expect`.",
+        "`schema_version` and `## Validation Overrides` are unsupported",
+        "Orient, Characterize, Change, and Verify",
         "ralph_edit_md_artifact",
-        "wholesale rewrite",
+        ".agent/artifact-formats/examples/plan.md",
     ):
         assert phrase in doc
     assert doc.count("```markdown") == 1
-    assert "Hard contract" not in doc
-    assert "Required sections:" not in doc
+    assert "`PLAN001` is the sole error" not in doc
+    assert "Warnings and info never make a plan invalid" not in doc
 
 
 @pytest.mark.parametrize(
@@ -286,9 +291,12 @@ def test_consumed_status_docs_teach_closed_vocabulary(
 ) -> None:
     doc = load_bundled_format_doc(artifact_type)
     assert doc is not None
-    assert "hard error" in doc.lower()
-    assert "`done`" in doc
-    assert "`wrong`" in doc
+    if artifact_type.endswith("analysis_decision") and artifact_type != "review_analysis_decision":
+        assert "not evaluable" in doc
+    else:
+        assert "hard error" in doc.lower()
+        assert "`done`" in doc
+        assert "`wrong`" in doc
     assert "coerc" not in doc.lower()
     for value in accepted_values:
         assert f"`{value}`" in doc

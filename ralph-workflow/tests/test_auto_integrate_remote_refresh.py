@@ -1,11 +1,10 @@
 """Regression coverage for remote-sync target refresh.
 
-Auto-integration is a LOCAL feature: every rebase, merge and landing
-decision is made against the local ``refs/heads/<target>`` the fleet of
-linked worktrees advances directly. The opt-in remote-sync path may fetch its configured remote purely to
-observe and reconcile it; local-only integration never fetches. These tests
-prove both halves: the observation stays read-only, and integration
-proceeds against the local pointer regardless of what origin holds.
+Auto-integration resolves targets from local refs only, then uses a configured
+remote to prove freshness at each seam. The read-only probe reports the remote
+position; the shared worktree-aware sync seam applies a safe fast-forward or
+reconciliation before feature integration. Local-only operation remains an
+explicit opt-out and never fetches.
 
 Every remote in this module is a local bare repository path or a path
 that does not exist: no test reaches a real network host.
@@ -20,6 +19,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
+from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline import auto_integrate, auto_integrate_sync
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
@@ -58,14 +58,14 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _build_config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": True,
-            }
-        }
-    )
+def _build_config(*, remote_enabled: bool = False, target: str | None = None) -> UnifiedConfig:
+    general: dict[str, object] = {
+        "auto_integrate_enabled": True,
+        "auto_integrate_remote_enabled": remote_enabled,
+    }
+    if target is not None:
+        general["auto_integrate_target"] = target
+    return UnifiedConfig.model_validate({"general": general})
 
 
 def _make_clone(bare: Path, path: Path, main: str, *, branch: str) -> Path:
@@ -111,6 +111,149 @@ def test_remote_ahead_refresh_keeps_the_local_target_unchanged(
     assert not (agent / "remote.txt").exists()
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_resolver_reconciles_target_then_lands_feature(
+    tmp_git_repo: Path,
+) -> None:
+    """S-3: a resolved target rebase preserves remote history and lands the feature."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "shared.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+
+    remote_sha = _commit(tmp_git_repo, "shared.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    def resolve_target(root: Path, _target: str, _stop: object) -> bool:
+        (root / "shared.txt").write_text("resolved target\n", encoding="utf-8")
+        return True
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        rebase_stop_resolver=resolve_target,
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 0
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, f"origin/{main}").returncode == 0
+    assert (owner / "shared.txt").read_text(encoding="utf-8") == "resolved target\n"
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert _run(owner, "status", "--porcelain").stdout == ""
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_clean_abort_conflict_still_lands_feature_locally(
+    tmp_git_repo: Path,
+) -> None:
+    """S-2/S-4: cleanly aborted target conflict does not strand feature integration."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-conflict", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-conflict-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "shared.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+
+    remote_sha = _commit(tmp_git_repo, "shared.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 1
+    assert _run(agent, "log", "--format=%s", "-1").stdout.strip() == "feature change"
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert _run(owner, "status", "--porcelain").stdout == ""
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_reclaims_dirty_owner_then_lands_feature_after_clean_abort(
+    tmp_git_repo: Path,
+) -> None:
+    """S-2/S-3: a reclaimed dirty owner and restored conflict still land locally."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-dirty-conflict", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-dirty-conflict-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "shared.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+    operator_file = owner / "operator.txt"
+    operator_file.write_text("operator work\n", encoding="utf-8")
+
+    remote_sha = _commit(tmp_git_repo, "shared.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert outcome.last_remote_sync == "pull failed"
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 1
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert operator_file.read_text(encoding="utf-8") == "operator work\n"
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_rebases_target_and_lands_feature(
+    tmp_git_repo: Path,
+) -> None:
+    """S-5: a non-conflicting target rebase automatically lands and publishes the feature."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-clean", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-clean-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "local.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+    remote_sha = _commit(tmp_git_repo, "remote.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 0
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, f"origin/{main}").returncode == 0
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert _run(owner, "status", "--porcelain").stdout == ""
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
+
+
 def test_unreachable_remote_degrades_to_local_integration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -126,6 +269,30 @@ def test_unreachable_remote_degrades_to_local_integration(
         refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
         == REFRESH_UNREACHABLE
     )
+
+
+@pytest.mark.parametrize("seam", ("remote lookup", "classification"))
+def test_refresh_regression_git_observation_failure_degrades_without_raising(
+    monkeypatch: pytest.MonkeyPatch,
+    seam: str,
+) -> None:
+    """S-4/E12: every failed observation is a typed degraded freshness result."""
+    if seam == "remote lookup":
+        monkeypatch.setattr(
+            auto_integrate_sync,
+            "_has_remote",
+            lambda *_args: (_ for _ in ()).throw(OSError("remote lookup failed")),
+        )
+    else:
+        monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda *_args: True)
+        monkeypatch.setattr(auto_integrate_sync, "_fetch_target", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(
+            auto_integrate_sync,
+            "_classify_remote_position",
+            lambda *_args: (_ for _ in ()).throw(OSError("ref query failed")),
+        )
+
+    assert refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0) == REFRESH_UNREACHABLE
 
 
 def _inject_remote_position(
@@ -164,15 +331,14 @@ def test_diverged_remote_is_not_force_moved(
     )
 
 
-def test_retry_attempt_reintegrates_locally_without_pulling_origin(
+def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A bounded retry re-observes the LOCAL pointer, never origin.
+    """Regression S-4: every retry refreshes the configured remote base.
 
-    The first attempt loses the landing race exactly as it would in
-    production. The retry must integrate onto the local mainline as it
-    is NOW -- and only the local mainline: a commit pushed to origin
-    between the attempts must stay on origin.
+    A first landing can lose its CAS race after a healthy fetch. The retry must
+    re-run the same remote freshness pipeline before it rebases again rather
+    than treating a local ref observation as proof that origin is still fresh.
     """
     assert is_retryable_fast_forward_failure(_CONCURRENT_MOVE) is True
 
@@ -195,8 +361,13 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
     monkeypatch.setattr(auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True)
     monkeypatch.setattr(
         auto_integrate,
-        "_refresh_target",
-        lambda _config, _root, _target: events.append("refresh") or "origin ahead",
+        "pull_and_reconcile_target",
+        lambda *_args, **_kwargs: events.append("remote refresh")
+        or RebaseState(
+            last_remote_sync="already current",
+            freshness_verdict="verified",
+            freshness_source="fetch",
+        ),
     )
 
     def _integrate_once(*_args: object, **_kwargs: object) -> tuple[RebaseState, bool]:
@@ -212,7 +383,7 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
 
     monkeypatch.setattr(auto_integrate, "_integrate_once", _integrate_once)
     outcome = auto_integrate_after_commit(
-        _build_config(),
+        _build_config(remote_enabled=True),
         WorkspaceScope(root),
         RebaseState(),
         sleep=lambda _seconds: events.append("backoff"),
@@ -221,20 +392,18 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
 
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    assert events == ["integrate", "backoff", "refresh", "integrate"]
+    assert events == ["remote refresh", "integrate", "backoff", "remote refresh", "integrate"]
 
 
-def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(
+def test_refresh_observation_never_moves_the_local_ref_even_when_origin_is_ahead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Remote observation is read-only for LOCAL refs, with no exception.
+    """The read-only probe reports an ahead remote; its caller applies it safely.
 
-    Auto-integration is a local-only feature: the mainline pointer every
-    rebase and landing decision uses is ``refs/heads/<target>``, owned by
-    the local fleet. A fetch may observe origin, but an origin that is
-    strictly ahead must NOT be applied to the local ref -- the previous
-    behaviour, which let a remote nobody asked about rewrite the base of
-    every local rebase.
+    Remote target movement belongs exclusively to the worktree-aware
+    ``pull_and_reconcile_target`` seam. The observation helper itself remains
+    read-only, preserving local-target resolution and preventing a fetch from
+    silently changing the base before the shared advancement contract runs.
     """
     _inject_remote_position(monkeypatch, ancestor=True)
     assert (

@@ -21,7 +21,6 @@ from ralph.policy.loader import load_policy
 
 _VALID_PLAN_MARKDOWN = """---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Test plan.
@@ -44,6 +43,8 @@ Implement the change.
 Type: file_change
 Files:
 - modify src/a.py
+Verify: pytest tests/test_a.py -q
+Expect: the focused test suite passes with exit code 0
 ## Critical Files
 - [CF-1] src/a.py
   Action: modify

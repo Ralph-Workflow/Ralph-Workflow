@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 
 from ralph.config.mcp_models import McpConfig
+from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.protocol._session_drain import SessionDrain
@@ -68,31 +68,25 @@ def test_plan_skill_native_markdown_example_matches_validator() -> None:
     assert len(normalized["steps"]) >= 2
 
 
-def test_planning_skill_and_format_doc_keep_advice_nonblocking() -> None:
+def test_planning_skills_teach_the_mandatory_contract() -> None:
     for name in PLANNING_SKILLS:
         text = _read(name)
-        assert "Warnings and info are advice" in text or name == "writing-plans.md"
+        assert "instruction set" in text or "executor-ready" in text
         assert "advisory findings are errors" not in text
 
-    format_doc = (
-        Path(__file__).resolve().parents[1]
-        / "ralph"
-        / "mcp"
-        / "artifacts"
-        / "format_docs"
-        / "planning_analysis_decision.md"
-    ).read_text(encoding="utf-8")
+    format_doc = load_bundled_format_doc("planning_analysis_decision")
+    assert format_doc is not None
     assert "Observation:" in format_doc
     assert "Cost:" in format_doc
-    assert "Fix:" in format_doc
+    assert "Verdict:" in format_doc
     assert "Critical Files omits" not in format_doc
 
 
-def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:
+def test_plan_skill_teaches_mandatory_steps_and_submission() -> None:
     text = _read("submit-plan-artifact.md")
 
-    assert "recommended authoring pattern, not required grammar" in text
-    assert "Orient, Characterize, Change, and Verify" in text
+    assert "mandatory executor-ready plan" in text
+    assert "Orient, Characterize, Change, Verify" in text
     assert "ralph_edit_md_artifact" in text
     assert "ralph_edit_md_plan_step" not in text
 
@@ -146,7 +140,7 @@ def test_planning_analysis_prompt_requires_cost_element_per_finding() -> None:
     source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
     assert "Cost:" in source, "planning_analysis.jinja must require a `Cost:` element per finding"
     assert "Observation:" in source
-    assert "Fix:" in source
+    assert "Verdict:" in source
     # The form must NOT regress to the legacy ``MCP plan-edit tools``
     # vocabulary that no longer exists in the runtime.
     assert "MCP plan-edit tools" not in source

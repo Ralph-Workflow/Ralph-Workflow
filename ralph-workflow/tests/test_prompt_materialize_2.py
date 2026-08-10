@@ -243,9 +243,10 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert (
         "Read the current plan and verify feedback against the request and repository." in rendered
     )
-    assert "feedback is advice from a fresh reviewer" in rendered
+    assert "Feedback\nis advice from a fresh reviewer, grounded in repository evidence, not a document-shape checklist." in rendered
     assert "Plan the full arc in this order" in rendered
-    assert "PLAN001" in rendered
+    assert "stable `### [S-n] Title` steps" in rendered
+    assert "ralph_edit_md_artifact" in rendered
     assert "Feedback for the planner" not in rendered
     assert workspace.exists(".agent/artifacts/plan.md") is True
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.md") is True
@@ -571,9 +572,9 @@ def test_materialize_development_analysis_uses_markdown_result_handoff(
     )
 
     rendered = workspace.read(prompt_path)
-    assert str(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md") in rendered
-    assert "Read the complete latest artifact from file at" in rendered
+    assert str(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md") not in rendered
     assert "Implemented the feature." not in rendered
+    assert "Read the complete latest artifact from file at" not in rendered
 
 
 def test_materialize_planning_analysis_uses_markdown_plan_handoff(
@@ -602,8 +603,8 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
     assert "Read the complete latest artifact from file at" not in rendered
     assert "Fresh plan context." not in rendered
-    assert "`.agent/artifacts/plan.md`" in rendered
-    assert "Read the current plan at `.agent/artifacts/plan.md`" in rendered
+    assert "or its staged draft with" in rendered
+    assert "Read the submitted plan" in rendered
     assert ".agent/artifacts/plan.json" not in rendered
 
 

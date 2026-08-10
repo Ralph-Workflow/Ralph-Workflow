@@ -16,19 +16,11 @@ target because it silently desyncs that checkout's index and working
 tree (its ``git status`` would describe the freshly landed work as a
 local reverse diff, and a ``reset --hard`` there would destroy work).
 
-When ``merge --ff-only`` refuses (the worktree is dirty, the requested
-SHA is not a fast-forward, or git refuses for any other reason), the
-shared target ref is LEFT UNTOUCHED and the attempt returns a loud,
-retryable diagnostic: the next clean seam on that worktree will
-re-attempt the same ``merge --ff-only`` and land once the operator's
-uncommitted work is committed or stashed. A dirty sibling worktree
-must NOT desynchronise the fleet -- it must self-resume on the next
-seam. The previous behaviour (CAS-advance the shared ref even when
-the target had a live dirty checkout) violated AC-10/E2: it advanced
-the shared ref while leaving that checkout's index and working tree
-behind, and the test
-``test_dirty_target_worktree_advances_ref_without_touching_files``
-that blessed it is the exact shape AC-10 forbids.
+When ``merge --ff-only`` refuses, an enabled reclaim policy snapshots and
+resets only the target-owning worktree, then retries the worktree merge. If
+reclamation is disabled or fails, the shared target ref is LEFT UNTOUCHED and
+the attempt returns a loud, retryable diagnostic. A dirty sibling worktree
+must NOT desynchronise the fleet.
 
 When the target is NOT checked out anywhere, ``_fast_forward_via_cas``
 is the only path: the CAS is conditioned on the exact SHA the
@@ -54,6 +46,7 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
+from ralph.pipeline._auto_integrate_reclaim import ReclaimResult, reclaim_dirty_target_worktree
 
 _TARGET_MISSING = "target branch missing at fast-forward time"
 _TARGET_QUERY_FAILED = "target branch could not be read at fast-forward time"
@@ -89,9 +82,11 @@ _RETRYABLE_REASONS = frozenset(
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
 
 
@@ -100,6 +95,8 @@ def retry_pending_remote_publish(
     repo_root: Path,
     target: str,
     record: RebaseState,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState | None:
     """Retry any typed failed remote publication at a later clean seam."""
     from ralph.git.remote_push import PushStatus
@@ -117,7 +114,9 @@ def retry_pending_remote_publish(
         return None
     retried = push_target_after_landing(config, repo_root, target, record)
     if retried.last_push_status == PushStatus.NON_FAST_FORWARD.value:
-        return reconcile_after_rejected_push(config, repo_root, target, retried)
+        return reconcile_after_rejected_push(
+            config, repo_root, target, retried, rebase_stop_resolver=rebase_stop_resolver
+        )
     return retried
 
 
@@ -125,6 +124,9 @@ def fast_forward_target(
     repo_root: Path,
     target: str,
     feature_sha: str,
+    *,
+    reclaim_target_worktree: bool = True,
+    on_reclaimed: Callable[[ReclaimResult], None] | None = None,
 ) -> tuple[bool, str]:
     """Move the local mainline ref to ``feature_sha`` via CAS or worktree ff.
 
@@ -153,12 +155,10 @@ def fast_forward_target(
     read as an observation that bound something when it bound nothing.
 
     The worktree path always tries ``git merge --ff-only`` first so
-    the checkout's ref, index and working tree advance together, and
-    falls back to that single-observation CAS only when git refuses.
-    Neither path can lose a concurrent landing or overwrite the
-    worktree's uncommitted FILE content; the CAS fallback does advance
-    the shared ref under a dirty target checkout, which is intentional
-    and announced -- see this module's docstring.
+    the checkout's ref, index and working tree advance together. When
+    that refuses because the target owner is dirty, its reclaim transaction
+    may snapshot/reset that owner and retry; CAS is used only when no
+    worktree holds the target.
 
     A FAILED worktree query is not "nobody holds the target". In this
     repository's own linked-worktree topology the mainline genuinely is
@@ -185,7 +185,14 @@ def fast_forward_target(
         )
         return False, _TARGET_WORKTREE_QUERY_FAILED
     if verdict == WORKTREE_FOUND and wt is not None:
-        return _fast_forward_via_target_worktree(repo_root, wt, target, feature_sha)
+        return _fast_forward_via_target_worktree(
+            repo_root,
+            wt,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=on_reclaimed,
+        )
     return _fast_forward_via_cas(repo_root, target, feature_sha)
 
 
@@ -247,6 +254,9 @@ def _fast_forward_via_target_worktree(
     worktree_root: Path,
     target: str,
     feature_sha: str,
+    *,
+    reclaim_target_worktree: bool,
+    on_reclaimed: Callable[[ReclaimResult], None] | None,
 ) -> tuple[bool, str]:
     """Fast-forward the target branch checked out in ``worktree_root`` (AC-09/AC-10).
 
@@ -261,21 +271,24 @@ def _fast_forward_via_target_worktree(
     tree (``git status`` would describe the freshly landed work as a
     local reverse diff, and ``reset --hard`` there would destroy work).
 
-    When ``merge --ff-only`` refuses, the shared ref is LEFT UNTOUCHED
-    and the attempt returns the loud, retryable
-    :data:`_TARGET_CHECKED_OUT_REFUSED` reason. The next clean seam on
-    that worktree will re-attempt the same ``merge --ff-only`` and
-    land once the operator's uncommitted work is committed, stashed,
-    or otherwise resolved. A dirty sibling worktree must NOT
-    desynchronise the fleet -- it must self-resume on the next seam.
-    The previous behaviour (CAS-advance the shared ref even when the
-    target had a live dirty checkout) violated AC-10/E2 and was
-    removed; the test that blessed it
-    (``test_dirty_target_worktree_advances_ref_without_touching_files``)
-    is the exact shape AC-10 forbids.
+    When ``merge --ff-only`` refuses, enabled reclamation snapshots and resets
+    only this target owner before retrying. If it cannot reclaim or the policy
+    is disabled, the shared ref is LEFT UNTOUCHED and the attempt returns the
+    loud, retryable :data:`_TARGET_CHECKED_OUT_REFUSED` reason. A dirty sibling
+    worktree must never desynchronise the fleet.
     """
     if fast_forward_via_worktree(worktree_root, feature_sha):
         return True, ""
+    reclaimed: ReclaimResult | None = None
+    if reclaim_target_worktree:
+        try:
+            reclaimed = reclaim_dirty_target_worktree(worktree_root, target)
+        except OSError:
+            reclaimed = None
+        if reclaimed is not None and fast_forward_via_worktree(worktree_root, feature_sha):
+            if on_reclaimed is not None:
+                on_reclaimed(reclaimed)
+            return True, ""
     logger.warning(
         "auto_integrate: target '{}' is checked out in {} and refused "
         "merge --ff-only; leaving shared ref untouched and recording "

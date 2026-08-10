@@ -62,10 +62,10 @@ def test_missing_artifact_does_not_count_against_budget() -> None:
     "message",
     [
         (
-            "PROOF INCOMPLETE: The following how_to_fix item(s) have no proof entry: "
-            "['Add test']. Each how_to_fix_item must exactly match the prior analysis text."
+            "PROOF INCOMPLETE: The following analysis finding ID(s) have no proof entry: "
+            "['Add test']. Each analysis_item must exactly match the prior finding ID."
         ),
-        "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed.",
+        "PROOF INVALID: Duplicate analysis finding entries found in analysis_items_addressed.",
         "Invalid development evidence: Artifact type mismatch: expected plan, got 'wrong'",
     ],
 )

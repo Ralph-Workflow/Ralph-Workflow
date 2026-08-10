@@ -53,6 +53,7 @@ def handle_capped_phase_loopback_policy_driven(
         iteration_field,
         max_iterations=max_iterations,
         review_outcome=review_outcome,
+        increment=not progress.analysis_loopback_is_already_charged(state.phase, state, policy),
     )
 
     try:

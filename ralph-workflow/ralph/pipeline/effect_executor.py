@@ -96,6 +96,14 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
+    class _KwargsMaterializeMasterPromptFn(Protocol):
+        """Structural view of ``MaterializeMasterPromptFn`` for variable-keyword
+        dispatch in ``_materialize_master_prompt`` (S-3 / G3). ``**kwargs: object``
+        is fully typed (no implicit ``Any``), unlike ``Callable[..., str]``.
+        """
+
+        def __call__(self, **kwargs: object) -> str: ...
+
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_RAW_OUTPUT_TAIL_LINES = 256
 _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
@@ -160,6 +168,7 @@ def execute_agent_effect(
     bridge: RestartAwareMcpBridge | None = None,
     raw_output_sink: deque[str] | None = None,
     rendered_output_sink: deque[str] | None = None,
+    raw_line_sink: Callable[[str], None] | None = None,
     run_id: str | None = None,
     required_artifact: RequiredArtifact | None = None,
     session_id: str | None = None,
@@ -253,6 +262,7 @@ def execute_agent_effect(
             bridge=bridge,
             raw_output_sink=raw_output_sink,
             rendered_output_sink=rendered_output_sink,
+            raw_line_sink=raw_line_sink,
             run_id=run_id,
             required_artifact=required_artifact,
             session_id=session_id,
@@ -403,6 +413,7 @@ def _invoke_agent_with_recovery(
     bridge: RestartAwareMcpBridge | None = None,
     raw_output_sink: deque[str] | None = None,
     rendered_output_sink: deque[str] | None = None,
+    raw_line_sink: Callable[[str], None] | None = None,
     run_id: str | None = None,
     required_artifact: RequiredArtifact | None = None,
     session_id: str | None = None,
@@ -479,6 +490,7 @@ def _invoke_agent_with_recovery(
                     rendered_output,
                     capture_session_id,
                     pipeline_deps,
+                    raw_line_sink=raw_line_sink,
                 )
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
@@ -623,27 +635,25 @@ def _materialize_master_prompt(
     )
     workspace_root = ctx.workspace_scope.root
     phase_name = str(ctx.effect.phase)
-    accepts_worker_namespace = _accepts_keyword(materialize, "worker_namespace")
+    kwargs: dict[str, object] = {"workspace_root": workspace_root, "name": phase_name}
+    if _accepts_keyword(materialize, "worker_namespace"):
+        kwargs["worker_namespace"] = ctx.worker_namespace
     if planning_style is not None and _accepts_keyword(materialize, "planning_style"):
-        if accepts_worker_namespace:
-            return materialize(
-                workspace_root=workspace_root,
-                name=phase_name,
-                worker_namespace=ctx.worker_namespace,
-                planning_style=planning_style,
-            )
-        return materialize(
-            workspace_root=workspace_root,
-            name=phase_name,
-            planning_style=planning_style,
-        )
-    if accepts_worker_namespace:
-        return materialize(
-            workspace_root=workspace_root,
-            name=phase_name,
-            worker_namespace=ctx.worker_namespace,
-        )
-    return materialize(workspace_root=workspace_root, name=phase_name)
+        kwargs["planning_style"] = planning_style
+    # G3/S-3 (Evidence Provenance C1): thread the agent's transport into
+    # the master prompt so an AGY-shaped phase invocation gets the
+    # call_mcp_tool dispatcher hint at the prompt level, matching every
+    # other real master-prompt call site (the managed-session runtime and
+    # the default factory wrapper). Guarded by the same runtime
+    # introspection worker_namespace/planning_style already use, so an
+    # injected test materializer that does not declare the keyword is
+    # never called with an argument it cannot handle.
+    if _accepts_keyword(materialize, "transport"):
+        kwargs["transport"] = ctx.agent_config.transport
+    dynamic_materialize = cast(
+        "_KwargsMaterializeMasterPromptFn", materialize
+    )  # cast-policy: seam: structural boundary (variable-keyword dispatch against a Protocol with fixed optional params)
+    return dynamic_materialize(**kwargs)
 
 
 def _accepts_keyword(
@@ -849,6 +859,8 @@ def _consume_attempt_output(
     rendered_output: deque[str],
     capture_session_id: Callable[[str], None],
     pipeline_deps: PipelineDeps,
+    *,
+    raw_line_sink: Callable[[str], None] | None = None,
 ) -> None:
     on_mcp_restart = (
         ctx.display_subscriber.record_mcp_restart if ctx.display_subscriber is not None else None
@@ -904,14 +916,23 @@ def _consume_attempt_output(
                 raw_output_sink=raw_output,
                 rendered_output_sink=rendered_output,
                 session_id_sink=capture_session_id,
+                raw_line_sink=raw_line_sink,
                 agent_config=ctx.agent_config,
                 subagent_pid_registry=_subagent_pid_registry,
                 subagent_source_label=_subagent_source_label,
             )
             return
+        # G1/S-1 (Evidence Provenance F3): smoke always runs at
+        # Verbosity.VERBOSE, so this low-verbosity fallback is unreached by
+        # the smoke gate today -- but leaving raw_line_sink unwired here
+        # would silently break the observer contract for the next caller at
+        # lower verbosity, which is exactly the kind of quiet exemption F7
+        # forbids for checks meant to apply uniformly.
         for line in output_lines:
             text_line = str(line)
             raw_output.append(text_line)
+            if raw_line_sink is not None:
+                raw_line_sink(text_line)
             session_id = extract_transport_session_id((text_line,))
             if session_id is not None:
                 capture_session_id(session_id)

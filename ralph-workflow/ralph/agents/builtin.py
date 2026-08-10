@@ -33,6 +33,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.builtin_spec import BuiltinAgentSpec
+from ralph.agents.display_capabilities import DisplayCapability
+from ralph.agents.display_capability_stance import DisplayCapabilityStance
 from ralph.agents.execution_state._factory import (
     _make_agy_strategy,
     _make_cursor_strategy,
@@ -58,6 +60,113 @@ if TYPE_CHECKING:
     from ralph.agents.support import AgentSupport
 
 
+#: Capability stance set used for the four built-in agents whose
+#: smoke path is currently exercised end-to-end through committed
+#: wire-format fixtures and whose parser produces a metadata
+#: envelope the canonical ``payload_from_tool_event`` recognizes
+#: for read, write, and edit tool calls. The four agents using this
+#: constant are claude, claude-headless, agy, and cursor. codex and
+#: pi carry their own ``display_capabilities`` tuples because their
+#: respective parsers do not (yet) surface the full set; see the
+#: inline declarations below for the per-agent reasons.
+_CLAUDE_LEVEL_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
+    DisplayCapabilityStance.supported(
+        DisplayCapability.SYNTAX_HIGHLIGHTING,
+        detail="read/write tool names normalized by parser match payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.supported(
+        DisplayCapability.FILE_PREVIEW,
+        detail="read/write tool names normalized by parser match payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.supported(
+        DisplayCapability.EDIT_DIFF,
+        detail="edit/MultiEdit tool names normalized by parser match payload_from_tool_event",
+    ),
+)
+
+#: Codex ships its own JSON envelope that the shared
+#: ``payload_from_tool_event`` does not yet recognize. The capability
+#: is ``UNIMPLEMENTED`` with a measurable reason so a future fix can
+#: promote it to SUPPORTED once the parser is extended.
+_CODEX_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.SYNTAX_HIGHLIGHTING,
+        reason="codex wire format uses distinct tool names not yet mapped to payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.FILE_PREVIEW,
+        reason="codex wire format uses distinct tool names not yet mapped to payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.EDIT_DIFF,
+        reason="codex wire format uses distinct tool names not yet mapped to payload_from_tool_event",
+    ),
+)
+
+#: OpenCode is the agent whose parsing defect the S-1/S-3 plan exists to
+#: repair. The parser now normalizes the live 1.18.14 ``ralph_*`` tool
+#: names at the transport boundary so the canonical preview payload
+#: builder recognizes ``read_file`` / ``write_file`` / ``edit_file`` -- the
+#: three capabilities exercised by the captured fixture
+#: (``tests/display/_fixtures/opencode_wire_provenance.md``). The
+#: ``tests/test_opencode_display_fidelity.py`` regression tests pin each
+#: surface against the captured frame shape.
+_OPENCODE_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
+    DisplayCapabilityStance.supported(
+        DisplayCapability.SYNTAX_HIGHLIGHTING,
+        detail="ralph_write_file tool_use normalized to write_file; payload_from_tool_event returns a write-shape preview (fixture:tests/display/_fixtures/opencode_wire_provenance.md)",
+    ),
+    DisplayCapabilityStance.supported(
+        DisplayCapability.FILE_PREVIEW,
+        detail="ralph_read_file tool_use normalized to read_file; payload_from_tool_event returns a read-shape preview (fixture:tests/display/_fixtures/opencode_wire_provenance.md)",
+    ),
+    DisplayCapabilityStance.supported(
+        DisplayCapability.EDIT_DIFF,
+        detail="ralph_edit_file tool_use normalized to edit_file; payload_from_tool_event returns a replace-shape preview (fixture:tests/display/_fixtures/opencode_wire_provenance.md)",
+    ),
+)
+
+#: Nanocoder is a local-only TUI; its plain-text parser does not produce
+#: a structured tool envelope the preview builder recognizes. The agent
+#: is structurally capable of file operations through Ralph's local
+#: filesystem primitives but its parser surfaces no metadata that
+#: ``payload_from_tool_event`` can route, hence ``UNIMPLEMENTED`` with a
+#: specific reason rather than ``NOT_APPLICABLE``.
+_NANOCODER_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.SYNTAX_HIGHLIGHTING,
+        reason="nanocoder plain-text parser does not emit a structured tool_use envelope that payload_from_tool_event routes to syntax_preview",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.FILE_PREVIEW,
+        reason="nanocoder plain-text parser does not emit a structured tool_use envelope that payload_from_tool_event routes to file_preview",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.EDIT_DIFF,
+        reason="nanocoder plain-text parser does not emit a structured tool_use envelope that payload_from_tool_event routes to diff_preview",
+    ),
+)
+
+#: Pi.dev emits a JSON envelope whose parser produces tool metadata
+#: with file paths, but the parser does not currently route through
+#: ``payload_from_tool_event``. ``UNIMPLEMENTED`` is the honest
+#: stance until a measured run confirms the renderer side.
+_PI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.SYNTAX_HIGHLIGHTING,
+        reason="pi parser emits tool_use metadata that is not yet routed through payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.FILE_PREVIEW,
+        reason="pi parser emits tool_use metadata that is not yet routed through payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.EDIT_DIFF,
+        reason="pi parser emits tool_use metadata that is not yet routed through payload_from_tool_event",
+    ),
+)
+
+
 _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
     BuiltinAgentSpec(
         transport=AgentTransport.CLAUDE_INTERACTIVE,
@@ -70,6 +179,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         can_commit=True,
         session_flag="--resume {}",
         interactive=True,
+        display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("claude"),
     BuiltinAgentSpec(
         transport=AgentTransport.CLAUDE,
@@ -84,6 +194,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         print_flag="--print",
         streaming_flag="--include-partial-messages",
         session_flag="--resume {}",
+        display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("claude-headless"),
     BuiltinAgentSpec(
         transport=AgentTransport.CODEX,
@@ -94,6 +205,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         output_flag="--json",
         yolo_flag="--dangerously-bypass-approvals-and-sandbox",
         can_commit=True,
+        display_capabilities=_CODEX_CAPABILITIES,
     ).to_support("codex"),
     BuiltinAgentSpec(
         transport=AgentTransport.OPENCODE,
@@ -104,6 +216,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         output_flag="--json-stream",
         can_commit=False,
         session_flag="--session {}",
+        display_capabilities=_OPENCODE_CAPABILITIES,
     ).to_support("opencode"),
     BuiltinAgentSpec(
         transport=AgentTransport.NANOCODER,
@@ -114,6 +227,19 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         can_commit=False,
         interactive=True,
         no_default_session_flag=True,
+        # S-6 (Evidence Provenance G6 / DoD 20): the one documented False
+        # case. Upstream documentation review (see
+        # docs/superpowers/specs/2026-06-07-nanocoder-support-design.md's
+        # "Session and Retry Policy" section) found no documented
+        # unattended `run`-mode session/resume output of any kind, and
+        # NanocoderParser (plain-text PTY redraw, no JSON session
+        # protocol) confirms there is no mechanism to observe one --
+        # unlike AGY, which also has no_default_session_flag=True but
+        # DOES emit an observable conversation_id via its JSON init
+        # frame and is therefore NOT exempted from the smoke gate's
+        # session-id check.
+        session_identifier_observable=False,
+        display_capabilities=_NANOCODER_CAPABILITIES,
     ).to_support("nanocoder"),
     BuiltinAgentSpec(
         transport=AgentTransport.AGY,
@@ -126,6 +252,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         can_commit=True,
         interactive=True,
         no_default_session_flag=True,
+        display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("agy"),
     BuiltinAgentSpec(
         transport=AgentTransport.PI,
@@ -138,6 +265,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         session_flag="--session {}",
         can_commit=True,
         display_name="Pi",
+        display_capabilities=_PI_CAPABILITIES,
     ).to_support("pi"),
     BuiltinAgentSpec(
         transport=AgentTransport.CURSOR,
@@ -152,6 +280,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         session_flag="--resume {}",
         can_commit=True,
         display_name="Cursor",
+        display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("cursor"),
 )
 

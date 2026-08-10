@@ -32,7 +32,7 @@ status: completed
 
 ## Analysis Items Addressed
 
-- [FIX-1] Added the missing edge-case regression test.
+- [DA-001] Added the missing edge-case regression test.
 ```
 
 ## Frontmatter
@@ -61,8 +61,8 @@ next iteration resume.
   appears in the plan's `## Work Units` items). The item text is
   the proof. Never write "Step N: title" — reference by ID only.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
-  exists, one item per prior `## How To Fix` item, using that item's
-  stable ID as the item ID and your proof as the text.
+  exists, one item per prior `## What Came Up Short` finding, using that
+  finding's stable ID as the item ID and proof of closure as the text.
 - `## Next Steps` — optional; exactly one item.
 - `## Continuation` — optional; exactly one item containing the prior
   session id.

@@ -1,12 +1,4 @@
-"""Auto-integration seam: rebase a feature branch and fast-forward its target safely.
-
-The workflow first rebases the feature branch onto its live local target. On a
-conflict, it hands the stop to the conflict-resolution pipeline to resolve the
-rebase in place, prove and stage the result, then run ``git rebase --continue``.
-Only when that resolution cannot land does it merge on unresolved conflict as
-the endpoint fallback before fast-forwarding the target. The phase hook reuses
-a clean worktree and records each attempt before the target advances.
-"""
+"""Auto-integrate safely: resolve the rebase in place before any merge on unresolved conflict."""
 
 from __future__ import annotations
 
@@ -24,6 +16,8 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
+from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
+from ralph.pipeline._auto_integrate_config import missing_target_reason as _missing_target_reason
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref as _create_rebase_backup_ref,
@@ -49,8 +43,8 @@ from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     record_when_stale,
 )
+from ralph.pipeline.auto_integrate_ff import fast_forward_target as _fast_forward_target
 from ralph.pipeline.auto_integrate_ff import (
-    fast_forward_target,
     is_retryable_fast_forward_failure,
     maybe_push_target,
     retry_pending_remote_publish,
@@ -86,6 +80,7 @@ from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
+    REMOTE_NO_REMOTE,
     REMOTE_PUSH_REJECTED,
     pull_and_reconcile_target,
     reconcile_after_rejected_push,
@@ -104,35 +99,11 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
-
-
-# The record path / write_record / read_record / clear_record helpers
-# were extracted to :mod:`ralph.pipeline.auto_integrate_record`, and the
-# outcome branch table (action verbs, RebaseState builders, rebase/merge
-# classifiers) to :mod:`ralph.pipeline.auto_integrate_outcome`, to keep
-# this module under the repo-structure ``_MAX_FILE_LINES`` cap. The
-# module-level ``from ... import ... as _xxx`` aliases above expose them
-# under the original private names so the call sites in this module read
-# unchanged.
-
-
-def _fast_forward_target(
-    repo_root: Path,
-    target: str,
-    feature_sha: str,
-) -> tuple[bool, str]:
-    """Backwards-compat shim for the extracted fast-forward path.
-
-    The implementation now lives in
-    :mod:`ralph.pipeline.auto_integrate_ff`; this wrapper remains
-    so :func:`_continue_fast_forward_from_record` (and any future
-    in-module caller) can keep referencing the local symbol.
-    """
-    return fast_forward_target(repo_root, target, feature_sha)
 
 
 def auto_integrate_after_commit(
@@ -200,23 +171,11 @@ def auto_integrate_on_phase_transition(
             )
         if not _worktree_is_clean(root):
             return _defer_dirty_boundary(config, root, target)
-        # A stale remote pointer must not let this cheap hook conclude
-        # 'nothing to do'. Every free early return above still costs
-        # nothing.
-        # Opted-in sync owns its configured remote fetch. Do not issue the
-        # legacy origin-only observation alongside it.
-        refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
-        target_sha = branch_sha(root, target)
-        if target_sha is not None and target_sha == get_head_sha(root):
-            pending = retry_pending_remote_publish(config, root, target, state)
-            if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
-                # Fully integrated and landed: the frequent-boundary case.
-                # Quiet only while the refreshed pointer that verdict was
-                # read through can be trusted (see ``record_when_stale``).
-                return pending or record_when_stale(
-                    _record_skip(reason="no commits beyond target", target=target),
-                    refresh,
-                )
+        boundary_outcome = _boundary_freshness_outcome(
+            config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
+        )
+        if boundary_outcome is not None:
+            return boundary_outcome
     except Exception as exc:
         # AC-08: never silently swallow a phase-transition pre-check
         # exception while ``auto_integrate_enabled`` is true. Surface
@@ -252,6 +211,38 @@ def auto_integrate_on_phase_transition(
         sleep=sleep,
         jitter=jitter,
     )
+
+
+def _boundary_freshness_outcome(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    state: RebaseState,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState | None:
+    """Return a freshness-gated no-commit boundary result, if the seam is done."""
+    remote_record = pull_and_reconcile_target(
+        config, root, target, rebase_stop_resolver=rebase_stop_resolver
+    )
+    if remote_record is not None and not remote_record.freshness_safe:
+        return remote_record
+    refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
+    if branch_sha(root, target) != get_head_sha(root):
+        return None
+    pending = retry_pending_remote_publish(config, root, target, state, rebase_stop_resolver=rebase_stop_resolver)
+    if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
+        if pending is not None:
+            return pending
+        if remote_record is not None:
+            return remote_record.model_copy(
+                update={
+                    "last_reason": "no commits beyond target",
+                    "last_action": "skipped",
+                }
+            )
+        return record_when_stale(_record_skip(reason="no commits beyond target", target=target), refresh)
+    return None
 
 
 def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
@@ -336,17 +327,7 @@ def _auto_integrate_after_commit_inner(
         return None
     root, _current_branch, target = usable_ctx
 
-    # Remote sync is deliberately opt-in.  Run its pull side before the
-    # ordinary feature rebase so a fetched remote tip becomes the base this
-    # seam integrates against.  A remote failure is only operator state: the
-    # local transaction below remains authoritative and fail-open.
-    remote_record = pull_and_reconcile_target(config, root, target)
-
-    # Budget check BEFORE any git mutation: an exhausted budget still
-    # runs the rebase and the endpoint merge (and still aborts them
-    # cleanly), it merely stops paying for another agent invocation.
-    # The identity is observed here, before the rebase moves anything,
-    # so it names the endpoints this attempt is about to reconcile.
+    remote_record: RebaseState | None = None
     identity = observe_conflict_identity(root, target)
     allowed = resolver_allowed(state, target, identity)
     effective_resolver = conflict_resolver if allowed else None
@@ -364,16 +345,18 @@ def _auto_integrate_after_commit_inner(
     try:
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
-                # Wait BEFORE the re-read, never after: the point of the
-                # delay is that the retry observes a pointer read once
-                # the collision has had time to settle.
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
-                # A retry only happens because the target moved under
-                # us: re-read it from origin (AC-03) and re-observe the
-                # identity, so a conflict recorded by a later attempt
-                # is not stamped with attempt 0's endpoint pair.
-                refresh = _refresh_target(config, root, target)
-                identity = observe_conflict_identity(root, target)
+            remote_record, refresh = _freshen_attempt_target(
+                config,
+                root,
+                target,
+                attempt=attempt,
+                initial_refresh=refresh,
+                rebase_stop_resolver=rebase_stop_resolver if allowed else None,
+            )
+            if remote_record is not None and not remote_record.freshness_safe:
+                return remote_record
+            identity = observe_conflict_identity(root, target)
             record, retry_ff = _integrate_once(
                 config,
                 root,
@@ -386,13 +369,6 @@ def _auto_integrate_after_commit_inner(
             )
             if not retry_ff:
                 break
-            # Only a merge-producing attempt suppresses the next
-            # rebase: a plain ``git rebase`` carries no merge commits,
-            # so replaying over the merge this attempt just created
-            # would discard a resolution an agent was paid to produce and
-            # walk straight back into the same conflict. A clean
-            # rebase-only attempt still retries as a rebase and keeps
-            # the history linear.
             prefer_merge = record is not None and record.last_action == _ACTION_MERGED
             if attempt + 1 < _MAX_INTEGRATION_ATTEMPTS:
                 logger.info(
@@ -449,6 +425,10 @@ def _auto_integrate_after_commit_inner(
                 "last_remote": remote_record.last_remote,
                 "last_refresh": remote_record.last_refresh or record.last_refresh,
                 "last_reason": record.last_reason or remote_record.last_reason,
+                "freshness_verdict": remote_record.freshness_verdict,
+                "freshness_source": remote_record.freshness_source,
+                "freshness_safe": remote_record.freshness_safe,
+                "freshness_target_sha": remote_record.freshness_target_sha,
             }
         )
     if attempts_exhausted:
@@ -460,6 +440,31 @@ def _auto_integrate_after_commit_inner(
         resolver_suppressed=resolver_suppressed,
         identity=identity,
     )
+
+
+def _freshen_attempt_target(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    *,
+    attempt: int,
+    initial_refresh: str | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> tuple[RebaseState | None, str | None]:
+    """Return the current remote verdict or local-fleet observation."""
+    if not remote_sync_enabled(config):
+        if attempt:
+            return None, _refresh_target(config, root, target)
+        return None, initial_refresh
+    record = pull_and_reconcile_target(
+        config, root, target, rebase_stop_resolver=rebase_stop_resolver
+    )
+    if record is None:
+        return None, None
+    refresh = record.last_refresh
+    if record.last_remote_sync == REMOTE_NO_REMOTE:
+        refresh = _refresh_target(config, root, target)
+    return record, refresh
 
 
 def _record_attempt_budget_spent(record: RebaseState) -> RebaseState:
@@ -577,14 +582,23 @@ def _integrate_once(
             ),
         )
 
-        # Re-read the mainline pointer from origin IMMEDIATELY before the
-        # fast-forward observes it. Several agents land on the same
-        # mainline continuously, so binding the ancestry decision inside
-        # fast_forward_target to a pointer read seconds ago (rather than
-        # before the rebase/merge/resolution sequence) is what keeps the
-        # landing correct under concurrency.
-        refresh_outcome = _refresh_target(config, root, target)
-        ok, skip_reason = _fast_forward_target(root, target, feature_sha)
+        refresh_outcome = refresh
+        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
+
+        reclaim_target_worktree = reclaim_target_worktree_enabled(config)
+        reclamation: ReclaimResult | None = None
+
+        def remember_reclamation(result: ReclaimResult) -> None:
+            nonlocal reclamation
+            reclamation = result
+
+        ok, skip_reason = _fast_forward_target(
+            root,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=remember_reclamation,
+        )
 
         # R6/AC-06: post-attempt terminal-state verification on EVERY
         # exit path. A completed rebase/merge leaves HEAD at feature_sha,
@@ -619,7 +633,18 @@ def _integrate_once(
             merge_attempted=rebase_result.merge_attempted,
             merge_outcome=rebase_result.merge_outcome,
             target=target,
-        ).model_copy(update={"last_refresh": refresh_outcome})
+        ).model_copy(
+            update={
+                "last_refresh": refresh_outcome,
+                "reclaimed_worktree_path": (
+                    reclamation.worktree_path if reclamation is not None else None
+                ),
+                "reclaim_snapshot_ref": reclamation.snapshot_ref if reclamation is not None else None,
+                "reclaim_discarded_path_count": (
+                    reclamation.discarded_path_count if reclamation is not None else 0
+                ),
+            }
+        )
         if not ok:
             # Fast-forward skipped: reason is appended but we keep
             # the rebase/merged action as the headline so the log line
@@ -653,6 +678,7 @@ def _integrate_once(
                     root,
                     target,
                     record,
+                    rebase_stop_resolver=rebase_stop_resolver,
                     reintegrate=lambda: _reintegrate_after_remote_reconcile(
                         config,
                         root,
@@ -682,21 +708,6 @@ def _integrate_once(
         # terminal state on the abort path.
         raise
 
-
-def _configured_target(config: UnifiedConfig) -> str:
-    """Return the configured target unchanged for operator-facing skips."""
-    configured: object = getattr(config.general, "auto_integrate_target", "")
-    return configured if isinstance(configured, str) else ""
-
-
-def _missing_target_reason(config: UnifiedConfig) -> str:
-    """Name the missing local target without guessing an alternative."""
-    target = _configured_target(config)
-    return (
-        f"local integration target branch does not exist: {target}"
-        if target
-        else "no integration target configured"
-    )
 
 
 def _check_early_skips(
@@ -977,14 +988,7 @@ __all__ = [
     "resolve_integration_target",
 ]
 
-
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
-
+# AC-14 catalog evidence
 # AC-14 rationale: B10
 # ladder rung: 1
 # AC-14 rationale: B11
@@ -993,4 +997,3 @@ __all__ = [
 # ladder rung: 4
 # AC-14 rationale: E5
 # ladder rung: 1
-# ----- end AC-14 catalog evidence -----

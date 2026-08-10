@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from datetime import timedelta
     from pathlib import Path
 
+    from ralph.config.enums import AgentTransport
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
@@ -64,6 +65,7 @@ class MaterializeMasterPromptFn(Protocol):
         default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
         planning_style: bool = False,
+        transport: AgentTransport | None = None,
     ) -> str: ...
 
 
@@ -130,6 +132,7 @@ def _materialize_master_prompt(
     default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
     planning_style: bool = False,
+    transport: AgentTransport | None = None,
 ) -> str:
     return materialize_master_prompt(
         workspace_root=workspace_root,
@@ -137,6 +140,7 @@ def _materialize_master_prompt(
         default_product_criteria=default_product_criteria,
         worker_namespace=worker_namespace,
         planning_style=planning_style,
+        transport=transport,
     )
 
 

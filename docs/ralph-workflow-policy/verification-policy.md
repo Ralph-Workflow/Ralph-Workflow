@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: verification-policy.md -->
 
 # Verification Policy
@@ -50,12 +50,14 @@ The four commitments are: **fast path first**, **a slow gate is a defect**, **do
   worth investigating ONLY when it is genuinely diagnostic — when the
   triggering change tells you what the bug IS — never to decide whether
   the failure is yours to own. It is always yours to own.
-* Every gate MUST be wired into the authoritative entry point. A check
-  that exists only in a suite the default gate excludes (an opt-in
-  marker, a manual script) WILL rot unnoticed and is non-compliant:
-  either wire it into `make verify` or delete it. `audit_repo_structure`
-  exists because its rules previously lived only in a `subprocess_e2e`
-  test that `make verify` never ran, and they silently decayed.
+* Every check MUST sit in a declared lane (see "Gate lanes" below). A
+  check that exists only in a suite the default gate excludes, with no
+  declared owner and no declared trigger (an undeclared opt-in marker, a
+  manual script), WILL rot unnoticed and is non-compliant: wire it into
+  `make verify`, declare it as a named profile, or delete it.
+  `audit_repo_structure` exists because its rules previously lived only in
+  a `subprocess_e2e` test that `make verify` never ran, and they silently
+  decayed.
 * Verification MUST complete within a bounded, gate-enforced time budget
   (see `verification_time_budget` below). The generic sizing guide is
   ~1 second per 1k LOC with a **HARD CAP of 2 minutes** regardless of
@@ -79,6 +81,38 @@ The four commitments are: **fast path first**, **a slow gate is a defect**, **do
   when the selected tools permit such checks. See "Bypass detection"
   below.
 
+## Gate lanes
+
+Every check this project owns sits in exactly one lane. The lane system
+keeps `make verify` fast and trusted without pushing real checks into an
+unowned opt-in suite where they decay silently — the failure mode that
+produced `audit_repo_structure`.
+
+1. DEFAULT GATE — `make -C ralph-workflow verify`, the authoritative
+   pre-merge entry point: the `docs` and `verify-drift` prerequisites
+   followed by the full `ralph/verify.py:_VERIFY_STEPS` chain, under the
+   60 s combined test budget. This is the lane for everything that can
+   run deterministically from a clean clone with in-process fakes, and a
+   check that can meet those constraints MUST NOT be demoted to a profile
+   because it is inconvenient.
+2. NAMED PROFILE — a check that is genuinely valuable and repeatable but
+   cannot meet the default gate's constraints: real subprocesses and
+   sockets, a network-backed agent lifecycle, or a developer-only sweep.
+   A profile is legitimate ONLY when its command, its owner, and its
+   trigger or schedule are declared in `required_verification_profiles`
+   below, and only when it fails hard on the run. The declared set is
+   `default`, `pre-commit`, `subprocess-e2e`, and `live-agy`; a profile
+   selected by its Make target and recorded here is wired in, whereas an
+   opt-in marker nobody declared and nobody owns is not.
+3. DELETED — the correct destination for a check with no owner, no
+   trigger, and no lane. Deleting a decayed check is honest; leaving it
+   in an unobserved corner is not, because a permanently unread check
+   reports a safety it never verified.
+
+A check MUST NOT be moved from lane 1 to lane 2 to escape a red result or
+a budget breach. Demotion is a design decision with an owner, recorded
+with its reason; it is never a way to make the gate green today.
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents
@@ -95,6 +129,12 @@ RALPH-FACT: ci_integration_command: `.github/workflows/verify.yml` runs `cd ralp
 RALPH-FACT: required_verification_profiles: four named profiles are declared so a caller picks the right surface for the work at hand. (1) `default` profile = `make -C ralph-workflow verify` (docs and drift prerequisites followed by the complete `_VERIFY_STEPS` chain: ruff, mypy, the combined `make test` selection, all declared audits, and social proof under the 60 s combined test budget). The combined selection includes the registered real-git auto-integration files through `required_auto_integrate_e2e`; there is no separate auto-integration step in `_VERIFY_STEPS`. (2) `pre-commit` profile = `make -C ralph-workflow pre-commit` (a one-shot ruff + format-check + dead-code sweep a developer runs before push; not a CI gate). (3) `subprocess-e2e` profile = `make -C ralph-workflow test-subprocess-e2e` (the broader subprocess-reality suite; subprocess tests outside the required auto-integration registry are excluded from the default profile, and the opt-in suite timeout lives in ralph-workflow/Makefile as PYTEST_SUITE_TIMEOUT_SECONDS). (4) `live-agy` profile = `make -C ralph-workflow test-live-agy` (a network-backed AGY lifecycle test, excluded from the default budget via the `live_agy` marker and sized via LIVE_AGY_SUITE_TIMEOUT_SECONDS). A profile is selected by its Make target; a missing profile is a build-time blocker, not a runtime fallback.
 RALPH-FACT: verification_time_budget: fast path invocation-to-answer cap 10 seconds; full gate is 60 seconds combined wall-clock for ALL test suites running sequentially under `make verify`, pinned to 60.0 in `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS` by an import-time epsilon check `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` and a positive-runtime guard `_TOTAL_TEST_BUDGET_SECONDS > 0`. Per-step caps are secondary and independent: `_VERIFY_STEP_TIMEOUT_SECONDS = 30.0` for each non-test verification step, with `_MIN_VERIFY_STEP_TIMEOUT_SECONDS = 5.0` as a non-trivial floor. Integration tests under `tests/integration/` have a hard 1.0-second per-test SIGALRM cap (`_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 1.0`). The budget may only GROW as a deliberate, reviewed change; suites well under 60 s MUST NOT relax up toward the generic sizing guide (the 60-second cap is the binding constraint for any project past ~120k LOC).
 RALPH-FACT: verification_time_enforcement_mechanism: cumulative `time.monotonic()` tracker in `ralph/verify.py:run_verify()` that sums elapsed wall-clock across every step selected by `_BUDGET_TRACKED_STEPS`; the current test-running entry is labelled `make test`. Before each tracked step, the remaining budget is computed and passed as `min(step_timeout, remaining_budget)`; once cumulative time exceeds 60 s the runner returns `TIMEOUT_EXIT_CODE` and emits the high-visibility failure banner from `format_verify_failure_banner()`. Import-time `if`/`raise RuntimeError` invariants (immune to `python -O`) pin: `_TOTAL_TEST_BUDGET_SECONDS > 0`, `_BUDGET_TRACKED_STEPS` indices valid into `_VERIFY_STEPS`, every budget-tracked step has a positive timeout, `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS` are non-empty, `'make test'` is in `_KNOWN_TEST_STEP_LABELS`, every label in `_KNOWN_TEST_STEP_LABELS` is tracked and every tracked step is labelled, `_VERIFY_STEP_TIMEOUT_SECONDS > 0` and `>= 5.0`, and the audit_mcp_timeout + audit_resource_lifecycle steps are present. A budget-tracked test step MUST be reachable from `make verify`; splitting tests, renaming targets, raising per-suite caps, or setting `RALPH_PYTEST_*` env vars does NOT increase the combined budget. A timeout is a test-design defect — diagnose the production coupling and fix it; never raise the budget to make a slow gate fit.
+RALPH-FACT: fast_path_command: RALPH-PENDING (assumed 2026-08-09); review trigger: once a <=10-second composite fast-path Make target is implemented, measured, and declared in the verification profile inventory
+RALPH-FACT: fast_path_selection_mechanism: RALPH-PENDING (assumed 2026-08-09); review trigger: once a documented rule maps change scope to the measured fast-path command; current Make targets select named profiles but not a fast path
+RALPH-FACT: gate_cache_mechanism_and_key: none — maintained pytest shards disable the pytest cache provider (`-p no:cacheprovider` in `ralph/test_suites.py`), and `.github/workflows/verify.yml` declares no CI cache action or cache key
+RALPH-FACT: gate_duration_report_location: successful `make -C ralph-workflow verify` writes `Cumulative test elapsed: <seconds>s / budget: 60.0s` to standard output from `ralph.verify.run_verify()`; CI retains that console log but declares no durable timing artifact, summary, or per-step report
+RALPH-FACT: gate_lane_review_cadence_and_owner: RALPH-PENDING (assumed 2026-08-09); review trigger: once named lane owners and a recurring review cadence are declared; existing policy review is event-driven when gate topology changes
+RALPH-FACT: gate_parallelism_mechanism: `ralph.verify.run_verify()` executes `_VERIFY_STEPS` serially; its `make test` step delegates to `ralph.test_suites`, which concurrently runs CPU-capped file shards selected by `PYTEST_WORKERS` and optionally bounded xdist workers per shard
 
 ## AI execution instructions
 
@@ -261,4 +301,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`

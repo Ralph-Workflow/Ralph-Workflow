@@ -25,6 +25,7 @@ from ralph.git.merge import (
 from ralph.git.operations import is_repo_clean
 from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline._auto_integrate_recovery_integrating import recover_integrating_record
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     refresh_outcome_is_healthy,
@@ -676,7 +677,14 @@ def _land_and_reconcile(
     ff_failed = False
     skip_reason = ""
     try:
-        ok, skip_reason = fast_forward_target(workspace_root, record.target, feature_sha)
+        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
+
+        ok, skip_reason = fast_forward_target(
+            workspace_root,
+            record.target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree_enabled(config),
+        )
     except Exception as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"
@@ -894,41 +902,17 @@ def recover_incomplete_integration(
 
         # Step 2: reconcile by phase.
         if record.phase == "integrating":
-            reset_failed = False
-            try:
-                reset_hard(operation_root, record.pre_feature_sha)
-            except Exception as exc:
-                reset_failed = True
-                logger.warning("recovery: reset_hard failed: {}", exc)
-
-            # Verify the restore actually landed: read HEAD and
-            # compare to pre_feature_sha. If the reset raised OR
-            # the verification fails OR an owned op still remains,
-            # RETAIN the record so the next startup can retry. Only
-            # when all three checks pass do we clear it.
-            restored_ok = (
-                not abort_failed
-                and not reset_failed
-                and not rebase_in_progress(operation_root)
-                and merge_state(operation_root) == MERGE_STATE_NONE
-                and _head_matches_sha(operation_root, record.pre_feature_sha)
-            )
-            if not restored_ok:
-                return _record_skip(
-                    reason=("recovery: feature branch not restored, record retained for retry"),
-                    target=record.target,
-                    record_retained=True,
-                )
-            _clear_record(root)
-            return RebaseState(
-                last_action=_ACTION_RECOVERED,
-                last_reason=(
-                    "restored target worktree after interrupted reconciliation"
-                    if operation_kind == "target_reconcile"
-                    else "restored feature branch after interrupted rebase"
-                ),
-                last_target=record.target,
-                fast_forwarded=False,
+            return recover_integrating_record(
+                root=root,
+                record=record,
+                operation_kind=operation_kind,
+                operation_root=operation_root,
+                abort_failed=abort_failed,
+                merge_state=merge_state,
+                reset_hard=reset_hard,
+                rebase_in_progress=rebase_in_progress,
+                head_matches_sha=_head_matches_sha,
+                clear_record=_clear_record,
             )
 
         # phase == 'integrated': continue the fast-forward. A failed

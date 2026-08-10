@@ -354,6 +354,8 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
         "auto_integrate_target",
         "auto_integrate_remote_enabled",
         "auto_integrate_remote",
+        "auto_integrate_remote_interval_seconds",
+        "auto_integrate_reclaim_target_worktree",
     )
     for field in simple_fields:
         if field in data:

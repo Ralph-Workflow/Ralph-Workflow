@@ -6,6 +6,12 @@ import json
 import re
 from typing import TYPE_CHECKING, Final, cast
 
+from ._assistant_envelope import (
+    ENVELOPE_API_ERROR,
+    ENVELOPE_SYNTHETIC,
+    AssistantEnvelopeDecision,
+    classify_assistant_record,
+)
 from ._event_classification import is_lifecycle_event
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
@@ -521,7 +527,37 @@ class ClaudeParser(NdjsonParserBase):
         back after a tool call -- without this branch that content
         (including tool failures) was silently dropped, since previously
         only ``assistant`` was dispatched here.
+
+        RC2: classify the full top-level record via the shared
+        envelope classifier BEFORE per-content-block extraction so an
+        ``assistant`` record carrying an API-error envelope or a
+        synthetic envelope is dispatched consistently with the
+        interactive transport. ``user`` records bypass the envelope
+        classifier -- ``claude -p`` never emits a synthetic or
+        API-error envelope on a user event, so the legacy
+        ``_parse_message_content`` path is the only safe surface.
         """
+        if obj.get("type") == "assistant":
+            decision: AssistantEnvelopeDecision = classify_assistant_record(obj)
+            if decision.envelope == ENVELOPE_API_ERROR:
+                if decision.error_text:
+                    yield AgentOutputLine(
+                        type="error",
+                        content=decision.error_text,
+                        raw=raw,
+                        metadata=obj,
+                    )
+                return
+            if decision.envelope == ENVELOPE_SYNTHETIC:
+                payload = decision.synthetic_text or "synthetic bookkeeping turn"
+                yield AgentOutputLine(
+                    type="lifecycle",
+                    content=payload,
+                    raw=raw,
+                    metadata=obj,
+                )
+                return
+
         message = obj.get("message")
         if not isinstance(message, dict):
             return

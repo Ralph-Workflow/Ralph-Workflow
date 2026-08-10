@@ -203,6 +203,12 @@ def _reduce_phase_failure(
                 classified_failure=classified_failure,
             ),
         )
+        if pipeline_policy is not None and new_state.phase != state.phase:
+            new_state = progress.apply_execution_cycle_outcome(
+                state,
+                new_state,
+                policy=pipeline_policy,
+            )
         return _restore_work_units(state, new_state), effects
     return _handle_phase_failure(state, event, policy=pipeline_policy)
 
@@ -357,6 +363,8 @@ def _enter_failed_recovery(
 ) -> tuple[PipelineState, list[Effect]]:
     """Transition to the policy-declared terminal failure route."""
     target = _terminal_failure_route(policy)
+    if policy is None:
+        raise RuntimeError("Routing requires loaded policy")
     logger.bind(component="policy.routing").info(
         explain_routing_decision(state.phase, target, "failure", reason, recovery=True)
     )
@@ -364,7 +372,7 @@ def _enter_failed_recovery(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
     )
-    return new_state, []
+    return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
 
 def _handle_phase_failure(
@@ -427,7 +435,7 @@ def _handle_phase_failure(
             new_state = progress.advance_phase(state, fallback_target, policy=policy).copy_with(
                 last_error=failure_message,
             )
-            return new_state, []
+            return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
     return _enter_failed_recovery(state, failure_message, policy=policy)
 
 
@@ -503,7 +511,7 @@ def _handle_agent_failure(
                 )
             )
             new_state = progress.advance_phase(state, fallback_target, policy=policy)
-            return new_state, []
+            return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
     failure_reason = _failure_reason(
         state,
@@ -614,7 +622,8 @@ def _handle_execution_result(
     routed_state = state.copy_with(
         post_commit_phase_override=phase_def.result_status_post_commit.get(event.status)
     )
-    return _resolve_or_terminal(routed_state, "success", policy, "execution result")
+    new_state, effects = _resolve_or_terminal(routed_state, "success", policy, "execution result")
+    return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), effects
 
 
 def _handle_analysis_loopback(
@@ -733,6 +742,7 @@ def _handle_analysis_decision(
                 iteration_field,
                 max_iterations=max_iter,
                 review_outcome=lp.loopback_review_outcome,
+                increment=not progress.analysis_loopback_is_already_charged(event.phase, state, policy),
             )
 
     progress_state = progress.apply_budget_counter_increment(

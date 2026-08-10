@@ -253,7 +253,7 @@ def test_analysis_feedback_reaches_the_prompt() -> None:
     )
 
     assert "make verify is not a real target" in seen[0]
-    assert "declare the real entry point" in seen[0]
+    assert "declare the real entry point" not in seen[0]
     assert "the declared gate does not exist" in seen[0]
 
 

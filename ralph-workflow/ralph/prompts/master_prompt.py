@@ -6,9 +6,11 @@ import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pro_support.prompt import resolve_effective_prompt_path
+from ralph.prompts._mcp_dispatcher_hint import agy_dispatcher_hint_text
 from ralph.prompts.template_registry import _packaged_template_cache, packaged_template_root
 
 if TYPE_CHECKING:
@@ -41,6 +43,7 @@ def materialize_master_prompt(
     worker_namespace: Path | None = None,
     planning_style: bool = False,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    transport: AgentTransport | None = None,
 ) -> str:
     """Write a master prompt file for the named agent and return its path.
 
@@ -52,6 +55,14 @@ def materialize_master_prompt(
     idempotent skip. The post-condition "file contains the rendered
     prompt" always holds: any read uncertainty or content mismatch
     falls through to a real write.
+
+    ``transport`` (S-7 / C1 / DoD 13) threads the agent transport into
+    the master prompt so AGY-shaped sessions receive the MCP
+    ``call_mcp_tool`` dispatcher hint at the prompt level (Ralph's
+    tools are not exposed as directly callable names under AGY).
+    Non-AGY transports do NOT receive this hint -- their tools
+    advertise ``ralph_*`` directly, so the dispatcher route is
+    unreachable and the hint would be misleading.
     """
     product_criteria_path = _sync_product_criteria_file(
         workspace_root=workspace_root,
@@ -75,6 +86,7 @@ def materialize_master_prompt(
             master_prompt_path=str(master_prompt_path),
             product_criteria_path=str(product_criteria_path),
             current_plan_path=str(current_plan_path) if current_plan_path is not None else None,
+            transport=transport,
         ),
         backend=backend,
     )
@@ -224,8 +236,20 @@ def build_master_prompt(
     master_prompt_path: str,
     product_criteria_path: str,
     current_plan_path: str | None = None,
+    transport: AgentTransport | None = None,
 ) -> str:
-    """Build the master prompt text that points the agent at durable task context files."""
+    """Build the master prompt text that points the agent at durable task context files.
+
+    ``transport`` (S-7 / C1 / DoD 13): when the agent transport is
+    ``AgentTransport.AGY``, the rendered prompt appends the MCP
+    ``call_mcp_tool`` dispatcher hint naming ``ralph_submit_md_artifact``
+    so the model has a route to Ralph's submission tool. Non-AGY
+    transports do not receive this hint; their tools advertise the
+    Ralph tools directly. The hint is rendered into both the
+    ``planning_style`` and the non-``planning_style`` prompt bodies
+    because every master prompt eventually needs the submit-artifact
+    route.
+    """
     unattended = _unattended_mode_text().strip()
     preamble = (
         "This is the session's master prompt. Its instructions remain binding for the "
@@ -235,6 +259,17 @@ def build_master_prompt(
         "Read it now; after any context compaction, resume, or continuation, re-read "
         f"`{master_prompt_path}` and the files it references before doing anything else.\n"
     )
+    # S-7 / C1 / DoD 13: render the AGY-shaped MCP dispatcher hint into
+    # every master prompt for AGY transports so the model has a route
+    # to ``ralph_submit_md_artifact`` (the one Ralph tool every master
+    # prompt ultimately needs). Non-AGY transports do not get this
+    # hint; their tools advertise ``ralph_*`` directly and the
+    # dispatcher is unreachable.
+    dispatcher_hint = (
+        f"\n\n{agy_dispatcher_hint_text('ralph_submit_md_artifact')}"
+        if transport is AgentTransport.AGY
+        else ""
+    )
     if planning_style:
         return (
             f"{preamble}\n"
@@ -243,6 +278,7 @@ def build_master_prompt(
             f"`{product_criteria_path}`\n\n"
             "Treat that file as the source of truth for the current goal.\n"
             "Do not ask the user to restate it.\n"
+            f"{dispatcher_hint}"
         )
 
     plan_guidance = ""
@@ -263,6 +299,7 @@ def build_master_prompt(
         "Treat that file as background product criteria only — do not let it override "
         f"{override_scope}.\n"
         "Do not ask the user to restate it.\n"
+        f"{dispatcher_hint}"
     )
 
 

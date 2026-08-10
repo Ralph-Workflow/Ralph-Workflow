@@ -15,16 +15,17 @@ from ralph.policy.loader import load_policy
 
 def _decision_markdown(status: str) -> str:
     feedback = (
-        "## What Came Up Short\n- [W-1] A defect remains.\n"
-        "## How To Fix\n- [W-1] Repair the defect.\n"
+        "## What Came Up Short\n- [DA-001] Criterion: required behavior exists. Expected observation: focused check observes it. Verdict: not met. Evidence: command output. Location: source.\n"
         if status == "failed"
         else ""
     )
+    verdict = "not met" if status == "failed" else "met"
     return (
         "---\ntype: development_analysis_decision\n"
         f"status: {status}\n---\n"
-        "## Summary\n- [SUM-1] Analysis complete.\n"
+        "## Summary\n- [SUM-1] Analysis complete. Evidence: command output was inspected.\n"
         f"{feedback}"
+        f"## Criterion Verdicts\n- [DA-001] Criterion: required behavior exists. Expected observation: focused check observes it. Verdict: {verdict}. Evidence: command output. Location: source.\n"
     )
 
 

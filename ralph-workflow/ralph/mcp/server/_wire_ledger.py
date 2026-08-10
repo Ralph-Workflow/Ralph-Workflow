@@ -18,6 +18,9 @@ never mistaken for a ledger (A5).
 
 from __future__ import annotations
 
+import contextlib
+import datetime
+import fcntl
 import hashlib
 import hmac
 import json
@@ -26,13 +29,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.server._wire_ledger_capture import WireLedgerCapture
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 __all__ = [
     "WIRE_LEDGER_RELPATH",
+    "WireLedgerCapture",
     "WireLedgerRecord",
     "append_wire_record",
+    "collect_captures",
+    "render_capture_table_markdown",
     "verify_chain",
     "wire_evidence_for",
 ]
@@ -117,6 +125,73 @@ def _iter_ledger_rows(ledger_path: Path) -> list[dict[str, object]]:
     return rows
 
 
+def collect_captures(
+    workspace_root: Path, secret: str | None
+) -> list[WireLedgerCapture]:
+    """Return every verified capture row in ``workspace_root``'s wire ledger.
+
+    S-9 / F5: the wire-ledger-backed view of every frame a real AGY
+    run dispatched through the MCP server. Only HMAC-verifiable rows
+    are returned -- an unverifiable ledger backs nothing, so its
+    captures cannot be promoted to the fixture table either.
+
+    A missing or empty ledger returns an empty list (no captures yet,
+    no captures to report). This is the live-only source of truth the
+    ``render_capture_table_markdown`` exporter consumes.
+    """
+    if secret is None:
+        return []
+    if not verify_chain(workspace_root, secret):
+        return []
+    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    captures: list[WireLedgerCapture] = []
+    for row in _iter_ledger_rows(ledger_path):
+        capture = WireLedgerCapture.from_row(row)
+        if capture is not None:
+            captures.append(capture)
+    return captures
+
+
+def render_capture_table_markdown(
+    captures: list[WireLedgerCapture], *, run_id: str | None = None
+) -> str:
+    """Render ``captures`` as a markdown capture-method table for the AGY wire-provenance fixture.
+
+    S-9 / F5: a live run deposits replayable frames into the wire
+    ledger; this exporter turns those frames into the same capture-
+    method table that ``tests/display/_fixtures/agy_wire_provenance.md``
+    previously documented by hand. The output is deterministic for a
+    given ordered input (rows are emitted in input order -- the ledger
+    is HMAC-chained so insertion order is the canonical order).
+
+    When ``run_id`` is given, only captures whose ``run_id`` matches
+    are included (multi-run ledgers do not bleed into each other's
+    capture tables).
+
+    The table's columns are: method, tool_name, run_id, captured-at
+    (ISO-8601 UTC). ``captured-at`` is sourced from the row's HMAC-
+    sealed timestamp -- an unverifiable row never reaches this table,
+    so the timestamp itself is durable.
+    """
+    lines: list[str] = []
+    lines.append("| method | tool_name | run_id | captured-at (UTC) |")
+    lines.append("| --- | --- | --- | --- |")
+    for capture in captures:
+        if run_id is not None and capture.run_id != run_id:
+            continue
+        # ISO-8601 UTC second precision; the ledger stores float seconds.
+        captured_at = (
+            datetime.datetime.fromtimestamp(capture.timestamp, tz=datetime.UTC)
+            .replace(microsecond=0)
+            .isoformat()
+        )
+        lines.append(
+            f"| {capture.method} | {capture.tool_name or ''} | "
+            f"{capture.run_id} | {captured_at} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _read_last_hmac(ledger_path: Path) -> str:
     rows = _iter_ledger_rows(ledger_path)
     if not rows:
@@ -140,35 +215,68 @@ def append_wire_record(
     Returns ``None`` (no record appended, nothing written) when ``secret``
     is ``None``: an unsigned server cannot produce a WIRE-grade witness —
     "an unchained ledger is not a ledger" (F2 / A5).
+
+    Two concurrent MCP server instances writing to the same
+    ``WIRE_LEDGER_RELPATH`` (the restart-aware bridge tears down a
+    previous server and starts a new one in the same turn, and the
+    smoke harness drives a sequence of restart-aware turns) would
+    otherwise each read the same prior_hmac, each compute a new
+    record, and each append — leaving the on-disk chain with two
+    children of the same parent. ``verify_chain`` then fails at the
+    first non-contiguous row, so even a fully-correct run never grades
+    ``WIRE``. Acquire an exclusive ``fcntl.flock`` on a sidecar lock
+    file and hold it across the read + write so every append is
+    serialized. The lock file lives next to the ledger; it is created
+    on first use and never removed (its presence is a feature, not
+    garbage). The lock is non-blocking best-effort: a lock that cannot
+    be acquired is treated as a no-op append for that frame, since
+    dropping a single tool-call witness is preferable to corrupting
+    the chain (the dropped frame never grades ``WIRE``, but the
+    surviving frames in the same run still can).
     """
     if secret is None:
         return None
     ledger_path = workspace_root / WIRE_LEDGER_RELPATH
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    prior_hmac = _read_last_hmac(ledger_path)
-    timestamp = clock()
-    digest = _params_digest(params)
-    record_hmac = _record_hmac(
-        secret,
-        method=method,
-        tool_name=tool_name,
-        params_digest=digest,
-        run_id=run_id,
-        timestamp=timestamp,
-        prior_hmac=prior_hmac,
-    )
-    record = WireLedgerRecord(
-        method=method,
-        tool_name=tool_name,
-        params_digest=digest,
-        run_id=run_id,
-        timestamp=timestamp,
-        prior_hmac=prior_hmac,
-        record_hmac=record_hmac,
-    )
-    # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
-    with ledger_path.open("a", encoding="utf-8") as handle:
-        handle.write(record.to_json_line() + "\n")
+    lock_path = workspace_root / (str(WIRE_LEDGER_RELPATH) + ".lock")
+    # filesystem-write-ok: lock-file sidecar used only to coordinate concurrent appends; the file's contents are never read back, so write_text_if_changed's whole-file replace contract does not fit (it would clobber any in-flight fcntl owner).
+    lock_handle = lock_path.open("w", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            # Another writer holds the lock; the racing frame never
+            # grades WIRE but we MUST NOT corrupt the chain by writing
+            # without reading the current prior_hmac.
+            return None
+        prior_hmac = _read_last_hmac(ledger_path)
+        timestamp = clock()
+        digest = _params_digest(params)
+        record_hmac = _record_hmac(
+            secret,
+            method=method,
+            tool_name=tool_name,
+            params_digest=digest,
+            run_id=run_id,
+            timestamp=timestamp,
+            prior_hmac=prior_hmac,
+        )
+        record = WireLedgerRecord(
+            method=method,
+            tool_name=tool_name,
+            params_digest=digest,
+            run_id=run_id,
+            timestamp=timestamp,
+            prior_hmac=prior_hmac,
+            record_hmac=record_hmac,
+        )
+        # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
+        with ledger_path.open("a", encoding="utf-8") as handle:
+            handle.write(record.to_json_line() + "\n")
+    finally:
+        with contextlib.suppress(OSError, ValueError):
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        lock_handle.close()
     return record
 
 

@@ -68,7 +68,6 @@ subject: fix(test): validate commit artifact
 
 _PLAN_DOC = """---
 type: plan
-schema_version: 1
 intent_verb: add
 ---
 ## Summary
@@ -98,6 +97,8 @@ Type: file_change
 Files:
 - modify ralph/phases/execution.py
 Satisfies: AC-01
+Verify: pytest tests/test_phases_commit_planning_fix.py -q
+Expect: the focused planning-fix tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] ralph/phases/execution.py

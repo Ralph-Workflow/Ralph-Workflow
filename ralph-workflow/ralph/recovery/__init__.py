@@ -24,6 +24,11 @@ Main entry points:
 
 from __future__ import annotations
 
+from ralph.recovery._same_shape_retry_tracker import (
+    SameShapeRetryLoopError,
+    SameShapeRetryTracker,
+    fingerprint_from_mapping,
+)
 from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityEntry,
@@ -67,9 +72,12 @@ __all__ = [
     "FalloverEvent",
     "ReasonBackoffPolicy",
     "RecoveryController",
+    "SameShapeRetryLoopError",
+    "SameShapeRetryTracker",
     "UnavailabilityEntry",
     "UnavailabilityReason",
     "compute_backoff_ms",
+    "fingerprint_from_mapping",
     "is_retryable_without_budget",
     "seed_budget_registry",
 ]

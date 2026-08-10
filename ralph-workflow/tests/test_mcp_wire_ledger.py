@@ -18,6 +18,7 @@ from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._wire_ledger import (
     WIRE_LEDGER_RELPATH,
+    WireLedgerRecord,
     append_wire_record,
     verify_chain,
     wire_evidence_for,
@@ -114,6 +115,39 @@ def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
     lines = ledger_path.read_text(encoding="utf-8").splitlines()
     recorded_methods = [json.loads(line)["method"] for line in lines]
     for method, _params in _HANDLER_DICT_METHODS:
+        assert method in recorded_methods, f"no ledger row for {method}"
+
+
+#: S-2 (Evidence Provenance G2): the two notification methods are handled
+#: before the `handlers` dict in `_dispatch_request` and previously never
+#: reached the ledger at all.
+_NOTIFICATION_METHODS: tuple[str, ...] = (
+    "notifications/initialized",
+    "notifications/reset_wrapup",
+)
+
+
+def test_notification_methods_append_a_ledger_row(tmp_path: Path) -> None:
+    """S-2: notifications/initialized and notifications/reset_wrapup are chained too."""
+    server = McpServer(
+        session=_session("run-1", broker_secret="s3cr3t"),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    for msg_id, method in enumerate(_NOTIFICATION_METHODS, start=1):
+        request = JsonRpcRequest(jsonrpc="2.0", method=method, msg_id=str(msg_id), params={})
+        response, _ = server.handle_request(request, ServerState.RUNNING)
+        assert response is None  # notifications never carry a response
+
+    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    assert ledger_path.exists()
+    assert verify_chain(tmp_path, "s3cr3t") is True
+
+    import json
+
+    lines = ledger_path.read_text(encoding="utf-8").splitlines()
+    recorded_methods = [json.loads(line)["method"] for line in lines]
+    for method in _NOTIFICATION_METHODS:
         assert method in recorded_methods, f"no ledger row for {method}"
 
 
@@ -265,3 +299,50 @@ def test_append_wire_record_returns_none_without_secret(tmp_path: Path) -> None:
     )
     assert record is None
     assert not (tmp_path / WIRE_LEDGER_RELPATH).exists()
+
+
+def test_concurrent_appends_chain_safely(tmp_path: Path) -> None:
+    """Concurrent MCP server instances writing to the same ledger must not break the chain.
+
+    The restart-aware bridge tears down a previous server and starts a new one
+    in the same turn, and the smoke harness drives a sequence of
+    restart-aware turns. Two writers reading the same prior_hmac and both
+    appending would leave the on-disk chain with two children of the same
+    parent; ``verify_chain`` then fails at the first non-contiguous row, so
+    even a fully-correct run never grades ``WIRE``. The non-blocking
+    ``fcntl.flock`` in ``append_wire_record`` serializes the read + write
+    so every append sees the previous record's hmac as its prior_hmac.
+
+    Best-effort: a writer that loses the ``LOCK_NB`` race returns ``None``
+    (its frame is dropped; the surviving frames in the same run still
+    grade ``WIRE``). The chain MUST verify regardless of which writer
+    won the race.
+    """
+    import threading
+
+    barrier = threading.Barrier(2)
+    results: list[WireLedgerRecord | None] = []
+
+    def writer(label: str) -> None:
+        barrier.wait(timeout=10.0)
+        record = append_wire_record(
+            tmp_path,
+            method="tools/call",
+            tool_name=f"ralph_{label}",
+            params={"label": label},
+            run_id="run-1",
+            secret="s3cr3t",
+        )
+        results.append(record)
+
+    threads = [threading.Thread(target=writer, args=(f"t{idx}",)) for idx in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10.0)
+
+    successful = [result for result in results if result is not None]
+    assert successful, "At least one concurrent append must succeed"
+    assert verify_chain(tmp_path, "s3cr3t") is True
+    assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is True
+

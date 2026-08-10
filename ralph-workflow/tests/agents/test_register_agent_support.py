@@ -951,10 +951,18 @@ class TestPostRefactorContract:
             interactive=False,
         )
         # Materialise via the BuiltinAgentSpec path (with is_builtin=True).
+        # S-4 requires a complete display_capabilities tuple for built-ins.
+        from ralph.agents.display_capabilities import all_display_capabilities
+        from ralph.agents.display_capability_stance import DisplayCapabilityStance
+
+        complete_capabilities = tuple(
+            DisplayCapabilityStance.supported(c) for c in all_display_capabilities()
+        )
         spec_row = BuiltinAgentSpec(
             transport=AgentTransport.GENERIC,
             parser_factory=_TemplateParser,
             strategy_factory=_Strategy,
+            display_capabilities=complete_capabilities,
         )
         from_builtin = spec_row.to_support("builtin-agent")
 
@@ -966,6 +974,12 @@ class TestPostRefactorContract:
             "config",
             "is_builtin",
             "no_default_session_flag",
+            # S-6 (Evidence Provenance G6 / DoD 20): a general,
+            # transport-declared property replacing the literal
+            # `== AgentTransport.NANOCODER` session-ID exemption branch in
+            # smoke_plumbing.py. See AgentSupport's docstring.
+            "session_identifier_observable",
+            "display_capabilities",
             "_name_lower",
         }
         assert set(from_kwargs.__dataclass_fields__) == expected_fields, (

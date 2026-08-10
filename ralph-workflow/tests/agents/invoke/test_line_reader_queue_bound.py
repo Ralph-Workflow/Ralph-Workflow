@@ -216,7 +216,7 @@ class _FakePtyHandle:
         return (0, None)
 
 
-def _make_pty_ctx() -> SimpleNamespace:
+def _make_pty_ctx(*, workspace_path: object = None) -> SimpleNamespace:
     # PtyLineReader.__init__ reads every field via getattr(ctx, ...),
     # so SimpleNamespace is the established seam (see
     # test_claude_interactive_timeout_reason.py).
@@ -227,6 +227,7 @@ def _make_pty_ctx() -> SimpleNamespace:
         execution_strategy=None,
         liveness_probe=None,
         waiting_listener=None,
+        workspace_path=workspace_path,
     )
 
 

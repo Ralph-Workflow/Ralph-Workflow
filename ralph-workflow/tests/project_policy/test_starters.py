@@ -31,6 +31,32 @@ def test_security_policy_is_a_core_starter_with_threat_surfaces() -> None:
     assert "Threat surfaces" in markers.REQUIRED_HEADINGS["security-policy.md"]
 
 
+def test_testing_policy_requires_a_suite_admission_section() -> None:
+    """Every other testing rule obliges MORE coverage; "Suite admission" is
+    the only section that decides what must NOT become an automated test —
+    a perceptual judgment belongs in a human review lane, a third-party or
+    device-bound check in a named profile, an expiring-credential probe in
+    one-off evidence. Without it the policy is a one-way ratchet and suites
+    accrete tests that assert subjective constants or die when a key
+    expires, so the heading is REQUIRED: it must survive every amendment of
+    the project's customized policy."""
+    assert "Suite admission" in markers.REQUIRED_HEADINGS["testing-policy.md"]
+    content = starters.read_starter("testing-policy.md")
+    assert "## Suite admission" in content
+
+
+def test_verification_policy_requires_a_gate_lanes_section() -> None:
+    """"Wire it in, or delete it" is correct anti-rot policy but leaves a
+    check that CANNOT meet the default gate's constraints (live third-party
+    service, device matrix, long soak) with nowhere legitimate to live.
+    "Gate lanes" is that home, and it is only safe because it demands an
+    owner and a trigger for every named profile — so the heading is
+    REQUIRED rather than optional prose."""
+    assert "Gate lanes" in markers.REQUIRED_HEADINGS["verification-policy.md"]
+    content = starters.read_starter("verification-policy.md")
+    assert "## Gate lanes" in content
+
+
 def test_iter_starter_names_covers_all_core_and_conditional() -> None:
     names = set(starters.iter_starter_names())
     for filename in markers.CORE_POLICY_FILES:

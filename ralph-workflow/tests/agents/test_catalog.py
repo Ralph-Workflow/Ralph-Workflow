@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.catalog import AgentCatalog, default_catalog
+from ralph.agents.display_capabilities import DisplayCapability
+from ralph.agents.display_capability_stance import DisplayCapabilityStance
 from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.execution_state._factory import strategy_for_command
 from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
@@ -31,10 +33,31 @@ class _FakeStrategy(BaseExecutionStrategy):
     pass
 
 
+def _fake_capabilities() -> tuple[DisplayCapabilityStance, ...]:
+    """Return a complete, unimplemented-stance declaration for a test fake.
+
+    The S-4 contract requires every built-in to declare every
+    catalog-derived capability; fakes used in catalog tests carry an
+    honest ``UNIMPLEMENTED`` stance rather than a SUPPORTED one so
+    no operator-visible claim leaks from a test fixture into the
+    built-in matrix.
+    """
+    return tuple(
+        DisplayCapabilityStance.unimplemented(c, reason="test fake")
+        for c in (
+            DisplayCapability.SYNTAX_HIGHLIGHTING,
+            DisplayCapability.FILE_PREVIEW,
+            DisplayCapability.EDIT_DIFF,
+        )
+    )
+
+
 def _make_support(
     name: str,
     transport: AgentTransport = AgentTransport.GENERIC,
     cmd: str | None = None,
+    *,
+    is_builtin: bool = False,
 ) -> AgentSupport:
     return AgentSupport(
         name=name,
@@ -42,6 +65,8 @@ def _make_support(
         parser_factory=_FakeParser,
         strategy_factory=_FakeStrategy,
         config=AgentConfig(cmd=cmd if cmd is not None else name, transport=transport),
+        is_builtin=is_builtin,
+        display_capabilities=_fake_capabilities() if is_builtin else (),
     )
 
 
@@ -180,27 +205,12 @@ class TestReplaceBuiltin:
     def test_replace_builtin_swaps_entries_and_by_command(self) -> None:
         """``replace_builtin`` must update both ``_entries`` and ``_by_command``."""
         catalog = AgentCatalog()
-        original = _make_support("pi", transport=AgentTransport.PI, cmd="pi")
-        original = AgentSupport(
-            name="pi",
-            spec=AgentSpec(name="pi", transport=AgentTransport.PI),
-            parser_factory=_FakeParser,
-            strategy_factory=_FakeStrategy,
-            config=AgentConfig(cmd="pi", transport=AgentTransport.PI),
-            is_builtin=True,
-        )
+        original = _make_support("pi", transport=AgentTransport.PI, cmd="pi", is_builtin=True)
         catalog.add(original)
         assert catalog.get("pi") is original
         assert catalog.get("pi")  # by cmd too
 
-        new_support = AgentSupport(
-            name="pi",
-            spec=AgentSpec(name="pi-custom", transport=AgentTransport.PI),
-            parser_factory=_FakeParser,
-            strategy_factory=_FakeStrategy,
-            config=AgentConfig(cmd="pi-custom", transport=AgentTransport.PI),
-            is_builtin=True,
-        )
+        new_support = _make_support("pi", transport=AgentTransport.PI, cmd="pi-custom", is_builtin=True)
         catalog.replace_builtin("pi", new_support)
 
         # ``_entries['pi']`` must point at the override.
@@ -212,36 +222,19 @@ class TestReplaceBuiltin:
 
     def test_replace_builtin_rejects_non_builtin_replacement(self) -> None:
         catalog = AgentCatalog()
-        original = AgentSupport(
-            name="pi",
-            spec=AgentSpec(name="pi", transport=AgentTransport.PI),
-            parser_factory=_FakeParser,
-            strategy_factory=_FakeStrategy,
-            config=AgentConfig(cmd="pi", transport=AgentTransport.PI),
-            is_builtin=True,
-        )
+        original = _make_support("pi", transport=AgentTransport.PI, cmd="pi", is_builtin=True)
         catalog.add(original)
 
-        not_builtin = AgentSupport(
-            name="pi",
-            spec=AgentSpec(name="pi-custom", transport=AgentTransport.PI),
-            parser_factory=_FakeParser,
-            strategy_factory=_FakeStrategy,
-            config=AgentConfig(cmd="pi-custom", transport=AgentTransport.PI),
-            is_builtin=False,
+        not_builtin = _make_support(
+            "pi", transport=AgentTransport.PI, cmd="pi-custom", is_builtin=False
         )
         with pytest.raises(ValueError, match="is_builtin"):
             catalog.replace_builtin("pi", not_builtin)
 
     def test_replace_builtin_rejects_non_existing_entry(self) -> None:
         catalog = AgentCatalog()
-        replacement = AgentSupport(
-            name="nonexistent",
-            spec=AgentSpec(name="x", transport=AgentTransport.GENERIC),
-            parser_factory=_FakeParser,
-            strategy_factory=_FakeStrategy,
-            config=AgentConfig(cmd="x", transport=AgentTransport.GENERIC),
-            is_builtin=True,
+        replacement = _make_support(
+            "nonexistent", transport=AgentTransport.GENERIC, cmd="x", is_builtin=True
         )
         with pytest.raises(ValueError, match="non-existent"):
             catalog.replace_builtin("nonexistent", replacement)
@@ -251,13 +244,8 @@ class TestReplaceBuiltin:
         # Add a non-built-in registration and try to replace it.
         non_builtin = _make_support("custom-agent", transport=AgentTransport.GENERIC)
         catalog.add(non_builtin)
-        replacement = AgentSupport(
-            name="custom-agent",
-            spec=AgentSpec(name="custom-agent", transport=AgentTransport.GENERIC),
-            parser_factory=_FakeParser,
-            strategy_factory=_FakeStrategy,
-            config=AgentConfig(cmd="custom-agent", transport=AgentTransport.GENERIC),
-            is_builtin=True,
+        replacement = _make_support(
+            "custom-agent", transport=AgentTransport.GENERIC, cmd="custom-agent", is_builtin=True
         )
         with pytest.raises(ValueError, match="non-built-in"):
             catalog.replace_builtin("custom-agent", replacement)

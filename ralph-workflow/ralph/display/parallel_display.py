@@ -152,6 +152,12 @@ from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
 )
+from ralph.display.capability_observation import CapabilityObservation
+from ralph.display.capability_observation_recorder import (
+    CapabilityObservationRecorder,
+    capability_for_render,
+    infer_surface_for_preview,
+)
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.edit_preview import (
@@ -490,6 +496,7 @@ class ParallelDisplay:
         "_activity_router",
         "_block_open_mono",
         "_block_open_wall",
+        "_capability_recorder",
         "_clock",
         "_ctx",
         "_drop_last_warned",
@@ -548,6 +555,7 @@ class ParallelDisplay:
         is_quiet: bool = False,
         clock: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
+        capability_recorder: CapabilityObservationRecorder | None = None,
     ) -> None:
         # Re-validate at runtime: a duck-typed stand-in (e.g. test stub) is
         # permitted provided it exposes ``.console``. The strict type contract
@@ -566,6 +574,14 @@ class ParallelDisplay:
             display_context.terminal_background_hex
             if isinstance(display_context, DisplayContext)
             else None
+        )
+        # S-5: per-instance recorder of capability observations. Defaults
+        # to a fresh recorder so the smoke harness can query
+        # ``observed_capabilities`` without wiring extra dependencies;
+        # tests may inject a recorder to assert the observation shape
+        # without going through a full ParallelDisplay session.
+        self._capability_recorder: CapabilityObservationRecorder = (
+            capability_recorder if capability_recorder is not None else CapabilityObservationRecorder()
         )
         # PLAN.md S-7: one allocator per ParallelDisplay instance -- its
         # lifetime is the render session, matching G-6's "frame-indexed
@@ -2504,9 +2520,23 @@ class ParallelDisplay:
             self._watchdog_attention = value
 
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
+        # S-8 / C4: route through the shared-by-path registry so the
+        # display's per-unit overflow log and the reader-owned
+        # overflow log (constructed in
+        # ``_process_reader.py`` / ``_pty_line_reader.py``) are the
+        # same object. Two independently-constructed writers used to
+        # share the file path but neither lock nor ``_first_write``
+        # state, leading to truncation races between the two writers.
+        # ``drop_unit`` still expects to find the per-unit instance
+        # in ``self._overflow_logs`` so the existing close/flush
+        # bookkeeping keeps working; populate that mapping here.
+        from ralph.display.raw_overflow import get_or_create_raw_overflow_log
+
         if unit_id not in self._overflow_logs:
-            self._overflow_logs[unit_id] = RawOverflowLog(
-                self._workspace_root, unit_id, max_bytes=_MAX_OVERFLOW_FILE_BYTES
+            self._overflow_logs[unit_id] = get_or_create_raw_overflow_log(
+                self._workspace_root,
+                unit_id,
+                max_bytes=_MAX_OVERFLOW_FILE_BYTES,
             )
         return self._overflow_logs[unit_id]
 
@@ -2613,6 +2643,30 @@ class ParallelDisplay:
         )
         if preview is None:
             return
+        # S-5: record a capability observation at the single existing
+        # preview-production choke point. The capability is inferred
+        # from the preview's catalog surface name so the recorder
+        # stays transport-neutral -- no `if transport == AgentTransport.X`
+        # branching. ``payload_from_tool_event`` already maps tool
+        # names to ``PreviewPayload.operation``; ``infer_surface_for_preview``
+        # maps the operation to the catalog surface, and
+        # ``capability_for_render`` maps the surface to the
+        # operator-facing capability.
+        preview_input_dict = preview_input.get("input")
+        operation = "syntax_preview"
+        if isinstance(preview_input_dict, dict):
+            from ralph.display.preview_payload import payload_from_tool_event as _pfe
+
+            canonical = _pfe(tool_name, preview_input)
+            if canonical is not None:
+                operation = infer_surface_for_preview(preview, canonical.operation)
+        capability = capability_for_render(surface_name=operation, tool_name=tool_name)
+        if capability is not None:
+            self._capability_recorder.record(
+                CapabilityObservation(
+                    capability=capability, tool_name=tool_name, unit_id=unit_id
+                )
+            )
         path = ""
         payload = preview_input.get("input")
         if isinstance(payload, dict):
@@ -3350,6 +3404,22 @@ class ParallelDisplay:
             self._status_bar.stop()
         self.flush_blocks()
         self._flush_pending_tool_results()
+
+    @property
+    def capability_recorder(self) -> CapabilityObservationRecorder:
+        """Return the per-instance capability observation recorder.
+
+        The recorder exposes ``observed_capabilities()`` and
+        ``observations_for_capability(capability)`` so the smoke
+        harness can compare the selected ``AgentSupport``'s declared
+        capabilities with what actually rendered during the run --
+        the S-5 contract that turns a SUPPORTED capability into a
+        falsifiable claim.
+        """
+        return self._capability_recorder
+
+    def _stop_flush_rendered_writers(self) -> None:
+        """Flush any per-unit rendered-record writer that was not already collected."""
         # P0 (wt-028-display S-11 / AC-07): flush any per-unit
         # rendered-record writer that was not already collected by
         # ``drop_unit`` (e.g. a single-wave run whose drop_unit is
@@ -3727,6 +3797,14 @@ class ParallelDisplay:
             pw_parts.append(("prompt", strip_markup(orientation.prompt_path)))
         if orientation.workspace_root is not None:
             pw_parts.append(("workspace", strip_markup(orientation.workspace_root)))
+        if orientation.target_worktree_path is not None:
+            pw_parts.append(
+                (
+                    "target-worktree",
+                    f"{strip_markup(orientation.target_worktree_path)} "
+                    "(volatile; Ralph Workflow may snapshot and reset it)",
+                )
+            )
         agents_parts: list[tuple[str, str]] = []
         if orientation.developer_agent is not None:
             agents_parts.append(("developer", strip_markup(orientation.developer_agent)))
@@ -5601,12 +5679,21 @@ class ParallelDisplay:
         # S-23 (wt-028-display P1): close the overflow log AFTER
         # the streaming-block close so the buffered full payload
         # lands in the same handle drop_unit is about to close.
+        # S-8 (wt-02-agy-parsing C4): also drop the per-path registry
+        # entry so a re-spawned worker for the same unit_id gets a
+        # fresh ``RawOverflowLog`` (the closed handle above is no
+        # longer usable, and the registry short-circuit would have
+        # handed back the dead instance).
         overflow = self._overflow_logs.pop(unit_id, None)
         if overflow is not None:
             with contextlib.suppress(Exception):
                 overflow.flush()
             with contextlib.suppress(Exception):
                 overflow.close()
+            with contextlib.suppress(Exception):
+                from ralph.display.raw_overflow import _forget_raw_overflow_log
+
+                _forget_raw_overflow_log(str(overflow.path.resolve(strict=False)))
         # P0 (wt-028-display S-11 / AC-07): the rendered-record
         # writer is per-unit; ``drop_unit`` flushes the buffered
         # entries to ``.agent/raw/<safe_id>.rendered.log`` and

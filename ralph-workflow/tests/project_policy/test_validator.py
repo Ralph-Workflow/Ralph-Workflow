@@ -47,11 +47,18 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         "## Verification",
         "Real content.",
     ]
+    if filename == "testing-policy.md":
+        lines.append("")
+        lines.append("## Suite admission")
+        lines.append("Real content.")
     if filename == "verification-policy.md":
         lines.append("")
         lines.append("## Bypass detection")
         lines.append("Real content.")
         lines.append("RALPH-COMMAND: make bypass-audit")
+        lines.append("")
+        lines.append("## Gate lanes")
+        lines.append("Real content.")
     if filename == "linting-policy.md":
         lines.append("")
         lines.append("## Dead code — zero tolerance")

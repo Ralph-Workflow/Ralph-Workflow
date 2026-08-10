@@ -100,7 +100,7 @@ def _write_minimal_plan_artifacts(
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
     (root / ".agent" / "artifacts" / "plan.md").write_text(
-        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
+        f"---\ntype: plan\n---\n## Work\n### [S-1] Preserve {context}\nInspect the existing plan handoff.\nType: discovery\nLocation: .agent/artifacts/plan.md\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -113,7 +113,7 @@ def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") ->
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / ".plan.draft.md").write_text(
-        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
+        f"---\ntype: plan\n---\n## Work\n### [S-1] Preserve {context}\nInspect the existing plan handoff.\nType: discovery\nLocation: .agent/artifacts/plan.md\n",
         encoding="utf-8",
     )
 

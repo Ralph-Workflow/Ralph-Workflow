@@ -25,7 +25,10 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 def _default_config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}})
+    """Build the local-fleet fixture; remote freshness is covered separately."""
+    return UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": False}}
+    )
 
 
 def _stub_ff_environment(monkeypatch, root: Path) -> None:
@@ -144,6 +147,32 @@ def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
     assert actual is outcome
     assert config.general.auto_integrate_target == "main"
     assert integrate.call_args.args == (config, workspace_scope, state.rebase)
+
+
+def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> None:
+    """S-4: rejected-push retry reconciliation receives the boundary resolver."""
+    config = UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": True}}
+    )
+    def resolver(*_args: object) -> bool:
+        return True
+
+    state = RebaseState(last_push_status="non_fast_forward")
+    monkeypatch.setattr(auto_integrate, "pull_and_reconcile_target", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(auto_integrate, "branch_sha", lambda *_args: "head")
+    monkeypatch.setattr(auto_integrate, "get_head_sha", lambda *_args: "head")
+    received: list[object | None] = []
+    monkeypatch.setattr(
+        auto_integrate,
+        "retry_pending_remote_publish",
+        lambda *_args, **kwargs: received.append(kwargs.get("rebase_stop_resolver")) or None,
+    )
+
+    auto_integrate._boundary_freshness_outcome(
+        config, Path("/workspace"), "main", state, rebase_stop_resolver=resolver
+    )
+
+    assert received == [resolver]
 
 
 def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:

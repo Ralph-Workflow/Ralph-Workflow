@@ -525,7 +525,11 @@ def _install_recovery_seams(
     monkeypatch.setattr(recovery, "branch_sha", _branch_sha)
     monkeypatch.setattr(recovery, "is_ancestor", _is_ancestor)
     monkeypatch.setattr(recovery, "_refresh_target", _refresh)
-    monkeypatch.setattr(recovery, "fast_forward_target", lambda _root, _target, _sha: (True, ""))
+    monkeypatch.setattr(
+        recovery,
+        "fast_forward_target",
+        lambda _root, _target, _sha, **_kwargs: (True, ""),
+    )
     return events
 
 

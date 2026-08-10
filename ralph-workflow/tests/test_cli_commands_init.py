@@ -75,6 +75,58 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
 
 
 @pytest.mark.timeout_seconds(3)
+def test_init_warns_when_current_worktree_owns_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Initialization warns before Ralph may reclaim the target-owner worktree."""
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        init_module,
+        "target_worktree_lookup",
+        lambda _root, _target: ("found", tmp_path),
+    )
+    monkeypatch.setattr(
+        init_module,
+        "ensure_global_config",
+        lambda: pytest.fail("setup should not run before this assertion"),
+    )
+
+    with pytest.raises(pytest.fail.Exception):
+        init_module.init_command(template=None)
+
+    output = stream.getvalue()
+    assert "Auto-integration owns" in output
+    assert "snapshot" in output
+    assert "reset" in output
+    assert "uncommitted" in output
+
+
+def test_init_ownership_warning_uses_configured_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The volatile-worktree warning names the configured mainline, not main."""
+    observed: list[str] = []
+    monkeypatch.setattr(
+        init_module,
+        "_load_config_loader",
+        lambda: lambda *_args, **_kwargs: type(
+            "Config", (), {"general": type("General", (), {"auto_integrate_target": "release"})()}
+        )(),
+    )
+    monkeypatch.setattr(
+        init_module,
+        "target_worktree_lookup",
+        lambda _root, target: (observed.append(target) and "not-found", None),
+    )
+
+    init_module._emit_target_worktree_warning(
+        type("Display", (), {"emit_warning": lambda *_args: None})(), tmp_path
+    )
+
+    assert observed == ["release"]
+
+
 def test_try_load_registry_uses_the_current_workspace_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

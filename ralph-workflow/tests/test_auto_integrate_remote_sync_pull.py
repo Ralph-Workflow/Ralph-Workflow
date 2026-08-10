@@ -106,6 +106,23 @@ def test_disabled_returns_none_with_no_fetch(
     assert all("fetch" not in c for c in calls)
 
 
+def test_already_current_records_a_verified_freshness_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E1: a healthy equal-tip fetch is visible as a verified base."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+    from ralph.pipeline.auto_integrate_sync import REFRESH_ALREADY_CURRENT
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_ALREADY_CURRENT)
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.freshness_verdict == "verified"
+    assert out.freshness_source == "fetch"
+    assert out.last_remote_sync == "already current"
+
+
 def test_local_ahead_does_not_move_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -119,7 +136,9 @@ def test_local_ahead_does_not_move_target(
     )
     config = _config()
     out = remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
-    assert out is None
+    assert out is not None
+    assert out.freshness_verdict == "verified"
+    assert out.freshness_source == "shared local ref"
 
 
 def test_local_strictly_ahead_records_publishable_without_reconcile(
@@ -160,17 +179,24 @@ def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
-    calls: list[tuple[Path, str, str]] = []
+    def resolver(*_args: object) -> bool:
+        return True
 
-    def fake_reconcile(root: Path, target: str, remote: str) -> tuple[bool, str]:
-        calls.append((root, target, remote))
-        return True, ""
+    calls: list[tuple[Path, str, str, object | None]] = []
+
+    def fake_reconcile(
+        root: Path, target: str, remote: str, **kwargs: object
+    ) -> reconcile.ReconciliationOutcome:
+        calls.append((root, target, remote, kwargs.get("rebase_stop_resolver")))
+        return reconcile.ReconciliationOutcome(True, "")
 
     monkeypatch.setattr(reconcile, "reconcile_target_onto_remote", fake_reconcile)
-    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+    out = remote_sync.pull_and_reconcile_target(
+        _config(), Path("/repo"), "main", rebase_stop_resolver=resolver
+    )
     assert out is not None
     assert out.last_remote_sync == remote_sync.REMOTE_RECONCILED
-    assert calls == [(Path("/repo"), "main", "origin")]
+    assert calls == [(Path("/repo"), "main", "origin", resolver)]
 
 
 def test_remote_strictly_ahead_records_reconciled(
@@ -187,7 +213,7 @@ def test_remote_strictly_ahead_records_reconciled(
 
     called: list[str] = []
 
-    def fake_ff(_root: Path, target: str, _remote: str) -> None:
+    def fake_ff(_root: Path, target: str, _remote: str, _config: object) -> None:
         called.append(target)
 
     monkeypatch.setattr(mod, "_fast_forward_local_target_to_remote", fake_ff)
@@ -248,6 +274,88 @@ def test_interval_zero_fetches_every_seam(
     )
 
 
+def test_suppressed_refresh_is_explicitly_unverified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E6/AC-6: throttle suppression cannot masquerade as a fresh base."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "_throttle_allows_pull", lambda *a, **kw: False)
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.freshness_verdict == "unverified"
+    assert out.freshness_source == "suppressed probe"
+    assert out.freshness_safe is True
+
+
+def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E9: failed target reconciliation is not a base a feature may use."""
+    from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
+    monkeypatch.setattr(
+        reconcile,
+        "reconcile_target_onto_remote",
+        lambda *a, **kw: reconcile.ReconciliationOutcome(False, "conflicted"),
+    )
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.freshness_safe is False
+    assert out.freshness_verdict == "unsafe"
+    assert out.last_reason == "conflicted"
+
+
+def test_cleanly_aborted_target_reconcile_conflict_degrades_without_blocking_local_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: a proven clean abort releases ownership and leaves local landing eligible."""
+    from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
+    monkeypatch.setattr(
+        reconcile,
+        "reconcile_target_onto_remote",
+        lambda *a, **kw: reconcile.ReconciliationOutcome(
+            reconciled=False,
+            reason="conflicted without a presentation marker",
+            cleanly_aborted=True,
+        ),
+    )
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.last_remote_sync == remote_sync.REMOTE_PULL_FAILED
+    assert out.freshness_safe is True
+    assert out.freshness_verdict == "degraded"
+    assert out.last_reason == "conflicted without a presentation marker"
+
+
+def test_rebase_state_preserves_structured_reclamation_metadata() -> None:
+    """S-4: reclamation facts survive checkpoint serialization without parsing warnings."""
+    from ralph.pipeline.rebase_state import RebaseState
+
+    restored = RebaseState.model_validate_json(
+        RebaseState(
+            reclaimed_worktree_path="/repo/main",
+            reclaim_snapshot_ref="refs/ralph-reclaim/main/example",
+            reclaim_discarded_path_count=3,
+        ).model_dump_json()
+    )
+
+    assert restored.reclaimed_worktree_path == "/repo/main"
+    assert restored.reclaim_snapshot_ref == "refs/ralph-reclaim/main/example"
+    assert restored.reclaim_discarded_path_count == 3
+
+
 def test_unreachable_remote_degrades_without_failing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -282,6 +390,8 @@ def test_unknown_remote_records_skip_not_crash(
     out = remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
     assert out is not None
     assert out.last_remote_sync == remote_sync.REMOTE_NO_REMOTE
+    assert out.freshness_verdict == "verified"
+    assert out.freshness_source == "shared local ref"
 
 
 def test_remote_failure_does_not_arm_throttle(

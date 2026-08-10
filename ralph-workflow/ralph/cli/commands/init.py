@@ -48,6 +48,7 @@ from ralph.onboarding import (
     getting_started_pointer_sentence,
     resolve_starter_template,
 )
+from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -148,6 +149,7 @@ def init_command(
     auto_seed_default_gitignore(target)
     if (target / ".git").exists():
         auto_seed_default_git_exclude(target)
+    _emit_target_worktree_warning(display, target)
 
     if config_path is not None and config_path.exists():
         newly_enabled = enable_detected_agents(config_path)
@@ -202,6 +204,21 @@ def init_command(
                 failures=failures,
                 display_context=ctx,
             )
+
+
+def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> None:
+    """Explain the configured target-worktree ownership contract when resolvable."""
+    configured_target = "main"
+    try:
+        config = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
+        configured_target = config.general.auto_integrate_target
+    except Exception:
+        pass
+    _verdict, owner = target_worktree_lookup(target, configured_target)
+    if owner is not None:
+        display.emit_warning(
+            f"Auto-integration owns {owner}: Ralph Workflow may snapshot and reset uncommitted content there."
+        )
 
 
 def _try_load_registry() -> AgentRegistry | None:

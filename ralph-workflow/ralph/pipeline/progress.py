@@ -157,6 +157,9 @@ def advance_phase(
     }
 
     phase_def = policy.phases.get(target_phase)
+    updates["execution_cycle_charged"] = (
+        False if phase_def is not None and phase_def.role == "execution" else state.execution_cycle_charged
+    )
     is_commit_phase = phase_def is not None and phase_def.role == "commit"
 
     if is_commit_phase:
@@ -190,16 +193,76 @@ def apply_analysis_loopback(
     *,
     max_iterations: int,
     review_outcome: str | None = None,
+    increment: bool = True,
 ) -> PipelineState:
     """Apply canonical loopback bookkeeping for an analysis phase."""
-    clamped = AnalysisLoopCounter(
-        state.get_loop_iteration(iteration_field),
-        max_iterations,
-    ).next_completed
-    result = advanced_state.with_loop_iteration(iteration_field, clamped)
+    result = advanced_state
+    if increment:
+        clamped = AnalysisLoopCounter(
+            state.get_loop_iteration(iteration_field),
+            max_iterations,
+        ).next_completed
+        result = result.with_loop_iteration(iteration_field, clamped)
     if review_outcome is not None:
         result = result.copy_with(review_outcome=review_outcome)
     return result
+
+
+def resolve_execution_cycle_loop_counter(
+    phase: str,
+    policy: PipelinePolicy,
+) -> str | None:
+    """Return the analysis counter for an execution phase's own retry loop.
+
+    The relationship is policy-defined: follow successful transitions until an
+    analysis phase loops back to the originating execution phase. This leaves
+    unrelated analysis loops and custom counter names untouched.
+    """
+    visited: set[str] = set()
+    current: str | None = phase
+    while current is not None and current not in visited:
+        visited.add(current)
+        phase_def = policy.phases.get(current)
+        if phase_def is None:
+            return None
+        loop_policy = phase_def.loop_policy
+        if (
+            phase_def.role == "analysis"
+            and loop_policy is not None
+            and phase_def.transitions.on_loopback == phase
+        ):
+            return loop_policy.iteration_state_field
+        current = phase_def.transitions.on_success
+    return None
+
+
+def apply_execution_cycle_outcome(
+    state: PipelineState,
+    advanced_state: PipelineState,
+    *,
+    policy: PipelinePolicy,
+) -> PipelineState:
+    """Charge one declared analysis-loop cycle for a terminal execution outcome."""
+    iteration_field = resolve_execution_cycle_loop_counter(state.phase, policy)
+    if iteration_field is None:
+        return advanced_state
+    return advanced_state.with_loop_iteration(
+        iteration_field,
+        AnalysisLoopCounter(
+            state.get_loop_iteration(iteration_field),
+            resolve_analysis_cap(iteration_field, policy),
+        ).next_completed,
+    ).copy_with(execution_cycle_charged=True)
+
+
+def analysis_loopback_is_already_charged(
+    phase: str,
+    state: PipelineState,
+    policy: PipelinePolicy,
+) -> bool:
+    """Return whether this analysis loop was entered by an execution-charged cycle."""
+    phase_def = policy.phases.get(phase)
+    return state.execution_cycle_charged and phase_def is not None and phase_def.loop_policy is not None
 
 
 def apply_commit_outcome(

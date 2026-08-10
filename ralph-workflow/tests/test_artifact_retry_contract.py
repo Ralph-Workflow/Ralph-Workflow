@@ -111,7 +111,6 @@ _PHASE_TO_HANDLER = {
 _VALID_PLAN_MARKDOWN = """\
 ---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Test plan for the retry contract.
@@ -135,6 +134,8 @@ Type: file_change
 Files:
 - modify src/a.py
 Satisfies: AC-01
+Verify: pytest tests/test_artifact_retry_contract.py -q
+Expect: the artifact retry-contract tests pass with exit code 0
 
 ### [S-2] Verify the test change
 Run the focused retry-contract test after updating the fixture.
@@ -206,7 +207,10 @@ type: development_analysis_decision
 status: completed
 ---
 ## Summary
-- [SUM-1] The implementation matches the plan.
+- [SUM-1] No counterexample found for the fixed plan criteria. Evidence: focused command output was inspected.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the fixed plan criteria hold. Expected observation: focused command output observes them. Verdict: met. Evidence: focused command output was inspected. Location: tests/test_artifact_retry_contract.py.
 """
 
 _PHASE_VALID_ARTIFACT: dict[str, str] = {

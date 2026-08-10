@@ -22,7 +22,7 @@ class ArtifactProofPolicy(_FrozenPolicyModel):
     require_analysis_proof: bool = Field(
         default=True,
         description=(
-            "When True, validate analysis_items_addressed coverage for prior how_to_fix "
-            "items when analysis feedback exists."
+            "When True, validate analysis_items_addressed coverage for prior localized "
+            "analysis findings when analysis feedback exists."
         ),
     )

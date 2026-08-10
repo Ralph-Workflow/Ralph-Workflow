@@ -94,7 +94,18 @@ def _make_fake_smoke_registry() -> object:
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
+    class _FakeCatalog:
+        def get(self, _name: str) -> None:
+            # No support declared for these tests' synthetic agent names --
+            # matches the real ``AgentCatalog.get``'s "nobody has said"
+            # contract (S-3's Branch A of ``_detect_capability_breaks``
+            # grades a ``None`` support as ungraded, never crashes).
+            return None
+
     class FakeRegistry:
+        def __init__(self) -> None:
+            self.catalog = _FakeCatalog()
+
         @classmethod
         def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
             return cls()

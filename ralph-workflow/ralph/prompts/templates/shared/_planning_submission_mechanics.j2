@@ -1,21 +1,13 @@
 ## Plan submission
 
-The plan format guide at `.agent/artifact-formats/plan.md` offers a useful
-default structure; it does not require a uniform document. A step may use
-`### [S-n] Title`; IDs are stable and never renumbered when your plan needs
-them. Use `Type: verify` for a test-running step when useful; step types are
-preserved verbatim. `PLAN001` is the only blocking plan diagnostic: the submission is empty, too short, or plainly
-not a plan. Warnings and info are advice. Record a normal, reasoned decision
-to proceed past advice under `## Validation Overrides`; tool results retain
-those reasons.
+Submit one executor-ready Markdown plan. Use stable `### [S-n] Title` steps: IDs are stable and never renumbered. Each step states its purpose and `Type`: `file_change`, `file_create`, `file_delete`, `refactor`, `config_change`, `discovery`, or `verify`; use `Type: verify` for a proof-only step. Fields are preserved verbatim only when they satisfy this contract.
+
+Work types require `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step requires `Verify` plus `Expect` or `Location`; a `discovery` step requires `Verify`, `Evidence`, or `Location`. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`; repair validator findings directly. The only step-less plan is `noop: true`.
+
+Step IDs are stable and never renumbered once assigned; a later revision keeps `[S-3]` as `[S-3]`, and every `Depends on:`/`Satisfies:` reference stays valid. When repairing a diagnostic, rewrite only the field the diagnostic names and leave the rest of the step preserved verbatim.
 
 Submit a complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 (`artifact_type="plan"`). For a similar revision, use
-{{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} on the staged draft; it resubmits once
-validates. Use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} with `mode="replace_all"`
-only for a wholesale rewrite. {{GET_MD_DRAFT_TOOL_REFERENCE}} shows the draft,
-and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} submits an assembled staged draft.
-Staging alone does not persist a plan: a draft that differs from the submitted
-document blocks phase completion until you resubmit it or deliberately discard
-it with `ralph_discard_md_draft`. Do not write canonical plan files directly. After a valid receipt, call
-{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action.
+{{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}; it resubmits once valid. Staging is not
+submission. After a valid receipt—or a validated promoted fallback receipt—call
+{{DECLARE_COMPLETE_TOOL_REFERENCE}} as the final explicit action.

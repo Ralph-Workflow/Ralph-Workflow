@@ -241,7 +241,7 @@ def test_lifecycle_hook_result_dataclass_defaults() -> None:
     assert result.skipped_reason is None
 
 
-def test_runner_wires_pre_post_refresh_around_development_agent() -> None:
+def test_runner_wires_pre_post_refresh_around_development_agent(tmp_path: Path) -> None:
     """AC-04 / runner-level integration: a development drain must
     observe exactly one ``before`` refresh event before invocation
     and one ``after`` refresh event after invocation, while a
@@ -253,8 +253,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent() -> None:
     order of the hooks is not asserted because the contract is the
     pre/invocation/post ordering; implementation details are not.
     """
-    from pathlib import Path
-
     from ralph.mcp.explore import lifecycle as lifecycle_module
     from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
     from ralph.mcp.explore.lifecycle import DEFAULT_HOOK_TIMEOUT_MS
@@ -282,11 +280,14 @@ def test_runner_wires_pre_post_refresh_around_development_agent() -> None:
     lifecycle_module.__dict__["before_agent_refresh"] = _spy_before
     lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
     try:
-        # Use a tmp_path-equivalent: a hidden scratch dir under
-        # /tmp. The ExploreIndex handle is built from the
-        # underlying ExploreStore directly so the test does not
-        # depend on workspace_root semantics.
-        workspace_root = Path("/tmp").resolve()
+        # Isolated scratch dir from pytest's ``tmp_path`` fixture (not
+        # the real, machine-shared ``/tmp``): a hardcoded ``Path("/tmp")``
+        # here previously collided with any other live Ralph process on
+        # the same host writing to ``/tmp/.agent/ralph-explore``, causing
+        # sqlite lock contention and a spurious 1s timeout. The
+        # ExploreIndex handle is built from the underlying ExploreStore
+        # directly so the test does not depend on workspace_root semantics.
+        workspace_root = tmp_path.resolve()
         store = ExploreStore(workspace_root / ".agent" / "ralph-explore")
         try:
             handle = build_sqlite_index_handle(store)

@@ -177,6 +177,122 @@ def test_a_crash_in_the_display_does_not_escape_either(
     assert exit_code == _EXIT_SUCCESS
 
 
+def test_a_failing_capture_restore_does_not_block_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The out-of-graph boundary's restore MUST swallow and log on failure.
+
+    The policy preflight lives at the OUT-OF-GRAPH boundary: it shares
+    :func:`execute_agent_effect` with the pipeline runner, but the
+    pipeline runner's drain of the session id / retry intent thread-locals
+    does not run for policy invocations. The boundary contextmanager
+    :func:`cli_integration._capture_pipeline_state` owns the
+    snapshot/restore discipline, and the restore is wrapped in
+    swallow-and-log so a breaking restore never blocks the run.
+
+    The test discriminates in both directions. Before the S-4 fix the
+    BLOCKED handback has no such boundary, so the raising fake is never
+    called and the first assertion fails. A ``finally`` that restores
+    without swallowing lets the raise reach the module-level fault
+    boundary at ``cli_integration.py:745-757``, and the third assertion
+    fails.
+
+    The fake replaces ``cli_integration.set_last_captured_session_id``
+    (the module-level name the restore calls into) with a function that
+    raises, counts invocations, and emits a loguru DEBUG record so the
+    assertion can prove the failure was reported, not silently dropped.
+
+    To reach the boundary, the test patches ``execute_agent_effect`` to
+    publish a session id and short-circuit to ``AGENT_SUCCESS`` so the
+    production ``_make_production_invoke_agent`` runs end-to-end through
+    the boundary, and uses a real bundle so the dispatch helper enters
+    the pipeline-run path.
+    """
+    from loguru import logger as _loguru_logger
+
+    from ralph.pipeline import effect_executor as effect_executor_module
+    from ralph.pipeline._runner_session import set_last_captured_session_id
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.policy.loader import default_dir, load_policy
+
+    debug_records: list[str] = []
+
+    def _record_sink(message: object) -> None:
+        rendered = str(message.record["message"]) if hasattr(message, "record") else str(message)
+        debug_records.append(rendered)
+
+    sink_id = _loguru_logger.add(_record_sink, level="DEBUG", format="{message}")
+
+    raise_calls: list[str] = []
+
+    def raising_set_last_captured_session_id(session_id: str | None) -> None:
+        raise_calls.append(session_id if session_id is not None else "")
+        raise RuntimeError("capture restore is broken")
+
+    def seed_publish_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        *args: object,
+        **opts: object,
+    ) -> PipelineEvent:
+        set_last_captured_session_id("policy-session-id-leaked")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        cli_integration,
+        "set_last_captured_session_id",
+        raising_set_last_captured_session_id,
+    )
+    monkeypatch.setattr(
+        effect_executor_module,
+        "execute_agent_effect",
+        seed_publish_execute_agent_effect,
+    )
+
+    bundle = load_policy(default_dir())
+    load_result = run_module._LoadResult(
+        config=UnifiedConfig(),
+        workspace_scope=WorkspaceScope(
+            root="/test/policy-capture-restore",
+            allowed_roots=["/test/policy-capture-restore"],
+        ),
+        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
+        policy_bundle=bundle,
+        run_id="test-run-id",
+    )
+
+    try:
+        emitted: list[str] = []
+        rc = cli_integration.run_project_policy_readiness(
+            load_result=load_result,
+            display_context=make_display_context(),
+            workspace_factory=MemoryWorkspace,
+            emit_factory=emitted.append,
+            is_tty=lambda: False,
+        )
+    finally:
+        _loguru_logger.remove(sink_id)
+
+    raise_calls_after_run = list(raise_calls)
+    assert raise_calls_after_run, (
+        "the raising set_last_captured_session_id fake was never called; "
+        "the run did not exercise the out-of-graph boundary"
+    )
+    delete_records = [r for r in debug_records if "capture restore is broken" in r]
+    assert delete_records, (
+        f"the restore failure was not logged at DEBUG level: {debug_records!r}"
+    )
+    assert rc == _EXIT_SUCCESS, (
+        f"a failing capture restore must not block the run; got rc={rc}"
+    )
+    assert not any("failed unexpectedly" in line for line in emitted), (
+        f"the injected restore failure reached the module fault boundary: "
+        f"{emitted!r}"
+    )
+
+
 def test_keyboard_interrupt_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
     """The fault boundary catches Exception, deliberately NOT BaseException.
     Ctrl-C must still stop the program."""

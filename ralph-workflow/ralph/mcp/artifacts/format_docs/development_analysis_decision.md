@@ -1,14 +1,10 @@
 # development_analysis_decision artifact format
 
-You are reporting the outcome of a development analysis review: whether the
-implementation is acceptable, needs changes, or must be redone. Author
-markdown and submit with `ralph_submit_md_artifact`
+Report whether each criterion fixed by the request and plan is met. Submit
+markdown with `ralph_submit_md_artifact`
 (`artifact_type: development_analysis_decision`).
 
-See the complete sample artifact — valid format and a model of the craft:
-`.agent/artifact-formats/examples/development_analysis_decision.md`
-
-## Complete minimal example (completed)
+## Completed example
 
 ```markdown
 ---
@@ -18,10 +14,14 @@ status: completed
 
 ## Summary
 
-- [SUM-1] Implementation matches the plan and all verification passes.
+- [SUM-1] No counterexample was found for the fixed criteria.
+
+## Criterion Verdicts
+
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: met. Evidence: `pytest tests/test_feature.py -q` reports 12 passed. Location: tests/test_feature.py:42.
 ```
 
-## Complete example (request_changes)
+## Request-changes example
 
 ```markdown
 ---
@@ -31,42 +31,34 @@ status: request_changes
 
 ## Summary
 
-- [SUM-1] The implementation still needs revision.
+- [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
 
-- [DA-001] Running `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` reports `test_analysis_duplicate_status_diagnostic_names_every_accepted_value` failing because the duplicate-status diagnostic omits the accepted status vocabulary.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
 
-## How To Fix
+## Criterion Verdicts
 
-- [DA-001] Update the duplicate-status diagnostic to list every accepted status, then rerun `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` until `test_analysis_duplicate_status_diagnostic_names_every_accepted_value` passes.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
 ```
-
-## Frontmatter
-
-- `type` — required; `development_analysis_decision`.
-- `status` — required and closed: `completed`, `request_changes`, or `failed`.
-  Any other value, including `done` or `wrong`, is a hard error. The
-  diagnostic names all three accepted values; correct it and resubmit.
 
 ## Sections
 
-- `## Summary` — required; exactly one item.
-- `## What Came Up Short` — one item per gap; required (non-empty) when
-  status is `request_changes` or `failed`, omitted when `completed`.
-- `## How To Fix` — one concrete remediation per item; same
-  required/omitted rule. Give each gap the SAME stable ID in both sections
-  (e.g. `DA-001` in `## What Came Up Short` and `## How To Fix`); that ID is
-  what the next development result cites in `## Analysis Items Addressed`,
-  so keep IDs unique and stable.
-  The two sections must form a one-to-one mapping with the same stable ID for
-  each gap and fix; missing, extra, or mismatched IDs are rejected.
+- `## Summary` is required and has exactly one item.
+- `## Criterion Verdicts` is required and non-empty for every decision. Each
+  item has a unique `DA-###` ID and `Criterion:`, `Expected observation:`,
+  `Verdict:`, non-empty `Evidence:`, and non-empty `Location:` fields. Every
+  non-met verdict has a same-ID mirror in `## What Came Up Short`.
+- `## What Came Up Short` is required and non-empty for `request_changes` and
+  `failed`; it mirrors localized non-met criterion verdicts and is omitted for
+  `completed`.
+- `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
+  stable finding ID as its closure reference, not a remedy authored by the
+  verifier.
 
-## Hard errors vs warnings
+`status` is `completed`, `request_changes`, or `failed`. `met` means no
+counterexample was found. `not evaluable` requires `failed` rather than
+completion.
 
-Hard errors: missing or multiple Summary items; `request_changes`/`failed`
-without non-empty What Came Up Short and How To Fix; wrong `type`; duplicate
-item IDs; any grammar violation; or a `status` outside `completed`,
-`request_changes`, and `failed`. A `completed` decision that includes either
-remediation section is a hard error. Remediation sections with missing, extra,
-or mismatched IDs are also hard errors.
+See `.agent/artifact-formats/examples/development_analysis_decision.md` for the
+validator-backed complete example.

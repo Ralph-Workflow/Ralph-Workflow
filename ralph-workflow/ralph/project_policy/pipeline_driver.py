@@ -36,7 +36,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ralph.project_policy import analysis, cache, remediation, validators
+from ralph.project_policy import analysis, remediation, validators
 from ralph.project_policy.models import PolicyFinding, ReadinessResult, ReadinessStatus
 from ralph.project_policy.pipeline_graph import (
     DEFAULT_ANALYSIS_CAP,
@@ -256,7 +256,15 @@ def _finish(
             "project-policy-readiness: analysis approved but the validator still reports findings",
         )
 
-    cache.write_cache(workspace, stack, ReadinessStatus.READY)
+    # Cache write is owned by the OUTER boundary in
+    # ``_finalize_ready_state`` (cli_integration.py) so the cached
+    # signature is taken over the tree the run actually leaves
+    # behind -- after ``agents_md.condense_placeholder_block`` and
+    # the auto-commit. Writing here would race those post-READY
+    # mutations and produce a stale cache signature that flunks
+    # the very next preflight into a full re-validation. The
+    # deterministic re-validation above stays the gate that decides
+    # READY; only the write moves.
     emit("project-policy-readiness: ready (validator clean, analysis approved)")
     return ReadinessResult(
         status=ReadinessStatus.READY,

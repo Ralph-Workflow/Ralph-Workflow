@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: agent-policy.md -->
 
 # Agent Policy
@@ -142,4 +142,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`

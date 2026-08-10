@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
 from ralph.display.completion_summary import (
@@ -207,6 +208,27 @@ def test_format_recovered_states_reason() -> None:
     )
     assert "recovered" in msg.lower()
     assert _ALREADY_FF_REASON in msg
+
+
+@pytest.mark.parametrize(
+    ("verdict", "expected"),
+    [
+        ("verified", "[base: verified-fresh]"),
+        ("degraded", "[base: degraded]"),
+        ("unverified", "[base: unverified]"),
+    ],
+)
+def test_freshness_rendering_distinguishes_the_three_operator_classes(
+    verdict: str, expected: str
+) -> None:
+    """S-5: fetch proof, fail-open degradation, and suppression stay legible."""
+    from ralph.display.auto_integrate_message import format_auto_integrate_message
+
+    message = format_auto_integrate_message(
+        "rebased", "main", None, fast_forwarded=True, freshness_verdict=verdict
+    )
+
+    assert expected in message
 
 
 def test_format_unknown_verb_returns_bare_phrase_without_double_prefix() -> None:

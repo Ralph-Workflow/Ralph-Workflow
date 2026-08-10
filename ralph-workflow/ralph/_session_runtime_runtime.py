@@ -203,10 +203,19 @@ class ManagedAgentSessionRuntime:
         try:
             master_prompt_file = None
             if request.master_prompt_name is not None:
+                # G3/S-3 (Evidence Provenance C1): thread the agent's
+                # transport into the materialized master prompt so an
+                # AGY-shaped managed session gets the call_mcp_tool
+                # dispatcher hint, exactly like every other master-prompt
+                # call site. ManagedAgentSessionRequest has no worker-
+                # namespace concept (confirmed: zero matches for it on that
+                # dataclass), so None is the correct 4th positional value.
                 master_prompt_file = runtime_deps.materialize_master_prompt(
                     workspace_root,
                     request.master_prompt_name,
                     request.default_product_criteria,
+                    None,
+                    agent_config.transport,
                 )
             return cls(
                 config=config,

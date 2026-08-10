@@ -296,8 +296,10 @@ def _resolve_opencode_part_tool_call(
     :class:`~ralph.agents.idle_watchdog.repetition_tracker.RepetitionTracker`
     like one identical call repeated five times. The watchdog then fires
     ``REPEATED_IDENTICAL_TOOL_CALL`` and kills a healthy agent mid-run --
-    observed live against OpenCode 1.17.15 with
-    ``ralph smoke-interactive-opencode``.
+    observed live against the OpenCode CLI (re-measured 2025-11-19 with
+    ``opencode 1.18.14`` via
+    ``tests/display/_fixtures/opencode_wire_provenance.md``; the original
+    observation was against 1.17.15).
 
     ``callID`` is deliberately NOT part of the fingerprint: it is unique per
     call, so including it would make every call distinct and disable the

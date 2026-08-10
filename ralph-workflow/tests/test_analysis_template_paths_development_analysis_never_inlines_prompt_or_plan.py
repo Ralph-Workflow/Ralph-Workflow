@@ -91,10 +91,7 @@ class TestDevelopmentAnalysisNeverInlinesPromptOrPlan:
         rendered = _render_development_analysis(tmp_path)
         assert "Read the complete plan from file at" in rendered
 
-    def test_latest_artifact_body_appears_in_rendered_or_has_path_reference(
-        self, tmp_path: Path
-    ) -> None:
+    def test_implementer_artifact_is_excluded_from_rendered_prompt(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis(tmp_path)
-        has_inline = "Done." in rendered
-        has_path = ".agent/artifacts/development_result.md" in rendered
-        assert has_inline or has_path, "LATEST ARTIFACT must be present (inline or path ref)"
+        assert "Done." not in rendered
+        assert ".agent/artifacts/development_result.md" not in rendered

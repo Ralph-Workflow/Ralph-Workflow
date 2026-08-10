@@ -51,6 +51,7 @@ from typing import Any
 import pytest
 
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import auto_integrate_recovery as recovery
 from ralph.pipeline.auto_integrate import (
     IntegrationRecord,
     recover_incomplete_integration,
@@ -1263,6 +1264,39 @@ def test_integrate_once_propagates_terminal_violation_on_exception_path(
 
 
 @pytest.mark.timeout_seconds(20)
+def test_recovery_honors_target_reclaim_opt_out(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """S-3 regression: recovery must retain a dirty target when reclaiming is disabled."""
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        integrated_feature_sha="c" * 40,
+    )
+    monkeypatch.setattr(
+        recovery,
+        "fast_forward_target",
+        lambda *_args, **kwargs: (False, str(kwargs["reclaim_target_worktree"])),
+    )
+    monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda *_args: None)
+
+    outcome = recovery._land_and_reconcile(
+        tmp_path,
+        record,
+        "c" * 40,
+        None,
+        UnifiedConfig.model_validate({"general": {"auto_integrate_reclaim_target_worktree": False}}),
+    )
+
+    assert outcome.recovery_record_retained is True
+    assert outcome.last_reason is not None
+    assert "False" in outcome.last_reason
+
+
 def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     tmp_git_repo: Path,
 ) -> None:

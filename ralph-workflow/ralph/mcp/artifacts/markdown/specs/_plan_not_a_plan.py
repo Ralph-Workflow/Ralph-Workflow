@@ -1,9 +1,7 @@
-"""Closed-list detector for the 'is this a plan?' gate.
+"""Detector for text that is not a plan.
 
-The plan validator may raise an error only when the document is
-recognizably not a plan. The closed list lives in this module so the
-detection logic stays reviewable in one place and the rest of the
-validator never has to re-derive what counts.
+PLAN001 identifies empty, truncated, or misrouted submissions before the
+mandatory plan contract validates executor-ready steps.
 
 Closed-list classes:
 
@@ -27,7 +25,6 @@ zero-content plan.
 from __future__ import annotations
 
 import re
-from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
@@ -457,47 +454,12 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
 
 
 def apply_plan_severity_policy(diagnostics: list[Diagnostic]) -> None:
-    """Make ``PLAN001`` the plan spec's sole blocking diagnostic.
+    """Keep plan-contract diagnostics blocking.
 
-    A downstream consumer can recover from malformed markdown, unknown
-    fields, and incomplete structure by reading the submitted text; it cannot
-    recover when no plan exists. Therefore every other plan finding is advice.
-    This policy is invoked only by ``PLAN_SPEC`` and cannot affect other
-    artifact types.
+    A plan is the executor's instruction set. Invalid structure, references,
+    and completion evidence must be repaired before the pipeline can proceed.
     """
-    for index, diagnostic in enumerate(diagnostics):
-        if diagnostic.severity == "error" and diagnostic.rule_id != RULE_ID:
-            diagnostics[index] = replace(
-                diagnostic,
-                severity="warning",
-                message=_reword_as_advisory(diagnostic),
-            )
-
-
-def _reword_as_advisory(diagnostic: Diagnostic) -> str:
-    """Convert a blocking-severity message to advisory cost-named wording.
-
-    The blocking convention is ``<what>; blocking because <consumer>; resolve by <fix>``.
-    The advisory convention is ``<what>; the run cost is <cost>; resolve by <fix>``.
-    A diagnostic that lacks the blocking phrase already follows some
-    other convention; pass it through unchanged so the policy does not
-    invent text where the original author left none.
-    """
-    message = diagnostic.message
-    blocking_marker = "blocking because "
-    resolve_marker = "; resolve by "
-    blocking_index = message.find(blocking_marker)
-    resolve_index = message.find(resolve_marker)
-    if blocking_index >= 0 and resolve_index >= blocking_index:
-        what = message[:blocking_index].rstrip(" ;")
-        fix = message[resolve_index + len(resolve_marker) :]
-    else:
-        what = message.rstrip(".")
-        fix = "repairing the noted markdown or recording an override with the reason"
-    return (
-        f"{what}; the run cost is canonical plan mapping may omit or misread "
-        f"this part of the plan; resolve by {fix}"
-    )
+    del diagnostics
 
 
 __all__ = [

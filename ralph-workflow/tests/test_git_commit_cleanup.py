@@ -41,6 +41,7 @@ def test_delete_file_from_repo_removes_untracked_file(tmp_git_repo: Path) -> Non
     assert not binary.exists()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_delete_file_from_repo_unstages_staged_file(tmp_git_repo: Path) -> None:
     """Test that delete_file_from_repo unstages and removes a staged file."""
     binary = tmp_git_repo / "staged.bin"

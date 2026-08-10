@@ -14,9 +14,9 @@ call site reads as one line.
 
 from __future__ import annotations
 
-import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -27,14 +27,21 @@ from ralph.git.operations import create_commit
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
+from ralph.pipeline._runner_session import (
+    pop_last_captured_session_id,
+    set_last_captured_session_id,
+)
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.project_policy import _auto_commit as policy_auto_commit
 from ralph.project_policy import _prompt_ui
+from ralph.project_policy import _schema_upgrade as policy_schema_upgrade
 from ralph.project_policy import agents_md as policy_agents_md
+from ralph.project_policy import cache as policy_cache
 from ralph.project_policy import evidence as policy_evidence
 from ralph.project_policy import markers as policy_markers
+from ralph.project_policy import models as policy_models
 from ralph.project_policy import remediation as policy_remediation
 from ralph.project_policy.pipeline_driver import run_policy_pipeline
 from ralph.project_policy.pipeline_graph import (
@@ -46,7 +53,10 @@ from ralph.project_policy.pipeline_graph import (
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.project_policy.preflight import run_policy_readiness_preflight
 from ralph.project_policy.reset import reset_policy_state
-from ralph.project_policy.status_bar import push_remediation_status_bar
+from ralph.project_policy.status_bar import (
+    push_remediation_status_bar,
+    remediation_status_bar_session,
+)
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -54,6 +64,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
+    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.factory import PipelineDeps
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.models import ReadinessResult
@@ -269,187 +280,6 @@ def _maybe_offer_inline_policy_skip(
         return
 
 
-def _schema_choices(count: int) -> tuple[_prompt_ui.PromptChoice, ...]:
-    """Build the upgrade-or-freeze menu for ``count`` outdated policy files."""
-    files = "file" if count == 1 else "files"
-    return (
-        _prompt_ui.PromptChoice(
-            key=_CHOICE_UPGRADE,
-            title=f"Upgrade all {count} {files} to {policy_markers.SCHEMA_VERSION}",
-            description="An agent rewrites them; your rules carry across.",
-        ),
-        _prompt_ui.PromptChoice(
-            key=_CHOICE_FREEZE,
-            title=f"Keep all {count} {files} on their current schema",
-            description="Left as they are. Ralph Workflow will not re-ask.",
-        ),
-        _prompt_ui.PromptChoice(
-            key=_CHOICE_EXPLAIN,
-            title="What does upgrading involve?",
-            description="Explains both choices, then asks again.",
-        ),
-    )
-
-
-#: What an upgrade mechanically does. Deliberately describes the process,
-#: not a feature list for the new schema version: the schema constant is
-#: bumped without a per-version changelog, so a feature list here would go
-#: stale (or be invented) on the next bump.
-_SCHEMA_EXPLAIN: str = (
-    "The schema is the structure Ralph Workflow's deterministic validator "
-    "reads: the markers, the declared gate commands, and the placeholders "
-    "that must be resolved before a policy counts as complete. When the "
-    "schema moves, files written against the old one can no longer be fully "
-    "validated.\n\n"
-    "Upgrading hands each file to an agent, which rewrites it into the "
-    "current structure and carries your project-specific rules across. You "
-    "review the result like any other change — it lands in your working "
-    "tree.\n\n"
-    "Freezing leaves the files exactly as they are. They keep working, but "
-    "Ralph Workflow stops offering to bring them forward, and later versions "
-    "will validate less of them."
-)
-
-
-def _maybe_resolve_schema_upgrade(
-    workspace: Workspace,
-    emit: EmitFn,
-    *,
-    select: _prompt_ui.SelectFn | None,
-    is_tty: Callable[[], bool] | None,
-) -> bool:
-    """Offer a single all-or-nothing upgrade-or-freeze choice for older copies.
-
-    When one or more customized policy files carry an older (but valid)
-    schema marker, the user is asked exactly ONCE — not once per file.
-    Upgrading rewrites every listed file through the remediation agent;
-    freezing pins every file at its current schema (writing a ``freeze vN``
-    marker) and emits guidance on how to remove the skip later. A third
-    choice explains what an upgrade involves and re-asks. Non-interactive
-    runs return ``False`` (the run is blocked until the choice is made
-    interactively) and a malformed / future schema marker fails closed.
-    """
-    paths = [
-        f"{policy_markers.CANONICAL_DIR}{name}"
-        for name in (
-            *policy_markers.CORE_POLICY_FILES,
-            *policy_markers.CONDITIONAL_POLICY_FILES.values(),
-        )
-        if workspace.exists(f"{policy_markers.CANONICAL_DIR}{name}")
-    ]
-    outdated: list[tuple[str, str, int]] = []
-    invalid_schema = False
-    current_version = int(policy_markers.SCHEMA_VERSION.removeprefix("v"))
-    for path in paths:
-        lines = workspace.read(path).splitlines()
-        first_line = next((line for line in lines if line.strip()), "")
-        if first_line == policy_markers.POLICY_SCHEMA_MARKER:
-            continue
-        freeze_match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line)
-        if freeze_match is not None:
-            frozen_version = int(freeze_match.group(1))
-            if frozen_version < current_version:
-                continue
-            emit(
-                f"Policy {path} has invalid freeze schema v{frozen_version}; "
-                f"a freeze must be older than {policy_markers.SCHEMA_VERSION}."
-            )
-            invalid_schema = True
-            break
-        match = re.fullmatch(r"<!-- ralph-policy-schema: v([0-9]+) -->", first_line)
-        if match is None:
-            emit(f"Policy schema marker is missing or malformed in {path}.")
-            invalid_schema = True
-            break
-        installed_version = int(match.group(1))
-        if installed_version > current_version:
-            emit(
-                f"Policy {path} uses future schema v{installed_version}; "
-                f"this Ralph version supports {policy_markers.SCHEMA_VERSION}."
-            )
-            invalid_schema = True
-            break
-        outdated.append((path, first_line, installed_version))
-    if invalid_schema:
-        return False
-    if not outdated:
-        return True
-    tty_check = is_tty if is_tty is not None else _default_is_tty
-    if not tty_check():
-        emit(
-            "Policy schema choice required; rerun interactively to upgrade "
-            "or freeze the customized policy file(s)."
-        )
-        return False
-    file_list = "\n".join(
-        f"  • {path}  (currently v{version})" for path, _marker, version in outdated
-    )
-    emit(
-        f"Ralph Workflow's policy schema {policy_markers.SCHEMA_VERSION} is "
-        f"available. {len(outdated)} policy file(s) you have customized are "
-        f"still on an older schema:\n{file_list}\n\n"
-        "Your choices:\n\n"
-        "  • Upgrade them. An agent rewrites each file into the current "
-        "schema, carrying your project-specific rules across, and the result "
-        "lands in your working tree for you to review. This adds agent work "
-        "to the start of this run.\n"
-        "  • Keep them on their current schema. The files are frozen exactly "
-        "as they are and Ralph Workflow stops offering to bring them forward. "
-        "Reversible later by deleting the `freeze` line at the top of a file."
-    )
-    select_fn = select if select is not None else _prompt_ui.select
-    choices = _schema_choices(len(outdated))
-    for _round in range(_MAX_PROMPT_ROUNDS):
-        # One all-or-nothing choice, never one prompt per file.
-        choice = _ask(
-            select_fn,
-            emit,
-            _SCHEMA_QUESTION,
-            choices,
-            _CHOICE_UPGRADE,
-            fallback_notice=(
-                "Policy schema choice could not be completed; no implicit upgrade was applied."
-            ),
-        )
-        if choice == _CHOICE_EXPLAIN:
-            emit(_SCHEMA_EXPLAIN)
-            continue
-        if choice == _CHOICE_UPGRADE:
-            return True
-        _freeze_policy_files(workspace, emit, outdated)
-        return True
-    return True
-
-
-def _freeze_policy_files(
-    workspace: Workspace,
-    emit: EmitFn,
-    outdated: Sequence[tuple[str, str, int]],
-) -> None:
-    """Pin every outdated policy file at its installed schema version."""
-    frozen: list[str] = []
-    for path, marker, installed_version in outdated:
-        content = workspace.read(path)
-        workspace.write(
-            path,
-            content.replace(
-                marker,
-                f"<!-- ralph-policy-schema: freeze v{installed_version} -->",
-                1,
-            ),
-        )
-        frozen.append(path)
-    frozen_list = "\n".join(f"  • {path}" for path in frozen)
-    emit(
-        f"Froze {len(frozen)} policy file(s) at their current schema — Ralph "
-        f"Workflow will not upgrade them:\n{frozen_list}\n\n"
-        "Changed your mind? Remove the skip: delete the "
-        "`<!-- ralph-policy-schema: freeze vN -->` line at the top of the file "
-        "(or change `freeze vN` back to `vN`) and rerun — Ralph Workflow will "
-        "offer the upgrade again."
-    )
-
-
 def _resolve_chain_agents(load_result: _LoadResult, drain: str) -> list[str]:
     """Return the fallback agents of the chain bound to ``drain``.
 
@@ -508,10 +338,19 @@ def _make_production_invoke_agent(
     :func:`execute_agent_effect` until one succeeds. A chain that ran and failed
     returns ``False`` (the driver loops within its budget); a launch crash raises
     :class:`RemediationInvocationError` so the driver stops looping rather than
-    spinning through the budget in milliseconds.
+    spinning through the budget in milliseconds. Both policy phases are named
+    identically to their drains, so the phase name IS the drain name.
 
-    Both policy phases are named identically to their drains, so the phase name
-    IS the drain name — there is no mapping table to keep in sync.
+    The policy phases are OUT-OF-GRAPH: they share the
+    :func:`execute_agent_effect` seam with the pipeline runner but are
+    not part of the pipeline graph itself. ``execute_agent_effect``
+    publishes the session id and next-attempt retry intent into
+    thread-locals that the pipeline runner drains via
+    :func:`apply_session_capture`. Without a snapshot/restore wrapper,
+    the first pipeline agent effect picks up the remediation session id
+    and resumes the remediation conversation in Phase 4. The wrapper
+    around each policy invocation closes that leak at the out-of-graph
+    boundary.
     """
 
     def invoke_agent(*, phase: str, prompt_path: str) -> bool:
@@ -539,27 +378,33 @@ def _make_production_invoke_agent(
                 # its completion evidence is required.
                 requires_completion_evidence=(phase == PHASE_ANALYSIS),
             )
-            try:
-                event = _effect_executor_module.execute_agent_effect(
-                    effect,
-                    load_result.config,
-                    pipeline_deps,
-                    workspace_scope,
-                    run_id=load_result.run_id,
-                    policy_bundle=load_result.policy_bundle,
-                    display=display,
-                    display_context=display_context,
-                )
-            except Exception as exc:
-                # A crash launching ONE agent is not a failure of the chain: try
-                # the next fallback, exactly as a pipeline drain would. Only when
-                # every agent in the chain has crashed is this real infrastructure
-                # breakage worth reporting to the driver.
-                logger.warning(
-                    "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
-                )
-                last_error = exc
-                continue
+            # The out-of-graph boundary: snapshot/restore the pipeline
+            # runner's capture thread-locals around the policy invocation
+            # so its writes do not leak. The contextmanager restores in
+            # finally with swallow-and-log discipline; a failing restore
+            # must never block the run.
+            with _capture_pipeline_state():
+                try:
+                    event = _effect_executor_module.execute_agent_effect(
+                        effect,
+                        load_result.config,
+                        pipeline_deps,
+                        workspace_scope,
+                        run_id=load_result.run_id,
+                        policy_bundle=load_result.policy_bundle,
+                        display=display,
+                        display_context=display_context,
+                    )
+                except Exception as exc:
+                    # A crash launching ONE agent is not a failure of the chain: try
+                    # the next fallback, exactly as a pipeline drain would. Only when
+                    # every agent in the chain has crashed is this real infrastructure
+                    # breakage worth reporting to the driver.
+                    logger.warning(
+                        "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
+                    )
+                    last_error = exc
+                    continue
             if event == PipelineEvent.AGENT_SUCCESS:
                 return True
         if last_error is not None:
@@ -568,6 +413,60 @@ def _make_production_invoke_agent(
 
     typed: InvokePolicyAgent = invoke_agent
     return typed
+
+
+def _snapshot_pipeline_capture() -> tuple[str | None, AgentRetryIntent]:
+    """Read and clear the pipeline runner's session-capture thread-locals.
+
+    The captured session id (:mod:`ralph.pipeline._runner_session`) and
+    retry intent (:mod:`ralph.pipeline.effect_executor`) are populated by
+    :func:`execute_agent_effect` and drained by the pipeline runner via
+    :func:`apply_session_capture`. The policy preflight runs OUT-OF-GRAPH
+    so its invocations populate those thread-locals without anyone
+    draining them. Snapshotting reads AND clears the slot; any
+    pre-existing value belongs to a caller outside the closure and must
+    be restored unchanged after the work returns.
+    """
+    return (
+        pop_last_captured_session_id(),
+        _effect_executor_module.pop_last_captured_retry_intent(),
+    )
+
+
+def _restore_pipeline_capture(snapshot: tuple[str | None, AgentRetryIntent]) -> None:
+    """Restore the pipeline runner's session-capture thread-locals."""
+    session_id, retry_intent = snapshot
+    _effect_executor_module._set_last_captured_retry_intent(retry_intent)
+    set_last_captured_session_id(session_id)
+
+
+@contextmanager
+def _capture_pipeline_state() -> Iterator[None]:
+    """Snapshot the pipeline runner's capture thread-locals on entry, restore on exit.
+
+    The single out-of-graph boundary for the policy preflight: every
+    thread-local write the executor body makes through either
+    :func:`execute_agent_effect` or any other collaborator it owns is
+    swallowed by entering this context and replayed on exit. The
+    contextmanager is the only place where the snapshot/restore
+    discipline lives, so the BLOCKED and READY routes cannot drift
+    apart -- the ``with _capture_pipeline_state():`` statement is the
+    contract.
+
+    The restore is wrapped in swallow-and-log: a failing restore must
+    never block the run, the same discipline the rest of this module
+    follows. The captured session id and retry intent are best-effort
+    state; the cost of a missing drain is a one-prompt resume, far
+    cheaper than refusing to drop out of the policy subsystem.
+    """
+    snapshot = _snapshot_pipeline_capture()
+    try:
+        yield
+    finally:
+        try:
+            _restore_pipeline_capture(snapshot)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("capture-restore failed (non-fatal): {}", exc)
 
 
 def _build_workspace(
@@ -628,16 +527,32 @@ def _track_authored_paths(
 def _finalize_ready_state(
     workspace: Workspace,
     workspace_scope: WorkspaceScope,
+    stack: ProjectStack,
     pre_run_dirty: frozenset[str] | None = None,
     authored_paths: frozenset[str] | None = None,
 ) -> None:
     """Post-READY housekeeping: condense the temporary AGENTS.md placeholder
-    block to its concise form, then auto-commit the policy surfaces."""
+    block to its concise form, commit the policy surfaces, then write the
+    READY cache against the tree the run actually leaves behind.
+
+    The cache write is the FINAL step so the cached signature is taken
+    over the tree the run leaves (condense + auto-commit both write
+    first). Writing the cache earlier -- as the old
+    ``run_policy_readiness_preflight`` and ``pipeline_driver._finish``
+    both did -- produces a stale signature that flunks the next
+    preflight into a full re-validation for work that is already
+    done. ``stack`` is required here because the cache signature is
+    the project-stack's view of the evidence inventory.
+    """
     try:
         policy_agents_md.condense_placeholder_block(workspace)
     except Exception as exc:
         logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
     _auto_commit_policy_changes(workspace_scope, pre_run_dirty, authored_paths)
+    try:
+        policy_cache.write_cache(workspace, stack, policy_models.ReadinessStatus.READY)
+    except Exception as exc:
+        logger.debug("project-policy READY cache write failed (non-fatal): {}", exc)
 
 
 def _auto_commit_policy_changes(
@@ -699,6 +614,7 @@ def _dispatch_preflight_result(
     mode: PolicyMode,
     emit: Callable[[str], None],
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
+    pre_run_dirty: frozenset[str],
 ) -> int:
     """Run the policy pipeline and map its result to an exit code.
 
@@ -706,6 +622,13 @@ def _dispatch_preflight_result(
     outcome unless the mode is an ``_ONLY`` mode. A policy that could not be made
     ready is a warning, not a failure of the run. See
     :func:`_exit_code_for_not_ready`.
+
+    ``pre_run_dirty`` is taken at the OUTER boundary (in
+    :func:`_run_policy_readiness`) BEFORE the preflight seeds the policy
+    surfaces, so the deterministic chore commit's exclusion set does
+    not swallow the surfaces the policy run actually authored. It is
+    threaded through here so both the READY and the NOT-READY routes
+    can hand the policy surfaces back committed instead of dirty.
     """
     chain_agents = _resolve_chain_agents(load_result, PHASE_REMEDIATION)
     if not chain_agents and invoke_remediation_agent_factory is None:
@@ -717,11 +640,8 @@ def _dispatch_preflight_result(
             "project-policy-readiness: the policy_remediation chain has no "
             "configured agent; continuing without a ready policy."
         )
+        _auto_commit_policy_changes(workspace_scope, pre_run_dirty, frozenset())
         return _exit_code_for_not_ready(mode)
-
-    # Snapshot BEFORE any agent runs. The post-run difference is what attributes
-    # a newly-written gate script to the policy agents rather than to the user.
-    pre_run_dirty = _snapshot_working_tree(workspace_scope)
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
     display = resolve_active_display(None, display_context)
@@ -746,7 +666,7 @@ def _dispatch_preflight_result(
     # callback below updates the persistent status bar with the live attempt
     # before each remediation iteration so the footer shows
     # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
-    with display:
+    with display, remediation_status_bar_session(display, workspace_scope):
         anchor_value: object = getattr(display, "run_started_monotonic", None)
         run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
 
@@ -765,19 +685,35 @@ def _dispatch_preflight_result(
             DEFAULT_MAX_REMEDIATION_ATTEMPTS,
             run_started_monotonic=run_started_monotonic,
         )
-        final = run_policy_pipeline(
-            workspace,
-            stack,
-            result.findings,
-            invoke_agent=invoke_agent,
-            entry_phase=mode.entry_phase(),
-            analysis_cap=DEFAULT_ANALYSIS_CAP,
-            emit=emit,
-            on_remediation_attempt=_on_remediation_attempt,
-        )
+        # The same out-of-graph boundary, applied at the call site the
+        # BLOCKED and READY routes share. The per-invocation wrapper
+        # inside ``_make_production_invoke_agent`` is the inner ring;
+        # this is the outer ring that closes any seam the inner ring
+        # misses (an injected ``invoke_remediation_agent_factory``,
+        # the analysis driver, the orchestrator's own auxiliary writes).
+        with _capture_pipeline_state():
+            final = run_policy_pipeline(
+                workspace,
+                stack,
+                result.findings,
+                invoke_agent=invoke_agent,
+                entry_phase=mode.entry_phase(),
+                analysis_cap=DEFAULT_ANALYSIS_CAP,
+                emit=emit,
+                on_remediation_attempt=_on_remediation_attempt,
+            )
     if final.is_ready():
-        _finalize_ready_state(workspace, workspace_scope, pre_run_dirty, frozenset(authored))
+        _finalize_ready_state(
+            workspace, workspace_scope, stack, pre_run_dirty, frozenset(authored)
+        )
         return _EXIT_SUCCESS
+    # The NOT-READY route must run the same deterministic scoped commit the
+    # READY route runs, with the same ``pre_run_dirty`` and the same tracked
+    # ``authored`` set, so the files the policy run seeded are handed back
+    # committed instead of left for the next phase. The placeholder
+    # AGENTS.md block is NOT condensed here: only ``_finalize_ready_state``
+    # owns that mutation, and the project is not ready.
+    _auto_commit_policy_changes(workspace_scope, pre_run_dirty, frozenset(authored))
     emit("\n".join(final.report_lines))
     return _exit_code_for_not_ready(mode)
 
@@ -902,6 +838,14 @@ def _run_policy_readiness(
     if workspace_scope is None:
         return _EXIT_SUCCESS
 
+    # Snapshot the working tree BEFORE the policy preflight writes anything.
+    # The post-run difference is what attributes a newly-written gate script
+    # to the policy agents rather than to the user, and the snapshot lives
+    # outside the dispatch helper so the deterministic chore commit's
+    # exclusion set does NOT swallow the policy surfaces the bootstrap
+    # seeded (the surfaces the commit exists to pick up).
+    pre_run_dirty = _snapshot_working_tree(workspace_scope)
+
     emit = _build_emit(display_context, emit_factory)
     workspace = _build_workspace(load_result, workspace_factory)
 
@@ -914,7 +858,9 @@ def _run_policy_readiness(
 
     if not mode.is_explicit():
         _maybe_offer_inline_policy_skip(workspace, emit, select=select_factory, is_tty=is_tty)
-        if not _maybe_resolve_schema_upgrade(workspace, emit, select=select_factory, is_tty=is_tty):
+        if not policy_schema_upgrade._maybe_resolve_schema_upgrade(
+            workspace, emit, select=select_factory, is_tty=is_tty
+        ):
             # The user declined a schema upgrade. Not a failure of the run.
             return _EXIT_SUCCESS
 
@@ -930,7 +876,7 @@ def _run_policy_readiness(
     # LOOKS ready is the entire point of the flag.
     if result.is_ready() and not mode.is_explicit():
         emit(f"project-policy-readiness: ready ({len(result.changed_files)} files updated)")
-        _finalize_ready_state(workspace, workspace_scope)
+        _finalize_ready_state(workspace, workspace_scope, stack, pre_run_dirty, frozenset())
         return _EXIT_SUCCESS
 
     return _dispatch_preflight_result(
@@ -943,6 +889,7 @@ def _run_policy_readiness(
         mode=mode,
         emit=emit,
         invoke_remediation_agent_factory=invoke_remediation_agent_factory,
+        pre_run_dirty=pre_run_dirty,
     )
 
 

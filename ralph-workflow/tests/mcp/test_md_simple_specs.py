@@ -1,453 +1,267 @@
-"""Pure behavior tests for simple markdown artifact specifications."""
+"""Focused tests for analysis-decision Markdown contracts."""
 
-import pytest
+from __future__ import annotations
 
-from ralph.mcp.artifacts.markdown import MdArtifactSpec, parse_and_validate
-from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
-from ralph.mcp.artifacts.markdown.specs import (
-    ANALYSIS_DECISION_SPECS,
-    FIX_RESULT_SPEC,
-    ISSUES_SPEC,
-    PRODUCT_SPEC,
-    SMOKE_TEST_RESULT_SPEC,
-)
-from ralph.mcp.artifacts.typed_artifacts import (
-    TypedArtifactValidationError,
-    normalize_analysis_decision_content,
-)
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 
 
-def _error_ids(text: str, artifact_type: str) -> set[str]:
-    _, diagnostics = parse_and_validate(text, get_spec(artifact_type))
-    return {diagnostic.rule_id for diagnostic in diagnostics if diagnostic.severity == "error"}
-
-
-def test_specs_register_all_simple_artifact_types() -> None:
-    expected = {
-        "planning_analysis_decision",
-        "development_analysis_decision",
-        "review_analysis_decision",
-        "issues",
-        "fix_result",
-        "smoke_test_result",
-        "product_spec",
-    }
-
-    assert expected <= {spec.artifact_type for spec in registered_specs()}
-    assert len(ANALYSIS_DECISION_SPECS) == 4
-    assert get_spec("policy_remediation_analysis_decision") in ANALYSIS_DECISION_SPECS
-    assert FIX_RESULT_SPEC.artifact_type == "fix_result"
-    assert ISSUES_SPEC.artifact_type == "issues"
-    assert PRODUCT_SPEC.artifact_type == "product_spec"
-    assert SMOKE_TEST_RESULT_SPEC.artifact_type == "smoke_test_result"
-
-
-def test_analysis_decision_rejects_unknown_status_and_requires_remediation() -> None:
-    content, diagnostics = parse_and_validate(
-        """---
+def _decision(shortfall: str) -> str:
+    return f"""---
 type: planning_analysis_decision
-status: typo
+status: request_changes
 ---
 ## Summary
-- [S1] The plan is ready
-""",
+- [SUM-1] The plan needs correction.
+## What Came Up Short
+- [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
+## Criterion Verdicts
+- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
+"""
+
+
+def test_request_changes_requires_a_step_or_plan_level_target() -> None:
+    content, diagnostics = parse_and_validate(
+        _decision("The rollout risk is unaddressed."),
         get_spec("planning_analysis_decision"),
     )
 
     assert content == {}
-    assert any(
-        diagnostic.rule_id == "SPEC010"
-        and diagnostic.severity == "error"
-        and "completed" in diagnostic.message
-        and "request_changes" in diagnostic.message
-        and "failed" in diagnostic.message
-        for diagnostic in diagnostics
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
+
+
+def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> None:
+    document = _decision("The implementation omits a required negative test.").replace(
+        "planning_analysis_decision", "development_analysis_decision"
+    ).replace("PA-001", "DA-001")
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert diagnostics == []
+    assert content["finding_targets"] == {}
+
+
+def test_request_changes_preserves_exact_finding_binding() -> None:
+    content, diagnostics = parse_and_validate(
+        _decision("Step: [S-2] lacks an executable verification command."),
+        get_spec("planning_analysis_decision"),
     )
-    assert "SPEC010" in _error_ids(
-        """---
+
+    assert diagnostics == []
+    assert content["finding_targets"] == {"PA-001": "S-2"}
+    assert content["finding_ids"] == ["PA-001"]
+
+
+def test_verification_decision_rejects_a_finding_without_evidence_fields() -> None:
+    document = _decision("Step: [S-2] lacks evidence.").replace(
+        " Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.",
+        "",
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [
+        ("ANALYSIS005", "error"),
+        ("ANALYSIS005", "error"),
+    ]
+
+def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None:
+    document = _decision("The rollout risk is unaddressed.").replace(
+        "status: request_changes", "status: failed"
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
+
+
+def test_criterion_verdict_rejects_non_numeric_phase_id() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-invalid] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: src/api.py:10. Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS010", "error")]
+
+
+def test_completed_verification_decision_requires_evidence_citing_criterion_verdicts() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: src/api.py:10. Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert diagnostics == []
+    assert content["criterion_verdict_ids"] == ["DA-001"]
+
+
+def test_completed_verification_decision_rejects_non_met_verdict() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: not met. Evidence: src/api.py:10. Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS012", "error")]
+
+
+def test_completed_verification_decision_rejects_missing_criterion_verdicts() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS006", "error")]
+
+
+def test_criterion_verdict_rejects_unsupported_verdict_or_uncited_met() -> None:
+    document = """---
+type: policy_remediation_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [PR-001] Criterion: the command resolves. Expected observation: make runs it. Verdict: passed. Evidence: command output. Location: policy.md:10.
+- [PR-002] Criterion: the fact is current. Expected observation: the location matches. Verdict: met. Location: policy.md:11.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("policy_remediation_analysis_decision"))
+
+    assert content == {}
+    assert [item.rule_id for item in diagnostics] == ["ANALYSIS008", "ANALYSIS005"]
+
+
+def test_criterion_verdict_rejects_empty_evidence_for_met() -> None:
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: Location: src/api.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS009", "error")]
+
+
+def test_not_evaluable_criterion_verdict_requires_failed_status() -> None:
+    document = """---
 type: planning_analysis_decision
 status: request_changes
 ---
 ## Summary
-- [S1] The plan needs revision
-""",
-        "planning_analysis_decision",
-    )
+- [SUM-1] Evidence is unavailable.
 
-
-def test_spec010_names_the_rejecting_artifact_not_the_plan_validator() -> None:
-    """A non-plan normalizer rejection must not point the agent at the plan pydantic schema."""
-    _, diagnostics = parse_and_validate(
-        """---
-type: commit
-subject: fix(MCP): prevent race
----
-""",
-        get_spec("commit_message"),
-    )
-
-    spec010 = [diagnostic for diagnostic in diagnostics if diagnostic.rule_id == "SPEC010"]
-    assert spec010, "expected SPEC010 for the rejected commit subject"
-    for diagnostic in spec010:
-        assert "plan/_validation.py" not in diagnostic.message, diagnostic.message
-        assert "pydantic" not in diagnostic.message, diagnostic.message
-        assert "commit_message" in diagnostic.message, diagnostic.message
-
-
-def test_analysis_decision_keeps_stable_how_to_fix_identifier() -> None:
-    content, diagnostics = parse_and_validate(
-        """---
-type: review_analysis_decision
-status: request_changes
----
-## Summary
-- [S1] Correct the regression
 ## What Came Up Short
-- [W1] The error path lacks coverage
-## How To Fix
-- [W1] Add regression coverage
-""",
-        get_spec("review_analysis_decision"),
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command unavailable. Location: plan.
+
+## Criterion Verdicts
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Verdict: not evaluable. Evidence: command unavailable. Location: plan.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error")]
+
+
+def test_not_evaluable_verdict_requires_failed_status() -> None:
+    document = _decision("Step: [S-2] cannot be observed.").replace(
+        "Verdict: not met", "Verdict: not evaluable"
     )
 
-    assert diagnostics == []
-    assert content["how_to_fix"] == ["W1: Add regression coverage"]
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [
+        ("ANALYSIS007", "error"),
+        ("ANALYSIS007", "error"),
+    ]
 
 
-def _analysis_spec_id(spec: MdArtifactSpec) -> str:
-    return spec.artifact_type
-
-
-def test_analysis_decision_model_rejects_completed_with_known_gaps() -> None:
-    with pytest.raises(
-        TypedArtifactValidationError,
-        match="known gaps require a non-completed status",
-    ):
-        normalize_analysis_decision_content(
-            {
-                "status": "completed",
-                "summary": "The analysis is complete despite a known gap",
-                "what_came_up_short": ["A required behavior is missing"],
-                "how_to_fix": ["GAP-1: Implement the missing behavior"],
-            }
-        )
-
-
-@pytest.mark.parametrize("spec", ANALYSIS_DECISION_SPECS, ids=_analysis_spec_id)
-def test_analysis_decision_rejects_completed_with_remediation_sections(
-    spec: MdArtifactSpec,
-) -> None:
-    content, diagnostics = parse_and_validate(
-        f"""---
-type: {spec.artifact_type}
+def test_verification_decision_rejects_empty_location() -> None:
+    document = """---
+type: development_analysis_decision
 status: completed
 ---
 ## Summary
-- [S1] The analysis claims completion
-## What Came Up Short
-- [GAP-1] A known gap remains
-## How To Fix
-- [GAP-1] Close the known gap
-""",
-        spec,
-    )
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the API is available. Expected observation: the export exists. Verdict: met. Evidence: src/api.py:10. Location:
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
 
     assert content == {}
-    assert any(
-        diagnostic.rule_id == "ANALYSIS002"
-        and diagnostic.severity == "error"
-        and "non-completed status" in diagnostic.message
-        for diagnostic in diagnostics
-    )
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS013", "error")]
 
 
-@pytest.mark.parametrize("spec", ANALYSIS_DECISION_SPECS, ids=_analysis_spec_id)
-@pytest.mark.parametrize("status", ("request_changes", "failed"))
-def test_analysis_decision_requires_exactly_matched_gap_and_fix_ids(
-    spec: MdArtifactSpec,
-    status: str,
-) -> None:
-    content, diagnostics = parse_and_validate(
-        f"""---
-type: {spec.artifact_type}
-status: {status}
+def test_verification_decision_requires_each_non_met_verdict_to_be_mirrored() -> None:
+    document = """---
+type: development_analysis_decision
+status: request_changes
 ---
 ## Summary
-- [S1] The analysis found multiple gaps
+- [SUM-1] One fixed criterion is not met.
+
 ## What Came Up Short
-- [GAP-1] This gap has a matching fix
-- [GAP-2] This gap has no matching fix
-## How To Fix
-- [GAP-1] Close the matching gap
-- [FIX-3] This fix has no matching gap
-""",
-        spec,
-    )
+- [DA-002] Criterion: another behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:11.
+
+## Criterion Verdicts
+- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
 
     assert content == {}
-    mismatch_errors = [
-        diagnostic
-        for diagnostic in diagnostics
-        if diagnostic.rule_id == "ANALYSIS003" and diagnostic.severity == "error"
-    ]
-    assert len(mismatch_errors) == 2
-    assert any("GAP-2" in diagnostic.message for diagnostic in mismatch_errors)
-    assert any("FIX-3" in diagnostic.message for diagnostic in mismatch_errors)
+    assert [item.rule_id for item in diagnostics] == ["ANALYSIS014", "ANALYSIS014"]
 
 
-def test_issues_preserves_descriptive_severity_but_rejects_malformed_item() -> None:
+def test_request_changes_allows_explicit_plan_level_target() -> None:
     content, diagnostics = parse_and_validate(
-        """---
-type: issues
-status: issues_found
----
-## Summary
-- [S1] Found a defect
-## Issues
-- [I1] ralph/app.py | urgent | Missing validation
-## What Came Up Short
-- [W1] Input validation is absent
-## How To Fix
-- [F1] Add validation
-""",
-        ISSUES_SPEC,
-    )
-
-    assert content["issues"] == [
-        {"path": "ralph/app.py", "severity": "urgent", "summary": "Missing validation"}
-    ]
-    assert diagnostics == []
-    assert "ISSUES002" in _error_ids(
-        """---
-type: issues
-status: issues_found
----
-## Summary
-- [S1] Found a defect
-## Issues
-- [I1] malformed
-## What Came Up Short
-- [W1] Input validation is absent
-## How To Fix
-- [F1] Add validation
-""",
-        "issues",
-    )
-
-
-def test_clean_issues_preserves_structured_review_evidence() -> None:
-    content, diagnostics = parse_and_validate(
-        """---
-type: issues
-status: no_issues
----
-## Summary
-- [S1] The implementation satisfies the reviewed requirements.
-## Review Evidence
-- [E1] Plan compliance | Every acceptance criterion maps to an implementation check.
-- [E2] Security | No security-relevant code changed.
-""",
-        ISSUES_SPEC,
+        _decision("Plan-level: The outcome omits an out-of-scope boundary."),
+        get_spec("planning_analysis_decision"),
     )
 
     assert diagnostics == []
-    assert content["review_evidence"] == [
-        "Plan compliance | Every acceptance criterion maps to an implementation check.",
-        "Security | No security-relevant code changed.",
-    ]
-
-
-def test_fix_result_requires_summary_and_changed_files() -> None:
-    content, diagnostics = parse_and_validate(
-        """---
-type: fix_result
----
-## Summary
-- [S1] Fixed validation
-## Files Changed
-- [F1] ralph/app.py
-""",
-        FIX_RESULT_SPEC,
-    )
-
-    assert diagnostics == []
-    assert content["files_changed"] == "- ralph/app.py"
-    assert "SPEC006" in _error_ids(
-        """---
-type: fix_result
----
-## Summary
-- [S1] Fixed validation
-## Files Changed
-""",
-        "fix_result",
-    )
-
-
-def test_smoke_result_rejects_unknown_status_and_preserves_failed_requirements() -> None:
-    content, diagnostics = parse_and_validate(
-        """---
-type: smoke_test_result
-status: typo
-output_file: tmp/smoke.log
----
-## Summary
-- [S1] Some smoke checks completed
-## Headless Guide Checks
-- [H1] Completion signal
-""",
-        SMOKE_TEST_RESULT_SPEC,
-    )
-
-    assert content == {}
-    assert any(
-        diagnostic.rule_id == "SPEC010"
-        and diagnostic.severity == "error"
-        and "passed" in diagnostic.message
-        and "failed" in diagnostic.message
-        and "partial" in diagnostic.message
-        for diagnostic in diagnostics
-    )
-    assert "SPEC010" in _error_ids(
-        """---
-type: smoke_test_result
-status: failed
-output_file: tmp/smoke.log
----
-## Summary
-- [S1] The smoke test failed
-## Headless Guide Checks
-- [H1] Completion signal
-""",
-        "smoke_test_result",
-    )
-
-
-def test_product_spec_requires_the_existing_required_sections() -> None:
-    content, diagnostics = parse_and_validate(
-        """---
-type: product_spec
----
-## Title
-- [T1] Markdown artifacts
-## Scope
-- [S1] Move artifacts to markdown
-## Goals
-- [G1] Reduce authoring friction
-## Users
-- [U1] Agents
-## Success Criteria
-- [C1] Markdown validates
-""",
-        PRODUCT_SPEC,
-    )
-
-    assert diagnostics == []
-    assert content["goals"] == ["Reduce authoring friction"]
-    assert "SPEC008" in _error_ids(
-        """---
-type: product_spec
----
-## Title
-- [T1] Markdown artifacts
-## Scope
-- [S1] Move artifacts to markdown
-## Goals
-- [G1] Reduce authoring friction
-## Users
-- [U1] Agents
-""",
-        "product_spec",
-    )
-
-
-@pytest.mark.parametrize(
-    ("artifact_type", "frontmatter", "body"),
-    (
-        pytest.param(
-            "development_result",
-            ("type: development_result", "status: partial"),
-            "## Summary\n- [S1] Work is partially complete\n"
-            "## Files Changed\n- [F1] src/example.py\n"
-            "## Next Steps\n- [N1] Finish the remaining work\n"
-            "## Continuation\n- [C1] session-123",
-            id="development-result",
-        ),
-        pytest.param(
-            "smoke_test_result",
-            (
-                "type: smoke_test_result",
-                "status: passed",
-                "output_file: tmp/smoke.log",
-            ),
-            "## Summary\n- [S1] Smoke run passed\n"
-            "## Headless Guide Checks\n- [H1] Completion signal checked",
-            id="smoke-test-result",
-        ),
-        pytest.param(
-            "commit_message",
-            ("type: commit", "subject: fix(parser): accept descriptive extensions"),
-            "## Body\n- [B1] Preserve consumed fields.",
-            id="commit-message",
-        ),
-        pytest.param(
-            "issues",
-            ("type: issues", "status: no_issues"),
-            "## Summary\n- [S1] No review issues",
-            id="issues",
-        ),
-        pytest.param(
-            "fix_result",
-            ("type: fix_result",),
-            "## Summary\n- [S1] Fix completed\n## Files Changed\n- [F1] src/example.py",
-            id="fix-result",
-        ),
-        pytest.param(
-            "product_spec",
-            ("type: product_spec",),
-            "## Title\n- [T1] Example product\n"
-            "## Scope\n- [S1] Example scope\n"
-            "## Goals\n- [G1] Example goal\n"
-            "## Users\n- [U1] Example user\n"
-            "## Success Criteria\n- [C1] Example criterion",
-            id="product-spec",
-        ),
-        pytest.param(
-            "commit_cleanup",
-            ("type: commit_cleanup", "analysis_complete: false"),
-            "## Actions\n- [A1] add_to_gitignore | *.tmp",
-            id="commit-cleanup",
-        ),
-        *(
-            pytest.param(
-                spec.artifact_type,
-                (f"type: {spec.artifact_type}", "status: completed"),
-                "## Summary\n- [S1] Analysis finished",
-                id=spec.artifact_type,
-            )
-            for spec in ANALYSIS_DECISION_SPECS
-        ),
-    ),
-)
-def test_non_plan_specs_ignore_unknown_unconsumed_extensions(
-    artifact_type: str,
-    frontmatter: tuple[str, ...],
-    body: str,
-) -> None:
-    text = "\n".join(
-        (
-            "---",
-            *frontmatter,
-            "agent_note: ignored by canonical mapping",
-            "---",
-            body,
-            "## Agent Notes",
-            "Free-form implementation context ignored by canonical mapping.",
-            "",
-        )
-    )
-
-    content, diagnostics = parse_and_validate(text, get_spec(artifact_type))
-
-    assert diagnostics == []
-    assert content
+    assert content["finding_targets"] == {"PA-001": "plan-level"}

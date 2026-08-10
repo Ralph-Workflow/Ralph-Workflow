@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-schema: v3 -->
 <!-- ralph-policy-id: gate-script-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file ships COMPLETE. Unlike every other
 policy starter, its requirements are NORMATIVE STANDARD TEXT, not a template
@@ -261,4 +261,4 @@ may currently practice:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: gate-script-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v2 -->`
+* Schema version: `<!-- ralph-policy-schema: v3 -->`

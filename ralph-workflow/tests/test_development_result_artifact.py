@@ -43,7 +43,7 @@ def test_analysis_item_proof_validates_with_valid_fields() -> None:
     assert proof.how_to_fix_item == "Add test for edge case"
 
 
-def test_analysis_item_proof_rejects_empty_how_to_fix_item() -> None:
+def test_analysis_item_proof_rejects_empty_finding_id() -> None:
     with pytest.raises(ValidationError):
         AnalysisItemProof(how_to_fix_item="", proof="Evidence")
 
@@ -71,6 +71,7 @@ def test_development_result_accepts_proof_fields() -> None:
     )
 
     assert result.plan_items_proven[0].plan_item == "Step 1: Add validation"
+    assert result.analysis_items_addressed[0].how_to_fix_item == "Add test for edge case"
 
 
 def test_development_result_defaults_to_empty_proof_lists() -> None:

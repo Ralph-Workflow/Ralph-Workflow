@@ -18,10 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.pipeline.plumbing.smoke_provenance import Provenance
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 __all__ = [
     "DEGRADED",
@@ -30,6 +32,8 @@ __all__ = [
     "Provenance",
     "absent",
     "format_verdict",
+    "grade_artifact_submission_evidence",
+    "grade_completion_sentinel_evidence",
     "grade_verdict",
 ]
 
@@ -101,3 +105,87 @@ def format_verdict(evidence: Mapping[str, Evidence]) -> str:
     if label == PASS:
         return PASS
     return f"{DEGRADED} ({weakest.name.lower().replace('_', '-')})"
+
+
+def grade_artifact_submission_evidence(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    submitted: bool,
+    secret: str | None,
+) -> Evidence:
+    """Grade an artifact-submission fact: fallback promotion vs. a wire hit.
+
+    ``submitted`` is the pre-computed authoritative bool (a receipt exists,
+    possibly after promoting a fallback document through the canonical submit
+    path). A submission backed by a matching ``tools/call`` ledger record
+    grades ``WIRE``; any other submitted receipt (including one promoted from
+    the model's fallback markdown file) grades ``WORKSPACE_EFFECT`` — real,
+    but not attributable to a witnessed tool call.
+
+    Shared by the smoke gate and ``ralph.agents.completion_signals.
+    evaluate_completion`` so both grade a phase's required-artifact fact the
+    same way, instead of maintaining the WIRE-grading decision twice.
+    """
+    if not submitted:
+        return absent("smoke_test_result artifact was not submitted")
+    if wire_evidence_for(workspace_root, run_id, tool_name="artifact", secret=secret):
+        return Evidence(
+            holds=True,
+            provenance=Provenance.WIRE,
+            detail="receipt matched a tools/call ledger record",
+        )
+    return Evidence(
+        holds=True,
+        provenance=Provenance.WORKSPACE_EFFECT,
+        detail="receipt present (direct submission or promoted fallback); no matching wire-ledger record",
+    )
+
+
+def grade_completion_sentinel_evidence(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    present: bool,
+    host_synthesized: bool,
+    secret: str | None,
+) -> Evidence:
+    """Grade a completion-sentinel fact.
+
+    A sentinel the harness wrote to itself (a host-synthesis fallback)
+    grades ``HOST_SYNTHESIZED`` — it caps the run's verdict at ``DEGRADED``
+    and names itself, rather than reading as unqualified proof the agent
+    called ``declare_complete``. An unsigned sentinel (no broker secret in
+    scope) is capped at ``TRANSCRIPT``: "not a weaker WIRE fact — not a WIRE
+    fact." Only a sentinel backed by a matching ``declare_complete``
+    wire-ledger record grades ``WIRE``.
+
+    Shared by the smoke gate and ``ralph.agents.completion_signals.
+    evaluate_completion`` so both grade a phase's completion-sentinel fact
+    the same way, instead of maintaining the WIRE-grading decision twice.
+    """
+    if not present:
+        return absent("completion sentinel was not observed")
+    if host_synthesized:
+        return Evidence(
+            holds=True,
+            provenance=Provenance.HOST_SYNTHESIZED,
+            detail="written by the harness (fallback-artifact completion synthesis)",
+        )
+    if secret is None:
+        return Evidence(
+            holds=True,
+            provenance=Provenance.TRANSCRIPT,
+            detail="sentinel present but RALPH_BROKER_SECRET is unset; HMAC unverified, not WIRE",
+        )
+    if wire_evidence_for(workspace_root, run_id, tool_name="declare_complete", secret=secret):
+        return Evidence(
+            holds=True,
+            provenance=Provenance.WIRE,
+            detail="declare_complete matched a tools/call ledger record",
+        )
+    return Evidence(
+        holds=True,
+        provenance=Provenance.TRANSCRIPT,
+        detail="sentinel present but no matching wire-ledger record",
+    )

@@ -20,7 +20,6 @@ EXPECTED_TOTAL_STEPS = 2
 def _plan_document() -> str:
     return """---
 type: plan
-schema_version: 1
 intent_verb: add
 ---
 ## Summary
@@ -49,6 +48,8 @@ Type: file_change
 Priority: high
 Files:
 - modify ralph/display/artifact_reader.py
+Verify: pytest tests/unit/display -q
+Expect: the display unit tests pass with exit code 0
 
 ### [S-2] Verify the display
 Run the focused display tests.
@@ -96,6 +97,10 @@ status: {status}
 ## Summary
 
 - [SUM-1] {summary}
+
+## Criterion Verdicts
+
+- [DA-001] Criterion: behavior holds. Expected observation: command output observes it. Verdict: met. Evidence: command output was inspected. Location: source.
 """
 
 
@@ -135,7 +140,7 @@ def test_read_latest_analysis_decision_loads_canonical_markdown(tmp_path: Path) 
         _analysis_decision_document(
             "development_analysis_decision",
             status="completed",
-            summary="All tests passed",
+            summary="All tests passed. Evidence: `pytest -q` reports 12 passed.",
         ),
         encoding="utf-8",
     )
@@ -144,7 +149,7 @@ def test_read_latest_analysis_decision_loads_canonical_markdown(tmp_path: Path) 
 
     assert result is not None
     assert result.decision == "completed"
-    assert result.reason == "All tests passed"
+    assert result.reason == "All tests passed. Evidence: `pytest -q` reports 12 passed."
 
 
 def test_read_latest_analysis_decision_prefers_markdown_over_old_state(tmp_path: Path) -> None:

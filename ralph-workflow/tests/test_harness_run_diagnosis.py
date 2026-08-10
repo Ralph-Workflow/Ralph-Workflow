@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.builtin import builtin_supports
 from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -27,6 +28,7 @@ from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.support import AgentSupport
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.session_bridge import (
         BuildSessionMcpPlanFn,
@@ -319,6 +321,127 @@ def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scena
     assert "subagent dispatch was not observed" in subagent_errors
 
 
+def test_subagent_smoke_evidence_detects_headless_claude_agent_dispatch() -> None:
+    """Headless-Claude parser's ``tool_use: Agent`` block must register as a dispatch.
+
+    Regression (wt-04-claude-parsing R8): the headless-Claude NDJSON parser
+    threads the raw ``content_block`` dict as ``metadata``, so the tool
+    name lives at ``metadata["name"]`` rather than the canonical
+    ``metadata["tool"]``. The pre-fix ``_normalized_tool_name`` helper
+    only consulted ``tool``, which surfaced ``subagent dispatch was not
+    observed`` on a transcript that plainly dispatched an ``Agent`` call
+    (confirmed by reading the captured headless smoke jsonl at
+    ``~/.claude/projects/-home-mistlight-Projects-Ralph-Workflow-wt-04-
+    claude-parsing/04f64659-...jsonl`` -- the Assistant record's
+    ``message.content`` carries a ``tool_use`` block whose keys are
+    ``{'type', 'id', 'name', 'input', 'caller'}`` and ``name == 'Agent'``).
+
+    The fix has ``_normalized_tool_name`` fall through ``tool`` ->
+    ``tool_name`` -> ``toolName`` -> ``name``, the same ordered
+    fall-through used by the canonical helper in
+    :mod:`ralph.agents.parsers._template`. The headless-Claude parser
+    resolves through ``JsonParserType.CLAUDE`` with
+    ``AgentTransport.CLAUDE`` -- which still lands on the
+    ``ClaudeParser`` (NDJSON) instance under
+    :func:`ralph.agents.parsers.resolve_parser_key` (the interactive
+    transport is special-cased; everything else with the ``claude``
+    command falls through to the headless NDJSON parser), so the test
+    below exercises the full dispatch / result / post-activity chain
+    against the same parser that a live ``claude -p`` run uses.
+    """
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_headless_agent",
+                            "name": "Agent",
+                            "input": {"prompt": "inspect two edge cases"},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_headless_agent",
+                            "content": "two edge cases identified",
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_write",
+                            "name": "mcp__ralph__write_file",
+                            "input": {"path": "tmp/headless-claude-smoke/todo-list.js"},
+                        }
+                    ]
+                },
+            }
+        ),
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert evidence.dispatch_count == 1, (
+        f"expected exactly one headless-Claude Agent dispatch, got "
+        f"{evidence.dispatch_count}; the pre-fix _normalized_tool_name "
+        f"did not recognise the headless-Claude block's ``name`` field"
+    )
+    assert evidence.dispatch_seen is True
+    assert evidence.result_seen is True
+    assert evidence.post_result_activity_seen is True
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) is None
+
+
+def test_normalized_tool_name_falls_through_to_name_field() -> None:
+    """``_normalized_tool_name`` consults ``tool`` then falls through to ``name``.
+
+    Pins the headless-Claude regression at the helper level: the field
+    Claude's content blocks carry is ``name`` (the block's
+    ``{"type": "tool_use", "id": ..., "name": "Agent", "input": ...}``
+    shape), so the helper must read it directly. This pins the contract
+    independent of which parser populates ``metadata`` -- a future
+    parser that emits ``tool_name`` instead of ``name`` still works
+    because the helper walks the full ordered fall-through.
+    """
+    assert smoke_plumbing_module._normalized_tool_name({"tool": "Agent"}) == "agent"
+    # Headless-Claude parser block shape: only ``name`` is present.
+    assert smoke_plumbing_module._normalized_tool_name({"name": "Agent"}) == "agent"
+    # Pi legacy / camelCase slots fall through too.
+    assert smoke_plumbing_module._normalized_tool_name({"tool_name": "Task"}) == "task"
+    assert smoke_plumbing_module._normalized_tool_name({"toolName": "Task"}) == "task"
+    # First non-empty key wins (``tool`` beats ``name`` when both exist).
+    assert smoke_plumbing_module._normalized_tool_name(
+        {"tool": "Agent", "name": "SOMETHING_ELSE"}
+    ) == "agent"
+    # Empty / whitespace / non-string values are skipped.
+    assert smoke_plumbing_module._normalized_tool_name({"tool": "  "}) == ""
+    assert smoke_plumbing_module._normalized_tool_name({"tool": None}) == ""
+    # All keys absent returns the empty string (a non-match, not a crash).
+    assert smoke_plumbing_module._normalized_tool_name({}) == ""
+
+
 def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
     spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/claude-sonnet-4-6")
     assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
@@ -577,9 +700,17 @@ def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
         bridge=None,
     )
 
+    # Post F7/DoD 17: AGY clears the same meaningful-output bar as every
+    # other transport -- the AGY-only "any non-blank line is enough"
+    # exemption has been removed. Three meaningful output lines satisfy
+    # the shared three-tier check.
     errors = smoke_plumbing_module._detect_smoke_errors(
         params,
-        ["Created the requested todo list and submitted the smoke result."],
+        [
+            "Created the requested todo list and submitted the smoke result.",
+            "Saved tmp/interactive-agy-smoke/todo-list.js to the workspace.",
+            "Called the artifact submission tool for the smoke test result.",
+        ],
         [],
         None,
         None,
@@ -678,7 +809,18 @@ def _make_fake_registry(agent_name: str = "claude/haiku") -> object:
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
+    class _FakeCatalog:
+        def get(self, _name: str) -> None:
+            # No support declared for these tests' synthetic agent names --
+            # matches the real ``AgentCatalog.get``'s "nobody has said"
+            # contract (S-3's Branch A of ``_detect_capability_breaks``
+            # grades a ``None`` support as ungraded, never crashes).
+            return None
+
     class FakeRegistry:
+        def __init__(self) -> None:
+            self.catalog = _FakeCatalog()
+
         @classmethod
         def from_config(cls, _config: object) -> FakeRegistry:
             return cls()
@@ -988,6 +1130,19 @@ def test_agent_session_ceilings_opencode_gets_360s_agy_gets_360s_claude_gets_120
     assert captured_params[0].unified_config.general.agent_max_session_seconds == 120.0
 
 
+def _nanocoder_support() -> AgentSupport:
+    """Return the real registered nanocoder ``AgentSupport`` (S-6 / G6 / DoD 20).
+
+    Used by direct ``_detect_smoke_errors`` calls in this module so they
+    reproduce the ``support`` resolution ``_run_smoke_agent`` performs in
+    production, rather than a hand-built double that could drift from the
+    real registered ``session_identifier_observable`` value.
+    """
+    return next(
+        support for support in builtin_supports() if support.transport == AgentTransport.NANOCODER
+    )
+
+
 def _make_artifact(
     tmp_path: Path,
     *,
@@ -1092,7 +1247,10 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
         "With no artifact and no receipt, AGY completion must fail for "
         f"missing receipt. Got errors: {errors_with_marker}"
     )
-    assert "session ID was not observed" not in errors
+    # Post F7/DoD 17: AGY no longer has a session-ID exemption. The
+    # session ID check applies uniformly to every transport.
+    assert "session ID was not observed" in errors
+    assert "session ID was not observed" in errors_with_marker
 
 
 def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
@@ -1214,13 +1372,24 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
 
     assert "completion sentinel was not observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
-    assert "session ID was not observed" not in errors
+    # Post F7/DoD 17: AGY no longer has a session-ID exemption.
+    assert "session ID was not observed" in errors
 
 
 def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
     tmp_path: Path,
 ) -> None:
-    """Nanocoder uses the same receipt-plus-sentinel completion contract."""
+    """Nanocoder uses the same receipt-plus-sentinel completion contract.
+
+    S-6 (Evidence Provenance G6 / DoD 20): the NANOCODER-only fallback that
+    treated a submitted artifact as tool-activity evidence was removed --
+    it was the exact self-report-as-evidence shape DoD 19 removed for AGY,
+    and NanocoderParser DOES emit authoritative parser-classified tool
+    events (the shared ``[plain] tool: NAME`` convention). This test now
+    supplies a real tool-activity line, matching what every other
+    transport's smoke run must provide, rather than relying on the
+    deleted artifact-submitted fallback.
+    """
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1259,18 +1428,82 @@ def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
 
     errors = smoke_plumbing_module._detect_smoke_errors(
         params,
-        [],
+        ["[plain] tool: createTodoList"],
         [],
         None,
         None,
         artifact_submitted=artifact_submitted,
         run_id=run_id,
+        # S-6 (G6 / DoD 20): the session-ID exemption is now resolved from
+        # the registered AgentSupport's session_identifier_observable
+        # property, not a literal transport comparison -- thread the real
+        # registered nanocoder support so this direct call reproduces what
+        # _run_smoke_agent resolves in production.
+        support=_nanocoder_support(),
     )
 
     assert "completion sentinel was not observed" not in errors
     assert "no tool activity was observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
+
+
+def test_detect_smoke_errors_nanocoder_requires_authoritative_tool_activity_evidence(
+    tmp_path: Path,
+) -> None:
+    """S-6 (G6 / DoD 20): a submitted artifact alone no longer satisfies the
+    tool-activity check for NANOCODER -- authoritative parser-classified
+    evidence is required, the same bar every other transport must clear.
+    """
+    output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(
+        tmp_path,
+        observed_breaks=[],
+        run_id="interactive-nanocoder-smoke-no-tool-activity",
+    )
+    _make_completion_sentinel(tmp_path, "interactive-nanocoder-smoke-no-tool-activity")
+
+    config = AgentConfig(
+        cmd="nanocoder",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.NANOCODER,
+    )
+    params = SmokeRunParams(
+        agent_name="nanocoder",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+    run_id = "interactive-nanocoder-smoke-no-tool-activity"
+
+    artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(
+        params.workspace_root,
+        run_id,
+    )
+    assert artifact_submitted is True
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        [],
+        [],
+        None,
+        None,
+        artifact_submitted=artifact_submitted,
+        run_id=run_id,
+        support=_nanocoder_support(),
+    )
+
+    assert "no tool activity was observed" in errors, (
+        "a submitted artifact must not substitute for authoritative tool-activity "
+        "evidence -- NANOCODER must clear the same bar as every other transport"
+    )
 
 
 def test_detect_smoke_errors_nanocoder_banner_without_progress_reports_prompt_submission_failure(

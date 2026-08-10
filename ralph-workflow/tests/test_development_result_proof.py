@@ -52,7 +52,6 @@ def _write_plan_steps(workspace: MemoryWorkspace) -> None:
         ".agent/artifacts/plan.md",
         """---
 type: plan
-schema_version: 1
 ---
 ## Summary
 Test context.
@@ -79,6 +78,8 @@ Do the work.
 Type: file_change
 Files:
 - modify src/main.py
+Verify: pytest -q
+Expect: the repository test suite passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/main.py
@@ -108,10 +109,10 @@ status: request_changes
 - [SUM-1] Issues found.
 
 ## What Came Up Short
-- [FIX-1] Missing test.
+- [DA-001] Plan-level: Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
 
-## How To Fix
-- [FIX-1] Add test for edge case.
+## Criterion Verdicts
+- [DA-001] Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
 """,
     )
 
@@ -134,7 +135,8 @@ def _write_nested_work_unit_plan(workspace: MemoryWorkspace) -> None:
 ### [S-{number}] Implement {name}
 Change the {name} component.
 
-Type: action
+Type: discovery
+Location: src/example.py
 """
         )
     workspace.write(
@@ -156,7 +158,8 @@ type: plan
 ### [S-1] Implement API
 Change the API component.
 
-Type: action
+Type: discovery
+Location: src/api/routes.py
 
 ## Work Units
 - [web] Implement the web unit
@@ -165,14 +168,16 @@ Type: action
 ### [S-2] Implement web
 Change the web component.
 
-Type: action
+Type: discovery
+Location: src/web/client.py
 
 ## Integration and Verification
 
 ### [S-3] Integrate and verify
 Integrate both unit results in the main session.
 
-Type: action
+Type: discovery
+Location: reports/integration-proof.json
 Depends on: S-1, S-2
 """,
     )
@@ -191,7 +196,8 @@ type: plan
 ### [S-1] Implement API
 Change the API component.
 
-Type: action
+Type: discovery
+Location: reports/api-proof.json
 
 - [AC-01] The API report proves completion
   Satisfied by: S-1
@@ -215,6 +221,8 @@ Implement the API.
 Type: file_change
 Files:
 - modify src/api/main.py
+Verify: pytest tests/api -q
+Expect: the API tests pass with exit code 0
 
 ### [S-2] Test the API
 Cover the API behavior.
@@ -222,6 +230,8 @@ Cover the API behavior.
 Type: file_change
 Files:
 - modify src/api/test_main.py
+Verify: pytest tests/api -q
+Expect: the API tests pass with exit code 0
 
 ## UI Subplan
 
@@ -231,6 +241,8 @@ Implement the UI.
 Type: file_change
 Files:
 - modify src/ui/main.py
+Verify: pytest tests/ui -q
+Expect: the UI tests pass with exit code 0
 """,
     )
 
@@ -661,7 +673,7 @@ def test_noop_plan_skips_proof_validation() -> None:
     assert events == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_analysis_feedback_requires_stable_how_to_fix_id() -> None:
+def test_analysis_feedback_requires_stable_finding_id() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
@@ -675,10 +687,10 @@ def test_analysis_feedback_requires_stable_how_to_fix_id() -> None:
 
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
-    assert "analysis item ID" in failure_events[0].reason
+    assert "analysis finding ID" in failure_events[0].reason
 
 
-def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
+def test_analysis_feedback_rejects_duplicate_finding_entries() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
@@ -686,8 +698,8 @@ def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
         workspace,
         plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
         analysis_items=[
-            {"how_to_fix_item": "FIX-1", "proof": "Added test 1."},
-            {"how_to_fix_item": "FIX-1", "proof": "Added test 2."},
+            {"how_to_fix_item": "DA-001", "proof": "Added test 1."},
+            {"how_to_fix_item": "DA-001", "proof": "Added test 2."},
         ],
     )
     ctx = _make_context(workspace)
@@ -699,14 +711,14 @@ def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
     assert "duplicate" in failure_events[0].reason.lower()
 
 
-def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> None:
+def test_analysis_feedback_rejects_wrong_finding_id_even_when_counts_match() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
     _write_dev_result(
         workspace,
         plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
-        analysis_items=[{"how_to_fix_item": "FIX-99", "proof": "Evidence"}],
+        analysis_items=[{"how_to_fix_item": "DA-099", "proof": "Evidence"}],
     )
     ctx = _make_context(workspace)
 
@@ -715,10 +727,10 @@ def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> N
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
     assert "PROOF INVALID" in failure_events[0].reason
-    assert "Unknown how_to_fix_item ID" in failure_events[0].reason
+    assert "Unknown analysis finding ID" in failure_events[0].reason
 
 
-def test_analysis_feedback_passes_with_exact_text() -> None:
+def test_analysis_feedback_passes_with_exact_finding_id() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
@@ -726,7 +738,7 @@ def test_analysis_feedback_passes_with_exact_text() -> None:
         workspace,
         plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
         analysis_items=[
-            {"how_to_fix_item": "FIX-1", "proof": "Added test."},
+            {"how_to_fix_item": "DA-001", "proof": "Added test."},
         ],
     )
     ctx = _make_context(workspace)

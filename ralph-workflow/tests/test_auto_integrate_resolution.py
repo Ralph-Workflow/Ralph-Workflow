@@ -277,7 +277,9 @@ def test_auto_integrate_regression_deterministic_ff_refusal_does_not_retry(
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
     calls: list[int] = []
 
-    def _dirty_target_ff(repo_root: Path, target: str, feature_sha: str) -> tuple[bool, str]:
+    def _dirty_target_ff(
+        repo_root: Path, target: str, feature_sha: str, **_kwargs: object
+    ) -> tuple[bool, str]:
         calls.append(1)
         return False, "target worktree dirty"
 
@@ -315,7 +317,9 @@ def test_ff_race_retries_integration_onto_moved_target(
     calls: list[int] = []
     intervening_shas: list[str] = []
 
-    def _flaky_ff(repo_root: Path, target: str, feature_sha: str) -> tuple[bool, str]:
+    def _flaky_ff(
+        repo_root: Path, target: str, feature_sha: str, **_kwargs: object
+    ) -> tuple[bool, str]:
         calls.append(1)
         if len(calls) == 1:
             _run(repo_root, "checkout", target)
@@ -427,7 +431,9 @@ def test_phase_transition_silent_when_nothing_to_integrate(
     outcome = auto_integrate_on_phase_transition(
         config, WorkspaceScope(tmp_git_repo), RebaseState()
     )
-    assert outcome is None
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_reason == "no commits beyond target"
     assert _snapshot(tmp_git_repo) == before
 
 

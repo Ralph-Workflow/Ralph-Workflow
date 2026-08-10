@@ -213,6 +213,7 @@ def _auto_integrate_items(snapshot: PipelineSnapshot, style: str) -> list[Text]:
         push=snapshot.auto_integrate_push,
         remote_sync=snapshot.auto_integrate_remote_sync,
         remote=snapshot.auto_integrate_remote,
+        freshness_verdict=snapshot.auto_integrate_freshness_verdict,
     )
     return [Text(f"  auto-integrate: {phrase}", style=style)]
 
