@@ -306,6 +306,32 @@ def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
     assert out.last_reason == "conflicted"
 
 
+def test_cleanly_aborted_target_reconcile_conflict_degrades_without_blocking_local_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: a proven clean abort releases ownership and leaves local landing eligible."""
+    from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
+    monkeypatch.setattr(
+        reconcile,
+        "reconcile_target_onto_remote",
+        lambda *a, **kw: (
+            False,
+            f"{reconcile.CLEAN_ABORTED_RECONCILIATION_CONFLICT} conflicted",
+        ),
+    )
+
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+
+    assert out is not None
+    assert out.last_remote_sync == remote_sync.REMOTE_PULL_FAILED
+    assert out.freshness_safe is True
+    assert out.freshness_verdict == "degraded"
+    assert out.last_reason == f"{reconcile.CLEAN_ABORTED_RECONCILIATION_CONFLICT} conflicted"
+
+
 def test_rebase_state_preserves_structured_reclamation_metadata() -> None:
     """S-4: reclamation facts survive checkpoint serialization without parsing warnings."""
     from ralph.pipeline.rebase_state import RebaseState

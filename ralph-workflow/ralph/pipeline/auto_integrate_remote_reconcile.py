@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
+
+
 def reconcile_target_onto_remote(
     repo_root: Path,
     target: str,
@@ -147,7 +150,11 @@ def _abort_restore_or_retain_record(
             f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
             f"record cleanup failed: {exc}",
         )
-    return False, f"reconciliation of {target} with {remote}/{target} conflicted: {detail}"
+    return (
+        False,
+        f"reconciliation of {target} with {remote}/{target} "
+        f"{CLEAN_ABORTED_RECONCILIATION_CONFLICT} {detail}",
+    )
 
 
-__all__ = ["reconcile_target_onto_remote"]
+__all__ = ["CLEAN_ABORTED_RECONCILIATION_CONFLICT", "reconcile_target_onto_remote"]

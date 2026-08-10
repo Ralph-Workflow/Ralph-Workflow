@@ -334,15 +334,20 @@ def _dispatch_pull_outcome(
                 freshness_source="fetch",
             )
         else:
+            from ralph.pipeline.auto_integrate_remote_reconcile import (
+                CLEAN_ABORTED_RECONCILIATION_CONFLICT,
+            )
+
+            cleanly_aborted = CLEAN_ABORTED_RECONCILIATION_CONFLICT in reason
             _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
             state = _record_remote_state(
                 target,
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=refresh,
                 reason=reason,
-                freshness_verdict="unsafe",
+                freshness_verdict="degraded" if cleanly_aborted else "unsafe",
                 freshness_source="fetch",
-                freshness_safe=False,
+                freshness_safe=cleanly_aborted,
             )
     else:
         _arm_throttle(repo_root, chosen_remote, target, clock)

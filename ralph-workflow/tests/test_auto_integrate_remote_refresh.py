@@ -153,6 +153,40 @@ def test_remote_divergence_regression_resolver_reconciles_target_then_lands_feat
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_clean_abort_conflict_still_lands_feature_locally(
+    tmp_git_repo: Path,
+) -> None:
+    """S-2/S-4: cleanly aborted target conflict does not strand feature integration."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-conflict", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-conflict-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "shared.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+
+    remote_sha = _commit(tmp_git_repo, "shared.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 1
+    assert _run(agent, "log", "--format=%s", "-1").stdout.strip() == "feature change"
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert _run(owner, "status", "--porcelain").stdout == ""
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
 def test_remote_divergence_regression_rebases_target_and_lands_feature(
     tmp_git_repo: Path,
 ) -> None:
