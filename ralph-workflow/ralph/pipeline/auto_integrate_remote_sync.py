@@ -671,7 +671,16 @@ def _attempt_reconcile_and_push(
             rebase_stop_resolver=rebase_stop_resolver,
         )
         if not reconciliation.reconciled:
-            return _PushOutcome(success=False, summary=reconciliation.reason, pushed=False)
+            return _PushOutcome(
+                success=False,
+                summary=reconciliation.reason,
+                pushed=False,
+                status=(
+                    _remote_push_module.PushStatus.NON_FAST_FORWARD
+                    if reconciliation.cleanly_aborted
+                    else None
+                ),
+            )
     if reintegrate is not None and not reintegrate():
         return _PushOutcome(
             success=False,

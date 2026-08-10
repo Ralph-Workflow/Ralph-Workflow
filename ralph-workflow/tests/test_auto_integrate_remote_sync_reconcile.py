@@ -182,6 +182,28 @@ def test_rejected_push_passes_resolver_to_target_reconciliation(
     assert received == [resolver]
 
 
+def test_rejected_push_regression_cleanly_aborted_reconcile_retains_publish_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/S-3: a restored target conflict leaves remote publication retryable."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+    from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *_a, **_kw: REFRESH_DIVERGED)
+    monkeypatch.setattr(
+        remote_reconcile,
+        "reconcile_target_onto_remote",
+        lambda *_a, **_kw: remote_reconcile.ReconciliationOutcome(
+            False, "cleanly aborted conflict", cleanly_aborted=True
+        ),
+    )
+
+    result = reconcile_after_rejected_push(_config(), Path("/repo"), "main", _record())
+
+    assert result.last_remote_sync == REMOTE_PUSH_REJECTED
+    assert result.last_push_status == remote_push_module.PushStatus.NON_FAST_FORWARD.value
+
+
 def test_rejected_push_honors_target_reclaim_opt_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
