@@ -71,8 +71,8 @@ def _invariant_cases() -> list[_CaseSpec]:
     empty_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset([])"
     other_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(['other test'])"
     empty_budget_steps = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset([])"
-    labels_anchor = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
-    budget_steps_anchor = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
+    labels_anchor = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(\n    {"make test", "make test-multimodal-smoke"}\n)'
+    budget_steps_anchor = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 1})"
     budget_anchor = "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
     integration_anchor = "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0"

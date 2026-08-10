@@ -1346,10 +1346,27 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/pipeline/auto_integrate_remote_sync.py", 322),
         # wt-07-multimodal-visual: the 4-condition contract has 7 short-circuit returns;
         # splitting them across helpers (already done) leaves 7 in the top-level walker.
-        ("ralph/pipeline/plumbing/smoke_multimodal.py", 364),
+        ("ralph/pipeline/plumbing/smoke_multimodal.py", 363),
         # wt-07-multimodal-visual: multimodal + subagent + parser + visible-output + AGY
         # branches each their own short-circuit; restructuring further would scatter the
         # contract.
-        ("ralph/pipeline/plumbing/smoke_plumbing.py", 1653),
+        ("ralph/pipeline/plumbing/smoke_plumbing.py", 1669),
+        # wt-07-multimodal-visual: deferred import of
+        # ``_opencode_binary_override_env`` from
+        # ``ralph.pipeline.plumbing.smoke_plumbing`` to break the
+        # invoke <-> smoke_plumbing cycle; ruff PLC0415 forbids
+        # function-level imports by default, and the inline import
+        # is the canonical seam (smoke_plumbing imports back from
+        # ``ralph.agents.invoke`` for the smoke harness's other
+        # seams so a top-level import would cycle).
+        ("ralph/agents/invoke/__init__.py", 596),
+        # wt-07-multimodal-visual: re-export of the three OpenCode
+        # override helpers from ``_smoke_opencode_override``; the
+        # helpers were extracted to keep ``smoke.py`` under the
+        # 1000-line audit cap (see ``_LEGACY_LARGE_FILE_ALLOWLIST``).
+        # External callers (the smoke test, downstream harnesses)
+        # keep importing from ``smoke.py`` for backward compatibility;
+        # the import is the documented seam for that re-export.
+        ("ralph/cli/commands/smoke.py", 255),
     }
 )

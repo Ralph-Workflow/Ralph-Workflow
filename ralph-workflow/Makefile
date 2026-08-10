@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-multimodal-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -86,6 +86,7 @@ help:
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
 	@echo "  test-live-agy    Run live AGY subprocess tests (excluded from test-subprocess-e2e; longer timeout)"
+	@echo "  test-multimodal-smoke  Drive the multimodal smoke stub across the six harness identities (smoke-marked, in \`make verify\`)"
 	@echo "  test-auto-integrate-e2e Run the real-git auto-integration end-to-end proof (wired into 'make verify')"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
@@ -156,6 +157,25 @@ test-subprocess-e2e:
 # so any drift fails CI.
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
+
+# Multimodal smoke suite (criterion 5). Drives the six harness identities
+# (claude / claude-headless / agy / nanocoder / cursor / opencode)
+# through the deterministic multimodal stub agent, asserting the
+# multimodal fact grades WIRE on every harness. Excluded from the
+# default pytest profile by the `smoke` marker (kept in `pytestmark`
+# alongside `subprocess_e2e`) and wired into `make verify` as its own
+# budget-tracked step (see `_VERIFY_STEPS` in `ralph/verify.py` and the
+# `make test-multimodal-smoke` step's `_BUDGET_TRACKED_STEPS` index).
+# No paid backend is dialled -- the stub consumes zero live tokens --
+# so the suite stays inside the 60s combined budget headroom even when
+# both `make test` and `make test-multimodal-smoke` run sequentially
+# under `make verify`.
+#
+# The trailing `-m "smoke and subprocess_e2e"` overrides the
+# `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
+# file the regular profile deliberately skips.
+test-multimodal-smoke:
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_smoke_multimodal_end_to_end.py -q -m "smoke and subprocess_e2e"
 
 # Focused profile over the same explicit registry used by the
 # combined ``make test`` invocation.

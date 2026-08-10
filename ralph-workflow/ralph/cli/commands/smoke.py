@@ -25,6 +25,11 @@ from loguru import logger
 from rich.table import Table
 
 from ralph.agents.registry import AgentRegistry, agy_alias_help
+from ralph.cli.commands._smoke_opencode_override import (
+    _apply_opencode_binary_override_to_config,
+    _maybe_apply_opencode_binary_override,
+    _resolve_opencode_binary_override,
+)
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
@@ -50,6 +55,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _build_smoke_prompt,
     _cursor_binary_override_env,
     _execute_smoke_turns,
+    _opencode_binary_override_env,
     is_mock_agy_override,
     record_conformance_matrix,
     resolve_smoke_harness_spec,
@@ -75,6 +81,11 @@ def get_agy_binary_override() -> str:
 def get_cursor_binary_override() -> str:
     """Return the Cursor binary path, honoring ``RALPH_CURSOR_BINARY``."""
     return _cursor_binary_override_env() or "agent"
+
+
+def get_opencode_binary_override() -> str:
+    """Return the OpenCode binary path, honoring ``RALPH_OPENCODE_BINARY``."""
+    return _opencode_binary_override_env() or "opencode"
 
 
 def _resolve_agy_binary_override() -> str | None:
@@ -239,6 +250,14 @@ def _apply_cursor_binary_override_to_config(config: UnifiedConfig) -> UnifiedCon
         else:
             new_agents[name] = agent_config
     return config.model_copy(update={"agents": new_agents})
+
+
+# The OpenCode override helpers (resolver / per-agent / per-config) live in
+# ``_smoke_opencode_override`` so the smoke CLI module can stay under the
+# 1000-line audit cap (see ``audit_repo_structure``). They are imported
+# at the top of this module (see the alphabetical imports block above)
+# so external callers (the smoke test, downstream harnesses) can keep
+# importing them from ``smoke``.
 
 
 _INTERACTIVE_AGENT = "claude/haiku"
@@ -922,7 +941,7 @@ def smoke_interactive_opencode_command(
     Like the other smoke commands this consumes live tokens and is therefore
     OUTSIDE ``make verify``; it only runs when an operator invokes it.
     """
-    if shutil.which("opencode") is None:
+    if shutil.which("opencode") is None and _resolve_opencode_binary_override() is None:
         logger.error(
             "opencode binary not found. Install OpenCode and ensure `opencode` is on PATH."
         )
@@ -930,6 +949,7 @@ def smoke_interactive_opencode_command(
 
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    config = _apply_opencode_binary_override_to_config(config)
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)
     if agent_config is None:
@@ -949,6 +969,7 @@ def smoke_interactive_opencode_command(
             agent_config.transport.value if agent_config.transport else "None",
         )
         return 2
+    agent_config = _maybe_apply_opencode_binary_override(agent_config)
 
     return smoke_harness_agent_command(
         agent_name,

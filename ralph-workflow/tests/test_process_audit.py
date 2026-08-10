@@ -60,7 +60,6 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_resource_lifecycle.py",  # subprocess/asyncio spawn literals as audit-fixture code strings
     "test_audit_parallelization_dormant.py",
     # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
-    "test_multimodal_end_to_end.py",  # runs mock_multimodal_agent as a subprocess to drive the multimodal smoke
     "test_smoke_multimodal_end_to_end.py",  # per-harness multimodal smoke proof; drives mock_multimodal_agent as a subprocess
     "mock_multimodal_agent.py",  # the multimodal smoke stub itself is a subprocess-launched agent script
     "test_audit_activity_aware_watchdog.py",

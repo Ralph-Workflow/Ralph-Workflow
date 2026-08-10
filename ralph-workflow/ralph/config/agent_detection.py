@@ -18,7 +18,11 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 def _binary_for(name: str, cmd: str) -> str:
     """Return the PATH binary for a built-in command, honoring documented overrides."""
-    override_name = {"agy": "RALPH_AGY_BINARY", "cursor": "RALPH_CURSOR_BINARY"}.get(name)
+    override_name = {
+        "agy": "RALPH_AGY_BINARY",
+        "cursor": "RALPH_CURSOR_BINARY",
+        "opencode": "RALPH_OPENCODE_BINARY",
+    }.get(name)
     override = os.environ.get(override_name) if override_name is not None else None
     return (override or cmd).split(maxsplit=1)[0]
 

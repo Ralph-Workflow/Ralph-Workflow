@@ -64,7 +64,7 @@ Every circumvention above is detected by `make verify`. Any bypass requires a do
 
 ## Smoke-check subsections
 
-Use these focused commands when a smoke check is required for the area you are touching. Each command lives outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate.
+Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate; the one exception is the multimodal smoke target at the bottom of this section, which IS wired into `make verify` as a budget-tracked step (it dials no paid backend -- the `tests/_support/mock_*` stubs do all the work -- so the suite stays inside the combined-budget headroom rather than inflating the gate).
 
 ```bash
 # Policy loader smoke check (after changing policy defaults)
@@ -81,6 +81,26 @@ uv run pytest -q tests/test_process_manager_pty.py tests/test_claude_interactive
 
 # Recovery tests
 uv run pytest -x tests/recovery/ tests/test_recovery_first_invariant.py tests/test_reducer.py tests/test_pipeline_runner.py
+
+# Multimodal smoke (criterion 5): drives the deterministic multimodal
+# stub agent across every harness identity. Runs under ``make verify``
+# as a budget-tracked ``_VERIFY_STEPS`` entry -- unlike the commands
+# above, this one IS counted toward the immutable 60-second combined
+# budget so a future endpoint-delivery regression like the OpenCode
+# multimodal break fails CI rather than passing silently.
+make test-multimodal-smoke
+
+# Per-harness multimodal smoke (manual, paid-backend dialling where
+# the harness is live). These do NOT run under ``make verify`` -- they
+# consume live tokens. Each command drives one harness identity
+# through the multimodal scenario and grades the multimodal fact at
+# WIRE on success (exit 0).
+python -m ralph smoke-interactive-claude --multimodal
+python -m ralph smoke-headless-claude --multimodal
+python -m ralph smoke-interactive-agy --multimodal
+python -m ralph smoke-interactive-nanocoder --multimodal
+python -m ralph smoke-interactive-cursor --multimodal
+python -m ralph smoke-interactive-opencode --multimodal
 ```
 
 For full verification including docs and subprocess E2E:

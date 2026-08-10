@@ -452,16 +452,39 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_cast_policy"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # Criterion 5 multimodal proof: drive the deterministic multimodal
+        # stub agent across all six harness identities (claude /
+        # claude-headless / agy / nanocoder / cursor / opencode) and
+        # assert the multimodal fact grades WIRE on every harness.
+        # Excluded from the default pytest profile by the ``smoke`` marker
+        # (kept in ``pytestmark`` alongside ``subprocess_e2e``) so the
+        # regular ``make test`` / ``make test-unit`` / ``make
+        # test-integration`` paths cannot collect it; only the dedicated
+        # ``make test-multimodal-smoke`` target does. The step drives the
+        # ``tests/_support/mock_*`` stubs and dials no paid backend, so
+        # it is safe to charge against the immutable 60 s combined
+        # budget -- the stub consumes zero live tokens. Appended LAST
+        # so the index-based timeout assertions in ``tests/test_verify.py``
+        # are not shifted; tracked (``_BUDGET_TRACKED_STEPS`` below).
+        "make test-multimodal-smoke",
+        "make",
+        ("test-multimodal-smoke",),
+        _TOTAL_TEST_BUDGET_SECONDS,
+    ),
 )
 
-#: Index 2 is ``make test``: the primary test step, charged against
+#: Indices 2 and the LAST entry are the test steps charged against
 #: ``_TOTAL_TEST_BUDGET_SECONDS`` together with every other test step whose
-#: label is in ``_KNOWN_TEST_STEP_LABELS``. Only ``make test`` qualifies
-#: today; adding a new test step without also adding its label to
+#: label is in ``_KNOWN_TEST_STEP_LABELS``. ``make test`` is the primary
+#: test step (index 2); ``make test-multimodal-smoke`` is the criterion 5
+#: multimodal proof and is appended LAST so the index-based timeout
+#: assertions in ``tests/test_verify.py`` keep ``make test`` at index 2.
+#: Adding a new test step without also adding its label to
 #: ``_KNOWN_TEST_STEP_LABELS`` (and its index here) lets it run without
 #: contributing to the combined budget, which the immutable 60 s ceiling
 #: prohibits.
-_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
+_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 1})
 
 # --- Module-level invariants ---
 # These are runtime checks that must hold for the enforcement
@@ -515,7 +538,9 @@ if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
 # INVARIANT: This frozenset must NOT be empty.
 # INVARIANT: The canonical test step label 'make test' must be present.
 # Both invariants are enforced by import-time RuntimeError checks below.
-_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})
+_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
+    {"make test", "make test-multimodal-smoke"}
+)
 
 # --- Module-level invariants for label/budget integrity ---
 # These prevent the circumvention of budget enforcement by emptying

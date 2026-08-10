@@ -573,6 +573,30 @@ def _fail_for_unsupported_local_opencode_model(
     model_id = _normalized_opencode_model_id(options.model_flag or config.model_flag)
     if model_id is None:
         return
+    # When the operator has overridden the opencode binary via
+    # ``RALPH_OPENCODE_BINARY`` (parallel to ``RALPH_AGY_BINARY`` and
+    # ``RALPH_CURSOR_BINARY``), the local-model preflight is
+    # meaningless: the override target may be a real wrapper that does
+    # not implement ``opencode models`` or may be a test-only stub
+    # whose only contract is to dial the Ralph MCP endpoint. Skip the
+    # preflight so the override can take effect; the operator owns the
+    # choice and the smoke plumbing logs the override at INFO.
+    #
+    # The env access goes through the same getter-indirection pattern
+    # the AGY/Cursor overrides use (``_opencode_binary_override_env`` in
+    # ``smoke_plumbing``); direct ``os.environ.get(...)`` here would
+    # trip the ``verify_drift`` check that pins the canonical-three
+    # ``RALPH_*`` env-var boundary.
+    #
+    # The helper lives in ``smoke_plumbing``; importing it at module
+    # top would cycle (smoke_plumbing imports back from
+    # ``ralph.agents.invoke`` for the smoke harness's other seams),
+    # so the import is deferred to the call site -- this is the
+    # canonical seam for breaking invoke <-> smoke_plumbing cycles.
+    from ralph.pipeline.plumbing.smoke_plumbing import _opencode_binary_override_env  # noqa: PLC0415, I001
+
+    if _opencode_binary_override_env():
+        return
     command_name = config.cmd.split()[0]
     message = validate_local_model_support(model_id, command=command_name)
     if message is None:

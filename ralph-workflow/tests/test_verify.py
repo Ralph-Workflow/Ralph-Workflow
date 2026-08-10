@@ -276,6 +276,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="cast policy audit ok\n",
         ),
+        ("make", ("test-multimodal-smoke",)): _result(
+            command="make",
+            args=("test-multimodal-smoke",),
+            returncode=0,
+            stdout="multimodal smoke ok\n",
+        ),
     }
 
 
@@ -324,6 +330,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
+        ("make", ("test-multimodal-smoke",)),
     ]
     assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -354,6 +361,22 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[25][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[26][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    # The last step is ``make test-multimodal-smoke`` and is budget-tracked.
+    # The actual timeout passed to the runner is
+    # ``min(step_timeout, remaining_budget)`` so floating-point
+    # arithmetic in the cumulative tracker may shave a few microseconds
+    # off the 60.0 constant. Pinning the contract that the LAST step's
+    # timeout is within 1 ms of the budget constant keeps the assertion
+    # robust while still proving the LAST step is the budget-tracked
+    # step rather than a per-step timeout.
+    last_timeout = runner.calls[-1][3]
+    assert last_timeout is not None
+    assert last_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
+        abs(last_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001
+    ), (
+        f"last step timeout {last_timeout!r} does not match the budget "
+        f"constant {verify_module._TOTAL_TEST_BUDGET_SECONDS!r}"
+    )
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err

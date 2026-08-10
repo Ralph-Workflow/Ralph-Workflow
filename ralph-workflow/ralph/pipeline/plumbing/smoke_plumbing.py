@@ -1485,6 +1485,22 @@ def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | No
     return getter("RALPH_CURSOR_BINARY")
 
 
+def _opencode_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
+    """Return the raw ``RALPH_OPENCODE_BINARY`` env value, if set.
+
+    Callers may inject ``env_getter`` for tests and composed runtimes; the
+    production default is centralized here so smoke plumbing callers do not
+    read ambient environment directly. The override is honored by the
+    smoke CLI's opencode smoke command and by the per-harness multimodal
+    smoke suite when a deterministic stub agent needs to take the
+    opencode binary's place (the opencode runtime resolver exposes the
+    MCP endpoint via ``OPENCODE_CONFIG_CONTENT``, which both the real
+    ``opencode`` binary and the stub consume the same way).
+    """
+    getter = env_getter if env_getter is not None else os.environ.get
+    return getter("RALPH_OPENCODE_BINARY")
+
+
 def is_mock_agy_override() -> bool:
     """Return True when ``RALPH_AGY_BINARY`` points at the known mock binary.
 

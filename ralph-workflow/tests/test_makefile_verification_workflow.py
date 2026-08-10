@@ -129,16 +129,29 @@ def test_test_subprocess_e2e_uses_maintained_explicit_file_selector() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_make_verify_excludes_paid_agy_markers() -> None:
-    """The immutable default profile cannot collect manual paid AGY runs."""
+    """The immutable default profile cannot collect manual paid AGY runs.
+
+    The ``agy`` and ``live_agy`` bans are universal -- no
+    ``_VERIFY_STEPS`` label or arg may contain either substring, on any
+    transport. The ``smoke`` ban is narrowed: the sole smoke-bearing
+    step is ``make test-multimodal-smoke`` (criterion 5). That suite
+    drives the ``tests/_support/mock_*`` stubs and dials no paid
+    backend, so it is safe to include in the verify budget. Every
+    other step is checked for the full triple.
+    """
     expression = test_suites_module._VERIFICATION_MARK_EXPRESSION
 
     assert "not subprocess_e2e" in expression
     assert "not smoke" in expression
-    assert all(
-        all(token not in field for token in ("agy", "smoke", "live_agy"))
-        for label, _command, args, _timeout in verify_module._VERIFY_STEPS
-        for field in (label, *args)
-    )
+    for label, _command, args, _timeout in verify_module._VERIFY_STEPS:
+        is_multimodal_step = label == "make test-multimodal-smoke"
+        for field in (label, *args):
+            forbidden = {"agy", "live_agy"} if is_multimodal_step else {"agy", "smoke", "live_agy"}
+            assert all(token not in field for token in forbidden), (
+                f"verify step {label!r} arg {field!r} contains a forbidden token; "
+                f"only 'make test-multimodal-smoke' may carry the 'smoke' marker, "
+                f"and no step may carry 'agy' or 'live_agy'"
+            )
 
     live_test_sources = [
         source

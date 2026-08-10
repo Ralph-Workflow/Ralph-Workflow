@@ -63,24 +63,27 @@ pytestmark = [
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.config.models import AgentConfig, UnifiedConfig
+
 
 # Per-harness redirect seams (S-13). Each entry maps:
 #   (transport_prefix, cli_command, default_agent_name, redirect_method)
 # ``redirect_method`` is one of:
 #   ``"agy_env"``   - via ``RALPH_AGY_BINARY`` env override
 #   ``"cursor_env"`` - via ``RALPH_CURSOR_BINARY`` env override
+#   ``"opencode_env"`` - via ``RALPH_OPENCODE_BINARY`` env override
 #   ``"cmd_override"`` - via in-place ``AgentConfig.cmd`` rewrite to the
 #     stub (the production harness's command builders let
 #     ``agents.<name>.cmd`` override the resolved argv, so a rewrite
 #     keeps the transport's argv shape intact without needing a PATH
-#     shim for ``nanocoder`` / ``opencode``).
+#     shim for ``nanocoder``).
 _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("claude", "smoke-interactive-claude", "claude/haiku", "cmd_override"),
     ("claude-headless", "smoke-headless-claude", "claude-headless/haiku", "cmd_override"),
     ("agy", "smoke-interactive-agy", "agy/gemini-3.6-flash-low", "agy_env"),
     ("nanocoder", "smoke-interactive-nanocoder", "nanocoder", "cmd_override"),
     ("cursor", "smoke-interactive-cursor", "cursor/auto", "cursor_env"),
-    ("opencode", "smoke-interactive-opencode", "opencode/minimax/MiniMax-M3", "cmd_override"),
+    ("opencode", "smoke-interactive-opencode", "opencode/minimax/MiniMax-M3", "opencode_env"),
 )
 
 _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
@@ -111,6 +114,52 @@ def _stub_is_executable() -> bool:
     return bool(mode & stat.S_IXUSR or mode & stat.S_IXGRP or mode & stat.S_IXOTH)
 
 
+def _apply_redirect(
+    *,
+    transport: str,
+    redirect_method: str,
+    stub_path: Path,
+    agent_name: str,
+    agent_config: AgentConfig,
+    config: UnifiedConfig,
+) -> tuple[AgentConfig, UnifiedConfig]:
+    """Apply the per-transport redirect that wires the stub into the harness.
+
+    Each ``redirect_method`` branch rewrites ``agent_config`` and/or
+    ``config`` so the harness spawns the multimodal stub instead of
+    the real transport binary. AGY / Cursor / OpenCode use the
+    dedicated ``RALPH_*_BINARY`` env override; the remaining transports
+    use an in-place ``AgentConfig.cmd`` rewrite (the production
+    harness's command builders honor that override, so the transport's
+    argv shape stays intact without needing a PATH shim for
+    ``nanocoder``).
+    """
+    if redirect_method == "agy_env":
+        os.environ["RALPH_AGY_BINARY"] = str(stub_path)
+        agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
+        config = smoke_module._apply_agy_binary_override_to_config(config)
+    elif redirect_method == "cursor_env":
+        os.environ["RALPH_CURSOR_BINARY"] = str(stub_path)
+        agent_config = smoke_module._maybe_apply_cursor_binary_override(agent_config)
+        config = smoke_module._apply_cursor_binary_override_to_config(config)
+    elif redirect_method == "opencode_env":
+        os.environ["RALPH_OPENCODE_BINARY"] = str(stub_path)
+        agent_config = smoke_module._maybe_apply_opencode_binary_override(agent_config)
+        config = smoke_module._apply_opencode_binary_override_to_config(config)
+    elif redirect_method == "cmd_override":
+        quoted = shlex.quote(str(stub_path))
+        new_cmd = f"{quoted} {agent_config.cmd or ''}".strip()
+        agent_config = agent_config.model_copy(update={"cmd": new_cmd})
+    else:
+        raise AssertionError(
+            f"transport {transport!r}: unknown redirect method {redirect_method!r}"
+        )
+    overridden_agents = dict(config.agents)
+    overridden_agents[agent_name] = agent_config
+    config = config.model_copy(update={"agents": overridden_agents})
+    return agent_config, config
+
+
 def _end_to_end_test_for_harness(
     workspace: Path,
     transport: str,
@@ -120,12 +169,12 @@ def _end_to_end_test_for_harness(
     """Drive the multimodal stub through ``run_smoke_plumbing`` for one transport.
 
     Configures the harness's ``AgentConfig.cmd`` (or ``RALPH_AGY_BINARY`` /
-    ``RALPH_CURSOR_BINARY`` env overrides for those two transports) so the
-    harness spawns the multimodal stub as the agent. The ``positive=False``
-    path sets ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1`` so the stub dials the
-    endpoint once and then forges the receipt. The ``MOCK_MULTIMODAL_SKIP_MEDIA=1``
-    path is exercised by the dedicated ``test_skip_media_multimodal_run_exits_nonzero``
-    case.
+    ``RALPH_CURSOR_BINARY`` / ``RALPH_OPENCODE_BINARY`` env overrides for
+    those three transports) so the harness spawns the multimodal stub as the
+    agent. The ``positive=False`` path sets ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1``
+    so the stub dials the endpoint once and then forges the receipt. The
+    ``MOCK_MULTIMODAL_SKIP_MEDIA=1`` path is exercised by the dedicated
+    ``test_skip_media_multimodal_run_exits_nonzero`` case.
     """
     transport_prefix, _cli_cmd, agent_name, redirect_method = _resolve_transport_entry(transport)
     stub_path = _stub_script_path()
@@ -163,29 +212,14 @@ def _end_to_end_test_for_harness(
             f"transport {transport!r}: agent {agent_name!r} is not in the registry"
         )
 
-    if redirect_method == "agy_env":
-        os.environ["RALPH_AGY_BINARY"] = str(stub_path)
-        agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
-        config = smoke_module._apply_agy_binary_override_to_config(config)
-        overridden_agents = dict(config.agents)
-        overridden_agents[agent_name] = agent_config
-        config = config.model_copy(update={"agents": overridden_agents})
-    elif redirect_method == "cursor_env":
-        os.environ["RALPH_CURSOR_BINARY"] = str(stub_path)
-        agent_config = smoke_module._maybe_apply_cursor_binary_override(agent_config)
-        config = smoke_module._apply_cursor_binary_override_to_config(config)
-        overridden_agents = dict(config.agents)
-        overridden_agents[agent_name] = agent_config
-        config = config.model_copy(update={"agents": overridden_agents})
-    elif redirect_method == "cmd_override":
-        quoted = shlex.quote(str(stub_path))
-        new_cmd = f"{quoted} {agent_config.cmd or ''}".strip()
-        agent_config = agent_config.model_copy(update={"cmd": new_cmd})
-        overridden_agents = dict(config.agents)
-        overridden_agents[agent_name] = agent_config
-        config = config.model_copy(update={"agents": overridden_agents})
-    else:
-        raise AssertionError(f"unknown redirect method {redirect_method!r}")
+    agent_config, config = _apply_redirect(
+        transport=transport,
+        redirect_method=redirect_method,
+        stub_path=stub_path,
+        agent_name=agent_name,
+        agent_config=agent_config,
+        config=config,
+    )
 
     display_context = make_display_context()
     deps = DefaultPipelineFactory().build(config, display_context)

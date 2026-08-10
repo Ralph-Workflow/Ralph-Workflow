@@ -365,7 +365,11 @@ def validate_chain_agents_on_path(
             return available(agent_name)
         base_name = agent_name.split("/", 1)[0]
         support = supports.get(base_name)
-        override_name = {"agy": "RALPH_AGY_BINARY", "cursor": "RALPH_CURSOR_BINARY"}.get(base_name)
+        override_name = {
+            "agy": "RALPH_AGY_BINARY",
+            "cursor": "RALPH_CURSOR_BINARY",
+            "opencode": "RALPH_OPENCODE_BINARY",
+        }.get(base_name)
         command = os.environ.get(override_name) if override_name is not None else None
         return (
             support is not None

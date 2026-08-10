@@ -502,3 +502,45 @@ class TestGenerateFixtureGeometry:
         width, height = generate_fixture_geometry()
         payload = build_smoke_fixture_png(width, height)
         assert len(payload) > SMOKE_MEDIA_MAX_INLINE_BYTES
+
+    @pytest.mark.parametrize(
+        ("rng", "expected_geometry", "lower_bound"),
+        [
+            # rng=lambda n: 0 returns the smallest draw on both axes
+            # (picker(40) -> 0, +24 -> 24). The 24x24 corner is the
+            # WORST case for the inline-cap invariant; a builder that
+            # degrades here silently takes the inline-image path on
+            # the smallest per-run geometry.
+            (lambda n: 0, (24, 24), SMOKE_MEDIA_MAX_INLINE_BYTES),
+            # rng=lambda n: n - 1 returns the largest draw (picker
+            # returns n-1, +24 -> 39 -- wait, picker takes a 40-arg
+            # so n-1 is 39, +24 = 63). Confirms the upper bound
+            # still keeps the fixture comfortably above the cap.
+            (lambda n: n - 1, (63, 63), SMOKE_MEDIA_MAX_INLINE_BYTES),
+        ],
+        ids=["lower-bound-24x24", "upper-bound-63x63"],
+    )
+    def test_fixture_exceeds_inline_cap_at_generator_bounds(
+        self,
+        rng: object,
+        expected_geometry: tuple[int, int],
+        lower_bound: int,
+    ) -> None:
+        """Every geometry ``generate_fixture_geometry`` can pick exceeds the inline cap.
+
+        Pinned at the generator's bounds (24..63 on both axes) rather
+        than at a sample geometry, so widening the draw range in
+        :func:`generate_fixture_geometry` cannot silently regress
+        the inline-cap contract. The corners are the worst cases;
+        every interior point of the 24..63 square is comfortably
+        larger because the PNG payload grows monotonically with both
+        width and height.
+        """
+        width, height = generate_fixture_geometry(rng=rng)
+        assert (width, height) == expected_geometry
+        payload = build_smoke_fixture_png(width, height)
+        assert len(payload) > lower_bound, (
+            f"fixture at {expected_geometry} is {len(payload)}B, "
+            f"below the {lower_bound}B inline cap; the handle-mint "
+            f"path will not be uniformly taken across harness identities"
+        )

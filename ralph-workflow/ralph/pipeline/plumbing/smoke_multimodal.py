@@ -67,15 +67,14 @@ SMOKE_FIXTURE_RELNAME = "smoke-fixture.png"
 #: delivers the inline image block on those identities
 #: (``_replay_from_manifest_entry`` applies no size test), so real
 #: inline delivery is still exercised end-to-end.
+#
+#: The fixture payload must exceed this cap for every geometry
+#: :func:`generate_fixture_geometry` can pick (24..63 on both axes).
+#: :class:`TestGenerateFixtureGeometry` in ``tests/test_multimodal_evidence.py``
+#: pins that invariant at the generator bounds rather than at a single
+#: sample geometry, so widening the draw range cannot silently regress
+#: the inline-cap contract.
 SMOKE_MEDIA_MAX_INLINE_BYTES = 1024
-
-#: Lower bound the fixture must exceed so the test reuses the
-#: ``SMOKE_MEDIA_MAX_INLINE_BYTES`` handle-mint path on every harness
-#: identity (inline-image eligible files AT-OR-BELOW this size would
-#: short-circuit to an inline delivery, defeating the test). The PNG
-#: builder below paints enough rows to keep the file comfortably above
-#: this bound for any reasonable geometry.
-_MIN_FIXTURE_SIZE_BYTES = 1200
 
 
 def build_smoke_fixture_png(width: int, height: int) -> bytes:
