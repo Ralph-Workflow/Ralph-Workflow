@@ -176,6 +176,34 @@ def _close_pty(
                 os.close(fd)
 
 
+def _drain_then_snapshot_threads(preflight_threads: set[int]) -> list[str]:
+    """Return the names of threads alive now that weren't alive pre-preflight.
+
+    Subprocess I/O readers (``_managed_process._run_with_limits``) spawn
+    anonymous ``Thread-N`` readers that die the moment the subprocess
+    closes its stdout/stderr. On a shared worker process the
+    preflight's git subprocess opens those threads; reading the thread
+    set during the brief window before they exit produces a
+    non-empty delta even though the policy created no thread of its
+    own. Stabilize by waiting for the live thread count to drop back
+    to the preflight baseline before measuring.
+    """
+    for _ in range(40):
+        live_threads = [t for t in threading.enumerate() if t.ident is not None]
+        new_live = [t for t in live_threads if t.ident not in preflight_threads]
+        if not new_live:
+            break
+        if all(not t.is_alive() for t in new_live):
+            break
+        drain_signal: threading.Event = threading.Event()
+        drain_signal.wait(timeout=0.025)
+    return sorted(
+        t.name
+        for t in threading.enumerate()
+        if t.ident is not None and t.ident not in preflight_threads
+    )
+
+
 def _probe_console_live(console: Console) -> str:
     """Probe whether the console is still owned by a dead Live region.
 
@@ -254,6 +282,17 @@ def test_post_preflight_channel_ledger_records_six_channels(
     display_context = make_display_context(console=console)
     load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
 
+    # Channel 4 (threads) -- snapshot BEFORE the preflight runs so the
+    # ledger line is a real before/after delta: the set of threads the
+    # preflight created, not a process-global hardcoded literal. Any
+    # co-resident module that left a thread alive in a shared pytest
+    # worker process (a leftover process-manager zombie reaper, a
+    # lingering MCP dispatch, a session wrap-up reader) is invisible to
+    # this ledger because it was alive before the preflight started.
+    # The harness's own daemon reader is recorded as part of the
+    # baseline and is matched by name in the post-``_close_pty`` filter.
+    preflight_threads: set[int] = {t.ident for t in threading.enumerate() if t.ident is not None}
+
     def failing_execute_agent_effect(
         effect: InvokeAgentEffect,
         config: UnifiedConfig,
@@ -289,8 +328,17 @@ def test_post_preflight_channel_ledger_records_six_channels(
     console_live_value = _probe_console_live(console)
 
     # Stop the daemon reader BEFORE reading the threads channel so the
-    # harness's own reader is not counted as a leftover thread.
+    # harness's own reader is not counted as a leftover thread. The
+    # join waits up to one second for the daemon thread to observe the
+    # close signal and exit; on a shared worker process ``threading``
+    # schedules the join on the GIL so the wait is bounded by the
+    # reader's 50ms select timeout, never the full second.
     _close_pty(master_fd, slave_fd, stop_event)
+    for _ in range(20):
+        if not any(t.name == "pytest-pty-drain" for t in threading.enumerate()):
+            break
+        drain_signal: threading.Event = threading.Event()
+        drain_signal.wait(timeout=0.05)
 
     # Channel 1 (capture) -- post-preflight drain.
     leaked_session_id = pop_last_captured_session_id()
@@ -300,15 +348,18 @@ def test_post_preflight_channel_ledger_records_six_channels(
     remediation_label_leaked = "Remediation 1" in transcript
 
     # Channel 4 (threads) -- after the reader is joined. The
-    # ``ralph-pytest-suite-watchdog`` is a suite-wide fixture thread
-    # that pre-exists the test; the ``pytest-pty-drain`` is the
-    # harness's own daemon reader thread that has not yet observed
-    # the close event. Both are filter-roles out of the assertion.
-    thread_names = sorted(
-        t.name
-        for t in threading.enumerate()
-        if t.name not in ("ralph-pytest-suite-watchdog", "pytest-pty-drain")
-    )
+    # ``pytest-pty-drain`` is the harness's own daemon reader thread
+    # that has not yet observed the close event; it was captured in
+    # ``preflight_threads`` on entry, so subtracting that set removes
+    # it from the survivor list automatically. The delta against the
+    # pre-preflight snapshot is what the policy actually created, and
+    # is the load-bearing assertion: a name-filter on a
+    # process-global ``threading.enumerate()`` is structurally blind
+    # to a co-resident module that left a thread alive in the same
+    # worker process (the exact class of failure that triggered this
+    # test: ``ProcessManager-zombie-reaper-*`` and ``mcp-saturated-dispatch``
+    # leak in via the shared pytest worker).
+    new_thread_names = _drain_then_snapshot_threads(preflight_threads)
 
     # Channel 5 (second_preflight) -- a fresh preflight over the
     # same workspace, measured through the validator-only re-run
@@ -375,7 +426,7 @@ def test_post_preflight_channel_ledger_records_six_channels(
         f"channel=footer_bytes before=neutral"
         f" after={'leaked' if remediation_label_leaked else 'neutral'}"
     )
-    print(f"channel=threads before=['MainThread'] after={thread_names!r}")
+    print(f"channel=threads before=[] after={new_thread_names!r}")
     print(
         f"channel=second_preflight before=0 after={len(second_agent_invocations)}"
     )
@@ -391,8 +442,8 @@ def test_post_preflight_channel_ledger_records_six_channels(
     assert console_live_value == "ok", (
         f"console_live channel: dead display still owns the console {console_live_value!r}"
     )
-    assert thread_names == ["MainThread"], (
-        f"threads channel: non-MainThread survivors {thread_names!r}"
+    assert new_thread_names == [], (
+        f"threads channel: preflight created threads {new_thread_names!r}"
     )
     # The S-1 measurement on the BLOCKED hand-back: the S-4 fix
     # swept the deterministic chore commit onto the BLOCKED route

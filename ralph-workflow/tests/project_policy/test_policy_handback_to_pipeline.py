@@ -369,6 +369,7 @@ def _build_handback_pipeline_stubs(
     ws: MemoryWorkspace,
     preflight_order: list[str],
     captured_pipeline_state: list[PipelineState],
+    captured_first_effects: list[object] | None = None,
 ) -> dict[str, object]:
     """Build the run_module stubs and the Phase 4 capture collector.
 
@@ -442,7 +443,23 @@ def _build_handback_pipeline_stubs(
         if initial_state is None:
             raise AssertionError("stub_execute_pipeline received no initial_state")
         preflight_order.append("execute_pipeline")
-        captured_pipeline_state.append(apply_session_capture(initial_state))
+        drained_state = apply_session_capture(initial_state)
+        captured_pipeline_state.append(drained_state)
+        # Pure routing check: the first effect the pipeline.orchestrator
+        # derives from the drained state must be the pre-policy phase's
+        # PreparePromptEffect. A run that resumes a policy phase, or a
+        # state whose phase was rewritten by the preflight, produces a
+        # different effect and fails by name -- the contract the S-3 fix
+        # has to guarantee.
+        from ralph.pipeline.orchestrator import determine_next_effect
+
+        if load_result.policy_bundle is not None:
+            effect = determine_next_effect(
+                drained_state,
+                load_result.policy_bundle.pipeline,
+                load_result.policy_bundle.agents,
+            )
+            captured_first_effects.append(effect)
         return 0
 
     return {
@@ -461,6 +478,7 @@ def _assert_handback_state_clean(
     preflight_order: list[str],
     policy_phase_session_ids: list[str | None],
     captured_pipeline_state: list[PipelineState],
+    captured_first_effects: list[object] | None = None,
 ) -> None:
     """Assert the hand-back contract: clean drain at the Phase 4 seam.
 
@@ -468,8 +486,14 @@ def _assert_handback_state_clean(
     at the Phase 4 seam must be the same ``PipelineState`` the load
     result handed in: ``last_agent_session_id is None``, the retry intent
     is cleared, and ``phase`` (with ``policy_entry_phase``) is the
-    parameterized persisted phase.
+    parameterized persisted phase. The first effect the pure
+    ``determine_next_effect`` derives from the drained state must be a
+    ``PreparePromptEffect`` for the pre-policy phase, so the run
+    actually resumes the work it was doing before the preflight took
+    over -- not a policy phase, not an unknown phase.
     """
+    from ralph.pipeline.effects import PreparePromptEffect
+
     assert "run_project_policy_readiness" in preflight_order, (
         f"policy preflight did not run: {preflight_order!r}"
     )
@@ -507,6 +531,25 @@ def _assert_handback_state_clean(
         f"{observed_state.policy_entry_phase!r}; the run did not preserve the "
         "persisted entry phase"
     )
+    if captured_first_effects is not None:
+        assert captured_first_effects, (
+            f"phase={phase!r}: determine_next_effect was never invoked; "
+            "the S-3 contract cannot be observed"
+        )
+        first_effect = captured_first_effects[0]
+        assert isinstance(first_effect, PreparePromptEffect), (
+            f"phase={phase!r}: first effect is {type(first_effect).__name__}, "
+            f"expected PreparePromptEffect; the run did not resume the "
+            f"pre-policy phase"
+        )
+        assert first_effect.phase == phase, (
+            f"phase={phase!r}: first effect's phase is {first_effect.phase!r}, "
+            f"expected {phase!r}; the run did not resume the pre-policy phase"
+        )
+        assert first_effect.drain == phase, (
+            f"phase={phase!r}: first effect's drain is {first_effect.drain!r}, "
+            f"expected {phase!r}; the run did not route to the pre-policy drain"
+        )
 
 
 @pytest.mark.parametrize("phase", _PERSISTED_NON_TERMINAL_PHASES, ids=_PERSISTED_NON_TERMINAL_PHASES)
@@ -582,12 +625,14 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
     # The state captured at Phase 4 by ``_execute_pipeline``.
     captured_pipeline_state: list[PipelineState] = []
     preflight_order: list[str] = []
+    captured_first_effects: list[object] = []
 
     stubs = _build_handback_pipeline_stubs(
         load_result=load_result,
         ws=ws,
         preflight_order=preflight_order,
         captured_pipeline_state=captured_pipeline_state,
+        captured_first_effects=captured_first_effects,
     )
 
     original_readiness = run_module._run_project_policy_readiness
@@ -630,6 +675,7 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
         preflight_order=preflight_order,
         policy_phase_session_ids=policy_phase_session_ids,
         captured_pipeline_state=captured_pipeline_state,
+        captured_first_effects=captured_first_effects,
     )
 
 

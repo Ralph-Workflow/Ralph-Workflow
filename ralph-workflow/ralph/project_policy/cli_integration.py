@@ -15,7 +15,8 @@ call site reads as one line.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -377,32 +378,33 @@ def _make_production_invoke_agent(
                 # its completion evidence is required.
                 requires_completion_evidence=(phase == PHASE_ANALYSIS),
             )
-            # Snapshot/restore the pipeline runner's capture thread-locals around
-            # the policy invocation so its writes do not leak.
-            capture_snapshot = _snapshot_pipeline_capture()
-            try:
-                event = _effect_executor_module.execute_agent_effect(
-                    effect,
-                    load_result.config,
-                    pipeline_deps,
-                    workspace_scope,
-                    run_id=load_result.run_id,
-                    policy_bundle=load_result.policy_bundle,
-                    display=display,
-                    display_context=display_context,
-                )
-            except Exception as exc:
-                # A crash launching ONE agent is not a failure of the chain: try
-                # the next fallback, exactly as a pipeline drain would. Only when
-                # every agent in the chain has crashed is this real infrastructure
-                # breakage worth reporting to the driver.
-                _restore_pipeline_capture(capture_snapshot)
-                logger.warning(
-                    "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
-                )
-                last_error = exc
-                continue
-            _restore_pipeline_capture(capture_snapshot)
+            # The out-of-graph boundary: snapshot/restore the pipeline
+            # runner's capture thread-locals around the policy invocation
+            # so its writes do not leak. The contextmanager restores in
+            # finally with swallow-and-log discipline; a failing restore
+            # must never block the run.
+            with _capture_pipeline_state():
+                try:
+                    event = _effect_executor_module.execute_agent_effect(
+                        effect,
+                        load_result.config,
+                        pipeline_deps,
+                        workspace_scope,
+                        run_id=load_result.run_id,
+                        policy_bundle=load_result.policy_bundle,
+                        display=display,
+                        display_context=display_context,
+                    )
+                except Exception as exc:
+                    # A crash launching ONE agent is not a failure of the chain: try
+                    # the next fallback, exactly as a pipeline drain would. Only when
+                    # every agent in the chain has crashed is this real infrastructure
+                    # breakage worth reporting to the driver.
+                    logger.warning(
+                        "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
+                    )
+                    last_error = exc
+                    continue
             if event == PipelineEvent.AGENT_SUCCESS:
                 return True
         if last_error is not None:
@@ -436,6 +438,35 @@ def _restore_pipeline_capture(snapshot: tuple[str | None, AgentRetryIntent]) -> 
     session_id, retry_intent = snapshot
     _effect_executor_module._set_last_captured_retry_intent(retry_intent)
     set_last_captured_session_id(session_id)
+
+
+@contextmanager
+def _capture_pipeline_state() -> Iterator[None]:
+    """Snapshot the pipeline runner's capture thread-locals on entry, restore on exit.
+
+    The single out-of-graph boundary for the policy preflight: every
+    thread-local write the executor body makes through either
+    :func:`execute_agent_effect` or any other collaborator it owns is
+    swallowed by entering this context and replayed on exit. The
+    contextmanager is the only place where the snapshot/restore
+    discipline lives, so the BLOCKED and READY routes cannot drift
+    apart -- the ``with _capture_pipeline_state():`` statement is the
+    contract.
+
+    The restore is wrapped in swallow-and-log: a failing restore must
+    never block the run, the same discipline the rest of this module
+    follows. The captured session id and retry intent are best-effort
+    state; the cost of a missing drain is a one-prompt resume, far
+    cheaper than refusing to drop out of the policy subsystem.
+    """
+    snapshot = _snapshot_pipeline_capture()
+    try:
+        yield
+    finally:
+        try:
+            _restore_pipeline_capture(snapshot)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("capture-restore failed (non-fatal): {}", exc)
 
 
 def _build_workspace(
@@ -654,16 +685,23 @@ def _dispatch_preflight_result(
             DEFAULT_MAX_REMEDIATION_ATTEMPTS,
             run_started_monotonic=run_started_monotonic,
         )
-        final = run_policy_pipeline(
-            workspace,
-            stack,
-            result.findings,
-            invoke_agent=invoke_agent,
-            entry_phase=mode.entry_phase(),
-            analysis_cap=DEFAULT_ANALYSIS_CAP,
-            emit=emit,
-            on_remediation_attempt=_on_remediation_attempt,
-        )
+        # The same out-of-graph boundary, applied at the call site the
+        # BLOCKED and READY routes share. The per-invocation wrapper
+        # inside ``_make_production_invoke_agent`` is the inner ring;
+        # this is the outer ring that closes any seam the inner ring
+        # misses (an injected ``invoke_remediation_agent_factory``,
+        # the analysis driver, the orchestrator's own auxiliary writes).
+        with _capture_pipeline_state():
+            final = run_policy_pipeline(
+                workspace,
+                stack,
+                result.findings,
+                invoke_agent=invoke_agent,
+                entry_phase=mode.entry_phase(),
+                analysis_cap=DEFAULT_ANALYSIS_CAP,
+                emit=emit,
+                on_remediation_attempt=_on_remediation_attempt,
+            )
     if final.is_ready():
         _finalize_ready_state(
             workspace, workspace_scope, stack, pre_run_dirty, frozenset(authored)
