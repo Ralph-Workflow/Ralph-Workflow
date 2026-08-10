@@ -283,6 +283,59 @@ def test_target_reconciliation_regression_abort_restores_without_destructive_res
     assert cleared == [True]
 
 
+def test_target_reconciliation_regression_success_cleanup_failure_is_retained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1/S-2: a successful rebase retains recovery ownership when cleanup fails."""
+    from ralph.git.rebase.rebase import RebaseSuccess
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseSuccess())
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: False)
+    monkeypatch.setattr(
+        remote_reconcile,
+        "clear_record",
+        lambda *_a: (_ for _ in ()).throw(OSError("record cleanup failed")),
+    )
+
+    outcome = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert outcome.reconciled is False
+    assert outcome.cleanly_aborted is False
+    assert "retained for recovery" in outcome.reason
+    assert "record cleanup failed" in outcome.reason
+
+
+def test_target_reconciliation_regression_success_requires_no_active_rebase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1/S-2: a success claim cannot release ownership while Git is rebasing."""
+    from ralph.git.rebase.rebase import RebaseSuccess
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseSuccess())
+    states = iter((True, True, True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    aborts: list[bool] = []
+    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: aborts.append(True))
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
+    monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
+
+    outcome = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert outcome.reconciled is False
+    assert outcome.cleanly_aborted is True
+    assert aborts == [True]
+
+
 def test_target_reconciliation_regression_clear_record_failure_is_retained(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

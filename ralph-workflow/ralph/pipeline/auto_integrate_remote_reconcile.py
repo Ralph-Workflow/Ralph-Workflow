@@ -75,6 +75,20 @@ def reconcile_target_onto_remote(
         return ReconciliationOutcome(
             False, reason or f"target '{target}' is unavailable for reconciliation"
         )
+    return _reconcile_owned_target(
+        repo_root, owner, target, remote, pre_target_sha, rebase_stop_resolver
+    )
+
+
+def _reconcile_owned_target(
+    repo_root: Path,
+    owner: Path,
+    target: str,
+    remote: str,
+    pre_target_sha: str,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> ReconciliationOutcome:
+    """Reconcile an owned target while retaining recovery ownership on every failure."""
     try:
         write_record(
             repo_root,
@@ -93,17 +107,15 @@ def reconcile_target_onto_remote(
         )
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
-        if isinstance(outcome, (RebaseSuccess, RebaseNoOp)):
-            clear_record(repo_root)
-            return ReconciliationOutcome(True, "")
+        if isinstance(outcome, (RebaseSuccess, RebaseNoOp)) and not rebase_in_progress(owner):
+            return _clear_successful_reconciliation_record(repo_root, target, remote)
         if (
             rebase_in_progress(owner)
             and rebase_stop_resolver is not None
             and resolve_rebase_in_progress(owner, f"{remote}/{target}", rebase_stop_resolver)
             and not rebase_in_progress(owner)
         ):
-            clear_record(repo_root)
-            return ReconciliationOutcome(True, "")
+            return _clear_successful_reconciliation_record(repo_root, target, remote)
         if rebase_in_progress(owner):
             abort_rebase(repo_root=owner)
     except Exception as exc:
@@ -113,6 +125,21 @@ def reconcile_target_onto_remote(
     return _abort_restore_or_retain_record(
         repo_root, owner, target, remote, pre_target_sha, "conflicted"
     )
+
+
+def _clear_successful_reconciliation_record(
+    repo_root: Path, target: str, remote: str
+) -> ReconciliationOutcome:
+    """Clear durable ownership only after reconciliation finished cleanly."""
+    try:
+        clear_record(repo_root)
+    except Exception as exc:
+        return ReconciliationOutcome(
+            False,
+            f"reconciliation of {target} with {remote}/{target} retained for recovery: "
+            f"record cleanup failed: {exc}",
+        )
+    return ReconciliationOutcome(True, "")
 
 
 def _reconciliation_preconditions(
