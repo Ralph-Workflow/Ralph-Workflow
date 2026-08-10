@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ralph.display._palette import ROLE_ANCHORS, FrequencyTier, resolve_palette
 from ralph.display._salience import (
     ACCENT_BUDGET_BY_DEPTH,
@@ -15,6 +17,7 @@ from ralph.display._salience import (
 
 def _lit_map(decisions: tuple[AllocationDecision, ...]) -> dict[str, bool]:
     return {d.role: d.lit for d in decisions}
+@pytest.mark.criteria("G-3")
 
 
 def test_tier_priority_state_change_wins_over_steady_accents() -> None:
@@ -37,6 +40,7 @@ def test_tier_priority_state_change_wins_over_steady_accents() -> None:
     decisions2 = allocator.allocate_frame(bids2, depth="truecolor")
     lit2 = _lit_map(decisions2)
     assert lit2["info"] is True
+@pytest.mark.criteria("G-1")
 
 
 def test_field_and_structure_tier_roles_are_always_lit() -> None:
@@ -46,6 +50,7 @@ def test_field_and_structure_tier_roles_are_always_lit() -> None:
     decisions = allocator.allocate_frame(bids, depth="standard")
     assert all(d.lit for d in decisions)
     assert {d.tier for d in decisions} == {FrequencyTier.FIELD, FrequencyTier.STRUCTURE}
+@pytest.mark.criteria("G-5")
 
 
 def test_alarm_tier_is_never_demoted_even_when_budget_is_exhausted() -> None:
@@ -84,6 +89,7 @@ def test_alarm_eviction_displaces_the_lowest_priority_event_accent_not_the_alarm
     assert lit["error"] is True
     # Only one of success/warning can remain lit at budget=2 minus 1 alarm = 1 slot.
     assert sum(1 for role in ("success", "warning") if lit[role]) <= 1
+@pytest.mark.criteria("G-4")
 
 
 def test_frame_indexed_decay_demotes_after_the_steady_state_window() -> None:
@@ -109,6 +115,7 @@ def test_genuine_state_change_relights_instantly_even_mid_quiet_stretch() -> Non
     relit = allocator.allocate_frame((RoleBid("success", True),), depth="truecolor")
     assert relit[0].lit is True
     assert relit[0].reason == "state change"
+@pytest.mark.criteria("G-7")
 
 
 def test_demotion_is_one_way_until_a_real_state_change() -> None:
@@ -144,6 +151,7 @@ def test_no_oscillation_across_many_identical_frames() -> None:
     # reproduce the exact same lit/demoted split every time.
     steady_state = history[-1]
     assert all(entry == steady_state for entry in history[STEADY_STATE_DECAY_FRAMES + 1 :])
+@pytest.mark.criteria("G-8")
 
 
 def test_budget_scales_down_with_colour_depth() -> None:
@@ -167,6 +175,7 @@ def test_none_depth_is_a_no_op_everything_reports_lit() -> None:
     # production wiring skips the allocator entirely at this depth (S-7);
     # this test documents the allocator's own behavior if it *is* called.
     assert ACCENT_BUDGET_BY_DEPTH["none"] == 0
+@pytest.mark.criteria("G-6")
 
 
 def test_replaying_an_identical_event_sequence_is_byte_identical() -> None:
@@ -190,6 +199,8 @@ def test_replaying_an_identical_event_sequence_is_byte_identical() -> None:
     first = replay()
     second = replay()
     assert first == second
+@pytest.mark.criteria("F-4")
+@pytest.mark.criteria("G-9")
 
 
 def test_allocation_decisions_are_inspectable_data_not_internals() -> None:
@@ -201,6 +212,7 @@ def test_allocation_decisions_are_inspectable_data_not_internals() -> None:
     assert decision.tier is FrequencyTier.EVENT
     assert decision.lit is True
     assert isinstance(decision.reason, str) and decision.reason
+@pytest.mark.criteria("G-2")
 
 
 def test_demote_hex_caps_chroma_at_unchanged_lightness_and_hue() -> None:

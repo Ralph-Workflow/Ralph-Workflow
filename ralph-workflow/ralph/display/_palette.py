@@ -838,6 +838,39 @@ def _resolve_palette_uncached(surface_hex: str | None) -> dict[str, str]:
 _resolve_palette_cached = functools.lru_cache(maxsize=8)(_resolve_palette_uncached)
 
 
+def palette_solve_stats() -> tuple[int, int]:
+    """Return ``(hits, real_solves)`` since the last reset -- F-2 observation seam.
+
+    F-2 (resolution is cached per surface; palette solving must not run per
+    rendered row) is half proved by ``test_palette_determinism_and_cache``,
+    which asserts ``resolve_palette`` returns the identical cached table for
+    a repeated surface. The "not per rendered row" half was the only ID with
+    a real hole in the S-1 sweep -- this seam is the read-only counter that
+    lets a test observe solves against rendered rows, and ``reset_palette_solve_stats``
+    is the matching reset so a test starts from a known count.
+
+    The pair is derived from ``functools.lru_cache``'s ``cache_info()``:
+    ``hits`` is the number of cached re-uses, ``real_solves`` is the number
+    of times the underlying uncached body ran (one per distinct surface).
+    F-4 is preserved -- the test asserts on the published counter and on
+    rendered output, never on how a colour is computed.
+    """
+    info = _resolve_palette_cached.cache_info()
+    return info.hits, info.misses
+
+
+def reset_palette_solve_stats() -> None:
+    """Reset the ``palette_solve_stats()`` counter to ``(0, 0)``.
+
+    ``lru_cache.cache_clear()`` drops the cached entries *and* resets
+    ``cache_info()`` to ``(hits=0, misses=0, ...)``, so the next
+    ``palette_solve_stats()`` call returns ``(0, 0)`` immediately after
+    this call. Used by F-2 tests to assert on per-render solve counts
+    against an isolated cache instance.
+    """
+    _resolve_palette_cached.cache_clear()
+
+
 def derive_preview_background(surface_hex: str) -> str:
     """Derive an owned preview surface fill from the given surface hex."""
     r, g, b = hex_to_rgb(surface_hex)

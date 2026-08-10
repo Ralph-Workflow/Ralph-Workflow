@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from itertools import combinations, pairwise
 
 from hypothesis import given, settings
@@ -33,6 +35,7 @@ def _hex_to_oklch(hex_str: str) -> tuple[float, float, float]:
     r, g, b = hex_to_rgb(hex_str)
     lab_l, a, b_lab = rgb_to_oklab(r, g, b)
     return oklab_to_oklch(lab_l, a, b_lab)
+@pytest.mark.criteria("F-1")
 
 
 def test_palette_determinism_and_cache() -> None:
@@ -45,6 +48,7 @@ def test_palette_determinism_and_cache() -> None:
     p_null1 = resolve_palette(None)
     p_null2 = resolve_palette(None)
     assert p_null1 is p_null2
+@pytest.mark.criteria("A-4")
 
 
 def test_palette_hue_preservation() -> None:
@@ -68,6 +72,7 @@ def test_palette_hue_preservation() -> None:
     g=st.integers(min_value=0, max_value=255),
     b=st.integers(min_value=0, max_value=255),
 )
+@pytest.mark.criteria("C-7")
 def test_palette_contrast_floor_hypothesis(r: int, g: int, b: int) -> None:
     """Hypothesis test: every role clears 4.5:1 on arbitrary surface hexes."""
     surface_hex = f"#{r:02X}{g:02X}{b:02X}"
@@ -101,6 +106,7 @@ _DOCUMENTED_256_COLOUR_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("#FFFFFF", "muted"),
     }
 )
+@pytest.mark.criteria("C-5")
 
 
 def test_palette_256_colour_depth_clears_contrast_floor() -> None:
@@ -330,6 +336,7 @@ def _oklab_l(hex_str: str) -> float:
     r, g, b = hex_to_rgb(hex_str)
     lab_l, _a, _b = rgb_to_oklab(r, g, b)
     return lab_l
+@pytest.mark.criteria("A-1")
 
 
 def test_role_anchors_hue_chroma_are_measured_not_literal() -> None:
@@ -372,6 +379,7 @@ def test_muted_anchor_is_derived_from_measured_anchors_not_hand_typed() -> None:
     assert 0.0 < muted.chroma < info_anchor.chroma
     assert muted.chroma > comment_anchor.chroma
     assert muted.l_ref == (REFERENCE_BACKGROUND_L + comment_anchor.l_ref) / 2.0
+@pytest.mark.criteria("E-2")
 
 
 def test_tier_chroma_budgets_separate_structural_chrome_from_event_accents() -> None:
@@ -453,6 +461,7 @@ def _oklab_delta_e(hex_a: str, hex_b: str) -> float:
     la, aa, ba = rgb_to_oklab(*hex_to_rgb(hex_a))
     lb, ab, bb = rgb_to_oklab(*hex_to_rgb(hex_b))
     return math.dist((la, aa, ba), (lb, ab, bb))
+@pytest.mark.criteria("C-3")
 
 
 def test_palette_c3_role_collision_pairs_stay_separable() -> None:
@@ -481,6 +490,7 @@ def test_palette_c3_role_collision_pairs_stay_separable() -> None:
                 sim1 = simulate_cvd(h1, matrix)
                 sim2 = simulate_cvd(h2, matrix)
                 assert sim1 != sim2, f"{r1} vs {r2} on {surface_hex}: CVD collision under {matrix}"
+@pytest.mark.criteria("A-2")
 
 
 def test_palette_monokai_fidelity_on_reference_surface() -> None:
@@ -490,6 +500,7 @@ def test_palette_monokai_fidelity_on_reference_surface() -> None:
     palette = resolve_palette("#2D2A2E")
     for role, expected_hex in _MONOKAI_ACCENT_HEX.items():
         assert palette[role] == expected_hex, f"{role}: {palette[role]} != {expected_hex}"
+@pytest.mark.criteria("A-3")
 
 
 def test_palette_lightness_structure_preserves_monokai_spacing() -> None:
@@ -505,6 +516,7 @@ def test_palette_lightness_structure_preserves_monokai_spacing() -> None:
         lightnesses = [_oklab_l(palette[role]) for role in _ACCENT_OFFSET_ORDER]
         spread = max(lightnesses) - min(lightnesses)
         assert spread > 0.05, f"{surface_hex}: spread {spread:.4f} too small"
+@pytest.mark.criteria("A-6")
 
 
 def test_palette_light_surface_chroma_stays_above_floor_fraction_of_anchor() -> None:
@@ -565,6 +577,7 @@ def test_palette_five_structural_roles_stay_mutually_distinct() -> None:
 #: near-zero collisions (worst case was 0.00179 before the
 #: ``_SQUEEZE_HEADROOM_THRESHOLD`` fix landed), without being a tautology.
 _NARROW_BAND_MIN_DELTA_E: float = 0.0025
+@pytest.mark.criteria("B-4")
 
 
 def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
@@ -589,6 +602,7 @@ def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
             assert de >= _NARROW_BAND_MIN_DELTA_E, (
                 f"{r1} vs {r2} on {surface_hex}: ΔE {de:.5f} < {_NARROW_BAND_MIN_DELTA_E}"
             )
+@pytest.mark.criteria("E-4")
 
 
 def test_palette_lightness_hierarchy_ranks_field_over_structure_over_recessive() -> None:
@@ -631,6 +645,7 @@ _MAX_OWNED_FILL_DELTA_L: float = 0.06
     g=st.integers(min_value=0, max_value=255),
     b=st.integers(min_value=0, max_value=255),
 )
+@pytest.mark.criteria("E-5")
 def test_owned_fills_stay_a_bounded_delta_l_from_the_surface(r: int, g: int, b: int) -> None:
     """E-5/DA-004: every owned fill this module derives (the preview fill,
     and the diff fills nested one level inside it) must sit a *bounded* ΔL
@@ -656,6 +671,7 @@ def test_owned_fills_stay_a_bounded_delta_l_from_the_surface(r: int, g: int, b: 
         assert abs(diff_l - surface_l) <= _MAX_OWNED_FILL_DELTA_L, (
             f"{surface_hex}: diff {label} fill ΔL {abs(diff_l - surface_l):.4f} exceeds bound"
         )
+@pytest.mark.criteria("E-6")
 
 
 def test_diff_fills_are_hue_tinted_not_lightness_shifted() -> None:
@@ -684,6 +700,7 @@ def test_diff_fills_are_hue_tinted_not_lightness_shifted() -> None:
             assert abs(diff_l - preview_l) < 1e-3, (
                 f"{surface_hex}: diff {label} fill L {diff_l:.6f} != preview fill L {preview_l:.6f}"
             )
+@pytest.mark.criteria("E-8")
 
 
 def test_dual_safe_band_preserves_reference_offset_ordering() -> None:

@@ -72,6 +72,7 @@ def test_parse_osc11_reply_scales_every_supported_channel_width(reply: str, expe
         "\x1b]11;rgb:2d/2a\x07",  # only two channels
     ),
 )
+@pytest.mark.criteria("B-2")
 def test_parse_osc11_reply_returns_none_for_malformed_or_absent_bodies(reply: str) -> None:
     assert parse_osc11_reply(reply) is None
 
@@ -216,6 +217,7 @@ def test_probe_closes_an_owned_fd_and_never_enters_raw_mode_when_tcgetattr_fails
 
 
 # --- query_terminal_background_hex: process-lifetime cache (B-5) ---
+@pytest.mark.criteria("B-5")
 
 
 def test_query_terminal_background_hex_probes_once_and_caches_for_process_lifetime(

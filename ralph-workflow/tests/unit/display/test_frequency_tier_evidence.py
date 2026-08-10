@@ -18,6 +18,8 @@ resolved more often than that tier-1 role's.
 
 from __future__ import annotations
 
+import pytest
+
 import collections
 from typing import TYPE_CHECKING
 
@@ -84,6 +86,7 @@ def _role_max_resolution_counts(counts: collections.Counter[str]) -> dict[str, i
             continue
         role_max[role] = max(role_max.get(role, 0), count)
     return role_max
+@pytest.mark.criteria("E-1")
 
 
 def test_frequency_tier_evidence_top_resolved_role_is_field_tier(

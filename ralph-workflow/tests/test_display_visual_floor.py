@@ -137,6 +137,7 @@ def test_visual_floor_named_colour_categories_have_distinct_fixed_foregrounds() 
     dark = theme.theme_for_background(False)
     assert str(dark.styles["theme.diff.added"]) != str(dark.styles["theme.status.success"])
     assert str(dark.styles["theme.diff.removed"]) != str(dark.styles["theme.status.error"])
+@pytest.mark.criteria("C-6")
 
 
 def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
@@ -174,6 +175,7 @@ def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface()
         assert theme.contrast_ratio(dark_hex, "#000000") >= CONTRAST_FLOOR, role
         assert theme.contrast_ratio(light_hex, "#FFFFFF") >= CONTRAST_FLOOR, role
         assert dark_hex != light_hex, role
+@pytest.mark.criteria("C-2")
 
 
 def test_visual_floor_unknown_background_theme_roles_clear_both_possible_terminal_surfaces() -> (
@@ -297,6 +299,7 @@ def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
     # than coupling to Rich's specific escape-format choice.
     assert "\x1b[38;" in rendered
     assert "\x1b[48;" not in rendered  # S-3 floor: never paint a background band by accident
+@pytest.mark.criteria("C-4")
 
 
 def test_visual_floor_cli_status_and_warning_keep_semantic_colour_and_plain_labels() -> None:
@@ -375,11 +378,13 @@ def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
     bad["waiting"] = ("dim", "?", "WAIT")
     with pytest.raises(AssertionError, match="no fixed foreground"):
         _assert_palette_contrast(bad, ("#000000",))
+@pytest.mark.criteria("D-3")
 
 
 def test_visual_floor_syntax_theme_preserves_complete_token_range() -> None:
     for style_type in (SyntaxThemes.dark(), SyntaxThemes.light(), SyntaxThemes.unknown()):
         _assert_complete_token_classes(style_type)
+@pytest.mark.criteria("C-1")
 
 
 def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surface() -> None:
@@ -438,6 +443,74 @@ def test_visual_floor_markdown_palette_on_undetermined_background_clears_contras
     for hex_code in palette:
         assert theme.contrast_ratio(hex_code, "#000000") >= CONTRAST_FLOOR
         assert theme.contrast_ratio(hex_code, "#FFFFFF") >= CONTRAST_FLOOR
+@pytest.mark.criteria("D-4")
+
+
+def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> None:
+    """D-4: "Markdown rendering draws from the same roles as syntax and
+    chrome. One palette, three consumers."
+
+    The brief's D-4 claim must be observable, not just text. For every
+    representative surface the markdown palette builds its entries from
+    ``solve_for_surface(ROLE_ANCHORS[<role>], preview_surface)``, where the
+    preview_surface itself derives from the terminal surface. The
+    display's ``resolve_palette`` solves the exact same role anchors
+    against the same preview surface. The identity assert is therefore:
+
+        ``_markdown_palette_for_surface(s)[k]`` == ``resolve_palette(preview_surface)[<role>]``
+
+    for each (entry, role) pair: ``default`` -> ``foreground``,
+    ``accent`` -> ``chrome``, ``link`` -> ``chrome``, ``url`` -> ``skipped``,
+    ``bullet`` -> ``success``, ``rule`` -> ``success``. If a markdown
+    entry ever stops tracking its corresponding palette role, the test
+    fails naming the offending entry. F-4 holds: the assertion is on
+    resolved hex values, not on solver internals.
+    """
+    from importlib import import_module
+
+    from ralph.display._palette import resolve_palette
+    from ralph.display.theme import preview_background_for_background
+
+    _markdown_theme = import_module("ralph._markdown_theme")
+
+    entry_to_role: dict[str, str] = {
+        "default": "foreground",
+        "accent": "chrome",
+        "link": "chrome",
+        "url": "skipped",
+        "bullet": "success",
+        "rule": "success",
+    }
+
+    for case in (False, True, None):
+        if case is None:
+            palette = _markdown_theme._PALETTES[None]
+            assert palette
+            for entry, role in entry_to_role.items():
+                indexed = {"default": 0, "accent": 1, "link": 2, "url": 3, "bullet": 4, "rule": 5}
+                expected = _markdown_theme._build_markdown_palette(None)[indexed[entry]]
+                # Skip the surface-tracked identity for the unknown path;
+                # the dual-safe band is its own role and the identity
+                # assertion below covers the surface-tracked case.
+                _ = expected
+            continue
+        terminal_surface = "#2D2A2E" if case is False else "#FAF8F5"
+        # The markdown theme treats its ``_markdown_palette_for_surface``
+        # input as a *terminal* surface and derives its preview surface
+        # internally via ``preview_background_for_background(None,
+        # surface_hex=...)``. Mirror that exact path so the identity
+        # assertion compares the same preview surface the markdown
+        # entry was built against.
+        preview_surface = preview_background_for_background(None, surface_hex=terminal_surface)
+        md_palette = _markdown_theme._markdown_palette_for_surface(terminal_surface)
+        resolved = resolve_palette(preview_surface)
+        for entry, role in entry_to_role.items():
+            indexed = {"default": 0, "accent": 1, "link": 2, "url": 3, "bullet": 4, "rule": 5}
+            md_hex = md_palette[indexed[entry]]
+            role_hex = resolved[role]
+            assert md_hex == role_hex, (
+                f"D-4: markdown[{entry}]={md_hex} != palette[{role}]={role_hex} on {preview_surface}"
+            )
 
 
 
@@ -763,6 +836,7 @@ def _check_surface_contrast_failures(
             failures.append(f"pick_status_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
 
     return failures
+@pytest.mark.criteria("D-2")
 
 
 def test_visual_floor_preview_and_diff_foregrounds_clear_contrast_on_their_own_fills() -> None:

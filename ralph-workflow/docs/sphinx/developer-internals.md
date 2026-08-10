@@ -167,9 +167,13 @@ often a role renders; structural chrome (panel borders, titles, rules) is
 deliberately split from the semantic `info` state so the busiest on-screen
 accent does not also mean "an info event just happened." A per-frame
 salience allocator then spends a bounded accent budget across whichever
-roles are competing to render in one frame, promoting a role that just
-changed state and decaying one that has been steady, so a long quiet run
-visibly drains of colour and a genuine event re-lights instantly.
+roles are competing to render in one frame, with the per-role "underlying
+state changed" signal driven by a **state-token** comparison in
+``ParallelDisplay._apply_salience`` (each call-site's token fields are
+published in ``SALIENCE_STATE_TOKEN_FIELDS``): a role that just changed
+its own token is promoted, a role that has been steady for the decay window
+decays one rung, so a long quiet run visibly drains of colour and a
+genuine event re-lights instantly.
 
 See [Colour model: surface-adaptive chroma, frequency tiers, and the salience budget](display.html#colour-model-surface-adaptive-chroma-frequency-tiers-and-the-salience-budget)
 for the palette solver's surface-adaptive chroma, the E-1 render-frequency tier table, and

@@ -41,6 +41,14 @@ GRACEFUL_WIDTH_FLOOR: Final[int] = 40
 GRACEFUL_HEIGHT_FLOOR: Final[int] = 12
 INDENT_UNIT: Final[str] = "  "
 _SCENE_PROMPT_PATH: Final[str] = ".agent/PROMPT.md"
+#: PLAN.md S-3: how many alternating tool_use / tool_result rows the
+#: ``idle_stretch`` scene renders before its terminal transition. Sized
+#: larger than ``STEADY_STATE_DECAY_FRAMES`` (3) so the allocator's
+#: per-role decay counter reaches the decay window for *both* roles
+#: the stretch alternates between, and the catalogue-wide sweeps
+#: (G-3/G-4, G-5, G-7, G-10/E-3) cannot pass vacuously for the scene
+#: named for the steady stretch.
+_IDLE_STRETCH_FRAMES: Final[int] = 6
 
 CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
     "duration": "<minutes>m<seconds>s",
@@ -364,6 +372,23 @@ def _drive_production_scene(
             condensed_ref=".agent/raw/run.log",
         )
     elif scene_name == "idle_stretch":
+        # PLAN.md S-3: the steady-stretch scene must exercise the salience
+        # allocator so the catalogue-wide sweeps (G-3/G-4, G-5, G-7,
+        # G-10/E-3) cannot pass vacuously for the scene named for the
+        # steady stretch. Render one unit's alternating tool_use /
+        # tool_result rows for a steady stretch (varying bodies so the
+        # burst-elision path cannot collapse them) and finish with a
+        # genuine state change at the end so the post-stretch frame has
+        # a ``state change`` reason to observe.
+        for tick in range(_IDLE_STRETCH_FRAMES):
+            display.emit_activity_line(
+                "pi",
+                "tool_use",
+                f"path=café-{tick:02d}.py",
+                tool_signature=("read_file", f"café-{tick:02d}.py"),
+            )
+            display.emit_activity_line("pi", "tool_result", f"read_file complete ({tick})")
+        display.emit_activity_line("pi", "warning", "transport stall detected")
         model = StatusBarModel(
             workspace_root="/work/café",
             phase_label="Development",

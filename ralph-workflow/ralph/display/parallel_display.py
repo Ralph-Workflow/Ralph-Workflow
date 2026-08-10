@@ -102,7 +102,7 @@ import zlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -211,6 +211,21 @@ _MAX_STREAMING_FRAGMENTS: int = 2048
 #: G-9 inspection ring-buffer cap for ``ParallelDisplay._salience_decisions``
 #: -- see the constructor's own bounded-accumulator-ok comment.
 _SALIENCE_DECISIONS_MAXLEN: int = 1000
+#: Per-call-site ``_apply_salience`` state-token field shapes.
+#:
+#: Each entry maps the rendering call site to the tuple of values that
+#: together identify a single role's underlying state. The leading
+#: element namespaces the two call sites so a ``_build_line`` ``info``
+#: row and an ``_activity_text`` ``info`` row are not compared as the
+#: same underlying state -- the full token is the state, not the role
+#: name. Added by PLAN.md S-3 so the documentation can be bound to the
+#: shipped model instead of to a phrase, and the docs test
+#: (``tests/test_display_docs_salience_model.py``) can fail when the
+#: code's parameter name or token fields drift from what the docs name.
+SALIENCE_STATE_TOKEN_FIELDS: Final[dict[str, tuple[str, ...]]] = {
+    "_build_line": ("line", "level"),
+    "_activity_text": ("activity", "kind", "unit_id"),
+}
 _SECONDS_PER_MINUTE: int = 60
 _PREVIEW_MAX_LINES: int = 40
 
@@ -533,7 +548,7 @@ class ParallelDisplay:
         "_run_start_time",
         "_salience_allocator",
         "_salience_decisions",
-        "_salience_last_role",
+        "_salience_last_token",
         "_salience_lit_event_roles",
         "_status_bar",
         "_subscriber",
@@ -585,9 +600,11 @@ class ParallelDisplay:
         )
         # PLAN.md S-7: one allocator per ParallelDisplay instance -- its
         # lifetime is the render session, matching G-6's "frame-indexed
-        # sequence" model. ``_salience_last_role`` is the previous call's
-        # resolved event/alarm role (G-3's "state changed" signal, see
-        # ``_apply_salience``). ``_salience_decisions`` is the G-9 record:
+        # sequence" model. ``_salience_last_token`` is the per-role state
+        # token this instance last bid with (G-3/G-4's "state changed"
+        # signal, see ``_apply_salience``): a role re-appearing with the
+        # same token is steady, a role re-appearing with a different
+        # token has just changed. ``_salience_decisions`` is the G-9 record:
         # every AllocationDecision this instance has produced, in order,
         # so a scene driver can assert on lit-accent counts, alarm
         # exemption, and oscillation without touching allocator internals.
@@ -597,7 +614,7 @@ class ParallelDisplay:
         # (drop-oldest) matching ring_buffer.RingBuffer's own policy, not
         # an unbounded append-only log.
         self._salience_allocator = SalienceAllocator()
-        self._salience_last_role: str | None = None
+        self._salience_last_token: dict[str, tuple[str, ...]] = {}  # bounded-accumulator-ok: fixed event-tier role-name set
         # PLAN.md S-1: role -> lit, EVENT-tier roles only, mirroring the
         # allocator's own ``_was_lit`` bookkeeping so ``_apply_salience``
         # can re-bid every event-tier role it still considers "on screen"
@@ -858,7 +875,13 @@ class ParallelDisplay:
         """
         return ts.strftime("%H:%M:%S")
 
-    def _apply_salience(self, role: str, style_str: str) -> str:
+    def _apply_salience(
+        self,
+        role: str,
+        style_str: str,
+        *,
+        state_token: tuple[str, ...],
+    ) -> str:
         """PLAN.md Section G / S-1: run one event/alarm-tier style string
         through the per-frame salience allocator before it paints.
 
@@ -883,17 +906,36 @@ class ParallelDisplay:
 
         ``role`` is the looked-up STATUS_STYLES key (``success``/
         ``warning``/``error``/``running``/``skipped``/``pending``/
-        ``info``); ``state_changed`` (G-3/G-4) is true whenever this
-        call's role differs from the immediately preceding call's role on
-        this same instance, so a run of consecutive same-role lines (e.g.
-        many ``running`` tool_use rows) decays per G-4 while a genuine
-        transition re-lights instantly. Field/structure-tier roles are
-        not part of this competition (the allocator always reports them
+        ``info``); ``state_token`` is the keyword-only per-role state
+        token the caller bids with (G-3/G-4). A role's state has
+        changed when this call's token for *this same role* differs
+        from the token that role last bid with -- compared against
+        ``_salience_last_token[role]``, never against a different
+        role's previous token. The leading element namespaces the
+        two call sites so a ``_build_line`` ``("line", level)`` and an
+        ``_activity_text`` ``("activity", kind, unit_id)`` are not
+        compared as the same underlying state. First sighting of a role
+        (no prior token) is always a state change; a decayed role
+        re-lights in the frame its own token changes (G-4); demotion
+        stays one-way while the token repeats (G-7). The published
+        ``SALIENCE_STATE_TOKEN_FIELDS`` mapping below names the
+        token fields per call site so the documentation can be bound
+        to the shipped model.
+
+        A run of alternating roles (e.g. ``tool_use`` -> ``tool_result``
+        -> ``tool_use``) is therefore NOT a state-change per call under
+        the previous role-alternation signal: each role re-appears with
+        its own unchanged token, so the steady counter for each role
+        advances and a long run decays on its own -- colour density
+        falls as output scrolls (E-7/G-4). A genuine transition (the
+        same role re-appearing with a different token) restores full
+        chroma in the same frame. Field/structure-tier roles are not
+        part of this competition (the allocator always reports them
         lit) and this method is only ever called with an event/alarm-tier
         role.
 
-        ``style_str`` is a full Style spec (``"#RRGGBB"`` or
-        ``"bold #RRGGBB"``, per ``_build_status_styles``); only the hex
+        ``style_str`` is a full Style spec (``"bold #RRGGBB"`` or
+        ``"#RRGGBB"``, per ``_build_status_styles``); only the hex
         portion is demoted (G-2), and any ``"bold "`` weight prefix is
         preserved untouched, since demotion is a chroma-ladder move, never
         a weight or contrast change.
@@ -903,8 +945,9 @@ class ParallelDisplay:
             # B-6/G-8 tail: no colour reaches this console at all, so the
             # allocator is a no-op -- nothing to demote either.
             return style_str
-        state_changed = role != self._salience_last_role
-        self._salience_last_role = role
+        previous_token = self._salience_last_token.get(role)
+        state_changed = previous_token != state_token
+        self._salience_last_token[role] = state_token
         pending = tuple(
             RoleBid(other_role, False)
             for other_role, lit in self._salience_lit_event_roles.items()
@@ -956,7 +999,9 @@ class ParallelDisplay:
         # ``bright cyan`` fallback because an earlier ``color_system=
         # "standard"`` console cached the Style's ANSI on its own hash).
         timestamp_style = _display_theme._fresh_style(statuses["info"][0])
-        suffix_style = _display_theme._fresh_style(self._apply_salience(state, statuses[state][0]))
+        suffix_style = _display_theme._fresh_style(
+            self._apply_salience(state, statuses[state][0], state_token=("line", level))
+        )
         t = Text()
         if leading_indent:
             t.append(leading_indent)
@@ -1005,7 +1050,9 @@ class ParallelDisplay:
         # "standard"`` console cached the Style's ANSI on its own hash).
         # ``_fresh_style`` mints a per-instance ``_hash`` so the second
         # console re-derives the ANSI against its own color system.
-        state_style = _display_theme._fresh_style(self._apply_salience(state, statuses[state][0]))
+        state_style = _display_theme._fresh_style(
+            self._apply_salience(state, statuses[state][0], state_token=("activity", kind, unit_id))
+        )
         chrome_style = _display_theme._fresh_style(statuses["info"][0])
         if kind in _BODY_SEMANTIC_KINDS:
             body_default_style = state_style

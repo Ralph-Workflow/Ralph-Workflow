@@ -170,13 +170,23 @@ always render at their own fixed budget.
   Under ``NO_COLOR``, ``TERM=dumb``, a non-tty destination, or forced ASCII
   the allocator is a no-op: nothing is ever demoted, since nothing carries
   colour anyway.
-- **Decay and hysteresis.** A role lit without an underlying state change
-  for more than ``STEADY_STATE_DECAY_FRAMES`` consecutive frames decays one
-  rung toward its tier-2 chroma budget (``demote_hex``), at unchanged
-  lightness and hue -- never below its own WCAG contrast floor. Demotion is
-  one-way: a demoted role only re-lights on a genuine state change, never
-  merely because contention eased, which forecloses flicker (two roles
-  trading the last budget slot back and forth) structurally.
+- **Decay and hysteresis.** The "underlying state change" signal is a
+  per-role **state token**, not a role-alternation check. Each call to
+  ``ParallelDisplay._apply_salience`` carries a keyword-only
+  ``state_token: tuple[str, ...]``; a role's state has changed when its
+  call's token differs from the token that *same role* last bid with
+  (a fresh role sighting is always a change). A role lit without an
+  underlying state change for more than ``STEADY_STATE_DECAY_FRAMES``
+  consecutive frames decays one rung toward its tier-2 chroma budget
+  (``demote_hex``), at unchanged lightness and hue -- never below its
+  own WCAG contrast floor. Demotion is one-way: a demoted role only
+  re-lights on a genuine state change, never merely because contention
+  eased, which forecloses flicker (two roles trading the last budget
+  slot back and forth) structurally. The two call sites bid with
+  distinct tokens so a ``_build_line`` ``info`` row and an
+  ``_activity_text`` ``info`` row are not compared as the same
+  underlying state -- the published
+  ``SALIENCE_STATE_TOKEN_FIELDS`` mapping names them per call-site.
 - **Alarm exemption.** Tier-4 (``error``) roles are never demoted and never
   decay. If the budget is exhausted when an alarm arrives, the lowest
   priority tier-3 accent is evicted instead -- a failure always renders at

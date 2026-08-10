@@ -5,6 +5,8 @@ generator machinery inherited (Characterize point 2).
 
 from __future__ import annotations
 
+import pytest
+
 from pygments.token import (
     Comment,
     Error,
@@ -73,6 +75,7 @@ def _assert_matches_role(hex_val: str, role: str, *, label: str, tol: float = 15
     if diff > 180.0:
         diff = 360.0 - diff
     assert diff < tol, f"{label}: expected role {role} (hue {anchor.hue}), got hue {hue:.1f} ({hex_val})"
+@pytest.mark.criteria("D-1")
 
 
 def test_syntax_tokens_follow_monokai_pro_scope_convention() -> None:
