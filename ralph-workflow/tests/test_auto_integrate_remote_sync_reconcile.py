@@ -416,7 +416,8 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     monkeypatch.setattr(
         remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
     )
-    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: True)
+    states = iter((True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
 
     def resolver(*_a: object, **_kw: object) -> bool:
         return True
@@ -435,6 +436,42 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     )
     assert calls == [(owner, "origin/main")]
     assert success is True
+
+
+def test_target_reconciliation_regression_resolver_success_requires_finished_rebase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: a resolver claim cannot clear ownership while Git is still rebasing."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    states = iter((True, True, True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(remote_reconcile, "resolve_rebase_in_progress", lambda *_a: True)
+    aborts: list[bool] = []
+    monkeypatch.setattr(
+        remote_reconcile, "abort_rebase", lambda **_kw: aborts.append(True)
+    )
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
+    monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
+
+    outcome = remote_reconcile.reconcile_target_onto_remote(
+        Path("/repo"),
+        "main",
+        "origin",
+        rebase_stop_resolver=lambda *_a: True,
+    )
+
+    assert outcome.reconciled is False
+    assert outcome.cleanly_aborted is True
+    assert aborts == [True]
 
 
 def test_rejected_push_reintegrates_feature_before_repush(

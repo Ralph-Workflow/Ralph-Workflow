@@ -100,6 +100,7 @@ def reconcile_target_onto_remote(
             rebase_in_progress(owner)
             and rebase_stop_resolver is not None
             and resolve_rebase_in_progress(owner, f"{remote}/{target}", rebase_stop_resolver)
+            and not rebase_in_progress(owner)
         ):
             clear_record(repo_root)
             return ReconciliationOutcome(True, "")
