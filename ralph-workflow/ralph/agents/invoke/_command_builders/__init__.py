@@ -692,7 +692,10 @@ class DefaultCommandBuilder:
         *,
         options: _BuildCommandOptions,
     ) -> list[str]:
-        cmd = config.cmd.split()
+        # shlex.split (not str.split) so a quoted wrapper path containing
+        # spaces stays a single argv token, matching the AGY / Cursor
+        # overrides and ``_agent_command_name``.
+        cmd = shlex.split(config.cmd)
         transport = _agent_transport(config)
 
         if transport == AgentTransport.CLAUDE and config.output_flag is not None:

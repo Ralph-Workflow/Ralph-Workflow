@@ -603,6 +603,34 @@ def test_build_command_does_not_duplicate_print_flag_when_claude_cmd_already_use
     ]
 
 
+def test_build_command_keeps_quoted_cmd_path_containing_spaces_as_one_token() -> None:
+    """A shell-quoted wrapper path with spaces stays a single argv token.
+
+    Operators point ``[agents.claude].cmd`` at a wrapper binary whose path
+    may contain spaces; the documented contract (matching the AGY / Cursor
+    overrides and ``_agent_command_name``) is that the cmd string is parsed
+    with shell quoting rules, so the quoted path survives as one token
+    instead of being shredded into two nonexistent arguments.
+    """
+    config = AgentConfig(
+        cmd="'/opt/my wrapper/claude-shim' claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        verbose_flag="--verbose",
+        print_flag="--print",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = build_command(
+        config,
+        "PROMPT.md",
+        options=BuildCommandOptions(verbose=False),
+    )
+
+    assert cmd[:3] == ["/opt/my wrapper/claude-shim", "claude", "-p"]
+
+
 # === consolidated from test_agents_invoke_1.py ===
 def test_claude_interactive_build_command_excludes_output_flag() -> None:
     config = AgentConfig(
