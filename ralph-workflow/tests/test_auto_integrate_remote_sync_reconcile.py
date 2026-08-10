@@ -171,7 +171,8 @@ def test_rejected_push_passes_resolver_to_target_reconciliation(
     monkeypatch.setattr(
         remote_reconcile,
         "reconcile_target_onto_remote",
-        lambda *_a, **kwargs: received.append(kwargs.get("rebase_stop_resolver")) or (False, "blocked"),
+        lambda *_a, **kwargs: received.append(kwargs.get("rebase_stop_resolver"))
+        or remote_reconcile.ReconciliationOutcome(False, "blocked"),
     )
 
     reconcile_after_rejected_push(
@@ -193,7 +194,8 @@ def test_rejected_push_honors_target_reclaim_opt_out(
     monkeypatch.setattr(
         remote_reconcile,
         "reconcile_target_onto_remote",
-        lambda *_a, **kwargs: received.append(kwargs["reclaim_target_worktree"]) or (False, "blocked"),
+        lambda *_a, **kwargs: received.append(kwargs["reclaim_target_worktree"])
+        or remote_reconcile.ReconciliationOutcome(False, "blocked"),
     )
 
     result = reconcile_after_rejected_push(

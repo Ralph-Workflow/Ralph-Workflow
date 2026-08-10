@@ -8,6 +8,7 @@ normal local integration continues.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
@@ -27,10 +28,30 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
+
+
+@dataclass(frozen=True)
+class ReconciliationOutcome:
+    """Structured result of a target reconciliation attempt.
+
+    ``cleanly_aborted`` is true only after the abort, target-SHA verification,
+    and durable-record cleanup all succeeded.  It is intentionally separate
+    from ``reason``, which is operator-facing presentation text.
+    """
+
+    reconciled: bool
+    reason: str
+    cleanly_aborted: bool = False
+
+    def __iter__(self) -> Iterator[bool | str]:
+        """Preserve the two-value compatibility contract for direct callers."""
+        yield self.reconciled
+        yield self.reason
 
 
 def reconcile_target_onto_remote(
@@ -40,10 +61,10 @@ def reconcile_target_onto_remote(
     *,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     reclaim_target_worktree: bool = True,
-) -> tuple[bool, str]:
+) -> ReconciliationOutcome:
     """Rebase unpublished local target commits onto ``remote/target`` safely.
 
-    The target must already be checked out in one clean worktree.  Refusing
+    The target must already be checked out in one clean worktree. Refusing
     every other shape is intentional: checking out or moving the feature
     worktree would make a remote retry alter unrelated local work.
     """
@@ -51,7 +72,9 @@ def reconcile_target_onto_remote(
         repo_root, target, remote, reclaim_target_worktree=reclaim_target_worktree
     )
     if reason is not None or owner is None or pre_target_sha is None:
-        return False, reason or f"target '{target}' is unavailable for reconciliation"
+        return ReconciliationOutcome(
+            False, reason or f"target '{target}' is unavailable for reconciliation"
+        )
     try:
         write_record(
             repo_root,
@@ -65,19 +88,21 @@ def reconcile_target_onto_remote(
             ),
         )
     except Exception as exc:
-        return False, f"reconciliation of {target} deferred: recovery record unavailable: {exc}"
+        return ReconciliationOutcome(
+            False, f"reconciliation of {target} deferred: recovery record unavailable: {exc}"
+        )
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
         if isinstance(outcome, (RebaseSuccess, RebaseNoOp)):
             clear_record(repo_root)
-            return True, ""
+            return ReconciliationOutcome(True, "")
         if (
             rebase_in_progress(owner)
             and rebase_stop_resolver is not None
             and resolve_rebase_in_progress(owner, f"{remote}/{target}", rebase_stop_resolver)
         ):
             clear_record(repo_root)
-            return True, ""
+            return ReconciliationOutcome(True, "")
         if rebase_in_progress(owner):
             abort_rebase(repo_root=owner)
     except Exception as exc:
@@ -120,24 +145,24 @@ def _abort_restore_or_retain_record(
     remote: str,
     pre_target_sha: str,
     detail: str,
-) -> tuple[bool, str]:
+) -> ReconciliationOutcome:
     """Abort a failed reconciliation and restore the target before clearing ownership."""
     try:
         if rebase_in_progress(owner):
             abort_rebase(repo_root=owner)
         if rebase_in_progress(owner):
-            return (
+            return ReconciliationOutcome(
                 False,
                 f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
             )
         if branch_sha(owner, target) != pre_target_sha:
-            return (
+            return ReconciliationOutcome(
                 False,
                 f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
                 "target moved during reconciliation",
             )
     except Exception as exc:
-        return (
+        return ReconciliationOutcome(
             False,
             f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
             f"restore failed: {exc}",
@@ -145,16 +170,21 @@ def _abort_restore_or_retain_record(
     try:
         clear_record(repo_root)
     except Exception as exc:
-        return (
+        return ReconciliationOutcome(
             False,
             f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
             f"record cleanup failed: {exc}",
         )
-    return (
+    return ReconciliationOutcome(
         False,
         f"reconciliation of {target} with {remote}/{target} "
         f"{CLEAN_ABORTED_RECONCILIATION_CONFLICT} {detail}",
+        cleanly_aborted=True,
     )
 
 
-__all__ = ["CLEAN_ABORTED_RECONCILIATION_CONFLICT", "reconcile_target_onto_remote"]
+__all__ = [
+    "CLEAN_ABORTED_RECONCILIATION_CONFLICT",
+    "ReconciliationOutcome",
+    "reconcile_target_onto_remote",
+]

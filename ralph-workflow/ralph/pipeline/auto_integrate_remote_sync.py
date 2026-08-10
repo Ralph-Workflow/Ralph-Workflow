@@ -316,14 +316,14 @@ def _dispatch_pull_outcome(
     elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 
-        reconciled, reason = reconcile_target_onto_remote(
+        reconciliation = reconcile_target_onto_remote(
             repo_root,
             target,
             chosen_remote,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
             rebase_stop_resolver=rebase_stop_resolver,
         )
-        if reconciled:
+        if reconciliation.reconciled:
             _arm_throttle(repo_root, chosen_remote, target, clock)
             state = _record_remote_state(
                 target,
@@ -334,20 +334,15 @@ def _dispatch_pull_outcome(
                 freshness_source="fetch",
             )
         else:
-            from ralph.pipeline.auto_integrate_remote_reconcile import (
-                CLEAN_ABORTED_RECONCILIATION_CONFLICT,
-            )
-
-            cleanly_aborted = CLEAN_ABORTED_RECONCILIATION_CONFLICT in reason
             _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
             state = _record_remote_state(
                 target,
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=refresh,
-                reason=reason,
-                freshness_verdict="degraded" if cleanly_aborted else "unsafe",
+                reason=reconciliation.reason,
+                freshness_verdict="degraded" if reconciliation.cleanly_aborted else "unsafe",
                 freshness_source="fetch",
-                freshness_safe=cleanly_aborted,
+                freshness_safe=reconciliation.cleanly_aborted,
             )
     else:
         _arm_throttle(repo_root, chosen_remote, target, clock)
@@ -668,15 +663,15 @@ def _attempt_reconcile_and_push(
     if refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 
-        reconciled, reason = reconcile_target_onto_remote(
+        reconciliation = reconcile_target_onto_remote(
             repo_root,
             target,
             remote,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
             rebase_stop_resolver=rebase_stop_resolver,
         )
-        if not reconciled:
-            return _PushOutcome(success=False, summary=reason, pushed=False)
+        if not reconciliation.reconciled:
+            return _PushOutcome(success=False, summary=reconciliation.reason, pushed=False)
     if reintegrate is not None and not reintegrate():
         return _PushOutcome(
             success=False,

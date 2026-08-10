@@ -184,9 +184,11 @@ def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
 
     calls: list[tuple[Path, str, str, object | None]] = []
 
-    def fake_reconcile(root: Path, target: str, remote: str, **kwargs: object) -> tuple[bool, str]:
+    def fake_reconcile(
+        root: Path, target: str, remote: str, **kwargs: object
+    ) -> reconcile.ReconciliationOutcome:
         calls.append((root, target, remote, kwargs.get("rebase_stop_resolver")))
-        return True, ""
+        return reconcile.ReconciliationOutcome(True, "")
 
     monkeypatch.setattr(reconcile, "reconcile_target_onto_remote", fake_reconcile)
     out = remote_sync.pull_and_reconcile_target(
@@ -296,7 +298,11 @@ def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
-    monkeypatch.setattr(reconcile, "reconcile_target_onto_remote", lambda *a, **kw: (False, "conflicted"))
+    monkeypatch.setattr(
+        reconcile,
+        "reconcile_target_onto_remote",
+        lambda *a, **kw: reconcile.ReconciliationOutcome(False, "conflicted"),
+    )
 
     out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
 
@@ -317,9 +323,10 @@ def test_cleanly_aborted_target_reconcile_conflict_degrades_without_blocking_loc
     monkeypatch.setattr(
         reconcile,
         "reconcile_target_onto_remote",
-        lambda *a, **kw: (
-            False,
-            f"{reconcile.CLEAN_ABORTED_RECONCILIATION_CONFLICT} conflicted",
+        lambda *a, **kw: reconcile.ReconciliationOutcome(
+            reconciled=False,
+            reason="conflicted without a presentation marker",
+            cleanly_aborted=True,
         ),
     )
 
@@ -329,7 +336,7 @@ def test_cleanly_aborted_target_reconcile_conflict_degrades_without_blocking_loc
     assert out.last_remote_sync == remote_sync.REMOTE_PULL_FAILED
     assert out.freshness_safe is True
     assert out.freshness_verdict == "degraded"
-    assert out.last_reason == f"{reconcile.CLEAN_ABORTED_RECONCILIATION_CONFLICT} conflicted"
+    assert out.last_reason == "conflicted without a presentation marker"
 
 
 def test_rebase_state_preserves_structured_reclamation_metadata() -> None:
