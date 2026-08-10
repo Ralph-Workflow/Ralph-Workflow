@@ -19,6 +19,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import _prompt_ui, cli_integration, markers
+from ralph.project_policy import _schema_upgrade as policy_schema_upgrade
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -261,7 +262,7 @@ def test_menu_descriptions_fit_on_one_terminal_line() -> None:
     budget = 60
     choices = [
         *cli_integration._INIT_CHOICES,
-        *cli_integration._schema_choices(3),
+        *policy_schema_upgrade._schema_choices(3),
     ]
     too_long = [choice.key for choice in choices if len(choice.description) > budget]
     assert not too_long, f"descriptions exceed {budget} chars: {too_long}"
@@ -273,7 +274,7 @@ def test_declining_schema_upgrade_freezes_existing_policy() -> None:
     ws.write(path, "<!-- ralph-policy-schema: v1 -->\n# Customized\n")
     messages: list[str] = []
 
-    cli_integration._maybe_resolve_schema_upgrade(
+    policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         messages.append,
         select=_Selector("freeze"),
@@ -298,7 +299,7 @@ def test_schema_upgrade_asks_once_for_all_files() -> None:
     messages: list[str] = []
     selector = _Selector("upgrade")
 
-    resolved = cli_integration._maybe_resolve_schema_upgrade(
+    resolved = policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         messages.append,
         select=selector,
@@ -321,7 +322,7 @@ def test_schema_explain_reasks_without_writing() -> None:
     messages: list[str] = []
     selector = _Selector("explain", "upgrade")
 
-    resolved = cli_integration._maybe_resolve_schema_upgrade(
+    resolved = policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         messages.append,
         select=selector,
@@ -347,7 +348,7 @@ def test_declining_schema_upgrade_freezes_all_and_shows_undo() -> None:
     messages: list[str] = []
     selector = _Selector("freeze")
 
-    resolved = cli_integration._maybe_resolve_schema_upgrade(
+    resolved = policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         messages.append,
         select=selector,
@@ -372,7 +373,7 @@ def test_future_schema_freeze_fails_closed() -> None:
     ws.write(path, "<!-- ralph-policy-schema: freeze v999 -->\n# Customized\n")
     messages: list[str] = []
 
-    resolved = cli_integration._maybe_resolve_schema_upgrade(
+    resolved = policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         messages.append,
         select=_Selector("upgrade"),

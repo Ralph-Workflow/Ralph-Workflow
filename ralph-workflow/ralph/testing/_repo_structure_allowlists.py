@@ -559,6 +559,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         ),
         (
             "tests/project_policy/test_skip_inline_policy_prompt.py",
+            "ralph.project_policy",
+            ("_schema_upgrade",),
+        ),
+        (
+            "tests/project_policy/test_skip_inline_policy_prompt.py",
             "ralph.cli.commands._load_result",
             ("_LoadResult",),
         ),

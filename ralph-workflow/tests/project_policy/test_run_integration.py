@@ -770,8 +770,3 @@ def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness()
     assert "run_project_policy_readiness" not in runners.calls
     assert "load_configuration" not in runners.calls
 
-
-# Compile-time guard: assert no FsWorkspace, no Path, no tmp_path leaked
-# into this module. ``Path`` is imported only at module level for type
-# hints but never instantiated for I/O. The audit_test_policy AST scanner
-# verifies the absence of Path.read_text / .write_text / open() calls.

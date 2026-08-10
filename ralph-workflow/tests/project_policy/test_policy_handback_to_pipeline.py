@@ -27,6 +27,7 @@ the pipeline graph.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -86,7 +87,6 @@ def _seed_workspace_with_complete_policy(ws: MemoryWorkspace) -> None:
 
 def _approve_policy_in_workspace(ws: MemoryWorkspace) -> None:
     """Submit a 'completed' analysis decision so the remediation flow closes."""
-    import json
 
     from ralph.project_policy import analysis as policy_analysis
 
@@ -657,3 +657,4 @@ def _stub_load_result_for_handback(workspace_root: str, *, phase: str) -> run_mo
         policy_bundle=None,
         run_id="test-run-id",
     )
+
