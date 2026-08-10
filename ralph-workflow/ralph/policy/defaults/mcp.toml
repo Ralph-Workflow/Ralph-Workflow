@@ -116,11 +116,13 @@
 # Edit this only if you need to customize media handling.
 # Broad multimodal support (read_media tool; read_image is a compatibility alias for inline images).
 # Covers images, PDFs, audio, video, and office documents.
-# ENABLED BY DEFAULT - no config required for basic use.
-# To disable or customize:
+# The multimodal MCP endpoints ALWAYS stay enabled (criterion 1):
+# ``[media] enabled = false`` is accepted and ignored -- ``media.read``,
+# ``read_media``, ``read_image`` cannot be disabled in any supported config.
+# ``max_inline_bytes`` is the only genuine tunable; increase it for larger
+# inline images.
 # @EXAMPLE-START
 # [media]
-# enabled = false  # set to false to opt out
 # max_inline_bytes = 5242880  # 5 MiB default; increase for larger inline images
 # @EXAMPLE-END
 

@@ -40,6 +40,7 @@ __all__ = [
     "WireLedgerRecord",
     "append_wire_record",
     "collect_captures",
+    "params_digest",
     "render_capture_table_markdown",
     "verify_chain",
     "wire_evidence_for",
@@ -78,9 +79,23 @@ class WireLedgerRecord:
         return json.dumps(payload, sort_keys=True)
 
 
-def _params_digest(params: dict[str, object]) -> str:
+def params_digest(params: dict[str, object]) -> str:
+    """Return the canonical SHA-256 digest of ``params`` as a row-stored.
+
+    Public, stable entrypoint for callers that need to recompute the digest a
+    ledger row carries (e.g. the multimodal smoke grader matches a verified
+    ``tools/call`` record's ``params_digest`` to the digest of
+    ``{"path": <replay-handle>}`` so the agent cannot fake the replay hop).
+    The on-disk record shape (LM hash algorithm, sort_keys canonical JSON,
+    ``default=str`` for unsupported types) is unchanged.
+    """
     canonical = json.dumps(params, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _params_digest(params: dict[str, object]) -> str:
+    """Internal alias for :func:`params_digest` preserved for callers."""
+    return params_digest(params)
 
 
 def _record_hmac(
@@ -330,6 +345,7 @@ def wire_evidence_for(
     *,
     tool_name: str | None = None,
     secret: str | None,
+    params_digest: str | None = None,
 ) -> bool:
     """Return ``True`` iff a verified ``tools/call`` record backs ``run_id``.
 
@@ -338,6 +354,14 @@ def wire_evidence_for(
     ``ralph_submit_md_artifact`` matches a lookup for ``"artifact"``)
     counts. ``tool_name=None`` matches any ``tools/call`` record for the run
     — the general "did the agent dial the MCP server at all" signal.
+
+    When ``params_digest`` is given, only a record whose ``params_digest``
+    exactly matches is counted (the multimodal smoke grader uses this to
+    enforce the replay-hop contract: a verified ``read_media`` call with
+    the fixture path is not enough — there must ALSO be a verified
+    ``read_media`` call whose arguments' digest equals the digest of
+    ``{"path": <server-minted handle>}``, which the agent could only have
+    issued after consuming the first response).
 
     Returns ``False`` (never grades ``WIRE``) when ``secret`` is ``None`` or
     the chain fails to verify — an unverifiable ledger backs nothing.
@@ -350,6 +374,10 @@ def wire_evidence_for(
     for row in _iter_ledger_rows(ledger_path):
         if row.get("run_id") != run_id or row.get("method") != "tools/call":
             continue
+        if params_digest is not None:
+            row_digest = row.get("params_digest")
+            if not isinstance(row_digest, str) or row_digest != params_digest:
+                continue
         if tool_name is None:
             return True
         row_tool = row.get("tool_name")

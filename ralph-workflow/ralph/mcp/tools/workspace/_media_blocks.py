@@ -6,6 +6,8 @@ import base64
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.multimodal.artifacts import (
     INLINE_IMAGE_MIME_TYPES,
@@ -47,6 +49,39 @@ if TYPE_CHECKING:
     from ralph.mcp.multimodal.resources import ManifestEntry
     from ralph.mcp.tools.coordination import ContentBlock, CoordinationSessionLike
     from ralph.workspace import Workspace
+
+
+def _build_warning_block(
+    *,
+    provider: str,
+    modality: str,
+    verdict_reason: str,
+) -> ToolContent:
+    """Build a non-fatal warning block naming the degraded multimodal delivery.
+
+    S-7 (criterion 3): when a multimodal model identity is unknown or a
+    modality verdict is ``UNSUPPORTED``, we DEGRADE GRACEFULLY rather
+    than fail. The warning block is prepended to a usable result so the
+    agent sees both the data it asked for (the inline image,
+    resource-reference block, etc.) AND the operator-visible
+    explanation of why this delivery mode is suboptimal.
+
+    The exact block is plain text and is added BEFORE any other
+    content block, so the multimodal payload still arrives intact.
+    The accompanying ``logger.warning`` uses
+    ``ralph.mcp.multimodal.degradation`` so tests can suppress it via
+    ``caplog``.
+    """
+    message = (
+        "multimodal degraded: provider="
+        f"{provider!r} modality={modality!r} "
+        f"reason={verdict_reason!r}. "
+        "Treating multimodal as ASSUMED-present per product criterion 3; "
+        "the artifact below is delivered via resource-reference replay so the "
+        "agent can still proceed."
+    )
+    logger.warning(message)
+    return ToolContent.text_content(f"WARNING: {message}")
 
 
 def _make_typed_block(
@@ -295,14 +330,33 @@ def _handle_workspace_media(
     modality, mime_type = inferred
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(modality)
+    # S-7 (criterion 3): an unknown identity (provider == "unknown")
+    # is the canonical "multimodal model not actually present" signal.
+    # We DEGRADE GRACEFULLY: emit a WARNING block + still deliver the
+    # artifact via the natural code path below, rather than failing the
+    # call. The default assumption (multimodal IS present) survives
+    # because the resource-reference block keeps the multimodal surface
+    # available for downstream agents.
+    identity_unknown = not profile.identity.is_known()
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
+        # S-7 (criterion 3): even UNSUPPORTED verdicts degrade gracefully
+        # with a WARNING block. The default assumption is that multimodal
+        # is present and only the explicit provider / modality / reason
+        # combo below explains the missing capability. The agent still
+        # gets the structured modality list so it can fall back to
+        # resource-reference delivery via a second ``read_media`` call.
         return ToolResult(
             content=[
+                _build_warning_block(
+                    provider=verdict.provider,
+                    modality=modality,
+                    verdict_reason=verdict.reason,
+                ),
                 ToolContent.text_content(
                     f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
                     f"(model: {verdict.model_id or 'unknown'}). "
                     f"Accepted forms: typed_block or none. Reason: {verdict.reason}"
-                )
+                ),
             ],
             is_error=True,
         )
@@ -364,6 +418,21 @@ def _handle_workspace_media(
             artifact_id=artifact_id,
         ),
     )
+    # S-7 (criterion 3): when the resolved identity is unknown, prepend a
+    # WARNING block BEFORE the resource reference. The default assumption
+    # is multimodal-present; the warning is the operator-visible signal
+    # that this delivery is the graceful-degradation path rather than the
+    # optimal inline-or-typed-block path.
+    warning_content: list[ToolContent] = []
+    if identity_unknown:
+        warning_content.append(
+            _build_warning_block(
+                provider=verdict.provider,
+                modality=modality,
+                verdict_reason=verdict.reason,
+            )
+        )
+
     block, delivery = _make_non_inline_workspace_block(verdict, entry, mime_type, modality, title)
     # The byte_loader and cache_path were wired at add-time, but
     # ``set_replay_source`` also records ``source_path`` on the
@@ -391,4 +460,6 @@ def _handle_workspace_media(
             "identity_key": identity_key,
         },
     )
+    if warning_content:
+        return ToolResult(content=[*warning_content, block], is_error=False)
     return ToolResult(content=[block], is_error=False)

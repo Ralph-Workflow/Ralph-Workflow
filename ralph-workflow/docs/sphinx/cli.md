@@ -209,6 +209,29 @@ diagnostics outside `make verify`. A transport without native subagent support
 fails the subagent check; the harness does not silently downgrade to the basic
 scenario.
 
+All smoke commands (interactive / headless Claude, AGY, Nanocoder, Cursor,
+OpenCode) also accept `--multimodal` for the multimodal smoke scenario
+(criterion 5). The flag drives the agent from a multimodal-aware prompt,
+materializes a deterministic PNG fixture and the harness's
+`.agent/mcp.toml` ``[media]`` fragment before the turns start, and treats
+a missing verified `read_media` / `read_image` call as a HARD break --
+not a silent downgrade to the basic scenario. The flag is OUTSIDE
+`make verify` (kept in the `pytest.mark.smoke` family) and only runs
+when an operator invokes it for diagnostic purposes.
+
+```bash
+python -m ralph smoke-interactive-claude --multimodal
+python -m ralph smoke-headless-claude --multimodal
+python -m ralph smoke-interactive-agy --multimodal
+python -m ralph smoke-interactive-nanocoder --multimodal
+python -m ralph smoke-interactive-cursor --multimodal
+python -m ralph smoke-interactive-opencode --multimodal
+```
+
+A `--multimodal` run whose media fact holds at WIRE exits 0 and prints
+`Multimodal: yes (wire)`; a run whose media fact is absent exits 1 with
+the break in the operator-visible table.
+
 ### `ralph smoke-interactive-agy`
 
 Run this manual, paid-usage diagnostic one at a time for Google Anti Gravity

@@ -416,10 +416,20 @@ def test_load_mcp_config_media_enabled_by_default(
     assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
 
 
-def test_load_mcp_config_media_explicit_false_override(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_load_mcp_config_media_explicit_false_is_coerced_to_true(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Explicit [media] enabled = false disables media despite default being true."""
+    """``[media] enabled = false`` is INERT -- the value is coerced to ``True`` and a warning is logged.
+
+    The multimodal MCP endpoints always stay enabled (criterion 1).
+    The legacy opt-out is retired at the ``MediaConfig`` validator
+    so an existing ``mcp.toml`` asking for ``enabled = false`` parses
+    without a hard failure but its value never reaches the resolved
+    model. ``max_inline_bytes`` remains a genuine tunable and is
+    unaffected by the coercion.
+    """
+    import logging
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text(
@@ -429,9 +439,16 @@ def test_load_mcp_config_media_explicit_false_override(
         """),
         encoding="utf-8",
     )
-    config = load_mcp_config(config_path=cfg)
-    assert config.media.enabled is False
+    with caplog.at_level(logging.WARNING, logger="ralph.config.media"):
+        config = load_mcp_config(config_path=cfg)
+    assert config.media.enabled is True
     assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+    matching = [
+        record
+        for record in caplog.records
+        if "enabled = false is accepted and ignored" in record.message
+    ]
+    assert len(matching) >= 1
 
 
 def test_load_mcp_config_media_rejects_invalid_max_inline_bytes(

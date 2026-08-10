@@ -109,6 +109,25 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),
+    # smoke_multimodal.grade_multimodal_evidence has the 4-condition
+    # contract branch fan-out (verified read_media call + server-persisted
+    # receipt == MEDIA_RECEIPT + verified replay-digest call + DIMENSIONS
+    # == authoritative geometry + MEDIA_SHA256 == fixture digest). The
+    # early-return shape keeps each branch a short-circuit; per-branch
+    # control flow stays local to the contract check.
+    ("smoke_multimodal", "PLR0911"),
+    ("smoke_multimodal", "PLR0912"),
+    # _detect_smoke_errors fans out across subagent, multimodal,
+    # parser-diagnostics, visible-output, AGY-upstream, and other
+    # contract branches; each is a short-circuit that does not lend
+    # itself to refactor without obscuring the contract.
+    ("smoke_plumbing", "PLR0912"),
+    # mock_multimodal_agent.main: the subprocess-driven positive /
+    # no-call / ignore-response state machine spans ~25 statements
+    # by design; the parsed transport-frame vocabulary is interleaved
+    # with real MCP dispatch and the per-mode branching reads top-down.
+    ("mock_multimodal_agent", "PLR0912"),
+    ("mock_multimodal_agent", "PLR0915"),
     ("_metrics", "PLW0603"),
     # _sentry.py: scalar module-level state (_SESSION_STARTED_AT,
     # _SESSION_OUTCOME, _INITIALIZED, _EXTRA_SCRUB_PREFIXES) is the
@@ -117,6 +136,12 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # at module level). The setters therefore MUST update those
     # scalars in-place via `global`, which ruff flags as PLW0603.
     ("_sentry", "PLW0603"),
+    # smoke_multimodal.grade_multimodal_evidence fans out across the
+    # 4-condition contract (verified read_media + server-persisted receipt
+    # + replay-digest + DIMENSIONS / MEDIA_SHA256). Each helper is a
+    # single small short-circuit; the top-level function still needs
+    # 7 returns to walk the 4 helper stages.
+    ("smoke_multimodal", "PLR0911"),
     ("parallel_display", "PLR0912"),
     ("pydantic_validation_errors", "PLR0911"),
     ("_command_builders", "PLC0415"),  # lazy import enables test monkeypatching of invoke module

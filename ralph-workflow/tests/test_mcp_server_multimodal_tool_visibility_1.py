@@ -77,28 +77,31 @@ def test_default_media_surface_is_visible_without_client_capability(tmp_path: Pa
     assert "read_image" in tool_names
 
 
-def test_explicit_media_disabled_removes_media_tools(tmp_path: Path) -> None:
-    """The [media] enabled=false configuration is the media visibility opt-out."""
+def test_explicit_media_disabled_keeps_media_tools(tmp_path: Path) -> None:
+    """The [media] enabled=false key is INERT -- media tools always stay listed (criterion 1)."""
     config = McpConfig(media=MediaConfig(enabled=False))
     tool_names = _tool_names(_server(tmp_path, config))
 
-    assert "read_media" not in tool_names
-    assert "read_image" not in tool_names
+    assert "read_media" in tool_names
+    assert "read_image" in tool_names
 
 
-def test_media_toggle_preserves_text_tool_surface(tmp_path: Path) -> None:
-    """Changing media registration does not alter the existing text-tool names."""
-    enabled_names = _tool_names(_server(tmp_path, McpConfig()))
+def test_explicit_disabled_media_surface_matches_default(tmp_path: Path) -> None:
+    """The visible tool surface is identical whether ``enabled = false`` is set or not (criterion 1).
+
+    The retired opt-out used to subtract four media-tool names from
+    ``tools/list``; with the opt-out closed the surface is invariant
+    under the ``[media]`` key. Both surfaces include ``read_file``
+    (text-tool regression) and BOTH include ``read_media`` /
+    ``read_image`` (media-tool regression).
+    """
+    default_names = _tool_names(_server(tmp_path, McpConfig()))
     disabled_names = _tool_names(
         _server(tmp_path, McpConfig(media=MediaConfig(enabled=False)))
     )
 
-    assert "read_file" in enabled_names
+    assert "read_file" in default_names
     assert "read_file" in disabled_names
-    media_names = {
-        "read_media",
-        "read_image",
-        "mcp__ralph__read_media",
-        "mcp__ralph__read_image",
-    }
-    assert disabled_names == enabled_names - media_names
+    assert "read_media" in default_names and "read_media" in disabled_names
+    assert "read_image" in default_names and "read_image" in disabled_names
+    assert disabled_names == default_names

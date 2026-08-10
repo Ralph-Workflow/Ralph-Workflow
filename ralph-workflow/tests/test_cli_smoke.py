@@ -163,6 +163,7 @@ def test_build_smoke_prompt_teaches_agy_to_route_submission_through_call_mcp_too
     assert "call_mcp_tool" not in non_agy_prompt
 
 
+
 def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",

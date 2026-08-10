@@ -202,11 +202,16 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                 handler_name="handle_download_url",
             ),
         )
-    if mcp_config.media.enabled:
-        specs.append(
-            ToolSpec(
-                metadata=_metadata(
-                    name=READ_IMAGE_TOOL,
+    # S-14 (criterion 1): the multimodal MCP endpoints always stay
+    # enabled. ``MediaConfig.enabled`` is coerced to True via a
+    # ``field_validator`` and the gate is dropped here so a future
+    # change cannot reintroduce the opt-out. ``max_inline_bytes``
+    # remains a genuine tunable and is forwarded by the registry
+    # via ``extra_kwargs={"max_inline_bytes": mcp_cfg.media.max_inline_bytes}``.
+    specs.append(
+        ToolSpec(
+            metadata=_metadata(
+                name=READ_IMAGE_TOOL,
                     description=(
                         "Read an image file and return it as a base64-encoded content block. "
                         "Requires MediaRead capability and explicit media support enablement. "
@@ -250,10 +255,10 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                 handler_name="handle_read_image",
             ),
         )
-        specs.append(
-            ToolSpec(
-                metadata=_metadata(
-                    name=READ_MEDIA_TOOL,
+    specs.append(
+        ToolSpec(
+            metadata=_metadata(
+                name=READ_MEDIA_TOOL,
                     description=(
                         "Read a media file and return the appropriate content block. "
                         "Supports images, PDFs, audio, video, and visually meaningful documents. "

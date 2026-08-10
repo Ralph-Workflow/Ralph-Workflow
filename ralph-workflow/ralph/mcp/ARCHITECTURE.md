@@ -237,10 +237,17 @@ MCP capabilities are mapped to Ralph capabilities:
 
 The `MediaRead` capability gates access to the `read_media` and `read_image` tools. It is:
 
-- **Default-on** via `media.enabled = true` (or omitted, as it is the default)
-- **Can be disabled** via `media.enabled = false` in `mcp.toml`
-- **Visible to clients** whenever the active session has `media.read`; `initialize` does not negotiate multimodal support
+- **Always granted** to every drain (``media.read`` is unconditional)
+  because the multimodal MCP endpoints always stay enabled (criterion 1)
+- **Visible to clients** whenever the active session has `media.read`;
+  `initialize` does not negotiate multimodal support
 - **Enforced at runtime** via session capability check
+
+The `[media] enabled = false` key is accepted (so existing
+`mcp.toml` files keep parsing) but is INERT: the resolved
+``MediaConfig.enabled`` is always ``True`` and a single
+``logger.warning`` names the ignored key on construction. ``max_inline_bytes``
+is the only genuine tunable in the ``[media]`` section.
 
 ## Multimodal MCP Support
 
@@ -248,26 +255,28 @@ Ralph supports broad multimodal MCP tools as a default-on, capability-gated feat
 
 Supported modality classes: images (PNG, JPEG, GIF, WebP), PDFs, documents, audio, video, and resource/file-reference-based flows. Ralph automatically determines what the active provider/model supports and selects inline vs resource-reference delivery accordingly.
 
-### Disabling Multimodal Support
+### Multimodal Endpoints Always Stay Enabled
 
-To disable multimodal support:
-
-```toml
-[media]
-enabled = false
-```
-
-To customize without disabling (or omit `enabled` as it defaults to true):
+No supported configuration disables the multimodal endpoints. The
+``[media] enabled`` key is accepted but coerced to ``True`` at the
+``MediaConfig`` validator (criterion 1). The only genuine tunable is
+``max_inline_bytes``:
 
 ```toml
 [media]
-enabled = true
 max_inline_bytes = 10485760  # 10 MiB to allow larger images
 ```
 
+A ``[media] enabled = false`` line is permitted for backward compatibility
+with existing configs; it emits one ``logger.warning`` naming the ignored
+key and the resolved value is ``True``.
+
 ### Multimodal Tool Visibility
 
-The `[media] enabled` setting in `mcp.toml` is the single multimodal opt-out. It defaults to `true`; enabled sessions receive `media.read`, and Ralph registers `read_media` plus the `read_image` compatibility alias. Setting it to `false` withholds the capability and both registrations.
+``media.read`` is granted unconditionally on every drain, and Ralph always
+registers both ``read_media`` and the ``read_image`` compatibility alias.
+The legacy opt-out (``[media] enabled = false``) used to withhold both
+registrations; that counterexample is now retired (see criterion 1).
 
 MCP `initialize` does not define image, media, or multimodal negotiation keys. Ralph therefore leaves capability-granted media tools in `tools/list` after a default `capabilities: {}` handshake. The session's provider/model `ResolvedCapabilityProfile` provides text-only safety by selecting inline content only when supported and otherwise returning a typed block, a replayable resource reference, or an explicit unsupported result.
 

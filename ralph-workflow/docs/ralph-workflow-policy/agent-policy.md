@@ -33,6 +33,16 @@ the truthfulness obligations, and the documentation update obligations.
   or dependency quality.
 * Every AI agent MUST preserve the canonical policy directory as the
   single source of truth for project quality policy.
+* Every AI agent that touches visuals or UI/UX work MUST **ASSUME**
+  Ralph's multimodal MCP endpoints work: read_media, read_image, and
+  media.read are always granted on every drain, and the multimodal
+  smoke scenario (`ralph smoke-interactive-* --multimodal` /
+  `ralph smoke-headless-claude --multimodal`) is the canonical proof
+  that the harness actually used those endpoints to produce
+  verified WIRE-grade evidence. NEVER recommend turning the
+  multimodal endpoints off to work around a harness limitation --
+  any ``[media] enabled = false`` config is INERT (criterion 1) and
+  is not a supported opt-out.
 
 ## Project facts to resolve
 

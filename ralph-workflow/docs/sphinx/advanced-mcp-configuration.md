@@ -154,7 +154,7 @@ Ralph Workflow's `read_media` tool (with `read_image` as a compatibility alias) 
 
 ### How `read_media` works
 
-When `media.enabled = true` (default), Ralph Workflow registers `read_media` as the primary multimodal tool. It:
+Ralph Workflow always registers `read_media` as the primary multimodal tool (criterion 1 -- the multimodal MCP endpoints ALWAYS stay enabled, so a supported configuration can never remove ``read_media`` or ``read_image``). It:
 
 - Returns images as inline base64 blocks for providers that support inline images
 - Returns PDFs and documents as typed blocks (e.g., `pdf` or `document` block type) for providers that support them natively (Claude, Gemini)
@@ -186,9 +186,11 @@ This matrix is the canonical reference for which provider/modality combinations 
 
 ### Text-only client safety
 
-MCP `initialize` does not define image, media, or multimodal negotiation keys. When `media.enabled = true` and the session has `media.read`, `read_media` and `read_image` therefore remain visible in `tools/list`, including after the default `capabilities: {}` handshake used by coding harnesses.
+MCP `initialize` does not define image, media, or multimodal negotiation keys. The multimodal endpoints always stay enabled (criterion 1): the session has `media.read` and `read_media` / `read_image` remain visible in `tools/list`, including after the default `capabilities: {}` handshake used by coding harnesses.
 
-For text-only clients, safety is enforced by delivery, not tool suppression. The session's `ResolvedCapabilityProfile` selects an inline block only for a provider and model that supports it; otherwise Ralph Workflow returns a typed block, a replayable resource reference, or an explicit unsupported result. Set `[media] enabled = false` in `mcp.toml` to remove `media.read` and both tools.
+For text-only clients, safety is enforced by delivery, not tool suppression. The session's `ResolvedCapabilityProfile` selects an inline block only for a provider and model that supports it; otherwise Ralph Workflow returns a typed block, a replayable resource reference, or an explicit unsupported result.
+
+``[media] enabled = false`` is accepted for backward compatibility with existing ``mcp.toml`` files but is INERT: the resolved ``MediaConfig.enabled`` is always ``True`` and a single ``logger.warning`` records the ignored key. ``max_inline_bytes`` remains a genuine tunable.
 
 ### Upstream normalization
 

@@ -75,6 +75,25 @@ def _first_content_block(result: Mapping[str, object]) -> Mapping[str, object]:
     return must_mapping(must_dict_list(result["content"])[0])
 
 
+def _first_non_warning_block(
+    result: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Return the first content block that is NOT a ``WARNING:`` text block.
+
+    S-7 (criterion 3): an UNKNOWN_IDENTITY degrades gracefully with a
+    WARNING text block. Tests that assert on the underlying payload
+    use this helper to skip past any leading WARNING block and find
+    the real block to type-check.
+    """
+    for block in must_dict_list(result["content"]):
+        if block.get("type") != "text":
+            return must_mapping(block)
+        text = must_str(block.get("text", ""))
+        if not text.startswith("WARNING:"):
+            return must_mapping(block)
+    raise AssertionError("no non-warning content block found")
+
+
 def _pipeline_policy() -> PipelinePolicy:
     return PipelinePolicy(
         entry_phase="development",
@@ -157,7 +176,10 @@ def _exercise_media_round_trip(
         {"name": "read_media", "arguments": {"path": "report.pdf"}},
         4,
     )
-    pdf_block = _first_content_block(pdf_result)
+    # S-7 (criterion 3): an UNKNOWN_IDENTITY degrades gracefully with
+    # a WARNING text block (prepended); skip past it to the
+    # resource_reference payload.
+    pdf_block = _first_non_warning_block(pdf_result)
     assert pdf_block["type"] == "resource_reference"
     assert pdf_block["delivery"] == "resource_reference_replay"
     pdf_uri = must_str(pdf_block["uri"])

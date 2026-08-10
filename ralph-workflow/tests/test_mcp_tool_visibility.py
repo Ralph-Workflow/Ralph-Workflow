@@ -89,12 +89,13 @@ def test_multimodal_tools_are_visible_by_default() -> None:
     assert "read_media" in visible
 
 
-def test_explicit_media_disabled_removes_read_image() -> None:
+def test_explicit_media_disabled_keeps_read_image() -> None:
+    """``[media] enabled = false`` is INERT -- multimodal tools always stay visible (criterion 1)."""
     config = McpConfig(media=MediaConfig(enabled=False))
     registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace(), mcp_config=config)
     visible = _visible_tool_names(registry)
-    assert "read_image" not in visible
-    assert "read_media" not in visible
+    assert "read_image" in visible
+    assert "read_media" in visible
 
 
 def test_mcp_toml_wins_over_simulated_claude_json_collision() -> None:

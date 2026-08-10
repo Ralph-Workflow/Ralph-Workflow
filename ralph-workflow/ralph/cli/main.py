@@ -1066,6 +1066,15 @@ def smoke_interactive_claude(
         "--subagents",
         help="Require native subagent dispatch, result, and later main-agent activity.",
     ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
+    ),
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1083,6 +1092,7 @@ def smoke_interactive_claude(
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
         )
     )
 
@@ -1095,6 +1105,15 @@ def smoke_headless_claude(
         False,
         "--subagents",
         help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
     ),
     subagent_prompt_file: Annotated[
         RuntimePath | None,
@@ -1113,6 +1132,7 @@ def smoke_headless_claude(
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
         )
     )
 
@@ -1129,6 +1149,15 @@ def smoke_interactive_agy(
         False,
         "--subagents",
         help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
     ),
     subagent_prompt_file: Annotated[
         RuntimePath | None,
@@ -1148,6 +1177,7 @@ def smoke_interactive_agy(
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
         )
     )
 
@@ -1164,6 +1194,15 @@ def smoke_interactive_nanocoder(
         False,
         "--subagents",
         help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
     ),
     subagent_prompt_file: Annotated[
         RuntimePath | None,
@@ -1183,6 +1222,7 @@ def smoke_interactive_nanocoder(
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
         )
     )
 
@@ -1199,6 +1239,15 @@ def smoke_interactive_cursor(
         False,
         "--subagents",
         help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
     ),
     subagent_prompt_file: Annotated[
         RuntimePath | None,
@@ -1218,6 +1267,7 @@ def smoke_interactive_cursor(
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
         )
     )
 
@@ -1249,6 +1299,15 @@ def smoke_interactive_opencode(
         "--subagents",
         help="Require native subagent dispatch, result, and later main-agent activity.",
     ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
+    ),
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1270,6 +1329,7 @@ def smoke_interactive_opencode(
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
         )
     )
 

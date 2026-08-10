@@ -304,13 +304,13 @@ def test_default_handshake_sees_media_tools_without_client_capability() -> None:
     assert "read_image" in tool_names
 
 
-def test_explicit_media_disabled_hides_media_tools() -> None:
-    """The explicit media configuration opt-out removes both media tools."""
+def test_explicit_media_disabled_keeps_media_tools() -> None:
+    """``[media] enabled = false`` is INERT -- media tools always stay visible (criterion 1)."""
     server = _build_multimodal_server(mcp_config=McpConfig(media=MediaConfig(enabled=False)))
     state = _initialize(server)
     tool_names = {tool["name"] for tool in _list_tools(server, state)}
-    assert "read_media" not in tool_names
-    assert "read_image" not in tool_names
+    assert "read_media" in tool_names
+    assert "read_image" in tool_names
 
 
 def test_resource_templates_list_includes_media_template_when_media_read_is_granted() -> None:

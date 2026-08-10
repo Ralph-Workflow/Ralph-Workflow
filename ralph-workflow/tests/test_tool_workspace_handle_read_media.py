@@ -37,6 +37,22 @@ from tests.mock_session_with_manifest import MockSessionWithManifest
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
+
+def _first_non_warning_block(blocks):
+    """Return the first content block that is NOT a ``WARNING:`` text block.
+
+    S-7 (criterion 3): a graceful-degradation WARNING block may be
+    prepended before the actual content block when the resolved model
+    identity is unknown. Tests that assert on the underlying payload
+    use this helper to skip past any leading WARNING block and find
+    the real block to type-check.
+    """
+    for block in blocks:
+        text = getattr(block, "text", None)
+        if not (isinstance(text, str) and text.startswith("WARNING:")):
+            return block
+    raise AssertionError("no non-warning content block found")
+
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
@@ -118,13 +134,15 @@ class TestHandleReadMedia:
         media_file.write_bytes(pdf_bytes)
 
         ws = FsWorkspace(tmp_path)
+        # S-7 (criterion 3): an UNKNOWN_IDENTITY now degrades gracefully
+        # with a WARNING block; skip past it for the resource-reference
+        # assertion.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "report.pdf"})
 
         assert result.is_error is False
-        assert len(result.content) == 1
-        content = result.content[0]
+        content = _first_non_warning_block(result.content)
         assert isinstance(content, ResourceReferenceContent)
         assert content.type == "resource_reference"
         assert content.modality == "pdf"
@@ -139,10 +157,12 @@ class TestHandleReadMedia:
         media_file.write_bytes(pdf_bytes)
 
         ws = FsWorkspace(tmp_path)
+        # S-7 (criterion 3): the default UNKNOWN_IDENTITY degrades with
+        # a WARNING block. Skip past it to the resource-reference block.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "report.pdf"})
-        content = result.content[0]
+        content = _first_non_warning_block(result.content)
 
         # The artifact must be stored in the manifest
         assert not session.media_manifest.is_empty()
@@ -160,12 +180,14 @@ class TestHandleReadMedia:
         media_file.write_bytes(mp3_bytes)
 
         ws = FsWorkspace(tmp_path)
+        # S-7 (criterion 3): an UNKNOWN_IDENTITY degrades with a warning
+        # block; skip past it for the resource-reference assertion.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "clip.mp3"})
 
         assert result.is_error is False
-        content = result.content[0]
+        content = _first_non_warning_block(result.content)
         assert isinstance(content, ResourceReferenceContent)
         assert content.modality == "audio"
         assert content.mime_type == "audio/mpeg"
@@ -177,12 +199,14 @@ class TestHandleReadMedia:
         media_file.write_bytes(mp4_bytes)
 
         ws = FsWorkspace(tmp_path)
+        # S-7 (criterion 3): an UNKNOWN_IDENTITY degrades with a warning
+        # block; skip past it for the resource-reference assertion.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "video.mp4"})
 
         assert result.is_error is False
-        content = result.content[0]
+        content = _first_non_warning_block(result.content)
         assert isinstance(content, ResourceReferenceContent)
         assert content.modality == "video"
         assert content.mime_type == "video/mp4"
@@ -192,12 +216,14 @@ class TestHandleReadMedia:
         media_file.write_bytes(b"\x89PNG" + b"\x00" * 100)  # Fake PNG
 
         ws = FsWorkspace(tmp_path)
+        # S-7 (criterion 3): UNKNOWN_IDENTITY degrades gracefully with
+        # a WARNING block; skip past it.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "large.png"}, max_inline_bytes=10)
 
         assert result.is_error is False
-        content = result.content[0]
+        content = _first_non_warning_block(result.content)
         assert isinstance(content, ResourceReferenceContent)
         assert content.modality == "image"
         assert content.mime_type == "image/png"

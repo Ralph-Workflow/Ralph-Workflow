@@ -76,10 +76,12 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
         model_identity: object | None = None,
         subagents: bool = False,
         subagent_prompt_file: object | None = None,
+        multimodal: bool = False,
     ) -> int:
         captured["agent_name"] = agent_name
         captured["subagents"] = subagents
         captured["subagent_prompt_file"] = subagent_prompt_file
+        captured["multimodal"] = multimodal
         return 0
 
     monkeypatch.setattr(
@@ -116,9 +118,11 @@ def test_smoke_headless_claude_command_default_no_subagents(
         model_identity: object | None = None,
         subagents: bool = False,
         subagent_prompt_file: object | None = None,
+        multimodal: bool = False,
     ) -> int:
         captured["agent_name"] = agent_name
         captured["subagents"] = subagents
+        captured["multimodal"] = multimodal
         return 0
 
     monkeypatch.setattr(

@@ -33,6 +33,22 @@ class SmokeRunParams:
     bridge: SessionBridgeLike | None = None
     pipeline_deps: PipelineDeps | None = None
     subagents_requested: bool = False
+    #: Set to True to drive this smoke run from the multimodal scenario.
+    #: When True, ``multimodal_requested`` is propagated to the prompt
+    #: builder (appending the multimodal contract bullets),
+    #: ``run_smoke_plumbing`` materializes the deterministic PNG
+    #: fixture and the ``[media] max_inline_bytes`` mcp.toml fragment
+    #: before the turns start, and ``_detect_smoke_errors`` appends a
+    #: specific named break when the agent did not produce a verified
+    #: ``read_media`` / ``read_image`` call. Defaults to False so every
+    #: existing smoke run is unchanged.
+    multimodal_requested: bool = False
+    #: The fixture size chosen for this run (only meaningful when
+    #: ``multimodal_requested``); persisted on
+    #: :class:`~ralph.pipeline.plumbing.smoke_plumbing.SmokeRunResult`
+    #: so the operator report and the run's evidence row can cite the
+    #: same geometry the grader recomputes the sha256 over.
+    multimodal_fixture_size: tuple[int, int] | None = None
     #: Optional fresh ``ParallelDisplay`` instance the smoke plumbing owns
     #: for the duration of the run. When set, the per-instance
     #: :class:`CapabilityObservationRecorder` is snapshotted between

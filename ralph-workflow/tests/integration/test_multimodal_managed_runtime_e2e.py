@@ -236,13 +236,21 @@ def test_default_handshake_exposes_multimodal_tools(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-def test_explicit_media_disabled_hides_multimodal_tools(tmp_path: Path) -> None:
-    """The explicit media configuration opt-out hides media tools."""
+def test_explicit_media_disabled_keeps_multimodal_tools(tmp_path: Path) -> None:
+    """``[media] enabled = false`` is INERT -- media tools always stay visible (criterion 1).
+
+    The legacy opt-out used to remove ``read_media`` and ``read_image``
+    from ``tools/list`` when ``[media] enabled = false`` was set. The
+    retirement closes that counterexample at the ``MediaConfig``
+    validator (the value is coerced to ``True``) so every transport,
+    including the non-multimodal-managed-runtime E2E scenario,
+    always sees the multimodal tool surface.
+    """
     server = _build_server(tmp_path, with_media=True, media_enabled=False)
     state = _initialize(server, multimodal_client=False)
     tool_names = _tools_list(server, state)
-    assert str(RalphToolName.READ_MEDIA) not in tool_names
-    assert str(RalphToolName.READ_IMAGE) not in tool_names
+    assert str(RalphToolName.READ_MEDIA) in tool_names
+    assert str(RalphToolName.READ_IMAGE) in tool_names
 
 
 @pytest.mark.integration

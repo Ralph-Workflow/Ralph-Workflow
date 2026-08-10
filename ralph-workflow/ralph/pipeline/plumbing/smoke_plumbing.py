@@ -63,6 +63,13 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     grade_artifact_submission_evidence,
     grade_completion_sentinel_evidence,
 )
+from ralph.pipeline.plumbing.smoke_multimodal import (
+    SMOKE_FIXTURE_RELNAME,
+    build_smoke_fixture_png,
+    generate_fixture_geometry,
+    grade_multimodal_evidence,
+    smoke_media_config_toml,
+)
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
@@ -335,6 +342,21 @@ class SmokeRunResult:
     #: ``SmokeRunParams``. Defaults to ``frozenset()`` so existing
     #: test constructions keep passing.
     observed_capabilities: frozenset[DisplayCapability] = frozenset()
+    #: Multimodal scenario flag: True when this run was driven by the
+    #: multimodal prompt. ``False`` (default) means every existing smoke
+    #: run is unchanged -- the multimodal break detector is no-op.
+    multimodal_requested: bool = False
+    #: The geometry the prompt told the agent to read -- persisted so the
+    #: operator report can cite the same geometry the grader recomputes
+    #: the sha256 over. ``None`` when ``multimodal_requested`` is False.
+    multimodal_fixture_size: tuple[int, int] | None = None
+    #: The graded multimodal fact: did the agent actually use the media
+    #: endpoint? Provenance is
+    #: :class:`~ralph.pipeline.plumbing.smoke_evidence.Provenance`.
+    #: ``absent(...)`` when ``multimodal_requested`` is False so the
+    #: dataclass always carries a non-None value and can sit on a
+    #: result the conformance matrix renders without special-casing.
+    multimodal_tool_used: Evidence | None = None
 
 
 @dataclass(frozen=True)
@@ -683,8 +705,20 @@ def _build_smoke_prompt(
     transport: AgentTransport | None = None,
     subagents: bool = False,
     subagent_prompt: str | None = None,
+    multimodal: bool = False,
+    multimodal_fixture_relpath: str | None = None,
 ) -> str:
-    """Return the prompt used for the parity smoke test."""
+    """Return the prompt used for the parity smoke test.
+
+    When ``multimodal`` is True the prompt additionally appends the
+    contract bullets from
+    :func:`ralph.pipeline.plumbing.smoke_multimodal.multimodal_prompt_requirements`
+    so the agent is told to actually dial the media endpoint, replay
+    the server-minted handle, and write the receipt / geometry /
+    sha256 tokens into the output file. The default ``multimodal=False``
+    path renders the existing prompt byte-for-byte so every current
+    smoke run is unchanged.
+    """
     artifact_document = (
         "---\n"
         "type: smoke_test_result\n"
@@ -814,6 +848,12 @@ def _build_smoke_prompt(
         "stop until the completion call succeeds.\n"
     )
 
+    multimodal_requirements = ""
+    if multimodal:
+        from ralph.pipeline.plumbing.smoke_multimodal import multimodal_prompt_requirements
+        fixture_relpath = multimodal_fixture_relpath or "smoke-fixture.png"
+        multimodal_requirements = "\n" + multimodal_prompt_requirements(fixture_relpath)
+
     return (
         "Create a small JavaScript todo list implementation at "
         f"`{output_relpath}`.\n\n"
@@ -832,6 +872,7 @@ def _build_smoke_prompt(
         "- Do not start background work, run verification, or wait for other tasks; "
         "finish this small smoke task in this turn.\n"
         f"{completion_requirement}"
+        f"{multimodal_requirements}"
     )
 
 
@@ -1571,7 +1612,45 @@ def _tool_activity_seen_for_errors(
     return bool(_tool_activity_seen(params.config, lines)) if lines else False
 
 
-def _detect_smoke_errors(
+def _detect_multimodal_break(
+    params: SmokeRunParams,
+    run_id: str,
+    errors: list[str],
+) -> None:
+    """Grade the multimodal contract and append a named break on downgrade.
+
+    Extracted so :func:`_detect_smoke_errors` stays below the
+    audit's PLR0912 branch-count cap (14); this helper itself
+    carries the well-named break string the operator-visible
+    table renders when the multimodal fact is not at WIRE.
+    """
+    fixture_size = (
+        params.multimodal_fixture_size if params.multimodal_fixture_size else (0, 0)
+    )
+    mult_evidence = grade_multimodal_evidence(
+        params.workspace_root,
+        run_id,
+        output_file=params.output_file,
+        fixture_relpath=SMOKE_FIXTURE_RELNAME,
+        fixture_size=fixture_size,
+        secret=_parent_broker_secret(),
+    )
+    # Persist graded evidence on the params instance via a
+    # well-known attribute; ``_run_smoke_agent`` reads it back
+    # below when assembling the :class:`SmokeRunResult`.
+    object.__setattr__(params, "_multimodal_tool_used_evidence", mult_evidence)
+    if mult_evidence.provenance is not Provenance.WIRE:
+        mult_break = (
+            "multimodal break: agent did not produce a verified "
+            "read_media / read_image tools/call carrying the "
+            "replay handle "
+            f"(graded {mult_evidence.provenance.name.lower()}; "
+            f"{mult_evidence.detail})"
+        )
+        errors.append(mult_break)
+
+
+def _detect_smoke_errors(  # noqa: PLR0912  # 15 branches: each contract check is a documented short-circuit
     params: SmokeRunParams,
     lines: list[str],
     live_output_lines: list[str],
@@ -1650,6 +1729,9 @@ def _detect_smoke_errors(
         subagent_evidence = _subagent_smoke_evidence(params.config, lines)
         if subagent_error := _subagent_smoke_error(subagent_evidence):
             errors.append(subagent_error)
+
+    if params.multimodal_requested:
+        _detect_multimodal_break(params, run_id, errors)
 
     if params.config.transport == AgentTransport.AGY:
         diagnostic = _agy_upstream_diagnostic(lines, params.workspace_root)
@@ -2092,6 +2174,14 @@ def _run_smoke_agent(
 
     config = params.config
     transport_name = config.transport.value if config.transport is not None else "generic"
+    multimodal_tool_used: Evidence | None = getattr(
+        params, "_multimodal_tool_used_evidence", None
+    )
+    if multimodal_tool_used is None and not params.multimodal_requested:
+        # Default to absent(...) so the dataclass always carries a
+        # non-None value -- the operator-visible report renders it
+        # uniformly across multimodal and non-multimodal runs.
+        multimodal_tool_used = absent("multimodal scenario not requested for this run")
     return SmokeRunResult(
         agent_name=params.agent_name,
         transport=transport_name,
@@ -2112,6 +2202,9 @@ def _run_smoke_agent(
         post_subagent_activity_seen=subagent_evidence.post_result_activity_seen,
         transport_evidence_ceiling=transport_ceiling,
         observed_capabilities=observed_capabilities,
+        multimodal_requested=params.multimodal_requested,
+        multimodal_fixture_size=params.multimodal_fixture_size,
+        multimodal_tool_used=multimodal_tool_used,
     )
 
 
@@ -2128,6 +2221,7 @@ def run_smoke_plumbing(
     pipeline_deps: PipelineDeps | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     subagents: bool = False,
+    multimodal: bool = False,
 ) -> SmokeRunResult:
     """Run the interactive smoke test for ``agent_name`` and return the result.
 
@@ -2139,7 +2233,31 @@ def run_smoke_plumbing(
     :class:`DefaultPipelineFactory` so the plumbing-direct-call path shares
     the same composition root as the main pipeline; ``pro_hooks`` is forwarded
     so a Pro subclassed factory is honored.
+
+    When ``multimodal`` is True the run writes the deterministic PNG
+    fixture (``SMOKE_FIXTURE_RELNAME``) and the ``[media] max_inline_bytes``
+    fragment of the harness's ``.agent/mcp.toml`` before the turns start,
+    so every harness identity takes the handle-mint path the multimodal
+    grader grades. ``multimodal`` defaults to False so every existing
+    smoke run is unchanged.
     """
+    multimodal_fixture_size: tuple[int, int] | None = None
+    if multimodal:
+        multimodal_fixture_size = generate_fixture_geometry()
+        fixture_path = workspace_root / SMOKE_FIXTURE_RELNAME
+        fixture_path.parent.mkdir(parents=True, exist_ok=True)
+        fixture_path.write_bytes(
+            build_smoke_fixture_png(*multimodal_fixture_size)
+        )
+        mcp_toml_path = workspace_root / ".agent" / "mcp.toml"
+        mcp_toml_path.parent.mkdir(parents=True, exist_ok=True)
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            mcp_toml_path,
+            smoke_media_config_toml(),
+            encoding="utf-8",
+            prepare_write=lambda: DEFAULT_FILE_BACKEND.mkdir(mcp_toml_path.parent, parents=True, exist_ok=True),
+        )
     spec = resolve_smoke_harness_spec(agent_name)
     if pipeline_deps is not None:
         if display_context is None:
@@ -2234,6 +2352,8 @@ def run_smoke_plumbing(
                     pipeline_deps=effective_pipeline_deps,
                     subagents_requested=subagents,
                     display=fresh_display,
+                    multimodal_requested=multimodal,
+                    multimodal_fixture_size=multimodal_fixture_size,
                 ),
                 run_id=spec.run_id,
             )

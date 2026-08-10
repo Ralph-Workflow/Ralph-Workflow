@@ -259,7 +259,6 @@ def build_session_mcp_plan(
         capability_cls=capability_cls,
         mcp_config_enabled_web_search=mcp_config.web_search.enabled,
         mcp_config_enabled_web_visit=mcp_config.web_visit.enabled,
-        mcp_config_enabled_media=mcp_config.media.enabled,
         has_upstreams=bool(upstreams),
     )
 
@@ -325,6 +324,10 @@ _BASE_CAPABILITIES: frozenset[str] = frozenset(
         "artifact.plan_read",
         "workspace.metadata_read",
         "process.exec_bounded",
+        # S-14 (criterion 1): the multimodal MCP endpoints always stay
+        # enabled. ``media.read`` is granted to every drain by default;
+        # there is no config flag that removes it.
+        "media.read",
     }
 )
 
@@ -348,9 +351,15 @@ def _apply_config_driven_capabilities(
     capability_cls: DrainClass,
     mcp_config_enabled_web_search: bool,
     mcp_config_enabled_web_visit: bool,
-    mcp_config_enabled_media: bool,
     has_upstreams: bool,
 ) -> set[str]:
+    """Apply config-driven capability grants.
+
+    The ``media.read`` capability is part of ``_BASE_CAPABILITIES``
+    (S-14 / criterion 1) and is no longer gated by a config flag --
+    the multimodal MCP endpoints always stay enabled. ``web.search``,
+    ``web.visit`` and ``web.download`` remain config-gated tunables.
+    """
     is_commit = capability_cls == DrainClass.COMMIT
     if mcp_config_enabled_web_search and not is_commit:
         capabilities.add("web.search")
@@ -358,8 +367,6 @@ def _apply_config_driven_capabilities(
         capabilities.add("web.visit")
     if mcp_config_enabled_web_visit and capability_cls in (DrainClass.DEVELOPMENT, DrainClass.FIX):
         capabilities.add("web.download")
-    if mcp_config_enabled_media:
-        capabilities.add("media.read")
     if has_upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
     return capabilities
@@ -379,7 +386,6 @@ def default_prompt_capability_identifiers(drain: SessionDrain) -> frozenset[str]
             capability_cls=capability_cls,
             mcp_config_enabled_web_search=mcp_config.web_search.enabled,
             mcp_config_enabled_web_visit=mcp_config.web_visit.enabled,
-            mcp_config_enabled_media=mcp_config.media.enabled,
             has_upstreams=False,
         )
     )

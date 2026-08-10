@@ -33,7 +33,14 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.pipeline.factory import DefaultPipelineFactory
-from ralph.pipeline.plumbing.smoke_evidence import PASS, Evidence, format_verdict, grade_verdict
+from ralph.pipeline.plumbing.smoke_evidence import (
+    PASS,
+    Evidence,
+    Provenance,
+    format_verdict,
+    grade_verdict,
+)
+from ralph.pipeline.plumbing.smoke_multimodal import SMOKE_FIXTURE_RELNAME
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -296,17 +303,29 @@ def _subagent_status(result: SmokeRunResult) -> str:
 
 
 def _required_evidence(result: SmokeRunResult) -> dict[str, Evidence]:
-    """Return the three contract facts that back the run's overall verdict (F1).
+    """Return the contract facts that back the run's overall verdict (F1).
 
-    The verdict is a pure function of the weakest provenance among exactly
-    these three required facts — not of ``file_created``, the transport
+    The verdict is a pure function of the weakest provenance among
+    these required facts — not of ``file_created``, the transport
     ceiling, or any other diagnostic-only signal.
+
+    The three canonical facts (``artifact_submitted``,
+    ``explicit_completion_seen``, ``tool_activity_seen``) are always
+    returned so the conformance matrix's column set is unchanged. When
+    the run requested the multimodal scenario a fourth fact,
+    ``multimodal_tool_used``, is added; it does NOT change the column
+    set for non-multimodal runs and never silently downgrades a
+    multimodal run to a passing verification: a missing fact holds at
+    ``WORKSPACE_EFFECT`` so the run still reports a non-PASS verdict.
     """
-    return {
+    facts: dict[str, Evidence] = {
         "artifact_submitted": result.artifact_submitted,
         "explicit_completion_seen": result.explicit_completion_seen,
         "tool_activity_seen": result.tool_activity_seen,
     }
+    if result.multimodal_requested and result.multimodal_tool_used is not None:
+        facts["multimodal_tool_used"] = result.multimodal_tool_used
+    return facts
 
 
 def _evidence_line(label: str, evidence: Evidence) -> str:
@@ -341,6 +360,15 @@ def _render_smoke_report(
             f"Ralph tools advertised: {result.transport_evidence_ceiling.name} "
             "(evidence ceiling inferred from the init frame's tool listing)"
         )
+        if result.multimodal_requested:
+            mult_label = (
+                "yes (wire)"
+                if result.multimodal_tool_used is not None
+                and result.multimodal_tool_used.holds
+                and result.multimodal_tool_used.provenance is Provenance.WIRE
+                else "no"
+            )
+            lines.append(f"Multimodal: {mult_label}")
         lines.append("Observed working:")
         working: list[str] = []
         if result.file_created:
@@ -402,6 +430,7 @@ def _render_smoke_table(
     table.add_column("Parser events")
     table.add_column("Tool activity")
     table.add_column("Subagent")
+    table.add_column("Multimodal")
     table.add_column("Artifact")
     table.add_column("Verdict")
     table.add_column("Breaks")
@@ -415,6 +444,10 @@ def _render_smoke_table(
             breaks_cell = f"degraded verdict: {format_verdict(evidence)}"
         else:
             breaks_cell = "none"
+        if result.multimodal_requested and result.multimodal_tool_used is not None:
+            mult_cell = _evidence_cell(result.multimodal_tool_used)
+        else:
+            mult_cell = "not requested"
         table.add_row(
             result.agent_name,
             result.transport,
@@ -423,6 +456,7 @@ def _render_smoke_table(
             str(result.parsed_event_count),
             _evidence_cell(result.tool_activity_seen),
             _subagent_status(result),
+            mult_cell,
             _evidence_cell(result.artifact_submitted),
             format_verdict(evidence),
             breaks_cell,
@@ -445,8 +479,17 @@ def smoke_harness_agent_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
-    """Run the interactive smoke harness for ``agent_name`` and report parity."""
+    """Run the interactive smoke harness for ``agent_name`` and report parity.
+
+    When ``multimodal`` is True the harness drives the agent from a
+    multimodal-aware prompt, materializes the deterministic PNG fixture
+    and the harness's ``.agent/mcp.toml`` ``[media]`` fragment before
+    the turns start, and treats a missing verified media-tool fact as a
+    HARD break -- never as a silent downgrade to the basic scenario.
+    Defaults to False so every existing smoke run is unchanged.
+    """
     workspace_scope = resolve_workspace_scope()
     workspace_root = workspace_scope.root
     if subagent_prompt_file is not None and not subagents:
@@ -531,6 +574,8 @@ def smoke_harness_agent_command(
             transport=agent_config.transport,
             subagents=subagents,
             subagent_prompt=subagent_prompt,
+            multimodal=multimodal,
+            multimodal_fixture_relpath=SMOKE_FIXTURE_RELNAME if multimodal else None,
         ),
         encoding="utf-8",
     )
@@ -551,6 +596,7 @@ def smoke_harness_agent_command(
         display_context=ctx,
         pipeline_deps=deps,
         subagents=subagents,
+        multimodal=multimodal,
     )
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
@@ -618,8 +664,14 @@ def smoke_interactive_claude_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
-    """Run a token-consuming manual parity smoke test for interactive Claude."""
+    """Run a token-consuming manual parity smoke test for interactive Claude.
+
+    ``multimodal=True`` drives the run from the multimodal-aware prompt
+    (criterion 5). See
+    :func:`smoke_harness_agent_command` for the wider contract.
+    """
     return smoke_harness_agent_command(
         _INTERACTIVE_AGENT,
         display_context=display_context,
@@ -627,6 +679,7 @@ def smoke_interactive_claude_command(
         model_identity=model_identity,
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
     )
 
 
@@ -637,6 +690,7 @@ def smoke_headless_claude_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
     """Run a token-consuming manual parity smoke test for headless Claude.
 
@@ -660,6 +714,7 @@ def smoke_headless_claude_command(
         model_identity=model_identity,
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
     )
 
 
@@ -671,6 +726,7 @@ def smoke_interactive_agy_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
     """Run the manual AGY end-to-end smoke harness via the PTY contract.
 
@@ -721,6 +777,7 @@ def smoke_interactive_agy_command(
         model_identity=model_identity,
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
     )
 
 
@@ -732,6 +789,7 @@ def smoke_interactive_nanocoder_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
     """Run the manual PTY smoke test for a Nanocoder interactive alias."""
     if shutil.which("nanocoder") is None:
@@ -766,6 +824,7 @@ def smoke_interactive_nanocoder_command(
         model_identity=model_identity,
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
     )
 
 
@@ -777,6 +836,7 @@ def smoke_interactive_cursor_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
     """Run the manual end-to-end smoke harness via the Cursor headless contract.
 
@@ -828,6 +888,7 @@ def smoke_interactive_cursor_command(
         model_identity=model_identity,
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
     )
 
 
@@ -839,6 +900,7 @@ def smoke_interactive_opencode_command(
     model_identity: MultimodalModelIdentity | None = None,
     subagents: bool = False,
     subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
 ) -> int:
     """Run the manual smoke harness against a live ``opencode`` provider/model.
 
@@ -895,4 +957,5 @@ def smoke_interactive_opencode_command(
         model_identity=model_identity,
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
     )
