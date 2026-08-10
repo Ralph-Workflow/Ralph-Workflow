@@ -207,10 +207,10 @@ def test_rejected_push_honors_target_reclaim_opt_out(
     assert result.last_remote_sync == remote_sync.REMOTE_PULL_FAILED
 
 
-def test_target_reconciliation_regression_restores_owner_sha_after_conflict(
+def test_target_reconciliation_regression_aborts_owner_rebase_after_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-4/E9: a conflicted target rebase restores its pre-attempt target SHA."""
+    """S-4/E9: a conflicted target rebase aborts without moving its target ref."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -226,19 +226,37 @@ def test_target_reconciliation_regression_restores_owner_sha_after_conflict(
     monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
-    restored: list[tuple[Path, str]] = []
-    monkeypatch.setattr(
-        remote_reconcile,
-        "reset_hard",
-        lambda root, sha: restored.append((root, sha)),
-        raising=False,
-    )
-
     success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
 
     assert success is False
     assert "conflicted" in reason
-    assert restored == [(owner, "before")]
+
+
+def test_target_reconciliation_regression_abort_restores_without_destructive_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/S-3: a proven rebase abort is safe without racing a hard reset."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    states = iter((True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
+    cleared: list[bool] = []
+    monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: cleared.append(True))
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "retained for recovery" not in reason
+    assert cleared == [True]
 
 
 def test_target_reconciliation_regression_record_write_failure_is_deferred(
@@ -322,15 +340,11 @@ def test_target_reconciliation_regression_retains_record_when_abort_cannot_resto
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "moved")
     cleared: list[bool] = []
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: cleared.append(True))
-    resets: list[tuple[object, ...]] = []
-    monkeypatch.setattr(remote_reconcile, "reset_hard", lambda *_a: resets.append(_a))
-
     success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
 
     assert success is False
     assert "retained for recovery" in reason
     assert cleared == []
-    assert resets == []
 
 
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(

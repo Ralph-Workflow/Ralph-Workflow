@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.git.merge import WORKTREE_FOUND, branch_sha, reset_hard, worktree_lookup
+from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, is_repo_clean
 from ralph.git.rebase.rebase import (
     RebaseNoOp,
@@ -127,19 +127,11 @@ def _abort_restore_or_retain_record(
                 False,
                 f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
             )
-        current_target_sha = branch_sha(owner, target)
-        if current_target_sha != pre_target_sha:
-            return (
-                False,
-                f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
-                "target moved during reconciliation",
-            )
-        reset_hard(owner, pre_target_sha)
         if branch_sha(owner, target) != pre_target_sha:
             return (
                 False,
                 f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
-                "target restore could not be verified",
+                "target moved during reconciliation",
             )
     except Exception as exc:
         return (
