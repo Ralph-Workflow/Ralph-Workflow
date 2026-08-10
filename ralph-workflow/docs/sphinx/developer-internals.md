@@ -173,7 +173,13 @@ state changed" signal driven by a **state-token** comparison in
 published in ``SALIENCE_STATE_TOKEN_FIELDS``): a role that just changed
 its own token is promoted, a role that has been steady for the decay window
 decays one rung, so a long quiet run visibly drains of colour and a
-genuine event re-lights instantly.
+genuine event re-lights instantly. The keyword-only ``state_token``
+parameter on ``_apply_salience`` carries the per-role state: the
+``_build_line`` call site bids the token fields ``("line", "level")``,
+and the ``_activity_text`` call site bids the token fields
+``("activity", "kind", "unit_id")`` — the leading element namespaces the
+two call sites so a chrome-row `info` and an activity-row `info` are
+not compared as the same underlying state.
 
 See [Colour model: surface-adaptive chroma, frequency tiers, and the salience budget](display.html#colour-model-surface-adaptive-chroma-frequency-tiers-and-the-salience-budget)
 for the palette solver's surface-adaptive chroma, the E-1 render-frequency tier table, and

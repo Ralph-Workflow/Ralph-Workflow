@@ -1070,6 +1070,57 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.pipeline.effect_executor",
             ("_failure_requires_fresh_session",),
         ),
+        # wt-046 brief criteria coverage: the regression-probe registry
+        # injects each criterion's defect through a production seam
+        # that is private-by-convention (``_palette``, ``_salience``,
+        # ``_frequency_tier``, ``_terminal_bg_query``, ``_SYNTAX_ROLES``,
+        # ``_markdown_theme``). The seam is the documented injection
+        # surface per PLAN.md S-6, so allow the probes file (which
+        # exists only to wire probes) to reach it directly. The
+        # coverage test itself only imports ``_palette`` and
+        # ``_markdown_theme`` to clear lru_cache entries the probes
+        # perturbed; that reach is documented in the same S-6 plan
+        # and is likewise allowed.
+        (
+            "tests/unit/display/_criteria_probes.py",
+            "ralph",
+            ("_markdown_theme",),
+        ),
+        (
+            "tests/unit/display/_criteria_probes.py",
+            "ralph.display",
+            ("_palette",),
+        ),
+        (
+            "tests/unit/display/_criteria_probes.py",
+            "ralph.display",
+            ("_frequency_tier", "_palette"),
+        ),
+        (
+            "tests/unit/display/_criteria_probes.py",
+            "ralph.display",
+            ("_salience",),
+        ),
+        (
+            "tests/unit/display/_criteria_probes.py",
+            "ralph.display",
+            ("_terminal_bg_query",),
+        ),
+        (
+            "tests/unit/display/_criteria_probes.py",
+            "ralph.syntax_theme",
+            ("_SYNTAX_ROLES",),
+        ),
+        (
+            "tests/unit/display/test_brief_criteria_coverage.py",
+            "ralph",
+            ("_markdown_theme",),
+        ),
+        (
+            "tests/unit/display/test_brief_criteria_coverage.py",
+            "ralph.display",
+            ("_palette",),
+        ),
     }
 )
 

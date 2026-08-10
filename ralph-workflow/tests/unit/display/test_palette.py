@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 from itertools import combinations, pairwise
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 

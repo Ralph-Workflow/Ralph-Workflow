@@ -15,10 +15,10 @@ fail.
 
 from __future__ import annotations
 
-import pytest
-
 import re
 from pathlib import Path
+
+import pytest
 
 _PARALLEL_DISPLAY_PATH = Path(__file__).parents[3] / "ralph" / "display" / "parallel_display.py"
 

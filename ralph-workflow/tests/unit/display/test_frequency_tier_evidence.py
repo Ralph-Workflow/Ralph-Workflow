@@ -18,11 +18,10 @@ resolved more often than that tier-1 role's.
 
 from __future__ import annotations
 
-import pytest
-
 import collections
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.display import theme as theme_mod
@@ -31,7 +30,6 @@ from ralph.display._palette import ROLE_FREQUENCY_TIER, resolve_palette
 from ralph.display.scene_catalog import FULL_LAYOUT_WIDTH, SCENE_NAMES, SupportCase, render_scene
 
 if TYPE_CHECKING:
-    import pytest
     from rich.style import Style
 
 #: Matches _palette.py's own cited probe environment: dark, truecolour,

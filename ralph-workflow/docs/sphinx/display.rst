@@ -186,7 +186,11 @@ always render at their own fixed budget.
   distinct tokens so a ``_build_line`` ``info`` row and an
   ``_activity_text`` ``info`` row are not compared as the same
   underlying state -- the published
-  ``SALIENCE_STATE_TOKEN_FIELDS`` mapping names them per call-site.
+  ``SALIENCE_STATE_TOKEN_FIELDS`` mapping names them per call-site:
+  ``_build_line`` bids with the token fields ``("line", "level")``
+  (its kind plus the run-level level), and ``_activity_text`` bids
+  with the token fields ``("activity", "kind", "unit_id")`` (the
+  activity kind plus the unit identifier).
 - **Alarm exemption.** Tier-4 (``error``) roles are never demoted and never
   decay. If the budget is exhausted when an alarm arrives, the lowest
   priority tier-3 accent is evicted instead -- a failure always renders at

@@ -259,6 +259,170 @@ def _scene_snapshot(*, failed: bool) -> PipelineSnapshot:
     )
 
 
+def _drive_first_screen(display: ParallelDisplay, *, include_capability_summary: bool) -> None:
+    """Drive the ``first_screen`` scene through public display seams."""
+    display.emit_welcome_banner(version="0.0.0-scene")
+    display.emit_first_run_panel([Text("Production display scene", style="theme.text.muted")])
+    display.emit_run_start(
+        RunStartOrientation(
+            prompt_path=_SCENE_PROMPT_PATH,
+            workspace_root="/work/café",
+            developer_agent="pi",
+            plan_present=True,
+        )
+    )
+    if include_capability_summary:
+        display.emit_capability_summary(CapabilityState())
+
+
+def _drive_clean_run(display: ParallelDisplay) -> None:
+    """Drive the ``clean_run`` scene through public display seams."""
+    display.emit_blank_line()
+    entry = PhaseEntryModel(
+        "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
+    )
+    display.emit_phase_start_from_entry(entry)
+    display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
+    display.emit_log_line("pi", "raw transcript carrier remains available")
+    display.emit_status_line("pi", "waiting for an external review response")
+    display.emit_warn_line("pi", "warning", "waiting for an external review response")
+    display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
+    display.emit_phase_transition("development", "review")
+    display.emit_phase_close("development", "scene close outcome")
+    display.emit_agents_table({})
+    display.emit_providers_table(["scene-provider"])
+    display.emit_config_table(UnifiedConfig())
+    display.emit_metrics_table({"events": 2, "artifacts": 1})
+    display.emit_checkpoint_summary_table(
+        _SceneCheckpointOptions("development", {"iterations": (1, 3)})
+    )
+    display.emit_diagnose_inventory_table([("scene-mcp", "scene", "stdio", "local")])
+    display.emit_diagnose_probe_table([("scene-mcp", "yes", "yes", "yes", "yes")])
+    display.emit_diagnose_servers_table([("scene-mcp", "stdio", "ready", 1, "scene")])
+    display.emit_status("production display state is ready")
+    display.emit_warning("recovery detail is preserved in the rendered record")
+    display.emit_skill_failure_warning(["docs-mcp unavailable"])
+    display.emit_fallback_next_steps(["Re-run setup after configuring docs MCP"])
+    display.emit_info_panel(
+        title="Production note", content="Preview and records stay recoverable."
+    )
+    display.emit_renderable(Text("Shared renderable content", style="theme.text.muted"))
+    scene_workspace = Path("/scene-workspace-without-artifacts")
+    display.emit_plan_artifact(scene_workspace)
+    display.emit_development_artifact(scene_workspace)
+    display.emit_review_artifact(scene_workspace)
+    display.emit_fix_artifact(scene_workspace)
+    display.emit_analysis_decision(scene_workspace, "analysis")
+    display.emit_commit_message(scene_workspace)
+    display.emit_missing_plan_hint()
+    display.emit_phase_close_from_exit(
+        PhaseExitModel(
+            "development",
+            "execution",
+            "pi",
+            artifact_outcome="artifacts ready",
+            content_blocks=1,
+        )
+    )
+
+
+def _drive_failure(display: ParallelDisplay) -> None:
+    """Drive the ``failure`` scene through public display seams."""
+    display.emit_phase_start("review", agent_name="reviewer")
+    raw_machine_detail = (
+        "tests failed: assertion output retained; trace-detail "
+        "condensed count=48 bytes=624"
+    )
+    display.emit_activity_line(
+        "reviewer",
+        "error",
+        raw_machine_detail,
+        condensed_ref=".agent/raw/reviewer.log",
+        condensed_flag=True,
+    )
+    display.emit_warn_line(
+        "reviewer",
+        "warning",
+        "raw machine detail is retained in .agent/raw/reviewer.log",
+    )
+    display.emit_warning("recover raw machine detail from .agent/raw/reviewer.log")
+    display.emit_snapshot(_scene_snapshot(failed=True))
+    display.emit_completion_summary_panel(
+        _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
+    )
+
+
+def _drive_burst(display: ParallelDisplay) -> None:
+    """Drive the ``burst`` scene through public display seams.
+
+    A burst keeps one representative call in the scarce live stream. The
+    explicit elision entry preserves the total, byte size, and durable
+    transcript location instead of flooding later structural beats with
+    indistinguishable rows.
+    """
+    display.emit_activity_line(
+        "codex",
+        "tool_use",
+        "edit_file path=café-00.py",
+        tool_signature=("edit_file", "café-00.py"),
+    )
+    display.emit_activity_line("codex", "tool_result", "edit_file complete")
+    display.emit_activity_line(
+        "codex",
+        "raw",
+        "output condensed count=24 bytes=768",
+        condensed_flag=True,
+        condensed_ref=".agent/raw/run.log",
+    )
+
+
+def _drive_idle_stretch(display: ParallelDisplay) -> None:
+    """Drive the ``idle_stretch`` scene through public display seams.
+
+    PLAN.md S-3: the steady-stretch scene must exercise the salience
+    allocator so the catalogue-wide sweeps (G-3/G-4, G-5, G-7,
+    G-10/E-3) cannot pass vacuously for the scene named for the
+    steady stretch. Render one unit's alternating tool_use /
+    tool_result rows for a steady stretch (varying bodies so the
+    burst-elision path cannot collapse them) and finish with a
+    genuine state change at the end so the post-stretch frame has
+    a ``state change`` reason to observe.
+    """
+    for tick in range(_IDLE_STRETCH_FRAMES):
+        display.emit_activity_line(
+            "pi",
+            "tool_use",
+            f"path=café-{tick:02d}.py",
+            tool_signature=("read_file", f"café-{tick:02d}.py"),
+        )
+        display.emit_activity_line("pi", "tool_result", f"read_file complete ({tick})")
+    display.emit_activity_line("pi", "warning", "transport stall detected")
+    model = StatusBarModel(
+        workspace_root="/work/café",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        elapsed_seconds=123.0,
+        agent_name="pi",
+        attention="waiting",
+    )
+    # The public push seam writes a durable state transition on redirected
+    # and CI streams; real TTYs retain the sole transient Live footer.
+    display.update_status_bar(model)
+
+
+def _drive_closing_screen(display: ParallelDisplay) -> None:
+    """Drive the ``closing_screen`` scene through public display seams."""
+    display.emit_dry_run_summary(
+        phase="review",
+        iterations=1,
+        details={"recovery": ".agent/raw/run.log"},
+    )
+    display.emit_run_end(phase="complete", total_agent_calls=3)
+    display.emit_completion_summary_panel(
+        _scene_snapshot(failed=False), options=CompletionSummaryOptions(elapsed_seconds=123.0)
+    )
+
+
 def _drive_production_scene(
     display: ParallelDisplay,
     console: Console,
@@ -267,163 +431,38 @@ def _drive_production_scene(
     *,
     include_capability_summary: bool,
 ) -> None:
-    """Drive public production display entry points with fixed scenario data."""
+    """Drive public production display entry points with fixed scenario data.
+
+    Each scene's driver is its own helper so the dispatch body stays
+    below ``PLR0915``'s 60-statement cap while every scene is still
+    trivially traceable to its ``scene_name`` string.
+    """
     if scene_name == "first_screen":
-        display.emit_welcome_banner(version="0.0.0-scene")
-        display.emit_first_run_panel([Text("Production display scene", style="theme.text.muted")])
-        display.emit_run_start(
-            RunStartOrientation(
-                prompt_path=_SCENE_PROMPT_PATH,
-                workspace_root="/work/café",
-                developer_agent="pi",
-                plan_present=True,
-            )
-        )
-        if include_capability_summary:
-            display.emit_capability_summary(CapabilityState())
+        _drive_first_screen(display, include_capability_summary=include_capability_summary)
     elif scene_name == "clean_run":
-        display.emit_blank_line()
-        entry = PhaseEntryModel(
-            "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
-        )
-        display.emit_phase_start_from_entry(entry)
-        display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
-        display.emit_log_line("pi", "raw transcript carrier remains available")
-        display.emit_status_line("pi", "waiting for an external review response")
-        display.emit_warn_line("pi", "warning", "waiting for an external review response")
-        display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
-        display.emit_phase_transition("development", "review")
-        display.emit_phase_close("development", "scene close outcome")
-        display.emit_agents_table({})
-        display.emit_providers_table(["scene-provider"])
-        display.emit_config_table(UnifiedConfig())
-        display.emit_metrics_table({"events": 2, "artifacts": 1})
-        display.emit_checkpoint_summary_table(
-            _SceneCheckpointOptions("development", {"iterations": (1, 3)})
-        )
-        display.emit_diagnose_inventory_table([("scene-mcp", "scene", "stdio", "local")])
-        display.emit_diagnose_probe_table([("scene-mcp", "yes", "yes", "yes", "yes")])
-        display.emit_diagnose_servers_table([("scene-mcp", "stdio", "ready", 1, "scene")])
-        display.emit_status("production display state is ready")
-        display.emit_warning("recovery detail is preserved in the rendered record")
-        display.emit_skill_failure_warning(["docs-mcp unavailable"])
-        display.emit_fallback_next_steps(["Re-run setup after configuring docs MCP"])
-        display.emit_info_panel(
-            title="Production note", content="Preview and records stay recoverable."
-        )
-        display.emit_renderable(Text("Shared renderable content", style="theme.text.muted"))
-        scene_workspace = Path("/scene-workspace-without-artifacts")
-        display.emit_plan_artifact(scene_workspace)
-        display.emit_development_artifact(scene_workspace)
-        display.emit_review_artifact(scene_workspace)
-        display.emit_fix_artifact(scene_workspace)
-        display.emit_analysis_decision(scene_workspace, "analysis")
-        display.emit_commit_message(scene_workspace)
-        display.emit_missing_plan_hint()
-        display.emit_phase_close_from_exit(
-            PhaseExitModel(
-                "development",
-                "execution",
-                "pi",
-                artifact_outcome="artifacts ready",
-                content_blocks=1,
-            )
-        )
+        _drive_clean_run(display)
     elif scene_name == "failure":
-        display.emit_phase_start("review", agent_name="reviewer")
-        raw_machine_detail = (
-            "tests failed: assertion output retained; trace-detail "
-            "condensed count=48 bytes=624"
-        )
-        display.emit_activity_line(
-            "reviewer",
-            "error",
-            raw_machine_detail,
-            condensed_ref=".agent/raw/reviewer.log",
-            condensed_flag=True,
-        )
-        display.emit_warn_line(
-            "reviewer",
-            "warning",
-            "raw machine detail is retained in .agent/raw/reviewer.log",
-        )
-        display.emit_warning("recover raw machine detail from .agent/raw/reviewer.log")
-        display.emit_snapshot(_scene_snapshot(failed=True))
-        display.emit_completion_summary_panel(
-            _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
-        )
+        _drive_failure(display)
     elif scene_name == "burst":
-        # A burst keeps one representative call in the scarce live stream. The
-        # explicit elision entry preserves the total, byte size, and durable
-        # transcript location instead of flooding later structural beats with
-        # indistinguishable rows.
-        display.emit_activity_line(
-            "codex",
-            "tool_use",
-            "edit_file path=café-00.py",
-            tool_signature=("edit_file", "café-00.py"),
-        )
-        display.emit_activity_line("codex", "tool_result", "edit_file complete")
-        display.emit_activity_line(
-            "codex",
-            "raw",
-            "output condensed count=24 bytes=768",
-            condensed_flag=True,
-            condensed_ref=".agent/raw/run.log",
-        )
+        _drive_burst(display)
     elif scene_name == "idle_stretch":
-        # PLAN.md S-3: the steady-stretch scene must exercise the salience
-        # allocator so the catalogue-wide sweeps (G-3/G-4, G-5, G-7,
-        # G-10/E-3) cannot pass vacuously for the scene named for the
-        # steady stretch. Render one unit's alternating tool_use /
-        # tool_result rows for a steady stretch (varying bodies so the
-        # burst-elision path cannot collapse them) and finish with a
-        # genuine state change at the end so the post-stretch frame has
-        # a ``state change`` reason to observe.
-        for tick in range(_IDLE_STRETCH_FRAMES):
-            display.emit_activity_line(
-                "pi",
-                "tool_use",
-                f"path=café-{tick:02d}.py",
-                tool_signature=("read_file", f"café-{tick:02d}.py"),
-            )
-            display.emit_activity_line("pi", "tool_result", f"read_file complete ({tick})")
-        display.emit_activity_line("pi", "warning", "transport stall detected")
-        model = StatusBarModel(
-            workspace_root="/work/café",
-            phase_label="Development",
-            phase_style="theme.phase.development",
-            elapsed_seconds=123.0,
-            agent_name="pi",
-            attention="waiting",
-        )
-        # The public push seam writes a durable state transition on redirected
-        # and CI streams; real TTYs retain the sole transient Live footer.
-        display.update_status_bar(model)
+        _drive_idle_stretch(display)
     else:
-        display.emit_dry_run_summary(
-            phase="review",
-            iterations=1,
-            details={"recovery": ".agent/raw/run.log"},
-        )
-        display.emit_run_end(phase="complete", total_agent_calls=3)
-        display.emit_completion_summary_panel(
-            _scene_snapshot(failed=False), options=CompletionSummaryOptions(elapsed_seconds=123.0)
-        )
+        _drive_closing_screen(display)
 
 
 def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | None) -> None:
     """Render real write and diff previews through the production preview builder."""
     write_preview = build_edit_preview(
         "write_file",
-        {"path": "café.py", "content": "def café(value: str) -> int:\n    return len(value)"},
+        {"path": "café.py", "content": "def café(value: str) -> int:\n    return len(value)"},
         width=console.width,
         terminal_bg_is_light=terminal_bg_is_light,
     )
     diff_preview = build_edit_preview(
         "edit_file",
         {
-            "path": "café.py",
+            "path": "café.py",
             "edits": [{"oldText": "return 0", "newText": "return len(value)", "start_line": 2}],
         },
         width=console.width,

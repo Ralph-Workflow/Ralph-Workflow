@@ -6,7 +6,6 @@ generator machinery inherited (Characterize point 2).
 from __future__ import annotations
 
 import pytest
-
 from pygments.token import (
     Comment,
     Error,

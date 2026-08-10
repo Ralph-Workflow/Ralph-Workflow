@@ -486,7 +486,7 @@ def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> No
         if case is None:
             palette = _markdown_theme._PALETTES[None]
             assert palette
-            for entry, role in entry_to_role.items():
+            for entry in entry_to_role:
                 indexed = {"default": 0, "accent": 1, "link": 2, "url": 3, "bullet": 4, "rule": 5}
                 expected = _markdown_theme._build_markdown_palette(None)[indexed[entry]]
                 # Skip the surface-tracked identity for the unknown path;
