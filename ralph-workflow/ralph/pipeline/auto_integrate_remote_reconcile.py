@@ -49,17 +49,20 @@ def reconcile_target_onto_remote(
     )
     if reason is not None or owner is None or pre_target_sha is None:
         return False, reason or f"target '{target}' is unavailable for reconciliation"
-    write_record(
-        repo_root,
-        IntegrationRecord(
-            phase="integrating",
-            target=target,
-            pre_feature_sha=pre_target_sha,
-            pre_target_sha=pre_target_sha,
-            operation_kind="target_reconcile",
-            owning_worktree=str(owner),
-        ),
-    )
+    try:
+        write_record(
+            repo_root,
+            IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=pre_target_sha,
+                pre_target_sha=pre_target_sha,
+                operation_kind="target_reconcile",
+                owning_worktree=str(owner),
+            ),
+        )
+    except Exception as exc:
+        return False, f"reconciliation of {target} deferred: recovery record unavailable: {exc}"
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
         if isinstance(outcome, (RebaseSuccess, RebaseNoOp)):
@@ -93,15 +96,15 @@ def _reconciliation_preconditions(
     """Return a clean owning target worktree and its pre-rebase SHA."""
     try:
         verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
+        if verdict != WORKTREE_FOUND or owner is None:
+            return None, None, f"target '{target}' has no owning worktree for reconciliation"
+        if not is_repo_clean(owner) and (
+            not reclaim_target_worktree or reclaim_dirty_target_worktree(owner, target) is None
+        ):
+            return None, None, f"target worktree is dirty; skipped reconciliation of {remote}/{target}"
+        pre_target_sha = branch_sha(owner, target)
     except Exception:
         return None, None, f"target '{target}' is unavailable for reconciliation"
-    if verdict != WORKTREE_FOUND or owner is None:
-        return None, None, f"target '{target}' has no owning worktree for reconciliation"
-    if not is_repo_clean(owner) and (
-        not reclaim_target_worktree or reclaim_dirty_target_worktree(owner, target) is None
-    ):
-        return None, None, f"target worktree is dirty; skipped reconciliation of {remote}/{target}"
-    pre_target_sha = branch_sha(owner, target)
     if pre_target_sha is None:
         return None, None, f"target '{target}' disappeared before reconciliation"
     return owner, pre_target_sha, None

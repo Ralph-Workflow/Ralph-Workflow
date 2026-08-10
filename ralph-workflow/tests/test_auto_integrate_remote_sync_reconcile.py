@@ -241,6 +241,51 @@ def test_target_reconciliation_regression_restores_owner_sha_after_conflict(
     assert restored == [(owner, "before")]
 
 
+def test_target_reconciliation_regression_record_write_failure_is_deferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: reconciliation refuses to mutate when recovery ownership cannot persist."""
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(
+        remote_reconcile,
+        "write_record",
+        lambda *_a: (_ for _ in ()).throw(OSError("record unavailable")),
+    )
+    rebase_calls: list[object] = []
+    monkeypatch.setattr(
+        remote_reconcile,
+        "rebase_onto",
+        lambda *_a, **_kw: rebase_calls.append(True),
+    )
+
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "recovery record" in reason
+    assert rebase_calls == []
+
+
+def test_target_reconciliation_regression_precondition_probe_failure_is_deferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: an unobservable target owner becomes a retryable result, never an exception."""
+    monkeypatch.setattr(remote_reconcile, "find_main_worktree_root", lambda *_args: Path("/main"))
+    monkeypatch.setattr(remote_reconcile, "worktree_lookup", lambda *_args: ("found", Path("/owner")))
+    monkeypatch.setattr(
+        remote_reconcile,
+        "is_repo_clean",
+        lambda *_args: (_ for _ in ()).throw(OSError("status unavailable")),
+    )
+
+    success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
+
+    assert success is False
+    assert "unavailable" in reason
+
+
 def test_target_reconciliation_regression_worktree_lookup_failure_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
