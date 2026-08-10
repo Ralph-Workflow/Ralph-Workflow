@@ -153,6 +153,37 @@ def _boom(*_args: object, **_kwargs: object) -> None:
     raise RuntimeError("simulated failure")
 
 
+def test_target_reconcile_recovery_never_resets_a_target_that_moved(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-3: a retained target-reconcile record preserves a concurrent target move."""
+    recovery = _recovery_module()
+    owner = tmp_path / "target-owner"
+    record = recovery.IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="before",
+        pre_target_sha="before",
+        operation_kind="target_reconcile",
+        owning_worktree=str(owner),
+    )
+    _stub_clean_git(recovery, monkeypatch, record)
+    monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "moved")
+    resets: list[tuple[object, ...]] = []
+    cleared: list[Path] = []
+    def record_reset(*args: object) -> None:
+        resets.append(args)
+
+    monkeypatch.setattr(recovery, "reset_hard", record_reset)
+    monkeypatch.setattr(recovery, "_clear_record", cleared.append)
+
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
+
+    assert recovery_retained_record(outcome) is True
+    assert resets == []
+    assert cleared == []
+
+
 def test_a_failed_reset_retains_the_record_and_says_so_structurally(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:

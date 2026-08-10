@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
 
 
@@ -94,6 +95,8 @@ def retry_pending_remote_publish(
     repo_root: Path,
     target: str,
     record: RebaseState,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState | None:
     """Retry any typed failed remote publication at a later clean seam."""
     from ralph.git.remote_push import PushStatus
@@ -111,7 +114,9 @@ def retry_pending_remote_publish(
         return None
     retried = push_target_after_landing(config, repo_root, target, record)
     if retried.last_push_status == PushStatus.NON_FAST_FORWARD.value:
-        return reconcile_after_rejected_push(config, repo_root, target, retried)
+        return reconcile_after_rejected_push(
+            config, repo_root, target, retried, rebase_stop_resolver=rebase_stop_resolver
+        )
     return retried
 
 

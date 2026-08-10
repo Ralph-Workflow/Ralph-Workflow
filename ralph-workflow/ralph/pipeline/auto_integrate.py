@@ -230,7 +230,7 @@ def _boundary_freshness_outcome(
     refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
     if branch_sha(root, target) != get_head_sha(root):
         return None
-    pending = retry_pending_remote_publish(config, root, target, state)
+    pending = retry_pending_remote_publish(config, root, target, state, rebase_stop_resolver=rebase_stop_resolver)
     if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
         if pending is not None:
             return pending
