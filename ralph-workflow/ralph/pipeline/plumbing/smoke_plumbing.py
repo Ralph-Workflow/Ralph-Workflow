@@ -2246,6 +2246,7 @@ def run_smoke_plumbing(
         multimodal_fixture_size = generate_fixture_geometry()
         fixture_path = workspace_root / SMOKE_FIXTURE_RELNAME
         fixture_path.parent.mkdir(parents=True, exist_ok=True)
+        # filesystem-write-ok: smoke harness materializes the deterministic PNG fixture on every run; the file is regenerated each run with per-run geometry so the SHA is never reused and macOS fseventsd amplification cannot bind to a stable inode.
         fixture_path.write_bytes(
             build_smoke_fixture_png(*multimodal_fixture_size)
         )

@@ -402,8 +402,12 @@ def grade_multimodal_evidence(  # noqa: PLR0911  # 4-condition contract: 7 retur
     )
     if isinstance(server_uri_or_evidence, Evidence):
         return server_uri_or_evidence
-    _server_uri_raw = server_uri_or_evidence
-    server_uri = _server_uri_raw
+    if server_uri_or_evidence is None:
+        return absent(
+            "registry check returned no server URI for the fixture; the server never "
+            "persisted a ralph://media/{artifact_id} handle for this run"
+        )
+    server_uri = server_uri_or_evidence
 
     chain = _check_broker_chain(workspace_root, secret)
     if chain is not None:
@@ -414,7 +418,7 @@ def grade_multimodal_evidence(  # noqa: PLR0911  # 4-condition contract: 7 retur
         return present
 
     replay_check = _check_replay_record(
-        workspace_root, run_id, secret, _server_uri_str
+        workspace_root, run_id, secret, server_uri
     )
     if replay_check is not None:
         return replay_check
