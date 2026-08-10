@@ -21,7 +21,6 @@ class ToolMetadata:
         forward a call,
       - whether the tool mutates workspace state (driving access-mode
         enforcement), and
-      - whether the tool accepts multimodal (image or audio) payloads.
 
     The dataclass is frozen and stored in the bridge's tool registry; every
     invocation consults ``required_capability`` against the agent's
@@ -44,12 +43,6 @@ class ToolMetadata:
             otherwise. The bridge uses this flag together with
             :func:`ralph.mcp.protocol.startup.access_mode_for_drain` to
             decide whether a read-only session can still call the tool.
-        is_multimodal: ``True`` when the tool accepts binary content
-            (images, audio) alongside its text schema. The bridge surfaces
-            multimodal tools through a different ``callTool`` content
-            shape and tags them so agents can discover them via the
-            metadata flag.
-
     Invariants:
         - ``required_capability`` must be a non-empty capability name
           recognized by :mod:`ralph.mcp.capabilities`; unknown
@@ -64,4 +57,3 @@ class ToolMetadata:
     definition: ToolDefinition
     required_capability: str
     is_mutating: bool | None = None
-    is_multimodal: bool = False

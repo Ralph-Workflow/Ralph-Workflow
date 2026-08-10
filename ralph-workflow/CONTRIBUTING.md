@@ -457,9 +457,9 @@ The `read_media` tool (primary) and `read_image` tool (compatibility alias) and 
 - Support broad modality classes: images, PDFs, documents, audio, video, and resource/file-reference-based flows
 - Automatically detect what the active provider/model supports and select inline vs resource-reference delivery accordingly
 
-### Client capability filtering
+### Session capability visibility
 
-When a client sends `initialize` without declaring multimodal support (`capabilities.image`, `capabilities.media`, or `capabilities.multimodal`), multimodal-only tools must not appear in `tools/list`.
+`read_media` and `read_image` appear in `tools/list` whenever `[media] enabled = true` and the active session has `media.read`. MCP `initialize` does not define image, media, or multimodal negotiation keys, so a default `capabilities: {}` handshake must not hide these tools. Set `[media] enabled = false` to remove the capability and both tool registrations.
 
 ### Upstream multimodal boundary
 

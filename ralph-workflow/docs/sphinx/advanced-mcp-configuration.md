@@ -184,9 +184,11 @@ This matrix is the canonical reference for which provider/modality combinations 
 - **Document understanding** — PDFs and office documents are delivered as typed blocks (Claude, Gemini) or replayable resource references (unknown providers).
 - **Audio and video understanding** — delivered as typed blocks for Gemini; other providers receive an explicit unsupported error.
 
-### What text-only clients see
+### Text-only client safety
 
-When a client connects without declaring multimodal support, the `read_media` and `read_image` tools are **automatically suppressed** from `tools/list` even if `media.enabled = true`. This ensures text-only clients continue to work unchanged; multimodal content is not silently stringified or rejected.
+MCP `initialize` does not define image, media, or multimodal negotiation keys. When `media.enabled = true` and the session has `media.read`, `read_media` and `read_image` therefore remain visible in `tools/list`, including after the default `capabilities: {}` handshake used by coding harnesses.
+
+For text-only clients, safety is enforced by delivery, not tool suppression. The session's `ResolvedCapabilityProfile` selects an inline block only for a provider and model that supports it; otherwise Ralph Workflow returns a typed block, a replayable resource reference, or an explicit unsupported result. Set `[media] enabled = false` in `mcp.toml` to remove `media.read` and both tools.
 
 ### Upstream normalization
 

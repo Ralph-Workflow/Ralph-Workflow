@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.config.mcp_models import McpConfig, MediaConfig
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
@@ -152,6 +153,7 @@ def _build_server(
     provider: str = "unknown",
     model_id: str | None = None,
     with_media: bool = True,
+    media_enabled: bool | None = None,
 ) -> McpServer:
     caps = _MULTIMODAL_CAPS if with_media else _TEXT_ONLY_CAPS
     workspace = FsWorkspace(workspace_path)
@@ -162,7 +164,12 @@ def _build_server(
         capabilities=caps,
         model_identity=MultimodalModelIdentity(provider=provider, model_id=model_id),
     )
-    registry = build_ralph_tool_registry(session, workspace)
+    mcp_config = (
+        McpConfig(media=MediaConfig(enabled=media_enabled))
+        if media_enabled is not None
+        else McpConfig()
+    )
+    registry = build_ralph_tool_registry(session, workspace, mcp_config=mcp_config)
     return McpServer(session, workspace, registry)
 
 
@@ -219,17 +226,23 @@ def _tool_call(
 
 
 @pytest.mark.integration
-def test_text_only_client_hides_multimodal_tools_by_default(tmp_path: Path) -> None:
-    """A text-only client must not see read_media or read_image in tools/list."""
+def test_default_handshake_exposes_multimodal_tools(tmp_path: Path) -> None:
+    """A default empty handshake exposes enabled media tools."""
     server = _build_server(tmp_path, with_media=True)
     state = _initialize(server, multimodal_client=False)
     tool_names = _tools_list(server, state)
-    assert str(RalphToolName.READ_MEDIA) not in tool_names, (
-        f"read_media must be hidden for text-only clients; visible tools: {tool_names}"
-    )
-    assert str(RalphToolName.READ_IMAGE) not in tool_names, (
-        f"read_image must be hidden for text-only clients; visible tools: {tool_names}"
-    )
+    assert str(RalphToolName.READ_MEDIA) in tool_names
+    assert str(RalphToolName.READ_IMAGE) in tool_names
+
+
+@pytest.mark.integration
+def test_explicit_media_disabled_hides_multimodal_tools(tmp_path: Path) -> None:
+    """The explicit media configuration opt-out hides media tools."""
+    server = _build_server(tmp_path, with_media=True, media_enabled=False)
+    state = _initialize(server, multimodal_client=False)
+    tool_names = _tools_list(server, state)
+    assert str(RalphToolName.READ_MEDIA) not in tool_names
+    assert str(RalphToolName.READ_IMAGE) not in tool_names
 
 
 @pytest.mark.integration

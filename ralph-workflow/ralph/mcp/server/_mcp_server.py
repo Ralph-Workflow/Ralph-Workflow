@@ -121,23 +121,6 @@ def _decode_json_payload_from_content(content_blocks: object) -> dict[str, objec
     return cast("dict[str, object]", decoded)
 
 
-def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
-    if not params:
-        return set()
-
-    capabilities: object = params.get("capabilities", {})
-    if not isinstance(capabilities, dict):
-        return set()
-
-    result: set[str] = set()
-
-    for key in capabilities:
-        if key in ("image", "media", "multimodal"):
-            result.add(key)
-
-    return result
-
-
 class McpServer:
     """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools.
 
@@ -167,7 +150,6 @@ class McpServer:
         self._session = session
         self._workspace = workspace
         self._registry = registry
-        self._client_capabilities: set[str] | None = None
         self._expose_mcp_aliases = expose_mcp_aliases
         # Optional graduated-session nag: returns a wrap-up banner once the
         # invocation passes the soft threshold, else None. Appended to every
@@ -317,9 +299,6 @@ class McpServer:
             )
 
     def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
-        self._client_capabilities = _extract_client_capabilities(request.params)
-        self._registry.set_client_capabilities(self._client_capabilities)
-
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": {

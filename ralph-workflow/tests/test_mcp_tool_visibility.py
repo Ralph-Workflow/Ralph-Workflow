@@ -79,27 +79,22 @@ def test_prompt_catalog_reuses_profile_without_leaking_mutations() -> None:
 def test_disabled_web_search_omits_tool() -> None:
     config = McpConfig(web_search=WebSearchConfig(enabled=False))
     registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace(), mcp_config=config)
-    registry.set_client_capabilities(set())
     assert WEB_SEARCH_TOOL not in _visible_tool_names(registry)
 
 
-def test_multimodal_client_sees_read_image_by_default() -> None:
+def test_multimodal_tools_are_visible_by_default() -> None:
     registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace())
-    registry.set_client_capabilities({"image", "media"})
-    assert "read_image" in _visible_tool_names(registry)
-
-
-def test_text_only_client_does_not_see_read_image_by_default() -> None:
-    registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace())
-    registry.set_client_capabilities(set())
-    assert "read_image" not in _visible_tool_names(registry)
+    visible = _visible_tool_names(registry)
+    assert "read_image" in visible
+    assert "read_media" in visible
 
 
 def test_explicit_media_disabled_removes_read_image() -> None:
     config = McpConfig(media=MediaConfig(enabled=False))
     registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace(), mcp_config=config)
-    registry.set_client_capabilities({"image", "media"})
-    assert "read_image" not in _visible_tool_names(registry)
+    visible = _visible_tool_names(registry)
+    assert "read_image" not in visible
+    assert "read_media" not in visible
 
 
 def test_mcp_toml_wins_over_simulated_claude_json_collision() -> None:

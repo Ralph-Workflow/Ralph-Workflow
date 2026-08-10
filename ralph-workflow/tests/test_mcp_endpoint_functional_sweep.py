@@ -103,6 +103,19 @@ def _seed_workspace(workspace: Path) -> None:
     (workspace / "hello.txt").write_text("hello world\n", encoding="utf-8")
     (workspace / "subdir").mkdir(exist_ok=True)
     (workspace / "subdir" / "nested.txt").write_text("nested content\n", encoding="utf-8")
+    # Minimal valid 1x1 PNG so read_media/read_image have a workspace file
+    # the unknown-provider fallback can produce a resource_reference for.
+    _tiny_png = (
+        b"\x89PNG\r\n\x1a\n"
+        b"\x00\x00\x00\rIHDR"
+        b"\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde"
+        b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0"
+        b"\x00\x00\x00\x03\x00\x01"
+        b"\x9d\x82\xa4\x9c"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    (workspace / "screenshot.png").write_bytes(_tiny_png)
 
 
 def _drive_tools_list(server: McpServer) -> list[str]:
@@ -275,6 +288,13 @@ SWEEP_CALLS: dict[str, dict[str, Any]] = {
     RalphToolName.APPEND_FILE: {"path": "hello.txt", "content": "sweep line\n"},
     RalphToolName.CREATE_DIRECTORY: {"path": "sweep_subdir"},
     RalphToolName.MOVE_FILE: {"src": "sweep.txt", "dest": "sweep_moved.txt"},
+    # Multimodal tools. The handler returns a structured resource_reference
+    # for the unknown-provider PDF/PNG payload it sees at runtime, so the
+    # sweep only needs to confirm the bridge accepts the call and returns
+    # a non-error result. The full end-to-end media linkage is covered by
+    # `tests/integration/test_multimodal_end_to_end_linkage.py`.
+    RalphToolName.READ_MEDIA: {"path": "screenshot.png"},
+    RalphToolName.READ_IMAGE: {"path": "screenshot.png"},
     RalphToolName.COPY_FILE: {"src": "sweep_moved.txt", "dest": "sweep_copy.txt"},
     RalphToolName.DELETE_PATH: {"path": "sweep_copy.txt"},
     # Git read. The repo may or may not be initialized; both cases

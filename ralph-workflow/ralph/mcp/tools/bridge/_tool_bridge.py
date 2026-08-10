@@ -75,11 +75,6 @@ class ToolBridge:
     def __init__(self, session: object | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}  # bounded-accumulator-ok: bounded
         self._session = session
-        self._client_capabilities: set[str] | None = None
-
-    def set_client_capabilities(self, capabilities: set[str] | None) -> None:
-        """Set the client declared capabilities from MCP initialize handshake."""
-        self._client_capabilities = capabilities
 
     def register(self, metadata: ToolMetadata, handler: RegistrationHandler) -> None:
         """Register a tool definition and handler."""
@@ -148,7 +143,7 @@ class ToolBridge:
         return [
             tool.metadata
             for tool in self._tools.values()
-            if self._is_tool_allowed(tool.metadata) and self._is_tool_visible(tool.metadata)
+            if self._is_tool_allowed(tool.metadata)
         ]
 
     def list_definitions(self) -> list[ToolDefinition]:
@@ -156,7 +151,7 @@ class ToolBridge:
         return [
             tool.metadata.definition
             for tool in self._tools.values()
-            if self._is_tool_allowed(tool.metadata) and self._is_tool_visible(tool.metadata)
+            if self._is_tool_allowed(tool.metadata)
         ]
 
     def dispatch(
@@ -195,23 +190,6 @@ class ToolBridge:
             )
         except Exception as exc:
             raise ToolDispatchError(f"Tool '{name}' failed: {exc}") from exc
-
-    def _is_tool_visible(self, metadata: ToolMetadata) -> bool:
-        """Check if a tool is visible to the client based on multimodal flags."""
-        if not metadata.is_multimodal:
-            return True
-
-        if self._client_capabilities is None:
-            return False
-
-        client_caps = self._client_capabilities
-        return (
-            "image" in client_caps
-            or "media" in client_caps
-            or "multimodal" in client_caps
-            or "MediaRead" in client_caps
-            or "media.read" in client_caps
-        )
 
     def _is_tool_allowed(self, metadata: ToolMetadata, session: object | None = None) -> bool:
         effective_session = session or self._session

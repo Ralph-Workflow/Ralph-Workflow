@@ -43,7 +43,6 @@ def _metadata(
     description: str,
     input_schema: JsonObject,
     required_capability: str,
-    is_multimodal: bool = False,
 ) -> ToolMetadata:
     return ToolMetadata(
         definition=ToolDefinition(
@@ -52,5 +51,4 @@ def _metadata(
             input_schema=input_schema,
         ),
         required_capability=required_capability,
-        is_multimodal=is_multimodal,
     )

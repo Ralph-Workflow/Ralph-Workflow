@@ -239,7 +239,7 @@ The `MediaRead` capability gates access to the `read_media` and `read_image` too
 
 - **Default-on** via `media.enabled = true` (or omitted, as it is the default)
 - **Can be disabled** via `media.enabled = false` in `mcp.toml`
-- **Suppressed from clients** that don't declare multimodal support in `initialize`
+- **Visible to clients** whenever the active session has `media.read`; `initialize` does not negotiate multimodal support
 - **Enforced at runtime** via session capability check
 
 ## Multimodal MCP Support
@@ -265,21 +265,11 @@ enabled = true
 max_inline_bytes = 10485760  # 10 MiB to allow larger images
 ```
 
-### Client Capability Filtering
+### Multimodal Tool Visibility
 
-When a client sends the MCP `initialize` request, Ralph captures declared capabilities from `params.capabilities`. The following signals indicate multimodal support:
+The `[media] enabled` setting in `mcp.toml` is the single multimodal opt-out. It defaults to `true`; enabled sessions receive `media.read`, and Ralph registers `read_media` plus the `read_image` compatibility alias. Setting it to `false` withholds the capability and both registrations.
 
-- `capabilities.image` (any truthy value)
-- `capabilities.media` (any truthy value)
-- `capabilities.multimodal` (any truthy value)
-
-If none are present, the client is treated as text-only.
-
-When building `tools/list` responses, Ralph filters out tools marked `is_multimodal=True` for text-only clients. This ensures:
-
-1. **Backward compatibility** — existing text-only clients never see multimodal tools
-2. **Client-gated visibility** — multimodal tools only appear when the client declares support
-3. **Consistent wire format** — text content blocks remain `{"type": "text", "text": ...}`
+MCP `initialize` does not define image, media, or multimodal negotiation keys. Ralph therefore leaves capability-granted media tools in `tools/list` after a default `capabilities: {}` handshake. The session's provider/model `ResolvedCapabilityProfile` provides text-only safety by selecting inline content only when supported and otherwise returning a typed block, a replayable resource reference, or an explicit unsupported result.
 
 ### Upstream Multimodal Normalization Policy
 
@@ -458,7 +448,7 @@ upstream/ (Ralph as client)
 During the multimodal MCP implementation, the following previously-dormant MCP paths were evaluated:
 
 - **Upstream multimodal content handling** — Previously would have silently stringified non-text blocks. Now normalized to `resource_reference` artifacts (embedded-data content stored in the session manifest; URI-backed content preserved as external reference) rather than rejected or dropped.
-- **MediaRead capability** — Was defined but not wired to any tool. Now integrated with `read_image` tool registration and client capability filtering.
-- **Client capability extraction** — Was not implemented. Now captures client `capabilities` from MCP `initialize` handshake and uses it to filter multimodal tools.
+- **MediaRead capability** — Was defined but not wired to any tool. Now integrated with `read_media` and `read_image` registration plus the session capability check.
+- **Client capability extraction** — Removed because MCP `initialize` does not negotiate multimodal support. Tool visibility now derives from `[media] enabled` and the session's `media.read` grant.
 
 The MCP subsystem now has zero dormant paths: every defined capability is either used by a registered tool or explicitly documented as not applicable to the maintained implementation.

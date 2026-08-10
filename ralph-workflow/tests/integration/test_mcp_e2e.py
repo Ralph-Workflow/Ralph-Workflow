@@ -17,7 +17,7 @@ import ralph.mcp.websearch.backends.ddgs as _ddgs_mod
 if TYPE_CHECKING:
     import pytest
 
-from ralph.config.mcp_models import McpConfig, WebSearchBackendSpec, WebSearchConfig
+from ralph.config.mcp_models import McpConfig, MediaConfig, WebSearchBackendSpec, WebSearchConfig
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.runtime import (
     JsonRpcRequest,
@@ -244,7 +244,11 @@ def test_secret_never_in_e2e_logs() -> None:
 _MEDIA_CAPABILITIES = _REQUIRED_CAPABILITIES | {"media.read"}
 
 
-def _build_multimodal_server(session_id: str = "test-multimodal") -> McpServer:
+def _build_multimodal_server(
+    session_id: str = "test-multimodal",
+    *,
+    mcp_config: McpConfig | None = None,
+) -> McpServer:
     """Build a McpServer with media.read session capability."""
 
     session = AgentSession(
@@ -254,7 +258,11 @@ def _build_multimodal_server(session_id: str = "test-multimodal") -> McpServer:
         capabilities=_MEDIA_CAPABILITIES,
     )
     workspace = MemoryWorkspace()
-    registry = build_ralph_tool_registry(session, workspace)
+    registry = build_ralph_tool_registry(
+        session,
+        workspace,
+        mcp_config=mcp_config or McpConfig(),
+    )
     return McpServer(session, workspace, registry)
 
 
@@ -287,13 +295,22 @@ def test_multimodal_client_sees_read_media_and_read_image_in_tools_list() -> Non
     assert "read_image" in tool_names, f"read_image missing from tools: {sorted(tool_names)}"
 
 
-def test_text_only_client_does_not_see_read_media_in_tools_list() -> None:
-    """Text-only client (no multimodal capability) does not see read_media or read_image."""
+def test_default_handshake_sees_media_tools_without_client_capability() -> None:
+    """A default MCP handshake exposes media tools when media.read is granted."""
     server = _build_multimodal_server()
     state = _initialize(server)
     tool_names = {tool["name"] for tool in _list_tools(server, state)}
-    assert "read_media" not in tool_names, "read_media should be hidden from text-only client"
-    assert "read_image" not in tool_names, "read_image should be hidden from text-only client"
+    assert "read_media" in tool_names
+    assert "read_image" in tool_names
+
+
+def test_explicit_media_disabled_hides_media_tools() -> None:
+    """The explicit media configuration opt-out removes both media tools."""
+    server = _build_multimodal_server(mcp_config=McpConfig(media=MediaConfig(enabled=False)))
+    state = _initialize(server)
+    tool_names = {tool["name"] for tool in _list_tools(server, state)}
+    assert "read_media" not in tool_names
+    assert "read_image" not in tool_names
 
 
 def test_resource_templates_list_includes_media_template_when_media_read_is_granted() -> None:

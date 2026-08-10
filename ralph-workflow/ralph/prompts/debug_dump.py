@@ -117,19 +117,41 @@ def clear_multimodal_sidecar(
 def collect_media_entries_for_phase(
     workspace: Workspace,
     phase: str,
+    *,
+    drain: str | None = None,
 ) -> list[MultimodalSidecarEntry]:
-    """Read media entries from the persistent session index for a phase."""
-    path = media_session_path(phase)
+    """Read media entries from the persistent session index for a phase.
+
+    When ``drain`` is supplied, the reader also merges the drain-keyed
+    media index (the canonical write key is ``session.drain``, not the
+    phase name) so callers on phases whose configured drain differs from
+    the phase name do not silently lose artifacts. Entries are
+    de-duplicated by the same ``_sidecar_entry_identity`` rule the
+    writer enforces, and drain-keyed entries are appended after the
+    phase-keyed ones so a phase-only entry wins on identity collisions
+    (it was the write the runner observed first).
+    """
+    entries: OrderedDict[str, MultimodalSidecarEntry] = OrderedDict()
+    if drain and drain != phase:
+        entries = _collect_media_entries_from_index(workspace, media_session_path(drain), entries)
+    entries = _collect_media_entries_from_index(workspace, media_session_path(phase), entries)
+    return list(entries.values())
+
+
+def _collect_media_entries_from_index(
+    workspace: Workspace,
+    path: str,
+    entries: OrderedDict[str, MultimodalSidecarEntry],
+) -> OrderedDict[str, MultimodalSidecarEntry]:
     try:
         raw = workspace.read(path)
     except Exception:
-        return []
+        return entries
     try:
         data: dict[str, object] = json.loads(raw)
         artifacts = data.get("artifacts")
         if not isinstance(artifacts, list):
-            return []
-        entries: OrderedDict[str, MultimodalSidecarEntry] = OrderedDict()
+            return entries
         for item in artifacts:
             if not isinstance(item, dict):
                 continue
@@ -152,9 +174,9 @@ def collect_media_entries_for_phase(
             except Exception:
                 continue
             entries[_sidecar_entry_identity(entry)] = entry
-        return list(entries.values())
+        return entries
     except Exception:
-        return []
+        return entries
 
 
 def dump_rendered_prompt(

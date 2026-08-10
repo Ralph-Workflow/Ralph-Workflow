@@ -45,9 +45,6 @@ class _FakeRegistry:
     def list_definitions(self) -> list[object]:
         return []
 
-    def set_client_capabilities(self, capabilities: object) -> None:
-        del capabilities
-
 
 def _session(run_id: str, *, broker_secret: str | None) -> AgentSession:
     return AgentSession(

@@ -260,7 +260,7 @@ def _materialize_prepared_prompt(
         )
         if agent_names:
             agent = registry.get(agent_names[0])
-    media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
+    media_entries = collect_media_entries_for_phase(workspace, effect.phase, drain=phase_drain) or None
     _mat = materialize_fn or materialize_prompt_for_phase
     _mat(
         phase=effect.phase,
@@ -305,7 +305,8 @@ def _materialize_agent_prompt_if_needed(
         return
 
     agent = registry.get(effect.agent_name)
-    media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
+    agent_drain = effect.drain or resolve_phase_drain(effect.phase, policy_bundle.pipeline) or effect.phase
+    media_entries = collect_media_entries_for_phase(workspace, effect.phase, drain=agent_drain) or None
     _mat = materialize_fn or materialize_prompt_for_phase
     _mat(
         phase=effect.phase,

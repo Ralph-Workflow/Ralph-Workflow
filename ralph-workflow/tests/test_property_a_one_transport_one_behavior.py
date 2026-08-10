@@ -145,7 +145,6 @@ _ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset(
         "test_mcp_server_image_content_serialization.py",
         "test_mcp_server_file_backed_session_model_identity.py",
         "test_mcp_server_load_runtime_upstream_servers.py",
-        "test_mcp_server_multimodal_tool_visibility_1.py",
     }
 )
 

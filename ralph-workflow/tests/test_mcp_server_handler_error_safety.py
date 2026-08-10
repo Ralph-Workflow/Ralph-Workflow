@@ -24,9 +24,6 @@ class _RaisingRegistry:
     def list_definitions(self) -> list[object]:
         raise RuntimeError("kaboom enumerating tools")
 
-    def set_client_capabilities(self, capabilities: object) -> None:
-        del capabilities
-
 
 def _server_with_raising_registry() -> McpServer:
     return McpServer(

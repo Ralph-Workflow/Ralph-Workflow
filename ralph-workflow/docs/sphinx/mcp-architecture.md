@@ -39,6 +39,12 @@ The `check_mcp_capability_policy` function is the single entry point for access 
 
 Capability grants in a session are declared in `ralph.mcp.session_plan` and are injected into the MCP server at startup via the session context.
 
+### Multimodal tool visibility
+
+The `[media] enabled` setting in `mcp.toml` is the single multimodal opt-out. It defaults to `true`; enabled sessions receive `media.read`, and the server registers `read_media` plus the `read_image` compatibility alias. Setting it to `false` withholds the capability and both registrations.
+
+MCP `initialize` has no image, media, or multimodal negotiation key. A default `capabilities: {}` handshake therefore leaves capability-granted media tools in `tools/list`. The session's provider/model `ResolvedCapabilityProfile` controls whether each call returns inline content, a typed block, a replayable resource reference, or an explicit unsupported result.
+
 Key capability classes in the extended vocabulary:
 
 | Capability | Description |
@@ -50,6 +56,7 @@ Key capability classes in the extended vocabulary:
 | `workspace.edit` | Edit, append, create, move, and copy files |
 | `workspace.delete` | Delete files and directories (distinct destructive capability) |
 | `web.visit` | Fetch and extract text from a URL (opt-in; non-commit drains) |
+| `media.read` | Read images, PDFs, documents, audio, and video when `[media] enabled = true` |
 | `git.write` | Perform git write operations — **orchestrator-only; never granted to agents** |
 
 Commit drains are strictly read-only: they receive only base read capabilities plus `run.report_progress`. They do not receive `git.write`, `workspace.write_ephemeral`, `workspace.write_tracked`, `workspace.edit`, or `process.exec_bounded`. The orchestrator is solely responsible for performing the actual git write operation after a commit agent proposes a commit message via `artifact.submit`.
