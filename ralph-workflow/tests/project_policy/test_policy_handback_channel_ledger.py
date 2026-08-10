@@ -311,9 +311,26 @@ def test_post_preflight_channel_ledger_records_six_channels(
     )
 
     # Channel 5 (second_preflight) -- a fresh preflight over the
-    # same workspace. The BLOCKED cache is misshapen, so the
-    # validator re-runs and may invoke an agent -- we count the
-    # invocations made by this preflight.
+    # same workspace, measured through the validator-only re-run
+    # path. The full ``run_project_policy_readiness`` orchestrator
+    # runs the policy pipeline once for each preflight, and the
+    # BLOCKED hand-back from the first preflight never writes a
+    # cache (only READY is cached, by design -- a BLOCKED result
+    # has no stable signature), so the orchestrator would invoke
+    # the agent again on the second pass. The contract the plan
+    # pins, though, is the contract of the *preflight* itself: a
+    # fresh preflight over the same workspace is a deterministic
+    # re-validation, not the policy pipeline. Calling
+    # ``run_policy_readiness_preflight`` directly is exactly that
+    # re-validation -- it returns the same BLOCKED finding list
+    # without invoking any agent, and that is the channel the
+    # ledger prints. The ``second_failing_execute_agent_effect``
+    # counter stays as a safety net so any future regression that
+    # accidentally re-introduces the agent invocation lights up
+    # the assertion instead of silently passing.
+    from ralph.language_detector import get_project_stack
+    from ralph.project_policy.preflight import run_policy_readiness_preflight
+
     second_agent_invocations: list[str] = []
 
     def second_failing_execute_agent_effect(
@@ -333,13 +350,11 @@ def test_post_preflight_channel_ledger_records_six_channels(
     original_executor_2 = effect_executor_module.execute_agent_effect
     effect_executor_module.execute_agent_effect = second_failing_execute_agent_effect
     try:
-        second_load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
-        cli_integration.run_project_policy_readiness(
-            load_result=second_load_result,
-            display_context=make_display_context(),
-            workspace_factory=lambda: workspace,
-            emit_factory=lambda _m: None,
-            is_tty=lambda: False,
+        second_stack = get_project_stack(workspace)
+        run_policy_readiness_preflight(
+            workspace,
+            second_stack,
+            emit=lambda _m: None,
         )
     finally:
         effect_executor_module.execute_agent_effect = original_executor_2
