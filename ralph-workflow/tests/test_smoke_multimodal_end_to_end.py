@@ -37,35 +37,60 @@ product criterion).
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
+import shlex
 from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands import smoke as smoke_module
+from ralph.config.loader import load_config
+from ralph.display.context import make_display_context
+from ralph.pipeline.factory import DefaultPipelineFactory
+from ralph.pipeline.plumbing.smoke_plumbing import (
+    SmokeRunResult,
+    resolve_smoke_harness_spec,
+    run_smoke_plumbing,
+)
+from ralph.workspace.scope import WorkspaceScope
+
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.subprocess_e2e,
-    pytest.mark.timeout_seconds(120),
+    pytest.mark.timeout_seconds(180),
 ]
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Per-harness redirect seams (S-13). The exact names match the agent
-# redirect path the production harness uses for each command. The
-# ``agy`` and ``cursor`` commands redirect through env vars; the
-# remaining four route through ``.agent/ralph-workflow.toml`` ``cmd``
-# override + ``shutil.which`` PATH shims.
-_TRANSPORTS: tuple[tuple[str, str], ...] = (
-    ("claude", "smoke-interactive-claude"),
-    ("claude-headless", "smoke-headless-claude"),
-    ("agy", "smoke-interactive-agy"),
-    ("nanocoder", "smoke-interactive-nanocoder"),
-    ("cursor", "smoke-interactive-cursor"),
-    ("opencode", "smoke-interactive-opencode"),
+# Per-harness redirect seams (S-13). Each entry maps:
+#   (transport_prefix, cli_command, default_agent_name, redirect_method)
+# ``redirect_method`` is one of:
+#   ``"agy_env"``   - via ``RALPH_AGY_BINARY`` env override
+#   ``"cursor_env"`` - via ``RALPH_CURSOR_BINARY`` env override
+#   ``"cmd_override"`` - via in-place ``AgentConfig.cmd`` rewrite to the
+#     stub (the production harness's command builders let
+#     ``agents.<name>.cmd`` override the resolved argv, so a rewrite
+#     keeps the transport's argv shape intact without needing a PATH
+#     shim for ``nanocoder`` / ``opencode``).
+_TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
+    ("claude", "smoke-interactive-claude", "claude/haiku", "cmd_override"),
+    ("claude-headless", "smoke-headless-claude", "claude-headless/haiku", "cmd_override"),
+    ("agy", "smoke-interactive-agy", "agy/gemini-3.6-flash-low", "agy_env"),
+    ("nanocoder", "smoke-interactive-nanocoder", "nanocoder", "cmd_override"),
+    ("cursor", "smoke-interactive-cursor", "cursor/auto", "cursor_env"),
+    ("opencode", "smoke-interactive-opencode", "opencode/minimax/MiniMax-M3", "cmd_override"),
 )
+
+_TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
+
+
+def _resolve_transport_entry(transport: str) -> tuple[str, str, str, str]:
+    for entry in _TRANSPORTS:
+        if entry[0] == transport:
+            return entry
+    raise AssertionError(f"unknown transport {transport!r}")
 
 
 def _stub_script_path() -> Path:
@@ -86,115 +111,118 @@ def _stub_is_executable() -> bool:
     return bool(mode & stat.S_IXUSR or mode & stat.S_IXGRP or mode & stat.S_IXOTH)
 
 
-@pytest.fixture(scope="module")
-def stub_path() -> Path:
-    """Absolute path to the multimodal smoke stub.
-
-    Skips the suite when the stub is absent or not executable -- the
-    production harness never reaches this fixture on a normal checkout,
-    only when an operator invokes ``--multimodal`` against a harness
-    whose redirect seam is wired to the stub. Skipping keeps this
-    test file honest about what it can and cannot verify in CI.
-    """
-    path = _stub_script_path()
-    if not _stub_is_executable():
-        pytest.skip(
-            "multimodal smoke stub is missing or not executable; "
-            "this suite runs only when the stub is present (operators "
-            "use it to verify the multimodal scenarios on every harness)"
-        )
-    return path
-
-
-def _build_subprocess_env(
-    *,
-    workspace_root: Path,
-    output_file: Path,
-    run_id: str,
-    broker_secret: str,
-    extra: dict[str, str] | None = None,
-) -> dict[str, str]:
-    """Build the env the stub agent needs.
-
-    The MCP endpoint is exposed by ``ralph.mcp.server.lifecycle`` to the
-    agent's parent process (and explicitly *not* to its child -- see
-    ``ralph.agents.invoke._process_reader._parent_broker_secret``).
-    For the smoke harness, the harness mediates the wire by spinning
-    up a smoke-bound MCP server, so the stub dials the harness's
-    exported endpoint and *not* the parent's. The S-9 / S-12 fixtures
-    inject that endpoint here.
-    """
-    extra_env = extra or {}
-    env = {
-        "PATH": os.environ.get("PATH", ""),
-        "HOME": os.environ.get("HOME", ""),
-        "LANG": os.environ.get("LANG", ""),
-        "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
-        # The endpoint the agent should dial. Tests inject the real
-        # value into ``extra``; the helper just carries a sentinel
-        # placeholder so the fixture has a defined key.
-        "RALPH_MCP_ENDPOINT": extra_env.get("RALPH_MCP_ENDPOINT", ""),
-        "RALPH_BROKER_SECRET": broker_secret,
-        "RALPH_RUN_ID": run_id,
-        "MOCK_MULTIMODAL_OUTPUT_FILE": str(output_file),
-        # Subprocess PATH (NUL-safe) for harness resolve.
-        **extra_env,
-    }
-    # Drop keys with empty string values that the harness expects
-    # populated; we keep ``PATH`` and the MCP contract vars only.
-    return {k: v for k, v in env.items() if v}
-
-
-def _run_subprocess(
-    argv: list[str],
-    *,
-    env: dict[str, str],
-    timeout_seconds: float = 30.0,
-) -> subprocess.CompletedProcess:
-    import subprocess
-
-    return subprocess.run(
-        argv,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
-
-
 def _end_to_end_test_for_harness(
-    tmp_path_factory,
+    workspace: Path,
     transport: str,
     *,
     positive: bool,
-) -> subprocess.CompletedProcess:
-    """Drive the stub against one harness with positive-or-ignore-response behavior.
+) -> SmokeRunResult:
+    """Drive the multimodal stub through ``run_smoke_plumbing`` for one transport.
 
-    The transport name selects the harness binary the harness
-    routes the agent through; the ``positive=False`` path uses
-    ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1`` so the stub dials the
-    endpoint once and then forges the receipt.
+    Configures the harness's ``AgentConfig.cmd`` (or ``RALPH_AGY_BINARY`` /
+    ``RALPH_CURSOR_BINARY`` env overrides for those two transports) so the
+    harness spawns the multimodal stub as the agent. The ``positive=False``
+    path sets ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1`` so the stub dials the
+    endpoint once and then forges the receipt. The ``MOCK_MULTIMODAL_SKIP_MEDIA=1``
+    path is exercised by the dedicated ``test_skip_media_multimodal_run_exits_nonzero``
+    case.
     """
-    pytest.skip(
-        f"Harness-level multimodal proof for {transport!r}: "
-        "the per-harness redirect seam is environment-bound and "
-        "the S-9 / S-12 suite is intentionally manual-debug-only "
-        "per pytest.ini's `not smoke` addopts. Run with "
-        "`pytest tests/test_smoke_multimodal_end_to_end.py -m "
-        "'smoke and subprocess_e2e'` in an environment where the "
-        "transport binary is reachable to drive this end-to-end."
+    transport_prefix, _cli_cmd, agent_name, redirect_method = _resolve_transport_entry(transport)
+    stub_path = _stub_script_path()
+    if not stub_path.is_file():
+        raise AssertionError(
+            f"multimodal smoke stub missing at {stub_path}; "
+            "the S-9 / S-12 harness-level proof requires the deterministic "
+            "stub to be present"
+        )
+    if not os.access(stub_path, os.X_OK):
+        raise AssertionError(
+            f"multimodal smoke stub at {stub_path} is not executable; "
+            "run `chmod +x tests/_support/mock_multimodal_agent.py` "
+            "before invoking the S-9 / S-12 harness-level proof"
+        )
+
+    broker_secret = "multimodal-broker-secret-for-e2e-test"
+    os.environ["RALPH_BROKER_SECRET"] = broker_secret
+    os.environ["MOCK_MULTIMODAL_WORKSPACE_ROOT"] = str(workspace)
+    os.environ["MOCK_MULTIMODAL_TRANSPORT"] = transport_prefix
+    if positive:
+        os.environ.pop("MOCK_MULTIMODAL_IGNORE_RESPONSE", None)
+        os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
+    else:
+        os.environ["MOCK_MULTIMODAL_IGNORE_RESPONSE"] = "1"
+        os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
+
+    workspace_scope = WorkspaceScope(workspace)
+    config = load_config(None, {}, workspace_scope=workspace_scope)
+
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        raise AssertionError(
+            f"transport {transport!r}: agent {agent_name!r} is not in the registry"
+        )
+
+    if redirect_method == "agy_env":
+        os.environ["RALPH_AGY_BINARY"] = str(stub_path)
+        agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
+        config = smoke_module._apply_agy_binary_override_to_config(config)
+        overridden_agents = dict(config.agents)
+        overridden_agents[agent_name] = agent_config
+        config = config.model_copy(update={"agents": overridden_agents})
+    elif redirect_method == "cursor_env":
+        os.environ["RALPH_CURSOR_BINARY"] = str(stub_path)
+        agent_config = smoke_module._maybe_apply_cursor_binary_override(agent_config)
+        config = smoke_module._apply_cursor_binary_override_to_config(config)
+        overridden_agents = dict(config.agents)
+        overridden_agents[agent_name] = agent_config
+        config = config.model_copy(update={"agents": overridden_agents})
+    elif redirect_method == "cmd_override":
+        quoted = shlex.quote(str(stub_path))
+        new_cmd = f"{quoted} {agent_config.cmd or ''}".strip()
+        agent_config = agent_config.model_copy(update={"cmd": new_cmd})
+        overridden_agents = dict(config.agents)
+        overridden_agents[agent_name] = agent_config
+        config = config.model_copy(update={"agents": overridden_agents})
+    else:
+        raise AssertionError(f"unknown redirect method {redirect_method!r}")
+
+    display_context = make_display_context()
+    deps = DefaultPipelineFactory().build(config, display_context)
+
+    spec = resolve_smoke_harness_spec(agent_name)
+    prompt_file = workspace / spec.relative_dir / "PROMPT.md"
+    output_file = workspace / spec.output_file
+    # The stub receives the harness's expected output path so the
+    # multimodal token lines land in the file the harness grades.
+    os.environ["MOCK_MULTIMODAL_OUTPUT_FILE"] = str(output_file)
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text(
+        "# Multimodal smoke stub prompt\n"
+        "Read smoke-fixture.png via the multimodal MCP endpoint, replay the "
+        "server-minted handle, write receipts, and complete.\n",
+        encoding="utf-8",
     )
-    raise AssertionError("unreachable")  # pragma: no cover
+
+    return run_smoke_plumbing(
+        config=config,
+        workspace_root=workspace,
+        agent_name=agent_name,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        display_context=display_context,
+        pipeline_deps=deps,
+        multimodal=True,
+    )
 
 
 @pytest.mark.parametrize(
-    "transport,command",
-    _TRANSPORTS,
-    ids=[transport for transport, _ in _TRANSPORTS],
+    "transport",
+    _TRANSPORT_IDS,
 )
 def test_positive_multimodal_run_grades_wire(
-    transport: str, command: str, tmp_path
+    transport: str,
+    tmp_path: Path,
 ) -> None:
     """Positive contract: a multimodal smoke run on every harness grades WIRE (criterion 5).
 
@@ -204,16 +232,22 @@ def test_positive_multimodal_run_grades_wire(
     into the smoke output file, submits the artifact, and declares
     completion. The harness must grade the multimodal fact at WIRE.
     """
-    _end_to_end_test_for_harness(tmp_path, transport, positive=True)
+    result = _end_to_end_test_for_harness(tmp_path, transport, positive=True)
+    assert result.multimodal_tool_used is not None
+    assert result.multimodal_tool_used.provenance is result.multimodal_tool_used.provenance.WIRE, (
+        f"transport {transport!r}: multimodal fact graded "
+        f"{result.multimodal_tool_used.provenance.name!r} (expected WIRE) "
+        f"-- detail: {result.multimodal_tool_used.detail}"
+    )
 
 
 @pytest.mark.parametrize(
-    "transport,command",
-    _TRANSPORTS,
-    ids=[transport for transport, _ in _TRANSPORTS],
+    "transport",
+    _TRANSPORT_IDS,
 )
 def test_ignore_response_multimodal_run_exits_nonzero(
-    transport: str, command: str, tmp_path
+    transport: str,
+    tmp_path: Path,
 ) -> None:
     """Poisoned-response case: dial the endpoint but discard the response (criterion 5 causal use).
 
@@ -222,15 +256,39 @@ def test_ignore_response_multimodal_run_exits_nonzero(
     response and fabricates a UUID-based receipt with a guessed
     geometry / sha256. The graded multimodal fact must read the
     receipt from the server registry, so the fact grades
-    ``WORKSPACE_EFFECT`` and the run exits non-zero with the named
-    multimodal break.
+    ``WORKSPACE_EFFECT`` and the run fails the multimodal contract.
     """
-    _end_to_end_test_for_harness(tmp_path, transport, positive=False)
+    result = _end_to_end_test_for_harness(tmp_path, transport, positive=False)
+    assert result.multimodal_tool_used is not None
+    assert result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE, (
+        f"transport {transport!r}: ignore-response stub dials the endpoint once "
+        f"and discards the response; the multimodal fact must NOT grade WIRE "
+        f"(got {result.multimodal_tool_used.provenance.name!r}; "
+        f"detail: {result.multimodal_tool_used.detail})"
+    )
+    assert any("multimodal break" in err.lower() for err in result.errors), (
+        f"transport {transport!r}: expected a multimodal break in errors, "
+        f"got: {result.errors!r}"
+    )
 
 
-def test_skip_media_multimodal_run_exits_nonzero(tmp_path) -> None:
+def test_skip_media_multimodal_run_exits_nonzero(tmp_path: Path) -> None:
     """No-call case: skipping the media tool call entirely fails the smoke run with a named break."""
-    _end_to_end_test_for_harness(tmp_path, "agy", positive=False)
+    os.environ.pop("MOCK_MULTIMODAL_IGNORE_RESPONSE", None)
+    os.environ["MOCK_MULTIMODAL_SKIP_MEDIA"] = "1"
+    try:
+        result = _end_to_end_test_for_harness(tmp_path, "agy", positive=False)
+    finally:
+        os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
+    assert result.multimodal_tool_used is not None
+    assert result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE, (
+        f"skip-media stub never makes the media call; the multimodal fact "
+        f"must NOT grade WIRE (got {result.multimodal_tool_used.provenance.name!r}; "
+        f"detail: {result.multimodal_tool_used.detail})"
+    )
+    assert any("multimodal break" in err.lower() for err in result.errors), (
+        f"expected a multimodal break in errors, got: {result.errors!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -255,35 +313,6 @@ def test_stub_agent_module_imports_cleanly() -> None:
     assert module is not None
     spec.loader.exec_module(module)
     assert hasattr(module, "main")
-    assert hasattr(module, "_emit_assistant_text")
-    assert hasattr(module, "_emit_tool_use")
+    assert hasattr(module, "_make_emit_functions")
+    assert hasattr(module, "_resolve_transport")
     assert hasattr(module, "_dispatch")
-
-
-def test_stub_agent_default_behavior_is_positive(tmp_path) -> None:
-    """Without an env var override, the stub takes the positive contract path."""
-    spec_path = _stub_script_path()
-    if not spec_path.exists():
-        pytest.skip("stub agent not on disk")
-    env = _build_subprocess_env(
-        workspace_root=tmp_path,
-        output_file=tmp_path / "out.js",
-        run_id="stub-default",
-        broker_secret="unused-in-default-path",
-        # Provide a fake endpoint URL so the stub passes its env gate;
-        # the SKIP_MEDIA flag short-circuits the actual dispatch before
-        # any HTTP request is attempted.
-        extra={
-            "RALPH_MCP_ENDPOINT": "http://127.0.0.1:1/mcp",
-            "MOCK_MULTIMODAL_SKIP_MEDIA": "1",
-        },
-    )
-    _run_subprocess(
-        [sys.executable, str(spec_path)],
-        env=env,
-    )
-    # The default with SKIP_MEDIA writes the smoke output file's
-    # "no tokens" variant (no MEDIA_RECEIPT/DIMENSIONS/MEDIA_SHA256).
-    assert (tmp_path / "out.js").exists()
-    text = (tmp_path / "out.js").read_text(encoding="utf-8")
-    assert "MEDIA_RECEIPT" not in text
