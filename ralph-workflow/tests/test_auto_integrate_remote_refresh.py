@@ -187,6 +187,42 @@ def test_remote_divergence_regression_clean_abort_conflict_still_lands_feature_l
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(20)
+def test_remote_divergence_regression_reclaims_dirty_owner_then_lands_feature_after_clean_abort(
+    tmp_git_repo: Path,
+) -> None:
+    """S-2/S-3: a reclaimed dirty owner and restored conflict still land locally."""
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-dirty-conflict", main, branch="feature")
+    owner = tmp_git_repo.parent / "agent-dirty-conflict-main"
+    assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    _commit(owner, "shared.txt", "local target\n", "local target change")
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+    operator_file = owner / "operator.txt"
+    operator_file.write_text("operator work\n", encoding="utf-8")
+
+    remote_sha = _commit(tmp_git_repo, "shared.txt", "remote target\n", "remote target change")
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+
+    outcome = auto_integrate_after_commit(
+        _build_config(remote_enabled=True, target=main),
+        WorkspaceScope(agent),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert outcome.last_remote_sync == "pull failed"
+    assert _run(agent, "merge-base", "--is-ancestor", remote_sha, main).returncode == 1
+    assert _run(agent, "status", "--porcelain").stdout == ""
+    assert operator_file.read_text(encoding="utf-8") == "operator work\n"
+    assert rebase_in_progress(agent) is False
+    assert rebase_in_progress(owner) is False
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
 def test_remote_divergence_regression_rebases_target_and_lands_feature(
     tmp_git_repo: Path,
 ) -> None:
