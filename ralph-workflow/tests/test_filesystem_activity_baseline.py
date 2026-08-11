@@ -116,3 +116,32 @@ def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_wa
     assert backend._files[result_path] == "beta"
     assert backend.publications == [(result_path, "alpha"), (result_path, "beta")]
     assert observer.registrations == [("/virtual-ws", True)]
+
+
+def test_independent_monitors_for_one_workspace_share_one_recursive_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2 regression: equivalent in-process consumers share one root watch."""
+    first = _ActivityObserver()
+    second = _ActivityObserver()
+    observers = iter((first, second))
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: next(observers),
+    )
+
+    first_monitor = WorkspaceMonitor(Path("/virtual-ws"), classifier=WorkspaceChangeClassifier())
+    second_monitor = WorkspaceMonitor(Path("/virtual-ws"), classifier=WorkspaceChangeClassifier())
+    first_monitor.start()
+    second_monitor.start()
+
+    assert first.registrations == [("/virtual-ws", True)]
+    assert second.registrations == []
+
+    first_monitor.dispatch_event(type("Event", (), {"src_path": "/virtual-ws/src/app.py"})())
+    assert first_monitor.changed_files == {"/virtual-ws/src/app.py"}
+    assert second_monitor.changed_files == {"/virtual-ws/src/app.py"}
+
+    first_monitor.stop()
+    assert first.registrations == [("/virtual-ws", True)]
+    second_monitor.stop()

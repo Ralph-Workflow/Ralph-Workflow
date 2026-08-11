@@ -5,11 +5,13 @@ from __future__ import annotations
 import errno
 import importlib
 import inspect
+import threading
 import time
+import weakref
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -82,21 +84,17 @@ def _is_within_workspace(workspace: Path, src_path: str) -> bool:
     return True
 
 
-def _make_change_tracker(monitor: WorkspaceMonitor) -> object:
+def _make_change_tracker(workspace: Path, key: str) -> object:
     class _ChangeTrackerHandler:
         def dispatch(self, event: object) -> None:
             self.on_any_event(event)
 
         def on_any_event(self, event: object) -> None:
-            if isinstance(event, _HasSrcPath) and _is_within_workspace(
-                monitor._workspace, event.src_path
-            ):
-                monitor.record_event(event.src_path)
+            if isinstance(event, _HasSrcPath) and _is_within_workspace(workspace, event.src_path):
+                WorkspaceMonitor._record_event_for_key(key, event.src_path)
                 return
-            if isinstance(event, _HasDestPath) and _is_within_workspace(
-                monitor._workspace, event.dest_path
-            ):
-                monitor.record_event(event.dest_path)
+            if isinstance(event, _HasDestPath) and _is_within_workspace(workspace, event.dest_path):
+                WorkspaceMonitor._record_event_for_key(key, event.dest_path)
 
     return _ChangeTrackerHandler()
 
@@ -176,12 +174,29 @@ def _can_bind_n(signature_obj: inspect.Signature, n: int) -> bool:
     return True
 
 
+class _SharedWorkspaceWatch:
+    """One observer plus weak leases for a canonical workspace root."""
+
+    def __init__(self, observer: _ObserverProtocol, handler: object) -> None:
+        self.observer = observer
+        self.handler = handler
+        self.monitors: weakref.WeakSet[WorkspaceMonitor] = weakref.WeakSet()
+
+
+def _shared_workspace_key(workspace: Path) -> str:
+    """Return the lexical root key without probing a possibly absent workspace."""
+    return str(workspace.absolute())
+
+
 class WorkspaceMonitor:
     """Monitors workspace directory for file changes during agent execution.
 
     This allows the pipeline to detect when an agent has completed significant
     work by watching for file modifications in the workspace.
     """
+
+    _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}  # bounded-accumulator-ok: leases remove the final workspace entry
+    _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
         self,
@@ -233,6 +248,8 @@ class WorkspaceMonitor:
         """
         self._workspace = workspace_path
         self._observer: _ObserverProtocol | None = None
+        self._shared_key: str | None = None
+        self._started = False
         self._event_count = 0
         self._seen_files: dict[str, None] = {}  # bounded-accumulator-ok: bounded
         self._now: Callable[[], float] = now if now is not None else time.monotonic
@@ -267,39 +284,52 @@ class WorkspaceMonitor:
         classify-drop backstop, which is independent of how many
         watchdog watches are scheduled.
         """
-        if self._observer is not None:
+        if self._started:
             return
 
-        observer = _create_watchdog_observer()
-        if observer is None:
-            return
-
-        handler = _make_change_tracker(self)
-        workspace_str = str(self._workspace)
-        self._observer = observer
-        self._handler = handler
-        try:
-            self._observer.schedule(handler, workspace_str, recursive=True)
-            self._observer.start()
-        except OSError as exc:
-            with suppress(BaseException):
-                observer.stop()
-            with suppress(BaseException):
-                observer.join(5)
-            self._observer = None
-            self._handler = None
-            if exc.errno in (errno.EMFILE, errno.ENOSPC):
-                logger.warning("Workspace monitoring unavailable: inotify limit reached")
+        key = _shared_workspace_key(self._workspace)
+        with self._shared_lock:
+            shared = self._shared_watches.get(key)
+            if shared is not None and not shared.monitors:
+                self._shared_watches.pop(key, None)
+                self._stop_observer(shared.observer)
+                shared = None
+            if shared is not None:
+                shared.monitors.add(self)
+                self._shared_key = key
+                self._handler = shared.handler
+                self._started = True
                 return
-            raise
-        except BaseException:
-            with suppress(BaseException):
-                observer.stop()
-            with suppress(BaseException):
-                observer.join(5)
-            self._observer = None
-            self._handler = None
-            raise
+
+            observer = _create_watchdog_observer()
+            if observer is None:
+                return
+            handler = _make_change_tracker(self._workspace, key)
+            self._observer = observer
+            self._handler = handler
+            try:
+                self._observer.schedule(handler, str(self._workspace), recursive=True)
+                self._observer.start()
+            except OSError as exc:
+                with suppress(BaseException):
+                    self._stop_observer(observer)
+                self._observer = None
+                self._handler = None
+                if exc.errno in (errno.EMFILE, errno.ENOSPC):
+                    logger.warning("Workspace monitoring unavailable: inotify limit reached")
+                    return
+                raise
+            except BaseException:
+                with suppress(BaseException):
+                    self._stop_observer(observer)
+                self._observer = None
+                self._handler = None
+                raise
+            shared = _SharedWorkspaceWatch(observer, handler)
+            shared.monitors.add(self)
+            self._shared_watches[key] = shared
+            self._shared_key = key
+            self._started = True
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
     def record_event(self, src_path: str) -> None:
@@ -376,20 +406,45 @@ class WorkspaceMonitor:
         ownership and suppressing a later required registration; joining still
         runs after a failed ``stop`` before the original failure propagates.
         """
-        observer = self._observer
+        if not self._started:
+            return
+        key = self._shared_key
+        self._started = False
+        self._shared_key = None
         self._observer = None
         self._handler = None
-        if observer is None:
-            return
-        try:
-            observer.stop()
-        finally:
-            observer.join(5)
+        observer: _ObserverProtocol | None = None
+        if key is not None:
+            with self._shared_lock:
+                shared = self._shared_watches.get(key)
+                if shared is not None:
+                    shared.monitors.discard(self)
+                    if not shared.monitors:
+                        self._shared_watches.pop(key, None)
+                        observer = shared.observer
+        if observer is not None:
+            self._stop_observer(observer)
         logger.debug(
             "Stopped workspace monitoring: {} ({} events)",
             self._workspace,
             self._event_count,
         )
+
+    @classmethod
+    def _stop_observer(cls, observer: _ObserverProtocol) -> None:
+        try:
+            observer.stop()
+        finally:
+            observer.join(5)
+
+    @classmethod
+    def _record_event_for_key(cls, key: str, src_path: str) -> None:
+        """Deliver one observer event to every active lease for this workspace."""
+        with cls._shared_lock:
+            shared = cls._shared_watches.get(key)
+            monitors = tuple(shared.monitors) if shared is not None else ()
+        for monitor in monitors:
+            monitor.record_event(src_path)
 
     def dispatch_event(self, event: object) -> None:
         """Dispatch a watchdog-style event through the per-monitor handler.
