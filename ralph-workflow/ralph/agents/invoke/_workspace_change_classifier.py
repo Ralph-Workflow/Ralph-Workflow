@@ -80,6 +80,7 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
         ".venv",
         ".agent/tmp",
         ".agent/raw",
+        ".agent/ralph-explore",
     }
 )
 

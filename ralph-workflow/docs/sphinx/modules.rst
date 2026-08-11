@@ -2852,6 +2852,20 @@ ralph.workspace.agent_dir_retention
    :members:
    :show-inheritance:
 
+ralph.workspace.awareness
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.workspace.awareness
+   :members:
+   :show-inheritance:
+
+ralph.workspace.storage_lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.workspace.storage_lifecycle
+   :members:
+   :show-inheritance:
+
 ----
 
 Recovery

@@ -32,6 +32,7 @@ from ralph.mcp.tools.workspace._utils import (
     WORKSPACE_METADATA_READ_CAPABILITY,
     _tool_json,
 )
+from ralph.workspace.awareness import awareness_for_workspace
 
 if TYPE_CHECKING:
     from ralph.mcp.explore.handlers import ExploreIndex
@@ -84,6 +85,7 @@ def handle_ralph_index_status(
     cold_index_required = handle.generation == 0
     payload = _build_status_payload(handle, workspace_root, cold_index_required)
     payload["enabled"] = True
+    payload["workspace_awareness"] = awareness_for_workspace(workspace_root).snapshot()
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,

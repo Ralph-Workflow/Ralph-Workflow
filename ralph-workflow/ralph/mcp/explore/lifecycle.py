@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.pipeline import ReindexOptions, ReindexResult
+from ralph.workspace.awareness import awareness_for_workspace
 
 
 class ReindexRunner(Protocol):
@@ -166,6 +167,14 @@ def _run_hook(
             timed_out=False,
             skipped_reason="no_store",
         )
+    # Deliver observer-coalesced external/agent changes through the same
+    # durable queue used by MCP mutations before the existing writer runs.
+    awareness = awareness_for_workspace(workspace_root)
+    observed_paths = awareness.drain()
+    if observed_paths:
+        marker: object = getattr(explore_index, "mark_dirty", None)
+        if callable(marker):
+            marker(observed_paths, source_tool="workspace_awareness", reason="observed")
     # The injected runner takes precedence over the handle's
     # optional ``runner()`` method, which lets tests wire a stub
     # runner without going through pipeline.reindex.

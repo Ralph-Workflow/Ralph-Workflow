@@ -17,6 +17,7 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._has_src_path import _HasSrcPath
+from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
@@ -217,7 +218,9 @@ class WorkspaceMonitor:
     work by watching for file modifications in the workspace.
     """
 
-    _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}  # bounded-accumulator-ok: leases remove the final workspace entry
+    _shared_watches: ClassVar[
+        dict[str, _SharedWorkspaceWatch]
+    ] = {}  # bounded-accumulator-ok: leases remove the final workspace entry
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
@@ -388,6 +391,7 @@ class WorkspaceMonitor:
         kind, weight = self.classify_path(src_path)
         if weight == 0.0:
             return
+        awareness_for_workspace(self._workspace).record(src_path)
         self._seen_files.pop(src_path, None)
         self._seen_files[src_path] = None
         while len(self._seen_files) > _MAX_WORKSPACE_CHANGED_FILES:
@@ -451,6 +455,7 @@ class WorkspaceMonitor:
                         observer = shared.observer
         if observer is not None:
             self._stop_observer(observer)
+            release_workspace_awareness(self._workspace)
         logger.debug(
             "Stopped workspace monitoring: {} ({} events)",
             self._workspace,

@@ -314,6 +314,7 @@ def test_record_event_counts_unchanged_equivalence(tmp_path: Path) -> None:
         ".git/index",
         ".venv/lib/x.py",
         ".agent/raw/out.log",
+        ".agent/ralph-explore/index.sqlite",
         ".agent/artifacts/plan.json",
         "README.md",
         "foo.log",
