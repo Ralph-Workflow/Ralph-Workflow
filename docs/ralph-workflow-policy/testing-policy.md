@@ -293,6 +293,30 @@ Two guardrails bound every amendment:
   disabling, or deleting a requirement so that a failing change passes is
   forbidden; evolution clarifies and extends, it does not water down.
 
+## Visual design evidence
+
+An appearance assertion (CSS/class/style/DOM) is NOT evidence of design
+quality. Design proof requires captures graded visually via the
+`DesignVerdict` artifact and reachable through the project's canonical
+capture handle scheme. Tests asserting rendered output MUST cite a
+captured cell; tests asserting only CSS/class/style/DOM MUST be routed
+to the design-system policy's `DesignVerdict` review lane rather than
+the default suite.
+
+The artifact and handle values below are verified against the maintained
+Python package — `ralph/visual/design_verdict.py` mints the
+`design_verdict` signed-off artifact, and
+`ralph/mcp/tools/workspace/_media_capture.py` plus
+`ralph/mcp/multimodal/resources` mint every `ralph://media/{artifact_id}`
+handle that the agent-visible wire ledger carries. The capture command
+defers because this project ships no managed UI; `ralph.visual.policy_facts`
+and the bounded argv executor are wired for downstream projects that do,
+but Ralph-Workflow itself has nothing to capture today.
+
+RALPH-FACT: visual_verdict_artifact: design_verdict
+RALPH-FACT: visual_capture_handle: ralph://media/{artifact_id}
+RALPH-FACT: design_capture_command: RALPH-PENDING (assumed 2026-08-15); review trigger: once this project ships a managed UI requiring visual regression coverage; the project's `ralph/visual/` and `ralph/mcp/tools/workspace/_media_capture.py` consume any declared capture command, but Ralph-Workflow itself ships no managed UI, so the fact defers until one is introduced (or until the policy moves to a downstream-managed design-system-policy.md that declares the command)
+
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
