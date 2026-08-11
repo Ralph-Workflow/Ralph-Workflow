@@ -80,6 +80,7 @@ def build_invoke_options_from_config(
         suspect_waiting_on_child_seconds=general_config.agent_suspect_waiting_on_child_seconds,
         max_waiting_on_child_no_progress_seconds=general_config.agent_idle_no_progress_waiting_on_child_seconds,
         no_progress_quiet_seconds=general_config.agent_no_progress_quiet_seconds,
+        no_output_at_start_seconds=general_config.agent_no_output_at_start_seconds,
         no_progress_quiet_minimum_invocation_seconds=general_config.agent_no_progress_quiet_minimum_invocation_seconds,
         no_progress_quiet_heartbeat_ceiling_seconds=general_config.agent_no_progress_quiet_heartbeat_ceiling_seconds,
         post_tool_result_progression_seconds=general_config.agent_post_tool_result_progression_seconds,
@@ -217,6 +218,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.no_progress_quiet_seconds
             if opts.no_progress_quiet_seconds is not None
             else _base.no_progress_quiet_seconds
+        ),
+        no_output_at_start_seconds=(
+            opts.no_output_at_start_seconds
+            if opts.no_output_at_start_seconds is not None
+            else _base.no_output_at_start_seconds
         ),
         no_progress_quiet_minimum_invocation_seconds=(
             opts.no_progress_quiet_minimum_invocation_seconds

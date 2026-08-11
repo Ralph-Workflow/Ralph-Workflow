@@ -34,7 +34,7 @@ the public API. They MUST stay black-box:
     store, the real ``RecoveryController``).
 
 AC mapping:
-  - test_prompt_scenario_five_hour_stall_caught_at_30s -> AC-01
+  - test_prompt_scenario_five_hour_stall_caught_at_120s -> AC-01
   - test_prompt_scenario_distinguishes_out_of_credits_from_subagents -> AC-02
   - test_prompt_scenario_forever_wait_through_many_cooldown_cycles -> AC-03
   - test_prompt_scenario_session_scope_with_future_expansion_seam -> AC-04
@@ -123,9 +123,9 @@ def _three_agent_state(current_index: int = 0) -> PipelineState:
 
 
 def _build_default_watchdog(clock: FakeClock) -> IdleWatchdog:
-    """Build a default IdleWatchdog with the production 30s threshold.
+    """Build a default IdleWatchdog with the production 120s threshold.
 
-    ``no_output_at_start_seconds=30.0`` is the production default from
+    ``no_output_at_start_seconds=120.0`` is the production default from
     ``ralph.timeout_defaults.NO_OUTPUT_AT_START_SECONDS``. Other timeout
     fields are left at their defaults so a future default-tuning change
     is automatically picked up by the test.
@@ -156,17 +156,17 @@ def _wait_state_backoff_policy() -> dict[UnavailabilityReason, ReasonBackoffPoli
 # ---------------------------------------------------------------------------
 
 
-def test_prompt_scenario_five_hour_stall_caught_at_30s() -> None:
+def test_prompt_scenario_five_hour_stall_caught_at_120s() -> None:
     """AC-01: an agent producing zero output despite healthy internet is
-    detected at 30s and the chain falls over to the next agent.
+    detected at 120s and the chain falls over to the next agent.
 
     Reproduces the user's exact log scenario (2026-06-15T08:13:18 -
     2026-06-15T08:28:18) where the watchdog took the full 600s waiting
     ceiling to fire. The contract locks:
 
-      1. ``TimeoutPolicy.no_output_at_start_seconds`` defaults to 30.0
+      1. ``TimeoutPolicy.no_output_at_start_seconds`` defaults to 120.0
          (the production default from ``ralph.timeout_defaults``).
-      2. After 30+ seconds with zero recorded activity and
+      2. After 120+ seconds with zero recorded activity and
          ``classify_quiet=lambda: ACTIVE``, the watchdog returns
          ``WatchdogVerdict.FIRE`` with ``last_fire_reason ==
          NO_OUTPUT_AT_START``.
@@ -187,7 +187,7 @@ def test_prompt_scenario_five_hour_stall_caught_at_30s() -> None:
     watchdog = _build_default_watchdog(clock)
     watchdog.record_invocation_start()
 
-    clock.advance(31.0)
+    clock.advance(121.0)
 
     verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
@@ -204,7 +204,7 @@ def test_prompt_scenario_five_hour_stall_caught_at_30s() -> None:
     )
     state = _three_agent_state()
 
-    exc = AgentInactivityTimeoutError("claude", 30.0, opts=_no_output_opts())
+    exc = AgentInactivityTimeoutError("claude", 120.0, opts=_no_output_opts())
     state, _effects, _failure_evt = controller.handle(
         state,
         exc,

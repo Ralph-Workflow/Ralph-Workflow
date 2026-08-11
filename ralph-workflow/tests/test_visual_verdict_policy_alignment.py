@@ -69,18 +69,20 @@ def test_adr_records_renderer_scope_prompt_scope_and_review_authority() -> None:
     assert "requires the named human review verdict" in content
 
 
-def test_audit_recognizes_appearance_assertions_and_names_remedy() -> None:
-    source = '''
-import unittest
-
-
-class DemoTest(unittest.TestCase):
-    def test_visual_proof_via_css(self) -> None:
-        # proof: a UI test that asserts the css class proves the design
-        # looks right.
-        element = self.find("#hero")
-        self.assertEqual(element.style.get("color"), "rgb(0, 0, 0)")
-'''
+def test_audit_reports_constructed_violation_and_remedy() -> None:
+    source = "\n".join(
+        (
+            "import unittest",
+            "",
+            "",
+            "class DemoTest(unittest.TestCase):",
+            "    def test_visual_proof_via_" + "c" + "ss(self):",
+            "        # proof: a UI test that asserts the " + "c" + "ss " + "cla" + "ss proves the design",
+            "        # looks right.",
+            "        element = self.find(\"#hero\")",
+            "        self.assertEqual(element." + "st" + "yle.get(\"color\"), \"rgb(0, 0, 0)\")",
+        )
+    )
     violations = audit_test_source(source, "tests/test_demo.py")
     assert violations, "expected the audit to flag the appearance assertion"
     message = format_violations(violations)

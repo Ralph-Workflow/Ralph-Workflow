@@ -113,22 +113,24 @@ def test_canonical_content_is_extracted_from_a_valid_document() -> None:
     assert content_dict["before_id"] == "manifest-before-001"
     assert content_dict["after_id"] == "manifest-after-001"
     assert content_dict["cell_ids"] == ["cap-001", "cap-002"]
-    intent = content_dict["intent"]
-    summary = content_dict["summary"]
-    findings = content_dict["findings"]
-    assert isinstance(intent, str)
-    assert isinstance(summary, str)
-    assert isinstance(findings, list)
-    assert all(isinstance(finding, dict) for finding in findings)
-    assert intent.startswith("The header should align")
+    intent_value = content_dict["intent"]
+    assert isinstance(intent_value, str)
+    assert intent_value.startswith("The header should align")
     assert content_dict["status"] == "pass"
-    assert "Buttons align" in summary
-    assert len(findings) == 2
-    assert findings[0]["capture_id"] == "cap-001"
-    assert findings[0]["region"] == "0,0,320,40"
-    assert findings[0]["dimension"] == "alignment"
-    assert findings[0]["severity"] == "minor"
-    assert findings[1]["capture_id"] == "cap-002"
+    summary_value = content_dict["summary"]
+    assert isinstance(summary_value, str)
+    assert "Buttons align" in summary_value
+    findings_value = content_dict["findings"]
+    assert isinstance(findings_value, list)
+    assert len(findings_value) == 2
+    first_finding, second_finding = findings_value
+    assert isinstance(first_finding, dict)
+    assert isinstance(second_finding, dict)
+    assert first_finding["capture_id"] == "cap-001"
+    assert first_finding["region"] == "0,0,320,40"
+    assert first_finding["dimension"] == "alignment"
+    assert first_finding["severity"] == "minor"
+    assert second_finding["capture_id"] == "cap-002"
 
 
 def test_finding_with_unknown_capture_id_is_rejected() -> None:

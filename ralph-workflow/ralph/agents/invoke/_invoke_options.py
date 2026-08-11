@@ -59,6 +59,7 @@ class InvokeOptions:
     child_exit_reconcile_seconds: float | None = None
     max_waiting_on_child_no_progress_seconds: float | None = None
     no_progress_quiet_seconds: float | None = None
+    no_output_at_start_seconds: float | None = None
     no_progress_quiet_minimum_invocation_seconds: float | None = None
     no_progress_quiet_heartbeat_ceiling_seconds: float | None | object = _INVOKE_OPTS_UNSET
     post_tool_result_progression_seconds: float | None = None

@@ -24,6 +24,7 @@ from ralph.timeout_defaults import (
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_OUTPUT_AT_START_SECONDS,
     NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS,
     NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
     NO_PROGRESS_QUIET_SECONDS,
@@ -340,6 +341,15 @@ class GeneralConfig(RalphBaseModel):
             " stdout output, BEFORE the standard no-progress ceiling (600s)."
             " Must be <= agent_idle_no_progress_waiting_on_child_seconds when set."
             " When None, the fast no-progress trip is disabled."
+        ),
+    )
+    agent_no_output_at_start_seconds: float = Field(
+        default=NO_OUTPUT_AT_START_SECONDS,
+        gt=0.0,
+        description=(
+            "Initial-output grace in seconds before a completely silent agent"
+            " fires NO_OUTPUT_AT_START. The 120-second default accommodates slow"
+            " Claude initialization while retaining bounded hang detection."
         ),
     )
     agent_no_progress_quiet_minimum_invocation_seconds: float | None = Field(

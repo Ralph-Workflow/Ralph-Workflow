@@ -299,10 +299,10 @@ NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
 #: (no stdout, no tool call, no file change, no subagent output) the watchdog
 #: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
 #: no-progress ceiling. Set to None to opt out.
-# 30s is well under the 60s 95th-percentile first-token latency for opencode and
-# Claude Code while still short enough to fall over to the next agent before the
-# cumulative ceiling is reached.
-NO_OUTPUT_AT_START_SECONDS: float | None = 30.0
+# 120s accommodates slow Claude Code initialization while remaining below the
+# 240s no-progress ceiling. Operators can lower or raise it through [general]
+# agent_no_output_at_start_seconds without disabling bounded hang detection.
+NO_OUTPUT_AT_START_SECONDS: float = 120.0
 
 #: Default per-(fire_reason, deferred_kind) log throttle for ``_gate_fire``.
 #: The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949`` while a

@@ -49,13 +49,10 @@ if TYPE_CHECKING:
 def _design_system_in_scope_workspace() -> Workspace:
     """Return a workspace where the design-system policy is in scope.
 
-    The deterministic signal set inside
-    :func:`ralph.project_policy.evidence.design_system_required`
-    looks at ``stack.frameworks`` (a UI framework triggers it) and
-    ``stack.secondary_languages`` (a CSS-family language triggers
-    it). A :class:`MemoryWorkspace` with a ``package.json`` plus a
-    :class:`ProjectStack` that reports ``React`` is sufficient for
-    the detector to return ``True``.
+    The deterministic policy inputs inspect the declared framework and
+    secondary-language sets. A :class:`MemoryWorkspace` with a
+    ``package.json`` plus a :class:`ProjectStack` that reports ``React``
+    creates the required in-scope fixture.
 
     The test does NOT depend on the detector's exact signal list:
     if a future refactor adds new signal sources, the
