@@ -36,6 +36,7 @@ class McpCapability(StrEnum):
     WEB_VISIT = "WebVisit"
     WEB_DOWNLOAD = "WebDownload"
     MEDIA_READ = "MediaRead"
+    MEDIA_CAPTURE = "MediaCapture"
     ARTIFACT_PLAN_SUBMIT = "ArtifactPlanSubmit"
 
 

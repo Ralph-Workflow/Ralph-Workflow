@@ -408,6 +408,7 @@ class TestExecuteAgentEffectA:
             "web.visit",
             "web.download",
             "media.read",
+            "media.capture",
         }
 
     def test_custom_phase_uses_bound_drain_capabilities(self) -> None:
@@ -458,6 +459,7 @@ class TestExecuteAgentEffectA:
             "web.visit",
             "web.download",
             "media.read",
+            "media.capture",
         }
 
     def test_returns_failure_when_agent_missing(self) -> None:

@@ -330,7 +330,7 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                     },
                     "required": ["target"],
                 },
-                required_capability=Capability.MEDIA_READ.value,
+                required_capability=Capability.MEDIA_CAPTURE.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_media_capture_tool",

@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.executor._process_result import ProcessResult
+from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.server._wire_ledger import (
     WIRE_LEDGER_RELPATH,
     verify_chain,
@@ -49,6 +50,7 @@ from ralph.mcp.tools.workspace._media_capture import (
     DEFAULT_PER_CELL_TIMEOUT_SECONDS,
     MediaCaptureError,
     handle_media_capture,
+    register_media_capture_result,
 )
 from ralph.testing import audit_repo_structure
 from ralph.visual.capture_request import CaptureRequest
@@ -247,6 +249,31 @@ def test_handle_media_capture_mints_one_handle_per_cell(tmp_path: Path) -> None:
         assert cell_result.size_bytes > 0
         # The output path is a workspace-relative POSIX string.
         assert not Path(cell_result.output_path).is_absolute()
+
+
+def test_handle_media_capture_registers_every_minted_handle_for_replay(tmp_path: Path) -> None:
+    """Every successful capture is immediately replayable from its minted URI."""
+    request = _build_request(target="checkout")
+    result = handle_media_capture(
+        tmp_path,
+        run_id="run-1",
+        capture_request=request,
+        design_capture_command="bin/capture --target={target}",
+        secret=_TEST_SECRET,
+        executor=_FakeExecutor(),
+    )
+    manifest = MediaManifest()
+
+    register_media_capture_result(manifest, workspace_root=tmp_path, result=result)
+
+    entries = manifest.list_entries()
+    assert [entry.uri for entry in entries] == [cell.uri for cell in result.cells]
+    assert [entry.source_path for entry in entries] == [
+        cell.output_path for cell in result.cells
+    ]
+    assert [entry.load_bytes() for entry in entries] == [
+        (tmp_path / cell.output_path).read_bytes() for cell in result.cells
+    ]
 
 
 def test_handle_media_capture_appends_ledger_records(tmp_path: Path) -> None:

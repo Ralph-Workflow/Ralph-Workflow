@@ -26,6 +26,7 @@ WORKSPACE_METADATA_READ_CAPABILITY = "WorkspaceMetadataRead"
 WORKSPACE_EDIT_CAPABILITY = "WorkspaceEdit"
 WORKSPACE_DELETE_CAPABILITY = "WorkspaceDelete"
 MEDIA_READ_CAPABILITY = "media.read"
+MEDIA_CAPTURE_CAPABILITY = "media.capture"
 
 _SUPPORTED_IMAGE_MIME_TYPES: dict[str, str] = {
     ".png": "image/png",

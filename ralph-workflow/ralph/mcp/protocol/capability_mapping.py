@@ -49,6 +49,7 @@ class Capability(StrEnum):
     WEB_VISIT = "web.visit"
     WEB_DOWNLOAD = "web.download"
     MEDIA_READ = "media.read"
+    MEDIA_CAPTURE = "media.capture"
     ARTIFACT_PLAN_SUBMIT = "artifact.plan_submit"
 
 
@@ -75,6 +76,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.WEB_VISIT: Capability.WEB_VISIT,
     McpCapability.WEB_DOWNLOAD: Capability.WEB_DOWNLOAD,
     McpCapability.MEDIA_READ: Capability.MEDIA_READ,
+    McpCapability.MEDIA_CAPTURE: Capability.MEDIA_CAPTURE,
     McpCapability.WORKSPACE_METADATA_READ: Capability.WORKSPACE_METADATA_READ,
     McpCapability.WORKSPACE_EDIT: Capability.WORKSPACE_EDIT,
     McpCapability.WORKSPACE_DELETE: Capability.WORKSPACE_DELETE,
@@ -99,6 +101,8 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "web_download": Capability.WEB_DOWNLOAD,
     "media.read": Capability.MEDIA_READ,
     "media_read": Capability.MEDIA_READ,
+    "media.capture": Capability.MEDIA_CAPTURE,
+    "media_capture": Capability.MEDIA_CAPTURE,
     "workspace.metadata_read": Capability.WORKSPACE_METADATA_READ,
     "workspace.metadata.read": Capability.WORKSPACE_METADATA_READ,
     "artifact.plan_read": Capability.ARTIFACT_PLAN_READ,
@@ -140,6 +144,8 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "web_download": McpCapability.WEB_DOWNLOAD,
     "media.read": McpCapability.MEDIA_READ,
     "media_read": McpCapability.MEDIA_READ,
+    "media.capture": McpCapability.MEDIA_CAPTURE,
+    "media_capture": McpCapability.MEDIA_CAPTURE,
     "workspace.metadata_read": McpCapability.WORKSPACE_METADATA_READ,
     "workspace.edit": McpCapability.WORKSPACE_EDIT,
     "workspace.delete": McpCapability.WORKSPACE_DELETE,
@@ -465,6 +471,7 @@ def check_mcp_capability_policy(
         McpCapability.WEB_VISIT,
         McpCapability.WEB_DOWNLOAD,
         McpCapability.MEDIA_READ,
+        McpCapability.MEDIA_CAPTURE,
         McpCapability.WORKSPACE_METADATA_READ,
         McpCapability.WORKSPACE_EDIT,
         McpCapability.WORKSPACE_DELETE,

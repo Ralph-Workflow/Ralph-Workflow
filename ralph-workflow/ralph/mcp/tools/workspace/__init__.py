@@ -28,6 +28,7 @@ from ralph.mcp.tools.workspace._read_handlers import (
 )
 from ralph.mcp.tools.workspace._utils import (
     FULL_READ_DEFAULT_MAX_BYTES,
+    MEDIA_CAPTURE_CAPABILITY,
     MEDIA_READ_CAPABILITY,
     WORKSPACE_DELETE_CAPABILITY,
     WORKSPACE_EDIT_CAPABILITY,
@@ -56,6 +57,7 @@ from ralph.mcp.tools.workspace._write_handlers import (
 
 __all__ = [
     "FULL_READ_DEFAULT_MAX_BYTES",
+    "MEDIA_CAPTURE_CAPABILITY",
     "MEDIA_READ_CAPABILITY",
     "WORKSPACE_DELETE_CAPABILITY",
     "WORKSPACE_EDIT_CAPABILITY",

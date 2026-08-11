@@ -45,7 +45,9 @@ from typing import TYPE_CHECKING, Protocol
 from ralph.executor._process_result import ProcessResult
 from ralph.executor._process_run_options import ProcessRunOptions
 from ralph.executor.process import run_process
+from ralph.mcp.multimodal._media_entry_extras import MediaEntryExtras
 from ralph.mcp.multimodal.resources import (
+    MediaManifest,
     build_media_uri,
     new_artifact_id,
 )
@@ -442,6 +444,49 @@ def handle_media_capture(
     )
 
 
+def register_media_capture_result(
+    manifest: MediaManifest,
+    *,
+    workspace_root: Path,
+    result: MediaCaptureResult,
+) -> None:
+    """Register every validated capture as a loader-backed replay resource.
+
+    Capture output remains in the workspace-owned capture directory; the
+    manifest retains only metadata and reloads bytes on demand.  A unique
+    identity per minted artifact prevents a later capture of the same matrix
+    cell from being deduplicated to an older URI.
+    """
+    for cell in result.cells:
+        source_path = cell.output_path
+        output_path = workspace_root / source_path
+
+        def load_capture(path: Path = output_path) -> bytes | None:
+            try:
+                return path.read_bytes()
+            except OSError:
+                return None
+
+        entry = manifest.add(
+            title=Path(source_path).name,
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=b"",
+            extras=MediaEntryExtras(
+                artifact_id=cell.artifact_id,
+                identity_key=f"capture:{cell.artifact_id}",
+                source_path=source_path,
+                byte_loader=load_capture,
+            ),
+        )
+        if entry.uri != cell.uri:
+            raise MediaCaptureError(
+                target=result.target,
+                cell_id=cell.cell.cell_id,
+                reason="capture manifest registration changed the minted artifact URI",
+            )
+
+
 def handle_media_capture_tool(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -460,9 +505,10 @@ def handle_media_capture_tool(
         ToolResult,
         require_capability,
     )
-    from ralph.mcp.tools.workspace._utils import MEDIA_READ_CAPABILITY
+    from ralph.mcp.tools.workspace._media_session import _get_media_manifest
+    from ralph.mcp.tools.workspace._utils import MEDIA_CAPTURE_CAPABILITY
 
-    require_capability(session, MEDIA_READ_CAPABILITY, "Media capture")
+    require_capability(session, MEDIA_CAPTURE_CAPABILITY, "Media capture")
     target = params.get("target")
     if not isinstance(target, str) or not target.strip():
         raise InvalidParamsError("media_capture requires a non-empty target")
@@ -492,6 +538,12 @@ def handle_media_capture_tool(
         design_capture_command=facts.design_capture_command,
         secret=session.broker_secret,
     )
+    manifest = _get_media_manifest(session)
+    if manifest is None:
+        raise InvalidParamsError(
+            "media_capture requires an active session manifest for replayable captures"
+        )
+    register_media_capture_result(manifest, workspace_root=workspace_root, result=result)
     payload = {
         "target": result.target,
         "matrix_key": result.matrix_key,
@@ -736,4 +788,5 @@ __all__ = [
     "MediaCaptureResult",
     "handle_media_capture",
     "handle_media_capture_tool",
+    "register_media_capture_result",
 ]

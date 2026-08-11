@@ -30,6 +30,7 @@ _MEDIA_CAPABILITIES = {
     "WebVisit",
     "WebDownload",
     "media.read",
+    "media.capture",
 }
 
 
@@ -38,12 +39,16 @@ def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
 
 
-def _server(tmp_path: Path, config: McpConfig) -> server_runtime.McpServer:
+def _server(
+    tmp_path: Path,
+    config: McpConfig,
+    capabilities: set[str] = _MEDIA_CAPABILITIES,
+) -> server_runtime.McpServer:
     session = AgentSession(
         session_id="session-multimodal",
         run_id="run-multimodal",
         drain="development",
-        capabilities=_MEDIA_CAPABILITIES,
+        capabilities=capabilities,
     )
     workspace = FsWorkspace(tmp_path)
     bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
@@ -98,6 +103,30 @@ def test_capture_is_visible_only_with_a_resolved_design_system_policy(tmp_path: 
     tool_names = _tool_names(_server(tmp_path, McpConfig()))
 
     assert "media_capture" in tool_names
+
+
+def test_capture_requires_the_media_capture_capability(tmp_path: Path) -> None:
+    """Capture is capability-owned rather than granted by media-read access."""
+    policy_path = tmp_path / "docs/ralph-workflow-policy/design-system-policy.md"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        "\n".join(
+            (
+                "RALPH-FACT: design_capture_command: bin/capture --target={target}",
+                "RALPH-FACT: narrow_viewport: 375x812",
+                "RALPH-FACT: wide_viewport: 1440x900",
+                "RALPH-FACT: themes: light,dark",
+                "RALPH-FACT: states: default,empty,loading,error,overflow",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    capabilities = _MEDIA_CAPABILITIES - {"media.read"}
+    tool_names = _tool_names(_server(tmp_path, McpConfig(), capabilities))
+
+    assert "media_capture" in tool_names
+    assert "read_media" not in tool_names
 
 
 def test_explicit_media_disabled_keeps_media_tools(tmp_path: Path) -> None:

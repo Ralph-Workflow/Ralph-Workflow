@@ -389,6 +389,7 @@ _BASE_CAPABILITIES: frozenset[str] = frozenset(
         # enabled. ``media.read`` is granted to every drain by default;
         # there is no config flag that removes it.
         "media.read",
+        "media.capture",
     }
 )
 
