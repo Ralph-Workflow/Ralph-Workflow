@@ -412,6 +412,7 @@ def _build_handback_pipeline_stubs(
         *,
         load_result: run_module._LoadResult,
         display_context: DisplayContext,
+        display: object | None = None,
         mode: PolicyMode = PolicyMode.NORMAL,
         workspace_factory: Callable[[], Workspace] | None = None,
         emit_factory: Callable[[str], None] | None = None,
@@ -425,6 +426,7 @@ def _build_handback_pipeline_stubs(
         return cli_integration.run_project_policy_readiness(
             load_result=load_result,
             display_context=display_context,
+            display=display,
             workspace_factory=lambda: ws,
             emit_factory=emit_factory,
             is_tty=lambda: False,

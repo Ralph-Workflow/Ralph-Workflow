@@ -312,6 +312,63 @@ def test_remediation_runs_inside_started_display_with_status_bar(
     assert observed_opts and observed_opts[0].get("display") is fake_display
 
 
+def test_policy_handback_regression_preserves_caller_owned_live_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: normal-run remediation must hand its active footer to planning.
+
+    A policy preflight entered from the normal run has one caller-owned
+    display scope. When remediation finishes, it must not stop that scope or
+    leave ``Policy Remediation`` in its footer; the persisted pipeline phase
+    takes over immediately.
+    """
+    from ralph.language_detector.models import ProjectStack
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_agents_md,
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()
+    fake_display = _FakeDisplay()
+    fake_display.__enter__()
+    monkeypatch.setattr(cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display)
+
+    def fake_execute_agent_effect(*_args: object, **_opts: object) -> object:
+        _seed_agents_md(ws)
+        _seed_claude_md(ws)
+        _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+
+    monkeypatch.setattr(
+        policy_auto_commit_module,
+        "commit_policy_updates",
+        lambda _root, _fn: None,
+    )
+
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=_load_result(load_policy(default_dir())),
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+        display=fake_display,
+    )
+
+    assert rc == 0
+    assert fake_display.entered == 1, "the caller owns the only display start"
+    assert fake_display.exited == 0, "policy remediation must not stop the caller's Live session"
+    assert fake_display.status_models
+    final_model = fake_display.status_models[-1]
+    assert getattr(final_model, "phase_label", None) == "Planning", (
+        "the post-policy footer must immediately name the resumed pipeline phase"
+    )
+
+
 def test_production_closure_raises_on_launch_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

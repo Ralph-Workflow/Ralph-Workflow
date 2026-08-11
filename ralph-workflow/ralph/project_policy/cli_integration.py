@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -607,6 +607,7 @@ def _dispatch_preflight_result(
     *,
     load_result: _LoadResult,
     display_context: DisplayContext,
+    display: ParallelDisplay | None,
     result: ReadinessResult,
     workspace_scope: WorkspaceScope,
     workspace: Workspace,
@@ -644,7 +645,7 @@ def _dispatch_preflight_result(
         return _exit_code_for_not_ready(mode)
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
-    display = resolve_active_display(None, display_context)
+    active_display = resolve_active_display(display, display_context)
     if invoke_remediation_agent_factory is not None:
         invoke_agent = invoke_remediation_agent_factory(workspace)
     else:
@@ -652,7 +653,7 @@ def _dispatch_preflight_result(
             load_result,
             pipeline_deps,
             workspace_scope,
-            display,
+            active_display,
             display_context,
         )
 
@@ -666,13 +667,17 @@ def _dispatch_preflight_result(
     # callback below updates the persistent status bar with the live attempt
     # before each remediation iteration so the footer shows
     # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
-    with display, remediation_status_bar_session(display, workspace_scope):
-        anchor_value: object = getattr(display, "run_started_monotonic", None)
+    display_scope = nullcontext(active_display) if display is not None else active_display
+    resumed_phase = load_result.initial_state.phase if load_result.initial_state is not None else None
+    with display_scope, remediation_status_bar_session(
+        active_display, workspace_scope, resumed_phase=resumed_phase
+    ):
+        anchor_value: object = getattr(active_display, "run_started_monotonic", None)
         run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
 
         def _on_remediation_attempt(attempt: int) -> None:
             push_remediation_status_bar(
-                display,
+                active_display,
                 workspace_scope,
                 DEFAULT_MAX_REMEDIATION_ATTEMPTS,
                 attempt=attempt,
@@ -680,7 +685,7 @@ def _dispatch_preflight_result(
             )
 
         push_remediation_status_bar(
-            display,
+            active_display,
             workspace_scope,
             DEFAULT_MAX_REMEDIATION_ATTEMPTS,
             run_started_monotonic=run_started_monotonic,
@@ -739,6 +744,7 @@ def run_project_policy_readiness(
     *,
     load_result: _LoadResult,
     display_context: DisplayContext,
+    display: ParallelDisplay | None = None,
     mode: PolicyMode = PolicyMode.NORMAL,
     workspace_factory: Callable[[], Workspace] | None = None,
     emit_factory: Callable[[str], None] | None = None,
@@ -773,6 +779,7 @@ def run_project_policy_readiness(
         return _run_policy_readiness(
             load_result=load_result,
             display_context=display_context,
+            display=display,
             mode=mode,
             workspace_factory=workspace_factory,
             emit_factory=emit_factory,
@@ -815,6 +822,7 @@ def _run_policy_readiness(
     *,
     load_result: _LoadResult,
     display_context: DisplayContext,
+    display: ParallelDisplay | None,
     mode: PolicyMode,
     workspace_factory: Callable[[], Workspace] | None,
     emit_factory: Callable[[str], None] | None,
@@ -882,6 +890,7 @@ def _run_policy_readiness(
     return _dispatch_preflight_result(
         load_result=load_result,
         display_context=display_context,
+        display=display,
         result=result,
         workspace_scope=workspace_scope,
         workspace=workspace,

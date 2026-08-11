@@ -25,7 +25,7 @@ from ralph.cli.commands._preflight_request import _PreflightRequest
 from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
-from ralph.display.parallel_display import resolve_active_display
+from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
@@ -457,6 +457,8 @@ def _build_runner_kwargs(
     request: _ExecutePipelineRequest,
     *,
     display_context: DisplayContext,
+    display: ParallelDisplay | None,
+    display_is_active: bool,
     run_func: _RunnerFunc,
 ) -> dict[str, object]:
     """Build the kwargs dict to pass to the pipeline runner."""
@@ -468,6 +470,10 @@ def _build_runner_kwargs(
         kwargs["policy_bundle"] = request.policy_bundle
     if "display_context" in runner_params:
         kwargs["display_context"] = display_context
+    if display is not None and "display" in runner_params:
+        kwargs["display"] = display
+    if "display_is_active" in runner_params:
+        kwargs["display_is_active"] = display_is_active
     if request.counter_overrides and "counter_overrides" in runner_params:
         kwargs["counter_overrides"] = request.counter_overrides
     if request.config_path is not None and "config_path" in runner_params:
@@ -491,24 +497,32 @@ def _execute_pipeline(
     request: _ExecutePipelineRequest,
     *,
     display_context: DisplayContext,
+    display: ParallelDisplay | None = None,
+    display_is_active: bool = False,
 ) -> int:
     """Execute the pipeline.
 
     Returns:
         Exit code from pipeline runner.
     """
-    display = resolve_active_display(None, display_context)
+    active_display = resolve_active_display(display, display_context)
     run_func = _get_run_func()
     if run_func is None:
         logger.error("Pipeline runner is unavailable")
-        display.emit_warning("Pipeline runner is unavailable")
+        active_display.emit_warning("Pipeline runner is unavailable")
         return _EXIT_CONFIG_ERROR
 
     try:
-        kwargs = _build_runner_kwargs(request, display_context=display_context, run_func=run_func)
+        kwargs = _build_runner_kwargs(
+            request,
+            display_context=display_context,
+            display=active_display,
+            display_is_active=display_is_active,
+            run_func=run_func,
+        )
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
-        display.emit_warning("\nInterrupted by user")
+        active_display.emit_warning("\nInterrupted by user")
         try:
             from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
@@ -519,14 +533,14 @@ def _execute_pipeline(
             _save_interrupt_checkpoint(request.initial_state)
         return _EXIT_INTERRUPT
     except CheckpointPolicyMismatchError as e:
-        display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
+        active_display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
         return _EXIT_PREFLIGHT
     except PolicyValidationError as e:
-        display.emit_warning(_pipeline_config_error_text(e.message).plain)
+        active_display.emit_warning(_pipeline_config_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")
-        display.emit_warning(f"Pipeline failed: {e}")
+        active_display.emit_warning(f"Pipeline failed: {e}")
         return _EXIT_CONFIG_ERROR
 
 
@@ -732,6 +746,7 @@ def _run_project_policy_readiness(
     *,
     load_result: _LoadResult,
     display_context: DisplayContext,
+    display: ParallelDisplay | None = None,
     mode: PolicyMode = PolicyMode.NORMAL,
     workspace_factory: Callable[[], Workspace] | None = None,
     emit_factory: Callable[[str], None] | None = None,
@@ -759,6 +774,7 @@ def _run_project_policy_readiness(
         return _orchestrator(
             load_result=load_result,
             display_context=display_context,
+            display=display,
             mode=mode,
             workspace_factory=workspace_factory,
             emit_factory=emit_factory,
@@ -893,13 +909,18 @@ def run_pipeline(
     # development run to proceed to. That is what this branch checks: we return
     # early because the user asked for policy work ONLY, not because policy
     # failed.
+    active_display: ParallelDisplay | None = None
     if load_result.workspace_scope is not None:
+        active_display = resolve_active_display(None, ctx)
+        active_display.start()
         policy_readiness_result = _run_project_policy_readiness(
             load_result=load_result,
             display_context=ctx,
+            display=active_display,
             mode=effective_request.policy_mode,
         )
         if effective_request.policy_mode.exits_after():
+            active_display.stop()
             return policy_readiness_result
         # Defence in depth: a normal run continues regardless of what the
         # preflight returned. Nothing about policy may abort the pipeline.
@@ -911,6 +932,8 @@ def run_pipeline(
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:
+        if active_display is not None:
+            active_display.stop()
         print_dry_run(
             load_result.initial_state,
             load_result.config,
@@ -936,6 +959,8 @@ def run_pipeline(
                 model_identity=effective_request.model_identity,
             ),
             display_context=ctx,
+            display=active_display,
+            display_is_active=active_display is not None,
         )
 
 

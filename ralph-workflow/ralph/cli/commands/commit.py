@@ -23,7 +23,8 @@ from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.parallel_display import resolve_active_display
+from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
+from ralph.display.status_bar import StatusBarModel
 from ralph.git.commit_cleanup import stage_commit_changes_safely
 from ralph.git.operations import (
     create_commit,
@@ -120,14 +121,22 @@ def commit_plumbing(
         return
 
     if opts.generate_commit_msg or opts.generate_commit:
-        _handle_agent_commit_generation(
-            repo_root=repo_root,
-            config=config,
-            options=opts,
-            display_context=ctx,
-            pro_hooks=pro_hooks,
-            model_identity=model_identity,
+        display.update_status_bar(
+            StatusBarModel(
+                workspace_root=str(repo_root),
+                phase_label="Commit Generation",
+                phase_style=phase_style_for_phase("commit"),
+            )
         )
+        with display:
+            _handle_agent_commit_generation(
+                repo_root=repo_root,
+                config=config,
+                options=opts,
+                display_context=ctx,
+                pro_hooks=pro_hooks,
+                model_identity=model_identity,
+            )
         return
 
     if not has_staged_changes(repo_root):

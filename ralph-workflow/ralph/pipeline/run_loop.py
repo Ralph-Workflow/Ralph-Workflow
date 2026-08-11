@@ -7,7 +7,7 @@ import dataclasses
 import sys
 import threading
 import time
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
@@ -1683,13 +1683,16 @@ def _execute_with_cleanup(
     unsubscribe_bus: Callable[[], None],
     unsubscribe_display: Callable[[], None],
     display_stop: Callable[[], None],
+    *,
+    display_is_active: bool = False,
 ) -> int:
     """Run the display block and guarantee cleanup; return exit_code."""
     exit_code = 0
     state = initial_state
     started_at = time.monotonic()
     try:
-        with loop_ctx.active_display:
+        display_scope = nullcontext(loop_ctx.active_display) if display_is_active else loop_ctx.active_display
+        with display_scope:
             _emit_run_start(loop_ctx, state)
             if hasattr(loop_ctx.active_display, "begin_phase"):
                 with suppress(Exception):
@@ -1758,6 +1761,7 @@ def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
+    display_is_active: bool = False,
     pipeline_subscriber: _PipelineSubscriberProtocol | None = None,
     *,
     dashboard_subscriber: _PipelineSubscriberProtocol | None = None,
@@ -1940,6 +1944,7 @@ def run(
         _unsubscribe_bus,
         _unsubscribe_display,
         _display_stop,
+        display_is_active=display_is_active,
     )
 
 
