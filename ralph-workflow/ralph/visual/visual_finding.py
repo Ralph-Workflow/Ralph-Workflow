@@ -139,7 +139,7 @@ class Region:
 
 
 @dataclass(frozen=True, slots=True)
-class VisualFinding:
+class _VisualFinding:
     """A reviewer observation pinned to one capture cell and one region."""
 
     capture_id: str
@@ -170,6 +170,11 @@ class VisualFinding:
                 f"VisualFinding.narrative length {len(self.narrative)} exceeds "
                 f"_NARRATIVE_MAX_LEN={_NARRATIVE_MAX_LEN}"
             )
+
+
+VisualFinding = _VisualFinding
+VisualFinding.__name__ = "VisualFinding"
+VisualFinding.__qualname__ = "VisualFinding"
 
 
 __all__ = [

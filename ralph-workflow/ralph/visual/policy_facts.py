@@ -120,7 +120,7 @@ class Viewport:
 
 
 @dataclass(frozen=True)
-class PolicyFacts:
+class _PolicyFacts:
     """Validated design-system policy facts for a single capture target."""
 
     design_capture_command: str
@@ -151,6 +151,11 @@ class PolicyFacts:
                 f"PolicyFacts.states is missing required states {missing}; "
                 "single-screenshot defaults are rejected"
             )
+
+
+PolicyFacts = _PolicyFacts
+PolicyFacts.__name__ = "PolicyFacts"
+PolicyFacts.__qualname__ = "PolicyFacts"
 
 
 # ---------------------------------------------------------------------------

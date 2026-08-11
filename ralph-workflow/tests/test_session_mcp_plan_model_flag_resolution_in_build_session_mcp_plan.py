@@ -157,8 +157,8 @@ url = "http://docs.example/mcp"
     assert {"agy-upstream", "docs"}.issubset({server.name for server in upstreams})
 
 
-class TestModelFlagResolutionInBuildSessionMcpPlan:
-    """build_session_mcp_plan owns model identity resolution via model_flag."""
+class TestModelIdentityResolution:
+    """Model identity resolution from flags and session MCP plans."""
 
     def test_model_flag_resolves_claude_identity(self, isolated_home: Path, tmp_path: Path) -> None:
         del isolated_home
@@ -287,10 +287,6 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
 
         assert plan.model_identity.provider == "anthropic"
         assert plan.model_identity.model_id == "anthropic/claude-3-5-sonnet"
-
-
-class TestResolveModelIdentityPerTransport:
-    """``resolve_model_identity`` must run the flag parser for EVERY transport."""
 
     def test_codex_with_bare_model_flag_resolves_to_openai(self) -> None:
         identity = resolve_model_identity(AgentTransport.CODEX, "--model gpt-5.6-flash")

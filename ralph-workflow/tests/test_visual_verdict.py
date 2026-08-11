@@ -26,10 +26,12 @@ tests run well inside the 60s combined budget.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Sequence
 
 import pytest
 
+from ralph.testing import audit_repo_structure
 from ralph.visual.capture_cell import CaptureCell
 from ralph.visual.capture_request import CaptureRequest
 from ralph.visual.capture_set import CaptureSet
@@ -128,6 +130,18 @@ def _verdict(
 # ---------------------------------------------------------------------------
 # Happy path: exactly-three inputs build a verdict
 # ---------------------------------------------------------------------------
+
+
+def test_visual_finding_has_one_public_top_level_class() -> None:
+    """The repo-structure audit accepts the finding public API."""
+    from ralph.visual import visual_finding
+
+    source = inspect.getsource(visual_finding)
+    public_classes, _, _ = audit_repo_structure._scan_structure(
+        source, tuple(source.splitlines())
+    )
+
+    assert public_classes == ("Region",)
 
 
 def test_verdict_accepts_exactly_three_inputs() -> None:

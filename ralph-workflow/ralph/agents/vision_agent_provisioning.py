@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.builtin_spec import vision_verdict_agent_spec
-from ralph.agents.registration import register_agent_support_to_catalog
+from ralph.project_policy.evidence import design_system_required
 
 if TYPE_CHECKING:
     from ralph.agents.catalog import AgentCatalog
@@ -100,10 +100,6 @@ def is_design_system_policy_in_scope(
     """
     if workspace is None or stack is None:
         return False
-    from ralph.project_policy.evidence import (  # noqa: PLC0415  # reason: lazy import keeps the no-arg test path free of evidence.py
-        design_system_required,
-    )
-
     required, _consulted = design_system_required(workspace, stack)
     return bool(required)
 
@@ -181,7 +177,7 @@ def provision_vision_verdict_agent(
         # Idempotent: a second call is a no-op, not a hard error.
         return True
     support = vision_verdict_agent_support()
-    register_agent_support_to_catalog(VISION_VERDICT_AGENT_NAME, support, catalog)
+    catalog.add(support)
     return True
 
 

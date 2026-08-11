@@ -31,11 +31,13 @@ type-ignore comments per the AGENTS.md type-ignore policy.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import cast
 
 import pytest
 
+from ralph.testing import audit_repo_structure
 from ralph.visual.capture_cell import CaptureCell
 from ralph.visual.capture_lifecycle import (
     MANIFEST_DIR_RELPATH,
@@ -97,6 +99,18 @@ def _build_capture_set(
 # ---------------------------------------------------------------------------
 # Run-scoped
 # ---------------------------------------------------------------------------
+
+
+def test_capture_lifecycle_has_one_public_top_level_class() -> None:
+    """The repo-structure audit accepts the lifecycle public API."""
+    from ralph.visual import capture_lifecycle
+
+    source = inspect.getsource(capture_lifecycle)
+    public_classes, _, _ = audit_repo_structure._scan_structure(
+        source, tuple(source.splitlines())
+    )
+
+    assert public_classes == ("CaptureLifecycle",)
 
 
 def test_lifecycle_is_run_scoped(tmp_path: Path) -> None:

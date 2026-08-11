@@ -79,6 +79,7 @@ from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.registration import register_agent_support_to_catalog
 from ralph.agents.spec import AgentSpec
 from ralph.agents.support import AgentSupport
+from ralph.agents.vision_agent_provisioning import provision_vision_verdict_agent
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
@@ -452,10 +453,6 @@ class AgentRegistry:
             already wired in), ``False`` when the design-system
             policy is not in scope.
         """
-        from ralph.agents.vision_agent_provisioning import (  # noqa: PLC0415  # reason: lazy import keeps the no-arg test path free of evidence.py
-            provision_vision_verdict_agent,
-        )
-
         registered = provision_vision_verdict_agent(
             self._catalog,
             workspace=workspace if workspace is not None else None,

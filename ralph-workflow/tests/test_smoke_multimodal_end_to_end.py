@@ -84,9 +84,25 @@ _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("nanocoder", "smoke-interactive-nanocoder", "nanocoder", "cmd_override"),
     ("cursor", "smoke-interactive-cursor", "cursor/auto", "cursor_env"),
     ("opencode", "smoke-interactive-opencode", "opencode/minimax/MiniMax-M3", "opencode_env"),
+    ("codex", "smoke-interactive-codex", "codex/gpt-5-flash", "cmd_override"),
+    ("pi", "smoke-interactive-pi", "pi", "cmd_override"),
 )
 
 _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
+
+
+def test_smoke_transport_table_covers_every_non_generic_transport() -> None:
+    """Every covered transport has a deterministic multimodal smoke row."""
+    assert set(_TRANSPORT_IDS) == {
+        "claude",
+        "claude-headless",
+        "agy",
+        "nanocoder",
+        "cursor",
+        "opencode",
+        "codex",
+        "pi",
+    }
 
 
 def _resolve_transport_entry(transport: str) -> tuple[str, str, str, str]:

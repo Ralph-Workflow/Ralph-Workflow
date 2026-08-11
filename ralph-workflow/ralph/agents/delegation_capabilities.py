@@ -33,30 +33,15 @@ from enum import StrEnum
 
 from ralph.config.agent_transport import AgentTransport
 
-
-class DelegationStance(StrEnum):
-    """Tri-state stance on sub-agent / task delegation for one transport.
-
-    Attributes:
-        SUPPORTED: The upstream runtime exposes usable sub-agent tooling
-            that Ralph can dispatch through. The accompanying
-            :attr:`DelegationCapability.mechanism` describes HOW.
-        EXPLICIT_UNSUPPORTED: The upstream runtime either has no
-            sub-agent tooling, or -- in the headless invocation mode
-            Ralph uses -- does not document a stable way for Ralph to
-            dispatch one. Distinct from :attr:`NOT_APPLICABLE` because
-            the transport is a real agent runtime that COULD in
-            principle support delegation, just not in a way Ralph can
-            exercise today.
-        NOT_APPLICABLE: This transport is a generic / fallback carrier
-            with no runtime semantics of its own; the question ``can
-            this transport spawn a subagent?`` has no defined answer
-            because there is no real runtime to delegate to.
-    """
-
-    SUPPORTED = "supported"
-    EXPLICIT_UNSUPPORTED = "explicit_unsupported"
-    NOT_APPLICABLE = "not_applicable"
+DelegationStance = StrEnum(
+    "DelegationStance",
+    {
+        "SUPPORTED": "supported",
+        "EXPLICIT_UNSUPPORTED": "explicit_unsupported",
+        "NOT_APPLICABLE": "not_applicable",
+    },
+    module=__name__,
+)
 
 
 @dataclass(frozen=True, slots=True)

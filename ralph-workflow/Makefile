@@ -161,8 +161,9 @@ test-subprocess-e2e:
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
 
-# Multimodal smoke suite (criterion 5). Drives the six harness identities
-# (claude / claude-headless / agy / nanocoder / cursor / opencode)
+# Multimodal smoke suite (criterion 5). Drives all eight non-GENERIC harness
+# identities (claude / claude-headless / agy / nanocoder / cursor / opencode /
+# codex / pi)
 # through the deterministic multimodal stub agent, asserting the
 # multimodal fact grades WIRE on every harness. Excluded from the
 # default pytest profile by the `smoke` marker (kept in `pytestmark`

@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.support import AgentSupport
+from ralph.agents.vision_agent_provisioning import provision_vision_verdict_agent
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
@@ -305,10 +306,6 @@ def register_vision_verdict_agent(
         vision-verdict agent was provisioned, or ``None`` when
         the design-system policy is not in scope.
     """
-    from ralph.agents.vision_agent_provisioning import (  # noqa: PLC0415  # reason: lazy import keeps the no-arg test path free of evidence.py
-        provision_vision_verdict_agent,
-    )
-
     if not provision_vision_verdict_agent(catalog, workspace=workspace, stack=stack):
         return None
     support = catalog.get("vision-verdict")

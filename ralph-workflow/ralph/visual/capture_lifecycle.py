@@ -28,6 +28,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.mcp.multimodal.resources import new_artifact_id
 from ralph.visual.capture_cell import CaptureCell
 from ralph.visual.capture_set import CaptureSet
@@ -64,18 +66,12 @@ _MATRIX_KEY_SEP: str = "\x00"
 # ---------------------------------------------------------------------------
 
 
-class BaselineError(RuntimeError):
+class _BaselineError(RuntimeError):
     """Base class for :class:`CaptureLifecycle` errors."""
 
 
-class MissingBaselineError(BaselineError):
-    """Raised when a comparative verdict is requested but no authentic pre-change set exists.
-
-    The ``target`` and ``matrix_key`` are the inputs to
-    :meth:`CaptureLifecycle.require_before_set`; the message names them
-    explicitly so the agent can log the failure and route to ``blocked``
-    instead of fabricating a baseline.
-    """
+class _MissingBaselineError(_BaselineError):
+    """Raised when a comparative verdict is requested but no authentic pre-change set exists."""
 
     def __init__(self, *, target: str, matrix_key: str) -> None:
         self.target = target
@@ -87,7 +83,7 @@ class MissingBaselineError(BaselineError):
         )
 
 
-class DuplicateBaselineError(BaselineError):
+class _DuplicateBaselineError(_BaselineError):
     """Raised when a baseline already exists for the same (run, cycle, target, matrix_key)."""
 
     def __init__(self, *, target: str, matrix_key: str) -> None:
@@ -100,9 +96,8 @@ class DuplicateBaselineError(BaselineError):
         )
 
 
-class BaselineStorageError(BaselineError):
+class _BaselineStorageError(_BaselineError):
     """Raised when the baseline manifest cannot be persisted or loaded safely."""
-
 
 # ---------------------------------------------------------------------------
 # Typed structures
@@ -110,7 +105,7 @@ class BaselineStorageError(BaselineError):
 
 
 @dataclass(frozen=True)
-class RetainedBaselineCell:
+class _RetainedBaselineCell:
     """One cell of a retained baseline, persisted verbatim.
 
     The cell's full identity (target, viewport, theme, state, cell_id)
@@ -221,7 +216,7 @@ class RetainedBaselineCell:
 
 
 @dataclass(frozen=True)
-class RetainedBaselineEntry:
+class _RetainedBaselineEntry:
     """One (target, matrix_key) row in the pre-change baseline manifest.
 
     ``capture_run_id`` is the run that originally produced the
@@ -329,7 +324,7 @@ class RetainedBaselineEntry:
 
 
 @dataclass(frozen=True)
-class BaselineManifest:
+class _BaselineManifest:
     """The full per-run baseline manifest, persisted to JSON.
 
     ``entries`` is a tuple (insertion order) rather than a dict so the
@@ -383,6 +378,26 @@ class BaselineManifest:
 
     def with_appended(self, entry: RetainedBaselineEntry) -> BaselineManifest:
         return BaselineManifest(run_id=self.run_id, entries=(*self.entries, entry))
+
+
+BaselineError = _BaselineError
+MissingBaselineError = _MissingBaselineError
+DuplicateBaselineError = _DuplicateBaselineError
+BaselineStorageError = _BaselineStorageError
+RetainedBaselineCell = _RetainedBaselineCell
+RetainedBaselineEntry = _RetainedBaselineEntry
+BaselineManifest = _BaselineManifest
+for _type, _name in (
+    (BaselineError, "BaselineError"),
+    (MissingBaselineError, "MissingBaselineError"),
+    (DuplicateBaselineError, "DuplicateBaselineError"),
+    (BaselineStorageError, "BaselineStorageError"),
+    (RetainedBaselineCell, "RetainedBaselineCell"),
+    (RetainedBaselineEntry, "RetainedBaselineEntry"),
+    (BaselineManifest, "BaselineManifest"),
+):
+    _type.__name__ = _name
+    _type.__qualname__ = _name
 
 
 # ---------------------------------------------------------------------------
@@ -630,14 +645,17 @@ class CaptureLifecycle:
             )
         path = self._manifest_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic write: serialize to a sibling .tmp file, then rename.
-        # A half-written manifest would be treated as corrupt on the
-        # next read, so we MUST not leave one behind.
+        # A half-written manifest would be treated as corrupt on the next read.
         tmp_path = path.with_suffix(path.suffix + ".tmp")
         encoded = json.dumps(manifest.to_dict(), indent=2, sort_keys=True)
         try:
-            tmp_path.write_text(encoded, encoding="utf-8")
-            tmp_path.replace(path)
+            atomic_write_text_if_changed(
+                DEFAULT_FILE_BACKEND,
+                path,
+                encoded,
+                tmp_path=tmp_path,
+                encoding="utf-8",
+            )
         except OSError as exc:
             raise BaselineStorageError(
                 f"failed to persist baseline manifest {path}: {exc}"

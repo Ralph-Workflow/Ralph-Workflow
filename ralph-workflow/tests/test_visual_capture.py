@@ -31,6 +31,8 @@ budget and uses no ``subprocess_e2e`` marker.
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -48,6 +50,7 @@ from ralph.mcp.tools.workspace._media_capture import (
     MediaCaptureError,
     handle_media_capture,
 )
+from ralph.testing import audit_repo_structure
 from ralph.visual.capture_request import CaptureRequest
 from ralph.visual.policy_facts import (
     DEFAULT_THEMES,
@@ -68,6 +71,31 @@ if TYPE_CHECKING:
 #: 24-byte payload is enough to satisfy the parser without
 #: emitting a fully-zlib-compressed IDAT chunk.
 _PNG_SIGNATURE: bytes = b"\x89PNG\r\n\x1a\n"
+
+
+def test_visual_capture_regression_has_one_public_top_level_class() -> None:
+    """The repo-structure audit accepts the media capture module's public API."""
+    media_capture_module = importlib.import_module(
+        "ralph.mcp.tools.workspace._media_capture"
+    )
+    source = inspect.getsource(media_capture_module)
+    public_classes, _, _ = audit_repo_structure._scan_structure(
+        source, tuple(source.splitlines())
+    )
+
+    assert public_classes == ("MediaCaptureError",)
+
+
+def test_policy_facts_has_one_public_top_level_class() -> None:
+    """The repo-structure audit accepts the policy-facts public API."""
+    from ralph.visual import policy_facts
+
+    source = inspect.getsource(policy_facts)
+    public_classes, _, _ = audit_repo_structure._scan_structure(
+        source, tuple(source.splitlines())
+    )
+
+    assert public_classes == ("Viewport",)
 
 
 def _build_minimal_png(width: int, height: int) -> bytes:

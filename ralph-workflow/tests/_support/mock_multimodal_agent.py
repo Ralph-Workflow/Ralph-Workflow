@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -355,6 +356,52 @@ def _emit_opencode_done() -> None:
     _emit_json({"type": "done"})
 
 
+def _emit_codex_init(session_id: str) -> None:
+    _emit_json({"type": "session", "id": session_id})
+
+
+def _emit_codex_text(text: str) -> None:
+    _emit_json({"type": "text", "content": text})
+
+
+def _emit_codex_tool_call(name: str, args: dict[str, Any]) -> None:
+    _emit_json({"type": "tool_use", "tool": name, "input": args})
+
+
+def _emit_codex_tool_result(_name: str, output: str) -> None:
+    _emit_json({"type": "tool_result", "result": output})
+
+
+def _emit_codex_stop() -> None:
+    _emit_json({"type": "done"})
+
+
+def _emit_pi_init(session_id: str) -> None:
+    _emit_json({"type": "session", "id": session_id})
+
+
+def _emit_pi_text(text: str) -> None:
+    _emit_json({"type": "message_end", "message": {"content": [{"type": "text", "text": text}]}})
+
+
+def _emit_pi_tool_call(name: str, args: dict[str, Any]) -> None:
+    _emit_json({"type": "tool_execution_start", "toolName": name, "args": args})
+
+
+def _emit_pi_tool_result(name: str, output: str) -> None:
+    _emit_json(
+        {
+            "type": "tool_execution_end",
+            "toolName": name,
+            "result": {"content": [{"type": "text", "text": output}]},
+        }
+    )
+
+
+def _emit_pi_stop() -> None:
+    _emit_json({"type": "agent_end"})
+
+
 def _emit_nanocoder_text(text: str) -> None:
     _emit_text_line(text)
 
@@ -379,52 +426,76 @@ def _emit_nanocoder_session_id_line(session_id: str) -> None:
 
 def _make_emit_functions(transport: str) -> dict[str, Any]:
     """Return a mapping of action names to per-transport emitters."""
-    if transport in ("claude", "claude-headless"):
-        return {
-            "session_id_line": _emit_claude_session_id_line,
-            "init": _emit_claude_init,
-            "text": _emit_claude_assistant_text,
-            "tool_call": _emit_claude_tool_use,
-            "tool_result": _emit_claude_tool_result,
-            "stop": _emit_claude_stop,
-        }
-    if transport == "agy":
-        return {
-            "session_id_line": None,
-            "init": _emit_agy_init,
-            "text": _emit_agy_text_delta,
-            "tool_call": _emit_agy_tool_call,
-            "tool_result": None,
-            "stop": _emit_agy_result,
-        }
-    if transport == "cursor":
-        return {
-            "session_id_line": None,
-            "init": _emit_cursor_init,
-            "text": _emit_cursor_assistant_text,
-            "tool_call": _emit_cursor_tool_call,
-            "tool_result": _emit_cursor_tool_result,
-            "stop": _emit_cursor_stop,
-        }
-    if transport == "opencode":
-        return {
-            "session_id_line": None,
-            "init": _emit_opencode_init,
-            "text": _emit_opencode_text,
-            "tool_call": _emit_opencode_tool_call,
-            "tool_result": _emit_opencode_tool_result,
-            "stop": _emit_opencode_done,
-        }
-    if transport == "nanocoder":
-        return {
-            "session_id_line": _emit_nanocoder_session_id_line,
-            "init": None,
-            "text": _emit_nanocoder_text,
-            "tool_call": _emit_nanocoder_tool_call,
-            "tool_result": _emit_nanocoder_tool,
-            "stop": _emit_nanocoder_text,
-        }
-    raise ValueError(f"unknown transport {transport!r}")
+    emitters = {
+        "claude": (
+            _emit_claude_session_id_line,
+            _emit_claude_init,
+            _emit_claude_assistant_text,
+            _emit_claude_tool_use,
+            _emit_claude_tool_result,
+            _emit_claude_stop,
+        ),
+        "agy": (
+            None,
+            _emit_agy_init,
+            _emit_agy_text_delta,
+            _emit_agy_tool_call,
+            None,
+            _emit_agy_result,
+        ),
+        "cursor": (
+            None,
+            _emit_cursor_init,
+            _emit_cursor_assistant_text,
+            _emit_cursor_tool_call,
+            _emit_cursor_tool_result,
+            _emit_cursor_stop,
+        ),
+        "opencode": (
+            None,
+            _emit_opencode_init,
+            _emit_opencode_text,
+            _emit_opencode_tool_call,
+            _emit_opencode_tool_result,
+            _emit_opencode_done,
+        ),
+        "codex": (
+            None,
+            _emit_codex_init,
+            _emit_codex_text,
+            _emit_codex_tool_call,
+            _emit_codex_tool_result,
+            _emit_codex_stop,
+        ),
+        "pi": (
+            None,
+            _emit_pi_init,
+            _emit_pi_text,
+            _emit_pi_tool_call,
+            _emit_pi_tool_result,
+            _emit_pi_stop,
+        ),
+        "nanocoder": (
+            _emit_nanocoder_session_id_line,
+            None,
+            _emit_nanocoder_text,
+            _emit_nanocoder_tool_call,
+            _emit_nanocoder_tool,
+            _emit_nanocoder_text,
+        ),
+    }
+    resolved = emitters.get("claude" if transport == "claude-headless" else transport)
+    if resolved is None:
+        raise ValueError(f"unknown transport {transport!r}")
+    session_id_line, init, text, tool_call, tool_result, stop = resolved
+    return {
+        "session_id_line": session_id_line,
+        "init": init,
+        "text": text,
+        "tool_call": tool_call,
+        "tool_result": tool_result,
+        "stop": stop,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -486,13 +557,27 @@ def _read_env_or_fail() -> tuple[str, str, str]:
     Looks for the endpoint in this priority order:
 
     1. ``RALPH_MCP_ENDPOINT`` (the canonical MCP endpoint env var).
-    2. ``OPENCODE_CONFIG_CONTENT`` (the JSON config the opencode resolver
+    2. ``RALPH_PI_MCP_EXTENSION`` (the generated TypeScript extension
+       Pi reads; its ``ENDPOINT`` constant carries the URL).
+    3. ``OPENCODE_CONFIG_CONTENT`` (the JSON config the opencode resolver
        writes into the agent env; the URL is parsed out of the
        ``mcp`` key when the direct env var is absent).
-    3. ``MCP_URL`` (a fallback for transports that do not export either
+    4. ``MCP_URL`` (a fallback for transports that do not export either
        of the above).
     """
     endpoint = os.environ.get(ENDPOINT_ENV, "")
+    if not endpoint:
+        extension_path = os.environ.get("RALPH_PI_MCP_EXTENSION", "")
+        if extension_path:
+            try:
+                extension_source = Path(extension_path).read_text(encoding="utf-8")
+            except OSError:
+                extension_source = ""
+            endpoint_match = re.search(
+                r'^const ENDPOINT = "([^"]+)";', extension_source, re.MULTILINE
+            )
+            if endpoint_match is not None:
+                endpoint = endpoint_match.group(1)
     if not endpoint:
         opencode_cfg = os.environ.get("OPENCODE_CONFIG_CONTENT")
         if opencode_cfg:
@@ -524,7 +609,16 @@ def _read_behavior_flags() -> tuple[bool, bool]:
 
 def _resolve_transport() -> str:
     transport = os.environ.get(TRANSPORT_ENV, "claude")
-    if transport not in ("claude", "claude-headless", "agy", "cursor", "opencode", "nanocoder"):
+    if transport not in (
+        "claude",
+        "claude-headless",
+        "agy",
+        "cursor",
+        "opencode",
+        "nanocoder",
+        "codex",
+        "pi",
+    ):
         transport = "claude"
     return transport
 
@@ -756,7 +850,7 @@ def _emit_post_dispatch_frames(
                 session_id,
                 0,
             )
-        elif transport in {"cursor", "opencode", "nanocoder"}:
+        elif transport in {"cursor", "opencode", "nanocoder", "codex", "pi"}:
             text_emitter("Reading multimodal fixture and writing receipts.")
     if tool_emitter is not None and not skip_media:
         if transport in ("claude", "claude-headless"):
@@ -806,14 +900,28 @@ def _emit_post_dispatch_frames(
         elif transport == "nanocoder":
             tool_emitter("mcp__ralph__read_media")
             tool_emitter("mcp__ralph__declare_complete")
-    stop_emitter = emitters.get("stop")
-    if stop_emitter is not None:
-        if transport == "agy":
-            stop_emitter(session_id, "SUCCESS")
-        elif transport in {"opencode", "cursor"} or transport in ("claude", "claude-headless"):
-            stop_emitter()
-        elif transport == "nanocoder":
-            stop_emitter("done")
+        else:
+            tool_emitter(
+                "mcp__ralph__read_media",
+                {"path": "smoke-fixture.png", "format": "inline"},
+            )
+            tool_emitter(
+                "mcp__ralph__declare_complete",
+                {"summary": "multimodal smoke stub complete"},
+            )
+    _emit_stop_frame(transport, emitters.get("stop"), session_id)
+
+
+def _emit_stop_frame(transport: str, stop_emitter: Any, session_id: str) -> None:
+    """Emit the transport-specific terminal frame."""
+    if stop_emitter is None:
+        return
+    if transport == "agy":
+        stop_emitter(session_id, "SUCCESS")
+    elif transport == "nanocoder":
+        stop_emitter("done")
+    else:
+        stop_emitter()
 
 
 def main() -> int:
@@ -841,7 +949,7 @@ def main() -> int:
             init_emitter(session_id, run_id)
         elif transport == "agy":
             init_emitter("mock-multimodal-stub", session_id)
-        elif transport in {"cursor", "opencode"}:
+        elif transport in {"cursor", "opencode", "codex", "pi"}:
             init_emitter(session_id)
     session_id_line = emitters.get("session_id_line")
     if session_id_line is not None:

@@ -150,7 +150,7 @@ class _ExecutorLike(Protocol):
 
 
 @dataclass(frozen=True)
-class MediaCaptureCellResult:
+class _MediaCaptureCellResult:
     """One captured cell's typed outcome."""
 
     cell: CaptureCell
@@ -163,13 +163,23 @@ class MediaCaptureCellResult:
     output_path: str  # workspace-relative
 
 
+_MediaCaptureCellResult.__name__ = "MediaCaptureCellResult"
+_MediaCaptureCellResult.__qualname__ = "MediaCaptureCellResult"
+MediaCaptureCellResult = _MediaCaptureCellResult
+
+
 @dataclass(frozen=True)
-class MediaCaptureResult:
+class _MediaCaptureResult:
     """The full typed outcome of a single ``handle_media_capture`` call."""
 
     target: str
     matrix_key: str
-    cells: tuple[MediaCaptureCellResult, ...]
+    cells: tuple[_MediaCaptureCellResult, ...]
+
+
+_MediaCaptureResult.__name__ = "MediaCaptureResult"
+_MediaCaptureResult.__qualname__ = "MediaCaptureResult"
+MediaCaptureResult = _MediaCaptureResult
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +380,7 @@ def handle_media_capture(
 
     target = capture_request.target
     matrix_key = _matrix_key_for(capture_request)
-    results: list[MediaCaptureCellResult] = []
+    results: list[_MediaCaptureCellResult] = []
     # Pending cells are buffered so a single failure aborts the WHOLE
     # request without leaving partial ledger rows.  The
     # all-or-nothing contract requires that the wire ledger only ever
@@ -438,7 +448,7 @@ def _capture_one_cell(
     design_capture_command: str,
     executor: _ExecutorLike,
     per_cell_timeout_seconds: float,
-) -> tuple[MediaCaptureCellResult, dict[str, object]]:
+) -> tuple[_MediaCaptureCellResult, dict[str, object]]:
     """Run, validate, and mint one cell; return the result and the pending ledger params.
 
     The wire-ledger append is NOT performed here \u2014 it is deferred
@@ -540,7 +550,7 @@ def _finalize_cell(
     cell: CaptureCell,
     matrix_key: str,
     cell_output_abs: Path,
-) -> tuple[MediaCaptureCellResult, dict[str, object]]:
+) -> tuple[_MediaCaptureCellResult, dict[str, object]]:
     """Read, validate, and mint one already-rendered cell's PNG.
 
     Returns the typed :class:`MediaCaptureCellResult` and the

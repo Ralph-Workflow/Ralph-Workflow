@@ -1,14 +1,4 @@
-"""Manual smoke tests for expensive agent-runtime checks.
-
-These smoke tests are intentionally excluded from the verify pipeline because they
-consume live agent tokens. They exist to validate the real invoke_agent pipeline
-against a live agent runtime, especially interactive-Claude parity, when changing
-the runtime. A smoke fix is only valid when it improves the shared runtime path,
-not when it special-cases this command alone.
-
-The orchestration core lives in :mod:`ralph.pipeline.plumbing.smoke_plumbing`; this
-module is the thin CLI surface (option setup, report rendering, exit codes).
-"""
+"""CLI surface for manual, token-consuming agent-runtime smoke checks."""
 
 from __future__ import annotations
 
@@ -90,21 +80,7 @@ def get_opencode_binary_override() -> str:
 
 
 def _resolve_agy_binary_override() -> str | None:
-    """Return the validated absolute ``RALPH_AGY_BINARY`` override or ``None``.
-
-    A relative override is resolved against the current working directory so
-    downstream :class:`subprocess.Popen` always sees an absolute path. The
-    cwd the harness later spawns the AGY binary from is not always the
-    directory the operator set ``RALPH_AGY_BINARY`` in (the smoke CLI may
-    change cwd before spawning the agent), so a relative override would
-    fail with ``FileNotFoundError`` at spawn time. The relative path is
-    logged so the operator can see the resolution.
-
-    The path must resolve to a regular file with executable bits set, or
-    to a name ``shutil.which`` can locate on ``PATH``. When validation
-    fails a WARNING is logged and ``None`` is returned so the caller
-    falls back to the real ``agy`` binary on ``PATH``.
-    """
+    """Return the validated absolute ``RALPH_AGY_BINARY`` override or ``None``."""
     override = _agy_binary_override_env()
     if not override:
         return None
@@ -130,24 +106,7 @@ def _resolve_agy_binary_override() -> str | None:
 
 
 def _resolve_cursor_binary_override() -> str | None:
-    """Return the validated absolute ``RALPH_CURSOR_BINARY`` override or ``None``.
-
-    Mirrors :func:`_resolve_agy_binary_override` for the Cursor
-    transport.  A relative override is resolved against the current
-    working directory so downstream :class:`subprocess.Popen` always
-    sees an absolute path.  The path must resolve to a regular file
-    with executable bits set, or to a name ``shutil.which`` can locate
-    on ``PATH``.  When validation fails a WARNING is logged and
-    ``None`` is returned so the caller falls back to the real
-    ``agent`` binary on ``PATH``.
-
-    Unlike AGY there is no bundled mock binary for Cursor, so any
-    non-empty override points at a real wrapper, alternate live
-    binary, or an operator-wired test stub.  The override is
-    applied to the ``cmd`` field verbatim (no shlex-quoting
-    shenanigans) so a wrapper script that takes its own flags
-    preserves those flags.
-    """
+    """Return the validated absolute ``RALPH_CURSOR_BINARY`` override or ``None``."""
     override = _cursor_binary_override_env()
     if not override:
         return None
@@ -173,17 +132,7 @@ def _resolve_cursor_binary_override() -> str | None:
 
 
 def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set.
-
-    Validates the override path (resolving relative paths to absolute) and
-    leaves ``agent_config`` unchanged when the path is not executable or
-    not a regular file, logging a WARNING in that case. The log message
-    distinguishes the deterministic mock binary from a real wrapper or
-    alternate live binary path: a mock override logs
-    ``mock AGY binary in use``; any other executable override logs
-    ``Using RALPH_AGY_BINARY override`` so a genuine live wrapper is not
-    misreported as a mock run.
-    """
+    """Return a copy of ``agent_config`` using ``RALPH_AGY_BINARY`` when valid."""
     if agent_config.transport is not AgentTransport.AGY:
         return agent_config
     resolved = _resolve_agy_binary_override()
@@ -199,19 +148,7 @@ def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
 
 
 def _maybe_apply_cursor_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` that uses ``RALPH_CURSOR_BINARY`` when set.
-
-    Validates the override path (resolving relative paths to absolute)
-    and leaves ``agent_config`` unchanged when the path is not
-    executable or not a regular file, logging a WARNING in that case.
-
-    Unlike the AGY override, the cursor override is shlex.quote()d
-    when applied to the cmd field so the wrapper path is preserved
-    as a single argv token by downstream shlex.split.  Operators
-    that need extra flags on the wrapper can set
-    ``[agents.cursor].cmd`` in their config (the CursorCommandBuilder
-    honors that override via shlex.split on the config.cmd).
-    """
+    """Return a copy of ``agent_config`` using ``RALPH_CURSOR_BINARY`` when valid."""
     if agent_config.transport is not AgentTransport.CURSOR:
         return agent_config
     resolved = _resolve_cursor_binary_override()
@@ -511,14 +448,9 @@ def smoke_harness_agent_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the interactive smoke harness for ``agent_name`` and report parity.
+    """Run the interactive smoke harness and report parity.
 
-    When ``multimodal`` is True the harness drives the agent from a
-    multimodal-aware prompt, materializes the deterministic PNG fixture
-    and the harness's ``.agent/mcp.toml`` ``[media]`` fragment before
-    the turns start, and treats a missing verified media-tool fact as a
-    HARD break -- never as a silent downgrade to the basic scenario.
-    Defaults to False so every existing smoke run is unchanged.
+    A missing multimodal fact is a hard break, not a downgrade to the basic scenario.
     """
     workspace_scope = resolve_workspace_scope()
     workspace_root = workspace_scope.root
@@ -561,15 +493,7 @@ def smoke_harness_agent_command(
                 "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
                 agy_override,
             )
-            # The mock binary writes its output files under
-            # MOCK_AGY_ARTIFACT_DIR. The harness expects those files under
-            # ``workspace_root``, so default the env var to the workspace
-            # root when the operator has not set it explicitly. The mock
-            # honors an explicit override unchanged. A real wrapper or
-            # alternate live binary path does NOT need this default
-            # (it manages its own working directory), so we skip the
-            # setdefault for non-mock overrides to avoid polluting
-            # MOCK_AGY_ARTIFACT_DIR for unrelated tools.
+            # The bundled mock writes artifacts under the workspace; real wrappers manage their own cwd.
             os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
         else:
             logger.info(
@@ -586,9 +510,7 @@ def smoke_harness_agent_command(
     agent_config = _maybe_apply_cursor_binary_override(agent_config)
     config = _apply_agy_binary_override_to_config(config)
     config = _apply_cursor_binary_override_to_config(config)
-    # Dynamic agy/<model> aliases are resolved from builtins, not from
-    # config.agents, so inject the overridden config under the exact
-    # agent name to ensure RALPH_AGY_BINARY is honored.
+    # Dynamic AGY aliases resolve from builtins, so inject the overridden config.
     if agy_override and agent_config.transport is AgentTransport.AGY:
         overridden_agents = dict(config.agents)
         overridden_agents[agent_name] = agent_config
@@ -630,58 +552,20 @@ def smoke_harness_agent_command(
     )
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
-    # F4: fold this run's graded facts into the durable, cross-transport
-    # conformance matrix (.agent/artifacts/smoke_conformance_matrix.md) --
-    # each run replaces only its own transport's row.
+    # Replace only this transport's row in the durable conformance matrix.
     record_conformance_matrix(
         workspace_root, transport=result.transport, evidence=_required_evidence(result)
     )
     verdict_label, _ = grade_verdict(_required_evidence(result))
-    # R8 (wt-04-claude-parsing): a missing dispatch, missing
-    # correlated result, or missing post-result activity is a
-    # HARD FAILED subagent-contract check, NOT a diagnostic. The
-    # plan and product criteria explicitly require that "a
-    # transport that cannot dispatch a subagent reports a failed
-    # check; it must not silently degrade to the basic scenario."
-    # All ``result.errors`` are treated as fatal; the previous
-    # "fatal_subagent_errors" allowlist filter was a regression
-    # that converted missing subagent-tail signals into
-    # exit-code-zero PASSes even when the model raced itself and
-    # never produced the required correlated result + post-result
-    # activity. The plan's R8 contract is that BOTH smoke runs
-    # (interactive and headless Claude) surface a subagent
-    # contract failure as a non-zero exit, with the surfacing
-    # in the per-check table AND the exit code. ``AGENTS.md``
-    # has no unrelated-failure exemption: a subagent contract
-    # violation is in the smoke plan and the exit code must
-    # reflect it.
+    # All errors, including incomplete subagent contracts, fail the run.
     exit_code = 0 if not result.errors and verdict_label == PASS else 1
-    # S-14: keep the literal ``EXIT_CODE=N`` machine-line shape so
-    # external smoke harnesses that grep the line keep working. The
-    # line is a machine contract (not operator-visible decoration) and
-    # must NOT carry the ``[status]`` rule or badge formatting the
-    # shared ``emit_status`` / ``emit_log_line`` helpers add, so it
-    # uses ``contextlib.suppress`` + ``sys.stdout.write`` rather than
-    # routing through ``display._console.print(...)`` (which would also
-    # trip the wt-007 anti-drift guard). The drift-prevention suite
-    # whitelists this exact line via the smoke-specific test in
-    # ``test_parallel_display_drift_prevention.py``.
+    # Preserve the unadorned machine-readable EXIT_CODE=N contract.
     _smoke_emit_exit_code_line(exit_code)
     return exit_code
 
 
 def _smoke_emit_exit_code_line(exit_code: int) -> None:
-    """Emit the literal ``EXIT_CODE=N`` machine contract line.
-
-    P2 (wt-028-display S-14): smoke.py's machine contract is the one
-    allowed bare-stdout call site in the command suite. Every other
-    command in :mod:`ralph.cli.commands` routes through the shared
-    ``ParallelDisplay`` surface (``emit_status`` / ``emit_warning`` /
-    ``emit_renderable``). The literal ``EXIT_CODE=N`` shape is the
-    machine-readable contract external smoke harnesses depend on; it
-    is preserved verbatim on its own line and intentionally bypasses
-    the display console.
-    """
+    """Emit the literal machine-readable ``EXIT_CODE=N`` contract line."""
     with contextlib.suppress(Exception):
         sys.stdout.write(f"EXIT_CODE={exit_code}\n")
         sys.stdout.flush()
