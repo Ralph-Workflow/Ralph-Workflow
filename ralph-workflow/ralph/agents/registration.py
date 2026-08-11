@@ -39,6 +39,8 @@ if TYPE_CHECKING:
     from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.agents.parsers.base import AgentParser
     from ralph.config.agent_config import AgentConfig
+    from ralph.language_detector.models import ProjectStack
+    from ralph.workspace.protocol import Workspace
 
     from .registry import AgentRegistry
 
@@ -275,8 +277,8 @@ def register_agent_support_to_catalog(
 def register_vision_verdict_agent(
     catalog: AgentCatalog,
     *,
-    workspace: object | None = None,
-    stack: object | None = None,
+    workspace: Workspace | None = None,
+    stack: ProjectStack | None = None,
 ) -> AgentConfig | None:
     """Register the vision-verdict agent in ``catalog`` when the design-system policy applies.
 
@@ -307,7 +309,7 @@ def register_vision_verdict_agent(
         provision_vision_verdict_agent,
     )
 
-    if not provision_vision_verdict_agent(catalog, workspace=workspace, stack=stack):  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    if not provision_vision_verdict_agent(catalog, workspace=workspace, stack=stack):
         return None
     support = catalog.get("vision-verdict")
     if support is None:
