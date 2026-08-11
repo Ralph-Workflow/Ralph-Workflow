@@ -63,6 +63,7 @@ from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
 from ralph.policy.validation import validate_agent_chains_satisfiable, validate_chain_agents_on_path
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.project_policy.policy_mode import PolicyMode
+from ralph.visual.judgement_tier import run_on_demand_judgement
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -1062,6 +1063,23 @@ app.command()(cleanup)
 app.command(name="contribute")(contribute)
 
 
+def visual_judgement(
+    target: Annotated[str, typer.Option("--target", help="Policy-declared visual target")],
+    intent: Annotated[str, typer.Option("--intent", help="Design intent for the vision verdict")],
+) -> None:
+    """Request non-blocking, operator-invoked visual judgement evidence."""
+    display = resolve_active_display(None, _get_cli_context())
+    result = run_on_demand_judgement(target, intent)
+    if result.blocker is not None:
+        display.emit_warning(f"visual judgement blocked: {result.blocker}")
+        raise typer.Exit(code=1)
+    display.emit_status(f"submitted on-demand design verdict {result.verdict_id} ({result.status})")
+    display.emit_status("on-demand visual judgement is not a blocking verification gate")
+
+
+app.command(name="visual-judgement")(visual_judgement)
+
+
 def smoke_interactive_claude(
     subagents: bool = typer.Option(
         False,
@@ -1868,6 +1886,7 @@ def handle_check_config(
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
         return 1
+
 
 
 if __name__ == "__main__":

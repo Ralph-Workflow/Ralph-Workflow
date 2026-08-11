@@ -160,6 +160,36 @@ class McpSession(Protocol):
         """Effective capability profile, falling back to ``model_identity`` when uncached."""
         ...
 
+    @property
+    def delegated_agent_id(self) -> str | None:
+        """Optional delegated caller identity for a single brokered call."""
+        ...
+
+    @property
+    def delegated_model_identity(self) -> MultimodalModelIdentity | None:
+        """Optional delegated model identity for a single brokered call."""
+        ...
+
+    @property
+    def delegated_capability_profile(self) -> ResolvedCapabilityProfile | None:
+        """Optional delegated capability profile for a single brokered call."""
+        ...
+
+    @property
+    def caller_agent_id(self) -> str:
+        """Resolved agent identity for the current brokered call."""
+        ...
+
+    @property
+    def caller_model_identity(self) -> MultimodalModelIdentity:
+        """Resolved model identity for the current brokered call."""
+        ...
+
+    @property
+    def caller_capability_profile(self) -> ResolvedCapabilityProfile:
+        """Resolved capability profile for the current brokered call."""
+        ...
+
     def check_capability(self, capability: str, /) -> object:
         """Return whether the session may use `capability` (approved/denied or structured)."""
         ...
@@ -223,6 +253,9 @@ class AgentSession:
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
     stored_capability_profile: ResolvedCapabilityProfile | None = field(default=None)
+    delegated_agent_id: str | None = field(default=None)
+    delegated_model_identity: MultimodalModelIdentity | None = field(default=None)
+    delegated_capability_profile: ResolvedCapabilityProfile | None = field(default=None)
     #: RFC-013 P3: broker-owned secret threaded into the run-scoped
     #: receipt / completion sentinel HMAC. ``None`` means the pre-P3
     #: contract (no HMAC enforcement). The broker process owns the
@@ -254,6 +287,25 @@ class AgentSession:
         if self.stored_capability_profile is not None:
             return self.stored_capability_profile
         return resolve_capability_profile(self.model_identity)
+
+    @property
+    def caller_agent_id(self) -> str:
+        """Return the delegate identity when set, otherwise the parent session identity."""
+        return self.delegated_agent_id or self.session_id
+
+    @property
+    def caller_model_identity(self) -> MultimodalModelIdentity:
+        """Return the delegate model identity when set, otherwise the parent identity."""
+        return self.delegated_model_identity or self.model_identity
+
+    @property
+    def caller_capability_profile(self) -> ResolvedCapabilityProfile:
+        """Resolve a fresh caller-specific profile for every ledgered tool call."""
+        if self.delegated_capability_profile is not None:
+            return self.delegated_capability_profile
+        if self.delegated_model_identity is not None:
+            return resolve_capability_profile(self.delegated_model_identity)
+        return self.capability_profile
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

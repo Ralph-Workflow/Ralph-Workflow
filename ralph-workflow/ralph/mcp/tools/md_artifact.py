@@ -6,6 +6,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs._plan_steps import step_number_map
@@ -20,6 +21,9 @@ from ralph.mcp.artifacts.md_draft_io import (
     md_draft_character_cap,
     save_md_draft,
 )
+from ralph.mcp.artifacts.plan_item_proof import is_ui_plan_item
+from ralph.mcp.multimodal.resources import parse_media_uri
+from ralph.mcp.server._wire_ledger import params_digest, wire_evidence_for
 from ralph.mcp.tools.artifact import (
     DEFAULT_ARTIFACT_HANDLER_DEPS,
     ArtifactHandlerDeps,
@@ -99,6 +103,9 @@ def handle_submit_md_artifact(
     artifact_type, content = _params(params)
     _write_draft(session, workspace, artifact_type, content, deps)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    diagnostics.extend(
+        _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
+    )
     diagnostics.extend(_planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps))
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
@@ -178,6 +185,9 @@ def handle_edit_md_artifact(
 
     save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, outcome.content)
+    diagnostics.extend(
+        _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
+    )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, outcome.content, deps)
     )
@@ -303,6 +313,9 @@ def handle_finalize_md_artifact(
             "or submit the complete document directly"
         )
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    diagnostics.extend(
+        _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
+    )
     diagnostics.extend(_planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps))
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
@@ -598,6 +611,207 @@ def _parse_with_overrides(
         return parsed_content, diagnostics, list(overridden)
     parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
     return parsed_content, diagnostics, []
+
+
+def _current_context_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    parsed_content: dict[str, object],
+    deps: ArtifactHandlerDeps | None,
+) -> list[Diagnostic]:
+    """Apply authenticated active-run evidence checks after structural parsing."""
+    session_run_id = _session_run_id(session)
+    if artifact_type == "design_verdict":
+        return _design_verdict_context_diagnostics(
+            session, workspace, parsed_content, session_run_id
+        )
+    if artifact_type == "development_result":
+        return _development_result_context_diagnostics(
+            session, workspace, parsed_content, session_run_id, deps
+        )
+    return []
+
+
+def _design_verdict_context_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    content: dict[str, object],
+    session_run_id: str | None,
+) -> list[Diagnostic]:
+    run_id = content.get("run_id")
+    if not isinstance(run_id, str) or session_run_id is None or run_id != session_run_id:
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV009",
+                "design verdict run_id must match the active session run",
+            )
+        ]
+    tier = content.get("judgement_tier")
+    if tier not in ("deterministic", "on-demand"):
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV010",
+                "design verdict must declare judgement_tier as deterministic or on-demand",
+            )
+        ]
+    verdict_id = content.get("verdict_id")
+    if not isinstance(verdict_id, str) or not verdict_id:
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV011",
+                "design verdict must declare a non-empty verdict_id for development-result proof",
+            )
+        ]
+    handles = _capture_handles(content)
+    if handles is None:
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV012",
+                "design verdict requires non-empty before_handles and after_handles",
+            )
+        ]
+    return _ledger_handle_diagnostics(session, workspace, session_run_id, handles, "DV013")
+
+
+def _development_result_context_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    content: dict[str, object],
+    session_run_id: str | None,
+    deps: ArtifactHandlerDeps | None,
+) -> list[Diagnostic]:
+    if content.get("status") != "completed":
+        return []
+    diagnostics: list[Diagnostic] = []
+    for key in ("plan_items_proven", "analysis_items_addressed"):
+        proofs = content.get(key)
+        if not isinstance(proofs, list):
+            continue
+        for proof in proofs:
+            if not isinstance(proof, dict):
+                continue
+            item_id = proof.get("plan_item") if key == "plan_items_proven" else ""
+            if not isinstance(item_id, str) or not is_ui_plan_item(item_id):
+                continue
+            verdict_id = proof.get("verdict_id")
+            handles_value = proof.get("capture_handles")
+            if not isinstance(verdict_id, str) or not isinstance(handles_value, tuple):
+                diagnostics.append(
+                    Diagnostic(
+                        1,
+                        "Plan Items Proven",
+                        "DEV011",
+                        "completed UI proof requires verdict_id plus before/after ralph://media handles",
+                    )
+                )
+                continue
+            if session_run_id is None or not _submitted_active_verdict_matches(
+                session, workspace, session_run_id, verdict_id, handles_value, deps
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        1,
+                        "Plan Items Proven",
+                        "DEV012",
+                        "completed UI proof must cite an active-run submitted design verdict and its handles",
+                    )
+                )
+                continue
+            diagnostics.extend(
+                _ledger_handle_diagnostics(session, workspace, session_run_id, handles_value, "DEV013")
+            )
+    return diagnostics
+
+
+def _capture_handles(content: dict[str, object]) -> tuple[str, ...] | None:
+    before = content.get("before_handles")
+    after = content.get("after_handles")
+    if not isinstance(before, tuple) or not isinstance(after, tuple) or not before or not after:
+        return None
+    return (*before, *after)
+
+
+def _ledger_handle_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    run_id: str,
+    handles: tuple[str, ...],
+    rule_id: str,
+) -> list[Diagnostic]:
+    workspace_root = _workspace_root(workspace)
+    secret = session.broker_secret
+    return [
+        Diagnostic(
+            1,
+            "Capture Provenance",
+            rule_id,
+            f"capture handle {handle!r} is not authenticated by the active run ledger",
+        )
+        for handle in handles
+        if parse_media_uri(handle) is None
+        or not _active_run_ledger_has_handle(workspace_root, run_id, secret, handle)
+    ]
+
+
+def _active_run_ledger_has_handle(
+    workspace_root: Path,
+    run_id: str,
+    secret: str | None,
+    handle: str,
+) -> bool:
+    candidates: tuple[tuple[str, dict[str, object]], ...] = (
+        ("read_media", {"path": handle}),
+        ("read_image", {"path": handle}),
+        ("resources/read", {"uri": handle}),
+    )
+    for tool_name, params in candidates:
+        if wire_evidence_for(
+            workspace_root,
+            run_id,
+            tool_name=tool_name,
+            secret=secret,
+            params_digest=params_digest(params),
+        ):
+            return True
+    return False
+
+
+def _submitted_active_verdict_matches(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    run_id: str | None,
+    verdict_id: str,
+    handles: tuple[str, ...],
+    deps: ArtifactHandlerDeps | None,
+) -> bool:
+    if run_id is None or not artifact_receipt_present(
+        _workspace_root(workspace),
+        run_id,
+        "design_verdict",
+        backend=(deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend,
+        receipt_secret=session.broker_secret,
+    ):
+        return False
+    artifact_path = _resolve_artifact_dir(session, workspace) / "design_verdict.md"
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    try:
+        verdict_content = backend.read_text(artifact_path, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        return False
+    parsed, diagnostics = parse_and_validate(verdict_content, get_spec("design_verdict"))
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return False
+    cited_handles = _capture_handles(parsed)
+    return parsed.get("verdict_id") == verdict_id and cited_handles == handles
 
 
 def _planning_finding_target_diagnostics(

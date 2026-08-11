@@ -66,7 +66,7 @@ Derived from typing_extensions.get_protocol_members() so adding a new
 
 
 def test_mcp_session_protocol_has_expected_member_count() -> None:
-    """The Protocol must declare 23 members (the production contract).
+    """The Protocol must declare 29 members (the production contract).
 
     Updated for RFC-013 P3: ``broker_secret`` is added to the
     surface so the broker-owned HMAC secret can be threaded through
@@ -77,8 +77,8 @@ def test_mcp_session_protocol_has_expected_member_count() -> None:
     attach one ``ExecResourceResolver`` per session/workspace pair.
     """
     members = _all_mcp_session_members()
-    assert len(members) == 23, (
-        f"McpSession expected to declare 23 members, found {len(members)}: {members}"
+    assert len(members) == 29, (
+        f"McpSession expected to declare 29 members, found {len(members)}: {members}"
     )
 
 
@@ -123,6 +123,9 @@ def test_file_backed_session_returns_sensible_values_for_all_properties(
         "broker_secret",
         "explore_index",
         "exec_resource_resolver",
+        "delegated_agent_id",
+        "delegated_model_identity",
+        "delegated_capability_profile",
     }
     for name in _all_mcp_session_members():
         if name in nullable:

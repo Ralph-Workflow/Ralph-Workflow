@@ -100,9 +100,9 @@ capture path.
   (`_TOTAL_TEST_BUDGET_SECONDS`) is immutable; the tier is
   redesigned when it does not fit.
 - **Judgement tier** — real renderer, real vision model, on demand.
-  Recorded as a dated artifact. Never a blocking gate (a
-  nondeterministic judge wired as a blocker is the exact failure
-  mode a later run weakens to green).
+  `ralph visual-judgement` makes this lane explicit. Recorded as a dated
+  artifact. Never a blocking gate (a nondeterministic judge wired as a
+  blocker is the exact failure mode a later run weakens to green).
 
 ### D8. Per-call agent attribution
 

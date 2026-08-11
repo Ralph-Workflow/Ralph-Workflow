@@ -97,6 +97,13 @@ failing step.
   enforces matrix parity; the agent must surface a ``blocked``
   verdict rather than retry with a fresh baseline.
 
+## Judgement tier
+
+The real-renderer and vision-model review is the ``on-demand`` judgement
+tier. It is recorded as a ``design_verdict`` artifact but is never a
+blocking verification gate; deterministic smoke validation only checks
+capture evidence transport and does not make a taste assertion.
+
 ## Failure semantics
 
 - A missing pre-change manifest → ``blocked`` with a single

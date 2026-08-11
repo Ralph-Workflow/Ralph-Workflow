@@ -50,11 +50,31 @@ def _one_item(document: ParsedDocument, name: str) -> str:
     return items[0]
 
 
-def _proof_items(document: ParsedDocument, name: str, key: str) -> list[dict[str, str]]:
+def _proof_items(document: ParsedDocument, name: str, key: str) -> list[dict[str, object]]:
     section = document.section(name)
     if section is None:
         return []
-    return [{key: item.identifier, "proof": item.text} for item in section.items]
+    proofs: list[dict[str, object]] = []
+    for item in section.items:
+        proof: dict[str, object] = {key: item.identifier, "proof": item.text}
+        fields = {
+            line.text.split(": ", 1)[0]: line.text.split(": ", 1)[1]
+            for line in item.fields
+            if ": " in line.text
+        }
+        verdict_id = fields.get("Verdict ID")
+        if verdict_id:
+            proof["verdict_id"] = verdict_id
+        capture_handles = tuple(
+            handle.strip()
+            for field_name in ("Before Captures", "After Captures")
+            for handle in fields.get(field_name, "").split(",")
+            if handle.strip()
+        )
+        if capture_handles:
+            proof["capture_handles"] = capture_handles
+        proofs.append(proof)
+    return proofs
 
 
 def _is_completed(document: ParsedDocument) -> bool:

@@ -17,12 +17,17 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
+from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.pydantic_validation_errors import format_validation_error_messages
 
 DESIGN_VERDICT_ARTIFACT_TYPE = "design_verdict"
 
 _STATUSES: tuple[Literal["pass", "fail", "blocked"], ...] = ("pass", "fail", "blocked")
+_JUDGEMENT_TIERS: tuple[Literal["deterministic", "on-demand"], ...] = (
+    "deterministic",
+    "on-demand",
+)
 
 
 class DesignVerdict(RalphBaseModel):
@@ -31,10 +36,14 @@ class DesignVerdict(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run_id: str = Field(..., min_length=1)
+    judgement_tier: str | None = None
+    verdict_id: str | None = None
     target: str = Field(..., min_length=1)
     before_id: str = Field(..., min_length=1)
     after_id: str = Field(..., min_length=1)
     cell_ids: list[str] = Field(..., min_length=1)
+    before_handles: tuple[str, ...] = Field(default_factory=tuple)
+    after_handles: tuple[str, ...] = Field(default_factory=tuple)
     intent: str = Field(..., min_length=1)
     status: str = Field(..., min_length=1)
     summary: str = Field(..., min_length=1)
@@ -45,6 +54,14 @@ class DesignVerdict(RalphBaseModel):
         if self.status not in _STATUSES:
             msg = f"status must be one of {list(_STATUSES)!r}"
             raise ValueError(msg)
+        if self.judgement_tier is not None and self.judgement_tier not in _JUDGEMENT_TIERS:
+            msg = f"judgement_tier must be one of {list(_JUDGEMENT_TIERS)!r}"
+            raise ValueError(msg)
+        for handle in (*self.before_handles, *self.after_handles):
+            if parse_media_uri(handle) is None:
+                raise ValueError(
+                    f"capture handle {handle!r} must be a ralph://media/{{artifact_id}} URI"
+                )
         return self
 
 

@@ -52,6 +52,10 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 _STATUSES: tuple[Literal["pass", "fail", "blocked"], ...] = ("pass", "fail", "blocked")
+_JUDGEMENT_TIERS: tuple[Literal["deterministic", "on-demand"], ...] = (
+    "deterministic",
+    "on-demand",
+)
 _FINDING_PARTS = 5
 _VERDICT_PARTS = 2
 _REGION_COORDINATES = 4
@@ -163,6 +167,7 @@ def _to_content(document: ParsedDocument) -> Content:
     """Map the parsed markdown document to the canonical content dict."""
     provenance = _required_section(document, "Capture Provenance")
     run_id = _required_provenance_field(provenance, "run_id")
+    judgement_tier = document.frontmatter.get("judgement_tier")
     target = _required_provenance_field(provenance, "target")
     before_id = _required_provenance_field(provenance, "before_id")
     after_id = _required_provenance_field(provenance, "after_id")
@@ -170,6 +175,17 @@ def _to_content(document: ParsedDocument) -> Content:
     cell_ids = [entry.strip() for entry in cell_ids_raw.split(",") if entry.strip()]
     if not cell_ids:
         raise ValueError("## Capture Provenance 'cell_ids:' must list at least one capture id")
+    verdict_id = _provenance_field(provenance, "verdict_id", allow_missing=True)
+    before_handles = tuple(
+        handle.strip()
+        for handle in _provenance_field(provenance, "before_handles", allow_missing=True).split(",")
+        if handle.strip()
+    )
+    after_handles = tuple(
+        handle.strip()
+        for handle in _provenance_field(provenance, "after_handles", allow_missing=True).split(",")
+        if handle.strip()
+    )
     intent = _one_item(document, "Design Intent")
     verdict_text = _one_item(document, "Verdict")
     verdict_parts = verdict_text.split(" | ", 1)
@@ -179,10 +195,14 @@ def _to_content(document: ParsedDocument) -> Content:
     findings = _parse_findings(_required_section(document, "Findings"))
     return {
         "run_id": run_id,
+        "judgement_tier": judgement_tier,
+        "verdict_id": verdict_id or None,
         "target": target,
         "before_id": before_id,
         "after_id": after_id,
         "cell_ids": cell_ids,
+        "before_handles": before_handles,
+        "after_handles": after_handles,
         "intent": intent,
         "status": status.strip(),
         "summary": summary.strip(),
@@ -332,6 +352,7 @@ DESIGN_VERDICT_SPEC = MdArtifactSpec(
     closed_frontmatter={
         "type": FrontmatterVocabulary((DESIGN_VERDICT_ARTIFACT_TYPE,), "DV001"),
         "status": FrontmatterVocabulary(_STATUSES, "DV002"),
+        "judgement_tier": FrontmatterVocabulary(_JUDGEMENT_TIERS, "DV009"),
     },
     sections={
         "Capture Provenance": SectionRule(required=True, allow_body=True),

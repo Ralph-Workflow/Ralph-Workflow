@@ -1,1 +1,1 @@
-{"capture_set_id":"after-set","cells":[{"id":"hero","artifact_id":"after-hero","path":"ralph://media/after-hero"},{"id":"content","artifact_id":"after-content","path":"ralph://media/after-content"}]}
+{"capture_set_id":"after-set","cells":[{"id":"hero","artifact_id":"after-hero","path":"ralph://media/after-hero","evidence_b64":"YWZ0ZXItaGVybw=="},{"id":"content","artifact_id":"after-content","path":"ralph://media/after-content","evidence_b64":"YWZ0ZXItY29udGVudA=="}]}

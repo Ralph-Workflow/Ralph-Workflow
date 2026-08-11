@@ -186,8 +186,9 @@ class ManagedAgentSessionRuntime:
             workspace_root=workspace_root,
             agents_policy=agents_policy,
         )
+        session_id = f"{request.session_id_prefix}-{uuid4().hex[:8]}"
         agent_session = AgentSession(
-            session_id=f"{request.session_id_prefix}-{uuid4().hex[:8]}",
+            session_id=session_id,
             run_id=str(uuid4()),
             drain=request.drain,
             capabilities=set(session_plan.capabilities),

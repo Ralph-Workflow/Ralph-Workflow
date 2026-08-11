@@ -35,6 +35,8 @@ from ralph.agents.delegation_capabilities import (
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.vision_agent_provisioning import (
     VISION_VERDICT_AGENT_NAME,
+    VisionVerdictDispatch,
+    dispatch_vision_verdict,
     is_vision_verdict_agent_registered,
     provision_vision_verdict_agent,
     vision_verdict_agent_support,
@@ -323,6 +325,34 @@ def test_delegation_capability_stance_is_complete_for_all_transports() -> None:
             "duplicate mechanisms would collapse two distinct transports onto the same dispatch path"
         )
         seen_mechanisms[mechanism] = entry.transport
+
+
+def test_delegated_vision_verdict_is_attributed_to_the_subagent() -> None:
+    dispatched: list[VisionVerdictDispatch] = []
+
+    def invoke(request: VisionVerdictDispatch) -> str:
+        dispatched.append(request)
+        return "verdict-1"
+
+    verdict_id = dispatch_vision_verdict(
+        target="fixture-ui",
+        intent="Improve hierarchy",
+        before_handles=("ralph://media/before",),
+        after_handles=("ralph://media/after",),
+        delegated_agent_id="vision-verdict-123",
+        invoke=invoke,
+    )
+
+    assert verdict_id == "verdict-1"
+    assert dispatched == [
+        VisionVerdictDispatch(
+            target="fixture-ui",
+            intent="Improve hierarchy",
+            before_handles=("ralph://media/before",),
+            after_handles=("ralph://media/after",),
+            delegated_agent_id="vision-verdict-123",
+        )
+    ]
 
 
 # Marker so the file is recognized as a test module by ``pytest

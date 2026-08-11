@@ -39,6 +39,7 @@ def _build_document(
         "cap-002 | 0,0,320,160 | stacking | info | Stack order is icon-then-label.",
     ),
     run_id: str = "2026-08-10-001",
+    judgement_tier: str = "deterministic",
     target: str = "src/components/header.tsx",
     before_id: str = "manifest-before-001",
     after_id: str = "manifest-after-001",
@@ -48,6 +49,7 @@ def _build_document(
     return (
         "---\n"
         "type: design_verdict\n"
+        f"judgement_tier: {judgement_tier}\n"
         "---\n"
         "\n"
         "## Capture Provenance\n"
@@ -109,6 +111,7 @@ def test_canonical_content_is_extracted_from_a_valid_document() -> None:
     assert [d for d in diagnostics if d.severity == "error"] == []
     content_dict = content
     assert content_dict["run_id"] == "2026-08-10-001"
+    assert content_dict["judgement_tier"] == "deterministic"
     assert content_dict["target"] == "src/components/header.tsx"
     assert content_dict["before_id"] == "manifest-before-001"
     assert content_dict["after_id"] == "manifest-after-001"

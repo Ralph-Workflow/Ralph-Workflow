@@ -229,6 +229,83 @@ def test_wire_evidence_scoped_to_run_id(tmp_path: Path) -> None:
     assert wire_evidence_for(tmp_path, "run-b", secret="s3cr3t") is False
 
 
+def test_delegated_media_call_derives_and_seals_its_caller_identity(tmp_path: Path) -> None:
+    """S-5: each delegate's media call is sealed under its own identity/profile."""
+    parent = McpServer(
+        session=_session(
+            "run-1",
+            broker_secret="s3cr3t",
+            model_identity=MultimodalModelIdentity(provider="openai", model_id="parent-model"),
+        ),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    delegate = McpServer(
+        session=AgentSession(
+            session_id="parent-session",
+            run_id="run-1",
+            drain="development",
+            broker_secret="s3cr3t",
+            model_identity=MultimodalModelIdentity(provider="openai", model_id="parent-model"),
+            delegated_agent_id="vision-verdict-1",
+            delegated_model_identity=MultimodalModelIdentity(
+                provider="anthropic", model_id="vision-model"
+            ),
+        ),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="tools/call",
+        msg_id="1",
+        params={"name": "read_image", "arguments": {"path": "capture.png"}},
+    )
+
+    parent.handle_request(request, ServerState.RUNNING)
+    delegate.handle_request(request, ServerState.RUNNING)
+
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / WIRE_LEDGER_RELPATH).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["agent_id"] for row in rows] == ["sess-1", "vision-verdict-1"]
+    assert [row["model_id"] for row in rows] == ["parent-model", "vision-model"]
+    assert rows[1]["capability_profile_digest"] != rows[0]["capability_profile_digest"]
+    assert verify_chain(tmp_path, "s3cr3t") is True
+
+
+def test_wire_evidence_can_be_scoped_to_the_delegated_agent(tmp_path: Path) -> None:
+    append_wire_record(
+        tmp_path,
+        method="tools/call",
+        tool_name="read_image",
+        params={"path": "before.png"},
+        run_id="run-1",
+        secret="s3cr3t",
+        agent_id="parent-1",
+    )
+    append_wire_record(
+        tmp_path,
+        method="tools/call",
+        tool_name="read_image",
+        params={"path": "after.png"},
+        run_id="run-1",
+        secret="s3cr3t",
+        agent_id="vision-verdict-1",
+    )
+
+    assert wire_evidence_for(
+        tmp_path, "run-1", tool_name="read_image", agent_id="vision-verdict-1", secret="s3cr3t"
+    ) is True
+    assert wire_evidence_for(
+        tmp_path, "run-1", tool_name="read_image", agent_id="parent-1", secret="s3cr3t"
+    ) is True
+    assert wire_evidence_for(
+        tmp_path, "run-1", tool_name="read_image", agent_id="unrelated-agent", secret="s3cr3t"
+    ) is False
+
+
 def test_unsigned_server_writes_no_ledger_record(tmp_path: Path) -> None:
     """A5: RALPH_BROKER_SECRET unset -> no ledger record, never grades WIRE."""
     _dispatch_tools_call(tmp_path, run_id="run-1", broker_secret=None)

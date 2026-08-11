@@ -42,12 +42,15 @@ to audit.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.agents.builtin_spec import vision_verdict_agent_spec
 from ralph.project_policy.evidence import design_system_required
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.agents.catalog import AgentCatalog
     from ralph.agents.support import AgentSupport
     from ralph.language_detector.models import ProjectStack
@@ -59,6 +62,51 @@ if TYPE_CHECKING:
 #: surface area; it is the lookup key callers use when they ask the
 #: catalog for the vision-verdict support.
 VISION_VERDICT_AGENT_NAME: str = "vision-verdict"
+
+
+@dataclass(frozen=True)
+class VisionVerdictDispatch:
+    """The brokered evidence request attributed to one vision subagent."""
+
+    target: str
+    intent: str
+    before_handles: tuple[str, ...]
+    after_handles: tuple[str, ...]
+    delegated_agent_id: str
+    timeout_seconds: float = 5.0
+
+    def __post_init__(self) -> None:
+        if not all((self.target.strip(), self.intent.strip(), self.delegated_agent_id.strip())):
+            raise ValueError("vision dispatch requires target, intent, and delegated agent identity")
+        if not self.before_handles or not self.after_handles:
+            raise ValueError("vision dispatch requires before and after capture evidence")
+        if self.timeout_seconds <= 0:
+            raise ValueError("vision dispatch timeout must be positive")
+
+
+def dispatch_vision_verdict(
+    *,
+    target: str,
+    intent: str,
+    before_handles: tuple[str, ...],
+    after_handles: tuple[str, ...],
+    delegated_agent_id: str,
+    invoke: Callable[[VisionVerdictDispatch], str],
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Dispatch a ledger-bound vision verdict through the caller's broker seam."""
+    request = VisionVerdictDispatch(
+        target=target,
+        intent=intent,
+        before_handles=before_handles,
+        after_handles=after_handles,
+        delegated_agent_id=delegated_agent_id,
+        timeout_seconds=timeout_seconds,
+    )
+    verdict_id = invoke(request)
+    if not verdict_id.strip():
+        raise ValueError("vision verdict dispatch returned no submitted verdict identifier")
+    return verdict_id
 
 #: Citation string for the design-system policy. The provisioning
 #: predicate consults :func:`ralph.project_policy.evidence.design_system_required`
@@ -201,6 +249,8 @@ def is_vision_verdict_agent_registered(catalog: AgentCatalog) -> bool:
 
 __all__ = [
     "VISION_VERDICT_AGENT_NAME",
+    "VisionVerdictDispatch",
+    "dispatch_vision_verdict",
     "is_design_system_policy_in_scope",
     "is_vision_verdict_agent_registered",
     "provision_vision_verdict_agent",

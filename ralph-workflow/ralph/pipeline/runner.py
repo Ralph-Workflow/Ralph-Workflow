@@ -157,6 +157,8 @@ from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
 from ralph.recovery.classifier import FailureContext
 from ralph.telemetry._sentry import record_phase_execution
+from ralph.visual.capture_lifecycle import CaptureLifecycle
+from ralph.visual.capture_set import CaptureSet
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
@@ -221,6 +223,7 @@ __all__ = [
     "resolve_display",
     "resolve_workspace_scope",
     "run_process_async",
+    "run_visual_capture_lifecycle",
     "shutdown_mcp_server",
     "skipped_exhausted_analysis_info",
     "start_mcp_server",
@@ -439,6 +442,136 @@ def execute_effect_with_optional_display(
     )
 
 
+def run_visual_capture_lifecycle(
+    *,
+    lifecycle: CaptureLifecycle,
+    target: str,
+    matrix_key: str,
+    design_capture_command: str,
+    capture: Callable[[], CaptureSet],
+    invoke_agent: Callable[[], Event],
+) -> tuple[Event, CaptureSet, CaptureSet]:
+    """Capture an immutable baseline, invoke the agent, then capture a fresh matrix.
+
+    The caller supplies the policy-bound capture operation.  A retained baseline
+    is reused on retry; the after set must be a new capture run with identical
+    matrix coverage before it can be compared by a visual verdict.
+    """
+    before = lifecycle.get_retained_before_set(target=target, matrix_key=matrix_key)
+    if before is None:
+        before = capture()
+        lifecycle.capture_before_set(
+            target=target,
+            capture_set=before,
+            matrix_key=matrix_key,
+            design_capture_command=design_capture_command,
+        )
+    agent_result = invoke_agent()
+    after = capture()
+    if after.run_id == before.run_id:
+        raise ValueError("visual after capture must be fresh, not the retained baseline run")
+    if after.target != before.target or after.cell_ids != before.cell_ids:
+        raise ValueError("visual after capture must have identical matrix coverage to before")
+    return agent_result, before, after
+
+
+def _run_policy_declared_visual_capture(
+    *,
+    workspace_root: Path,
+    run_id: str | None,
+    cycle_id: str,
+    invoke_agent: Callable[[], Event],
+    env_getter: EnvGetter = os.environ.get,
+) -> Event:
+    """Run policy-declared before/after capture around one development invocation.
+
+    An unavailable renderer, absent capture policy, or unsigned session is a
+    visible visual-review blocker.  It never manufactures a CaptureSet and it
+    does not prevent a non-visual development task from proceeding.
+    """
+    if run_id is None:
+        logger.warning("visual-review blocked: development invocation has no run id")
+        return invoke_agent()
+    secret = env_getter("RALPH_BROKER_SECRET")
+    if secret is None:
+        logger.warning("visual-review blocked: no broker secret for ledger-backed capture")
+        return invoke_agent()
+    from ralph.mcp.server._wire_ledger import wire_evidence_for
+    from ralph.mcp.tools.workspace._media_capture import (
+        MediaCaptureError,
+        handle_media_capture,
+    )
+    from ralph.visual.capture_lifecycle import compute_matrix_key
+    from ralph.visual.capture_request import CaptureRequest
+    from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
+
+    try:
+        facts = parse_policy_facts(
+            (workspace_root / DESIGN_SYSTEM_POLICY_RELPATH).read_text(encoding="utf-8")
+        )
+        request = CaptureRequest.build(
+            target=facts.target,
+            viewports=facts.viewports,
+            themes=facts.themes,
+            states=facts.states,
+        )
+        matrix_key = compute_matrix_key(
+            viewports=facts.viewports, themes=facts.themes, states=facts.states
+        )
+    except (OSError, ValueError) as exc:
+        logger.warning("visual-review blocked: no policy-declared web capture: {}", exc)
+        return invoke_agent()
+
+    def capture() -> CaptureSet:
+        capture_run_id = str(uuid.uuid4())
+        result = handle_media_capture(
+            workspace_root,
+            run_id=capture_run_id,
+            capture_request=request,
+            design_capture_command=facts.design_capture_command,
+            secret=secret,
+        )
+        if not wire_evidence_for(
+            workspace_root,
+            capture_run_id,
+            tool_name="media_capture",
+            secret=secret,
+        ):
+            raise MediaCaptureError(
+                target=facts.target,
+                cell_id="",
+                reason="capture completed without authentic wire-ledger provenance",
+            )
+        return CaptureSet(
+            target=result.target,
+            cells=tuple(cell.cell for cell in result.cells),
+            run_id=capture_run_id,
+        )
+
+    agent_result: Event | None = None
+
+    def invoke_and_remember() -> Event:
+        nonlocal agent_result
+        agent_result = invoke_agent()
+        return agent_result
+
+    try:
+        result, _before, _after = run_visual_capture_lifecycle(
+            lifecycle=CaptureLifecycle(workspace_root, run_id=run_id, cycle_id=cycle_id),
+            target=facts.target,
+            matrix_key=matrix_key,
+            design_capture_command=facts.design_capture_command,
+            capture=capture,
+            invoke_agent=invoke_and_remember,
+        )
+    except (MediaCaptureError, ValueError) as exc:
+        logger.warning("visual-review blocked: {}", exc)
+        if agent_result is not None:
+            return agent_result
+        return invoke_agent()
+    return result
+
+
 def _invoke_execute_effect_with_optional_display(
     effect: Effect,
     config: UnifiedConfig,
@@ -490,7 +623,7 @@ def _invoke_execute_effect_with_optional_display(
         except Exception as exc:
             logger.debug("before_agent_refresh skipped: %s", exc)
 
-    try:
+    def invoke_agent() -> Event:
         return execute_effect_with_optional_display(
             effect,
             config,
@@ -503,6 +636,16 @@ def _invoke_execute_effect_with_optional_display(
             pipeline_deps=pipeline_deps,
             run_id=run_id,
         )
+
+    try:
+        if should_refresh:
+            return _run_policy_declared_visual_capture(
+                workspace_root=workspace_scope.root,
+                run_id=run_id,
+                cycle_id=pre_phase_drain or "development",
+                invoke_agent=invoke_agent,
+            )
+        return invoke_agent()
     finally:
         if should_refresh:
             after_index: object = getattr(pre_workspace_obj, "explore_index", None)

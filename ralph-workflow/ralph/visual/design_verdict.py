@@ -29,6 +29,9 @@ Validation rejects:
 
 from __future__ import annotations
 
+import base64
+import binascii
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ralph.visual.capture_set import CaptureSet
@@ -99,6 +102,44 @@ _INPUT_SMUGGLE_FRAGMENTS: tuple[str, ...] = (
 )
 
 _INTENT_MAX_LEN: int = 16 * 1024
+
+
+def _fixture_capture_bytes(capture: Mapping[str, object], label: str) -> tuple[bytes, ...]:
+    """Read fixture capture bytes for deterministic smoke validation only."""
+    cells = capture.get("cells")
+    if not isinstance(cells, list) or not cells:
+        raise ValueError(f"{label} capture evidence is required")
+    evidence: list[bytes] = []
+    for cell in cells:
+        if not isinstance(cell, Mapping):
+            raise ValueError(f"{label} capture evidence is required")
+        encoded = cell.get("evidence_b64")
+        if not isinstance(encoded, str):
+            raise ValueError(f"{label} capture evidence is required")
+        try:
+            evidence.append(base64.b64decode(encoded, validate=True))
+        except binascii.Error as exc:
+            raise ValueError(f"{label} capture evidence must be base64") from exc
+    return tuple(evidence)
+
+
+def validate_deterministic_capture_evidence(
+    before: Mapping[str, object],
+    after: Mapping[str, object],
+    verdict: Mapping[str, object],
+) -> None:
+    """Reject deterministic verdicts without captures or changed fixture bytes.
+
+    This checks evidence transport only. It deliberately makes no visual-quality
+    or taste judgement.
+    """
+    handles = verdict.get("cell_handles")
+    if not isinstance(handles, list) or not handles:
+        raise ValueError("capture handles are required")
+    before_bytes = _fixture_capture_bytes(before, "before")
+    after_bytes = _fixture_capture_bytes(after, "after")
+    if verdict.get("visual_verdict") == "improved" and before_bytes == after_bytes:
+        raise ValueError("an improved verdict requires non-byte-identical before/after evidence")
 
 
 # ---------------------------------------------------------------------------
@@ -371,4 +412,5 @@ __all__ = [
     "VERDICT_PASS",
     "VERDICT_VALUES",
     "DesignVerdict",
+    "validate_deterministic_capture_evidence",
 ]

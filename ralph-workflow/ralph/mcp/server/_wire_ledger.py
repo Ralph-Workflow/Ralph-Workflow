@@ -90,6 +90,7 @@ class WireLedgerRecord:
     provider: str | None = None
     model_id: str | None = None
     agent_id: str | None = None
+    capability_profile_digest: str | None = None
 
     def to_json_line(self) -> str:
         payload: dict[str, object] = {
@@ -112,6 +113,8 @@ class WireLedgerRecord:
             payload["model_id"] = self.model_id
         if self.agent_id is not None:
             payload["agent_id"] = self.agent_id
+        if self.capability_profile_digest is not None:
+            payload["capability_profile_digest"] = self.capability_profile_digest
         return json.dumps(payload, sort_keys=True)
 
 
@@ -147,6 +150,7 @@ def _record_hmac(
     provider: str | None = None,
     model_id: str | None = None,
     agent_id: str | None = None,
+    capability_profile_digest: str | None = None,
 ) -> str:
     """Compute the HMAC-SHA256 binding one ledger record to ``secret``.
 
@@ -173,6 +177,8 @@ def _record_hmac(
         msg += f"\nmodel_id={model_id}".encode()
     if agent_id is not None:
         msg += f"\nagent_id={agent_id}".encode()
+    if capability_profile_digest is not None:
+        msg += f"\ncapability_profile_digest={capability_profile_digest}".encode()
     return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
 
 
@@ -283,6 +289,7 @@ def append_wire_record(
     provider: str | None = None,
     model_id: str | None = None,
     agent_id: str | None = None,
+    capability_profile_digest: str | None = None,
 ) -> WireLedgerRecord | None:
     """Append one HMAC-chained record for a dispatched JSON-RPC frame.
 
@@ -344,6 +351,7 @@ def append_wire_record(
             provider=provider,
             model_id=model_id,
             agent_id=agent_id,
+            capability_profile_digest=capability_profile_digest,
         )
         record = WireLedgerRecord(
             method=method,
@@ -357,6 +365,7 @@ def append_wire_record(
             provider=provider,
             model_id=model_id,
             agent_id=agent_id,
+            capability_profile_digest=capability_profile_digest,
         )
         # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
         with ledger_path.open("a", encoding="utf-8") as handle:
@@ -410,10 +419,16 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
         provider_raw = row.get("provider")
         model_id_raw = row.get("model_id")
         agent_id_raw = row.get("agent_id")
+        capability_profile_digest_raw = row.get("capability_profile_digest")
         delivery_mode = delivery_mode_raw if isinstance(delivery_mode_raw, str) else None
         provider = provider_raw if isinstance(provider_raw, str) else None
         model_id = model_id_raw if isinstance(model_id_raw, str) else None
         agent_id = agent_id_raw if isinstance(agent_id_raw, str) else None
+        capability_profile_digest = (
+            capability_profile_digest_raw
+            if isinstance(capability_profile_digest_raw, str)
+            else None
+        )
         expected = _record_hmac(
             secret,
             method=method,
@@ -426,6 +441,7 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
             provider=provider,
             model_id=model_id,
             agent_id=agent_id,
+            capability_profile_digest=capability_profile_digest,
         )
         if not hmac.compare_digest(stored_hmac, expected):
             return False
@@ -440,6 +456,7 @@ def wire_evidence_for(
     tool_name: str | None = None,
     secret: str | None,
     params_digest: str | None = None,
+    agent_id: str | None = None,
 ) -> bool:
     """Return ``True`` iff a verified ``tools/call`` record backs ``run_id``.
 
@@ -472,6 +489,8 @@ def wire_evidence_for(
             row_digest = row.get("params_digest")
             if not isinstance(row_digest, str) or row_digest != params_digest:
                 continue
+        if agent_id is not None and row.get("agent_id") != agent_id:
+            continue
         if tool_name is None:
             return True
         row_tool = row.get("tool_name")

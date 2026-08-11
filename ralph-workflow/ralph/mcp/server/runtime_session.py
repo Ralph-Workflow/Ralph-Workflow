@@ -399,6 +399,43 @@ class FileBackedSession:
             return profile_from_payload(raw)
         return None
 
+    @property
+    def delegated_agent_id(self) -> str | None:
+        raw = self._load().get("delegated_agent_id")
+        return raw if isinstance(raw, str) and raw else None
+
+    @property
+    def delegated_model_identity(self) -> MultimodalModelIdentity | None:
+        raw = self._load().get("delegated_model_identity")
+        if not isinstance(raw, dict):
+            return None
+        return MultimodalModelIdentity(
+            provider=str(raw.get("provider", "unknown")),
+            model_id=str(raw["model_id"]) if raw.get("model_id") is not None else None,
+            transport=str(raw["transport"]) if raw.get("transport") is not None else None,
+        )
+
+    @property
+    def delegated_capability_profile(self) -> ResolvedCapabilityProfile | None:
+        raw = self._load().get("delegated_capability_profile")
+        return profile_from_payload(raw) if isinstance(raw, dict) else None
+
+    @property
+    def caller_agent_id(self) -> str:
+        return self.delegated_agent_id or self.session_id
+
+    @property
+    def caller_model_identity(self) -> MultimodalModelIdentity:
+        return self.delegated_model_identity or self.model_identity
+
+    @property
+    def caller_capability_profile(self) -> ResolvedCapabilityProfile:
+        if self.delegated_capability_profile is not None:
+            return self.delegated_capability_profile
+        if self.delegated_model_identity is not None:
+            return resolve_capability_profile(self.delegated_model_identity)
+        return self.capability_profile or resolve_capability_profile(self.model_identity)
+
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
 

@@ -1,1 +1,1 @@
-{"capture_set_id":"before-set","cells":[{"id":"hero","artifact_id":"before-hero","path":"ralph://media/before-hero"},{"id":"content","artifact_id":"before-content","path":"ralph://media/before-content"}]}
+{"capture_set_id":"before-set","cells":[{"id":"hero","artifact_id":"before-hero","path":"ralph://media/before-hero","evidence_b64":"YmVmb3JlLWhlcm8="},{"id":"content","artifact_id":"before-content","path":"ralph://media/before-content","evidence_b64":"YmVmb3JlLWNvbnRlbnQ="}]}

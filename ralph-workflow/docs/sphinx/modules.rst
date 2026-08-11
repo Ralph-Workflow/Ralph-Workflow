@@ -4176,6 +4176,13 @@ ralph.visual.design_verdict
    :members:
    :show-inheritance:
 
+ralph.visual.judgement_tier
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.judgement_tier
+   :members:
+   :show-inheritance:
+
 ralph.visual.policy_facts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
