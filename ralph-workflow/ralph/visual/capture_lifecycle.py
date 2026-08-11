@@ -524,7 +524,7 @@ class CaptureLifecycle:
         capture set is empty or the matrix_key does not match the
         set's cell coverage.
         """
-        self._validate_capture_set_against_matrix(
+        capture_set = self._validate_capture_set_against_matrix(
             capture_set=capture_set, target=target, matrix_key=matrix_key,
         )
 
@@ -674,10 +674,10 @@ class CaptureLifecycle:
     def _validate_capture_set_against_matrix(
         self,
         *,
-        capture_set: CaptureSet,
+        capture_set: object,
         target: str,
         matrix_key: str,
-    ) -> None:
+    ) -> CaptureSet:
         self._validate_lookup_keys(target=target, matrix_key=matrix_key)
         if not isinstance(capture_set, CaptureSet):
             raise BaselineStorageError(
@@ -689,6 +689,7 @@ class CaptureLifecycle:
                 f"capture_set.target={capture_set.target!r} does not match "
                 f"requested target={target!r}"
             )
+        return capture_set
 
 
 __all__ = [
