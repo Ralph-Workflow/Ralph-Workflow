@@ -4245,3 +4245,24 @@ ralph.mcp._model_flag_parser
 .. automodule:: ralph.mcp._model_flag_parser
    :members:
    :show-inheritance:
+
+ralph.visual.on_demand_capture_evidence
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.on_demand_capture_evidence
+   :members:
+   :show-inheritance:
+
+ralph.visual.on_demand_judgement_deps
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.on_demand_judgement_deps
+   :members:
+   :show-inheritance:
+
+ralph.visual.on_demand_judgement_result
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.on_demand_judgement_result
+   :members:
+   :show-inheritance:

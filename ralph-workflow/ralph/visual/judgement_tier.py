@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from ralph.agents.vision_agent_provisioning import dispatch_vision_verdict
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from ralph.agents.vision_agent_provisioning import VisionVerdictDispatch
+from ralph.visual.on_demand_capture_evidence import OnDemandCaptureEvidence
+from ralph.visual.on_demand_judgement_deps import OnDemandJudgementDeps
+from ralph.visual.on_demand_judgement_result import OnDemandJudgementResult
 
 
 class JudgementTier(StrEnum):
@@ -24,48 +20,6 @@ class JudgementTier(StrEnum):
     def is_blocking(self) -> bool:
         """Return whether this tier belongs in the verification gate."""
         return self is JudgementTier.DETERMINISTIC
-
-    @dataclass(frozen=True)
-    class OnDemandJudgementResult:
-        verdict_id: str | None = None
-        status: str | None = None
-        blocker: str | None = None
-
-        def __post_init__(self) -> None:
-            submitted = self.verdict_id is not None or self.status is not None
-            if submitted == (self.blocker is not None):
-                raise ValueError("on-demand judgement must return a verdict or an actionable blocker")
-            if submitted and (not self.verdict_id or not self.status):
-                raise ValueError("submitted on-demand judgement requires verdict_id and status")
-            if self.blocker is not None and not self.blocker.strip():
-                raise ValueError("on-demand judgement blocker must be non-empty")
-
-    @dataclass(frozen=True)
-    class OnDemandCaptureEvidence:
-        before_handles: tuple[str, ...]
-        after_handles: tuple[str, ...]
-
-        def __post_init__(self) -> None:
-            if not self.before_handles or not self.after_handles:
-                raise ValueError("on-demand judgement requires retained and fresh capture evidence")
-
-    @dataclass(frozen=True)
-    class OnDemandJudgementDeps:
-        load_retained_capture: Callable[[str], tuple[str, ...]]
-        load_fresh_capture: Callable[[str], tuple[str, ...]]
-        delegated_agent_id: Callable[[], str | None]
-        invoke_vision: Callable[[VisionVerdictDispatch], str]
-        validate_submission: Callable[[str, JudgementTier.OnDemandCaptureEvidence, str], bool]
-        timeout_seconds: float = 5.0
-
-        def __post_init__(self) -> None:
-            if self.timeout_seconds <= 0:
-                raise ValueError("on-demand judgement timeout must be positive")
-
-
-OnDemandJudgementResult = JudgementTier.OnDemandJudgementResult
-OnDemandCaptureEvidence = JudgementTier.OnDemandCaptureEvidence
-OnDemandJudgementDeps = JudgementTier.OnDemandJudgementDeps
 
 
 def run_on_demand_judgement(
