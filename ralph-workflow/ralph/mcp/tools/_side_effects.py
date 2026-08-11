@@ -93,6 +93,7 @@ REGISTRY: dict[str, SideEffectContract] = {
     "ralph_get_md_draft": _contract("ralph_get_md_draft", "read"),
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
+    "media_capture": _contract("media_capture", "mutate"),
     # Indexed exploration tools (Phase 1).
     "ralph_index_status": _contract("ralph_index_status", "read"),
     # A reindex may write to the SQLite index inside the workspace,

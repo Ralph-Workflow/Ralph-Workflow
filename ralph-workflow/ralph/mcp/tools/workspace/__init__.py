@@ -10,6 +10,7 @@ from __future__ import annotations
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
 from ralph.mcp.tools.workspace._list_ops import list_dir_flat, match_glob
+from ralph.mcp.tools.workspace._media_capture import handle_media_capture_tool
 from ralph.mcp.tools.workspace._media_handlers import (
     handle_read_image,
     handle_read_media,
@@ -73,6 +74,7 @@ __all__ = [
     "handle_list_allowed_roots",
     "handle_list_directory",
     "handle_list_directory_recursive",
+    "handle_media_capture_tool",
     "handle_move_file",
     "handle_read_file",
     "handle_read_image",

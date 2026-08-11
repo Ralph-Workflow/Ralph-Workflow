@@ -295,6 +295,7 @@ SWEEP_CALLS: dict[str, dict[str, Any]] = {
     # `tests/integration/test_multimodal_end_to_end_linkage.py`.
     RalphToolName.READ_MEDIA: {"path": "screenshot.png"},
     RalphToolName.READ_IMAGE: {"path": "screenshot.png"},
+    RalphToolName.MEDIA_CAPTURE: {"target": "checkout"},
     RalphToolName.COPY_FILE: {"src": "sweep_moved.txt", "dest": "sweep_copy.txt"},
     RalphToolName.DELETE_PATH: {"path": "sweep_copy.txt"},
     # Git read. The repo may or may not be initialized; both cases

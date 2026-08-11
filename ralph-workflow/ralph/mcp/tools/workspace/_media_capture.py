@@ -35,6 +35,7 @@ state.
 from __future__ import annotations
 
 import hashlib
+import json
 import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -50,9 +51,14 @@ from ralph.mcp.multimodal.resources import (
 )
 from ralph.mcp.server._wire_ledger import append_wire_record
 from ralph.visual.capture_request import CaptureRequest
+from ralph.visual.policy_facts import parse_policy_facts
+
+_CAPTURE_POLICY_RELPATH: str = "docs/ralph-workflow-policy/design-system-policy.md"
 
 if TYPE_CHECKING:
+    from ralph.mcp.tools.coordination import CoordinationSessionLike
     from ralph.visual.capture_cell import CaptureCell
+    from ralph.workspace.protocol import Workspace
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -424,6 +430,76 @@ def handle_media_capture(
     )
 
 
+def handle_media_capture_tool(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    params: dict[str, object],
+) -> object:
+    """Capture the matrix declared by the managed repository's design policy.
+
+    The MCP boundary deliberately accepts only a target. Renderer command,
+    viewports, themes, and states come from the resolved design-system policy,
+    never caller-provided values. This prevents an agent from minting a
+    screenshot-shaped artifact outside the declared visual-review contract.
+    """
+    from ralph.mcp.tools.coordination import (
+        InvalidParamsError,
+        ToolContent,
+        ToolResult,
+        require_capability,
+    )
+    from ralph.mcp.tools.workspace._utils import MEDIA_READ_CAPABILITY
+
+    require_capability(session, MEDIA_READ_CAPABILITY, "Media capture")
+    target = params.get("target")
+    if not isinstance(target, str) or not target.strip():
+        raise InvalidParamsError("media_capture requires a non-empty target")
+    if session.broker_secret is None:
+        raise InvalidParamsError(
+            "media_capture requires a broker secret so every capture is wire-ledger-backed"
+        )
+    workspace_root = Path(workspace.absolute_path(""))
+    try:
+        policy_markdown = workspace.read(_CAPTURE_POLICY_RELPATH)
+        facts = parse_policy_facts(policy_markdown, target=target)
+    except (OSError, ValueError) as exc:
+        raise InvalidParamsError(
+            "media_capture requires a resolved design-system policy with declared "
+            f"renderer and matrix facts: {exc}"
+        ) from exc
+    request = CaptureRequest.build(
+        target=facts.target,
+        viewports=facts.viewports,
+        themes=facts.themes,
+        states=facts.states,
+    )
+    result = handle_media_capture(
+        workspace_root,
+        run_id=session.run_id,
+        capture_request=request,
+        design_capture_command=facts.design_capture_command,
+        secret=session.broker_secret,
+    )
+    payload = {
+        "target": result.target,
+        "matrix_key": result.matrix_key,
+        "captures": [
+            {
+                "cell_id": cell.cell.cell_id,
+                "uri": cell.uri,
+                "sha256": cell.sha256,
+                "width": cell.width,
+                "height": cell.height,
+            }
+            for cell in result.cells
+        ],
+    }
+    return ToolResult(
+        content=[ToolContent.text_content(json.dumps(payload, separators=(",", ":")))],
+        is_error=False,
+    )
+
+
 def _matrix_key_for(capture_request: CaptureRequest) -> str:
     """Compute the matrix key for a capture request from its declared axes."""
     # Local import keeps the public module surface narrow and avoids
@@ -458,6 +534,10 @@ def _capture_one_cell(
     ledger once every cell has validated.
     """
     cell_output_abs = _cell_output_path(output_dir_abs=output_dir_abs, cell_id=cell.cell_id)
+    # A successful renderer must create this cell anew. Remove any prior
+    # output so a no-op renderer cannot relabel a stale capture with a fresh URI.
+    if cell_output_abs.exists() or cell_output_abs.is_symlink():
+        cell_output_abs.unlink()
     # The handler owns the contract that the renderer writes to a
     # path under the workspace root.  Validate the path up front so
     # a symlink inside the output dir cannot escape the boundary
@@ -642,4 +722,6 @@ __all__ = [
     "MediaCaptureCellResult",
     "MediaCaptureError",
     "MediaCaptureResult",
+    "handle_media_capture",
+    "handle_media_capture_tool",
 ]

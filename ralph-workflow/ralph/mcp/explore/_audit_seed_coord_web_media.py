@@ -176,6 +176,21 @@ _SEED_COORD_WEB_MEDIA: tuple[AuditEntry, ...] = (
         ),
     ),
     AuditEntry(
+        tool=RalphToolName.MEDIA_CAPTURE,
+        family=AuditFamily.MEDIA,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "media_capture accepts only a policy-declared target and emits "
+            "a complete server-minted capture matrix or a visible blocker; "
+            "the response carries bounded handles and metadata."
+        ),
+        counters=_counters(
+            transcript_tokens=256,
+            returned_bytes=1024,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
         tool=RalphToolName.RALPH_INDEX_STATUS,
         family=AuditFamily.METADATA,
         outcome=AuditOutcome.KEEP,

@@ -10,6 +10,7 @@ from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
     DOWNLOAD_URL_TOOL,
+    MEDIA_CAPTURE_TOOL,
     READ_IMAGE_TOOL,
     READ_MEDIA_TOOL,
     VISIT_URL_TOOL,
@@ -307,4 +308,32 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                 handler_name="handle_read_media",
             ),
         )
+    specs.append(
+        ToolSpec(
+            metadata=_metadata(
+                name=MEDIA_CAPTURE_TOOL,
+                description=(
+                    "Capture the policy-declared managed web UI matrix. "
+                    "Required param: target (string). The server resolves the "
+                    "declared renderer and matrices, then returns server-minted "
+                    "ralph://media/... handles with geometry and sha256. A missing "
+                    "or invalid design-system policy fails closed; partial matrices "
+                    "are never returned."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "description": "Managed-repository visual target declared by policy.",
+                        },
+                    },
+                    "required": ["target"],
+                },
+                required_capability=Capability.MEDIA_READ.value,
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_media_capture_tool",
+        )
+    )
     return specs

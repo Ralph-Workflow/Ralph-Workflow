@@ -53,6 +53,7 @@ class RalphToolName(StrEnum):
     DOWNLOAD_URL = "download_url"
     READ_IMAGE = "read_image"
     READ_MEDIA = "read_media"
+    MEDIA_CAPTURE = "media_capture"
     RALPH_INDEX_STATUS = "ralph_index_status"
     RALPH_REINDEX = "ralph_reindex"
     RALPH_GRAPH = "ralph_graph"
@@ -113,6 +114,7 @@ VISIT_URL_TOOL = RalphToolName.VISIT_URL
 DOWNLOAD_URL_TOOL = RalphToolName.DOWNLOAD_URL
 READ_IMAGE_TOOL = RalphToolName.READ_IMAGE
 READ_MEDIA_TOOL = RalphToolName.READ_MEDIA
+MEDIA_CAPTURE_TOOL = RalphToolName.MEDIA_CAPTURE
 RALPH_INDEX_STATUS_TOOL = RalphToolName.RALPH_INDEX_STATUS
 RALPH_REINDEX_TOOL = RalphToolName.RALPH_REINDEX
 RALPH_GRAPH_TOOL = RalphToolName.RALPH_GRAPH
@@ -161,6 +163,7 @@ WEB_SEARCH_TOOLS: tuple[str, ...] = (WEB_SEARCH_TOOL,)
 WEB_VISIT_TOOLS: tuple[str, ...] = (VISIT_URL_TOOL,)
 WEB_DOWNLOAD_TOOLS: tuple[str, ...] = (DOWNLOAD_URL_TOOL,)
 MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL, READ_MEDIA_TOOL)
+MEDIA_CAPTURE_TOOLS: tuple[str, ...] = (MEDIA_CAPTURE_TOOL,)
 EXPLORE_TOOLS: tuple[str, ...] = (RALPH_INDEX_STATUS_TOOL, RALPH_REINDEX_TOOL, RALPH_GRAPH_TOOL)
 
 ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName)

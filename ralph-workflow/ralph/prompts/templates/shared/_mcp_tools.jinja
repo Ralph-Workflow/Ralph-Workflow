@@ -1,6 +1,6 @@
 MCP TOOLS (Ralph Workflow Brokered)
 
-Use Ralph Workflow's MCP tools for file and shell operations in this brokered session. Availability varies by runtime: use only the brokered
+Use Ralph Workflow's MCP tools for file and shell operations. Use only the brokered
 tools from the exact rendered name below. Tool names are callable identifiers,
 not shell commands.
 
@@ -24,7 +24,7 @@ COORDINATION: {{COORDINATE_TOOL_REFERENCE}}
 {% endif %}
 BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path; native file/shell write tools are prohibited.
 {% if WEB_SEARCH_TOOL_REFERENCE %}
-WEB / MEDIA: {{WEB_SEARCH_TOOL_REFERENCE}}{% if VISIT_URL_TOOL_REFERENCE %}, {{VISIT_URL_TOOL_REFERENCE}}{% endif %}{% if DOWNLOAD_URL_TOOL_REFERENCE %}, {{DOWNLOAD_URL_TOOL_REFERENCE}}{% endif %}{% if READ_IMAGE_TOOL_REFERENCE %}, {{READ_IMAGE_TOOL_REFERENCE}}{% endif %}{% if READ_MEDIA_TOOL_REFERENCE %}, {{READ_MEDIA_TOOL_REFERENCE}}{% endif %}
+WEB / MEDIA: {{WEB_SEARCH_TOOL_REFERENCE}}{% if VISIT_URL_TOOL_REFERENCE %}, {{VISIT_URL_TOOL_REFERENCE}}{% endif %}{% if DOWNLOAD_URL_TOOL_REFERENCE %}, {{DOWNLOAD_URL_TOOL_REFERENCE}}{% endif %}{% if READ_IMAGE_TOOL_REFERENCE %}, {{READ_IMAGE_TOOL_REFERENCE}}{% endif %}{% if READ_MEDIA_TOOL_REFERENCE %}, {{READ_MEDIA_TOOL_REFERENCE}}{% endif %}{% if MEDIA_CAPTURE_TOOL_REFERENCE %}, {{MEDIA_CAPTURE_TOOL_REFERENCE}}{% endif %}
 {% endif %}
 
 {% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
