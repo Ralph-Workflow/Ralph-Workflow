@@ -174,7 +174,12 @@ def _run_hook(
     if observed_paths:
         marker: object = getattr(explore_index, "mark_dirty", None)
         if callable(marker):
-            marker(observed_paths, source_tool="workspace_awareness", reason="observed")
+            try:
+                marker(observed_paths, source_tool="workspace_awareness", reason="observed")
+            except Exception:
+                awareness.requeue(observed_paths, cause="dirty_handoff_failed")
+        else:
+            awareness.requeue(observed_paths, cause="dirty_handoff_unavailable")
     # The injected runner takes precedence over the handle's
     # optional ``runner()`` method, which lets tests wire a stub
     # runner without going through pipeline.reindex.

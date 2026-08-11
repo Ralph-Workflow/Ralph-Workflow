@@ -252,6 +252,25 @@ def test_capacity_exhaustion_enters_observable_live_fallback(
     assert fake.joined is True
 
 
+def test_capacity_exhaustion_updates_shared_awareness_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3 regression: public status never calls a failed observer current."""
+    fake = _CapacityFailingObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(Path("/canonical-fallback"), classifier=WorkspaceChangeClassifier())
+
+    monitor.start()
+
+    from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+
+    assert awareness_for_workspace(Path("/canonical-fallback")).snapshot()["freshness"] == "live_fallback"
+    release_workspace_awareness(Path("/canonical-fallback"))
+
+
 def test_start_replay_preserves_one_live_workspace_watch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

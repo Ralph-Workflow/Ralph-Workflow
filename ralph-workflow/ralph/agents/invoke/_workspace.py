@@ -326,11 +326,13 @@ class WorkspaceMonitor:
                 self._handler = shared.handler
                 self._started = True
                 self._awareness_status = _current_status()
+                awareness_for_workspace(self._workspace).set_watch_active()
                 return
 
             observer = _create_watchdog_observer()
             if observer is None:
                 self._awareness_status = _live_fallback_status("observer_unavailable")
+                awareness_for_workspace(self._workspace).set_live_fallback("observer_unavailable")
                 return
             handler = _make_change_tracker(self._workspace, key)
             self._observer = observer
@@ -345,6 +347,7 @@ class WorkspaceMonitor:
                 self._handler = None
                 if exc.errno in (errno.EMFILE, errno.ENOSPC):
                     self._awareness_status = _live_fallback_status("watch_capacity")
+                    awareness_for_workspace(self._workspace).set_live_fallback("watch_capacity")
                     logger.warning("Workspace monitoring unavailable: inotify limit reached")
                     return
                 raise
@@ -360,6 +363,7 @@ class WorkspaceMonitor:
             self._shared_key = key
             self._started = True
             self._awareness_status = _current_status()
+            awareness_for_workspace(self._workspace).set_watch_active()
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
     def record_event(self, src_path: str) -> None:

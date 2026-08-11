@@ -37,6 +37,20 @@ class WorkspaceAwareness:
         self._mode = "live_fallback"
         self._cause = cause
 
+    def set_watch_active(self) -> None:
+        """Record successful observation recovery for the shared status surface."""
+        self._mode = "watch"
+        self._cause = None
+
+    def requeue(self, paths: list[str], *, cause: str) -> None:
+        """Restore unacknowledged paths after a failed persistent handoff."""
+        for path in paths:
+            self._dirty_paths.pop(path, None)
+            self._dirty_paths[path] = None
+        while len(self._dirty_paths) > _MAX_DIRTY_PATHS:
+            self._dirty_paths.popitem(last=False)
+        self._cause = cause
+
     def drain(self) -> list[str]:
         """Return the coalesced dirty set once, in deterministic arrival order."""
         paths = list(self._dirty_paths)

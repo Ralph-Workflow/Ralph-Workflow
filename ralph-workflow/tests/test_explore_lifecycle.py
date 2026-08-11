@@ -176,6 +176,23 @@ def test_after_hook_invokes_reindex_with_injected_runner(tmp_path: Path) -> None
     store.close()
 
 
+def test_lifecycle_regression_requeues_observed_path_when_dirty_handoff_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    """S-4 regression: failed durable handoff retains observer work for the next boundary."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+
+    awareness_for_workspace(workspace).record(str(workspace / "a.py"))
+    result = before_agent_refresh(workspace_root=workspace, explore_index=_Index(store, lambda *_a, **_k: None))
+
+    assert result.invoked is True
+    assert awareness_for_workspace(workspace).drain() == ["a.py"]
+    release_workspace_awareness(workspace)
+    store.close()
+
+
 def test_hooks_are_fail_open_on_runner_exception(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
