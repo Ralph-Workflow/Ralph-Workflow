@@ -120,6 +120,18 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 
+def test_visual_smoke_runs_capture_contract_before_fixture_judge() -> None:
+    capture_body = _target_body("test-visual-capture")
+    assert len(capture_body) == 1
+    assert "tests/test_visual_capture.py" in capture_body[0]
+    assert "tests/test_visual_capture_lifecycle.py" in capture_body[0]
+    assert "tests/test_mcp_server_multimodal_tool_visibility_1.py" in capture_body[0]
+
+    smoke_body = _target_body("test-visual-smoke")
+    assert smoke_body[0] == "$(MAKE) test-visual-capture"
+    assert "tests/test_visual_smoke.py" in smoke_body[1]
+
+
 def test_test_subprocess_e2e_uses_maintained_explicit_file_selector() -> None:
     """The E2E profile avoids collecting the entire repository to deselect it."""
     assert _target_body("test-subprocess-e2e") == [
@@ -133,24 +145,27 @@ def test_make_verify_excludes_paid_agy_markers() -> None:
 
     The ``agy`` and ``live_agy`` bans are universal -- no
     ``_VERIFY_STEPS`` label or arg may contain either substring, on any
-    transport. The ``smoke`` ban is narrowed: the sole smoke-bearing
-    step is ``make test-multimodal-smoke`` (criterion 5). That suite
-    drives the ``tests/_support/mock_*`` stubs and dials no paid
-    backend, so it is safe to include in the verify budget. Every
-    other step is checked for the full triple.
+    transport. The ``smoke`` ban is narrowed: the only smoke-bearing
+    steps are ``make test-multimodal-smoke`` (criterion 5 multimodal
+    proof) and ``make test-visual-smoke`` (criterion 12
+    deterministic visual-smoke tier). Both suites drive the
+    ``tests/_support/mock_*`` stubs and dial no paid backend, so they
+    are safe to include in the verify budget. Every other step is
+    checked for the full triple.
     """
     expression = test_suites_module._VERIFICATION_MARK_EXPRESSION
 
     assert "not subprocess_e2e" in expression
     assert "not smoke" in expression
+    smoke_bearing_steps = {"make test-multimodal-smoke", "make test-visual-smoke"}
     for label, _command, args, _timeout in verify_module._VERIFY_STEPS:
-        is_multimodal_step = label == "make test-multimodal-smoke"
+        is_smoke_step = label in smoke_bearing_steps
         for field in (label, *args):
-            forbidden = {"agy", "live_agy"} if is_multimodal_step else {"agy", "smoke", "live_agy"}
+            forbidden = {"agy", "live_agy"} if is_smoke_step else {"agy", "smoke", "live_agy"}
             assert all(token not in field for token in forbidden), (
                 f"verify step {label!r} arg {field!r} contains a forbidden token; "
-                f"only 'make test-multimodal-smoke' may carry the 'smoke' marker, "
-                f"and no step may carry 'agy' or 'live_agy'"
+                f"only the smoke-bearing steps {sorted(smoke_bearing_steps)!r} may carry "
+                f"the 'smoke' marker, and no step may carry 'agy' or 'live_agy'"
             )
 
     live_test_sources = [

@@ -464,27 +464,50 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # ``make test-multimodal-smoke`` target does. The step drives the
         # ``tests/_support/mock_*`` stubs and dials no paid backend, so
         # it is safe to charge against the immutable 60 s combined
-        # budget -- the stub consumes zero live tokens. Appended LAST
-        # so the index-based timeout assertions in ``tests/test_verify.py``
-        # are not shifted; tracked (``_BUDGET_TRACKED_STEPS`` below).
+        # budget -- the stub consumes zero live tokens. Tracked in
+        # ``_BUDGET_TRACKED_STEPS`` so the cumulative timer sums the
+        # multimodal smoke's wall clock into the immutable 60 s budget
+        # together with ``make test`` and ``make test-visual-smoke``.
         "make test-multimodal-smoke",
         "make",
         ("test-multimodal-smoke",),
         _TOTAL_TEST_BUDGET_SECONDS,
     ),
+    (
+        # Criterion 12 deterministic visual-smoke tier: drive the
+        # offline visual smoke fixtures (capture handler + pre-change
+        # lifecycle + stub judge) under the ``smoke and subprocess_e2e``
+        # selector so the regular ``make test`` profile cannot collect
+        # them. The fixtures dial no paid backend and use no real
+        # renderer, so the suite is safe to charge against the
+        # immutable 60 s combined budget -- the stub consumes zero live
+        # tokens. Appended AFTER ``make test-multimodal-smoke`` so the
+        # only ``runner.calls`` indices that shift are those AFTER the
+        # previous LAST entry; tracked in ``_BUDGET_TRACKED_STEPS`` so
+        # the cumulative timer sums the visual smoke's wall clock into
+        # the immutable 60 s budget.
+        "make test-visual-smoke",
+        "make",
+        ("test-visual-smoke",),
+        _TOTAL_TEST_BUDGET_SECONDS,
+    ),
 )
 
-#: Indices 2 and the LAST entry are the test steps charged against
-#: ``_TOTAL_TEST_BUDGET_SECONDS`` together with every other test step whose
-#: label is in ``_KNOWN_TEST_STEP_LABELS``. ``make test`` is the primary
-#: test step (index 2); ``make test-multimodal-smoke`` is the criterion 5
-#: multimodal proof and is appended LAST so the index-based timeout
-#: assertions in ``tests/test_verify.py`` keep ``make test`` at index 2.
-#: Adding a new test step without also adding its label to
+#: Indices 2, the second-to-last, and the LAST entries are the test
+#: steps charged against ``_TOTAL_TEST_BUDGET_SECONDS`` together with
+#: every other test step whose label is in ``_KNOWN_TEST_STEP_LABELS``.
+#: ``make test`` is the primary test step (index 2);
+#: ``make test-multimodal-smoke`` (criterion 5 multimodal proof) and
+#: ``make test-visual-smoke`` (criterion 12 deterministic visual-smoke
+#: tier) are appended LAST so the index-based timeout assertions in
+#: ``tests/test_verify.py`` keep ``make test`` at index 2. Adding a
+#: new test step without also adding its label to
 #: ``_KNOWN_TEST_STEP_LABELS`` (and its index here) lets it run without
 #: contributing to the combined budget, which the immutable 60 s ceiling
 #: prohibits.
-_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 1})
+_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset(
+    {2, len(_VERIFY_STEPS) - 2, len(_VERIFY_STEPS) - 1}
+)
 
 # --- Module-level invariants ---
 # These are runtime checks that must hold for the enforcement
@@ -539,7 +562,7 @@ if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
 # INVARIANT: The canonical test step label 'make test' must be present.
 # Both invariants are enforced by import-time RuntimeError checks below.
 _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
-    {"make test", "make test-multimodal-smoke"}
+    {"make test", "make test-multimodal-smoke", "make test-visual-smoke"}
 )
 
 # --- Module-level invariants for label/budget integrity ---

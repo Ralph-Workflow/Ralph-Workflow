@@ -166,12 +166,13 @@ Two guardrails bound every amendment:
 
 ## Review authority
 
-Criterion 8 verdict authority: when the criterion 8 verdict is present, backed by the `design_capture_command` fact and `ralph://media/{artifact_id}` evidence, it closes the design review lane under the conditions named in the visual-verification ADR.
+Criterion 8 verdict authority: a capture-backed criterion 8 verdict is agent-produced evidence and does not close the design review lane; the named human review verdict remains required.
 
-Unverified evidence still requires a human verdict; the lane only closes when the criterion 8 conditions hold (complete capture matrix, ledger-cited findings, three-input verdict).
+The capture path applies to web UI only. A missing declared renderer or a non-web UI is a recorded visual-review blocker; it never silently falls back to a partial capture.
 
 RALPH-FACT: design_capture_command: <declared capture command that renders the managed repo UI to PNG>
 RALPH-FACT: visual_verdict_artifact: design_verdict
+RALPH-FACT: visual_capture_handle: ralph://media/{artifact_id}
 
 ## Review authority
 

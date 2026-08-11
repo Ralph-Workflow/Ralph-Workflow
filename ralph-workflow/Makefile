@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-multimodal-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -87,6 +87,9 @@ help:
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
 	@echo "  test-live-agy    Run live AGY subprocess tests (excluded from test-subprocess-e2e; longer timeout)"
 	@echo "  test-multimodal-smoke  Drive the multimodal smoke stub across the six harness identities (smoke-marked, in \`make verify\`)"
+	@echo "  test-visual-capture   Capture, lifecycle, and MCP-visibility visual contracts"
+	@echo "  test-visual-verdict   Black-box tests for the DesignVerdict three-input boundary"
+	@echo "  test-visual-smoke     Deterministic offline visual smoke (capture + verdict fixtures; budget-tracked in \`make verify\`)"
 	@echo "  test-auto-integrate-e2e Run the real-git auto-integration end-to-end proof (wired into 'make verify')"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
@@ -176,6 +179,39 @@ test-live-agy:
 # file the regular profile deliberately skips.
 test-multimodal-smoke:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_smoke_multimodal_end_to_end.py -q -m "smoke and subprocess_e2e"
+
+# Visual capture suite (criteria 6 and 7). These public-contract tests cover
+# server-minted capture matrices, immutable before-state lifecycle behavior,
+# and conditional MCP tool visibility without a real renderer.
+test-visual-capture:
+	$(RUN_PYTHON) -m pytest tests/test_visual_capture.py tests/test_visual_capture_lifecycle.py tests/test_mcp_server_multimodal_tool_visibility_1.py -q -n $(PYTEST_WORKERS) --dist worksteal
+
+# Visual verdict suite (criterion 8). Black-box tests for
+# ``DesignVerdict``: the three-input boundary, the matrix-parity
+# invariant, the closed visual vocabulary, and the closed finding
+# severities. No paid backend, no live model — pure in-memory tests
+# over the typed verdict surface. Excluded from the default pytest
+# profile (no `smoke` / `subprocess_e2e` markers) so it stays fast
+# and deterministic. Wired into `make verify` indirectly via the
+# `make test` step; the dedicated target exists so a developer can
+# run it on demand without scanning the full suite.
+test-visual-verdict:
+	$(RUN_PYTHON) -m pytest tests/test_visual_verdict.py -q -n $(PYTEST_WORKERS) --dist worksteal
+
+# Visual capture + lifecycle suite (criterion 6 / criterion 12).
+# Deterministic offline tests for the capture handler, the
+# pre-change lifecycle, and the visual-smoke fixtures. No real
+# subprocess, no real renderer, no paid backend — the suite uses
+# fake executors, in-memory PNG bytes, and stub judges. Carries the
+# `smoke` marker alongside `subprocess_e2e` so it stays out of the
+# regular pytest profile and runs as its own budget-tracked step
+# under `make verify` (see `_VERIFY_STEPS` in `ralph/verify.py`).
+# The combined budget is unchanged: the immutable 60-second cap
+# remains in effect across `make test`, `make test-multimodal-smoke`,
+# and `make test-visual-smoke` together.
+test-visual-smoke:
+	$(MAKE) test-visual-capture
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_visual_smoke.py -q -m "smoke and subprocess_e2e"
 
 # Focused profile over the same explicit registry used by the
 # combined ``make test`` invocation.

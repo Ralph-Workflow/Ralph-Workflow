@@ -282,6 +282,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="multimodal smoke ok\n",
         ),
+        ("make", ("test-visual-smoke",)): _result(
+            command="make",
+            args=("test-visual-smoke",),
+            returncode=0,
+            stdout="visual smoke ok\n",
+        ),
     }
 
 
@@ -331,6 +337,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
         ("make", ("test-multimodal-smoke",)),
+        ("make", ("test-visual-smoke",)),
     ]
     assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -361,7 +368,7 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[25][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[26][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    # The last step is ``make test-multimodal-smoke`` and is budget-tracked.
+    # The last step is ``make test-visual-smoke`` and is budget-tracked.
     # The actual timeout passed to the runner is
     # ``min(step_timeout, remaining_budget)`` so floating-point
     # arithmetic in the cumulative tracker may shave a few microseconds

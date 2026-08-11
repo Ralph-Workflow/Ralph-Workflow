@@ -29,6 +29,12 @@ STARTER_NAMES = [
     "accessibility-policy.md",
 ]
 
+VERDICT_AUTHORITY = (
+    "Criterion 8 verdict authority: a capture-backed criterion 8 verdict is agent-produced "
+    "evidence and does not close the design review lane; the named human review verdict "
+    "remains required."
+)
+
 
 def test_all_four_starters_contain_prohibition_clause() -> None:
     for name in STARTER_NAMES:
@@ -37,12 +43,30 @@ def test_all_four_starters_contain_prohibition_clause() -> None:
 
 
 def test_all_four_starters_align_verdict_authority_statement() -> None:
-    expected = "Criterion 8 verdict authority: when the criterion 8 verdict is present"
     for name in STARTER_NAMES:
         content = _starter_path(name).read_text(encoding="utf-8")
-        assert expected in content, name
+        assert VERDICT_AUTHORITY in content, name
         assert "design_capture_command" in content, name
         assert "ralph://media/{artifact_id}" in content, name
+
+
+def test_adr_records_renderer_scope_prompt_scope_and_review_authority() -> None:
+    candidates = [
+        Path("ralph-workflow/docs/architecture/adr-0002-visual-design-verification.md"),
+        Path("docs/architecture/adr-0002-visual-design-verification.md"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            content = candidate.read_text(encoding="utf-8")
+            break
+    else:
+        raise AssertionError("ADR-0002 is missing")
+
+    assert "web UI only" in content
+    assert "bounded declared capture command" in content
+    assert "no renderer or non-web UI" in content
+    assert "developer prompt guidance only" in content.lower()
+    assert "requires the named human review verdict" in content
 
 
 def test_audit_recognizes_appearance_assertions_and_names_remedy() -> None:

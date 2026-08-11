@@ -1,3 +1,15 @@
 ## Increment loop
 
 Make the smallest requested change and prove it. State any safe assumption, use the verification commitments for each increment, and complete the discovered gate before reporting done. Debug from a hypothesis; after a failed approach, change tack or report an honest partial result.
+
+## Visual review (when the change touches the UI)
+
+When any plan item edits the managed repo's user-facing surface, the visual review lane is part of the proof, not optional:
+
+1. **Trust the retained pre-change baseline.** Ralph Workflow captured the full declared matrix (narrow + wide viewports, declared themes, the default/empty/loading/error/overflow states) before the first applicable developer subprocess edited the workspace. The retained baseline's capture handles, matrix key, and run id are passed into this phase — never reconstruct history by recapturing the current pixels as "before". If a resumed session lacks the retained baseline, the visual lane is blocked; report the block rather than relabel post-change captures as `before`.
+2. **Capture the post-change matrix fresh.** Use the `media.capture` MCP tool to re-capture the same declared matrix (target, viewport pair, theme list, canonical states). The capture request mirrors the retained before-set so the after-set is cell-id comparable.
+3. **Compare before against after, never one alone.** The design verdict takes EXACTLY three inputs: the retained before capture set, the post-change capture set, and the design intent. Diff, DOM, stylesheet, and source code are NOT verdict inputs — the verdict is a pixel-level before/after review, not a code-reading task.
+4. **Cite the rendered cells.** Every finding names the capture_id (server-minted, from the run's ledger) and a rectangular region inside that cell. A finding without a capture_id and region is rejected at the artifact boundary.
+5. **Honour the closed visual vocabulary.** Dimensions are `hierarchy`, `alignment`, `spacing`, `typography`, `legibility`, `density`, `completeness`, `clipping`. Severities are `blocker`, `major`, `minor`, `nit` (or `info` for findings without a defect). Anything outside the closed sets is a hard error.
+6. **Submit a `design_verdict` artifact for UI plan items.** A `development_result` whose plan items touch UI cites the verdict and its capture handles. Non-UI plan items keep their existing prose proof entries.
+7. **No appearance assertions as design proof.** `assert padding == "16px"` is a functional test (does the value render?), not a visual verdict. A deterministic suite grades behaviour; a verdict grades pixels.

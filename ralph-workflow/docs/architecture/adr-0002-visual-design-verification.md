@@ -26,15 +26,17 @@ real vision model on demand.
 
 ## Decision
 
-### D1. Renderer is a bounded managed-repo declared command
+### D1. Renderer is a bounded declared capture command for web UI only
 
-`ralph.visual.policy_facts` parses a `design_capture_command` from
+`ralph.visual.policy_facts` parses a bounded managed-repo `design_capture_command` from
 managed-repo policy. `ralph.mcp.tools.workspace._media_capture`
 executes the declared argv through `ralph.executor.process` with the
 named `target` injected as `{target}` (or as the trailing argv).
 Ralph validates the command at the trust boundary, rejects shell
 fragments and path traversal in the target name, and never bundles
-or invokes a headless browser itself.
+or invokes a headless browser itself. A no renderer or non-web UI
+fails closed with a recorded visual-review blocker rather than a
+partial or guessed capture.
 
 ### D2. Capture matrix is the unit of evidence
 
@@ -76,12 +78,14 @@ complete `before` matrix. Retries and continuations reuse it; the
 baseline never overwrites after workspace mutation. A verdict whose
 `before` cannot be sourced from a retained manifest fails closed.
 
-### D6. Review lane recognizes agent verdicts
+### D6. Review lane retains named human verdict authority
 
 Criteria 9 and 10 revisit `testing-policy.md` and
-`design-system-policy.md`. Where the ADR conditions hold (criterion 8
-verdict, complete matrix, ledger-cited), the verdict is evidence a
-human may accept. Unverified evidence stays in the human queue.
+`design-system-policy.md`. A capture-backed criterion 8 verdict is
+agent-produced evidence and requires the named human review verdict;
+it does not close the review lane autonomously. Unverified evidence
+stays in the human queue. Developer prompt guidance only directs this
+capture and comparison workflow; no other phase is guided by it.
 `audit_appearance_assertion_prohibition` rejects UI plan proofs
 citing CSS/class/style/DOM assertions and directs authors to the
 capture path.
@@ -188,9 +192,9 @@ ledger is the only downstream carrier for both.
 
 ## Assumptions
 
-- A1. The managed repo supplies a `design_capture_command`. If it
-  does not, capture paths fail closed with a structured message and
-  visual criteria remain unimplemented for that repo.
+- A1. The managed repo supplies a `design_capture_command` for web UI only. If
+  it does not, or the UI is non-web, capture paths fail closed with a recorded
+  visual-review blocker and visual criteria remain unimplemented for that repo.
 - A2. The renderer argv returns PNG. Other formats are rejected at
   the trust boundary.
 - A3. The retained `before` manifest is durable for the run's
