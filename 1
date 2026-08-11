@@ -1,0 +1,226 @@
+# =============================================================================
+#  Ralph Workflow -- main configuration
+#  ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
+# =============================================================================
+#
+#  NOTHING TO DO IF YOU USE CLAUDE. This file ships ready to run: if `claude`
+#  is on your PATH, change nothing and run `ralph`.
+#
+#  The ONE thing most operators ever edit is section 1 below -- which model
+#  does which job. That is why it is the first thing in the file.
+#
+#     1. [agent_chains] -- which agent/model does which job   <- EDIT THIS
+#     2. [agent_drains] -- which chain runs which phase       <- rarely changed
+#
+#  Everything past the OPTIONAL banner is machinery with a working default.
+#  You can stop reading there.
+#
+#  NOT IN THIS FILE: how to invoke each agent CLI (binary, flags, parser).
+#  That plumbing lives in ralph-workflow-agents.toml, and you only open it to
+#  switch which CLI is active.
+#
+#  ralph --diagnose           which agent CLIs are installed and usable
+#  ralph --regenerate-config  rewrite the config set from the bundled defaults
+#                             (each current file is saved to <name>.bak first)
+#
+# =============================================================================
+
+
+# =============================================================================
+# 1. CHAINS (REQUIRED — EDIT THIS) -- which agent/model does which job.
+# =============================================================================
+# A chain is an ORDERED FALLBACK LIST. The first entry is what actually runs;
+# the rest are tried, in order, only if it fails or exhausts its retries.
+#
+# What belongs where:
+#   planning, analysis  ->  your most capable model -- these phases review
+#                           work and catch mistakes.
+#   development         ->  a strong coder model -- this phase edits your files.
+#   commit              ->  something small, fast and cheap -- it only writes
+#                           commit messages.
+#
+# Each entry is `agent/model`. One example per supported agent:
+#   claude/opus                          codex/gpt-5.4[effort=high]
+#   claude-headless/sonnet               opencode/openai/gpt-5.4
+#   cursor/claude-opus-4-8[effort=high]  nanocoder/ollama/llama3.1
+#   pi/anthropic/claude-sonnet-4:high    agy/gemini-3.6-flash-low
+# Full per-agent syntax: docs/sphinx/agent-compatibility.md (AGY paid acceptance unverified)
+
+[agent_chains]
+planning = [
+"opencode/minimax/MiniMax-M3", 
+"pi/openai-codex/gpt-5.6-terra",
+"codex/gpt-5.6-terra", 
+"opencode/openai/gpt-5.6-terra",
+"cursor/auto"]
+development = [
+"opencode/openai/gpt-5.6-terra",
+"codex/gpt-5.6-terra",
+"opencode/minimax/MiniMax-M3", 
+"cursor/auto"]
+analysis = [
+"codex/gpt-5.6-terra", 
+"opencode/minimax/MiniMax-M3", 
+"cursor/auto"
+]
+commit = [
+"codex/gpt-5.6-terra", 
+"opencode/minimax/MiniMax-M3", 
+"cursor/auto"]
+
+
+# Fallbacks are opt-in. The defaults above name only `claude`, so a one-agent
+# install works out of the box. To add one: install the CLI, confirm it is on
+# PATH, uncomment its block in the AGENT CLI DEFINITIONS section below, then
+# extend the list:
+#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
+#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/agent-compatibility.md#ccs_aliases
+
+
+# =============================================================================
+# 2. DRAINS (REQUIRED) -- which chain runs which pipeline phase.
+# =============================================================================
+# A drain is a routing label: `phase = "chain name from section 1"`.
+# The bundled pipeline uses exactly this set. Change a value only to point a
+# phase at a different chain.
+
+[agent_drains]
+planning = "planning"
+planning_analysis = "analysis"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+analysis = "analysis"
+commit = "commit"
+
+
+
+# =============================================================================
+# OPTIONAL -- everything below this line has a working default.
+# Skip it unless you know you need something here.
+# =============================================================================
+
+
+
+# -----------------------------------------------------------------------------
+# REFERENCE -- how the config files fit together. Nothing to edit here.
+# -----------------------------------------------------------------------------
+# Nine files: five user-global, four project-local.
+#   ~/.config/ralph-workflow.toml            .agent/ralph-workflow.toml
+#   ~/.config/ralph-workflow-agents.toml     (agent CLI definitions)
+#   ~/.config/ralph-workflow-mcp.toml        .agent/mcp.toml
+#   ~/.config/ralph-workflow-pipeline.toml   .agent/pipeline.toml
+#   ~/.config/ralph-workflow-artifacts.toml  .agent/artifacts.toml
+#
+# Precedence, highest first:
+#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled
+#
+# MCP servers and web search live in ralph-workflow-mcp.toml (or .agent/mcp.toml),
+# not in this file.
+#
+# From here down every key is shown commented out at its default value.
+# Uncomment only the ones you want to change; the rest keep their defaults.
+
+# Edit this only if you need to change Ralph Workflow's normal workflow settings.
+# -----------------------------------------------------------------------------
+# [general] -- Core workflow settings
+# -----------------------------------------------------------------------------
+[general]
+# =============================================================================
+# AUTO-INTEGRATION (auto-rebase) — keep the feature branch and the mainline
+# in lockstep.
+# -----------------------------------------------------------------------------
+# What the feature does: rebases feature work onto the configured local target,
+# resolves conflicts through the normal endpoint-merge fallback, then
+# fast-forwards that target when the result is safe to land.
+#
+# When it runs (the seams): startup, commit, phase boundary, parallel worker
+# startup/boundary, and the Ralph-managed parallel fan-out join.
+#
+# What it never does: force-move a ref, force-push, push a feature branch,
+# leave a rebase or merge in progress, or fail the run because remote sync
+# failed. The on-by-default local tier is safe; the opt-in remote tier syncs.
+# Set auto_integrate_enabled = false for byte-identical manual git behavior:
+# no rebase, merge, ref movement, fetch, or push from this feature.
+# =============================================================================
+auto_integrate_enabled = true     # local integration at every seam; set false for manual git control.
+auto_integrate_target = "main"    # required local mainline branch; a missing branch records a skip.
+auto_integrate_remote_enabled = true  # opt-in remote tier: fetch, reconcile, and push after a local landing.
+auto_integrate_remote = "origin"  # configured remote used only when remote integration is enabled.
+
+# verbosity = 2                         # Leave this alone for normal runs; change only when output is too noisy or too sparse.
+# telemetry_enabled = true              # Leave on unless you want to opt out of anonymous reliability telemetry.
+# Loop iteration caps live in pipeline.toml [loop_counters.*]; leave them alone until a run needs more or fewer review loops.
+# Override a budget only for one run with `ralph --counter <name>=<value>`.
+# developer_context = 1                 # Leave this alone unless your agent needs more task context.
+# prompt_path = "/path/to/PROMPT.md"    # Set only when this project keeps its task file somewhere other than PROMPT.md.
+# templates_dir = "/path/to/templates"  # Set only when you maintain your own starter templates.
+# git_user_name = "Your Name"           # Set only when this project's commit author differs from your git config.
+# git_user_email = "you@example.com"    # Set only when this project's commit email differs from your git config.
+# max_same_agent_retries = 10           # Lower only when repeated same-agent retries waste time; default is usually right.
+# max_commit_residual_retries = 10      # Change only when commit cleanup needs a stricter or longer retry limit.
+# max_retries = 3                       # Change only when an agent needs more chances after transient failures.
+# retry_delay_ms = 1000                 # Increase only when a provider asks you to slow down after failures.
+# backoff_multiplier = 2.0              # Leave this alone unless you deliberately tune provider retry pacing.
+# max_backoff_ms = 60000                # Change only when your provider needs a different maximum retry wait.
+# max_cycles = 3                        # Raise only for work that legitimately needs more agent fallback cycles.
+# execution_history_limit = 1000        # Leave this alone unless a long run needs more retained history.
+# agent_idle_timeout_seconds = 300.0    # max idle seconds before killing a stalled agent process (>0)
+# agent_idle_max_waiting_on_child_seconds = 1800.0  # hard ceiling on cumulative WAITING_ON_CHILD deferral (>0)
+# agent_waiting_status_interval_seconds = 30.0      # periodic status emission cadence while WAITING_ON_CHILD (>0)
+# agent_suspect_waiting_on_child_seconds = 600.0    # suspicion threshold; emits a warning but does not stop the run (<max_waiting_on_child_seconds)
+# agent_idle_no_progress_waiting_on_child_seconds = 600.0  # no-progress ceiling; fires when child alive but not making progress (<=max_waiting_on_child_seconds)
+# agent_os_descendant_only_ceiling_seconds = 120.0  # short ceiling (~120s) for OS-descendant-only case; fires CHILDREN_PERSIST_TOO_LONG in ~120s instead of waiting for the no-progress ceiling. None disables.
+# agent_no_progress_quiet_minimum_invocation_seconds = 120.0  # dumb-kill floor for NO_PROGRESS_QUIET: the watchdog cannot fire this reason within the first N seconds of an agent run, so a recently-launched agent doing real thinking work (planning, exploration, dispatching subagents) but with no first-party evidence yet is not killed. Must be > 0 when set; 0 is rejected. None disables (not recommended). SESSION_CEILING_EXCEEDED is unaffected.
+# agent_os_descendant_only_suspect_seconds = 60.0   # earlier SUSPECTED_FROZEN (~60s) for OS-descendant-only case; fires at min(suspect, this value). None disables.
+# agent_cpu_idle_seconds = 60.0                     # CPU idle probe: known descendant with 0 CPU for this long is reported as CPU_IDLE_WHILE_ALIVE. None disables.
+# agent_log_growth_seconds = 30.0                  # log-growth probe: per-run .agent/raw/{safe_id}.log not grown for this long is reported as LOG_STALE_WHILE_ALIVE. None disables.
+# agent_idle_activity_evidence_ttl_seconds = 30.0   # per-channel activity TTL; defers NO_OUTPUT_DEADLINE while MCP tool calls, subagent work, or workspace events are fresher than this TTL. Workspace evidence is collected whenever a run has a workspace_path, even when show_progress is disabled. A subagent that is alive but silent on every channel is NOT treated as activity. Set to 0.0 to disable and restore legacy stdout-only behavior. (>=0)
+# agent_workspace_change_weights = { source = 1.0, log = 0.0, cache = 0.0, artifact = 0.0, other = 0.0 }   # per-kind workspace file-change weights; values are BINARY (0.0 = drop, 1.0 = full activity). The default is conservative: only source-code changes count. Operators who relied on log-file activity to defer the verdict can opt in by setting `agent_workspace_change_weights = { log = 1.0, source = 1.0 }`. The five keys are: source (source code / documentation), log (*.log / *.tmp / *.bak / *.swp / *~ / *.pyc / *.pyo), cache (.git / __pycache__ / .pytest_cache / .mypy_cache / .ruff_cache / node_modules / .venv / .agent/tmp / .agent/raw / completion_seen_*.json), artifact (.agent/artifacts), and other (anything else). See docs/agents/timeout-policy.md for the full migration note.
+# agent_process_monitor_enabled = true              # enable the agent-agnostic process monitor that discovers and classifies spawned subagents
+# agent_subagent_output_capture_enabled = true      # enable polling of observable subagent output streams as first-party evidence
+# agent_subagent_output_poll_interval_seconds = 1.0 # poll interval for subagent output streams (>0)
+
+# Edit this only if you need to change workflow automation behavior.
+# -----------------------------------------------------------------------------
+# [general.workflow] -- Workflow automation flags
+# -----------------------------------------------------------------------------
+
+[general.workflow]
+# checkpoint_enabled = true     # Leave enabled unless you explicitly do not want interrupted runs to resume.
+# unsafe_mode = false          # Change only when you intentionally want Ralph Workflow to preserve and merge existing agent MCP settings.
+
+# Edit this only if you use Claude Code Switch (CCS).
+# -----------------------------------------------------------------------------
+# [ccs] -- Claude Code Switch (CCS) headless-Claude defaults.
+# -----------------------------------------------------------------------------
+# CCS is the explicitly-headless Claude path. Configure [ccs_aliases] to run
+# Claude non-interactively (--print --output-format=stream-json). For unattended
+# interactive Claude use the built-in "claude" or "claude/MODEL" agents instead.
+[ccs]
+# output_flag = "--output-format=stream-json"
+# yolo_flag = "--permission-mode auto"
+# verbose_flag = "--verbose"
+# print_flag = "--print"
+# streaming_flag = "--include-partial-messages"
+# json_parser = "claude"
+# session_flag = "--resume {}"
+# can_commit = true
+
+# Edit this only if you need a named CCS model alias.
+# -----------------------------------------------------------------------------
+# [ccs_aliases.*] -- CCS alias mappings (string or table form)
+# -----------------------------------------------------------------------------
+# Simple string form (uses built-in defaults for the named alias):
+# ccs_aliases = { claude = "claude", opencode = "opencode" }
+#
+# Table form (override per-alias CCS settings):
+# [ccs_aliases.claude]
+# cmd = "claude"
+# model_flag = "--model claude-sonnet-4"
+# can_commit = true
+#
+# [ccs_aliases.opencode]
+# cmd = "opencode"
+# model_flag = "--model opencode-o3"
+# can_commit = false

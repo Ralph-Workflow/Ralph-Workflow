@@ -93,6 +93,13 @@ class _CapacityFailingObserver(_FakeObserver):
         raise OSError(errno.ENOSPC, "watch limit reached")
 
 
+class _InotifyInstanceLimitObserver(_FakeObserver):
+    """Observer whose startup exhausts the host inotify-instance limit."""
+
+    def start(self) -> None:
+        raise OSError(errno.EMFILE, "inotify instance limit reached")
+
+
 class _StopFailingObserver(_FakeObserver):
     """Observer that raises during lifecycle release after joining."""
 
@@ -248,6 +255,24 @@ def test_capacity_exhaustion_enters_observable_live_fallback(
         "automatic_recovery": True,
         "safe_next_action": "Ralph will retry observation on the next workspace lease.",
     }
+    assert fake.stopped is True
+    assert fake.joined is True
+
+
+def test_inotify_instance_limit_during_start_enters_live_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exhausted inotify-instance limit must not abort agent execution."""
+    fake = _InotifyInstanceLimitObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+
+    monitor.start()
+
+    assert monitor.awareness_status["cause"] == "watch_capacity"
     assert fake.stopped is True
     assert fake.joined is True
 
