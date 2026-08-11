@@ -185,12 +185,6 @@ def _stub_opencode_catalog(
         return entries_by_id.get(model_id)
 
     monkeypatch.setattr(opencode_module, "get_model_by_id", _fake_lookup)
-    # The capabilities module imports the symbol directly; patch the
-    # alias it captured at import time so the lookup is exercised
-    # end-to-end via the public symbol.
-    import ralph.mcp.multimodal.capabilities as capabilities_module
-
-    monkeypatch.setattr(capabilities_module, "get_model_by_id", _fake_lookup)
 
 
 @pytest.fixture
@@ -205,13 +199,11 @@ def opencode_catalog_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     fallback).
     """
     import ralph.api.opencode as opencode_module
-    import ralph.mcp.multimodal.capabilities as capabilities_module
 
     def _fake_lookup(model_id: str) -> object | None:
         return None
 
     monkeypatch.setattr(opencode_module, "get_model_by_id", _fake_lookup)
-    monkeypatch.setattr(capabilities_module, "get_model_by_id", _fake_lookup)
 
 
 @pytest.mark.usefixtures("opencode_catalog_stub")
@@ -248,10 +240,10 @@ def test_opencode_catalog_image_modality_resolves_to_inline_image(
 
 
 @pytest.mark.usefixtures("opencode_catalog_stub")
-def test_opencode_catalog_without_image_modality_falls_back_to_resource_reference(
+def test_opencode_catalog_without_image_modality_still_inlines_image(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An OPENCODE catalog model without ``image`` in modalities.input falls back."""
+    """Image delivery does not depend on an OpenCode catalog entry."""
     from ralph.mcp.multimodal._delivery_mode import DeliveryMode
     from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE
     from ralph.mcp.multimodal.capabilities import (
@@ -272,17 +264,14 @@ def test_opencode_catalog_without_image_modality_falls_back_to_resource_referenc
     identity = MultimodalModelIdentity(provider="opencode", model_id="text-only/model")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
 
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
-        f"OPENCODE catalog model without 'image' in modalities.input must fall back to "
-        f"RESOURCE_REFERENCE_REPLAY, got {verdict.delivery!r}: {verdict.reason}"
-    )
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
 
 
 @pytest.mark.usefixtures("opencode_catalog_stub")
-def test_opencode_catalog_lookup_miss_falls_back_to_resource_reference(
+def test_opencode_catalog_lookup_miss_still_inlines_image(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the model is absent from the catalog, fall back to resource_reference_replay."""
+    """A catalog miss does not suppress the standard MCP image block."""
     from ralph.mcp.multimodal._delivery_mode import DeliveryMode
     from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE
     from ralph.mcp.multimodal.capabilities import (
@@ -295,8 +284,5 @@ def test_opencode_catalog_lookup_miss_falls_back_to_resource_reference(
     identity = MultimodalModelIdentity(provider="opencode", model_id="absent/model")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
 
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
-        f"OPENCODE catalog miss must fall back to RESOURCE_REFERENCE_REPLAY, "
-        f"got {verdict.delivery!r}: {verdict.reason}"
-    )
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
 

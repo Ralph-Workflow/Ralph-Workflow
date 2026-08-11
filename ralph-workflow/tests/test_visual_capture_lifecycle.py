@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -383,21 +382,14 @@ def test_capture_before_set_rejects_target_mismatch(tmp_path: Path) -> None:
 
 
 def test_capture_before_set_rejects_non_capture_set(tmp_path: Path) -> None:
-    """A non-CaptureSet input is rejected at the type-checked boundary.
-
-    ``cast(CaptureSet, object())`` is the typing-safe way to lie to
-    mypy about the parameter type so the runtime ``isinstance`` check
-    inside :meth:`CaptureLifecycle.capture_before_set` fires without
-    us having to add a ``# mypy suppression`` comment in a test file
-    (which the project policy forbids).
-    """
+    """A non-CaptureSet input is rejected at the runtime boundary."""
     lifecycle = CaptureLifecycle(
         tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
     )
     with pytest.raises(BaselineStorageError):
         lifecycle.capture_before_set(
             target="x",
-            capture_set=cast("CaptureSet", object()),
+            capture_set=object(),
             matrix_key="0" * 64,
             design_capture_command="bin/capture --target={target}",
         )

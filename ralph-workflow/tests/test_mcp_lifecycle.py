@@ -761,13 +761,8 @@ def test_session_payload_json_includes_capability_profile_for_known_provider() -
     assert verdicts["audio"]["delivery"] == "unsupported"
 
 
-def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_delivery() -> None:
-    """_session_payload_json includes capability_profile for unknown-provider sessions.
-
-    Unknown providers produce a profile with RESOURCE_REFERENCE_REPLAY for all
-    modalities — the profile is still serialized so the subprocess has a consistent
-    runtime contract even when the provider identity cannot be resolved.
-    """
+def test_session_payload_json_includes_profile_for_unknown_provider() -> None:
+    """Unknown-provider profiles preserve image delivery without guessing model capability."""
     session = AgentSession(
         session_id="sid-cp-unknown",
         run_id="run-cp-unknown",
@@ -779,10 +774,12 @@ def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_deli
     profile = payload["capability_profile"]
     assert profile["provider"] == "unknown"
     verdicts = profile.get("verdicts", {})
+    assert verdicts["image"]["delivery"] == "inline_image"
     for modality, v in verdicts.items():
-        assert v["delivery"] == "resource_reference_replay", (
-            f"unknown provider modality={modality!r}: expected resource_reference_replay"
-        )
+        if modality != "image":
+            assert v["delivery"] == "resource_reference_replay", (
+                f"unknown provider modality={modality!r}: expected resource_reference_replay"
+            )
 
 
 def test_session_payload_json_capability_profile_verdicts_cover_all_modalities() -> None:

@@ -508,7 +508,7 @@ class CaptureLifecycle:
         self,
         *,
         target: str,
-        capture_set: CaptureSet,
+        capture_set: object,
         matrix_key: str,
         design_capture_command: str,
     ) -> CaptureSet:

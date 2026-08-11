@@ -11,7 +11,6 @@ cases.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import cast
 
 import pytest
 
@@ -114,10 +113,16 @@ def test_canonical_content_is_extracted_from_a_valid_document() -> None:
     assert content_dict["before_id"] == "manifest-before-001"
     assert content_dict["after_id"] == "manifest-after-001"
     assert content_dict["cell_ids"] == ["cap-001", "cap-002"]
-    assert cast("str", content_dict["intent"]).startswith("The header should align")
+    intent = content_dict["intent"]
+    summary = content_dict["summary"]
+    findings = content_dict["findings"]
+    assert isinstance(intent, str)
+    assert isinstance(summary, str)
+    assert isinstance(findings, list)
+    assert all(isinstance(finding, dict) for finding in findings)
+    assert intent.startswith("The header should align")
     assert content_dict["status"] == "pass"
-    assert "Buttons align" in cast("str", content_dict["summary"])
-    findings = cast("list[dict[str, str]]", content_dict["findings"])
+    assert "Buttons align" in summary
     assert len(findings) == 2
     assert findings[0]["capture_id"] == "cap-001"
     assert findings[0]["region"] == "0,0,320,40"

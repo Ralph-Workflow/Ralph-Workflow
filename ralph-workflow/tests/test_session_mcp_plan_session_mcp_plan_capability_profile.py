@@ -115,7 +115,7 @@ class TestSessionMcpPlanCapabilityProfile:
         pdf_delivery = plan.capability_profile.verdict_for(MODALITY_PDF).delivery
         assert pdf_delivery == DeliveryMode.UNSUPPORTED
 
-    def test_plan_capability_profile_for_unknown_provider_uses_resource_reference(
+    def test_plan_capability_profile_for_unknown_provider_inlines_images(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
 
@@ -129,7 +129,9 @@ class TestSessionMcpPlanCapabilityProfile:
 
         assert plan.capability_profile is not None
         assert isinstance(plan.capability_profile, ResolvedCapabilityProfile)
-        for modality in SUPPORTED_MODALITIES:
+        image_verdict = plan.capability_profile.verdict_for(MODALITY_IMAGE)
+        assert image_verdict.delivery == DeliveryMode.INLINE_IMAGE
+        for modality in SUPPORTED_MODALITIES - {MODALITY_IMAGE}:
             verdict = plan.capability_profile.verdict_for(modality)
             assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
                 f"unknown provider modality={modality!r}: expected RESOURCE_REFERENCE_REPLAY, "

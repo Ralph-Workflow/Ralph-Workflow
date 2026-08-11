@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.workspace.fs import FsWorkspace
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -91,12 +93,14 @@ def audit_test_source(text: str, path: str = "<memory>") -> list[AppearanceAsser
 
 def audit_test_files(root: str | Path) -> list[AppearanceAssertionViolation]:
     """Audit every tests/test_*.py under ``root``. Returns all violations."""
-    base = Path(root)
+    workspace = FsWorkspace(Path(root))
     violations: list[AppearanceAssertionViolation] = []
-    for path in sorted(base.glob("tests/test_*.py")):
-        if path.name == "test_appearance_assertion_prohibition.py":
+    for path in sorted(workspace.iter_files("tests")):
+        if not path.startswith("tests/test_") or not path.endswith(".py"):
             continue
-        violations.extend(audit_test_source(path.read_text(encoding="utf-8"), str(path)))
+        if path == "tests/test_appearance_assertion_prohibition.py":
+            continue
+        violations.extend(audit_test_source(workspace.read(path), path))
     return violations
 
 

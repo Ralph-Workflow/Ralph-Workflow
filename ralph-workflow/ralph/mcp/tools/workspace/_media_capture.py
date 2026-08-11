@@ -141,7 +141,7 @@ class _ExecutorLike(Protocol):
         args: Sequence[str] = (),
         *,
         options: ProcessRunOptions | None = None,
-    ) -> ProcessResult: ...
+    ) -> object: ...
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ on every field being present and well typed.
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import Literal
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
@@ -42,9 +42,8 @@ class DesignVerdict(RalphBaseModel):
 
     @model_validator(mode="after")
     def _validate_status_vocabulary(self) -> DesignVerdict:
-        allowed: tuple[Literal["pass", "fail", "blocked"], ...] = ("pass", "fail", "blocked")
-        if self.status not in cast("tuple[str, ...]", allowed):
-            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed))!r}"
+        if self.status not in _STATUSES:
+            msg = f"status must be one of {list(_STATUSES)!r}"
             raise ValueError(msg)
         return self
 

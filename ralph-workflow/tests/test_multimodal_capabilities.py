@@ -94,13 +94,23 @@ def test_unknown_modality_is_unsupported(provider: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("modality", sorted(SUPPORTED_MODALITIES))
+@pytest.mark.parametrize("modality", sorted(SUPPORTED_MODALITIES - {MODALITY_IMAGE}))
 def test_unknown_provider_defaults_to_resource_reference_replay(modality: str) -> None:
     verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
     assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
     assert verdict.is_supported()
     assert verdict.is_resource_reference()
     assert "unknown provider" in verdict.reason.lower()
+
+
+def test_image_delivery_does_not_depend_on_model_identity() -> None:
+    verdict = get_delivery_mode(
+        MultimodalModelIdentity(provider="unknown", model_id="future-text-model"),
+        MODALITY_IMAGE,
+    )
+
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
+    assert "does not guess" in verdict.reason
 
 
 # ---------------------------------------------------------------------------
@@ -169,11 +179,11 @@ def test_openai_vision_model_image_is_inline(provider: str, model_id: str | None
     assert verdict.is_inline()
 
 
-def test_openai_non_vision_model_image_is_resource_reference_replay() -> None:
+def test_openai_image_delivery_does_not_use_model_allowlists() -> None:
     identity = MultimodalModelIdentity(provider="openai", model_id="gpt-3.5-turbo")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
-    assert verdict.is_resource_reference()
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
+    assert verdict.is_inline()
 
 
 @pytest.mark.parametrize("modality", [MODALITY_AUDIO, MODALITY_VIDEO])
@@ -248,9 +258,8 @@ def test_claude_mixed_modality_verdicts_are_consistent() -> None:
     assert video_v.delivery == DeliveryMode.UNSUPPORTED
 
 
-def test_unknown_provider_all_modalities_all_supported() -> None:
-    """Unknown provider: all modalities must be resource_reference_replay, never blocked."""
-    for modality in SUPPORTED_MODALITIES:
+def test_unknown_provider_non_image_modalities_are_resource_references() -> None:
+    for modality in SUPPORTED_MODALITIES - {MODALITY_IMAGE}:
         verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
         assert verdict.is_supported(), f"modality {modality} blocked for unknown provider"
         assert verdict.is_resource_reference()
@@ -412,14 +421,12 @@ def test_resolve_capability_profile_verdict_for_unknown_modality_computes_fresh(
     assert verdict.delivery == DeliveryMode.UNSUPPORTED
 
 
-def test_resolve_capability_profile_unknown_provider_all_resource_reference() -> None:
-
+def test_resolve_capability_profile_unknown_provider_inlines_images() -> None:
     profile = resolve_capability_profile(UNKNOWN_IDENTITY)
-    for modality in SUPPORTED_MODALITIES:
-        verdict = profile.verdict_for(modality)
-        assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
-            f"unknown provider modality={modality!r}: expected RESOURCE_REFERENCE_REPLAY"
-        )
+
+    assert profile.verdict_for(MODALITY_IMAGE).delivery == DeliveryMode.INLINE_IMAGE
+    for modality in SUPPORTED_MODALITIES - {MODALITY_IMAGE}:
+        assert profile.verdict_for(modality).delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
 
 
 @pytest.mark.parametrize(

@@ -36,7 +36,7 @@ import inspect
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -497,14 +497,9 @@ def test_handle_media_capture_fails_when_executor_returns_wrong_type(
         args: Sequence[str] = (),
         *,
         options: ProcessRunOptions | None = None,
-    ) -> ProcessResult:
+    ) -> object:
         del command, args, options
-        # ``cast`` is the typing-safe way to lie about the return
-        # type without adding a ``# mypy suppression`` comment (which
-        # the project policy forbids in test files); the runtime
-        # value is still a string, so the handler's ``isinstance``
-        # check fires.
-        return cast("ProcessResult", "not-a-process-result")
+        return "not-a-process-result"
 
     with pytest.raises(MediaCaptureError) as excinfo:
         handle_media_capture(
