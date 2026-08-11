@@ -130,6 +130,7 @@ def _build_disabled_status_payload(
         "index_storage_bytes": 0,
         "managed_ignore_rule_present": handlers_module._gitignore_coverage(workspace_root),
         "managed_ignore_rule_repair": _gitignore_repair_payload(workspace_root),
+        "workspace_awareness": awareness_for_workspace(workspace_root).snapshot(),
     }
 
 

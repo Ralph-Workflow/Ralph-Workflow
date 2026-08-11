@@ -179,7 +179,7 @@ test-live-agy:
 # `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
 # file the regular profile deliberately skips.
 test-multimodal-smoke:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_smoke_multimodal_end_to_end.py -q -m "smoke and subprocess_e2e"
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 8 --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,

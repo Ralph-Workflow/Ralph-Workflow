@@ -120,6 +120,14 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 
+def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
+    """The budget-tracked smoke suite must not serialize independent harnesses."""
+    body = _target_body("test-multimodal-smoke")
+    assert len(body) == 1
+    assert "-n 8 --dist worksteal" in body[0]
+    assert '"smoke and subprocess_e2e"' in body[0]
+
+
 def test_visual_smoke_runs_only_its_smoke_marked_fixture_judge() -> None:
     capture_body = _target_body("test-visual-capture")
     assert len(capture_body) == 1

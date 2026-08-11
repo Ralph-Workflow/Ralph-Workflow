@@ -59,6 +59,32 @@ def test_index_status_disabled_when_no_handle(tmp_path: Path) -> None:
     assert payload["index_exists"] is False
     assert "generation" in payload
     assert "index_storage_bytes" in payload
+    assert payload["workspace_awareness"] == {
+        "workspace": str(workspace.absolute()),
+        "mode": "watch",
+        "freshness": "current",
+        "cause": None,
+        "dirty_paths_count": 0,
+        "automatic_recovery": False,
+        "safe_next_action": "None required.",
+    }
+
+
+def test_index_status_disabled_surfaces_live_fallback_awareness(tmp_path: Path) -> None:
+    """S-3 regression: disabled index status keeps degraded observation visible."""
+    workspace = _seed_workspace(tmp_path)
+    from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+
+    awareness_for_workspace(workspace).set_live_fallback("watch_capacity")
+    try:
+        payload = _decode(handle_ralph_index_status(_FakeSession(), _Workspace(workspace), {}))
+        awareness = payload["workspace_awareness"]
+        assert awareness["mode"] == "live_fallback"
+        assert awareness["freshness"] == "live_fallback"
+        assert awareness["cause"] == "watch_capacity"
+        assert awareness["automatic_recovery"] is True
+    finally:
+        release_workspace_awareness(workspace)
 
 
 def test_index_status_is_side_effect_free_when_no_handle(tmp_path: Path) -> None:
