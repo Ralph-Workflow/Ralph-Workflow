@@ -282,3 +282,5 @@ class TestSameWorkspaceWorkerScopeFencing:
                 allowed_directories=(f"../{sibling.name}",),
                 worker_namespace=worker_ns,
             )
+
+

@@ -1368,5 +1368,16 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # keep importing from ``smoke.py`` for backward compatibility;
         # the import is the documented seam for that re-export.
         ("ralph/cli/commands/smoke.py", 255),
+        # wt-58-prompt-consistency: workspace-context resolver.
+        # Lazy imports of registry, config loader, MCP plan resolver,
+        # and policy loader break the ralph.workspace<->ralph.mcp
+        # circular chain. ``audit_lint_bypass.py`` already gates the
+        # corresponding ``PLR0912`` suppression against a documented
+        # rationale; these entries mirror the same policy.
+        ("ralph/workspace/context.py", 109),
+        ("ralph/workspace/context.py", 112),
+        ("ralph/workspace/context.py", 115),
+        ("ralph/workspace/context.py", 118),
+        ("ralph/workspace/context.py", 121),
     }
 )

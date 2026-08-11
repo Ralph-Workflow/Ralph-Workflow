@@ -146,6 +146,12 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("pydantic_validation_errors", "PLR0911"),
     ("_command_builders", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
     ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
+    # workspace/context.py: lazy imports of registry, config, MCP plan, and
+    # policy loaders break the ralph.workspace<->ralph.mcp circular chain
+    # (the MCP plan resolver pulls in ralph.mcp.artifacts.product_spec, which
+    # imports ralph.workspace). Deferring them to the call site keeps the
+    # package-level import of ralph.workspace acyclic.
+    ("context", "PLC0415"),
     # _media_io.py: global state for periodic prune counter (wt-024 AC-10).
     ("_media_io", "PLW0603"),
     # _terminal_bg_query.py: process-lifetime memo of an immutable

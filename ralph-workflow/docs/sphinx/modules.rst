@@ -2807,6 +2807,19 @@ ralph.workspace
 .. automodule:: ralph.workspace
    :no-members:
 
+ralph.workspace.context
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.workspace.context exposes the workspace-context switch used by
+   the auto-rebase conflict-resolution path. ``WorkspaceContext`` is the
+   immutable bundle of the target's scope, config, policy, agent registry,
+   effective MCP plan, and prompt path; ``workspace_context`` is the
+   context manager that yields the bundle.
+
+.. automodule:: ralph.workspace.context
+   :members:
+   :show-inheritance:
+
 ralph.workspace.fs
 ~~~~~~~~~~~~~~~~~~
 

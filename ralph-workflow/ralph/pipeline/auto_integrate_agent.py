@@ -46,6 +46,7 @@ from ralph.pipeline.conflict_resolution import (
     run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+from ralph.workspace.context import workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -235,43 +236,59 @@ def build_agent_rebase_stop_resolver(
                 f"rebase conflict resolution unavailable: {missing} not threaded to this seam",
             )
             return False
-        if not _any_chain_agent_installed(policy_bundle, registry):
-            logger.warning(
-                "auto_integrate: no agent of the rebase-conflict-resolution "
-                "chain is installed; declining to resolve the rebase"
-            )
-            emit_integration_warn_line(
-                display,
-                "rebase conflict resolution unavailable: no "
-                "rebase-conflict-resolution agent installed",
-            )
-            return False
         if stop.stop_index <= 1 or not deadline:
             deadline.clear()
             deadline.append(resolution_deadline(config))
-        try:
-            return run_rebase_conflict_resolution_pipeline(
-                root=root,
-                target=target,
-                stop=stop,
-                config=config,
-                pipeline_deps=pipeline_deps,
-                workspace_scope=workspace_scope,
-                policy_bundle=policy_bundle,
-                display=display,
-                display_context=display_context,
-                deadline=deadline[0],
-            )
-        except Exception as exc:
-            logger.warning(
-                "auto_integrate: rebase conflict-resolution pipeline raised: {}",
-                exc,
-            )
-            emit_integration_warn_line(
-                display,
-                f"rebase conflict resolution failed: resolution pipeline raised {exc}",
-            )
-            return False
+        # The conflicted `root` is the target worktree (the main worktree
+        # for an auto-rebase). All path-bound context -- prompt, MCP plan,
+        # policy, agent registry, config -- must come from the TARGET, not
+        # from the calling worktree's closed-over values. The
+        # ``workspace_context`` manager validates the target and yields one
+        # immutable bundle; the agent session built downstream then
+        # receives the target's ``workspace_scope.root`` through the
+        # existing bridge chain, selecting the target's ``.agent/mcp.toml``.
+        # The ``with`` scope covers every exit path (decline, pipeline
+        # exception, success, abort) so the caller's closed-over config
+        # and registry are never replaced by target values.
+        with workspace_context(root) as target_ctx:
+            target_config = target_ctx.config
+            target_policy = target_ctx.policy_bundle
+            target_registry = target_ctx.registry
+            target_scope = target_ctx.target_scope
+            if not _any_chain_agent_installed(target_policy, target_registry):
+                logger.warning(
+                    "auto_integrate: no agent of the rebase-conflict-resolution "
+                    "chain is installed on the target worktree; declining to resolve the rebase"
+                )
+                emit_integration_warn_line(
+                    display,
+                    "rebase conflict resolution unavailable: no "
+                    "rebase-conflict-resolution agent installed on the target worktree",
+                )
+                return False
+            try:
+                return run_rebase_conflict_resolution_pipeline(
+                    root=root,
+                    target=target,
+                    stop=stop,
+                    config=target_config,
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=target_scope,
+                    policy_bundle=target_policy,
+                    display=display,
+                    display_context=display_context,
+                    deadline=deadline[0],
+                )
+            except Exception as exc:
+                logger.warning(
+                    "auto_integrate: rebase conflict-resolution pipeline raised: {}",
+                    exc,
+                )
+                emit_integration_warn_line(
+                    display,
+                    f"rebase conflict resolution failed: resolution pipeline raised {exc}",
+                )
+                return False
 
     return _resolver
 

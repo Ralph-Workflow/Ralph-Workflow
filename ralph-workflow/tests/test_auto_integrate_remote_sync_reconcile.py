@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 from ralph.git import remote_push as remote_push_module
 from ralph.pipeline import auto_integrate_remote_reconcile as remote_reconcile
@@ -24,10 +25,14 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_LOCAL_FLEET,
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.conflict_resolution.graph import MAX_REBASE_CONFLICT_STOPS
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
     import pytest
+
+    from ralph.policy.models import PolicyBundle
 
 
 def _config(**overrides: object):
@@ -572,3 +577,277 @@ def test_disabled_remote_sync_skips_reconcile() -> None:
     out = reconcile_after_rejected_push(cfg, Path("/repo"), "main", record)
     # Record returned unchanged from the caller's perspective
     assert out is not None
+
+
+class TestAutoRebaseWorkspaceContextEndToEnd:
+    """End-to-end regression: the auto-rebase path uses the target's context.
+
+    The main worktree's rebase conflict must run against the main
+    worktree's PROMPT.md, MCP plan, config, policy, and registry -- not
+    against the calling feature worktree's. The shared resolver built
+    by ``build_agent_rebase_stop_resolver`` enters ``workspace_context``
+    for the target ``root`` the integration step passes it and uses
+    only the target's values inside the ``with`` block. Outside the
+    block, the caller's resources are unchanged.
+    """
+
+    @staticmethod
+    def _seed_workspace(root: Path, *, prompt: str) -> None:
+        agent_dir = root / ".agent"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        (root / "PROMPT.md").write_text(prompt, encoding="utf-8")
+        (agent_dir / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
+
+    @staticmethod
+    def _install_workspace_seams(
+        monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path
+    ) -> None:
+        """Mock git ops so each workspace resolves to its own root."""
+
+        canonical = {p.resolve(): p.resolve() for p in workspace_roots}
+
+        def _find_root(candidate: Path) -> Path:
+            resolved_candidate = candidate.resolve()
+            for ws_root in canonical.values():
+                if resolved_candidate == ws_root or ws_root in resolved_candidate.parents:
+                    return ws_root
+            return resolved_candidate
+
+        monkeypatch.setattr("ralph.workspace.scope.find_repo_root", _find_root)
+        monkeypatch.setattr("ralph.workspace.scope.find_main_worktree_root", _find_root)
+
+    def test_auto_rebase_resolver_uses_target_workspace_context(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """The shared resolver enters the target before invoking the pipeline."""
+        from ralph.pipeline import auto_integrate_agent as resolver_module
+        from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+
+        caller = tmp_path / "caller"
+        target = tmp_path / "target"
+        caller.mkdir()
+        target.mkdir()
+        self._seed_workspace(caller, prompt="CALLER PROMPT")
+        self._seed_workspace(target, prompt="TARGET PROMPT")
+        self._install_workspace_seams(monkeypatch, caller, target)
+
+        # Capture every context value the resolver hands to the pipeline,
+        # so the assertion can prove the resolver reached the TARGET.
+        observations: dict[str, object] = {}
+
+        def _record_pipeline(
+            *,
+            root: Path,
+            target: str,
+            stop: RebaseStop,
+            config: object,
+            pipeline_deps: object,
+            workspace_scope: object,
+            policy_bundle: object,
+            display: object,
+            display_context: object,
+            deadline: float | None = None,
+            invoke: object = None,
+            clock: object = None,
+        ) -> bool:
+            observations["root"] = root
+            observations["target"] = target
+            observations["stop"] = stop
+            observations["config"] = config
+            observations["workspace_scope"] = workspace_scope
+            observations["policy_bundle"] = policy_bundle
+            observations["prompt_bytes"] = (workspace_scope.root / "PROMPT.md").read_bytes()
+            return True
+
+        monkeypatch.setattr(resolver_module, "run_rebase_conflict_resolution_pipeline", _record_pipeline)
+
+        # Drive the shared resolver with a target that is NOT the calling
+        # worktree's root. The integration step passes the main-owner
+        # worktree as ``root``.
+        resolver = resolver_module.build_agent_rebase_stop_resolver(
+            policy_bundle=_load_default_policy_bundle(),
+            registry=_registry_with_chain_agent(),
+            display=MagicMock(),
+            config=_config(),
+            pipeline_deps=object(),
+            workspace_scope=object(),
+        )
+        stop = RebaseStop(
+            sha="abc1234",
+            subject="feat: alpha",
+            conflicted_files=("src/alpha.py",),
+            stop_index=1,
+            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+        )
+
+        assert resolver(target, "main", stop) is True
+
+        # The pipeline must have received the TARGET's values, not the
+        # caller's. The resolved scope is the target's root, the prompt
+        # bytes are the target's, and the policy is the target's.
+        assert observations["root"] == target
+        assert observations["target"] == "main"
+        assert observations["stop"] is stop
+        assert observations["workspace_scope"].root == target.resolve()
+        assert observations["prompt_bytes"] == (target / "PROMPT.md").read_bytes()
+        assert observations["prompt_bytes"] != (caller / "PROMPT.md").read_bytes()
+
+    def test_auto_rebase_round_trip_leaves_caller_unchanged_on_success(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A successful auto-rebase restores the caller's resources exactly."""
+        from ralph.pipeline import auto_integrate_agent as resolver_module
+        from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+
+        caller = tmp_path / "caller"
+        target = tmp_path / "target"
+        caller.mkdir()
+        target.mkdir()
+        self._seed_workspace(caller, prompt="CALLER PROMPT")
+        self._seed_workspace(target, prompt="TARGET PROMPT")
+        self._install_workspace_seams(monkeypatch, caller, target)
+
+        # Stub the pipeline to a no-op success.
+        monkeypatch.setattr(
+            resolver_module,
+            "run_rebase_conflict_resolution_pipeline",
+            lambda **_kwargs: True,
+        )
+
+        # Caller's closes-over scope and config: the caller's view of the
+        # world before the resolver runs. After the resolver exits, every
+        # observable part of the caller's resources must be identical.
+        caller_proxies = _caller_proxies(caller)
+
+        resolver = resolver_module.build_agent_rebase_stop_resolver(
+            policy_bundle=_load_default_policy_bundle(),
+            registry=_registry_with_chain_agent(),
+            display=MagicMock(),
+            config=_config(),
+            pipeline_deps=object(),
+            workspace_scope=object(),
+        )
+        stop = RebaseStop(
+            sha="abc1234",
+            subject="feat: alpha",
+            conflicted_files=("src/alpha.py",),
+            stop_index=1,
+            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+        )
+
+        # Snapshot caller resources BEFORE the resolver runs.
+        before = _snapshot_caller(caller)
+        outcome = resolver(target, "main", stop)
+        # Snapshot caller resources AFTER the resolver runs.
+        after = _snapshot_caller(caller)
+
+        assert outcome is True
+        assert after == before
+        # Sanity: the caller's proxy scope is still the caller's scope.
+        assert caller_proxies["scope"].root == caller.resolve()
+
+    def test_auto_rebase_round_trip_leaves_caller_unchanged_on_pipeline_exception(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A pipeline exception inside the resolver still restores the caller."""
+        from ralph.pipeline import auto_integrate_agent as resolver_module
+        from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+
+        caller = tmp_path / "caller"
+        target = tmp_path / "target"
+        caller.mkdir()
+        target.mkdir()
+        self._seed_workspace(caller, prompt="CALLER PROMPT")
+        self._seed_workspace(target, prompt="TARGET PROMPT")
+        self._install_workspace_seams(monkeypatch, caller, target)
+
+        def _explode(**_kwargs: object) -> bool:
+            raise RuntimeError("pipeline exploded")
+
+        monkeypatch.setattr(resolver_module, "run_rebase_conflict_resolution_pipeline", _explode)
+
+        resolver = resolver_module.build_agent_rebase_stop_resolver(
+            policy_bundle=_load_default_policy_bundle(),
+            registry=_registry_with_chain_agent(),
+            display=MagicMock(),
+            config=_config(),
+            pipeline_deps=object(),
+            workspace_scope=object(),
+        )
+        stop = RebaseStop(
+            sha="abc1234",
+            subject="feat: alpha",
+            conflicted_files=("src/alpha.py",),
+            stop_index=1,
+            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+        )
+
+        before = _snapshot_caller(caller)
+        outcome = resolver(target, "main", stop)
+        after = _snapshot_caller(caller)
+
+        # The resolver never raises; the pipeline exception is contained.
+        assert outcome is False
+        assert after == before
+
+
+def _load_default_policy_bundle() -> PolicyBundle:
+    """The real default policy, which declares the resolution drain."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    return load_policy(defaults_dir)
+
+
+def _registry_with_chain_agent() -> object:
+    """Registry whose chain lookup returns a sentinel agent.
+
+    The real default policy's rebase-conflict-resolution drain resolves
+    through ``AgentRegistry.from_config``; the seeded builtins already
+    cover every chain name. A real registry is the easiest way to keep
+    the chain-availability check satisfied.
+    """
+    from ralph.agents.registry import AgentRegistry
+    from ralph.config.models import UnifiedConfig
+
+    return AgentRegistry.from_config(UnifiedConfig.model_validate({"general": {}}))
+
+
+def _caller_proxies(caller: Path) -> dict[str, object]:
+    """Build the caller's observable resources -- what the caller sees."""
+    from ralph.agents.registry import AgentRegistry
+    from ralph.config.loader import load_config
+    from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
+    from ralph.policy.loader import load_policy_for_workspace_scope
+    from ralph.workspace.scope import resolve_workspace_scope
+
+    scope = resolve_workspace_scope(caller)
+    config = load_config(workspace_scope=scope)
+    policy = load_policy_for_workspace_scope(scope, config=config)
+    registry = AgentRegistry.from_config(config)
+    mcp_plan = resolve_effective_session_mcp_plan(scope.root)
+    return {
+        "scope": scope,
+        "config": config,
+        "policy": policy,
+        "registry": registry,
+        "mcp_plan": mcp_plan,
+        "prompt_bytes": (scope.root / "PROMPT.md").read_bytes(),
+    }
+
+
+def _snapshot_caller(caller: Path) -> dict[str, object]:
+    """Byte-identical snapshot of the caller's observable resources."""
+    proxies = _caller_proxies(caller)
+    return {
+        "prompt_bytes": proxies["prompt_bytes"],
+        "scope_root": proxies["scope"].root,
+        "config": proxies["config"].model_dump_json(),
+        "policy": proxies["policy"].model_dump_json(),
+        "registry_names": sorted(proxies["registry"].agents.keys()),
+        "mcp_plan": proxies["mcp_plan"],
+    }

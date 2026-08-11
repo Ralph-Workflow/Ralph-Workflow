@@ -51,6 +51,7 @@ if grep -RIn --include="*.py" \
   | grep -v "policy/loader.py" \
   | grep -v "phases/required_artifacts.py" \
   | grep -v "testing/audit_di_seam.py" \
+  | grep -v "workspace/context.py" \
   ; then
   echo "drift: hardcoded source-prompt construction outside the resolver" >&2
   echo "Fix the resolver boundary. Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements." >&2

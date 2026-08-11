@@ -510,6 +510,13 @@ class _EmptyRegistry:
         return None
 
 
+class _EmptyAgentRegistry:
+    """Empty AgentRegistry returned for the TARGET workspace scope."""
+
+    def get(self, _name: str) -> None:
+        return None
+
+
 def _resolver_messages(display: _RecordingDisplay) -> str:
     return "\n".join(message for _unit, _tag, message in display.warn_lines)
 
@@ -597,7 +604,9 @@ def test_a_display_whose_warn_surface_raises_is_swallowed(tmp_path: Path) -> Non
     assert resolver(tmp_path, "main") is False
 
 
-def test_the_rebase_stop_resolver_reports_its_declines_too(tmp_path: Path) -> None:
+def test_the_rebase_stop_resolver_reports_its_declines_too(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
     """The rebase twin of every branch above shares the same visibility."""
     display = _RecordingDisplay()
     stop = RebaseStop(
@@ -620,6 +629,17 @@ def test_the_rebase_stop_resolver_reports_its_declines_too(tmp_path: Path) -> No
     assert "pipeline_deps not threaded" in _resolver_messages(display)
 
     display.warn_lines.clear()
+    # The resolver now enters workspace_context for the target and uses
+    # the TARGET's registry for chain availability, not the caller's.
+    # Monkeypatch the target registry to be empty so the resolver
+    # declines with the same operator-facing message.
+    from ralph.agents import registry as agents_registry_module
+
+    monkeypatch.setattr(
+        agents_registry_module.AgentRegistry,
+        "from_config",
+        classmethod(lambda cls, _config: _EmptyAgentRegistry()),
+    )
     no_agent = runner_module.build_agent_rebase_stop_resolver(
         policy_bundle=_load_default_policy_bundle(),
         registry=_EmptyRegistry(),
