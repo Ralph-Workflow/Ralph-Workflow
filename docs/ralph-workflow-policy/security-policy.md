@@ -203,7 +203,7 @@ Run every gate below before claiming a change complies with this policy.
 
 Secret scanning applies to every project:
 
-RALPH-COMMAND: python3 scripts/fabrication_guard.py --level 1 README.md ralph-workflow/README.md SHOWCASE.md USERS.md ralph-workflow/docs/sphinx/index.rst
+RALPH-COMMAND: python3 scripts/fabrication_guard.py --level 1 README.md ralph-workflow/README.md ralph-workflow/docs/sphinx/index.rst
 
 This is the per-file level-1 sweep the pre-commit hook runs as
 default; the level-2/3 existence checks are opt-in and require

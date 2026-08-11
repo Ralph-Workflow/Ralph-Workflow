@@ -45,9 +45,9 @@ RALPH-FACT: lockfile_path: ralph-workflow/uv.lock (uv-managed; pinned by `uv syn
 RALPH-FACT: license_allowlist: project distribution license is `AGPL-3.0-or-later` (per ralph-workflow/pyproject.toml `[project].license`). Dependencies MUST use OSI-approved permissive or copyleft licenses compatible with AGPL-3.0-or-later distribution: MIT, BSD-2/3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1-or-later, LGPL-3.0-or-later, PSF-2.0, and similar. Non-OSI / source-available licenses (BSL, SSPL, Elastic, BUSL) MUST NOT be merged without a documented exception naming the license, the scope, the owner, and the review date. GPL-family (other than LGPL) is incompatible with downstream proprietary linking without an explicit dual-license strategy.
 RALPH-FACT: security_audit_command: Bandit (the Python-best-practice static analyzer; it is the language-scoped scanner called out in security-policy.md). Bandit is NOT currently pinned in `ralph-workflow/pyproject.toml`, NOT installed by `make dev`, and NOT wired into `make -C ralph-workflow verify`; the Verification section below records the corresponding deferred gate. A broader CVE audit depends on the GitHub Advisory Database (Dependabot) and is wired through CODEOWNERS + Renovate rather than a CLI command.
 RALPH-FACT: type_info_policy: every added Python dependency MUST either ship type information in its own wheel (the default for httpx, pydantic, typer, rich, mcp, loguru, tqdm, gitpython, sentry-sdk, watchdog, jinja2, readability-lxml, selectolax) or carry a companion types package declared in `[project.optional-dependencies].dev` (`types-psutil>=5.9` is the canonical example for the untyped `psutil` runtime dep). Pure-stdlib reimplementations are preferred over dependencies that drag type stubs across the dep graph.
-RALPH-FACT: ci_install_command: `make dev` (declared in ralph-workflow/Makefile as `uv sync --extra dev`). CI installs from the lockfile by running the same target; `--extra` is `--frozen`-safe because uv resolves against `uv.lock` for every extra in the sync.
+RALPH-FACT: ci_install_command: CI installs `uv` and runs `cd ralph-workflow && make verify` directly; the target resolves the checkout environment through `uv run` against `uv.lock`. `make dev` is separate: it delegates to `python -m ralph.install`, which copies the checkout, runs `uv sync --extra dev` in the copied dev snapshot, and writes `rdev`.
 RALPH-FACT: dependency_evaluation_record: each existing runtime dependency is recorded in ralph-workflow/pyproject.toml `[project].dependencies` and was evaluated against four criteria: (1) the upstream is actively maintained (last release within 18 months), (2) the wheel carries type information (or a sibling `types-*` package is declared in dev extras), (3) the license is on the ralph-workflow-pyproject AGPL-3.0-or-later compatible list (MIT / BSD / Apache-2.0 / ISC / MPL-2.0 / PSF / LGPL), and (4) the dependency is the smallest maintained option that satisfies the bound API. Recorded dependencies include httpx (HTTP client), pydantic (data model), typer + rich-click (CLI), rich (terminal), mcp (MCP transport), loguru (logging), tqdm (progress bars), gitpython (git ops), sentry-sdk (error reporting, opt-in), watchdog (filesystem events), jinja2 (templating), readability-lxml + selectolax (HTML extraction). No BSL/SSPL/Elastic/BUSL/non-OSI licence is present.
-RALPH-FACT: transitive_dependency_policy: transitive dependencies are governed by the lockfile (`ralph-workflow/uv.lock`), not by direct inspection. Every transitive is recorded with a pinned version, a sha256 hash, and an indirect provenance back to a top-level entry in `[project].dependencies`. CI runs `uv sync --frozen --extra dev` so the lockfile is the sole source of truth at install time. A transitive that is not pinned in the lockfile is a build failure, never a runtime surprise. Adding a new top-level dependency requires the four-criteria evaluation in `dependency_evaluation_record`; no transitive is added directly (it MUST come in through a top-level resolution).
+RALPH-FACT: transitive_dependency_policy: transitive dependencies are governed by `ralph-workflow/uv.lock`, not by direct inspection. CI installs `uv` and invokes `make verify`; every Python command in that gate uses `uv run`, which resolves the checkout environment from the lockfile. `make dev` runs `uv sync --extra dev` only in its copied `rdev` snapshot, not in CI. Adding a new top-level dependency requires the four-criteria evaluation in `dependency_evaluation_record`; transitive dependencies arrive through that resolution rather than direct declaration.
 
 ## AI execution instructions
 
@@ -76,13 +76,13 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
-RALPH-COMMAND: make -C ralph-workflow dev
+RALPH-COMMAND: make -C ralph-workflow verify
 
-This is the canonical dependency install gate from the lockfile; CI
-runs it as the env-setup step and fails the build if the lockfile is
-out of sync with `pyproject.toml`.
+This is the authoritative locked-environment gate: CI installs `uv`, then
+runs this target; its `uv run` commands resolve the checkout environment from
+`uv.lock`. `make dev` is a separate local `rdev`-snapshot installer.
 
-The expected successful result is a clean dependency install (exit 0).
+The expected successful result is exit 0 from the authoritative gate.
 On failure, report the affected package and the failure category
 (resolver conflict, missing platform wheel, network, lockfile drift).
 A clean Bandit scan for added Python source is reported alongside:

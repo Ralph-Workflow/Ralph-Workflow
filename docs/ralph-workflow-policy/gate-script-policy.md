@@ -194,9 +194,7 @@ locally before declaring the change complete, but the canonical
 verification suite does not yet exercise it. Until the trigger fires,
 bash-script quality is enforced by the wt-038 drift-check script
 (which runs every shell script under its own fail-closed contract)
-and by black-box tests under `ralph-workflow/tests/` (e.g.
-`tests/test_check_route_page_links.py`,
-`tests/display/test_single_mode_anti_drift.py`).
+and by black-box coverage under `ralph-workflow/tests/`: `tests/test_check_route_page_links.py` drives the route-link checker. The shell chain is separately checked by the wired `make -C ralph-workflow verify-drift` target; do not claim an unverified dedicated test path.
 
 ## Exceptions
 

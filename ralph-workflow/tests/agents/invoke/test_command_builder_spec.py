@@ -226,6 +226,21 @@ def test_codex_command_builder_parity(tmp_path: Path) -> None:
     assert cmd == expected
 
 
+def test_codex_command_builder_keeps_quoted_command_path_as_one_argv_token(tmp_path: Path) -> None:
+    """A Codex wrapper path with spaces is a single executable argv token."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello world", encoding="utf-8")
+    wrapper = tmp_path / "codex wrapper"
+
+    cmd = CodexCommandBuilder().build(
+        AgentConfig(cmd=f"'{wrapper}' exec", transport=AgentTransport.CODEX),
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    assert cmd[:2] == [str(wrapper), "exec"]
+
+
 def test_codex_command_builder_preserves_quoted_effort_override(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")

@@ -378,7 +378,7 @@ class ConfigurableCommandBuilder:
         if not cmd:
             return []
         if "codex" in cmd[0]:
-            return config.cmd.split()
+            return shlex.split(config.cmd)
         if "agy" in cmd[0]:
             return shlex.split(config.cmd)
         if "agent" in cmd[0]:
