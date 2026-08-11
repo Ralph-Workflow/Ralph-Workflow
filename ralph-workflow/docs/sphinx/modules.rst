@@ -1105,14 +1105,6 @@ ralph.pipeline.auto_integrate_recovery
    :members:
    :show-inheritance:
 
-ralph.pipeline.auto_integrate_recovery_terminal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
-   :members:
-   :no-index:
-   :show-inheritance:
-
 ralph.pipeline.auto_integrate_refresh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1125,14 +1117,6 @@ ralph.pipeline.auto_integrate_remote_sync
 
 .. automodule:: ralph.pipeline.auto_integrate_remote_sync
    :members:
-   :show-inheritance:
-
-ralph.pipeline.auto_integrate_terminal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.auto_integrate_terminal
-   :members:
-   :no-index:
    :show-inheritance:
 
 ralph.pipeline.auto_integrate_sync
@@ -4264,26 +4248,5 @@ ralph.mcp._model_flag_parser
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp._model_flag_parser
-   :members:
-   :show-inheritance:
-
-ralph.visual.on_demand_capture_evidence
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.visual.on_demand_capture_evidence
-   :members:
-   :show-inheritance:
-
-ralph.visual.on_demand_judgement_deps
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.visual.on_demand_judgement_deps
-   :members:
-   :show-inheritance:
-
-ralph.visual.on_demand_judgement_result
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.visual.on_demand_judgement_result
    :members:
    :show-inheritance:

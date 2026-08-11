@@ -108,6 +108,7 @@ def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
         yield "Task declared complete: session_id=pty-session-1, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(invoke_module, "get_process_manager", lambda: manager)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr(
         invoke_module,
         "run_pty_and_read_lines",

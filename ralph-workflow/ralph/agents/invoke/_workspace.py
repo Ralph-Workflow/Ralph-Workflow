@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import importlib
 import inspect
 import time
@@ -280,6 +281,17 @@ class WorkspaceMonitor:
         try:
             self._observer.schedule(handler, workspace_str, recursive=True)
             self._observer.start()
+        except OSError as exc:
+            with suppress(BaseException):
+                observer.stop()
+            with suppress(BaseException):
+                observer.join(5)
+            self._observer = None
+            self._handler = None
+            if exc.errno in (errno.EMFILE, errno.ENOSPC):
+                logger.warning("Workspace monitoring unavailable: inotify limit reached")
+                return
+            raise
         except BaseException:
             with suppress(BaseException):
                 observer.stop()

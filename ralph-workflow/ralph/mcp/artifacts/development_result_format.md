@@ -1,10 +1,18 @@
 # Development result visual evidence format
 
-Visual evidence is represented by these fields in a development result:
+A completed UI proof remains a normal `## Plan Items Proven` list item. Add
+these labeled body fields beneath the item when it cites visual evidence:
 
-- `design_verdict_id`: the criterion 8 visual verdict identifier.
-- `before_capture_set_id`: the capture set reviewed before the change.
-- `after_capture_set_id`: the capture set reviewed after the change.
-- `cell_handles`: a non-empty list of `ralph://media/{artifact_id}` cell handles.
+```markdown
+- [S-4] The header UI is capture-backed.
+  Verdict ID: verdict-001
+  Before Captures: ralph://media/{before-artifact-id}
+  After Captures: ralph://media/{after-artifact-id}
+```
 
-A visual result is valid only when all four fields are present and every cell handle uses the `ralph://media/` scheme. These fields provide visual proof through `dev_results`; CSS, class, style, and DOM assertions remain implementation evidence rather than design evidence.
+`Verdict ID` identifies the submitted `design_verdict`. `Before Captures` and
+`After Captures` are comma-separated `ralph://media/{artifact_id}` handles for
+the compared capture sets. A UI proof is valid only when the verdict and every
+handle are minted for the active run's authenticated capture ledger. CSS,
+class, style, and DOM assertions remain implementation evidence rather than
+design evidence.

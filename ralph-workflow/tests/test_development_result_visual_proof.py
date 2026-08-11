@@ -38,3 +38,27 @@ status: completed
             ),
         }
     ]
+
+
+def test_ui_proof_does_not_map_handles_without_both_capture_labels() -> None:
+    """A UI proof cannot substitute both compared sets into one labeled field."""
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Completed the visual change.
+## Files Changed
+- [F-1] src/ui/header.tsx
+## Plan Items Proven
+- [S-4] The header UI is capture-backed.
+  Verdict ID: verdict-001
+  Before Captures: ralph://media/11111111-1111-1111-1111-111111111111, ralph://media/22222222-2222-2222-2222-222222222222
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    proof = content["plan_items_proven"][0]
+    assert "capture_handles" not in proof

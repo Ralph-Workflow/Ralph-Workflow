@@ -18,15 +18,19 @@ source-reading task.
 ```markdown
 ---
 type: design_verdict
+judgement_tier: on-demand
 ---
 
 ## Capture Provenance
 
 run_id: 2026-08-10-001
+verdict_id: verdict-001
 target: src/components/header.tsx
 before_id: manifest-before-001
 after_id: manifest-after-001
 cell_ids: cap-001,cap-002,cap-003
+before_handles: ralph://media/11111111-1111-1111-1111-111111111111
+after_handles: ralph://media/22222222-2222-2222-2222-222222222222
 
 ## Design Intent
 
@@ -45,16 +49,21 @@ cell_ids: cap-001,cap-002,cap-003
 ## Frontmatter
 
 - `type` — required; `design_verdict`. Any other value is a hard error.
+- `judgement_tier` — required for visual proof; `deterministic` for fixture-only
+  machinery tests or `on-demand` for the operator-invoked vision review.
 - `status` — optional frontmatter echo; if present, must be `pass`,
   `fail`, or `blocked`. The authoritative status lives in
   `## Verdict`.
 
 ## Sections
 
-- `## Capture Provenance` — required. Body fields
-  (`run_id:`, `target:`, `before_id:`, `after_id:`, `cell_ids:`).
-  `cell_ids` is a comma-separated list of capture identifiers; every
-  `capture_id` cited in a finding must appear here.
+- `## Capture Provenance` — required. The structural grammar requires
+  `run_id:`, `target:`, `before_id:`, `after_id:`, and `cell_ids:`. For an
+  active-run submission, also provide `judgement_tier` frontmatter plus
+  `verdict_id:`, `before_handles:`, and `after_handles:`. `cell_ids` is a
+  comma-separated list of capture identifiers; every `capture_id` cited in a
+  finding must appear here. The handle fields are comma-separated server-minted
+  `ralph://media/{artifact_id}` references for the compared sets.
 - `## Design Intent` — required; exactly one item, the verbatim text
   the agent was asked to review.
 - `## Verdict` — required; exactly one item shaped
@@ -70,9 +79,9 @@ and the section shapes above remain strict.
 
 ## Hard errors vs warnings
 
-Hard errors: missing `## Capture Provenance`, `## Design Intent`,
-`## Verdict`, or `## Findings`; a `Capture Provenance` body field
-missing or empty; a `Design Intent` that smuggles a forbidden phrase
+Structural hard errors: missing `## Capture Provenance`, `## Design Intent`,
+`## Verdict`, or `## Findings`; a required structural `Capture Provenance` body
+field missing or empty; a `Design Intent` that smuggles a forbidden phrase
 (`source`, `diff`, `DOM`, `stylesheet`); a `Verdict` not shaped
 `status | summary`; a `Findings` item not shaped
 `capture_id | x,y,w,h | dimension | severity | narrative`; a finding
@@ -80,4 +89,6 @@ whose `capture_id` does not appear in `Capture Provenance` cell_ids; a
 finding region that is not a non-negative `x,y,w,h`; a `Verdict` of
 `pass` with at least one `blocker` or `major` finding; a `Verdict` of
 `fail` with no `blocker` or `major` finding; an unknown frontmatter
-`type` or `status`; or any malformed core grammar.
+`type` or `status`; or any malformed core grammar. Active-run submission adds
+hard errors when `judgement_tier`, `verdict_id`, either compared handle set, or
+ledger-backed active-run provenance is absent or invalid.

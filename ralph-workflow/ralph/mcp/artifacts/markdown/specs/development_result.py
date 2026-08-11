@@ -65,14 +65,18 @@ def _proof_items(document: ParsedDocument, name: str, key: str) -> list[dict[str
         verdict_id = fields.get("Verdict ID")
         if verdict_id:
             proof["verdict_id"] = verdict_id
-        capture_handles = tuple(
+        before_handles = tuple(
             handle.strip()
-            for field_name in ("Before Captures", "After Captures")
-            for handle in fields.get(field_name, "").split(",")
+            for handle in fields.get("Before Captures", "").split(",")
             if handle.strip()
         )
-        if capture_handles:
-            proof["capture_handles"] = capture_handles
+        after_handles = tuple(
+            handle.strip()
+            for handle in fields.get("After Captures", "").split(",")
+            if handle.strip()
+        )
+        if before_handles and after_handles:
+            proof["capture_handles"] = before_handles + after_handles
         proofs.append(proof)
     return proofs
 
