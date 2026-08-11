@@ -56,25 +56,33 @@ def _build_warning_block(
     provider: str,
     modality: str,
     verdict_reason: str,
+    model_id: str | None = None,
+    delivery_mode: str = "unknown",
 ) -> ToolContent:
     """Build a non-fatal warning block naming the degraded multimodal delivery.
 
-    S-7 (criterion 3): when a multimodal model identity is unknown or a
-    modality verdict is ``UNSUPPORTED``, we DEGRADE GRACEFULLY rather
-    than fail. The warning block is prepended to a usable result so the
-    agent sees both the data it asked for (the inline image,
-    resource-reference block, etc.) AND the operator-visible
-    explanation of why this delivery mode is suboptimal.
+    S-7 (criterion 3) / S-6 (criterion 17): when a multimodal model
+    identity is unknown or a modality verdict is ``UNSUPPORTED``, we
+    DEGRADE GRACEFULLY rather than fail. The warning block is
+    prepended to a usable result so the agent sees both the data it
+    asked for (the inline image, resource-reference block, etc.) AND
+    the operator-visible explanation of why this delivery mode is
+    suboptimal.
 
     The exact block is plain text and is added BEFORE any other
     content block, so the multimodal payload still arrives intact.
     The accompanying ``logger.warning`` uses
     ``ralph.mcp.multimodal.degradation`` so tests can suppress it via
-    ``caplog``.
+    ``caplog``. The text always names the ``provider``, ``model_id``,
+    ``modality``, ``delivery_mode``, and ``verdict_reason`` so a future
+    regression that drops any of these from the operator-visible
+    warning fails this seam's pinning test.
     """
+    resolved_model_id = model_id if model_id is not None else "unknown"
     message = (
         "multimodal degraded: provider="
-        f"{provider!r} modality={modality!r} "
+        f"{provider!r} model_id={resolved_model_id!r} "
+        f"modality={modality!r} delivery_mode={delivery_mode!r} "
         f"reason={verdict_reason!r}. "
         "Treating multimodal as ASSUMED-present per product criterion 3; "
         "the artifact below is delivered via resource-reference replay so the "
@@ -284,6 +292,33 @@ def _handle_replay_uri(
     )
 
 
+def _build_unsupported_fallback_ref(
+    *,
+    modality: str,
+    mime_type: str,
+    title: str,
+    source_key: str,
+) -> ResourceReferenceContent:
+    """Build a degraded-delivery ResourceReferenceContent for UNSUPPORTED verdicts.
+
+    S-6 (criterion 17): when the capability verdict is ``UNSUPPORTED``
+    we still emit a usable resource-reference block. The URI is a
+    deterministic, namespaced degraded handle so the agent can
+    recognise the artefact type and that its delivery is degraded
+    even though the cached bytes are not persisted for this path
+    (the workspace read itself was rejected upstream of the
+    resource-reference cache write).
+    """
+    uri = f"ralph://media/degraded/{modality}/{source_key}"
+    return ResourceReferenceContent(
+        uri=uri,
+        mime_type=mime_type,
+        title=title,
+        modality=modality,
+        delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
+    )
+
+
 def _handle_workspace_media(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -330,36 +365,30 @@ def _handle_workspace_media(
     modality, mime_type = inferred
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(modality)
-    # S-7 (criterion 3): an unknown identity (provider == "unknown")
-    # is the canonical "multimodal model not actually present" signal.
-    # We DEGRADE GRACEFULLY: emit a WARNING block + still deliver the
-    # artifact via the natural code path below, rather than failing the
-    # call. The default assumption (multimodal IS present) survives
-    # because the resource-reference block keeps the multimodal surface
-    # available for downstream agents.
-    identity_unknown = not profile.identity.is_known()
+    # S-6 (criterion 17) / S-7 (criterion 3): an UNSUPPORTED verdict
+    # still degrades gracefully -- the agent receives a WARNING block
+    # naming provider / model_id / delivery_mode AND a usable
+    # ResourceReferenceContent fallback. The default assumption is
+    # multimodal-present; the warning is the operator-visible signal
+    # that this delivery is the graceful-degradation path rather than
+    # the optimal inline-or-typed-block path. ``is_error`` is False
+    # so the call still surfaces multimodal-shaped content the agent
+    # can act on.
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
-        # S-7 (criterion 3): even UNSUPPORTED verdicts degrade gracefully
-        # with a WARNING block. The default assumption is that multimodal
-        # is present and only the explicit provider / modality / reason
-        # combo below explains the missing capability. The agent still
-        # gets the structured modality list so it can fall back to
-        # resource-reference delivery via a second ``read_media`` call.
-        return ToolResult(
-            content=[
-                _build_warning_block(
-                    provider=verdict.provider,
-                    modality=modality,
-                    verdict_reason=verdict.reason,
-                ),
-                ToolContent.text_content(
-                    f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
-                    f"(model: {verdict.model_id or 'unknown'}). "
-                    f"Accepted forms: typed_block or none. Reason: {verdict.reason}"
-                ),
-            ],
-            is_error=True,
+        warning = _build_warning_block(
+            provider=verdict.provider,
+            model_id=verdict.model_id,
+            modality=modality,
+            delivery_mode=verdict.delivery.value,
+            verdict_reason=verdict.reason,
         )
+        fallback = _build_unsupported_fallback_ref(
+            modality=modality,
+            mime_type=mime_type,
+            title=PurePosixPath(path).name,
+            source_key=normalized or path,
+        )
+        return ToolResult(content=[warning, fallback], is_error=False)
     abs_path = workspace.absolute_path(normalized or path)
     try:
         raw_bytes = DEFAULT_FILE_BACKEND.read_bytes(Path(abs_path))
@@ -370,9 +399,17 @@ def _handle_workspace_media(
         )
     file_size = len(raw_bytes)
     title = PurePosixPath(path).name
+    # S-6 (criterion 17): image payloads that fit the inline cap and
+    # whose mime type is in the inline-image set are emitted as
+    # ``ImageContent`` UNCONDITIONALLY. The capability verdict is no
+    # longer a gate for image-only inline delivery -- criterion 14
+    # ("unresolvable -> capable") makes the inline path the default
+    # for any image the runtime can read, regardless of how the
+    # provider / model identity resolved. The unknown-identity ->
+    # warning-block prepending only applies to the resource-reference
+    # path below.
     if (
-        verdict.delivery == DeliveryMode.INLINE_IMAGE
-        and modality == "image"
+        modality == "image"
         and mime_type in INLINE_IMAGE_MIME_TYPES
         and file_size <= max_inline_bytes
     ):
@@ -422,13 +459,19 @@ def _handle_workspace_media(
     # WARNING block BEFORE the resource reference. The default assumption
     # is multimodal-present; the warning is the operator-visible signal
     # that this delivery is the graceful-degradation path rather than the
-    # optimal inline-or-typed-block path.
+    # optimal inline-or-typed-block path. The identity-unknown -> warn
+    # prepending is only used for the resource_reference path now; the
+    # INLINE_IMAGE-eligible branch above returns early so this code never
+    # runs for an inline-capable image.
+    identity_unknown = not profile.identity.is_known()
     warning_content: list[ToolContent] = []
     if identity_unknown:
         warning_content.append(
             _build_warning_block(
                 provider=verdict.provider,
+                model_id=verdict.model_id,
                 modality=modality,
+                delivery_mode=verdict.delivery.value,
                 verdict_reason=verdict.reason,
             )
         )

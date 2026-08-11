@@ -76,6 +76,16 @@ CONDITIONAL_DEFAULTS: tuple[BaselineCapability, ...] = (
         ),
         "conditional",
     ),
+    BaselineCapability(
+        "vision_verdict_agent",
+        (
+            "In-process vision-verdict subagent that compares the retained "
+            "pre-change capture set against a fresh post-change capture set "
+            "and submits the criterion 8 design_verdict artifact; "
+            "provisioned only when the design-system policy is in scope"
+        ),
+        "conditional",
+    ),
 )
 
 # Not part of the first-run baseline.

@@ -144,11 +144,13 @@ def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:
                     logger.error(msg)
                     raise ValueError(msg)
                 model_name = model_entry.get("name")
+                modalities = model_entry.get("modalities")
                 parsed.append(
                     {
                         "id": f"{provider_key}/{model_key}",
                         "provider": str(provider_key),
                         "name": str(model_name) if isinstance(model_name, str) else None,
+                        "modalities": modalities,
                     }
                 )
         return parsed

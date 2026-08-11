@@ -9,11 +9,16 @@ from this module rather than re-declaring provider knowledge elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+from ralph.api.opencode import get_model_by_id
 from ralph.mcp.multimodal._capability_verdict import CapabilityVerdict
 from ralph.mcp.multimodal._delivery_mode import DeliveryMode
 from ralph.mcp.multimodal._multimodal_model_identity import MultimodalModelIdentity
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # ---------------------------------------------------------------------------
 # Per-provider inline-image support
@@ -35,15 +40,46 @@ def _gemini_supports_inline_image(model_id: str | None) -> bool:
     return True  # All current Gemini models support vision
 
 
+#: Per-provider inline-image gate predicates. The default callable for
+#: every provider (including those that ship all-models-vision) is the
+#: constant ``True``. ``openai`` consults the model's identifier so a
+#: non-vision model (e.g. ``gpt-3.5-turbo``) is not falsely granted
+#: inline-image delivery.
+_INLINE_IMAGE_GATE_BY_PROVIDER: dict[str, Callable[[str | None], bool]] = {
+    "claude": _claude_supports_inline_image,
+    "anthropic": _claude_supports_inline_image,
+    "openai": _openai_supports_inline_image,
+    "codex": _openai_supports_inline_image,
+    "gemini": _gemini_supports_inline_image,
+}
+
+
 def _inline_image_reason(provider: str, model_id: str | None) -> str | None:
     """Return a human-readable reason string if the provider supports inline images."""
-    if provider in {"claude", "anthropic"} and _claude_supports_inline_image(model_id):
-        return "Claude supports inline image delivery"
-    if provider in {"openai", "codex"} and _openai_supports_inline_image(model_id):
-        return "OpenAI model supports inline image delivery"
-    if provider == "gemini" and _gemini_supports_inline_image(model_id):
-        return "Gemini supports inline image delivery"
+    gate = _INLINE_IMAGE_GATE_BY_PROVIDER.get(provider)
+    if gate is not None and gate(model_id):
+        return f"{provider} supports inline image delivery"
     return None
+
+
+def _opencode_supports_inline_image_via_catalog(model_id: str | None) -> bool:
+    """Grant inline-image when the OpenCode catalog reports ``image`` in modalities.input.
+
+    The catalog is the source of truth for OpenCode catalog-backed
+    models: a model whose ``modalities.input`` contains ``"image"``
+    accepts inline image data. Models absent from the catalog, or
+    catalog entries whose ``modalities.input`` lacks ``"image"``,
+    fall through to the resource_reference_replay delivery.
+    """
+    if model_id is None:
+        return False
+    try:
+        entry = get_model_by_id(model_id)
+    except Exception:
+        return False
+    if entry is None:
+        return False
+    return "image" in entry.modalities_input
 
 
 # Typed-block support per provider and modality.
@@ -133,16 +169,33 @@ def get_delivery_mode(
 
     if modality == "image":
         inline_reason = _inline_image_reason(provider_lower, identity.model_id)
-        delivery = (
-            DeliveryMode.INLINE_IMAGE if inline_reason else DeliveryMode.RESOURCE_REFERENCE_REPLAY
-        )
-        reason = inline_reason or "provider does not support inline image delivery"
+        if inline_reason is not None:
+            return CapabilityVerdict(
+                modality=modality,
+                delivery=DeliveryMode.INLINE_IMAGE,
+                provider=identity.provider,
+                model_id=identity.model_id,
+                reason=inline_reason,
+            )
+        if provider_lower == "opencode" and _opencode_supports_inline_image_via_catalog(
+            identity.model_id
+        ):
+            return CapabilityVerdict(
+                modality=modality,
+                delivery=DeliveryMode.INLINE_IMAGE,
+                provider=identity.provider,
+                model_id=identity.model_id,
+                reason=(
+                    f"opencode catalog reports 'image' in modalities.input for "
+                    f"model '{identity.model_id}'"
+                ),
+            )
         return CapabilityVerdict(
             modality=modality,
-            delivery=delivery,
+            delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
             provider=identity.provider,
             model_id=identity.model_id,
-            reason=reason,
+            reason=f"provider '{identity.provider}' does not support inline image delivery",
         )
 
     # Check whether this provider explicitly does not support this modality.

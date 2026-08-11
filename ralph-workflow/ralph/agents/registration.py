@@ -272,6 +272,49 @@ def register_agent_support_to_catalog(
     return _register_to_catalog(name, support, catalog)
 
 
+def register_vision_verdict_agent(
+    catalog: AgentCatalog,
+    *,
+    workspace: object | None = None,
+    stack: object | None = None,
+) -> AgentConfig | None:
+    """Register the vision-verdict agent in ``catalog`` when the design-system policy applies.
+
+    Thin wrapper around
+    :func:`ralph.agents.vision_agent_provisioning.provision_vision_verdict_agent`
+    that returns the registered :class:`AgentConfig` (when the
+    design-system policy is in scope) or ``None`` (when it is
+    not). The wrapper exists so the catalog registration seam
+    stays in :mod:`ralph.agents.registration` — the public
+    registration surface — even though the conditional provisioning
+    lives in :mod:`ralph.agents.vision_agent_provisioning`.
+
+    Args:
+        catalog: The caller-owned
+            :class:`ralph.agents.catalog.AgentCatalog`. The
+            catalog is mutated in place.
+        workspace: The active workspace protocol object. Optional
+            for testability.
+        stack: The detected project stack. Optional for
+            testability.
+
+    Returns:
+        The registered :class:`AgentConfig` when the
+        vision-verdict agent was provisioned, or ``None`` when
+        the design-system policy is not in scope.
+    """
+    from ralph.agents.vision_agent_provisioning import (  # noqa: PLC0415  # reason: lazy import keeps the no-arg test path free of evidence.py
+        provision_vision_verdict_agent,
+    )
+
+    if not provision_vision_verdict_agent(catalog, workspace=workspace, stack=stack):  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        return None
+    support = catalog.get("vision-verdict")
+    if support is None:
+        return None
+    return support.config
+
+
 def register_my_agent(
     name: str,
     transport: AgentTransport,

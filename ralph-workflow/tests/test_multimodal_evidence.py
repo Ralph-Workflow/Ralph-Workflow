@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 from ralph.mcp.server._wire_ledger import (
+    WIRE_LEDGER_RELPATH,
     append_wire_record,
     params_digest,
     verify_chain,
@@ -544,3 +545,96 @@ class TestGenerateFixtureGeometry:
             f"below the {lower_bound}B inline cap; the handle-mint "
             f"path will not be uniformly taken across harness identities"
         )
+
+
+class TestWireLedgerDeliveryModeMetadata:
+    """S-6 (criterion 17): the wire ledger carries the multimodal delivery metadata.
+
+    ``append_wire_record`` accepts four optional kwargs -- ``delivery_mode``,
+    ``provider``, ``model_id``, ``agent_id`` -- that flow into the
+    on-disk row and the HMAC. When every one is unset the on-disk
+    row and HMAC match the pre-S-6 shape byte-for-byte, so a
+    pre-S-6 ledger still verifies under the post-S-6 verifier
+    (backward compatibility).
+    """
+
+    def test_wire_ledger_record_carries_delivery_mode_when_present(
+        self, tmp_path: Path
+    ) -> None:
+        """When the optional kwargs are passed, the record and on-disk row carry them."""
+        record = append_wire_record(
+            tmp_path,
+            method="tools/call",
+            tool_name="read_media",
+            params={"path": "smoke-fixture.png"},
+            run_id="run-1",
+            secret="s3cr3t",
+            delivery_mode="inline_image",
+            provider="claude",
+            model_id="claude-opus-4-7",
+            agent_id="agent-42",
+        )
+        assert record is not None
+        assert record.delivery_mode == "inline_image"
+        assert record.provider == "claude"
+        assert record.model_id == "claude-opus-4-7"
+        assert record.agent_id == "agent-42"
+        # The chain still verifies when the S-6 fields are present.
+        assert verify_chain(tmp_path, "s3cr3t") is True
+        # The on-disk row carries every S-6 field as a top-level key.
+        ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+        import json as _json
+
+        rows = [
+            _json.loads(line)
+            for line in ledger_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["delivery_mode"] == "inline_image"
+        assert row["provider"] == "claude"
+        assert row["model_id"] == "claude-opus-4-7"
+        assert row["agent_id"] == "agent-42"
+
+    def test_wire_ledger_record_omits_optional_fields_when_unset(
+        self, tmp_path: Path
+    ) -> None:
+        """When the optional kwargs are not passed, the on-disk row omits them.
+
+        Backward compatibility: a row written by a post-S-6 server
+        with all four S-6 fields unset is byte-for-byte identical
+        in shape to a pre-S-6 row, and a pre-S-6 ledger still
+        verifies under the post-S-6 verifier.
+        """
+        record = append_wire_record(
+            tmp_path,
+            method="tools/call",
+            tool_name="read_media",
+            params={"path": "smoke-fixture.png"},
+            run_id="run-1",
+            secret="s3cr3t",
+        )
+        assert record is not None
+        assert record.delivery_mode is None
+        assert record.provider is None
+        assert record.model_id is None
+        assert record.agent_id is None
+        # The chain still verifies when the S-6 fields are absent.
+        assert verify_chain(tmp_path, "s3cr3t") is True
+        # The on-disk row omits the S-6 fields entirely -- the
+        # pre-S-6 row shape is preserved.
+        ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+        import json as _json
+
+        rows = [
+            _json.loads(line)
+            for line in ledger_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(rows) == 1
+        row = rows[0]
+        for field_name in ("delivery_mode", "provider", "model_id", "agent_id"):
+            assert field_name not in row, (
+                f"unexpected {field_name!r} key in pre-S-6-shape row: {row!r}"
+            )

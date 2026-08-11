@@ -80,6 +80,7 @@ Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
 | `development_result` | Outcome of a development task | `.agent/artifact-formats/development_result.md` |
 | `issues` | Issues found during review | `.agent/artifact-formats/issues.md` |
 | `fix_result` | Outcome of a fix task | `.agent/artifact-formats/fix_result.md` |
+| `design_verdict` | Visual review verdict over a captured cell | `.agent/artifact-formats/design_verdict.md` |
 | `development_analysis_decision` | Development analysis decision | `.agent/artifact-formats/development_analysis_decision.md` |
 | `planning_analysis_decision` | Planning analysis decision | `.agent/artifact-formats/planning_analysis_decision.md` |
 | `review_analysis_decision` | Review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |

@@ -98,7 +98,9 @@ from ralph.process.monitor import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.language_detector.models import ProjectStack
     from ralph.process.monitor import SubagentPidSource
+    from ralph.workspace import Workspace
 
 _MIN_OPENCODE_SEGMENTS = 2
 _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
@@ -270,10 +272,12 @@ class AgentRegistry:
         self.agents: dict[str, AgentConfig] = {}  # bounded-accumulator-ok: bounded
         self._ccs_defaults = ccs_defaults or CcsConfig()
         if catalog is not None:
-            self._catalog = catalog
+            self._catalog: AgentCatalog = catalog
             _seed_catalog_with_builtins(self._catalog)
         else:
             self._catalog = default_catalog()
+        # Explicit annotation: the constructor narrows _catalog to AgentCatalog.
+        self._catalog_typed: AgentCatalog = self._catalog
 
     @property
     def catalog(self) -> AgentCatalog:
@@ -408,6 +412,65 @@ class AgentRegistry:
         self.agents.pop(name, None)
         if self._catalog is not None:
             self._catalog.remove(name)
+
+    def provision_vision_verdict_agent(
+        self,
+        *,
+        workspace: Workspace | None = None,
+        stack: ProjectStack | None = None,
+    ) -> bool:
+        """Register the vision-verdict agent when the design-system policy applies.
+
+        Thin wrapper around
+        :func:`ralph.agents.vision_agent_provisioning.provision_vision_verdict_agent`
+        that owns the catalog write through ``self._catalog`` and the
+        ``self.agents`` map so the registry stays the single
+        source of truth for agent availability.
+
+        The agent is conditional: it is registered only when the
+        design-system policy is in scope for the active workspace.
+        A workspace without a design-system policy is
+        fail-closed against criteria 13/15; provisioning a
+        non-functional agent would mask that failure mode, so
+        the registry intentionally does NOT seed the agent
+        eagerly from :meth:`from_config` — the caller MUST
+        invoke this method after the design-system policy
+        detector has run.
+
+        Args:
+            workspace: The active workspace protocol object.
+                Optional for testability; the production caller
+                passes the real :class:`Workspace` so the
+                deterministic signal set is available.
+            stack: The detected project stack. Optional for
+                testability; the production caller passes the
+                real :class:`ProjectStack` so the framework
+                and CSS family signals are available.
+
+        Returns:
+            ``True`` when the agent was registered (or was
+            already wired in), ``False`` when the design-system
+            policy is not in scope.
+        """
+        from ralph.agents.vision_agent_provisioning import (  # noqa: PLC0415  # reason: lazy import keeps the no-arg test path free of evidence.py
+            provision_vision_verdict_agent,
+        )
+
+        registered = provision_vision_verdict_agent(
+            self._catalog,
+            workspace=workspace if workspace is not None else None,
+            stack=stack if stack is not None else None,
+        )
+        if not registered:
+            return False
+        # Keep ``self.agents`` in lockstep with the catalog so
+        # ``registry.get("vision-verdict")`` and
+        # ``registry.list_agents()`` see the same surface the
+        # catalog exposes.
+        support = self._catalog.get("vision-verdict")
+        if support is not None:
+            self.agents["vision-verdict"] = support.config
+        return True
 
     def get(self, name: str) -> AgentConfig | None:
         """Get agent configuration by name.

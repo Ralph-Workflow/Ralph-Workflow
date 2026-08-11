@@ -163,3 +163,17 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: design-system-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v3 -->`
+
+## Review authority
+
+Criterion 8 verdict authority: when the criterion 8 verdict is present, backed by the `design_capture_command` fact and `ralph://media/{artifact_id}` evidence, it closes the design review lane under the conditions named in the visual-verification ADR.
+
+Unverified evidence still requires a human verdict; the lane only closes when the criterion 8 conditions hold (complete capture matrix, ledger-cited findings, three-input verdict).
+
+RALPH-FACT: design_capture_command: <declared capture command that renders the managed repo UI to PNG>
+RALPH-FACT: visual_verdict_artifact: design_verdict
+
+## Review authority
+
+An appearance assertion (CSS/class/style/DOM) is NOT evidence of design quality. Design proof requires captures graded visually via the criterion 8 verdict.
+

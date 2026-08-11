@@ -3,6 +3,7 @@
 from ralph.mcp.artifacts.markdown.specs.analysis_decision import ANALYSIS_DECISION_SPECS
 from ralph.mcp.artifacts.markdown.specs.commit_cleanup import COMMIT_CLEANUP_SPEC
 from ralph.mcp.artifacts.markdown.specs.commit_message import COMMIT_MESSAGE_SPEC
+from ralph.mcp.artifacts.markdown.specs.design_verdict import DESIGN_VERDICT_SPEC
 from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.fix_result import FIX_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.issues import ISSUES_SPEC
@@ -15,6 +16,7 @@ __all__ = [
     "ANALYSIS_DECISION_SPECS",
     "COMMIT_CLEANUP_SPEC",
     "COMMIT_MESSAGE_SPEC",
+    "DESIGN_VERDICT_SPEC",
     "DEVELOPMENT_RESULT_SPEC",
     "FIX_RESULT_SPEC",
     "ISSUES_SPEC",

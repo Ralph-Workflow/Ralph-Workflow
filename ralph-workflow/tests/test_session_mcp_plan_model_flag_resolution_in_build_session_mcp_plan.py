@@ -82,7 +82,7 @@ def test_resolve_model_identity_agy() -> None:
     identity = resolve_model_identity(AgentTransport.AGY, "--model gemini-2.5-pro")
 
     assert identity.provider == "gemini"
-    assert identity.model_id == "--model gemini-2.5-pro"
+    assert identity.model_id == "gemini-2.5-pro"
     assert identity.transport == AgentTransport.AGY.value
 
 
@@ -287,3 +287,74 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
 
         assert plan.model_identity.provider == "anthropic"
         assert plan.model_identity.model_id == "anthropic/claude-3-5-sonnet"
+
+
+class TestResolveModelIdentityPerTransport:
+    """``resolve_model_identity`` must run the flag parser for EVERY transport."""
+
+    def test_codex_with_bare_model_flag_resolves_to_openai(self) -> None:
+        identity = resolve_model_identity(AgentTransport.CODEX, "--model gpt-5.6-flash")
+
+        assert identity.provider == "openai"
+        assert identity.model_id == "gpt-5.6-flash"
+        assert identity.transport == AgentTransport.CODEX.value
+
+    def test_opencode_with_qualified_model_flag_resolves_to_embedded_provider(self) -> None:
+        """A qualified ``provider/model`` flag is self-describing; catalog is skipped."""
+        identity = resolve_model_identity(
+            AgentTransport.OPENCODE, "--model anthropic/claude-sonnet-4-6"
+        )
+
+        assert identity.provider == "anthropic"
+        assert identity.model_id == "claude-sonnet-4-6"
+        assert identity.transport == AgentTransport.OPENCODE.value
+
+    def test_opencode_with_separate_provider_and_model_flags(self) -> None:
+        identity = resolve_model_identity(
+            AgentTransport.OPENCODE, "--provider ollama --model qwen2.5-coder"
+        )
+
+        assert identity.provider == "ollama"
+        assert identity.model_id == "qwen2.5-coder"
+        assert identity.transport == AgentTransport.OPENCODE.value
+
+    def test_opencode_with_equals_separated_flags(self) -> None:
+        identity = resolve_model_identity(
+            AgentTransport.OPENCODE, "--provider=ollama --model=qwen2.5-coder"
+        )
+
+        assert identity.provider == "ollama"
+        assert identity.model_id == "qwen2.5-coder"
+
+    def test_cursor_with_model_flag_preserves_as_unresolvable(self) -> None:
+        """Cursor transport has no provider mapping; flag is preserved verbatim."""
+        identity = resolve_model_identity(AgentTransport.CURSOR, "--model auto")
+
+        assert identity.provider == AgentTransport.CURSOR.value
+        assert identity.model_id == "--model auto"
+        assert identity.transport == AgentTransport.CURSOR.value
+
+    def test_pi_with_bare_name_preserves_as_unresolvable(self) -> None:
+        """Pi transport has no provider mapping; the bare name is preserved."""
+        identity = resolve_model_identity(AgentTransport.PI, "anything")
+
+        assert identity.provider == AgentTransport.PI.value
+        assert identity.model_id == "anything"
+        assert identity.transport == AgentTransport.PI.value
+
+    def test_codex_with_qualified_flag_uses_embedded_provider(self) -> None:
+        """A Codex CLI invoked with ``--model anthropic/claude-...`` resolves to anthropic."""
+        identity = resolve_model_identity(
+            AgentTransport.CODEX, "--model anthropic/claude-sonnet-4-6"
+        )
+
+        assert identity.provider == "anthropic"
+        assert identity.model_id == "claude-sonnet-4-6"
+
+    def test_none_transport_returns_unknown_identity(self) -> None:
+        from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY
+
+        identity = resolve_model_identity(None, "--model anything")
+
+        assert identity == UNKNOWN_IDENTITY
+

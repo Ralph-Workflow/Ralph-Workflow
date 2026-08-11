@@ -160,7 +160,9 @@ def test_render_conformance_matrix_markdown_orders_rows_by_the_canonical_transpo
     # registered `ralph smoke-interactive-*` CLI command).
     assert CONFORMANCE_MATRIX_TRANSPORT_ORDER == (
         "claude",
+        "codex",
         "agy",
+        "pi",
         "nanocoder",
         "cursor",
         "opencode",
@@ -193,7 +195,9 @@ def test_canonical_tuple_matches_registered_smoke_commands() -> None:
 
     expected_canonical = {
         "claude",
+        "codex",
         "agy",
+        "pi",
         "nanocoder",
         "cursor",
         "opencode",
@@ -205,13 +209,6 @@ def test_canonical_tuple_matches_registered_smoke_commands() -> None:
         f"command. canonical={set(CONFORMANCE_MATRIX_TRANSPORT_ORDER)} "
         f"registered={registered_smoke_transports}"
     )
-    # ``codex`` and ``pi`` must NOT appear in the canonical tuple --
-    # they have no smoke command and can never be populated by a real run.
-    for invalid in ("codex", "pi"):
-        assert invalid not in CONFORMANCE_MATRIX_TRANSPORT_ORDER, (
-            f"{invalid!r} is not smoke-capable and must not appear in "
-            f"the canonical transport tuple"
-        )
 
 
 def test_render_conformance_matrix_markdown_names_absent_for_an_unrecorded_fact() -> None:

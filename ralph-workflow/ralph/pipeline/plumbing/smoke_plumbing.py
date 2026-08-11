@@ -102,6 +102,12 @@ _CURSOR_SMOKE_OUTPUT_FILE = _CURSOR_SMOKE_RELATIVE_DIR / "todo-list.js"
 _OPENCODE_SMOKE_RELATIVE_DIR = Path("tmp/interactive-opencode-smoke")
 _OPENCODE_SMOKE_OUTPUT_FILE = _OPENCODE_SMOKE_RELATIVE_DIR / "todo-list.js"
 _OPENCODE_SMOKE_RUN_ID = "interactive-opencode-smoke"
+_CODEX_SMOKE_RELATIVE_DIR = Path("tmp/interactive-codex-smoke")
+_CODEX_SMOKE_OUTPUT_FILE = _CODEX_SMOKE_RELATIVE_DIR / "todo-list.js"
+_CODEX_SMOKE_RUN_ID = "interactive-codex-smoke"
+_PI_SMOKE_RELATIVE_DIR = Path("tmp/interactive-pi-smoke")
+_PI_SMOKE_OUTPUT_FILE = _PI_SMOKE_RELATIVE_DIR / "todo-list.js"
+_PI_SMOKE_RUN_ID = "interactive-pi-smoke"
 
 
 @dataclass(frozen=True)
@@ -231,6 +237,46 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             # alias so one concurrent provider smoke cannot unlink or satisfy
             # another provider's file assertion.
             relative_dir = _OPENCODE_SMOKE_RELATIVE_DIR / sanitized
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=relative_dir,
+            output_file=relative_dir / "todo-list.js",
+            run_id=run_id,
+        )
+    if agent_name == "codex" or agent_name.startswith("codex/"):
+        # ``codex/<model>`` (e.g. ``codex/gpt-5-flash``) follows the
+        # same dynamic-alias pattern as ``agy/<model>`` -- the
+        # command builder strips the leading ``codex/`` and passes
+        # ``<model>`` to ``codex exec``. A sanitized run_id keeps
+        # two concurrent model smoke runs from colliding on
+        # completion-sentinel / receipt paths.
+        suffix = agent_name.removeprefix("codex").lstrip("/")
+        if not suffix:
+            run_id = _CODEX_SMOKE_RUN_ID
+            relative_dir = _CODEX_SMOKE_RELATIVE_DIR
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"{_CODEX_SMOKE_RUN_ID}-{sanitized}"
+            relative_dir = _CODEX_SMOKE_RELATIVE_DIR / sanitized
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=relative_dir,
+            output_file=relative_dir / "todo-list.js",
+            run_id=run_id,
+        )
+    if agent_name == "pi" or agent_name.startswith("pi/"):
+        # ``pi`` (bare) uses the base pi harness layout; ``pi/<model>``
+        # branches off a sanitized run_id so two concurrent model
+        # smoke runs do not collide on completion-sentinel / receipt
+        # paths. Mirrors the ``cursor`` layout.
+        suffix = agent_name.removeprefix("pi").lstrip("/")
+        if not suffix:
+            run_id = _PI_SMOKE_RUN_ID
+            relative_dir = _PI_SMOKE_RELATIVE_DIR
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"{_PI_SMOKE_RUN_ID}-{sanitized}"
+            relative_dir = _PI_SMOKE_RELATIVE_DIR / sanitized
         return SmokeHarnessSpec(
             agent_name=agent_name,
             relative_dir=relative_dir,
@@ -393,7 +439,9 @@ type EnvGetter = Callable[[str], str | None]
 #: for the regression that locks this invariant in.
 CONFORMANCE_MATRIX_TRANSPORT_ORDER: Final[tuple[str, ...]] = (
     "claude",
+    "codex",
     "agy",
+    "pi",
     "nanocoder",
     "cursor",
     "opencode",
@@ -1666,7 +1714,7 @@ def _detect_multimodal_break(
         errors.append(mult_break)
 
 
-def _detect_smoke_errors(  # noqa: PLR0912  # 15 branches: each contract check is a documented short-circuit
+def _detect_smoke_errors(  # 15 branches: each contract check is a documented short-circuit
     params: SmokeRunParams,
     lines: list[str],
     live_output_lines: list[str],

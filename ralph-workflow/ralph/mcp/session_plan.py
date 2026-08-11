@@ -7,7 +7,6 @@ into the Ralph MCP subprocess for that session.
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +15,7 @@ from typing import TYPE_CHECKING
 from ralph.api.opencode import get_model_by_id
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp._model_flag_parser import parse_model_flag
 from ralph.mcp._session_model_opts import SessionModelOpts
 from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
 from ralph.mcp.multimodal.capabilities import (
@@ -87,74 +87,135 @@ class SessionMcpPlan:
     capability_profile: ResolvedCapabilityProfile | None = None
 
 
+# Transports whose provider is fixed by the transport itself: the model
+# flag's provider hint is ignored because every model reachable via the
+# transport shares the same provider slug. Each entry maps the transport
+# to its canonical provider slug (used as the identity's ``provider``
+# field when no qualified ``provider/model`` form is present in the
+# flag).
+_TRANSPORT_FIXED_PROVIDER: dict[AgentTransport, str] = {
+    AgentTransport.CLAUDE: "claude",
+    AgentTransport.CLAUDE_INTERACTIVE: "claude",
+    AgentTransport.CODEX: "openai",
+    AgentTransport.AGY: "gemini",
+}
+
+
+def _resolve_transport_fixed_identity(
+    transport: AgentTransport,
+    model_flag: str | None,
+) -> MultimodalModelIdentity:
+    """Resolve identity for a transport whose provider is fixed.
+
+    The model flag is parsed for a qualified ``provider/model`` form;
+    when present the embedded provider wins (so a Codex CLI invoked
+    with ``--model anthropic/claude-...`` resolves to
+    ``(anthropic, claude-...)`` rather than the Codex-default
+    ``openai``). Otherwise the transport's canonical provider is used.
+    """
+    provider_slug, model_id = parse_model_flag(model_flag or "")
+    canonical_provider = _TRANSPORT_FIXED_PROVIDER[transport]
+    if provider_slug is None:
+        return MultimodalModelIdentity(
+            provider=canonical_provider,
+            model_id=model_id,
+            transport=transport.value,
+        )
+    return MultimodalModelIdentity(
+        provider=provider_slug,
+        model_id=model_id,
+        transport=transport.value,
+    )
+
+
+def _resolve_opencode_identity(
+    transport: AgentTransport,
+    model_flag: str | None,
+) -> MultimodalModelIdentity:
+    """Resolve identity for an OpenCode transport with optional catalog lookup.
+
+    The flag is parsed for a qualified ``provider/model`` form first; when
+    that yields a provider, the identity is returned without a catalog
+    lookup (the qualified form is self-describing). When the flag carries
+    only a bare model name, the OpenCode catalog is consulted to discover
+    the provider. A catalog miss or lookup failure degrades to
+    ``(unknown, model_id, opencode)`` so the caller can fall back safely.
+    """
+    provider_slug, model_id = parse_model_flag(model_flag or "")
+    if provider_slug is not None and model_id is not None:
+        return MultimodalModelIdentity(
+            provider=provider_slug,
+            model_id=model_id,
+            transport=transport.value,
+        )
+    if model_id is None:
+        return MultimodalModelIdentity(
+            provider="unknown",
+            model_id=None,
+            transport=transport.value,
+        )
+
+    # Bare model name: ask the catalog for the canonical provider.
+    try:
+        entry = get_model_by_id(model_id)
+    except Exception:
+        return MultimodalModelIdentity(
+            provider="unknown",
+            model_id=model_id,
+            transport=transport.value,
+        )
+    if entry is not None and entry.provider_slug is not None:
+        return MultimodalModelIdentity(
+            provider=entry.provider_slug,
+            model_id=model_id,
+            transport=transport.value,
+        )
+    return MultimodalModelIdentity(
+        provider="unknown",
+        model_id=model_id,
+        transport=transport.value,
+    )
+
+
 def resolve_model_identity(
     transport: AgentTransport | None,
     model_flag: str | None = None,
 ) -> MultimodalModelIdentity:
     """Resolve multimodal model identity from agent transport and model flag.
 
-    Returns UNKNOWN_IDENTITY when the provider cannot be determined.
-    For OpenCode transport, attempts a catalog lookup to determine the provider.
-    On catalog failure or unmapped model, returns an unknown-provider identity
-    that still carries model_id and transport so delivery falls back safely.
+    The flag is parsed by :func:`ralph.mcp._model_flag_parser.parse_model_flag`
+    for every transport, so a ``--model`` style flag, a qualified
+    ``provider/model`` form, and a bare name all flow through the same
+    tokeniser. Transports with a fixed provider (``CLAUDE``,
+    ``CLAUDE_INTERACTIVE``, ``CODEX``, ``AGY``) prefer the qualified
+    provider embedded in the flag when present and otherwise fall back
+    to the canonical provider. ``OPENCODE`` resolves the bare model
+    name against the catalog; catalog failure degrades to an unknown
+    provider. Uncovered transports (``NANOCODER``, ``PI``, ``CURSOR``,
+    ``GENERIC``) preserve the raw flag as the ``model_id`` and tag the
+    identity with the transport slug so the multimodal layer can fall
+    back to a safe ``resource_reference_replay`` delivery.
+
+    Returns :data:`UNKNOWN_IDENTITY` when ``transport`` is ``None``.
     """
     if transport is None:
         return UNKNOWN_IDENTITY
 
-    # Map known transports to their providers
-    provider_map: dict[AgentTransport, str] = {
-        AgentTransport.CLAUDE: "claude",
-        AgentTransport.CLAUDE_INTERACTIVE: "claude",
-        AgentTransport.AGY: "gemini",
-    }
+    if transport in _TRANSPORT_FIXED_PROVIDER:
+        return _resolve_transport_fixed_identity(transport, model_flag)
 
-    if transport == AgentTransport.CODEX:
-        return MultimodalModelIdentity(
-            provider="openai",
-            model_id=_codex_model_id(model_flag),
-            transport=transport.value,
-        )
+    if transport == AgentTransport.OPENCODE:
+        return _resolve_opencode_identity(transport, model_flag)
 
-    if transport in provider_map:
-        return MultimodalModelIdentity(
-            provider=provider_map[transport],
-            model_id=model_flag,
-            transport=transport.value,
-        )
-
-    if transport == AgentTransport.OPENCODE and model_flag is not None:
-        try:
-            entry = get_model_by_id(model_flag)
-            if entry is not None and entry.provider is not None:
-                return MultimodalModelIdentity(
-                    provider=entry.provider,
-                    model_id=model_flag,
-                    transport=transport.value,
-                )
-        except Exception:
-            pass
-        return MultimodalModelIdentity(
-            provider="unknown",
-            model_id=model_flag,
-            transport=transport.value,
-        )
-
+    # NANOCODER, PI, CURSOR, GENERIC: preserve the flag verbatim as the
+    # model_id; tag the identity with the transport slug so downstream
+    # layers can show "transport set, provider unknown" and the
+    # multimodal runtime defaults to RESOURCE_REFERENCE_REPLAY.
     return MultimodalModelIdentity(
         provider=transport.value,
         model_id=model_flag,
         transport=transport.value,
     )
-
-
-def _codex_model_id(model_flag: str | None) -> str | None:
-    """Extract Codex's selected model from a forwarded CLI flag string."""
-    if model_flag is None:
-        return None
-    parts = shlex.split(model_flag)
-    for index, part in enumerate(parts[:-1]):
-        if part in {"--model", "-m"}:
-            return parts[index + 1]
-    return model_flag
 
 
 def resolve_effective_session_mcp_plan(

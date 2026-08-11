@@ -55,7 +55,18 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
     """Validate and normalize a raw development_result content dict."""
     try:
         validated = DevelopmentResult.model_validate(content)
-        return validated.model_dump(mode="python", exclude_none=True)
+        dumped = validated.model_dump(mode="python", exclude_none=True)
+        # Strip empty tuple fields so the resulting dict matches the
+        # pre-criterion-11 shape for non-UI plan items.
+        for key in ("plan_items_proven", "analysis_items_addressed"):
+            value = dumped.get(key)
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, dict):
+                        for default_field in ("capture_handles", "verdict_id"):
+                            if entry.get(default_field) in (None, ()):
+                                entry.pop(default_field, None)
+        return dumped
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
         raise DevelopmentResultValidationError(

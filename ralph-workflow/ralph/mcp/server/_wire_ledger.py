@@ -14,6 +14,15 @@ depends on subprocess stdout buffering.
 ``RALPH_BROKER_SECRET``) cannot produce one: :func:`append_wire_record`
 returns ``None`` when ``secret`` is ``None``, so an unchained ledger is
 never mistaken for a ledger (A5).
+
+S-6 (criterion 17) extends the per-row witness with optional
+``delivery_mode``, ``provider``, ``model_id``, and ``agent_id`` fields
+so the wire-ledger-backed capture table records the same delivery
+metadata the multimodal platform itself reports. The four fields are
+OPTIONAL and default to ``None``; when every one is absent the on-disk
+row shape and the HMAC message bytes are byte-for-byte identical to
+the pre-S-6 shape, so a ledger written by a pre-S-6 server still
+verifies under the post-S-6 verifier (backward compatibility).
 """
 
 from __future__ import annotations
@@ -56,7 +65,19 @@ _GENESIS_HMAC = "0" * 64
 
 @dataclass(frozen=True)
 class WireLedgerRecord:
-    """One HMAC-chained wire-ledger row for a dispatched JSON-RPC frame."""
+    """One HMAC-chained wire-ledger row for a dispatched JSON-RPC frame.
+
+    The four ``delivery_mode`` / ``provider`` / ``model_id`` / ``agent_id``
+    fields are optional and default to ``None``. They are S-6 (criterion
+    17) additions that let the wire ledger record the same multimodal
+    delivery metadata the multimodal platform emits, so the capture
+    table can be regenerated deterministically. A pre-S-6 record (or a
+    non-multimodal ``tools/call`` row) is constructed with all four
+    fields left at their default ``None``; the resulting on-disk row
+    and the HMAC message bytes are byte-for-byte identical to the
+    pre-S-6 shape, so a legacy ledger still verifies under the
+    post-S-6 verifier.
+    """
 
     method: str
     tool_name: str | None
@@ -65,6 +86,10 @@ class WireLedgerRecord:
     timestamp: float
     prior_hmac: str
     record_hmac: str
+    delivery_mode: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    agent_id: str | None = None
 
     def to_json_line(self) -> str:
         payload: dict[str, object] = {
@@ -76,6 +101,17 @@ class WireLedgerRecord:
             "prior_hmac": self.prior_hmac,
             "hmac": self.record_hmac,
         }
+        # S-6: only serialize the optional fields when they were set,
+        # so a row produced with all four at their default ``None``
+        # stays byte-for-byte identical to the pre-S-6 row shape.
+        if self.delivery_mode is not None:
+            payload["delivery_mode"] = self.delivery_mode
+        if self.provider is not None:
+            payload["provider"] = self.provider
+        if self.model_id is not None:
+            payload["model_id"] = self.model_id
+        if self.agent_id is not None:
+            payload["agent_id"] = self.agent_id
         return json.dumps(payload, sort_keys=True)
 
 
@@ -107,6 +143,10 @@ def _record_hmac(
     run_id: str,
     timestamp: float,
     prior_hmac: str,
+    delivery_mode: str | None = None,
+    provider: str | None = None,
+    model_id: str | None = None,
+    agent_id: str | None = None,
 ) -> str:
     """Compute the HMAC-SHA256 binding one ledger record to ``secret``.
 
@@ -116,8 +156,23 @@ def _record_hmac(
     ``coordination.py``. A row that is inserted, deleted, or reordered
     breaks the chain for every subsequent record, so :func:`verify_chain`
     detects tampering anywhere in the file, not just at the tampered row.
+
+    S-6 (criterion 17): the four optional ``delivery_mode`` /
+    ``provider`` / ``model_id`` / ``agent_id`` fields, when ANY of
+    them is present, are concatenated onto the message in a fixed
+    order after the base six fields. When ALL four are ``None`` the
+    message bytes are byte-for-byte identical to the pre-S-6 message
+    so a legacy row still verifies under the post-S-6 verifier.
     """
     msg = f"{method}\n{tool_name or ''}\n{params_digest}\n{run_id}\n{timestamp!r}\n{prior_hmac}".encode()
+    if delivery_mode is not None:
+        msg += f"\ndelivery_mode={delivery_mode}".encode()
+    if provider is not None:
+        msg += f"\nprovider={provider}".encode()
+    if model_id is not None:
+        msg += f"\nmodel_id={model_id}".encode()
+    if agent_id is not None:
+        msg += f"\nagent_id={agent_id}".encode()
     return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
 
 
@@ -224,6 +279,10 @@ def append_wire_record(
     run_id: str,
     secret: str | None,
     clock: Callable[[], float] = time.time,
+    delivery_mode: str | None = None,
+    provider: str | None = None,
+    model_id: str | None = None,
+    agent_id: str | None = None,
 ) -> WireLedgerRecord | None:
     """Append one HMAC-chained record for a dispatched JSON-RPC frame.
 
@@ -248,6 +307,12 @@ def append_wire_record(
     dropping a single tool-call witness is preferable to corrupting
     the chain (the dropped frame never grades ``WIRE``, but the
     surviving frames in the same run still can).
+
+    S-6 (criterion 17): the four optional ``delivery_mode`` /
+    ``provider`` / ``model_id`` / ``agent_id`` kwargs are forwarded
+    to the HMAC and to the on-disk row. When every one is ``None`` the
+    on-disk row and HMAC match the pre-S-6 shape byte-for-byte, so
+    pre-S-6 ledgers still verify under the post-S-6 verifier.
     """
     if secret is None:
         return None
@@ -275,6 +340,10 @@ def append_wire_record(
             run_id=run_id,
             timestamp=timestamp,
             prior_hmac=prior_hmac,
+            delivery_mode=delivery_mode,
+            provider=provider,
+            model_id=model_id,
+            agent_id=agent_id,
         )
         record = WireLedgerRecord(
             method=method,
@@ -284,6 +353,10 @@ def append_wire_record(
             timestamp=timestamp,
             prior_hmac=prior_hmac,
             record_hmac=record_hmac,
+            delivery_mode=delivery_mode,
+            provider=provider,
+            model_id=model_id,
+            agent_id=agent_id,
         )
         # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
         with ledger_path.open("a", encoding="utf-8") as handle:
@@ -302,6 +375,12 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
     break). Any row whose ``prior_hmac`` does not match its predecessor's
     ``hmac``, or whose own ``hmac`` does not match ``secret``, fails the
     whole chain — a forged or unchained row is never accepted piecemeal.
+
+    S-6 (criterion 17): the four optional S-6 fields are read from the
+    row (defaulting to ``None`` when absent -- a pre-S-6 row shape)
+    and forwarded to :func:`_record_hmac` so the recomputed HMAC
+    matches the bytes the appender signed. A pre-S-6 row therefore
+    still verifies under the post-S-6 verifier.
     """
     ledger_path = workspace_root / WIRE_LEDGER_RELPATH
     rows = _iter_ledger_rows(ledger_path)
@@ -324,6 +403,17 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
             and (tool_name is None or isinstance(tool_name, str))
         ):
             return False
+        # S-6: forward the optional fields (defaulting to None for
+        # pre-S-6 rows that don't carry them) so the recomputed HMAC
+        # matches the bytes the appender signed.
+        delivery_mode_raw = row.get("delivery_mode")
+        provider_raw = row.get("provider")
+        model_id_raw = row.get("model_id")
+        agent_id_raw = row.get("agent_id")
+        delivery_mode = delivery_mode_raw if isinstance(delivery_mode_raw, str) else None
+        provider = provider_raw if isinstance(provider_raw, str) else None
+        model_id = model_id_raw if isinstance(model_id_raw, str) else None
+        agent_id = agent_id_raw if isinstance(agent_id_raw, str) else None
         expected = _record_hmac(
             secret,
             method=method,
@@ -332,6 +422,10 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
             run_id=run_id,
             timestamp=timestamp,
             prior_hmac=prior,
+            delivery_mode=delivery_mode,
+            provider=provider,
+            model_id=model_id,
+            agent_id=agent_id,
         )
         if not hmac.compare_digest(stored_hmac, expected):
             return False

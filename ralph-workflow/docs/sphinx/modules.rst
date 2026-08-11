@@ -4133,3 +4133,108 @@ ralph.testing.verification_prompt_evaluation
    :members:
    :show-inheritance:
 
+
+ralph.visual
+~~~~~~~~~~~~
+
+.. automodule:: ralph.visual
+   :members:
+   :show-inheritance:
+
+ralph.visual.capture_cell
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.capture_cell
+   :members:
+   :show-inheritance:
+
+ralph.visual.capture_lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.capture_lifecycle
+   :members:
+   :show-inheritance:
+
+ralph.visual.capture_request
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.capture_request
+   :members:
+   :show-inheritance:
+
+ralph.visual.capture_set
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.capture_set
+   :members:
+   :show-inheritance:
+
+ralph.visual.design_verdict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.design_verdict
+   :members:
+   :show-inheritance:
+
+ralph.visual.policy_facts
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.policy_facts
+   :members:
+   :show-inheritance:
+
+ralph.visual.visual_finding
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.visual.visual_finding
+   :members:
+   :show-inheritance:
+
+ralph.agents.delegation_capabilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.delegation_capabilities
+   :members:
+   :show-inheritance:
+
+ralph.agents.multimodal_status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.multimodal_status
+   :members:
+   :show-inheritance:
+
+ralph.agents.vision_agent_provisioning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.vision_agent_provisioning
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_appearance_assertion_prohibition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_appearance_assertion_prohibition
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.design_verdict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.design_verdict
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.markdown.specs.design_verdict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.design_verdict
+   :members:
+   :show-inheritance:
+
+ralph.mcp._model_flag_parser
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp._model_flag_parser
+   :members:
+   :show-inheritance:

@@ -31,12 +31,14 @@ repository facts make that mechanically decidable:
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import struct
 import zlib
 from typing import TYPE_CHECKING
 
 from ralph.mcp.server._wire_ledger import (
+    WIRE_LEDGER_RELPATH,
     params_digest,
     verify_chain,
     wire_evidence_for,
@@ -77,7 +79,12 @@ SMOKE_FIXTURE_RELNAME = "smoke-fixture.png"
 SMOKE_MEDIA_MAX_INLINE_BYTES = 1024
 
 
-def build_smoke_fixture_png(width: int, height: int) -> bytes:
+def build_smoke_fixture_png(
+    width: int,
+    height: int,
+    *,
+    perception_secret: str | None = None,
+) -> bytes:
     """Build a stdlib-only PNG payload reporting ``width`` x ``height``.
 
     No Pillow dependency. The format is RFC-2083 PNG:
@@ -97,6 +104,19 @@ def build_smoke_fixture_png(width: int, height: int) -> bytes:
        inline-cap threshold for every geometry so the handle-mint path
        is uniform across all six smoke commands.
     5. IEND chunk.
+
+    S-8 (criterion 16 / pixel-only perception): when ``perception_secret``
+    is supplied it is hex-decoded and embedded into a deterministic
+    pixel position -- the LAST row of the scanline data, at column
+    offset 4 (in the R byte), one byte per hex pair, padded with
+    the secret's repeating byte when shorter than the available slot.
+    The secret lives ONLY in fixture pixels -- never in the tEXt
+    ancillary chunk, never in path / filename / log lines. The stub
+    agent reads the fixture back, decodes the secret from those
+    exact pixel positions, and reports it back through the response
+    text, so a verifier can confirm the agent actually perceived
+    the image (a model that never read the fixture cannot guess
+    the secret because it is sampled per run).
     """
     if width <= 0 or height <= 0:
         raise ValueError(f"width and height must be positive, got {width=} {height=}")
@@ -117,6 +137,15 @@ def build_smoke_fixture_png(width: int, height: int) -> bytes:
 
     salt = hashlib.sha256(f"{width},{height}".encode()).digest()
     raw_scanlines = bytearray()
+    perception_secret_bytes: bytes = b""
+    if perception_secret is not None:
+        try:
+            perception_secret_bytes = bytes.fromhex(perception_secret)
+        except ValueError as exc:
+            raise ValueError(
+                f"perception_secret must be hex-encoded, got {perception_secret!r}"
+            ) from exc
+    pixel_capacity = width * 3  # R + G + B bytes per row
     for row_index in range(height):
         raw_scanlines.append(0)  # filter byte: None
         for column_index in range(width * 3):
@@ -124,6 +153,19 @@ def build_smoke_fixture_png(width: int, height: int) -> bytes:
             # non-redundant so the zlib stream stays above the inline
             # cap even at the smallest geometry.
             raw_scanlines.append((row_index ^ column_index ^ salt[column_index % len(salt)]) & 0xFF)
+    if perception_secret_bytes:
+        # Embed the secret in the LAST row's R bytes starting at column
+        # offset 4 -- well within the row width, well off the IHDR /
+        # IEND / tEXt chunk boundaries so the secret lives ONLY in
+        # pixel data. When the secret is shorter than the available
+        # pixel slot the remainder of the slot is left at its salt
+        # value (no truncation, no leak).
+        last_row_offset = len(raw_scanlines) - (1 + pixel_capacity)
+        for secret_index, secret_byte in enumerate(perception_secret_bytes):
+            target = last_row_offset + 4 + secret_index * 3
+            if target >= last_row_offset + pixel_capacity:
+                break
+            raw_scanlines[target] = secret_byte
     idat_payload = zlib.compress(bytes(raw_scanlines), level=6)
     idat_chunk = _chunk(b"IDAT", idat_payload)
 
@@ -133,6 +175,74 @@ def build_smoke_fixture_png(width: int, height: int) -> bytes:
     iend_chunk = _chunk(b"IEND", b"")
 
     return png_signature + ihdr_chunk + idat_chunk + text_chunk + iend_chunk
+
+
+def extract_perception_secret_from_fixture(png_bytes: bytes) -> str | None:
+    """Read the hex perception secret back out of a fixture's pixel data.
+
+    Mirrors :func:`build_smoke_fixture_png`'s embedding: looks at the
+    LAST row's R bytes starting at column offset 4 and reads each
+    third byte until the IEND / trailing bytes stop carrying secret
+    data. Returns the hex-encoded form (the same shape
+    ``MOCK_MULTIMODAL_PERCEPTION_SECRET`` takes on the env var side)
+    so callers can compare for equality.
+
+    The reader is bounded by the available pixel slots, so a secret
+    shorter than the slot is read for exactly its length. The
+    returned hex string is empty when no secret was embedded.
+
+    A missing fixture, a non-PNG payload, or an over-truncated
+    pixel block returns ``None`` (not ``""``) so the grader can
+    distinguish "no secret embedded" from "secret present but
+    unreadable".
+    """
+    import re
+
+    png_signature_len = 8  # bytes 0..7 = PNG signature
+    png_ihdr_offset = 16  # bytes 16..19 = width (big-endian)
+    if len(png_bytes) < png_signature_len or png_bytes[:png_signature_len] != b"\x89PNG\r\n\x1a\n":
+        return None
+    if png_bytes[12:png_ihdr_offset] != b"IHDR":
+        return None
+    width = int.from_bytes(png_bytes[16:20], byteorder="big", signed=False)
+    if width <= 0:
+        return None
+    pixel_capacity = width * 3
+    # Walk the chunks after IHDR to find IDAT.
+    cursor = 8
+    idat_payload: bytes | None = None
+    while cursor < len(png_bytes):
+        if cursor + 8 > len(png_bytes):
+            return None
+        length = int.from_bytes(png_bytes[cursor : cursor + 4], byteorder="big", signed=False)
+        chunk_type = png_bytes[cursor + 4 : cursor + 8]
+        chunk_body_start = cursor + 8
+        chunk_body_end = chunk_body_start + length
+        if chunk_body_end > len(png_bytes):
+            return None
+        if chunk_type == b"IDAT":
+            idat_payload = png_bytes[chunk_body_start:chunk_body_end]
+            break
+        cursor = chunk_body_end + 4  # skip length + type + body + crc
+    if idat_payload is None:
+        return None
+    try:
+        decompressed = zlib.decompress(idat_payload)
+    except zlib.error:
+        return None
+    if len(decompressed) < 1 + pixel_capacity:
+        return None
+    last_row_offset = len(decompressed) - (1 + pixel_capacity)
+    secret_bytes = bytearray()
+    target = last_row_offset + 4
+    while target + 3 <= last_row_offset + pixel_capacity:
+        secret_bytes.append(decompressed[target])
+        target += 3
+    if not secret_bytes:
+        return ""
+    if not re.fullmatch(rb"[0-9a-fA-F]+", bytes(secret_bytes)):
+        return None
+    return bytes(secret_bytes).decode("ascii")
 
 
 def generate_fixture_geometry(
@@ -360,7 +470,7 @@ def _check_broker_chain(workspace_root: Path, secret: str | None) -> Evidence | 
     return None
 
 
-def grade_multimodal_evidence(  # noqa: PLR0911  # 4-condition contract: 7 returns (absent, broker, media call, replay, geometry-absent, geometry-mismatch, ok)
+def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broker, media call, replay, geometry-absent, geometry-mismatch, perception-secret, perception-delivery, ok)
     workspace_root: Path,
     run_id: str,
     *,
@@ -368,6 +478,8 @@ def grade_multimodal_evidence(  # noqa: PLR0911  # 4-condition contract: 7 retur
     fixture_relpath: str,
     fixture_size: tuple[int, int],
     secret: str | None,
+    expected_perception_secret: str | None = None,
+    expected_delivery_mode: str | None = None,
 ) -> Evidence:
     """Grade the multimodal "agent actually used the media endpoint" fact.
 
@@ -377,6 +489,12 @@ def grade_multimodal_evidence(  # noqa: PLR0911  # 4-condition contract: 7 retur
       ``read_media`` call, server-persisted receipt equals the agent's
       written token, verified replay-digest call matching the server-
       minted handle, geometry and sha256 match what the agent wrote).
+      When the smoke harness additionally threads a pixel-only
+      perception secret through (S-8 / criterion 16), WIRE also
+      requires (a) the agent's response to carry the perception
+      secret and (b) the wire-ledger's recorded delivery mode to be
+      perceptible (``inline_image`` / ``typed_block``) rather than
+      ``resource_reference_replay``.
     - ``WORKSPACE_EFFECT`` when the model self-reported plausible
       tokens but the ledger is missing the underlying verified calls
       (e.g. agent fabricated the receipt, or the smoke stub dialed the
@@ -428,14 +546,167 @@ def grade_multimodal_evidence(  # noqa: PLR0911  # 4-condition contract: 7 retur
     if geometry is not None:
         return geometry
 
+    if expected_perception_secret is not None:
+        secret_check = _check_perception_secret_token(
+            output_file, expected_perception_secret
+        )
+        if secret_check is not None:
+            return secret_check
+        delivery_check = _check_delivery_mode_perceptible(
+            workspace_root, run_id, expected_delivery_mode
+        )
+        if delivery_check is not None:
+            return delivery_check
+
     return Evidence(
         holds=True,
         provenance=Provenance.WIRE,
         detail=(
             "verified read_media + verified replay-hop call + server-persisted "
             "MEDIA_RECEIPT equal to MEDIA_SHA256-grade geometry from the fixture"
+            + (
+                " + PERCEPTION_SECRET=<hex> token carried by the agent"
+                " + delivery_mode perceptible (inline_image/typed_block)"
+                if expected_perception_secret is not None
+                else ""
+            )
         ),
     )
+
+
+_PERCEPTIBLE_DELIVERY_MODES: frozenset[str] = frozenset({"inline_image", "typed_block"})
+
+
+def _wire_ledger_records_for_run(
+    workspace_root: Path,
+    run_id: str,
+) -> tuple[dict[str, object], ...]:
+    """Return the on-disk wire-ledger rows whose ``run_id`` matches.
+
+    A pure reader: it does NOT verify the chain (the chain check is
+    owned by :func:`_check_broker_chain` above). The reader is the
+    S-8 helper that surfaces ``delivery_mode`` to the multimodal
+    grader -- a record's delivery_mode is only authoritative when
+    the chain verifies, which the surrounding grade already
+    confirmed via :func:`_check_broker_chain` before this helper
+    runs.
+    """
+    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    if not ledger_path.exists():
+        return ()
+    rows: list[dict[str, object]] = []
+    try:
+        raw = ledger_path.read_text(encoding="utf-8")
+    except OSError:
+        return ()
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            loaded: object = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(loaded, dict):
+            continue
+        row: dict[str, object] = loaded
+        run_id_value: object = row.get("run_id")
+        if isinstance(run_id_value, str) and run_id_value == run_id:
+            rows.append(dict(row))
+    return tuple(rows)
+
+
+def _check_delivery_mode_perceptible(
+    workspace_root: Path,
+    run_id: str,
+    expected_delivery_mode: str | None,
+) -> Evidence | None:
+    """Confirm a wire-ledger row carries a perceptible ``delivery_mode``.
+
+    S-8 (criterion 16): perceptible delivery means the agent actually
+    SAW the image bytes (either inline or as a typed block), NOT a
+    ``resource_reference_replay`` that the model could pretend to
+    perceive without ever reading the fixture. The smoke harness
+    pre-seeds the ledger with a record carrying the expected
+    delivery mode so the grader can verify the smoke run picked a
+    perceptible path. Returns ``None`` on success.
+    """
+    rows = _wire_ledger_records_for_run(workspace_root, run_id)
+    if not rows:
+        return Evidence(
+            holds=False,
+            provenance=Provenance.WORKSPACE_EFFECT,
+            detail=(
+                "no wire-ledger rows for this run; cannot verify that the multimodal "
+                "delivery was perceptible (inline_image / typed_block) rather than "
+                "a non-perceptible resource_reference_replay"
+            ),
+        )
+    for row in rows:
+        delivery_mode = row.get("delivery_mode")
+        if not isinstance(delivery_mode, str):
+            continue
+        if delivery_mode in _PERCEPTIBLE_DELIVERY_MODES:
+            return None
+    return Evidence(
+        holds=False,
+        provenance=Provenance.WORKSPACE_EFFECT,
+        detail=(
+            "no wire-ledger row for this run carries a perceptible delivery_mode "
+            f"(inline_image / typed_block); saw delivery_mode values "
+            f"{[row.get('delivery_mode') for row in rows]!r}. "
+            "The multimodal fact graded at WIRE only when the agent's media call "
+            "was actually delivered with inline bytes or a typed block, not as a "
+            "resource_reference_replay the model could skip reading"
+            + (
+                f" (expected {expected_delivery_mode!r})"
+                if expected_delivery_mode is not None
+                else ""
+            )
+        ),
+    )
+
+
+def _check_perception_secret_token(
+    output_file: Path,
+    expected_perception_secret: str,
+) -> Evidence | None:
+    """Confirm the agent wrote the perception secret back to the output file.
+
+    S-8 (criterion 16): the pixel-only perception secret lives ONLY
+    in fixture pixels -- never in tool response fields, log lines,
+    filenames, or paths. The agent can only recover it by reading
+    the fixture with ``read_media`` / ``read_image``, so the
+    ``PERCEPTION_SECRET=<hex>`` token it writes to its output file
+    is the authoritative proof that the model perceived the image
+    bytes -- not just guessed or fabricated. Returns ``None`` on
+    success.
+    """
+    written_secret = _read_output_token(output_file, "PERCEPTION_SECRET")
+    if written_secret is None:
+        return Evidence(
+            holds=False,
+            provenance=Provenance.WORKSPACE_EFFECT,
+            detail=(
+                "PERCEPTION_SECRET=<hex> token missing from smoke output; the agent "
+                "did not write the pixel-only perception secret back to its output "
+                "file, so the multimodal fact cannot be graded WIRE even when the "
+                "ledger verifies -- the secret lives only in fixture pixels and a "
+                "model that did not actually read the image cannot recover it"
+            ),
+        )
+    if written_secret != expected_perception_secret:
+        return Evidence(
+            holds=False,
+            provenance=Provenance.WORKSPACE_EFFECT,
+            detail=(
+                f"PERCEPTION_SECRET={written_secret!r} does not match the fixture's "
+                f"embedded perception secret {expected_perception_secret!r}; the "
+                "agent wrote the wrong secret back (likely a guess rather than a "
+                "read of the fixture pixels)"
+            ),
+        )
+    return None
 
 
 def _check_media_call_record(
@@ -545,6 +816,7 @@ __all__ = [
     "build_smoke_fixture_png",
     "expected_fixture_sha256",
     "expected_replay_params",
+    "extract_perception_secret_from_fixture",
     "generate_fixture_geometry",
     "grade_multimodal_evidence",
     "multimodal_prompt_requirements",

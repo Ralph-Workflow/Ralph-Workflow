@@ -37,10 +37,12 @@ def test_skills_bundle_description_mentions_mirrored_upstream_bundle() -> None:
     assert "upstream" in skills_bundle.description
 
 
-def test_conditional_defaults_has_one_entry() -> None:
-    assert len(CONDITIONAL_DEFAULTS) == 1
-    assert CONDITIONAL_DEFAULTS[0].name == "docs_mcp"
-    assert CONDITIONAL_DEFAULTS[0].tier == "conditional"
+def test_conditional_defaults_has_two_entries() -> None:
+    assert len(CONDITIONAL_DEFAULTS) == 2
+    names = {cap.name for cap in CONDITIONAL_DEFAULTS}
+    assert names == {"docs_mcp", "vision_verdict_agent"}
+    for cap in CONDITIONAL_DEFAULTS:
+        assert cap.tier == "conditional"
 
 
 def test_non_defaults_has_four_entries() -> None:

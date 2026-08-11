@@ -93,3 +93,15 @@ obligations win.
 
 * Policy id: `<!-- ralph-policy-id: accessibility-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v3 -->`
+
+## Adjacent visual audits
+
+Accessibility audits are adjacent to a visual criterion and never close a criterion 8 verdict. The verdict authority is owned by the criterion 8 conditions named in the visual-verification ADR and the design-system policy.
+
+Accessibility passes may still be required work in their own right; their green reports never replace a visual verdict.
+
+## Visual review authority
+
+An appearance assertion (CSS/class/style/DOM) is NOT evidence of design quality. Design proof requires captures graded visually via the criterion 8 verdict. Criterion 8 verdict authority: when the criterion 8 verdict is present, backed by the `design_capture_command` fact and `ralph://media/{artifact_id}` evidence, it closes the design review lane under the conditions named in the visual-verification ADR.
+
+RALPH-FACT: visual_verdict_artifact: design_verdict

@@ -293,3 +293,37 @@ def _validate_display_capabilities(
                 )
                 raise ValueError(msg)
             seen_custom.add(stance.capability)
+
+
+def vision_verdict_agent_support(name: str = "vision-verdict") -> AgentSupport:
+    """Build the canonical :class:`AgentSupport` for the vision-verdict agent.
+
+    Thin pass-through to
+    :func:`ralph.agents.builtin_spec.vision_verdict_agent_spec`'s
+    :meth:`~ralph.agents.builtin_spec.BuiltinAgentSpec.to_support`
+    factory so callers that already have a reference to
+    :mod:`ralph.agents.support` do not need to import
+    :mod:`ralph.agents.builtin_spec` directly.
+
+    The agent is a conditional built-in: it is registered as
+    ``is_builtin=True`` so the catalog treats ``vision-verdict``
+    as a reserved name, but it is NOT part of the always-seeded
+    :data:`ralph.agents.builtin._BUILTIN_AGENT_SUPPORTS` tuple.
+    The :func:`ralph.agents.vision_agent_provisioning.provision_vision_verdict_agent`
+    call site is the only place that materializes the support;
+    it does so when the design-system policy is in scope for the
+    active workspace.
+
+    Args:
+        name: The agent name to assign to the resulting
+            support. Defaults to ``"vision-verdict"``.
+
+    Returns:
+        A fresh :class:`AgentSupport` carrying
+        ``is_builtin=True`` and the vision-verdict kwargs.
+    """
+    from ralph.agents.builtin_spec import (
+        vision_verdict_agent_spec,  # reason: lazy import avoids an import-time cycle via vision_agent_provisioning
+    )
+
+    return vision_verdict_agent_spec().to_support(name)

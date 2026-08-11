@@ -281,8 +281,10 @@ __all__ = [
     "smoke_headless_claude_command",
     "smoke_interactive_agy_command",
     "smoke_interactive_claude_command",
+    "smoke_interactive_codex_command",
     "smoke_interactive_cursor_command",
     "smoke_interactive_nanocoder_command",
+    "smoke_interactive_pi_command",
 ]
 
 
@@ -793,6 +795,126 @@ def smoke_interactive_agy_command(
         logger.error(
             "Agent '{}' resolves to transport '{}', not AGY. "
             "Use --agent with an agy/<model> alias.",
+            agent_name,
+            agent_config.transport.value if agent_config.transport else "None",
+        )
+        return 2
+
+    return smoke_harness_agent_command(
+        agent_name,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
+    )
+
+
+def smoke_interactive_codex_command(
+    agent_name: str = "codex/gpt-5-flash",
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
+) -> int:
+    """Run the manual smoke harness for the Codex CLI.
+
+    The alias follows the dynamic ``codex/<model>`` pattern (e.g.
+    ``codex/gpt-5-flash``); the command builder strips the leading
+    ``codex/`` and passes ``<model>`` to ``codex exec``. This
+    command lives for parity with the other interactive smoke
+    commands; the production harness uses the same
+    ``smoke_harness_agent_command`` plumbing with a ``cmd_override``
+    redirect seam (set the operator-config ``[agents.<name>].cmd``
+    to the multimodal stub path before invoking).
+
+    Like every other ``smoke-interactive-*`` command this consumes
+    live tokens and is therefore OUTSIDE ``make verify``; it only
+    runs when an operator invokes it.
+    """
+    if shutil.which("codex") is None:
+        logger.error(
+            "codex binary not found. Install Codex CLI and ensure `codex` is on PATH."
+        )
+        return 2
+
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        logger.error(
+            "Agent '{}' is not available. Use --agent with a codex/<model> alias, "
+            "e.g. --agent 'codex/gpt-5-flash'.",
+            agent_name,
+        )
+        return 2
+    if agent_config.transport is None or agent_config.transport != AgentTransport.CODEX:
+        logger.error(
+            "Agent '{}' resolves to transport '{}', not CODEX. "
+            "Use --agent with a codex/<model> alias.",
+            agent_name,
+            agent_config.transport.value if agent_config.transport else "None",
+        )
+        return 2
+
+    return smoke_harness_agent_command(
+        agent_name,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
+    )
+
+
+def smoke_interactive_pi_command(
+    agent_name: str = "pi",
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
+) -> int:
+    """Run the manual smoke harness for the Pi coding agent.
+
+    The alias follows the dynamic ``pi/<model>`` pattern (e.g.
+    ``pi/<model>``); bare ``pi`` uses the base pi harness layout.
+    The production harness uses the same
+    ``smoke_harness_agent_command`` plumbing with a ``cmd_override``
+    redirect seam.
+
+    Like every other ``smoke-interactive-*`` command this consumes
+    live tokens and is therefore OUTSIDE ``make verify``; it only
+    runs when an operator invokes it.
+    """
+    if shutil.which("pi") is None:
+        logger.error(
+            "pi binary not found. Install Pi and ensure `pi` is on PATH."
+        )
+        return 2
+
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        logger.error(
+            "Agent '{}' is not available. Use --agent with a pi or pi/<model> alias.",
+            agent_name,
+        )
+        return 2
+    if agent_config.transport is None or agent_config.transport != AgentTransport.PI:
+        logger.error(
+            "Agent '{}' resolves to transport '{}', not PI. "
+            "Use --agent with a pi or pi/<model> alias.",
             agent_name,
             agent_config.transport.value if agent_config.transport else "None",
         )

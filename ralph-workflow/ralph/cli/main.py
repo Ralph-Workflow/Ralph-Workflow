@@ -35,9 +35,11 @@ from ralph.cli.commands.smoke import (
     smoke_headless_claude_command,
     smoke_interactive_agy_command,
     smoke_interactive_claude_command,
+    smoke_interactive_codex_command,
     smoke_interactive_cursor_command,
     smoke_interactive_nanocoder_command,
     smoke_interactive_opencode_command,
+    smoke_interactive_pi_command,
 )
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
@@ -1335,6 +1337,96 @@ def smoke_interactive_opencode(
 
 
 app.command(name="smoke-interactive-opencode")(smoke_interactive_opencode)
+
+
+def smoke_interactive_codex(
+    agent: str = typer.Option(
+        "codex/gpt-5-flash",
+        help="Codex model alias to smoke (e.g. codex/gpt-5-flash).",
+    ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual smoke test for Codex CLI."""
+    raise typer.Exit(
+        code=smoke_interactive_codex_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
+        )
+    )
+
+
+app.command(name="smoke-interactive-codex")(smoke_interactive_codex)
+
+
+def smoke_interactive_pi(
+    agent: str = typer.Option(
+        "pi",
+        help="Pi model alias to smoke (e.g. pi or pi/<model>).",
+    ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual smoke test for the Pi coding agent."""
+    raise typer.Exit(
+        code=smoke_interactive_pi_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
+        )
+    )
+
+
+app.command(name="smoke-interactive-pi")(smoke_interactive_pi)
 app.command()(star)
 
 

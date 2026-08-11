@@ -164,3 +164,13 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: ux-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v3 -->`
+
+## Visual review authority
+
+Criterion 8 verdict authority: when the criterion 8 verdict is present, backed by the `design_capture_command` fact and `ralph://media/{artifact_id}` evidence, it closes the design review lane under the conditions named in the visual-verification ADR. UX policy aligns with the design-system policy on this point.
+
+Appearance assertions about CSS, classes, styles, or DOM structure remain adjacent implementation checks; they do not close a visual criterion.
+
+RALPH-FACT: visual_verdict_artifact: design_verdict
+
+An appearance assertion (CSS/class/style/DOM) is NOT evidence of design quality. Design proof requires captures graded visually via the criterion 8 verdict.

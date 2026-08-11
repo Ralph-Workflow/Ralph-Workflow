@@ -565,3 +565,14 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v3 -->`
+
+## Visual design evidence
+
+An appearance assertion (CSS/class/style/DOM) is NOT evidence of design quality. Design proof requires captures graded visually via the criterion 8 verdict.
+
+Criterion 8 verdict authority: when the criterion 8 verdict is present, backed by the `design_capture_command` fact and `ralph://media/{artifact_id}` evidence, it closes the design review lane under the conditions named in the visual-verification ADR.
+
+Appearance assertions may protect implementation details and accessibility behaviour, but they must not be submitted as visual design proof. Tests and development results must identify the capture set and the visual verdict that supports a UI plan item.
+
+RALPH-FACT: visual_verdict_artifact: design_verdict
+RALPH-FACT: design_capture_command: <declared capture command from the design-system policy>

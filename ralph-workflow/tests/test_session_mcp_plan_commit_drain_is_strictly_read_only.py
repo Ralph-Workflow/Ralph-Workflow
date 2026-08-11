@@ -67,7 +67,7 @@ def test_resolve_model_identity_claude_interactive() -> None:
     identity = resolve_model_identity(AgentTransport.CLAUDE_INTERACTIVE, "--model sonnet")
 
     assert identity.provider == "claude"
-    assert identity.model_id == "--model sonnet"
+    assert identity.model_id == "sonnet"
     assert identity.transport == AgentTransport.CLAUDE_INTERACTIVE.value
 
 
