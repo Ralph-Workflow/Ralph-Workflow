@@ -84,8 +84,9 @@ class TestUpstreamEnvVar:
         )
 
         tool_names = {defn.name for defn in bridge.list_definitions()}
-        for tool in ALL_RALPH_TOOLS:
-            assert tool in tool_names
+        expected_builtin_tools = set(ALL_RALPH_TOOLS) - {"media_capture"}
+        assert expected_builtin_tools <= tool_names
+        assert "media_capture" not in tool_names
 
     def test_malformed_upstream_env_var_returns_empty_and_logs_warning(
         self, caplog: pytest.LogCaptureFixture

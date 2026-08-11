@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 import struct
 import zlib
@@ -77,6 +78,7 @@ SMOKE_FIXTURE_RELNAME = "smoke-fixture.png"
 #: sample geometry, so widening the draw range cannot silently regress
 #: the inline-cap contract.
 SMOKE_MEDIA_MAX_INLINE_BYTES = 1024
+_PERCEPTION_SECRET_HEX_LENGTH = 32
 
 
 def build_smoke_fixture_png(
@@ -140,11 +142,15 @@ def build_smoke_fixture_png(
     perception_secret_bytes: bytes = b""
     if perception_secret is not None:
         try:
-            perception_secret_bytes = bytes.fromhex(perception_secret)
-        except ValueError as exc:
+            perception_secret_bytes = perception_secret.encode("ascii")
+        except UnicodeEncodeError as exc:
             raise ValueError(
                 f"perception_secret must be hex-encoded, got {perception_secret!r}"
             ) from exc
+        if not re.fullmatch(rb"[0-9a-fA-F]{32}", perception_secret_bytes):
+            raise ValueError(
+                f"perception_secret must be {_PERCEPTION_SECRET_HEX_LENGTH} hex characters"
+            )
     pixel_capacity = width * 3  # R + G + B bytes per row
     for row_index in range(height):
         raw_scanlines.append(0)  # filter byte: None
@@ -154,18 +160,16 @@ def build_smoke_fixture_png(
             # cap even at the smallest geometry.
             raw_scanlines.append((row_index ^ column_index ^ salt[column_index % len(salt)]) & 0xFF)
     if perception_secret_bytes:
-        # Embed the secret in the LAST row's R bytes starting at column
-        # offset 4 -- well within the row width, well off the IHDR /
-        # IEND / tEXt chunk boundaries so the secret lives ONLY in
-        # pixel data. When the secret is shorter than the available
-        # pixel slot the remainder of the slot is left at its salt
-        # value (no truncation, no leak).
+        if len(perception_secret_bytes) != _PERCEPTION_SECRET_HEX_LENGTH:
+            raise ValueError(
+                "perception_secret must contain exactly "
+                f"{_PERCEPTION_SECRET_HEX_LENGTH} hex characters"
+            )
+        # Embed the fixed-width secret in the LAST row's R bytes. Its length
+        # is protocol knowledge, never emitted as image metadata.
         last_row_offset = len(raw_scanlines) - (1 + pixel_capacity)
         for secret_index, secret_byte in enumerate(perception_secret_bytes):
-            target = last_row_offset + 4 + secret_index * 3
-            if target >= last_row_offset + pixel_capacity:
-                break
-            raw_scanlines[target] = secret_byte
+            raw_scanlines[last_row_offset + 1 + 4 + secret_index] = secret_byte
     idat_payload = zlib.compress(bytes(raw_scanlines), level=6)
     idat_chunk = _chunk(b"IDAT", idat_payload)
 
@@ -196,8 +200,6 @@ def extract_perception_secret_from_fixture(png_bytes: bytes) -> str | None:
     distinguish "no secret embedded" from "secret present but
     unreadable".
     """
-    import re
-
     png_signature_len = 8  # bytes 0..7 = PNG signature
     png_ihdr_offset = 16  # bytes 16..19 = width (big-endian)
     if len(png_bytes) < png_signature_len or png_bytes[:png_signature_len] != b"\x89PNG\r\n\x1a\n":
@@ -234,13 +236,12 @@ def extract_perception_secret_from_fixture(png_bytes: bytes) -> str | None:
         return None
     last_row_offset = len(decompressed) - (1 + pixel_capacity)
     secret_bytes = bytearray()
-    target = last_row_offset + 4
-    while target + 3 <= last_row_offset + pixel_capacity:
+    for secret_index in range(_PERCEPTION_SECRET_HEX_LENGTH):
+        target = last_row_offset + 1 + 4 + secret_index
+        if target >= last_row_offset + 1 + pixel_capacity:
+            return None
         secret_bytes.append(decompressed[target])
-        target += 3
-    if not secret_bytes:
-        return ""
-    if not re.fullmatch(rb"[0-9a-fA-F]+", bytes(secret_bytes)):
+    if not re.fullmatch(rb"[0-9a-fA-F]{32}", bytes(secret_bytes)):
         return None
     return bytes(secret_bytes).decode("ascii")
 
@@ -546,6 +547,19 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
     if geometry is not None:
         return geometry
 
+    if expected_perception_secret is None:
+        try:
+            expected_perception_secret = extract_perception_secret_from_fixture(
+                (workspace_root / fixture_relpath).read_bytes()
+            )
+        except OSError:
+            expected_perception_secret = None
+    if expected_perception_secret is None:
+        return Evidence(
+            holds=False,
+            provenance=Provenance.WORKSPACE_EFFECT,
+            detail="fixture has no readable pixel-only PERCEPTION_SECRET",
+        )
     if expected_perception_secret is not None:
         secret_check = _check_perception_secret_token(
             output_file, expected_perception_secret

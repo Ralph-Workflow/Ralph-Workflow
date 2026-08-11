@@ -1,63 +1,12 @@
 #!/usr/bin/env python3
-"""Deterministic multimodal smoke stub agent (S-9 / S-12 / criterion 5).
+"""Deterministic multimodal smoke stub agent (criterion 5).
 
-This stub is a genuine subprocess agent: it reads ``RALPH_MCP_ENDPOINT``
-from its environment, POSTs real ``tools/call`` requests against Ralph's
-MCP server for the multimodal smoke scenario, and emits the per-transport
-frame vocabulary the production harness's parser expects.
-
-Per-transport frame vocabulary (S-13):
-
-- ``claude`` / ``claude-headless`` -- Claude ``assistant`` /
-  ``content_block_start`` / ``tool_use`` / ``tool_result`` / ``result``
-  frames. The Claude parser's ``_parse_role_message`` /
-  ``_dispatch_json_object`` paths accept these directly.
-- ``agy`` -- AGY ``init`` / ``step_update`` / ``result`` stream-json
-  frames (measured against AGY v1.1.10; see
-  ``tests/display/_fixtures/agy_wire_provenance.md``). The AgyParser's
-  ``_dispatch_init_event`` / ``_dispatch_step_update`` /
-  ``_dispatch_result_event`` paths accept these.
-- ``cursor`` -- Cursor ``system`` / ``assistant`` / ``tool_call`` /
-  ``tool_result`` / ``result`` stream-json frames. The CursorParser's
-  ``_CursorDispatch.dispatch`` handler map accepts these.
-- ``opencode`` -- OpenCode ``step_start`` / ``text`` / ``tool_use`` /
-  ``tool_result`` / ``done`` NDJSON frames. The OpenCodeParser's
-  ``_OpenCodeDispatch.dispatch`` handler map accepts these.
-- ``nanocoder`` -- plain-text frames with the ``[plain] tool: NAME``
-  convention the GenericParser / NanocoderParser share, plus a
-  ``⚒ Executed <tool>`` line per dispatched tool call so NanocoderParser
-  classifies it as ``tool_use`` regardless of which fallback the
-  harness reaches.
-
-The transport selection is controlled by the ``MOCK_MULTIMODAL_TRANSPORT``
-env var; default ``claude`` (the simplest vocabulary, accepted by the
-ClaudeParser without per-event routing).
-
-Three modes, selected by env vars:
-
-- ``MOCK_MULTIMODAL_BEHAVIOR=ok`` (default) -- issues the FULL
-  positive-contract call sequence (read_media fixture path,
-  re-read the server-minted handle, read_image metadata, write
-  the receipts into the smoke output file, submit the
-  ``smoke_test_result`` artifact, call ``declare_complete``).
-  Used by the positive per-harness case.
-
-- ``MOCK_MULTIMODAL_SKIP_MEDIA=1`` -- does everything except the
-  media-tool calls. Used by the negative "no call" case to prove the
-  break fires on a missing media call.
-
-- ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1`` -- issues the first
-  ``read_media`` call (so a genuine ``read_media`` wire-ledger record
-  exists for the run), then DISCARDS the response, fabricates a
-  UUID-based receipt, and writes a guessed geometry / sha256 into
-  the output file. Used by the negative "ignored response" case to
-  prove the assertion fails when the agent dials the endpoint but
-  discards the answer -- the graded fact must read the receipt from
-  the server registry, not trust the model-authored report.
-
-In every mode the stub emits enough transport frames for the parser
-to see a normal tool-use sequence, and is graded against the SAME
-harnessing path the production ``--multimodal`` smoke runs use.
+The subprocess calls Ralph's MCP endpoint and emits each production harness's
+expected transport frames. ``MOCK_MULTIMODAL_TRANSPORT`` selects the frame
+vocabulary. In normal mode it reads the fixture, replays the server-minted
+handle, reports metadata plus the pixel-only secret, submits the smoke artifact,
+and completes the run. ``MOCK_MULTIMODAL_SKIP_MEDIA`` and
+``MOCK_MULTIMODAL_IGNORE_RESPONSE`` trigger the named negative contracts.
 """
 
 from __future__ import annotations
@@ -69,6 +18,7 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -758,6 +708,46 @@ def _fixture_geometry_from_disk(workspace_root: Path) -> tuple[int, int, str] | 
     return width, height, sha
 
 
+
+def _first_idat_payload(body: bytes) -> bytes | None:
+    """Return the first complete IDAT payload from a PNG byte stream."""
+    cursor = 8
+    while cursor + 8 <= len(body):
+        length = int.from_bytes(body[cursor : cursor + 4], byteorder="big", signed=False)
+        chunk_type = body[cursor + 4 : cursor + 8]
+        start = cursor + 8
+        end = start + length
+        if end + 4 > len(body):
+            return None
+        if chunk_type == b"IDAT":
+            return body[start:end]
+        cursor = end + 4
+    return None
+
+
+def _fixture_perception_secret_from_disk(workspace_root: Path) -> str | None:
+    """Extract the fixed-width secret from the fixture's final-row RGB pixels."""
+    try:
+        body = (workspace_root / "smoke-fixture.png").read_bytes()
+    except OSError:
+        return None
+    if len(body) < 24 or body[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    idat = _first_idat_payload(body)
+    if idat is None:
+        return None
+    try:
+        pixels = zlib.decompress(idat)
+    except zlib.error:
+        return None
+    width = int.from_bytes(body[16:20], byteorder="big", signed=False)
+    row_start = len(pixels) - (1 + width * 3)
+    if row_start < 0:
+        return None
+    secret = bytes(pixels[row_start + 1 + 4 + index] for index in range(32))
+    return secret.decode("ascii") if re.fullmatch(rb"[0-9a-fA-F]{32}", secret) else None
+
+
 def _write_output(
     output_file: Path,
     workspace_root: Path,
@@ -785,6 +775,9 @@ def _write_output(
         body += f"MEDIA_RECEIPT={mint_handle or ''}\n"
         body += f"DIMENSIONS={final_width}x{final_height}\n"
         body += f"MEDIA_SHA256={final_sha}\n"
+        perception_secret = _fixture_perception_secret_from_disk(workspace_root)
+        if perception_secret is not None:
+            body += f"PERCEPTION_SECRET={perception_secret}\n"
     output_file.write_text(body, encoding="utf-8")
 
 

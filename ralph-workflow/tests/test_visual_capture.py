@@ -365,6 +365,22 @@ def test_handle_media_capture_appends_target_as_trailing_argv(tmp_path: Path) ->
         assert args[-1] == "settings"
 
 
+def test_handle_media_capture_rejects_an_unbounded_declared_argv(tmp_path: Path) -> None:
+    """A policy command cannot expand one matrix cell into unbounded argv."""
+    request = _build_request(target="settings")
+    command = "bin/capture " + " ".join(f"--option-{index}" for index in range(33))
+
+    with pytest.raises(MediaCaptureError, match="too many argv"):
+        handle_media_capture(
+            tmp_path,
+            run_id="run-1",
+            capture_request=request,
+            design_capture_command=command,
+            secret=_TEST_SECRET,
+            executor=_FakeExecutor(),
+        )
+
+
 def test_handle_media_capture_invokes_one_process_per_cell(tmp_path: Path) -> None:
     """The renderer runs once per cell (one executor call per matrix entry)."""
     request = _build_request(target="cart")

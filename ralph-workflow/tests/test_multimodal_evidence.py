@@ -260,11 +260,16 @@ class TestGradeMultimodalEvidence:
         sha256 = expected_fixture_sha256(width, height)
         output_file = tmp_path / "tmp/interactive-claude-smoke/todo-list.js"
         output_file.parent.mkdir(parents=True, exist_ok=True)
+        perception_secret = "ab" * 16
+        (tmp_path / fixture_relpath).write_bytes(
+            build_smoke_fixture_png(width, height, perception_secret=perception_secret)
+        )
         output_file.write_text(
             "// smoke output\n"
             f"MEDIA_RECEIPT={uri}\n"
             f"DIMENSIONS={width}x{height}\n"
-            f"MEDIA_SHA256={sha256}\n",
+            f"MEDIA_SHA256={sha256}\n"
+            f"PERCEPTION_SECRET={perception_secret}\n",
             encoding="utf-8",
         )
         secret = "smoke-secret"
@@ -276,6 +281,7 @@ class TestGradeMultimodalEvidence:
             params={"path": fixture_relpath, "format": "inline"},
             run_id=run_id,
             secret=secret,
+            delivery_mode="inline_image",
         )
         if include_replay:
             replay_digest = params_digest(expected_replay_params(handle=uri))
@@ -286,6 +292,7 @@ class TestGradeMultimodalEvidence:
                 params=expected_replay_params(handle=uri),
                 run_id=run_id,
                 secret=secret,
+                delivery_mode="inline_image",
             )
             # Sanity: the recorded row carries that exact digest.
             assert wire_evidence_for(
@@ -315,6 +322,33 @@ class TestGradeMultimodalEvidence:
         )
         assert evidence.holds is True
         assert evidence.provenance is Provenance.WIRE, evidence.detail
+
+    def test_full_contract_without_pixel_secret_does_not_grade_wire(self, tmp_path: Path) -> None:
+        """Metadata and replay evidence alone are transport proof, not perception proof."""
+        fixture_size = (40, 24)
+        output_file, secret = self._setup_full_wire_run(
+            tmp_path,
+            fixture_relpath=SMOKE_FIXTURE_RELNAME,
+            fixture_size=fixture_size,
+        )
+        output_file.write_text(
+            output_file.read_text(encoding="utf-8").replace(
+                "PERCEPTION_SECRET=abababababababababababababababab\n", ""
+            ),
+            encoding="utf-8",
+        )
+
+        evidence = grade_multimodal_evidence(
+            tmp_path,
+            "interactive-claude-smoke",
+            output_file=output_file,
+            fixture_relpath=SMOKE_FIXTURE_RELNAME,
+            fixture_size=fixture_size,
+            secret=secret,
+        )
+
+        assert evidence.provenance is not Provenance.WIRE
+        assert "PERCEPTION_SECRET" in evidence.detail
 
     def test_missing_replay_record_grades_workspace_effect(self, tmp_path: Path) -> None:
         """The poisoned-response case -- a real ``read_media`` call but no replay hop.

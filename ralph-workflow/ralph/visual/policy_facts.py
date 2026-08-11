@@ -22,6 +22,7 @@ cannot turn a capture into a shell escape.
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
@@ -56,6 +57,13 @@ MIN_VIEWPORTS: int = 2
 # executable plus a target (test path, URL, etc.); anything shorter is
 # a single-screenshot default in disguise.
 MIN_CAPTURE_COMMAND_TOKENS: int = 2
+
+# A policy command is repeated once for every matrix cell. Keep the declared
+# argv bounded so one policy fact cannot multiply into an oversized process.
+MAX_CAPTURE_COMMAND_TOKENS: int = 32
+
+# Workspace-relative policy source used for both tool registration and calls.
+DESIGN_SYSTEM_POLICY_RELPATH: str = "docs/ralph-workflow-policy/design-system-policy.md"
 
 # Characters / fragments that signal a shell escape attempt inside
 # ``design_capture_command``. The set is conservative on purpose: any
@@ -222,11 +230,21 @@ def _validate_capture_command(command: str) -> None:
             "design_capture_command must not contain path-traversal sequences ('..'); "
             "capture paths must stay within the project root"
         )
-    tokens = command.split()
+    try:
+        tokens = shlex.split(command)
+    except ValueError as exc:
+        raise ValueError(
+            f"design_capture_command must be shell-parseable: {exc}"
+        ) from exc
     if len(tokens) < MIN_CAPTURE_COMMAND_TOKENS:
         raise ValueError(
             "design_capture_command must contain at least an executable and a target "
             f"(got {command!r}); single-screenshot defaults are rejected"
+        )
+    if len(tokens) > MAX_CAPTURE_COMMAND_TOKENS:
+        raise ValueError(
+            "design_capture_command declares too many argv tokens "
+            f"({len(tokens)} > {MAX_CAPTURE_COMMAND_TOKENS})"
         )
 
 
@@ -371,6 +389,8 @@ def default_policy_facts(*, target: str, command: str) -> PolicyFacts:
 
 __all__ = [
     "DEFAULT_THEMES",
+    "DESIGN_SYSTEM_POLICY_RELPATH",
+    "MAX_CAPTURE_COMMAND_TOKENS",
     "MIN_VIEWPORTS",
     "REQUIRED_STATES",
     "VIEWPORT_DEFAULT_HEIGHT_NARROW",

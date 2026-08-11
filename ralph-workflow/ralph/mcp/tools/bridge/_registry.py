@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
@@ -18,6 +18,7 @@ from ralph.mcp.tools.bridge._tool_bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 from ralph.mcp.tools.bridge._upstream_proxy_handler import UpstreamProxyHandler
+from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
 
 if TYPE_CHECKING:
     from ralph.config.mcp_models import McpConfig
@@ -36,6 +37,22 @@ def tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
     specs.extend(web_media_specs(mcp_config))
     specs.extend(explore_specs())
     return tuple(specs)
+
+
+class _ReadableWorkspace(Protocol):
+    """Minimal workspace contract needed for policy-gated tool exposure."""
+
+    def read(self, path: str) -> str: ...
+
+
+def _capture_policy_is_resolved(workspace: object) -> bool:
+    """Return whether this workspace declares a complete capture matrix."""
+    try:
+        policy_markdown = cast("_ReadableWorkspace", workspace).read(DESIGN_SYSTEM_POLICY_RELPATH)
+        parse_policy_facts(policy_markdown, target="_capture_policy_probe")
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+    return True
 
 
 def _attach_upstream_registry(bridge: ToolBridge, upstream_registry: UpstreamRegistry) -> None:
@@ -68,6 +85,7 @@ def build_ralph_tool_registry(
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
+    capture_policy_is_resolved = _capture_policy_is_resolved(workspace)
     for spec in tool_specs(mcp_cfg):
         is_websearch = (
             spec.module_name == "ralph.mcp.tools.websearch"
@@ -89,6 +107,12 @@ def build_ralph_tool_registry(
             spec.module_name == "ralph.mcp.tools.workspace"
             and spec.handler_name == "handle_read_media"
         )
+        is_media_capture = (
+            spec.module_name == "ralph.mcp.tools.workspace"
+            and spec.handler_name == "handle_media_capture_tool"
+        )
+        if is_media_capture and not capture_policy_is_resolved:
+            continue
         if is_websearch:
             bridge.register(
                 spec.metadata,

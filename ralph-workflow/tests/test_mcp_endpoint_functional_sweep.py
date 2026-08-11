@@ -494,8 +494,12 @@ def test_every_advertised_endpoint_round_trips(
     server, _ = _build_server(tmp_path)
     advertised = set(_drive_tools_list(server))
 
-    # Shared sweep: every canonical name with a SWEEP_CALLS entry.
-    shared_targets = list(SWEEP_CALLS.items())
+    # Shared sweep: every advertised canonical name with a SWEEP_CALLS entry.
+    shared_targets = [
+        (canonical_name, arguments)
+        for canonical_name, arguments in SWEEP_CALLS.items()
+        if canonical_name in advertised
+    ]
     for canonical_name, arguments in shared_targets:
         response = _drive_call(server, canonical_name, arguments)
         _assert_call_round_trips(canonical_name, response)

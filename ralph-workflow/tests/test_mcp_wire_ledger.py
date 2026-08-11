@@ -10,8 +10,10 @@ forged or unchained row is rejected by the chain verifier, never grading
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
@@ -46,12 +48,18 @@ class _FakeRegistry:
         return []
 
 
-def _session(run_id: str, *, broker_secret: str | None) -> AgentSession:
+def _session(
+    run_id: str,
+    *,
+    broker_secret: str | None,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> AgentSession:
     return AgentSession(
         session_id="sess-1",
         run_id=run_id,
         drain="development",
         broker_secret=broker_secret,
+        model_identity=model_identity or MultimodalModelIdentity(provider="unknown"),
     )
 
 
@@ -172,6 +180,37 @@ def test_dispatch_appends_verified_wire_record(tmp_path: Path) -> None:
     assert ledger_path.exists()
     assert verify_chain(tmp_path, "s3cr3t") is True
     assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is True
+
+
+def test_media_tools_call_records_delivery_and_agent_identity(tmp_path: Path) -> None:
+    """A media call seals its resolved perceptible delivery facts into the ledger."""
+    server = McpServer(
+        session=_session(
+            "run-1",
+            broker_secret="s3cr3t",
+            model_identity=MultimodalModelIdentity(
+                provider="openai", model_id="gpt-future"
+            ),
+        ),
+        workspace=_Workspace(tmp_path),
+        registry=_FakeRegistry(),
+    )
+    request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="tools/call",
+        msg_id="1",
+        params={"name": "read_image", "arguments": {"path": "smoke.png"}},
+    )
+
+    response, _ = server.handle_request(request, ServerState.RUNNING)
+
+    assert response is not None
+    row = json.loads((tmp_path / WIRE_LEDGER_RELPATH).read_text(encoding="utf-8"))
+    assert row["delivery_mode"] == "inline_image"
+    assert row["provider"] == "openai"
+    assert row["model_id"] == "gpt-future"
+    assert row["agent_id"] == "sess-1"
+    assert verify_chain(tmp_path, "s3cr3t") is True
 
 
 def test_wire_evidence_matches_tool_name_substring(tmp_path: Path) -> None:

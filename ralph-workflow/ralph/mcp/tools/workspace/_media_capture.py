@@ -51,7 +51,7 @@ from ralph.mcp.multimodal.resources import (
 )
 from ralph.mcp.server._wire_ledger import append_wire_record
 from ralph.visual.capture_request import CaptureRequest
-from ralph.visual.policy_facts import parse_policy_facts
+from ralph.visual.policy_facts import MAX_CAPTURE_COMMAND_TOKENS, parse_policy_facts
 
 _CAPTURE_POLICY_RELPATH: str = "docs/ralph-workflow-policy/design-system-policy.md"
 
@@ -258,6 +258,12 @@ def _resolve_command(
                 target=target, cell_id="<command>",
                 reason="design_capture_command resolved to zero tokens",
             )
+        if len(tokens) > MAX_CAPTURE_COMMAND_TOKENS:
+            raise MediaCaptureError(
+                target=target,
+                cell_id="<command>",
+                reason="design_capture_command declares too many argv tokens",
+            )
         return (tokens[0], tuple(tokens[1:]))
     try:
         tokens = shlex.split(design_capture_command)
@@ -270,6 +276,12 @@ def _resolve_command(
         raise MediaCaptureError(
             target=target, cell_id="<command>",
             reason="design_capture_command resolved to zero tokens",
+        )
+    if len(tokens) + 1 > MAX_CAPTURE_COMMAND_TOKENS:
+        raise MediaCaptureError(
+            target=target,
+            cell_id="<command>",
+            reason="design_capture_command declares too many argv tokens",
         )
     return (tokens[0], (*tuple(tokens[1:]), target))
 

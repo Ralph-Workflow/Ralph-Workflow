@@ -11,6 +11,7 @@ from loguru import logger
 from ralph import __version__
 from ralph.agents.system_clock import SystemClock
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
@@ -564,6 +565,28 @@ class McpServer:
             ServerState.RUNNING,
         )
 
+    def _wire_ledger_facts(
+        self,
+        tool_name: str,
+        arguments: dict[str, object],
+    ) -> tuple[str, str, str | None, str]:
+        """Return the resolved delivery and caller facts sealed for a tools/call."""
+        identity = self._session.model_identity
+        delivery_mode = "not_applicable"
+        modality: str | None = None
+        if tool_name.endswith("read_image"):
+            modality = "image"
+        elif tool_name.endswith("read_media"):
+            path = arguments.get("path")
+            if isinstance(path, str):
+                inferred = infer_modality_and_mime(path.rsplit(".", 1)[-1].join((".", "")))
+                if inferred is not None:
+                    modality = inferred[0]
+        profile = self._session.capability_profile
+        if modality is not None and profile is not None:
+            delivery_mode = profile.verdict_for(modality).delivery.value
+        return delivery_mode, identity.provider, identity.model_id, self._session.session_id
+
     def _handle_tools_call(
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
@@ -608,6 +631,9 @@ class McpServer:
         # not turn a real tool dispatch into a JSON-RPC error — the ledger is
         # diagnostic evidence, never a load-bearing part of the dispatch path.
         try:
+            delivery_mode, provider, model_id, agent_id = self._wire_ledger_facts(
+                tool_name, dict(arguments_value)
+            )
             append_wire_record(
                 self._workspace.root,
                 method="tools/call",
@@ -615,6 +641,10 @@ class McpServer:
                 params=dict(arguments_value),
                 run_id=self._session.run_id,
                 secret=self._session.broker_secret,
+                delivery_mode=delivery_mode,
+                provider=provider,
+                model_id=model_id,
+                agent_id=agent_id,
             )
         except (AttributeError, OSError, TypeError):
             logger.opt(exception=True).debug(

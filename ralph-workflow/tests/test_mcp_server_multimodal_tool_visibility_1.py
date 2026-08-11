@@ -70,11 +70,33 @@ def _tool_names(server: server_runtime.McpServer) -> set[str]:
 
 
 def test_default_media_surface_is_visible_without_client_capability(tmp_path: Path) -> None:
-    """A default empty MCP handshake still exposes enabled media tools."""
+    """A default empty MCP handshake exposes reads but not policy-gated capture."""
     tool_names = _tool_names(_server(tmp_path, McpConfig()))
 
     assert "read_media" in tool_names
     assert "read_image" in tool_names
+    assert "media_capture" not in tool_names
+
+
+def test_capture_is_visible_only_with_a_resolved_design_system_policy(tmp_path: Path) -> None:
+    """The capture tool is listed only after the complete policy facts resolve."""
+    policy_path = tmp_path / "docs/ralph-workflow-policy/design-system-policy.md"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        "\n".join(
+            (
+                "RALPH-FACT: design_capture_command: bin/capture --target={target}",
+                "RALPH-FACT: narrow_viewport: 375x812",
+                "RALPH-FACT: wide_viewport: 1440x900",
+                "RALPH-FACT: themes: light,dark",
+                "RALPH-FACT: states: default,empty,loading,error,overflow",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    tool_names = _tool_names(_server(tmp_path, McpConfig()))
+
     assert "media_capture" in tool_names
 
 
@@ -85,7 +107,7 @@ def test_explicit_media_disabled_keeps_media_tools(tmp_path: Path) -> None:
 
     assert "read_media" in tool_names
     assert "read_image" in tool_names
-    assert "media_capture" in tool_names
+    assert "media_capture" not in tool_names
 
 
 def test_explicit_disabled_media_surface_matches_default(tmp_path: Path) -> None:
@@ -106,5 +128,5 @@ def test_explicit_disabled_media_surface_matches_default(tmp_path: Path) -> None
     assert "read_file" in disabled_names
     assert "read_media" in default_names and "read_media" in disabled_names
     assert "read_image" in default_names and "read_image" in disabled_names
-    assert "media_capture" in default_names and "media_capture" in disabled_names
+    assert "media_capture" not in default_names and "media_capture" not in disabled_names
     assert disabled_names == default_names

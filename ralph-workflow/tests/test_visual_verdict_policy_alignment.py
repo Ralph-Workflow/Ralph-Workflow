@@ -50,6 +50,12 @@ def test_all_four_starters_align_verdict_authority_statement() -> None:
         assert "ralph://media/{artifact_id}" in content, name
 
 
+def test_design_system_starter_has_one_review_authority_section() -> None:
+    content = _starter_path("design-system-policy.md").read_text(encoding="utf-8")
+
+    assert content.count("## Review authority") == 1
+
+
 def test_adr_records_renderer_scope_prompt_scope_and_review_authority() -> None:
     candidates = [
         Path("ralph-workflow/docs/architecture/adr-0002-visual-design-verification.md"),
