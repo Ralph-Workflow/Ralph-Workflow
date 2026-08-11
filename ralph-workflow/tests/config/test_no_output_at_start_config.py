@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
@@ -40,11 +42,10 @@ def test_claude_startup_regression_positive_override_reaches_timeout_policy() ->
     assert policy.no_output_at_start_seconds == 75.0
 
 
-def test_claude_startup_regression_rejects_non_positive_override() -> None:
-    """S-3: Operators cannot disable bounded startup detection with zero."""
-    try:
-        GeneralConfig(agent_no_output_at_start_seconds=0.0)
-    except ValueError as error:
-        assert "agent_no_output_at_start_seconds" in str(error)
-    else:
-        raise AssertionError("zero startup grace must be rejected")
+@pytest.mark.parametrize("invalid_grace", [0.0, -1.0])
+def test_claude_startup_regression_rejects_non_positive_override(
+    invalid_grace: float,
+) -> None:
+    """S-2: Operators cannot disable bounded startup detection with zero or negatives."""
+    with pytest.raises(ValueError, match="agent_no_output_at_start_seconds"):
+        GeneralConfig(agent_no_output_at_start_seconds=invalid_grace)

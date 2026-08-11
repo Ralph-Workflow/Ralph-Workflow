@@ -120,7 +120,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 
-def test_visual_smoke_runs_capture_contract_before_fixture_judge() -> None:
+def test_visual_smoke_runs_only_its_smoke_marked_fixture_judge() -> None:
     capture_body = _target_body("test-visual-capture")
     assert len(capture_body) == 1
     assert "tests/test_visual_capture.py" in capture_body[0]
@@ -128,8 +128,9 @@ def test_visual_smoke_runs_capture_contract_before_fixture_judge() -> None:
     assert "tests/test_mcp_server_multimodal_tool_visibility_1.py" in capture_body[0]
 
     smoke_body = _target_body("test-visual-smoke")
-    assert smoke_body[0] == "$(MAKE) test-visual-capture"
-    assert "tests/test_visual_smoke.py" in smoke_body[1]
+    assert len(smoke_body) == 1
+    assert "tests/test_visual_smoke.py" in smoke_body[0]
+    assert "test-visual-capture" not in smoke_body[0]
 
 
 def test_test_subprocess_e2e_uses_maintained_explicit_file_selector() -> None:

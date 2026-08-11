@@ -199,19 +199,12 @@ test-visual-capture:
 test-visual-verdict:
 	$(RUN_PYTHON) -m pytest tests/test_visual_verdict.py -q -n $(PYTEST_WORKERS) --dist worksteal
 
-# Visual capture + lifecycle suite (criterion 6 / criterion 12).
-# Deterministic offline tests for the capture handler, the
-# pre-change lifecycle, and the visual-smoke fixtures. No real
-# subprocess, no real renderer, no paid backend — the suite uses
-# fake executors, in-memory PNG bytes, and stub judges. Carries the
-# `smoke` marker alongside `subprocess_e2e` so it stays out of the
-# regular pytest profile and runs as its own budget-tracked step
-# under `make verify` (see `_VERIFY_STEPS` in `ralph/verify.py`).
-# The combined budget is unchanged: the immutable 60-second cap
-# remains in effect across `make test`, `make test-multimodal-smoke`,
-# and `make test-visual-smoke` together.
+# Visual-smoke fixture suite (criterion 12). The capture and lifecycle
+# contracts run in the regular `make test` profile; this target runs only
+# the smoke-marked fixture judge. No real subprocess, renderer, or paid
+# backend is used. The immutable 60-second cap applies across `make test`,
+# `make test-multimodal-smoke`, and `make test-visual-smoke` together.
 test-visual-smoke:
-	$(MAKE) test-visual-capture
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_visual_smoke.py -q -m "smoke and subprocess_e2e"
 
 # Focused profile over the same explicit registry used by the
