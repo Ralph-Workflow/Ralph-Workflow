@@ -188,6 +188,28 @@ def _shared_workspace_key(workspace: Path) -> str:
     return str(workspace.absolute())
 
 
+def _current_status() -> dict[str, object]:
+    """Return the status for an active event observer."""
+    return {
+        "mode": "watch",
+        "freshness": "current",
+        "cause": None,
+        "automatic_recovery": False,
+        "safe_next_action": "None required.",
+    }
+
+
+def _live_fallback_status(cause: str) -> dict[str, object]:
+    """Return the bounded, explicit status used without a host observer."""
+    return {
+        "mode": "live_fallback",
+        "freshness": "live_fallback",
+        "cause": cause,
+        "automatic_recovery": True,
+        "safe_next_action": "Ralph will retry observation on the next workspace lease.",
+    }
+
+
 class WorkspaceMonitor:
     """Monitors workspace directory for file changes during agent execution.
 
@@ -266,6 +288,7 @@ class WorkspaceMonitor:
         self._on_event: WorkspaceEventCallback | None = on_event
         self._classifier: WorkspaceChangeClassifier | None = classifier
         self._handler: object | None = None
+        self._awareness_status: dict[str, object] = _live_fallback_status("unavailable")
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes.
@@ -299,10 +322,12 @@ class WorkspaceMonitor:
                 self._shared_key = key
                 self._handler = shared.handler
                 self._started = True
+                self._awareness_status = _current_status()
                 return
 
             observer = _create_watchdog_observer()
             if observer is None:
+                self._awareness_status = _live_fallback_status("observer_unavailable")
                 return
             handler = _make_change_tracker(self._workspace, key)
             self._observer = observer
@@ -316,6 +341,7 @@ class WorkspaceMonitor:
                 self._observer = None
                 self._handler = None
                 if exc.errno in (errno.EMFILE, errno.ENOSPC):
+                    self._awareness_status = _live_fallback_status("watch_capacity")
                     logger.warning("Workspace monitoring unavailable: inotify limit reached")
                     return
                 raise
@@ -330,6 +356,7 @@ class WorkspaceMonitor:
             self._shared_watches[key] = shared
             self._shared_key = key
             self._started = True
+            self._awareness_status = _current_status()
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
     def record_event(self, src_path: str) -> None:
@@ -469,6 +496,16 @@ class WorkspaceMonitor:
             "_HandlerWithDispatch", self._handler
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         handler.dispatch(event)
+
+    @property
+    def awareness_status(self) -> dict[str, object]:
+        """Return the current observation mode and its freshness contract.
+
+        A capacity failure does not pretend the workspace is current: callers
+        receive ``live_fallback`` and can reconcile through their existing
+        bounded live-read boundary before a knowledge-dependent operation.
+        """
+        return dict(self._awareness_status)
 
     @property
     def event_count(self) -> int:

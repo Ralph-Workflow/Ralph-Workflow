@@ -18,6 +18,7 @@ coupling to internals.
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 
 import pytest
@@ -82,6 +83,14 @@ class _StartFailingObserver(_FakeObserver):
 
     def start(self) -> None:
         raise OSError("watch startup failed")
+
+
+class _CapacityFailingObserver(_FakeObserver):
+    """Observer whose registration reports exhausted watch capacity."""
+
+    def schedule(self, event_handler: object, path: str, recursive: bool = False) -> None:
+        super().schedule(event_handler, path, recursive)
+        raise OSError(errno.ENOSPC, "watch limit reached")
 
 
 class _StopFailingObserver(_FakeObserver):
@@ -217,6 +226,30 @@ def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry(
     assert failing.joined is True
     assert len(succeeding.scheduled) == 1
     assert succeeding.started is True
+
+
+def test_capacity_exhaustion_enters_observable_live_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3: capacity failures are visible and retain bounded live fallback semantics."""
+    fake = _CapacityFailingObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+
+    monitor.start()
+
+    assert monitor.awareness_status == {
+        "mode": "live_fallback",
+        "freshness": "live_fallback",
+        "cause": "watch_capacity",
+        "automatic_recovery": True,
+        "safe_next_action": "Ralph will retry observation on the next workspace lease.",
+    }
+    assert fake.stopped is True
+    assert fake.joined is True
 
 
 def test_start_replay_preserves_one_live_workspace_watch(

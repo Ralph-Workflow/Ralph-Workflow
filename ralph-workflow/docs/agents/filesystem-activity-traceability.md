@@ -28,7 +28,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | R3 | `FsWorkspace.read_lines` and `read_bytes` | `tests/test_workspace_fs_fs_workspace_read_lines.py`; `tests/test_workspace_fs_fs_workspace_read_bytes.py` | COVERED for bounded line and byte windows; broader reader-call-site inventory remains GAP. |
 | R4 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: metadata and content share one observation; broader probe/read inventory remains GAP. |
 | R5 | Explore index and workspace traversal | `tests/test_explore_pipeline.py::test_warm_no_op_reindex_parses_zero_files`; `tests/test_explore_pipeline.py::test_warm_no_op_does_not_duplicate_rows`; `tests/test_explore_pipeline.py::test_warm_small_edit_reparses_only_changed_file`; `tests/test_explore_bench_gates.py::test_no_op_reindex_parses_zero_files` | COVERED for warm no-op and dirty-path incremental index cycles; broader traversal-owner reuse remains GAP. |
-| P1 | `WorkspaceMonitor.start` | `tests/agents/test_workspace_watch_scoping.py`; baseline test | COVERED for one monitor; cross-process coordination is GAP. |
+| P1 | `WorkspaceMonitor.start`; `WorkspaceMonitor.awareness_status` | `tests/agents/test_workspace_watch_scoping.py`; baseline test | COVERED for one recursive watch shared by in-process leases and explicit capacity fallback; cross-process coordination is GAP. |
 | P2 | `WorkspaceChangeClassifier` | `tests/agents/test_workspace_watch_scoping.py` classifier cases | COVERED for the current standing classifier exclusions; expand when new engine-internal paths are introduced. |
 | P3 | Watch and poll lifecycle owners | `tests/agents/test_workspace_watch_scoping.py`; `tests/test_audit_filesystem_polling_invocation.py`; event-driven workspace monitor | COVERED structurally: raw timer polling fails verification unless a local bounded-lifecycle reason is present. |
 | P4 | `WorkspaceMonitor.stop` | `tests/agents/test_workspace_watch_scoping.py` failure/release tests; `tests/test_audit_filesystem_polling_invocation.py` | COVERED for monitor and enforced ownership; each exceptional poll documents its release-bound lifecycle. |
@@ -45,6 +45,20 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | E2 | Regression tests | unchanged replay and atomic-skip tests | GAP: each future elimination must have a revert-sensitive test. |
 | E3 | Documentation | `scripts/fabrication_guard.py` (no unverified quantitative claim appears in this page) | COVERED. |
 | E4 | Verification budget | `tests/test_verify_invariants.py`; `tests/test_verify_budget_real_time.py` (injected fakes and project test budget) | COVERED for current baseline; recheck full gate after every slice. |
+
+## Workspace, watch, and storage inventory
+
+| Area | Consumer / owner | Scope and lifecycle | Exclusions or retention | Failure behavior and user value |
+|---|---|---|---|---|
+| Project content | `FsWorkspace` | Caller-scoped reads and idempotent writes | Workspace root validation; unchanged content skips publication | Preserves user bytes; callers receive the underlying operation failure. |
+| Workflow records | `.agent` artifact/state owners | Per run; `sweep_agent_dir` protects the active run | Aged receipts, sentinels, scratch, session metadata, and DB rows are swept after seven days | Best-effort cleanup preserves active recovery data. |
+| Workspace intelligence | `ExploreStore` | Workspace-scoped SQLite index; single reindex writer | `.agent/ralph-explore/` is disposable; jobs and tombstones have age/count caps | Last committed generation remains usable when refresh fails. |
+| Operational records | log/raw writers | Buffered per run | Existing bounded sink/overflow policies | Buffered visibility and completion flush preserve diagnostics. |
+| Temporary data | `.agent/tmp` retry/Codex homes | Active run only; recovery/startup sweep | Age-based removal; active run excluded | Best-effort cleanup removes interrupted work without affecting project content. |
+
+| Watch consumer | Scope / start | Release and sharing | Exclusions | Capacity failure |
+|---|---|---|---|---|
+| `WorkspaceMonitor` | One recursive root subscription per canonical workspace when the first in-process lease starts | Final lease stops and joins the observer; repeated starts are idempotent | Classifier drops `.git`, virtualenvs, `.agent/tmp`, `.agent/raw`, `.agent/artifacts`, state DB, logs, and caches from source activity | `awareness_status` reports `live_fallback`, cause, automatic recovery, and the safe next action; later leases retry observation. |
 
 ## S-1 Baseline
 
@@ -85,7 +99,7 @@ contract at the call site.
 
 ## Next Step
 
-Use the next unresolved row to create a red black-box test before changing production code. The highest-value current gap is cross-process shared-state coordination: prove independent publishers and watch consumers retain exact output and coverage without relying only on process-local ownership.
+Use the next unresolved row to create a red black-box test before changing production code. The highest-value current gap is cross-process shared-state coordination: prove independent publishers and watch consumers retain exact output and coverage without relying only on process-local ownership. The current in-process capacity path is explicit: `live_fallback` never claims current indexed freshness and directs the caller to the existing bounded live-read boundary while Ralph retries observation on a later lease.
 
 ## Documentation review note
 
