@@ -1,4 +1,4 @@
-"""Injected bounded seams for on-demand visual judgement."""
+"""Injected bounded dependency seams for an on-demand visual judgement."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class OnDemandJudgementDeps:
-    """The capture, delegation, and validation seams owned by the caller."""
+    """The bounded capture, delegation, and validation seams owned by the caller."""
 
     load_retained_capture: Callable[[str], tuple[str, ...]]
     load_fresh_capture: Callable[[str], tuple[str, ...]]

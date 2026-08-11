@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OnDemandJudgementResult:
-    """Either a submitted verdict reference or an actionable blocker."""
+    """The submitted verdict reference or actionable blocker from review."""
 
     verdict_id: str | None = None
     status: str | None = None

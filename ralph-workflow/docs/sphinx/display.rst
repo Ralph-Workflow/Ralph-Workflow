@@ -404,10 +404,11 @@ through ``pd.status_bar``. The lifecycle has exactly one owner:
 - **One start site.** :meth:`~ralph.display.status_bar.StatusBar.start` is
   called from exactly one site —
   ``ralph.display.parallel_display.ParallelDisplay.start``.
-  The pipeline reaches the bar through the production context manager
-  ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py``,
-  which invokes ``ParallelDisplay.start`` (and therefore
-  ``self._status_bar.start()``) exactly once per run.
+  A command path may start that caller-owned display before the pipeline, and
+  the run loop then reuses the active display rather than reopening ``Live``.
+  Otherwise, the production context manager ``with loop_ctx.active_display:``
+  in ``ralph/pipeline/run_loop.py`` invokes ``ParallelDisplay.start`` (and
+  therefore ``self._status_bar.start()``) exactly once per run.
 
 - **One stop site.** :meth:`~ralph.display.status_bar.StatusBar.stop` is
   called from exactly one site —
@@ -432,6 +433,17 @@ This single-owner contract is enforced by
 ``tests/display/test_status_bar_single_owner.py`` (4 AST-based tests
 covering the constructor, the ``start()`` call site, the ``stop()``
 call site, and the CLI / runtime prohibition).
+
+Command-path lifecycle
+----------------------
+
+For a normal workspace run, the same active display covers policy preflight,
+any policy remediation, and the selected pipeline phase. After remediation
+cleanup, the footer immediately replaces ``Policy Remediation`` with the phase
+that resumes the run. Direct agent commit generation uses the same bounded
+lifecycle and labels its activity ``Commit Generation``. These guarantees apply
+to the real-TTY live footer; quiet mode and redirected or CI streams retain
+their existing suppressed or durable, non-repainting output behavior.
 
 Verifying the Status Bar runtime
 --------------------------------

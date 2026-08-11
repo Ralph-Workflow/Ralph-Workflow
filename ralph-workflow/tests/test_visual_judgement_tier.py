@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
+
+from ralph.testing import audit_repo_structure
+from ralph.visual import judgement_tier
 from ralph.visual.judgement_tier import (
     JudgementTier,
     OnDemandJudgementDeps,
@@ -9,6 +13,16 @@ from ralph.visual.judgement_tier import (
     resolve_judgement_tier,
     run_on_demand_judgement,
 )
+
+
+def test_on_demand_contracts_pass_the_structure_audit() -> None:
+    source = inspect.getsource(judgement_tier)
+    top_level_classes, nested_classes, _ = audit_repo_structure._scan_structure(
+        source, tuple(source.splitlines())
+    )
+
+    assert top_level_classes == ("JudgementTier",)
+    assert nested_classes == ()
 
 
 def test_deterministic_tier_is_the_only_blocking_tier() -> None:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OnDemandCaptureEvidence:
-    """The retained pre-change and fresh post-change capture handles."""
+    """The retained pre-change and fresh post-change captures for a verdict."""
 
     before_handles: tuple[str, ...]
     after_handles: tuple[str, ...]

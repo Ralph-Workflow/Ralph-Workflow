@@ -401,3 +401,20 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
     out = buf.getvalue()
     assert captured_nontty_active is False
     assert out == "", f"No bytes may be written on a force_terminal+StringIO console; got {out!r}"
+
+
+def test_runtime_entry_point_renders_commit_generation_activity_in_live_footer() -> None:
+    """Direct commit generation exposes its activity through the real TTY footer."""
+    pd, buf = _make_parallel_display()
+    model = StatusBarModel(
+        workspace_root="/tmp/commit-workspace",
+        phase_label="Commit Generation",
+        phase_style="theme.phase.commit",
+    )
+    pd.update_status_bar(model)
+
+    with pd:
+        assert pd.status_bar.is_active is True
+        assert pd.status_bar.last_model is model
+
+    assert "Commit Generation" in buf.getvalue()

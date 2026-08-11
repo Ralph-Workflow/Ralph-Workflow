@@ -134,6 +134,51 @@ class _FakePipelineFactory:
         return self._deps
 
 
+class _RecordingDisplay:
+    """Records the command-scoped display lifecycle without a real TTY."""
+
+    def __init__(self) -> None:
+        self.entered = 0
+        self.exited = 0
+        self.last_status_model: object | None = None
+
+    def __enter__(self) -> _RecordingDisplay:
+        self.entered += 1
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.exited += 1
+
+    def update_status_bar(self, model: object) -> None:
+        self.last_status_model = model
+
+
+def test_commit_generation_uses_one_live_display_with_commit_activity(
+    tmp_path: Path,
+) -> None:
+    display = _RecordingDisplay()
+    observed_active_states: list[bool] = []
+
+    def record_generation(**_kwargs: object) -> None:
+        observed_active_states.append(display.entered == 1 and display.exited == 0)
+
+    with (
+        patch("ralph.cli.commands.commit.resolve_active_display", return_value=display),
+        patch("ralph.cli.commands.commit.find_repo_root", return_value=tmp_path),
+        patch("ralph.cli.commands.commit.load_config", return_value=UnifiedConfig()),
+        patch("ralph.cli.commands.commit._handle_agent_commit_generation", record_generation),
+    ):
+        commit_module.commit_plumbing(
+            options=commit_module.CommitPlumbingOptions(generate_commit_msg=True),
+            display_context=make_display_context(),
+        )
+
+    assert observed_active_states == [True]
+    assert display.entered == 1
+    assert display.exited == 1
+    assert getattr(display.last_status_model, "phase_label", None) == "Commit Generation"
+
+
 def _claude_commit_agent() -> AgentConfig:
     return AgentConfig(
         cmd="claude -p",
