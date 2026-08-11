@@ -1109,6 +1109,82 @@ def test_smoke_command_exit_code_and_breaks_cell_reflect_evidence_verdict(
     assert "DEGRADED (host-synthesized)" in rendered
 
 
+@pytest.mark.timeout_seconds(10)
+def test_render_smoke_table_ungraded_multimodal_cell_is_not_not_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """S-2: a multimodal-requested but ungraded run must NOT render ``not requested``.
+
+    Replay the defect: the run was driven by the multimodal prompt
+    (``multimodal_requested=True``) but the agent never produced a
+    verified media tool call (``multimodal_tool_used=None``). The
+    ``Multimodal`` cell must surface this absence -- the same
+    `_evidence_cell(absent(...))` rendering the lattice test pins --
+    rather than masquerading as a non-multimodal run by printing
+    ``not requested``. ``not requested`` is reserved for runs where
+    ``multimodal_requested`` is false (S-4).
+    """
+    stream = StringIO()
+    console = Console(
+        file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME, width=300
+    )
+    display_context = DisplayContext(
+        console=console,
+        theme=RALPH_THEME,
+        width=300,
+        mode="default",
+        color_enabled=True,
+        glyphs_enabled=True,
+        headline_max_chars=120,
+        condenser_soft_limit=400,
+        condenser_hard_limit=4000,
+        streaming_checkpoint_chars=4000,
+        streaming_checkpoint_fragments=20,
+        streaming_dedup_enabled=True,
+        streaming_checkpoints_enabled=True,
+        thinking_preview_min_chars=80,
+        tool_result_headline_min_chars=80,
+    )
+
+    result = smoke_module.SmokeRunResult(
+        agent_name="agy/gemini-3.6-flash-low",
+        transport="agy",
+        output_file=tmp_path / "todo-list.js",
+        file_created=True,
+        session_id="2f50d6ef-a009-427f-99e8-c58ac99c1f8d",
+        raw_line_count=16,
+        parsed_event_count=19,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "tools/call ledger match"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "receipt matched a tools/call ledger record"),
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "declare_complete wire match"),
+        meaningful_output_lines=[],
+        errors=[],
+        multimodal_requested=True,
+        multimodal_tool_used=None,
+    )
+
+    smoke_module._render_smoke_table(
+        [result], display_context=display_context, agent_name="agy/gemini-3.6-flash-low"
+    )
+    rendered = normalize_vt_text(stream.getvalue())
+
+    # The defect renders ``not requested`` for the multimodal cell of a
+    # multimodal_requested run whose fact was never graded -- silently
+    # masquerading as a non-multimodal scenario. After S-4, the cell reads
+    # ``no`` (the absent fact's evidence rendering) and the Verdict column
+    # reflects the DEGRADED run. The table's unrelated ``Subagent`` column
+    # legitimately renders ``not requested`` (no subagent requested), so the
+    # assertion below targets the cell directly rather than the bare absence
+    # of the substring anywhere in the table.
+    assert rendered.count("not requested") == 1, (
+        "the Multimodal cell must NOT render 'not requested' for an ungraded "
+        "multimodal run; the Subagent column's legitimate 'not requested' "
+        "should be the only occurrence"
+    )
+    assert "DEGRADED (absent)" in rendered
+
+
 
 # ---------------------------------------------------------------------------
 # DA-002 (R8): subagent contract failures MUST be fatal in the exit code

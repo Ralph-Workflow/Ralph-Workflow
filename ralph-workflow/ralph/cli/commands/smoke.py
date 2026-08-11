@@ -42,6 +42,7 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     PASS,
     Evidence,
     Provenance,
+    absent,
     format_verdict,
     grade_verdict,
 )
@@ -335,15 +336,19 @@ def _required_evidence(result: SmokeRunResult) -> dict[str, Evidence]:
     ``multimodal_tool_used``, is added; it does NOT change the column
     set for non-multimodal runs and never silently downgrades a
     multimodal run to a passing verification: a missing fact holds at
-    ``WORKSPACE_EFFECT`` so the run still reports a non-PASS verdict.
+    ``ABSENT`` so the run still reports a non-PASS verdict.
     """
     facts: dict[str, Evidence] = {
         "artifact_submitted": result.artifact_submitted,
         "explicit_completion_seen": result.explicit_completion_seen,
         "tool_activity_seen": result.tool_activity_seen,
     }
-    if result.multimodal_requested and result.multimodal_tool_used is not None:
-        facts["multimodal_tool_used"] = result.multimodal_tool_used
+    if result.multimodal_requested:
+        facts["multimodal_tool_used"] = (
+            result.multimodal_tool_used
+            if result.multimodal_tool_used is not None
+            else absent("multimodal_tool_used was never graded for this run")
+        )
     return facts
 
 
@@ -463,8 +468,12 @@ def _render_smoke_table(
             breaks_cell = f"degraded verdict: {format_verdict(evidence)}"
         else:
             breaks_cell = "none"
-        if result.multimodal_requested and result.multimodal_tool_used is not None:
-            mult_cell = _evidence_cell(result.multimodal_tool_used)
+        if result.multimodal_requested:
+            mult_cell = _evidence_cell(
+                result.multimodal_tool_used
+                if result.multimodal_tool_used is not None
+                else absent("multimodal_tool_used was never graded for this run")
+            )
         else:
             mult_cell = "not requested"
         table.add_row(

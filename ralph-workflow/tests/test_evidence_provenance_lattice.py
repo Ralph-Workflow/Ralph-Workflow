@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -54,6 +55,7 @@ from ralph.pipeline.plumbing.smoke_evidence import (
 )
 from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunParams,
+    SmokeRunResult,
     _artifact_submission_evidence,
     _completion_evidence,
     _run_smoke_agent,
@@ -69,8 +71,6 @@ from tests._support.mock_agy import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from _pytest.monkeypatch import MonkeyPatch
 
 
@@ -807,3 +807,105 @@ def test_2026_08_05_transcript_replay_grades_degraded_host_synthesized(
     assert weakest == Provenance.ABSENT
     assert format_verdict(required_facts) == "DEGRADED (absent)"
     assert label != PASS, "the 2026-08-05 run must never grade PASS or print 'Breaks: none'"
+
+
+# --- S-2: missing multimodal fact must fail the run, never silently downgrade ---
+
+
+def _wire_run_result(
+    *,
+    multimodal_requested: bool,
+    multimodal_tool_used: Evidence | None,
+) -> SmokeRunResult:
+    """Build a minimal SmokeRunResult whose three canonical facts all hold at WIRE.
+
+    Mirrors the shape the regression needs to demonstrate: every required
+    fact that the smoke gate actually grades is at ``Provenance.WIRE``, so
+    any verdict other than ``PASS`` comes from a fact that the run
+    requested but never graded. Without the multimodal fix in S-3, that
+    fact is silently omitted from ``_required_evidence`` and the run
+    reports ``PASS`` despite never having used the media endpoint --
+    exactly the silent downgrade criterion 5 forbids.
+    """
+    output = Path("tmp/interactive-agy-smoke/todo-list.js")
+    return SmokeRunResult(
+        agent_name="agy/gemini-3.6-flash-low",
+        transport="agy",
+        output_file=output,
+        file_created=True,
+        session_id="2f50d6ef-a009-427f-99e8-c58ac99c1f8d",
+        explicit_completion_seen=Evidence(True, Provenance.WIRE, "declare_complete wire match"),
+        raw_line_count=16,
+        parsed_event_count=19,
+        tool_activity_seen=Evidence(True, Provenance.WIRE, "tools/call ledger match"),
+        artifact_submitted=Evidence(True, Provenance.WIRE, "receipt matched a tools/call ledger record"),
+        meaningful_output_lines=[],
+        errors=[],
+        multimodal_requested=multimodal_requested,
+        multimodal_tool_used=multimodal_tool_used,
+    )
+
+
+def test_required_evidence_carries_multimodal_tool_used_when_requested_but_ungraded() -> None:
+    """S-2: ``_required_evidence`` MUST carry a ``multimodal_tool_used`` key for a
+    requested-but-ungraded multimodal run -- criterion 5 forbids the silent
+    downgrade. Before S-3, the guard ``result.multimodal_tool_used is not
+    None`` dropped the fact entirely, so the four-key mapping collapsed back
+    to three and the run could grade ``PASS`` even though the agent never
+    actually used the media endpoint.
+    """
+    result = _wire_run_result(
+        multimodal_requested=True,
+        multimodal_tool_used=None,
+    )
+
+    required = _required_evidence(result)
+
+    assert "multimodal_tool_used" in required, (
+        "_required_evidence dropped multimodal_tool_used for a "
+        "multimodal_requested run; criterion 5 forbids the silent downgrade"
+    )
+
+
+def test_required_evidence_demotes_run_when_multimodal_fact_ungraded() -> None:
+    """S-2: a requested-but-ungraded multimodal run MUST NOT grade ``PASS``.
+
+    Pin the verdict the smoke gate will report: the agent never actually used
+    the media endpoint, so even with the three canonical facts at ``WIRE``
+    the run is a degraded verification -- never a passing one.
+    """
+    result = _wire_run_result(
+        multimodal_requested=True,
+        multimodal_tool_used=None,
+    )
+
+    label, weakest = grade_verdict(_required_evidence(result))
+
+    assert label != PASS, (
+        "a multimodal_requested run whose multimodal_tool_used was never "
+        "graded must NOT grade PASS; got PASS (silent downgrade, criterion 5)"
+    )
+    assert weakest is Provenance.ABSENT
+
+
+def test_required_evidence_non_multimodal_run_has_only_three_canonical_keys() -> None:
+    """S-2: a non-multimodal run keeps exactly the three canonical keys.
+
+    Pins the column-set invariant for the conformance matrix: adding a
+    fourth fact only when ``multimodal_requested`` is true. This is the
+    regressed-positive case the S-3 fix must preserve -- the non-multimodal
+    path is unchanged.
+    """
+    result = _wire_run_result(
+        multimodal_requested=False,
+        multimodal_tool_used=None,
+    )
+
+    required = _required_evidence(result)
+
+    assert set(required) == {"artifact_submitted", "explicit_completion_seen", "tool_activity_seen"}
+    assert label_for(result) == PASS
+
+
+def label_for(result: SmokeRunResult) -> str:
+    return grade_verdict(_required_evidence(result))[0]
