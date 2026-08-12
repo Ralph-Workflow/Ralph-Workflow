@@ -536,6 +536,14 @@ def _raise_if_broken_agent_exit(
     *,
     stderr_text: str = "",
 ) -> None:
+    if bounded_output and opts.has_meaningful_output is False:
+        _teardown_subtree_if_pid_available(handle)
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="no_llm_activity",
+            elapsed_seconds=opts.elapsed_seconds,
+            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+        )
     if _looks_like_credentials_failure(stderr_text) or any(
         _looks_like_credentials_failure(line) for line in bounded_output
     ):
@@ -560,14 +568,6 @@ def _raise_if_broken_agent_exit(
     ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(agent_name, reason="prompt_echo")
-    if bounded_output and opts.has_meaningful_output is False:
-        _teardown_subtree_if_pid_available(handle)
-        raise BrokenAgentExitError(
-            agent_name,
-            reason="no_llm_activity",
-            elapsed_seconds=opts.elapsed_seconds,
-            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
-        )
 
 
 def check_process_result(

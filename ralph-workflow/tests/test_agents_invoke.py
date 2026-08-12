@@ -490,7 +490,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
 
         def __init__(self) -> None:
             self.stdout = iter(())
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -1255,7 +1255,7 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
 
         def __init__(self, cmd: list[str]) -> None:
             self.stdout = iter(["line-one\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
             popen_calls.append(cmd)
 
@@ -1323,7 +1323,7 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -1487,7 +1487,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
 
         def __init__(self) -> None:
             self.stdout = BlockingStdout()
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode: int | None = None
 
         def __enter__(self) -> FakeProcess:
@@ -1563,7 +1563,7 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
 
         def __init__(self) -> None:
             self.stdout = BlockingStdout()
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode: int | None = None
             self.terminate_calls = 0
 
@@ -1651,7 +1651,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -1730,7 +1730,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -2089,7 +2089,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -2199,7 +2199,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -2313,7 +2313,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -2413,7 +2413,7 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -3493,7 +3493,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -3774,7 +3774,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -3855,7 +3855,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -3955,7 +3955,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -4037,7 +4037,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -4880,4 +4880,3 @@ class TestResolveInvocationRuntime:
         assert prepared.permission_prompt_listener is _permission_listener
         assert prepared.session_id == "sess-existing"
         assert prepared.initial_session_id == "sess-existing"
-
