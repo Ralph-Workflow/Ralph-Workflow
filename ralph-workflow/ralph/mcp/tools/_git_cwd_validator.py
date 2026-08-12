@@ -1,8 +1,8 @@
 """Workspace-bounded git cwd validation.
 
 The git read handlers resolve a requested cwd and probe its repository top
-level before they invoke git. They warn rather than execute when either
-resolved location falls outside the active workspace.
+level before they invoke git. When either resolved location falls outside the
+active workspace, handlers warn and still execute in the resolved directory.
 """
 
 from __future__ import annotations
