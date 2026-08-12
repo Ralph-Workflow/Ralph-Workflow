@@ -19,10 +19,10 @@
 {% macro render_artifact_submission(artifact_type, submit_tool_reference, example_doc, write_file_tool_reference='', verify_tool_reference='') -%}
 ## Submit a `{{ artifact_type }}` artifact
 
-**Do all five steps. Step 5 is mandatory whether step 3 uses the submit tool or the write-file fallback.**
+Complete all five steps.
 
 1. **Read the format doc** at `.agent/artifact-formats/{{ artifact_type }}.md`
-   (or `artifact_formats_index.md`). Do NOT guess the grammar.
+   (or `artifact_formats_index.md`). Do not guess the grammar.
 
 2. **Author the artifact as ONE markdown document**: a `---`-delimited
    frontmatter block (`key: value` lines), then `## Section` headings whose
@@ -35,7 +35,7 @@
 
 3. **Persist the document.** Call {{ submit_tool_reference }} with two
    arguments: `artifact_type` set to `"{{ artifact_type }}"` and `content`
-   set to the same complete markdown document from step 2 (the full markdown
+   set to the complete markdown document from step 2 (the full markdown
    text as a plain string — never JSON).
 {%- if verify_tool_reference %}
    Optionally call {{ verify_tool_reference }} first with the same two
@@ -52,8 +52,7 @@
 4. **Wait for a valid durable receipt.** For a submit-tool result with
    `valid: false`, each diagnostic carries a line number, section, and rule
    code — fix every reported line and resubmit ONCE with all repairs applied.
-   A direct-submit receipt proves the artifact was accepted; the receipt is not
-   phase completion. **Do not stop after the receipt.** For a write-file
+   A direct-submit receipt proves acceptance; the receipt is not phase completion. For a write-file
    fallback, step 5 triggers the completion gate that validates and promotes it.
 
 5. **MANDATORY FINAL ACTION: You MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your explicit final action.**
@@ -64,9 +63,5 @@
    Optional `summary` param. Example:
    `{{ DECLARE_COMPLETE_TOOL_NAME }}(summary="{{ artifact_type }}")`.
 
-## Do NOT
-
-- Send a different `artifact_type` alias — use canonical `{{ artifact_type }}`.
-- Put JSON in `content` or wrap the document in any object; `content` is the raw markdown text.
-- Echo the document as your only action — persist it and finish with the explicit completion action.
+Use the canonical type and raw markdown text—never JSON—and persist before the explicit completion action.
 {%- endmacro %}

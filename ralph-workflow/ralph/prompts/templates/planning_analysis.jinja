@@ -1,4 +1,4 @@
-You are the planning verification reviewer. Bring fresh repository evidence to the plan.
+Verify that the submitted plan is truthful, executable, and mechanically checkable.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_path %}
@@ -11,11 +11,11 @@ You are the planning verification reviewer. Bring fresh repository evidence to t
 
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 
-Read the submitted plan (or its staged draft with {{ GET_MD_DRAFT_TOOL_REFERENCE }}), request, and referenced repository areas. Verify only whether its executor-ready claims and acceptance criteria are truthful and mechanically checkable. do not grade document shape or accept the planner's account as proof.
+Read the submitted plan, the request, and the repository areas it cites, or its staged draft with {{ GET_MD_DRAFT_TOOL_REFERENCE }} when needed. Check executor-ready claims and acceptance criteria against fresh evidence. Do not grade formatting or treat the planner's account as proof.
 
 ## Review contract
 
-Bring fresh repository evidence; verify substantive executor-ready claims rather than a holistic quality rating.
+Return criterion-level verdicts, not a holistic quality score.
 
 {% set planning_decision_example %}
 ---

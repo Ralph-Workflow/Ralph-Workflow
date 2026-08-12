@@ -1,7 +1,5 @@
 Resolve the listed in-progress rebase or merge conflicts while preserving the intended change.
 
-# Ralph Workflow — Rebase Conflict Resolution
-
 {% if replaying_commit_sha %}The repository at `{{ repo_root }}` has an IN-PROGRESS REBASE onto the mainline
 branch `{{ target }}`. The rebase is replaying your feature commits one by one
 and has stopped because replaying this commit conflicts:
@@ -40,8 +38,7 @@ outside the conflicted regions listed below is in scope.
 ## How to resolve
 
 1. Open each conflicted file listed above.
-2. Resolve every conflict-marker region thoughtfully, preserving the intent of
-   BOTH the feature branch and `{{ target }}`. Never delete one side blindly.
+2. Resolve every conflict-marker region thoughtfully. {% if replaying_commit_sha %}Preserve the replayed commit's intent on top of `{{ target }}` without anticipating later commits.{% else %}Preserve the intent of both merge heads.{% endif %}
 3. Remove every `<<<<<<<`, `=======` and `>>>>>>>` marker line, so each file is
    left as valid, self-consistent content.
 
@@ -50,7 +47,6 @@ outside the conflicted regions listed below is in scope.
 - DO NOT run any git command. Ralph Workflow stages the resolved files and
   {% if replaying_commit_sha %}continues the rebase{% else %}creates the merge commit{% endif %} itself. You only edit file contents. Git is
   denied to this session by the exec policy, so attempting it wastes the round.
-- Do not commit, merge, rebase, abort, switch branches, or move any ref.
 - Do not modify ANY file that is not listed under "Conflicted files" above.
   Not a neighbouring module, not a test, not an import, not a formatting nit.
   If the resolved code needs a change elsewhere, leave it: that belongs to a

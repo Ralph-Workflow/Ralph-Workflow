@@ -4,7 +4,7 @@ Use Ralph Workflow's MCP tools for file and shell operations. Use only the broke
 tools from the exact rendered name below. Tool names are callable identifiers,
 not shell commands.
 
-READ / SEARCH: {{READ_FILE_TOOL_REFERENCE}}, {{READ_MULTIPLE_FILES_TOOL_REFERENCE}}{% if STAT_PATH_TOOL_REFERENCE %}, {{STAT_PATH_TOOL_REFERENCE}}{% endif %}{% if LIST_ALLOWED_ROOTS_TOOL_REFERENCE %}, {{LIST_ALLOWED_ROOTS_TOOL_REFERENCE}}{% endif %}, {{LIST_DIRECTORY_TOOL_REFERENCE}}, {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}}{% if DIRECTORY_TREE_TOOL_REFERENCE %}, {{DIRECTORY_TREE_TOOL_REFERENCE}}{% endif %}, {{SEARCH_FILES_TOOL_REFERENCE}}, {{GREP_FILES_TOOL_REFERENCE}} (indexed; FTS5 path is correct-by-default)
+READ / SEARCH: {{READ_FILE_TOOL_REFERENCE}}, {{READ_MULTIPLE_FILES_TOOL_REFERENCE}}{% if STAT_PATH_TOOL_REFERENCE %}, {{STAT_PATH_TOOL_REFERENCE}}{% endif %}{% if LIST_ALLOWED_ROOTS_TOOL_REFERENCE %}, {{LIST_ALLOWED_ROOTS_TOOL_REFERENCE}}{% endif %}, {{LIST_DIRECTORY_TOOL_REFERENCE}}, {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}}{% if DIRECTORY_TREE_TOOL_REFERENCE %}, {{DIRECTORY_TREE_TOOL_REFERENCE}}{% endif %}, {{SEARCH_FILES_TOOL_REFERENCE}}, {{GREP_FILES_TOOL_REFERENCE}}
 Use these for every workspace read or search; native shell/file commands must not be used to read or search the workspace.
 
 EXPLORE INDEX: {{RALPH_INDEX_STATUS_TOOL_REFERENCE}}, {{RALPH_REINDEX_TOOL_REFERENCE}} (call when results look stale or the index reports cold), {{RALPH_GRAPH_TOOL_REFERENCE}}
@@ -22,7 +22,7 @@ GIT: {{GIT_STATUS_TOOL_REFERENCE}}, {{GIT_DIFF_TOOL_REFERENCE}}, {{GIT_LOG_TOOL_
 {% if COORDINATE_TOOL_REFERENCE %}
 COORDINATION: {{COORDINATE_TOOL_REFERENCE}}
 {% endif %}
-BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path; native file/shell write tools are prohibited.
+BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path.
 {% if WEB_SEARCH_TOOL_REFERENCE %}
 WEB / MEDIA: {{WEB_SEARCH_TOOL_REFERENCE}}{% if VISIT_URL_TOOL_REFERENCE %}, {{VISIT_URL_TOOL_REFERENCE}}{% endif %}{% if DOWNLOAD_URL_TOOL_REFERENCE %}, {{DOWNLOAD_URL_TOOL_REFERENCE}}{% endif %}{% if READ_IMAGE_TOOL_REFERENCE %}, {{READ_IMAGE_TOOL_REFERENCE}}{% endif %}{% if READ_MEDIA_TOOL_REFERENCE %}, {{READ_MEDIA_TOOL_REFERENCE}}{% endif %}{% if MEDIA_CAPTURE_TOOL_REFERENCE %}, {{MEDIA_CAPTURE_TOOL_REFERENCE}}{% endif %}
 {% endif %}

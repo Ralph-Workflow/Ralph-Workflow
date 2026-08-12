@@ -23,8 +23,6 @@ SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
     "developer_iteration_continuation.jinja",
     "development_analysis.jinja",
     "planning_analysis.jinja",
-    "review.jinja",
-    "review_analysis.jinja",
     "worker_developer.jinja",
 )
 _RENDER_CALL_RE = re.compile(
@@ -109,7 +107,7 @@ def test_macro_requires_completion_after_submission() -> None:
     assert "DECLARE_COMPLETE_TOOL_NAME" in content
     assert "receipt is not phase completion" in lowered
     assert "must call" in lowered
-    assert "do not stop after the receipt" in lowered
+    assert "receipt is not phase completion" in lowered
     receipt_index = lowered.index("wait for a valid durable receipt")
     completion_index = lowered.index("mandatory final action")
     assert receipt_index < completion_index

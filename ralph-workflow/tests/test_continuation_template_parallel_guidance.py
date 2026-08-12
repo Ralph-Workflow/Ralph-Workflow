@@ -49,27 +49,16 @@ def test_continuation_template_mentions_sub_agents() -> None:
 
 
 def test_continuation_template_never_references_phantom_coordinate_command() -> None:
-    """``ralph coordinate`` does not exist in the Python CLI; the template
-    must not mention it even as a prohibition. Instead it tells the agent
-    that no coordination command exists and dispatch is the agent's job.
-    """
     source = _read_continuation_template()
     assert "ralph coordinate" not in source, (
         "continuation template must not reference the nonexistent ralph coordinate command"
     )
-    assert "no coordination command" in source
 
 
-def test_continuation_template_encourages_proactive_subagent_use() -> None:
-    """The continuation template must allow parallel sub-agents for common
-    tasks (information gathering, naturally concurrent steps) even when the
-    plan declares no work units.
-    """
+def test_continuation_template_limits_subagents_to_independent_units() -> None:
     source = _read_continuation_template()
-    assert "not limited to declared work units" in source
-    assert "Information gathering" in source
-    assert "Naturally concurrent steps" in source
-    assert "When to stay sequential" in source
+    assert "plan declares independent units" in source
+    assert "disjoint file ownership" in source
 
 
 def test_continuation_template_keeps_allowed_directories_contract() -> None:
@@ -78,7 +67,7 @@ def test_continuation_template_keeps_allowed_directories_contract() -> None:
     scope contract.
     """
     source = _read_continuation_template()
-    assert "Directories:" in source
+    assert "declared directory limits" in source
 
 
 def test_continuation_template_new_section_warns_about_fan_out() -> None:
@@ -87,21 +76,16 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
     fan-out is dormant and the dispatch model is sub-agents.
     """
     source = _read_continuation_template()
-    assert "dispatching your own sub-agents" in source
-    assert "[unit-ID]" in source
+    assert "dispatch ready units concurrently" in source
 
 
 def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:
     source = _read_continuation_template()
-    assert "compact, linear plan" in source
-    assert "Do not create delegation overhead" in source
-    assert "multiple subplans" in source
-    assert "dedicated sub-agent for each independent unit" in source
-    assert "For 4-5 units" in source
-    assert "dispatch every independent ready unit in parallel" in source
-    assert "collect each unit's proof" in source
-    assert "cross-unit verification" in source
-    assert "final acceptance verification" in source
+    assert "compact or coupled steps" in source
+    assert "execute\nunits sequentially in plan order" in source
+    assert "collect each unit's" in source
+    assert "cross-unit and" in source
+    assert "full verification" in source
 
 
 def test_continuation_template_requires_fresh_review_before_submission() -> None:

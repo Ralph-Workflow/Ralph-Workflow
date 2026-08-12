@@ -256,12 +256,12 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A custom review-role phase rendered with review.jinja must reference the plan handoff.
+    """A custom review-role phase must reference the plan handoff.
 
     When the plan handoff markdown is present the prompt-materialization layer
     passes its absolute path as PLAN_PATH. The rendered review prompt must
     point at that file rather than inlining the plan content, because
-    review.jinja uses render_payload_section which emits a file-reference
+    The selected template emits a file-reference
     instruction when the path variable is non-empty.
     """
     pipeline_policy = PipelinePolicy(
@@ -269,7 +269,7 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
             "review": PhaseDefinition(
                 drain="review",
                 role="review",
-                prompt_template="review.jinja",
+                prompt_template="development_analysis.jinja",
                 transitions=PhaseTransition(on_success="complete"),
             ),
             "complete": PhaseDefinition(

@@ -1,16 +1,14 @@
 ## Plan fidelity
 
-Treat the unchanged request and its acceptance criteria as authoritative. The planning phase already performed exploration, so start from the execution plan and follow its steps, files, dependencies, and verification in order. Do not repeat broad repository exploration or redesign the approach. Depart from a plan item only when fresh evidence encountered while executing that item proves its route inaccurate, already satisfied, or not applicable. Check only the immediate assumptions needed for the next ready item; do not turn this into an exhaustive preliminary review.
+Treat the request and its acceptance criteria as authoritative. Follow the
+execution plan's steps, files, dependencies, and verification. Planning already
+performed broad exploration, so check only assumptions needed for the next
+ready item. Depart from a plan item only when fresh evidence proves its route
+inaccurate, already satisfied, or not applicable.
 
 Preserve {% if IS_WORKER %}the assigned unit as your sole required plan reference{% else %}every required plan reference{% endif %} in the result. Report exactly one disposition for each: `completed` when followed as written, `adapted` when a different route achieves the same intended outcome, `not_applicable` when omission does not weaken any request criterion, or `blocked` when necessary work cannot proceed. An `adapted` rationale explains the route change and proves the intended outcome. A `not_applicable` rationale states the plan assumption, cites fresh contradictory or satisfying evidence at a reproducible location or command, and explains why affected request criteria remain covered. Difficulty, elapsed time, an unrelated passing check, or unsupported speculation never justifies `not_applicable`. A blocked item with a safe concrete continuation requires `status: partial`; a block with no safe developer action under current evidence or authority requires `status: failed`. Neither permits a completion claim.
 
-Reconcile this ledger after each increment. After a failed approach, retry only with a new evidence-based hypothesis; otherwise record honest partial progress.
-
-Before editing, {% if IS_WORKER %}confirm the assigned unit's dependencies are ready{% else %}inventory the required plan references and dependencies{% endif %}. Select the first ready reference, make its specified change, run its focused verification, record its disposition and evidence, then {% if IS_WORKER %}return that one unit result{% else %}advance to the next ready reference{% endif %}. Do not skip ahead except to execute an explicitly independent ready group. Keep orientation and premise checks bounded to what the current item needs; do not re-read material already established by the plan. {% if not IS_WORKER %}Use independent ready groups concurrently when coordination costs less than sequential execution. {% endif %}Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy the verification commitments.
-
-## Increment loop
-
-Make the smallest requested change and prove it. State any safe assumption, use the verification commitments for each increment, and complete the discovered gate before reporting done. Debug from a hypothesis; after a failed approach, change tack or report an honest partial result.
+Before editing, {% if IS_WORKER %}confirm the assigned unit's dependencies are ready{% else %}inventory the plan references and dependencies{% endif %}. Select the first ready reference, make its specified change, run focused verification, and record its disposition and evidence. {% if IS_WORKER %}Then return the unit result.{% else %}Run independent ready groups concurrently when useful; otherwise advance to the next ready reference in dependency order.{% endif %} After a failed approach, retry only with a new evidence-based hypothesis or report partial progress. Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy the verification commitments.
 
 ## Visual review (when the change touches the UI)
 

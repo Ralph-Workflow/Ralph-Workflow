@@ -171,9 +171,9 @@ phase picks it up through the same path.
 
 ### Plan handoff precondition
 
-`.agent/PLAN.md` is the human- and agent-readable form of the finalized plan. Every downstream prompt (planning loopback/edit, planning analysis, development, development analysis, review, and any other non-fresh-planning template) **must** have a plan handoff available before prompt materialization runs. If none is present, `materialize_prompt_for_phase` raises `MissingPlanHandoffError` naming `.agent/PLAN.md`.
+`.agent/PLAN.md` is the human- and agent-readable form of the finalized plan. Every downstream prompt (planning loopback/edit, planning analysis, development, development analysis, and any other non-fresh-planning template) **must** have a plan handoff available before prompt materialization runs. If none is present, `materialize_prompt_for_phase` raises `MissingPlanHandoffError` naming `.agent/PLAN.md`.
 
-The only templates that are allowed to run without a plan are `planning.jinja` and `planning_fallback.jinja`, because those are the phases that *create* the plan in the first place. All other templates — including `planning_edit.jinja`, `planning_analysis.jinja`, `developer_iteration.jinja`, `development_analysis.jinja`, and `review.jinja` — require the plan to already exist.
+The only templates that are allowed to run without a plan are `planning.jinja` and `planning_fallback.jinja`, because those are the phases that *create* the plan in the first place. All other templates — including `planning_edit.jinja`, `planning_analysis.jinja`, `developer_iteration.jinja`, and `development_analysis.jinja` — require the plan to already exist.
 
 Because the canonical submission step writes `.agent/artifacts/plan.md` and `.agent/PLAN.md` together, a successfully submitted plan always satisfies this precondition.
 

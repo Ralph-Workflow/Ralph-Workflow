@@ -1,4 +1,4 @@
-Implement the assigned work unit and return proof that it satisfies its scope.
+Implement and verify only the assigned work unit.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -61,13 +61,15 @@ Your submitted result is persisted at
 `{{ WORKER_NAMESPACE }}/artifacts/development_result.md`, with its downstream
 handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 
-Implement and verify only `{{ unit_id }}`. If the assignment is blocked, report
+Implement and verify only `{{ unit_id }}`, then return that one unit result. If the assignment is blocked, report
 the concrete blocker in the result instead of expanding scope.
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
 
 {% if IS_CONTINUATION %}
-Before submitting a continuation, re-check the assigned unit against its assignment, continuation context, and proof contract. Use an independent sub-agent when coordination costs less than sequential execution; otherwise perform the same review sequentially. Until that review closes the remaining gap, you MUST NOT submit the artifact or declare completion.
+Before submitting a continuation, check the unit against its assignment and
+proof contract. Use an independent sub-agent when coordination costs less than sequential execution;
+otherwise perform the same review sequentially. Until the gap is closed, you MUST NOT submit the artifact or declare completion.
 {% endif %}
 
 {% set development_result_example %}

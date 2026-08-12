@@ -155,7 +155,6 @@ _TOP_LEVEL_DRAINS: dict[str, SessionDrain] = {
     "developer_iteration_continuation": SessionDrain.DEVELOPMENT,
     "developer_iteration_fallback": SessionDrain.DEVELOPMENT,
     "development_analysis": SessionDrain.DEVELOPMENT_ANALYSIS,
-    "fix_mode": SessionDrain.FIX,
     "planning": SessionDrain.PLANNING,
     "planning_analysis": SessionDrain.ANALYSIS,
     "planning_edit": SessionDrain.PLANNING,
@@ -163,8 +162,6 @@ _TOP_LEVEL_DRAINS: dict[str, SessionDrain] = {
     "planning_fallback": SessionDrain.PLANNING,
     "policy_remediation": SessionDrain.DEVELOPMENT,
     "policy_remediation_analysis": SessionDrain.ANALYSIS,
-    "review": SessionDrain.REVIEW,
-    "review_analysis": SessionDrain.REVIEW_ANALYSIS,
     "worker_developer": SessionDrain.DEVELOPMENT,
 }
 

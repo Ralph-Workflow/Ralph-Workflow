@@ -8,16 +8,11 @@ import pytest
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
 
-_ANALYSIS_TEMPLATES = ["development_analysis.jinja", "review_analysis.jinja"]
-
 _RETRY_HINT_TEMPLATES = [
     "developer_iteration.jinja",
     "developer_iteration_continuation.jinja",
-    "review.jinja",
     "planning.jinja",
-    "fix_mode.jinja",
     "development_analysis.jinja",
-    "review_analysis.jinja",
 ]
 
 

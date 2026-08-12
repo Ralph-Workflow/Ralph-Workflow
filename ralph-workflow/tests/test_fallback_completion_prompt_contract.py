@@ -18,7 +18,6 @@ from ralph.prompts.types import SessionCapabilities
 from ralph.workspace.memory import MemoryWorkspace
 
 _FALLBACK_TEMPLATES = (
-    "fix_mode.jinja",
     "planning_fallback.jinja",
     "planning_edit_fallback.jinja",
 )
@@ -98,7 +97,6 @@ def test_developer_fallback_calls_completion_before_runtime_promotion(
     "template_name",
     (
         "developer_iteration_fallback.jinja",
-        "fix_mode.jinja",
         "worker_developer.jinja",
         "shared/_artifact_submission.j2",
     ),

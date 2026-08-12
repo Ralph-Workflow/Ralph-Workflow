@@ -12,8 +12,8 @@ by this unattended in-repository pass.
 | Surface | Criteria | Expected effect | Evidence and actual outcome |
 | --- | --- | --- | --- |
 | `shared/_verification_commitments.j2` and the templates that include it | S1, S2, S6, S10, S11, S15, S28 | Keep the verified-delivery goal, precedence rule, and four commitments salient in each phase without phase-local variants. | `audit_prompt_single_sourcing` literal-checks the three deliberate cross-surface statements. The shared block names workflow-owned phase order, waits, and grants rather than claiming the templates configure them. |
-| `shared/_developer_iteration_guidance.j2`, `_run_budget.j2`, and development/fix templates | S3–S5, S7–S9, S12–S21 | Reach a cheap falsifiable increment first, honour the applicable gate, bound exploration and retries, and report an honest partial outcome when the run budget is spent. | Template render-integrity validates included templates; the fenced-artifact example audit checks the retained submission examples. The guidance records independent work, avoids re-fetching held material, and sets the sync point at one proven increment. |
-| `review.jinja`, `development_analysis.jinja`, and `review_analysis.jinja` | S22, S26 | Make review add fresh evidence, read assumptions, resolve safe trivia where permitted, and return material findings with cost and fix. | Render-integrity and artifact-example audits keep the prompt and validator-facing artifact grammar aligned. The output requirements name the issues or decision-artifact consumer. |
+| `shared/_developer_iteration_guidance.j2`, `_run_budget.j2`, and development templates | S3–S5, S7–S9, S12–S21 | Reach a cheap falsifiable increment first, honour the applicable gate, bound exploration and retries, and report an honest partial outcome when the run budget is spent. | Template render-integrity validates included templates; the fenced-artifact example audit checks the retained submission examples. The guidance records independent work, avoids re-fetching held material, and sets the sync point at one proven increment. |
+| `development_analysis.jinja` | S22, S26 | Add fresh evidence, test assumptions, and return criterion-level findings. | Render-integrity and artifact-example audits keep the prompt and validator-facing artifact grammar aligned. |
 | `planning.jinja` | S23, S24 | Put the work framing before planning mechanics while keeping stable instructions before the volatile request payload. | `tests/test_planning_prompt_thinking_first.py` checks request framing before `PLANNING MODE`, stable thinking before submission mechanics, and the payload last. |
 | `docs/ralph-workflow-policy/verification-policy.md` and `ralph/project_policy/starters/verification-policy.md` | S1–S3, S6–S10, S13, S28 | Make fast, complete verification a durable project obligation: 10-second fast path, recorded full-gate figure, recurring-cost ownership, actionable failures, and durable orientation. | `audit_prompt_single_sourcing` checks shared wording; `make verify` exercises the documented gate and policy checks. The starter preserves the same obligations for projects that adopt it. |
 | `ralph/testing/audit_prompt_single_sourcing.py` and `ralph/verify.py` wiring | R1, R2, S27 | Prevent the goal, precedence rule, and four commitment names from drifting between the two surfaces. | The audit is a mandatory `make verify` step and fails if either surface lacks a canonical statement. |
@@ -47,8 +47,7 @@ that belongs to runtime machinery.
 ## Sampling and boundaries
 
 Sampled consumers for retained output shape: `_artifact_submission.j2` routes
-submitted Markdown through its validator and completion gate; `review.jinja`
-feeds the `issues` format and validator; analysis templates feed their decision
+submitted Markdown through its validator and completion gate; analysis templates feed their decision
 formats and validators. Render-integrity and fenced-artifact-example audits
 cover these rendered relationships.
 

@@ -1,6 +1,4 @@
-Task: produce and submit a spec-compliant MCP commit_message artifact for the pending work shown below.
-
-The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, and submit it through the declared artifact tools without commentary. Proceed autonomously; this phase has no interactive response path. Do not ask the user for confirmation or “Would you like me to …” questions. Do not call bash; it is outside this phase's tool path.
+Produce and submit one valid `commit_message` artifact for the pending diff.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -10,9 +8,11 @@ The diff contains only the changes not yet committed — the current worktree vs
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
+Read the diff, choose a commit or skip document, and submit it without commentary. Do not call bash; it is outside this phase's tool path.
+
 ## HOW TO WRITE THE SUBJECT
 
-Use this sequence once, then write the body. Do not generate candidate subjects and compare them. The subject is finished. Do not look for a better one. Do not reconsider it; select the first valid subject and continue.
+Use this sequence once, then write the body.
 
 1. Choose the first matching kind:
 
@@ -37,15 +37,9 @@ Use this sequence once, then write the body. Do not generate candidate subjects 
 
 For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item explaining why it was needed and what it affects. Use `## Body Summary`, `## Body Details`, and `## Body Footer` for migration steps, breaking changes, or issue references.
 
-## WORKED EXAMPLES
-
-- Bad: `chore: update files` → `feat(mcp): add structured commit retries`, with a body explaining what structured retries solve.
-- Bad: `fix: stuff` → `fix(parser): preserve prefixed transcript lines`, with a body explaining the edge case that dropped them.
-- Bad: `refactor: rename files` → `refactor(auth): extract token validation to dedicated module`, with a body explaining what callers must do differently.
-
 ## Submit the result
 
-Submit the artifact now, then stop. The submission procedure below is the completion contract. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
+The submission procedure below is the completion contract. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
 
 ## Document shape
 
@@ -90,5 +84,3 @@ subject: fix(auth): prevent token expiry race
 {{ render_artifact_submission('commit_message', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_message_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
-
-The artifact submission procedure above is authoritative for the completion contract.

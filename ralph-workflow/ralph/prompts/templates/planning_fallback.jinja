@@ -1,4 +1,4 @@
-Produce the current best execution plan from repository evidence.
+Produce an executor-ready plan from the request and repository evidence.
 
 PLANNING MODE
 
@@ -14,14 +14,15 @@ PLANNING MODE
 Use only tools the active runtime exposes. Ralph Workflow's brokered tools are
 the only workspace path; native write tools are prohibited.
 
+Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}
 
 REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 {{PRODUCT_CRITERIA}}
 
-Inspect the repository before making claims. Do not edit files or run
-state-changing commands while planning. Use work units only for disjoint work;
-a concise linear plan is otherwise preferred. Use a subagent only for independent discovery; otherwise work sequentially.
+Inspect the repository before making claims. Planning is read-only: do not edit
+files or run state-changing commands. Prefer a concise linear plan; use work
+units only for disjoint work and subagents only for independent discovery.
 
 A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
 After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

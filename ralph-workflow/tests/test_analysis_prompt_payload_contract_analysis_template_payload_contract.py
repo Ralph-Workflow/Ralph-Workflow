@@ -8,21 +8,17 @@ import pytest
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
 
-_ANALYSIS_TEMPLATES = ["development_analysis.jinja", "review_analysis.jinja"]
+_ANALYSIS_TEMPLATES = ["development_analysis.jinja"]
 
 _SUBAGENT_ANALYSIS_INPUTS = {
     "development_analysis.jinja": "PROMPT and PLAN",
-    "review_analysis.jinja": "PROMPT, PLAN, and the latest artifact",
 }
 
 _RETRY_HINT_TEMPLATES = [
     "developer_iteration.jinja",
     "developer_iteration_continuation.jinja",
-    "review.jinja",
     "planning.jinja",
-    "fix_mode.jinja",
     "development_analysis.jinja",
-    "review_analysis.jinja",
 ]
 
 
@@ -86,10 +82,3 @@ class TestAnalysisTemplatePayloadContract:
     def test_development_analysis_excludes_the_latest_artifact(self) -> None:
         source = _load("development_analysis.jinja")
         assert "LATEST ARTIFACT" not in source
-
-    def test_review_analysis_retains_its_latest_artifact_contract(self) -> None:
-        source = _load("review_analysis.jinja")
-        assert (
-            "render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH)"
-            in source
-        )

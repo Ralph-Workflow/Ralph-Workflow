@@ -141,7 +141,6 @@ def test_planning_drain_keeps_full_plan_edit_tooling() -> None:
     "drain,template_name",
     [
         (SessionDrain.DEVELOPMENT_ANALYSIS, "development_analysis.jinja"),
-        (SessionDrain.REVIEW_ANALYSIS, "review_analysis.jinja"),
     ],
 )
 def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(

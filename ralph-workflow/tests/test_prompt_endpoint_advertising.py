@@ -41,7 +41,6 @@ _MCP_SECTION_BYTE_BUDGET = 3_600
 _PHASE_PROFILE_FIXTURES: tuple[tuple[str, str, SessionDrain], ...] = (
     ("planning.jinja", "planning", SessionDrain.PLANNING),
     ("development_analysis.jinja", "development_analysis", SessionDrain.DEVELOPMENT_ANALYSIS),
-    ("review_analysis.jinja", "review_analysis", SessionDrain.REVIEW_ANALYSIS),
     ("developer_iteration.jinja", "developer_iteration", SessionDrain.DEVELOPMENT),
     ("worker_developer.jinja", "worker_developer", SessionDrain.DEVELOPMENT),
 )
@@ -284,12 +283,9 @@ _ALL_MCP_INCLUSION_TEMPLATES: tuple[tuple[str, SessionDrain], ...] = (
     ("developer_iteration", SessionDrain.DEVELOPMENT),
     ("developer_iteration_continuation", SessionDrain.DEVELOPMENT),
     ("development_analysis", SessionDrain.DEVELOPMENT_ANALYSIS),
-    ("fix_mode", SessionDrain.FIX),
     ("planning", SessionDrain.PLANNING),
     ("planning_analysis", SessionDrain.ANALYSIS),
     ("planning_edit", SessionDrain.PLANNING),
-    ("review", SessionDrain.REVIEW),
-    ("review_analysis", SessionDrain.REVIEW_ANALYSIS),
     ("worker_developer", SessionDrain.DEVELOPMENT),
 )
 

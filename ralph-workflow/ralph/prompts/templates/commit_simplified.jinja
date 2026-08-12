@@ -1,17 +1,39 @@
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
-Task: produce one valid `commit_message` artifact for the current pending work.
+Produce one valid `commit_message` artifact for the pending diff.
 
 {% include 'shared/_unattended_mode.j2' %}
 
-The diff below contains only the current pending work — changes not yet committed (current worktree vs the last commit, HEAD). Do not analyze anything aloud — read the diff silently and put your reasoning only in the artifact body. The only state-changing tools you may call are `{{ SUBMIT_MD_ARTIFACT_TOOL_NAME }}`, {{ DECLARE_COMPLETE_TOOL_REFERENCE }}, and {{ WRITE_FILE_TOOL_REFERENCE }} only when the shared fallback procedure explicitly permits it. Do not call bash. Do not call any other state-changing tool. Read-only tools are allowed when the shared artifact procedure tells you to inspect the format doc. Do not ask the user for confirmation. Do not write 'Would you like me to' or equivalent questions.
+Read the diff silently and put reasoning only in the artifact body. The only
+state-changing tools allowed are `{{ SUBMIT_MD_ARTIFACT_TOOL_NAME }}`,
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }}, and the documented
+{{ WRITE_FILE_TOOL_REFERENCE }} fallback. Do not call bash.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
-Write the subject in one pass; do not generate alternatives or revise a subject that already matches the grammar. Grammar, exactly: `<kind>(<scope>)?!?: <description>`. `<kind>` is lowercase, one of feat/fix/docs/refactor/test/style/perf/build/ci/chore — use `chore` only for repo maintenance, tooling, config, or dependency changes. `<scope>` is optional and may contain only lowercase letters, digits, `/`, `_`, `-` (no dots, no uppercase); omit it and its parentheses when no single subsystem owns most of the diff. Exactly one space follows the colon and `<description>` starts with a lowercase letter or digit. Write the frontmatter value unquoted — quotes become part of the subject and are rejected. There is no length limit. Say what the change does in lowercase imperative mood; never say that files changed, and never use "update", "misc", "stuff", or file counts. Omit the body only for a one-line typo, formatting, or comment change whose subject already states the whole change; every other commit gets a body explaining WHY. Default to a single `## Body` item; use the trio `## Body Summary` / `## Body Details` / `## Body Footer` instead — never alongside `## Body` — only when there are migration steps, breaking changes, or issue references for the footer. Bad "chore: update files" -> Good "feat(mcp): add structured commit retries" with body. Bad "fix: stuff" -> Good "fix(parser): preserve prefixed transcript lines" with body.
+## Subject
 
-Document shape: a markdown document whose frontmatter carries the decision. For a commit, use `type: commit` plus `subject:` in the frontmatter, then either one `## Body` section OR the detailed trio (one `- [ID] text` item per section, never both), plus optional `## Files` (one item per file) and `## Excluded Files` (items formatted `path | reason`; valid reasons: internal_ignore, not_task_related, sensitive, deferred). When no commit is needed, submit only frontmatter `type: skip` with `reason: <why>`.
+Write `<kind>(<scope>)?!?: <description>` once. Kind is one of
+`feat|fix|docs|refactor|test|style|perf|build|ci|chore`; use `chore` only for
+maintenance, tooling, config, or dependencies. Scope is optional and uses only
+lowercase letters, digits, `/`, `_`, or `-`. Use one space after the colon and
+a lowercase imperative description. Keep the frontmatter value unquoted.
+
+## Body
+
+Omit the body only for a one-line typo, formatting, or comment change. Otherwise
+explain why in one `## Body` item. Use `## Body Summary`, `## Body Details`, and
+`## Body Footer` instead only for migration steps, breaking changes, or issue
+references.
+
+## Document shape
+
+For a commit, use frontmatter `type: commit` and `subject:`, then the selected
+body form. Optional `## Files` lists paths; optional `## Excluded Files` uses
+`path | reason`, where reason is `internal_ignore`, `not_task_related`,
+`sensitive`, or `deferred`. When no commit is needed, submit only `type: skip`
+and `reason:` frontmatter.
 
 {% set commit_message_example %}
 ---
@@ -24,4 +46,4 @@ subject: fix(auth): prevent token expiry race
 {% endset %}
 {{ render_artifact_submission('commit_message', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_message_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
-Read the diff and decide whether the correct result is a commit document or a skip document. Then follow the artifact submission procedure above — it is the SINGLE source of truth for steps 1-5 and the completion contract; this template does NOT duplicate it.
+Choose a commit or skip document, then follow the artifact submission procedure.

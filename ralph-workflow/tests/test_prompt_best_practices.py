@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.template_registry import packaged_template_root
 
 _TEMPLATE_NAMES = (
     "planning.jinja",
     "planning_analysis.jinja",
     "worker_developer.jinja",
     "developer_iteration.jinja",
-    "review.jinja",
     "development_analysis.jinja",
-    "review_analysis.jinja",
-    "fix_mode.jinja",
     "commit_cleanup.jinja",
     "commit_message.jinja",
     "commit_simplified.jinja",
@@ -50,25 +48,15 @@ def test_prompt_templates_lead_with_the_work_not_a_mode_label() -> None:
         assert "YOUR ROLE AND GOAL" not in first_line, name
 
 
-def test_review_templates_share_one_evidence_decision_contract() -> None:
-    templates = _templates()
-    for name in ("review_analysis.jinja", "review.jinja"):
-        assert "shared/_analysis_decision_contract.j2" in templates[name]
-
-
-def test_evidence_decision_contract_owns_shared_review_dimensions() -> None:
-    templates = _templates()
-    contract = templates["shared/_analysis_decision_contract"]
-    assert (
-        "plan compliance, security, correctness, performance, maintainability, and testing"
-        in contract
-    )
+def test_supported_top_level_templates_ship() -> None:
+    shipped = {path.name for path in packaged_template_root().glob("*.jinja")}
+    assert shipped == set(_TEMPLATE_NAMES)
 
 
 def test_verification_guidance_is_single_sourced() -> None:
     templates = _templates()
     guidance = templates["shared/_developer_iteration_guidance"]
     commitments = templates["shared/_verification_commitments"]
-    assert "Discover the project's gate" in commitments
+    assert "Discover the project's narrowest relevant check and full gate" in commitments
     assert "fast path" not in guidance.lower()
     assert "full gate" not in guidance.lower()

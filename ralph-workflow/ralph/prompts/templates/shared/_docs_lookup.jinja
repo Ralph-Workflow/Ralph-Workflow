@@ -18,10 +18,4 @@ The `arabold/docs-mcp-server` is configured and reachable at `{{DOCS_MCP_PORT}}`
 2. Fall back to `{{WEB_SEARCH_TOOL_REFERENCE}}` only when docs-mcp returns no useful results for the specific API or behavior you need.
 
 {% endif %}
-{% else %}
-{% if DOCS_LOOKUP_VARIANT == 'short' %}
-Tip: Configuring arabold/docs-mcp-server on {{DOCS_MCP_PORT}} in .agent/mcp.toml improves documentation lookup quality during {{DOCS_LOOKUP_PHASE | default('development')}}.
-{% else %}
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `{{DOCS_MCP_PORT}}` in `.agent/mcp.toml` improves library and API documentation lookup quality during {{DOCS_LOOKUP_PHASE | default('development')}}.
-{% endif %}
 {% endif %}

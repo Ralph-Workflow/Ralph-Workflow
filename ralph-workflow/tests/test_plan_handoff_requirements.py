@@ -132,19 +132,13 @@ def test_plan_handoff_regression_draft_fallback_requires_valid_plan(
 
 
 def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:
-    """A custom review-role phase bound to review.jinja must require an existing plan.
-
-    review.jinja is never part of the default pipeline, so the default policy
-    cannot cover it. This test constructs a minimal custom policy and verifies
-    that prompt materialization raises the expected MissingPlanHandoffError when
-    no .agent/PLAN.md (or .agent/artifacts/plan.md) is present.
-    """
+    """A custom review-role phase must require an existing plan."""
     pipeline_policy = PipelinePolicy(
         phases={
             "review": PhaseDefinition(
                 drain="review",
                 role="review",
-                prompt_template="review.jinja",
+                prompt_template="development_analysis.jinja",
                 transitions=PhaseTransition(on_success="complete"),
             ),
             "complete": PhaseDefinition(

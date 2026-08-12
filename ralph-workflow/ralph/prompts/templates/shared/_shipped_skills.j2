@@ -5,26 +5,17 @@
 {% else %}
 ## SHIPPED SKILLS
 
-Ralph Workflow can install a shipped skill bundle for runtimes that support
-skill discovery. If this runtime exposes a skill mechanism, use only the
-relevant skills it actually lists as available. If it does not, continue from
-this prompt and the canonical artifact format docs; a missing skill mechanism
-is not an error.
-
-When skills are available, invoke them through the runtime's documented
-mechanism before proceeding. Read a selected `SKILL.md` when that mechanism
-requires it, but do not scan unrelated skill directories.
+Use only task-relevant skills the runtime lists as available, through its
+documented mechanism. If none are available, continue from this prompt and the
+canonical artifact-format docs; do not search unrelated skill directories or
+invent skills.
 {% if shipped_skills_mode|default('') == 'development' %}
 
-When the execution plan names skills, invoke each one that the runtime actually
-exposes before proceeding. If a named skill is unavailable, continue without
-inventing or searching for it.
+Invoke each plan-named skill that is available; continue without unavailable skills.
 {% endif %}
 {% endif %}
 {% if shipped_skills_mode|default('') == 'planning' %}
 
-Before authoring the plan's `## Skills MCP` section, choose task-relevant skills
-from those already available to you and record only those names on its
-`Skills:` line. When the runtime exposes no skills or MCPs, omit the section
-instead of inventing a placeholder skill name.
+Record only task-relevant available skill names in `## Skills MCP`; omit the
+section when none are available.
 {% endif %}

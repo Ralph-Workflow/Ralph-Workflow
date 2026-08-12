@@ -3,6 +3,9 @@ evidence and analysis feedback.
 
 PLANNING EDIT MODE
 
+This revision is read-only: inspect the repository and current draft, but do
+not edit workspace files, install dependencies, or run state-changing commands.
+
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 {% include 'shared/_planning_thinking.j2' %}
 {% include 'shared/_unattended_mode.j2' %}
@@ -12,15 +15,13 @@ PLANNING EDIT MODE
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
+Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}
-Read `.agent/artifact-formats/plan.md`; `PLAN001` means the submission was not a plan.
-
-ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
-Read the current plan and verify feedback against the request and repository.
-Repair every referenced `PA-###` finding in its target step or plan-level text,
-then preserve only material that still satisfies the current contract. Feedback
-is advice from a fresh reviewer, grounded in repository evidence, not a document-shape checklist.
+Verify feedback against the request and repository. Repair every referenced `PA-###` finding in
+the target step or plan-level text, and preserve only material that still
+satisfies the plan contract. Treat feedback as evidence, not a document-shape
+checklist.

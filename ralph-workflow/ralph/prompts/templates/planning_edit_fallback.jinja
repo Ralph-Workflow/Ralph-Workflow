@@ -11,10 +11,10 @@ PLANNING EDIT MODE
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
-Read the current plan, the request, and the analysis feedback. Use only the
-brokered tools available in this runtime; do not edit workspace files while
-replanning.
+Read the current plan, request, and analysis feedback. Use only brokered tools;
+replanning is read-only.
 
+Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}
 
 REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
@@ -23,10 +23,10 @@ REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 ANALYSIS FEEDBACK (`{{ANALYSIS_FEEDBACK_PATH}}`):
 {{ANALYSIS_FEEDBACK}}
 
-Revise from repository evidence. Repair every referenced `PA-###` finding in
-its target step or plan-level text, preserve only material that still satisfies
-the current contract, and submit through the standard markdown artifact path.
-Use a subagent only for independent discovery; otherwise work sequentially.
+Verify each finding against repository evidence. Repair every referenced `PA-###` finding
+in its target step or plan-level text and preserve only
+material that still satisfies the current contract. Use a subagent only for
+independent discovery.
 
 A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
 After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

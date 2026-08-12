@@ -16,11 +16,23 @@ Submit the required artifact on this attempt.
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
-Retrieve PROMPT and PLAN. This analysis runs after every development result (`completed`, `partial`, or `failed`). Use parallel or subagent evidence gathering when it improves the decision; reconcile findings in this session, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. Do not read or use an implementer summary, rationale, or completion claim as evidence.
+Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs after every development result, regardless of its status. Use parallel or subagent evidence gathering when it improves the decision; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
 
-Treat the unchanged request and its acceptance criteria as authoritative. A plan step is a proposed implementation route, not an additional product requirement unless the request or plan explicitly makes its outcome an acceptance criterion. Independently determine whether each required plan reference was completed as written, needed an adapted route, was not applicable, or remains blocked. For `adapted`, verify that fresh evidence required the route change and that the original intended outcome still holds. For `not_applicable`, verify the plan assumption, contradictory or already-satisfied workspace evidence, and continued coverage of every affected request criterion. Do not reject solely because the implementation departed from an inaccurate step. Do not use an implementer disposition, rationale, or proof as evidence; derive the disposition from PROMPT, PLAN, and fresh workspace evidence.
+Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify each required plan reference as completed, adapted, not applicable, or blocked:
 
-Select the analysis outcome from fresh evidence, never from the developer's result status. Emit `completed` when every unchanged request criterion is met and no necessary plan work remains, even if the developer reported `partial` or `failed`. Emit `request_changes` only when localized unmet work is actionable inside the current development cycle. Emit `failed` when a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable developer route; `failed` is terminal. `failed` closes this planning/development cycle without sending the same impossible work back to development; policy preserves and commits the cycle, then starts fresh planning when global cycle budget remains.
+- `adapted`: fresh evidence required a different route and the intended outcome still holds.
+- `not_applicable`: the plan assumption conflicts with or is already satisfied by the worktree, while every affected request criterion remains covered.
+- `blocked`: necessary work remains and cannot currently be completed.
+
+Do not reject a correct implementation only because an inaccurate plan step changed. Derive each disposition from PROMPT, PLAN, and fresh workspace evidence.
+
+Choose the outcome from fresh evidence, not the developer's status:
+
+- `completed`: every unchanged request criterion is met and no necessary plan work remains.
+- `request_changes`: localized unmet work is actionable in this development cycle.
+- `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
+
+`failed` is terminal: it closes this planning/development cycle instead of returning impossible work to development. Policy preserves and commits the cycle, then starts fresh planning when global cycle budget remains.
 
 {% set development_decision_example %}
 ---

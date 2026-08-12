@@ -8,8 +8,6 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
-BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path; native file/shell write tools are prohibited.
-
 {% if LAST_RETRY_ERROR %}
 PREVIOUS ATTEMPT ERROR:
 {{LAST_RETRY_ERROR}}
@@ -86,10 +84,8 @@ and what development-analysis feedback they received.
 {% include 'shared/_parallel_execution.j2' %}
 {% endif %}
 
-Runtime-native file, shell, orchestration, skill, todo, and web tools are not
-guaranteed by this brokered fallback;
-use them only when the active runtime exposes them.
-All file and shell operations must use Ralph Workflow's brokered tools.
+Use runtime-native orchestration, skill, todo, or web tools only when exposed.
+All file and shell operations use Ralph Workflow's brokered tools.
 Call `{{EXEC_TOOL_NAME}}` through the runtime's tool mechanism for shell
 commands, and call `{{REPORT_PROGRESS_TOOL_NAME}}` there to report status.
 These identifiers are tool calls, not commands to type into a native shell.

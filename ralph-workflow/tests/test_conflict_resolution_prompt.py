@@ -235,8 +235,8 @@ def test_the_shipped_skills_guidance_is_present(tmp_path: Path) -> None:
     rendered = _render(tmp_path)
 
     assert "SHIPPED SKILLS" in rendered
-    assert "if this runtime exposes a skill mechanism" in rendered.lower()
-    assert "do not scan unrelated skill directories" in rendered.lower()
+    assert "use only task-relevant skills" in rendered.lower()
+    assert "do not search unrelated skill directories" in rendered.lower()
 
 
 def test_the_skills_block_does_not_displace_the_completion_contract(
