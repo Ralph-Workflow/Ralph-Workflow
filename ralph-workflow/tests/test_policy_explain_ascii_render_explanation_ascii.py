@@ -261,19 +261,17 @@ class TestRenderExplanationAscii:
         # Check for the specific decisions we know exist
         assert "+--[failed]-->" in output or "+--[request_changes]-->" in output
 
-    def test_failed_decision_branches_render_as_rework_targets(self) -> None:
-        """Default policy explanation must show failed analysis decisions looping back to rework."""
+    def test_failed_decision_branches_render_configured_terminal_target(self) -> None:
+        """Non-actionable development analysis renders its terminal target."""
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
         lines = output.split("\n")
-        # Check that failed routes to development or planning (padding-agnostic)
-        assert any("[failed]" in line and "-->" in line and "development" in line for line in lines)
-        # failed should not route to 'failed' (terminal) — it should route to a rework phase
-        assert not any(
-            "[failed]" in line and line.rstrip().endswith("--> failed") for line in lines
+        assert any(
+            "[failed]" in line and "-->" in line and "failed_terminal" in line
+            for line in lines
         )
 
     def test_parallel_fanout_rejoin_shape_visible(self) -> None:
