@@ -107,7 +107,7 @@ def _assert_completion_gate_classifies_lifecycle_only_run(
     _, _, elapsed_seconds, _ = collect_r7_diagnostic_fields(
         reader=reader_with_watchdog,
         clock=clock,
-        parsed_output=deque(["session-id: test", "thinking: checking credentials"]),
+        parsed_output=deque(["session-id: test", "thinking: checking connection"]),
     )
 
     assert elapsed_seconds is not None
@@ -118,7 +118,7 @@ def _assert_completion_gate_classifies_lifecycle_only_run(
         check_process_result(
             _ExitedHandle(),
             "claude",
-            ["session-id: test", "thinking: checking credentials"],
+            ["session-id: test", "thinking: checking connection"],
             _completion_options(elapsed_seconds, bool(watchdog.has_meaningful_output())),
             _clock=clock,
         )

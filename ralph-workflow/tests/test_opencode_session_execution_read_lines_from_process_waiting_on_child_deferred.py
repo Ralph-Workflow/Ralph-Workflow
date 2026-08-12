@@ -52,7 +52,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
         class _TestHandle:
             returncode: int | None = None
             stdout = _BlockingStdout()
-            stderr = SimpleNamespace(read=lambda: "")
+            stderr = SimpleNamespace(read=lambda _size: "")
             terminate_count: int = 0
             pid: int = 999_999
 

@@ -52,7 +52,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
         class _TestHandle:
             returncode: int | None = 0
             stdout = _OneLineThenDoneStdout()
-            stderr = SimpleNamespace(read=lambda: "")
+            stderr = SimpleNamespace(read=lambda _size: "")
             terminate_count: int = 0
             # pid=None so the best-effort teardown helper no-ops without touching
             # psutil; the test only needs to prove the watchdog does not fire.
