@@ -140,7 +140,7 @@ def test_unknown_identity_for_image_emits_warning_then_resource_reference(
     ``RESOURCE_REFERENCE_REPLAY`` for an unknown identity.
     """
 
-    _write_pdf(tmp_path)
+    media_path = _write_pdf(tmp_path)
     session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
     identity = MultimodalModelIdentity(provider="unknown")
     profile = ResolvedCapabilityProfile(
@@ -157,32 +157,27 @@ def test_unknown_identity_for_image_emits_warning_then_resource_reference(
     )
     _set_profile(session, profile)
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-        f.write(b"%PDF-1.4\n%fake-test-pdf\n%%EOF\n")
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = f.name
-            result = _handle_workspace_media(
-                session,
-                ws,
-                "smoke.pdf",
-                max_inline_bytes=DEFAULT_MAX_INLINE_BYTES,
-            )
-            assert result.is_error is False
-            # First content block is the warning.
-            first_text = result.content[0].text
-            assert "WARNING" in first_text
-            assert "unknown" in first_text
-            assert "pdf" in first_text
-            # A subsequent block is the resource reference.
-            ref_present = any(
-                getattr(block, "type", None) == "resource_reference"
-                or "resource_reference" in str(getattr(block, "type", ""))
-                for block in result.content
-            )
-            assert ref_present
-        finally:
-            Path(f.name).unlink(missing_ok=True)
+    ws = MagicMock()
+    ws.absolute_path.return_value = str(media_path)
+    result = _handle_workspace_media(
+        session,
+        ws,
+        "smoke.pdf",
+        max_inline_bytes=DEFAULT_MAX_INLINE_BYTES,
+    )
+    assert result.is_error is False
+    # First content block is the warning.
+    first_text = result.content[0].text
+    assert "WARNING" in first_text
+    assert "unknown" in first_text
+    assert "pdf" in first_text
+    # A subsequent block is the resource reference.
+    ref_present = any(
+        getattr(block, "type", None) == "resource_reference"
+        or "resource_reference" in str(getattr(block, "type", ""))
+        for block in result.content
+    )
+    assert ref_present
 
 
 def test_unsupported_verdict_emits_warning_then_resource_reference_fallback(

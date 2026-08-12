@@ -528,8 +528,11 @@ def _install_recovery_seams(
     monkeypatch.setattr(
         recovery,
         "fast_forward_target",
-        lambda _root, _target, _sha, **_kwargs: (True, ""),
+        lambda _root, _target, _sha, **_kwargs: (events.append("fast_forward") or (True, "")),
     )
+    monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
+    monkeypatch.setattr(recovery, "maybe_push_target", lambda _config, _root, _target, state: state)
     return events
 
 
@@ -564,7 +567,7 @@ def test_a_refresh_that_reveals_a_landable_target_no_longer_drops_the_record(
 
     assert fresh_verdict.last_action == "recovered"
     assert fresh_verdict.fast_forwarded is True
-    assert "refresh" in events
+    assert events == ["refresh", "branch_sha", "is_ancestor", "fast_forward", "clear"]
 
 
 def test_recovery_without_a_config_behaves_exactly_as_before(
