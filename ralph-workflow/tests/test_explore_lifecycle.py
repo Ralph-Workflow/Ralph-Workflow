@@ -33,6 +33,10 @@ class _Index:
     def runner(self):
         return self._runner
 
+    def mark_dirty(self, paths: list[str], *, source_tool: str, reason: str) -> None:
+        for path in paths:
+            self.store.mark_dirty(path, source_tool=source_tool, reason=reason)
+
 
 class _Workspace:
     def __init__(self, root: Path, index: Any | None) -> None:
@@ -184,13 +188,45 @@ def test_lifecycle_regression_requeues_observed_path_when_dirty_handoff_is_unava
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
+    class _IndexWithoutMarker:
+        def __init__(self, store: ExploreStore) -> None:
+            self.store = store
+
     awareness_for_workspace(workspace).record(str(workspace / "a.py"))
-    result = before_agent_refresh(workspace_root=workspace, explore_index=_Index(store, lambda *_a, **_k: None))
+    result = before_agent_refresh(
+        workspace_root=workspace,
+        explore_index=_IndexWithoutMarker(store),
+        reindex_runner=lambda *_a, **_k: None,
+    )
 
     assert result.invoked is True
     assert awareness_for_workspace(workspace).drain() == ["a.py"]
     release_workspace_awareness(workspace)
     store.close()
+
+
+def test_lifecycle_success_recovers_requeued_awareness_freshness(tmp_path: Path) -> None:
+    """S-3 regression: a successful later boundary clears a failed-handoff stale state."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+
+    class _FakeResult:
+        status = "ok"
+
+    try:
+        awareness = awareness_for_workspace(workspace)
+        awareness.requeue(["a.py"], cause="dirty_handoff_failed")
+        result = before_agent_refresh(
+            workspace_root=workspace,
+            explore_index=_Index(store, lambda *_a, **_k: _FakeResult()),
+        )
+
+        assert result.invoked is True
+        assert awareness.snapshot()["freshness"] == "current"
+    finally:
+        release_workspace_awareness(workspace)
+        store.close()
 
 
 def test_hooks_are_fail_open_on_runner_exception(tmp_path: Path) -> None:

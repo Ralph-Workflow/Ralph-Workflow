@@ -44,6 +44,21 @@ def test_awareness_recovery_returns_to_watch_mode(tmp_path: Path) -> None:
     release_workspace_awareness(tmp_path)
 
 
+def test_awareness_reports_all_required_non_current_states(tmp_path: Path) -> None:
+    """S-3: a knowledge boundary exposes every closed freshness state."""
+    awareness = awareness_for_workspace(tmp_path)
+
+    awareness.set_freshness("partial", cause="parse_gap")
+    assert awareness.snapshot()["freshness"] == "partial"
+    awareness.set_freshness("stale", cause="refresh_failed")
+    assert awareness.snapshot()["freshness"] == "stale"
+    awareness.set_freshness("unavailable", cause="index_unavailable")
+    snapshot = awareness.snapshot()
+    assert snapshot["freshness"] == "unavailable"
+    assert snapshot["cause"] == "index_unavailable"
+    release_workspace_awareness(tmp_path)
+
+
 def test_awareness_requeues_unacknowledged_paths_without_claiming_current(tmp_path: Path) -> None:
     """S-4 regression: a failed dirty-queue handoff cannot lose an observed change."""
     awareness = awareness_for_workspace(tmp_path)
@@ -52,6 +67,6 @@ def test_awareness_requeues_unacknowledged_paths_without_claiming_current(tmp_pa
     drained = awareness.drain()
     awareness.requeue(drained, cause="dirty_handoff_unavailable")
 
-    assert awareness.snapshot()["freshness"] == "pending"
+    assert awareness.snapshot()["freshness"] == "stale"
     assert awareness.drain() == ["src/app.py"]
     release_workspace_awareness(tmp_path)

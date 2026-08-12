@@ -7,6 +7,9 @@ from collections import OrderedDict
 from pathlib import Path
 
 _MAX_DIRTY_PATHS = 512
+_FRESHNESS_STATES = frozenset(
+    {"current", "pending", "partial", "stale", "unavailable", "live_fallback"}
+)
 
 
 class WorkspaceAwareness:
@@ -19,6 +22,8 @@ class WorkspaceAwareness:
         )  # bounded-accumulator-ok: record evicts beyond _MAX_DIRTY_PATHS
         self._mode = "watch"
         self._cause: str | None = None
+        self._freshness_override: str | None = None
+        self._lock = threading.Lock()
 
     def record(self, absolute_path: str) -> None:
         """Remember one relevant path, retaining only the latest bounded set."""
@@ -27,54 +32,75 @@ class WorkspaceAwareness:
         except ValueError:
             return
         path = relative.as_posix()
-        self._dirty_paths.pop(path, None)
-        self._dirty_paths[path] = None
-        while len(self._dirty_paths) > _MAX_DIRTY_PATHS:
-            self._dirty_paths.popitem(last=False)
+        with self._lock:
+            self._dirty_paths.pop(path, None)
+            self._dirty_paths[path] = None
+            while len(self._dirty_paths) > _MAX_DIRTY_PATHS:
+                self._dirty_paths.popitem(last=False)
 
     def set_live_fallback(self, cause: str) -> None:
         """Expose a failed observer without claiming indexed knowledge is current."""
-        self._mode = "live_fallback"
-        self._cause = cause
+        with self._lock:
+            self._mode = "live_fallback"
+            self._cause = cause
+            self._freshness_override = None
 
     def set_watch_active(self) -> None:
         """Record successful observation recovery for the shared status surface."""
-        self._mode = "watch"
-        self._cause = None
+        with self._lock:
+            self._mode = "watch"
+            self._cause = None
+            self._freshness_override = None
+
+    def set_freshness(self, freshness: str, *, cause: str | None = None) -> None:
+        """Expose a non-current knowledge state without filesystem work."""
+        if freshness not in _FRESHNESS_STATES - {"live_fallback"}:
+            raise ValueError(f"unsupported workspace freshness: {freshness}")
+        with self._lock:
+            self._freshness_override = None if freshness == "current" else freshness
+            self._cause = cause
 
     def requeue(self, paths: list[str], *, cause: str) -> None:
         """Restore unacknowledged paths after a failed persistent handoff."""
-        for path in paths:
-            self._dirty_paths.pop(path, None)
-            self._dirty_paths[path] = None
-        while len(self._dirty_paths) > _MAX_DIRTY_PATHS:
-            self._dirty_paths.popitem(last=False)
-        self._cause = cause
+        with self._lock:
+            for path in paths:
+                self._dirty_paths.pop(path, None)
+                self._dirty_paths[path] = None
+            while len(self._dirty_paths) > _MAX_DIRTY_PATHS:
+                self._dirty_paths.popitem(last=False)
+            self._cause = cause
+            self._freshness_override = "stale"
 
     def drain(self) -> list[str]:
         """Return the coalesced dirty set once, in deterministic arrival order."""
-        paths = list(self._dirty_paths)
-        self._dirty_paths.clear()
-        return paths
+        with self._lock:
+            paths = list(self._dirty_paths)
+            self._dirty_paths.clear()
+            return paths
 
     def snapshot(self) -> dict[str, object]:
         """Return bounded status without filesystem I/O."""
-        live_fallback = self._mode == "live_fallback"
-        return {
-            "workspace": str(self._workspace_root),
-            "mode": self._mode,
-            "freshness": "live_fallback"
-            if live_fallback
-            else ("pending" if self._dirty_paths else "current"),
-            "cause": self._cause,
-            "dirty_paths_count": len(self._dirty_paths),
-            "automatic_recovery": live_fallback,
-            "safe_next_action": (
-                "Ralph will reconcile at the next knowledge boundary."
+        with self._lock:
+            live_fallback = self._mode == "live_fallback"
+            freshness = (
+                "live_fallback"
                 if live_fallback
-                else "None required."
-            ),
-        }
+                else (self._freshness_override or ("pending" if self._dirty_paths else "current"))
+            )
+            return {
+                "workspace": str(self._workspace_root),
+                "mode": self._mode,
+                "freshness": freshness,
+                "cause": self._cause,
+                "dirty_paths_count": len(self._dirty_paths),
+                "automatic_recovery": live_fallback,
+                "safe_next_action": (
+                    "Ralph will reconcile at the next knowledge boundary."
+                    if live_fallback
+                    else ("Run a bounded refresh before relying on indexed knowledge."
+                          if freshness != "current" else "None required.")
+                ),
+            }
 
 
 _awareness_by_workspace: dict[

@@ -231,6 +231,12 @@ def _run_hook(
     result_status: object = getattr(result, "status", "")
     result_status_str: str = result_status if isinstance(result_status, str) else str(result_status)
     timed_out = bool(result_status_str == "timed_out")
+    if result_status_str == "ok":
+        awareness.set_freshness("current")
+    elif result_status_str == "timed_out":
+        awareness.set_freshness("stale", cause="refresh_timed_out")
+    else:
+        awareness.set_freshness("partial", cause=f"refresh_{result_status_str or 'failed'}")
     return LifecycleHookResult(
         invoked=True,
         timed_out=timed_out,
