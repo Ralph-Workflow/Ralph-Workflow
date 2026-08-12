@@ -48,8 +48,9 @@ def _cwd_property() -> dict[str, object]:
 
     The handler resolves ``cwd`` against the workspace root
     (``..`` collapsed, symlinks followed). When the resolved path — or
-    discovered repository top-level — is outside the workspace, it does
-    not execute git and returns a ``WARNING:`` result with ``is_error=False``.
+    discovered repository top-level — is outside the workspace, it still
+    runs git and prefixes the output with a ``WARNING:`` result while keeping
+    ``is_error=False``.
     """
     return {
         "type": "string",
@@ -60,9 +61,9 @@ def _cwd_property() -> dict[str, object]:
             "repository contained inside the workspace. The resolved path and "
             "the discovered repository top-level must both stay inside the "
             "workspace; symlinks and '..' are resolved before the check. A "
-            "path outside the workspace does not execute git and returns a "
-            "WARNING: result with is_error=False that names the resolved path "
-            "and the workspace root."
+            "path outside the workspace still runs git and prefixes its output "
+            "with a WARNING: result with is_error=False that names the resolved "
+            "path and the workspace root."
         ),
     }
 

@@ -63,7 +63,8 @@ read a *nested* repository contained inside the active workspace:
    workspace.
 5. A violated boundary returns ``ToolResult(is_error=False)`` with a
    ``WARNING:`` message naming the resolved path, the discovered top-level
-   (when the second check fails), and the workspace root. Git does not run.
+   (when the second check fails), and the workspace root. Git still runs in
+   the resolved directory and its output follows the warning.
 
 The two-dimensional check lives in
 :func:`ralph.mcp.tools._git_cwd_validator.resolve_git_cwd`; the four
@@ -296,8 +297,8 @@ def _resolve_git_cwd(
     The workspace-bounded contract (see the module docstring):
     ``cwd=None`` / ``cwd=""`` runs in the workspace root; any other
     value is checked against the workspace and its containing repository
-    top-level is probed. Handlers convert an outside result into a
-    non-executing warning result.
+    top-level is probed. Handlers prepend a warning when the result is
+    outside while still executing in the resolved directory.
 
     The top-level probe applies to omitted and empty cwd values too, so a
     workspace nested in an unrelated parent repository cannot silently read
@@ -312,10 +313,10 @@ def _resolve_git_cwd(
     )
 
 
-def _make_outside_workspace_warning(
+def _outside_workspace_warning_text(
     workspace: object, resolved_path: Path, *, top_level: Path | None = None
-) -> ToolResult:
-    """Return the non-executing warning for a cwd outside the workspace."""
+) -> str:
+    """Return the warning prepended to an outside-workspace git result."""
     root = _workspace_root(workspace).resolve()
     message = (
         "WARNING: git cwd is outside the workspace: "
@@ -323,7 +324,7 @@ def _make_outside_workspace_warning(
     )
     if top_level is not None:
         message += f" top_level={top_level}"
-    return ToolResult(content=[ToolContent.text_content(message)], is_error=False)
+    return message
 
 
 def run_git_command(
@@ -432,6 +433,30 @@ def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedPr
     return subprocess.CompletedProcess(command, returncode, stdout or b"", stderr or b"")
 
 
+def _git_read_result_with_outside_warning(
+    produce: Callable[[], str], *, is_outside: bool, warning_text: str
+) -> ToolResult:
+    """Run a git read, preserving timeout handling and outside-cwd warnings."""
+    try:
+        output = produce()
+    except ExecutionError as exc:
+        if not exc.timed_out:
+            raise
+        message = (
+            f"{exc}\n"
+            "This is expected for large vendor/ submodules or a held .git lock."
+            " Re-issuing the identical call will time out again — narrow the command,"
+            " exclude large submodules, or retry later. Do not retry unchanged."
+        )
+        return ToolResult(content=[ToolContent.text_content(message)], is_error=True)
+    if is_outside:
+        return ToolResult(
+            content=[ToolContent.text_content(warning_text), ToolContent.text_content(output)],
+            is_error=False,
+        )
+    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
+
+
 def _git_read_result(produce: Callable[[], str]) -> ToolResult:
     """Run a git read and wrap its output, converting a timeout into an
     actionable, non-retryable is_error result (NOT a propagated -32603)."""
@@ -463,18 +488,25 @@ def handle_git_status(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    if is_outside:
-        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
+    warning_text = _outside_workspace_warning_text(
+        workspace, resolved_cwd, top_level=top_level
+    )
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "compact"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'compact'")
     if format_value == "raw":
-        return _git_read_result(lambda: run_git_command(workspace, ["status"], cwd=resolved_cwd))
+        return _git_read_result_with_outside_warning(
+            lambda: run_git_command(workspace, ["status"], cwd=resolved_cwd),
+            is_outside=is_outside,
+            warning_text=warning_text,
+        )
     # AC-11: compact mode runs through the same timeout-wrapping
     # helper as raw mode so a hung ``git status`` returns an
     # actionable is_error result rather than an uncaught exception.
-    return _git_read_result(
-        lambda: _build_compact_status_payload(workspace, session=session, cwd=resolved_cwd)
+    return _git_read_result_with_outside_warning(
+        lambda: _build_compact_status_payload(workspace, session=session, cwd=resolved_cwd),
+        is_outside=is_outside,
+        warning_text=warning_text,
     )
 
 
@@ -863,24 +895,29 @@ def handle_git_diff(
     """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    if is_outside:
-        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
+    warning_text = _outside_workspace_warning_text(
+        workspace, resolved_cwd, top_level=top_level
+    )
     parsed = parse_git_diff_params(params)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'summary'")
     if format_value == "raw":
-        return _git_read_result(
+        return _git_read_result_with_outside_warning(
             lambda: lenient_stdout(
                 run_git_command_lenient(workspace, ["diff", *parsed.args], cwd=resolved_cwd)
-            )
+            ),
+            is_outside=is_outside,
+            warning_text=warning_text,
         )
     max_bytes = _strict_max_bytes_param(params)
     # AC-11: wrap the summary branch in ``_git_read_result`` so a
     # timeout converts into the same actionable ``is_error`` result
     # as the raw branch, never an uncaught exception.
-    return _git_read_result(
-        lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes, cwd=resolved_cwd)
+    return _git_read_result_with_outside_warning(
+        lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes, cwd=resolved_cwd),
+        is_outside=is_outside,
+        warning_text=warning_text,
     )
 
 
@@ -1118,17 +1155,22 @@ def handle_git_log(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    if is_outside:
-        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
+    warning_text = _outside_workspace_warning_text(
+        workspace, resolved_cwd, top_level=top_level
+    )
     parsed = parse_git_log_params(params)
     if parsed.format == "raw":
-        return _git_read_result(
+        return _git_read_result_with_outside_warning(
             lambda: run_git_command(
                 workspace, ["log", f"-{parsed.count}", "--oneline"], cwd=resolved_cwd
-            )
+            ),
+            is_outside=is_outside,
+            warning_text=warning_text,
         )
-    return _git_read_result(
-        lambda: _build_git_log_summary_payload(workspace, parsed.count, cwd=resolved_cwd)
+    return _git_read_result_with_outside_warning(
+        lambda: _build_git_log_summary_payload(workspace, parsed.count, cwd=resolved_cwd),
+        is_outside=is_outside,
+        warning_text=warning_text,
     )
 
 
@@ -1203,15 +1245,20 @@ def handle_git_show(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    if is_outside:
-        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
+    warning_text = _outside_workspace_warning_text(
+        workspace, resolved_cwd, top_level=top_level
+    )
     parsed = parse_git_show_params(params)
     if parsed.format == "raw":
-        return _git_read_result(
-            lambda: run_git_command(workspace, ["show", parsed.git_ref], cwd=resolved_cwd)
+        return _git_read_result_with_outside_warning(
+            lambda: run_git_command(workspace, ["show", parsed.git_ref], cwd=resolved_cwd),
+            is_outside=is_outside,
+            warning_text=warning_text,
         )
-    return _git_read_result(
-        lambda: _build_git_show_summary_payload(workspace, parsed.git_ref, cwd=resolved_cwd)
+    return _git_read_result_with_outside_warning(
+        lambda: _build_git_show_summary_payload(workspace, parsed.git_ref, cwd=resolved_cwd),
+        is_outside=is_outside,
+        warning_text=warning_text,
     )
 
 
