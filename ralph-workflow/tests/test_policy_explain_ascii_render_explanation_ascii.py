@@ -262,16 +262,29 @@ class TestRenderExplanationAscii:
         assert "+--[failed]-->" in output or "+--[request_changes]-->" in output
 
     def test_failed_decision_branches_render_configured_terminal_target(self) -> None:
-        """Non-actionable development analysis renders its terminal target."""
+        """Failed analysis cycles route through the commit boundary, not directly to terminal.
+
+        After rerouting, the development_analysis ``failed`` decision flows to
+        ``development_final_commit_cleanup`` instead of short-circuiting to
+        ``failed_terminal``.  The ``failed_terminal`` node still appears as the
+        global failure terminal; it just no longer receives a direct ``[failed]``
+        branch from any analysis phase.
+        """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
         lines = output.split("\n")
-        assert any(
+        # failed_terminal is still rendered as the global failure terminal.
+        assert "failed_terminal" in output
+        # No analysis [failed] branch short-circuits to failed_terminal.
+        assert not any(
             "[failed]" in line and "-->" in line and "failed_terminal" in line
             for line in lines
+        ), (
+            "Analysis [failed] branches must route through the commit boundary, "
+            "not directly to failed_terminal"
         )
 
     def test_parallel_fanout_rejoin_shape_visible(self) -> None:

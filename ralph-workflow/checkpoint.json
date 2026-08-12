@@ -55,6 +55,7 @@
   "policy_format_version": null,
   "current_drain": null,
   "post_commit_phase_override": null,
+  "pending_cycle_outcome": null,
   "execution_cycle_charged": false,
   "work_units": [],
   "worker_states": {},

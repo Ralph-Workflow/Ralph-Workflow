@@ -49,7 +49,6 @@
 | development_analysis |
 |    role=analysis     |
 +----------------------+
-    +--[failed]-----------> failed_terminal
     +--[request_changes]--> development
     <<==[loopback]== returns to 'development'
     [LOOPBACK: counter=development_analysis_iteration, max=5]
