@@ -111,30 +111,30 @@ def _make_change_tracker(workspace: Path, key: str) -> object:
 
 def _read_inotify_watch_limit() -> int | None:
     """Return Linux's per-real-user inotify-watch ceiling when available."""
-    if not sys.platform.startswith("linux"):
-        return None
-    try:
-        return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
-    except OSError:
-        return None
+    if sys.platform == "linux":
+        try:
+            return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
+        except OSError:
+            return None
+    return None
 
 
 def _read_inotify_watch_user_total() -> int | None:
     """Return the current real user's live inotify-watch count on Linux."""
-    if not sys.platform.startswith("linux"):
-        return None
-    try:
-        user_id = os.getuid()
-        watch_total = 0
-        for process in Path("/proc").iterdir():  # filesystem-read-ok: Linux /proc kernel tree, not workspace content
-            if not process.name.isdigit() or process.stat().st_uid != user_id:
-                continue
-            for fdinfo in (process / "fdinfo").iterdir():
-                with fdinfo.open() as stream:
-                    watch_total += sum(line.startswith("wd:") for line in stream)
-    except OSError:
-        return None
-    return watch_total
+    if sys.platform == "linux":
+        try:
+            user_id = os.getuid()
+            watch_total = 0
+            for process in Path("/proc").iterdir():  # filesystem-read-ok: Linux /proc kernel tree, not workspace content
+                if not process.name.isdigit() or process.stat().st_uid != user_id:
+                    continue
+                for fdinfo in (process / "fdinfo").iterdir():
+                    with fdinfo.open() as stream:
+                        watch_total += sum(line.startswith("wd:") for line in stream)
+        except OSError:
+            return None
+        return watch_total
+    return None
 
 
 def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
@@ -522,6 +522,7 @@ class WorkspaceMonitor:
         self._started = True
         self._awareness_status = _current_status()
         awareness_for_workspace(self._workspace).set_watch_active()
+
     def record_event(self, src_path: str) -> None:
         """Record a file change event.
 
