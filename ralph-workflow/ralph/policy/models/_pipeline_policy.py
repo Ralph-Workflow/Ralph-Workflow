@@ -136,9 +136,9 @@ class PipelinePolicy(_FrozenPolicyModel):
 
     @model_validator(mode="after")
     def post_commit_routes_unique_conditions(self) -> Self:
-        seen: set[tuple[str, str]] = set()
+        seen: set[tuple[str, str, str | None]] = set()
         for route in self.post_commit_routes:
-            key = (route.when.phase, route.when.budget_state)
+            key = (route.when.phase, route.when.budget_state, route.when.cycle_outcome)
             if key in seen:
                 raise ValueError(
                     "Duplicate post_commit_routes condition for "

@@ -196,12 +196,14 @@ iteration_state_field = "development_analysis_iteration"
 [blocks.development_analysis.phase.decisions.completed]
 target = "development_final_commit_cleanup"
 reset_loop = true
+cycle_outcome = "completed"
 [blocks.development_analysis.phase.decisions.request_changes]
 target = "development"
 reset_loop = false
 [blocks.development_analysis.phase.decisions.failed]
-target = "failed_terminal"
+target = "development_final_commit_cleanup"
 reset_loop = true
+cycle_outcome = "failed"
 
 [blocks.development_final_commit_cleanup]
 kind = "individual"
@@ -271,18 +273,42 @@ target = "planning"
 [post_commit_routes.when]
 phase = "development_final_commit"
 budget_state = "remaining"
+cycle_outcome = "completed"
 
 [[post_commit_routes]]
 target = "complete"
 [post_commit_routes.when]
 phase = "development_final_commit"
 budget_state = "exhausted"
+cycle_outcome = "completed"
 
 [[post_commit_routes]]
 target = "complete"
 [post_commit_routes.when]
 phase = "development_final_commit"
 budget_state = "no_review"
+cycle_outcome = "completed"
+
+[[post_commit_routes]]
+target = "planning"
+[post_commit_routes.when]
+phase = "development_final_commit"
+budget_state = "remaining"
+cycle_outcome = "failed"
+
+[[post_commit_routes]]
+target = "failed_terminal"
+[post_commit_routes.when]
+phase = "development_final_commit"
+budget_state = "exhausted"
+cycle_outcome = "failed"
+
+[[post_commit_routes]]
+target = "failed_terminal"
+[post_commit_routes.when]
+phase = "development_final_commit"
+budget_state = "no_review"
+cycle_outcome = "failed"
 
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing retry behavior.

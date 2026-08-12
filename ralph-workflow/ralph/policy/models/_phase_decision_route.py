@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
@@ -12,6 +14,10 @@ class PhaseDecisionRoute(_FrozenPolicyModel):
 
     target: str = Field(...)
     reset_loop: bool = False
+    cycle_outcome: Literal["completed", "failed"] | None = Field(
+        default=None,
+        description="Cycle outcome carried through the next commit boundary.",
+    )
     increments_counter: str | None = Field(
         default=None,
         description=(

@@ -750,6 +750,8 @@ def _handle_analysis_decision(
         progress_state,
         route.increments_counter,
     )
+    if route.cycle_outcome is not None:
+        progress_state = progress_state.copy_with(pending_cycle_outcome=route.cycle_outcome)
 
     # Resolve target: route to terminal failure when target is the failed route,
     # otherwise advance to the declared target.
@@ -877,6 +879,7 @@ def _handle_commit_success(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
+        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
     except ValueError as exc:
@@ -902,6 +905,7 @@ def _handle_commit_skipped(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
+        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
     except ValueError as exc:

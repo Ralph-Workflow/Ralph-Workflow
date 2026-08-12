@@ -172,8 +172,8 @@ def test_default_policy_routes_every_development_result_to_analysis_after_commit
         assert commit_state.phase == "development_commit"
 
 
-def test_failed_development_analysis_is_terminal_not_another_developer_loop() -> None:
-    """An analyzer finding no actionable developer path must terminate honestly."""
+def test_failed_development_analysis_closes_cycle_through_final_commit() -> None:
+    """A terminal analyzer decision ends this cycle at the commit boundary."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
 
@@ -183,7 +183,40 @@ def test_failed_development_analysis_is_terminal_not_another_developer_loop() ->
         policy,
     )
 
-    assert next_state.phase == "failed_terminal"
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.pending_cycle_outcome == "failed"
+
+
+@pytest.mark.parametrize(
+    ("completed_cycles", "expected_phase"),
+    [(0, "planning"), (1, "failed_terminal")],
+)
+def test_failed_cycle_commits_then_replans_only_while_budget_remains(
+    completed_cycles: int,
+    expected_phase: str,
+) -> None:
+    """Failed cycles are durable before the global budget chooses replan or exit."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+    state = PipelineState(
+        phase="development_analysis",
+        budget_caps={"iteration": 2},
+        outer_progress={"iteration": completed_cycles},
+    )
+
+    cleanup_state, _ = reducer_reduce(
+        state,
+        AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
+        policy,
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert cleanup_state.phase == "development_final_commit_cleanup"
+    assert commit_state.phase == "development_final_commit"
+    assert next_state.phase == expected_phase
+    assert next_state.pending_cycle_outcome is None
+    assert next_state.get_outer_progress("iteration") == completed_cycles + 1
 
 
 @pytest.mark.parametrize("status", ["completed", "partial", "failed"])

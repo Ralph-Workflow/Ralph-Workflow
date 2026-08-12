@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
     PipelineEvent,
 )
 from ralph.pipeline.progress import review_issues_found as _review_issues_found
@@ -15,6 +16,7 @@ from ralph.policy.models import (
     BudgetCounterConfig,
     LoopCounterConfig,
     PhaseCommitPolicy,
+    PhaseDecisionRoute,
     PhaseDefinition,
     PhaseLoopPolicy,
     PhaseTransition,
@@ -366,6 +368,42 @@ class TestAnalysisDecisionDispatch:
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
+        assert new_state.previous_phase == "development_analysis"
+
+    def test_analysis_failed_routes_development_analysis_to_final_commit_cleanup(self) -> None:
+        """A terminal analyzer verdict closes the cycle through its commit boundary."""
+        policy = _policy_with_post_commit_routes()
+        analysis = policy.phases["development_analysis"]
+        policy = policy.model_copy(
+            update={
+                "phases": {
+                    **policy.phases,
+                    "development_analysis": analysis.model_copy(
+                        update={
+                            "decisions": {
+                                **analysis.decisions,
+                                "failed": PhaseDecisionRoute(
+                                    target="development_commit",
+                                    reset_loop=True,
+                                ),
+                            }
+                        }
+                    ),
+                }
+            }
+        )
+        state = PipelineState(
+            phase="development_analysis",
+            budget_caps={"iteration": 2},
+        )
+
+        new_state, _ = _reduce(
+            state,
+            AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
+            policy,
+        )
+
+        assert new_state.phase == "development_commit"
         assert new_state.previous_phase == "development_analysis"
 
     def test_analysis_loopback_does_not_decrement_budget(self) -> None:

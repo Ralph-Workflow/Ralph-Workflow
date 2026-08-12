@@ -23,3 +23,7 @@ class PostCommitRouteWhen(_FrozenPolicyModel):
             "'no_review' (all budgets exhausted, no review to run)"
         ),
     )
+    cycle_outcome: Literal["completed", "failed"] | None = Field(
+        default=None,
+        description="Optional cycle outcome required for this route.",
+    )

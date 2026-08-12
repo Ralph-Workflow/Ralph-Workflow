@@ -158,7 +158,15 @@ def resolve_post_commit_phase(
         budget_state = _compute_budget_state(state, pipeline_policy)
         if budget_state is not None:
             for route in pipeline_policy.post_commit_routes:
-                if route.when.phase == state.phase and route.when.budget_state == budget_state:
+                outcome_matches = (
+                    route.when.cycle_outcome is None
+                    or route.when.cycle_outcome == state.pending_cycle_outcome
+                )
+                if (
+                    route.when.phase == state.phase
+                    and route.when.budget_state == budget_state
+                    and outcome_matches
+                ):
                     return route.target
 
     return resolve_next_phase(state.phase, "success", pipeline_policy)
