@@ -24,11 +24,6 @@ def _is_within(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
-def _has_git_metadata(path: Path) -> bool:
-    """Return whether ``path`` lies under a directory carrying ``.git`` metadata."""
-    return any((ancestor / ".git").exists() for ancestor in (path, *path.parents))
-
-
 def _default_toplevel_runner(resolved_cwd: Path) -> Path | None:
     """Return git's containing top-level, or ``None`` when unavailable."""
     try:
@@ -74,7 +69,7 @@ def resolve_git_cwd(
             candidate = root / candidate
         resolved = candidate.resolve()
     runner = git_runner or _default_toplevel_runner
-    top_level = runner(resolved) if git_runner is not None or _has_git_metadata(resolved) else None
+    top_level = runner(resolved)
     resolved_top = top_level.resolve() if top_level is not None else None
     is_outside = not _is_within(resolved, root) or (
         resolved_top is not None and not _is_within(resolved_top, root)

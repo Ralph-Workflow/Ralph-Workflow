@@ -45,11 +45,9 @@ Every handler accepts an optional ``cwd`` parameter so an agent can
 read a *nested* repository contained inside the active workspace:
 
 1. ``cwd=None`` or ``cwd=""`` resolves to the workspace root
-   (the legacy default; no behavior change) — and the top-level
-   probe below still applies (deferred to the git subprocess call
-   site so unit tests with mocked runners skip it), so a workspace
-   inside an unrelated parent repository is refused even when
-   ``cwd`` is omitted.
+   (the legacy default; no behavior change). The top-level probe always
+   applies, so a workspace inside an unrelated parent repository is
+   reported before any git command executes.
 2. ``cwd=<path>`` resolves relative to the workspace root and the
    git command runs in the resolved directory (absolute paths are
    taken as-is).
@@ -63,10 +61,9 @@ read a *nested* repository contained inside the active workspace:
    unrelated parent repository, git would otherwise operate on the
    parent's commits even though the resolved cwd is inside the
    workspace.
-5. A violated boundary raises ``InvalidParamsError`` whose message
-   names the resolved path, the discovered top-level (when the
-   second check fails), and the workspace root, so the framework
-   boundary returns ``ToolResult(is_error=True)`` to the caller.
+5. A violated boundary returns ``ToolResult(is_error=False)`` with a
+   ``WARNING:`` message naming the resolved path, the discovered top-level
+   (when the second check fails), and the workspace root. Git does not run.
 
 The two-dimensional check lives in
 :func:`ralph.mcp.tools._git_cwd_validator.resolve_git_cwd`; the four
@@ -298,16 +295,13 @@ def _resolve_git_cwd(
 
     The workspace-bounded contract (see the module docstring):
     ``cwd=None`` / ``cwd=""`` runs in the workspace root; any other
-    value must resolve inside the workspace AND discover a repository
-    top-level inside the workspace, else ``InvalidParamsError`` is
-    raised (converted to ``ToolResult(is_error=True)`` by the framework
-    boundary).
+    value is checked against the workspace and its containing repository
+    top-level is probed. Handlers convert an outside result into a
+    non-executing warning result.
 
-    DA-004: the top-level probe still applies to the omitted/empty
-    legacy default. It is DEFERRED (``probe_default_cwd=False``) to the
-    actual git subprocess call site in ``run_git_command`` /
-    ``run_git_command_lenient`` so handler-level unit tests driving
-    mock workspaces with mocked runners never spawn the real probe.
+    The top-level probe applies to omitted and empty cwd values too, so a
+    workspace nested in an unrelated parent repository cannot silently read
+    that parent repository.
     """
     raw: object = params.get("cwd") if params else None
     if raw is not None and not isinstance(raw, str):
