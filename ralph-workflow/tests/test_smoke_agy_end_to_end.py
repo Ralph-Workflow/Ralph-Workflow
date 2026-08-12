@@ -139,8 +139,20 @@ def test_mock_smoke_log_documents_real_agy_invocation(tmp_path: Path) -> None:
         "binary used by this fresh-evidence test)"
     )
 
+    # The title banner ("parity smoke report") and status lines carry
+    # ``agy/`` plus decorative ``│┃`` characters but split into only ~3 cells.
+    # The real parity table DATA row splits into >= 8 cells; in the
+    # subprocess the agent name is truncated to ``agy…`` (not ``agy/``), so
+    # match by cell count + the ``yes`` file-created cell instead of by the
+    # agent alias.
     agy_row = next(
-        (line for line in log_text.splitlines() if "agy/" in line and ("│" in line or "┃" in line)),
+        (
+            line
+            for line in log_text.splitlines()
+            if ("│" in line or "┃" in line)
+            and len([c for c in re.split(r"[│┃]", line) if c.strip()]) >= 8
+            and "yes" in line
+        ),
         None,
     )
     assert agy_row is not None, "AGY parity table row not found in smoke log"

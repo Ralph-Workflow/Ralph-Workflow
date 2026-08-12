@@ -6,7 +6,7 @@ import errno
 import importlib
 import inspect
 import os
-import sys
+import platform
 import threading
 import time
 import weakref
@@ -111,7 +111,7 @@ def _make_change_tracker(workspace: Path, key: str) -> object:
 
 def _is_linux_host() -> bool:
     """Return whether the running host exposes Linux's procfs inotify data."""
-    return sys.platform == "linux"
+    return platform.system() == "Linux"
 
 
 def _read_inotify_watch_limit() -> int | None:

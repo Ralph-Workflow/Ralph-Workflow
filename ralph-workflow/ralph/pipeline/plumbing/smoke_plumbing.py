@@ -1222,6 +1222,28 @@ def _tool_calls_exercising_capability(
         surface_name = infer_surface_for_preview(None, payload.operation)
         observed = surface_to_capability(surface_name)
         if observed is capability:
+            # A tool call can only exercise a renderable capability when
+            # its payload carries the content the preview builder needs to
+            # materialize a render. AGY v1.1.10's ``write_to_file`` event
+            # advertises only ``TargetFile`` (no ``content`` key in
+            # ``tool_info.parameters``), so ``build_edit_preview`` correctly
+            # returns ``None`` and the capability cannot be observed for
+            # that call -- counting it as exercising would be a false
+            # positive that masks real regressions on content-bearing
+            # transports. See ``agy_wire_tool.jsonl`` /
+            # ``agy_wire_provenance.md`` for the measured wire format.
+            #
+            # ``file_preview`` (read) is exempt: the content arrives on the
+            # tool-RESULT event, not the tool-USE event this helper scans,
+            # so ``payload.content`` is always empty here for reads -- the
+            # capability is exercisable whenever the tool call is
+            # recognized, regardless of the use-side payload.
+            if surface_name == "syntax_preview" and not (
+                isinstance(payload.content, str) and payload.content
+            ):
+                continue
+            if surface_name == "diff_preview" and not payload.hunks:
+                continue
             exercising.add(tool_name)
     return exercising
 

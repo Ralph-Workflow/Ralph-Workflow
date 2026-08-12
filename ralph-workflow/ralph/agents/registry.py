@@ -162,7 +162,11 @@ def agy_published_models() -> tuple[str, ...]:
     """Return currently published AGY IDs, falling back to the measured v1.1.8 pin."""
     try:
         observed = tuple(
-            line.strip().lstrip("- ")
+            # AGY v1.1.8+ emits ``ID\tDescription`` lines; keep only the ID
+            # column so ``_parse_agy_alias`` matches bare IDs. A line with no
+            # tab splits to a single element (the whole line), so this is
+            # forward-compatible with the older bare-ID output format.
+            line.strip().lstrip("- ").split("\t", 1)[0]
             for line in _default_agy_models_probe().splitlines()
             if line.strip() and not line.endswith(":")
         )

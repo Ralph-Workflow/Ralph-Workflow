@@ -77,18 +77,37 @@ def _mapping(value: object) -> dict[str, object] | None:
     }
 
 
+def _tool_info_parameters(mapping: dict[str, object]) -> dict[str, object] | None:
+    """Return parameters nested under a ``tool_info`` envelope, when present.
+
+    AGY's parser emits ``metadata = {"tool": ..., "tool_info": {"name": ...,
+    "parameters": {...}}}`` instead of flattening parameters under ``input``.
+    """
+    tool_info = mapping.get("tool_info")
+    if isinstance(tool_info, dict):
+        return _mapping(tool_info.get("parameters"))
+    return None
+
+
 def _input(metadata: dict[str, object]) -> dict[str, object] | None:
-    """Extract documented parser input/args envelopes without guessing keys."""
+    """Extract documented parser input/args envelopes without guessing keys.
+
+    AGY's ``tool_info.parameters`` envelope is recognized both at the top level
+    (a direct parser-real call) and when a caller wraps a raw AGY metadata
+    envelope under ``input`` (the display preview path): an extracted mapping
+    that itself carries a ``tool_info`` key is unwrapped to its parameters.
+    """
     for key in ("input", "args", "arguments"):
         payload = _mapping(metadata.get(key))
         if payload is not None:
-            return payload
-    return None
+            nested = _tool_info_parameters(payload)
+            return nested if nested is not None else payload
+    return _tool_info_parameters(metadata)
 
 
 def _path(payload: dict[str, object]) -> str | None:
     """Return a documented path field, if present."""
-    for key in ("path", "file_path", "filePath", "filename", "notebook_path"):
+    for key in ("path", "file_path", "filePath", "filename", "TargetFile", "notebook_path"):
         value = payload.get(key)
         if isinstance(value, str) and value:
             return value
@@ -221,6 +240,7 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
         "Append": "append",
         "ralph_stage_md_artifact": "write",
         "ralph_submit_md_artifact": "write",
+        "write_to_file": "write",
     }
     operation = operations.get(bare)
     if operation is not None:
@@ -234,11 +254,12 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
             if bare != "exec"
             else None
         )
-    if bare in {"edit_file", "edit", "Edit", "str_replace", "ralph_edit_md_artifact"}:
+    if bare in {"edit_file", "edit", "Edit", "str_replace", "ralph_edit_md_artifact",
+                "replace_file_content", "sed_file"}:
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=False))
-    if bare == "MultiEdit":
+    if bare in {"MultiEdit", "multi_replace_file_content"}:
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=True))
-    if bare == "NotebookEdit":
+    if bare in {"NotebookEdit", "notebook_edit"}:
         return _notebook_payload(path, payload)
     return _patch_payload(path, payload) if bare == "apply_patch" else None
 
