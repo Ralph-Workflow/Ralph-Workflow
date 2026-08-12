@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.handlers import ExploreIndex
     from ralph.mcp.protocol.session import AgentSession
     from ralph.mcp.server.factory import McpServerHandle
     from ralph.workspace.scope import WorkspaceScope
+
+
+
+class _ClosableStore(Protocol):
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class _ExploreIndexOwner(Protocol):
+    store: _ClosableStore
 
 
 @dataclass(frozen=True)
@@ -33,7 +42,5 @@ class WorkerSessionBundle:
             self.mcp_handle.shutdown()
         finally:
             explore_index = self.session.explore_index
-            if explore_index is not None:
-                from typing import cast
-
-                cast("ExploreIndex", explore_index).store.close()
+            if isinstance(explore_index, _ExploreIndexOwner):
+                explore_index.store.close()
