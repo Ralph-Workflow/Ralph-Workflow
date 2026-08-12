@@ -120,10 +120,7 @@ def _check_broken_agent_timer(
 ) -> None:
     """Terminate a silent live agent before the slower startup watchdog fires."""
     elapsed_seconds = watchdog.invocation_elapsed_seconds
-    if (
-        elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-        or watchdog.has_meaningful_output()
-    ):
+    if elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS or watchdog.has_meaningful_output():
         return
     handle.terminate(grace_period_s=0.5)
     pid = cast("int | None", getattr(handle, "pid", None))
@@ -216,10 +213,9 @@ def _convert_idle_stream_timeout_to_agent_error(
 _BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
 
 
-def _parent_broker_secret() -> str | None:
+def _parent_broker_secret(getenv: Callable[[str], str | None] = os.getenv) -> str | None:
     """Return the parent-only broker secret used for completion verification."""
-    # di-seam-allowlist: composition-root reads broker secret for completion validation.
-    return os.environ.get(_BROKER_SECRET_ENV)
+    return getenv(_BROKER_SECRET_ENV)
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -810,6 +806,10 @@ class _ProcessLineReader:
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
             and not activity_signal.is_harness_echo
         )
+        if activity_signal.is_harness_echo:
+            # Keep the idle baseline current without treating echoed input as LLM output.
+            watchdog.record_lifecycle_activity()
+            return
         if activity_signal.error_message is not None:
             # A failed tool call is BOTH a call and an error. Feeding only the
             # dimension its ``kind`` names left the other wedge invisible: a
@@ -844,10 +844,7 @@ class _ProcessLineReader:
             # every completed call, and ``record_tool_result_activity`` was
             # never reached at all -- so STALLED_AFTER_TOOL_RESULT was
             # unreachable on opencode, claude, pi, cursor, and codex alike.
-            if activity_signal.is_harness_echo:
-                watchdog.record_tool_result_activity(is_harness_echo=True)
-            else:
-                watchdog.record_tool_result_activity()
+            watchdog.record_tool_result_activity()
         else:
             watchdog.record_activity()
 

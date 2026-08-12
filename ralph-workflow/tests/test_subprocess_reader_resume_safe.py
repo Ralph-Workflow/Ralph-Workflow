@@ -40,6 +40,7 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
+    BrokenAgentExitError,
     InvokeOptions,
     invoke_agent,
 )
@@ -547,37 +548,15 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
     )
 
 
-def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
+def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_watchdog(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """NO_OUTPUT_AT_START is also a resume-eligible reason.
+    """S-6: a silent process raises the typed fallover error before the watchdog.
 
-    Drive NO_OUTPUT_AT_START with an ACTIVE-classifying strategy and a
-    long idle_timeout_seconds so the watchdog fires NO_OUTPUT_AT_START
-    BEFORE NO_OUTPUT_DEADLINE. The default no_output_at_start_seconds=30s
-    is used (InvokeOptions does not expose the field; the default is the
-    canonical operator-configured value).
-
-    The session id is threaded via ``InvokeOptions.session_id`` (the
-    ``expected_session_id`` fallback path) rather than via a captured
-    stream line -- if we emitted a ``{"type":"session",...}`` line, the
-    OpenCode strategy would classify it as ``OUTPUT_LINE``, which
-    ``_record_line_activity`` routes to ``record_activity()`` and
-    sets ``_has_meaningful_output=True``, so the no_output_at_start
-    trigger would never become eligible. The fallback path proves the
-    resume-safe wiring without perturbing the no_output_at_start
-    contract.
-
-    The agent never records any activity; the watchdog fires
-    NO_OUTPUT_AT_START after 30s. The subprocess reader must raise
-    ``AgentInactivityTimeoutError`` with ``session_resume_safe=True``
-    AND populate ``resumable_session_id`` from the expected-session-id
-    fallback so the high-level ``invoke_agent`` seam resumes the SAME
-    session id (NOT a fresh-from-scratch restart). This pins the third
-    of the four resume-eligible reasons (NO_OUTPUT_AT_START). The
-    eligibility-set logic is a closed literal in ``_process_reader.py``
-    shared by all reasons.
+    The 30-second broken-agent timer intentionally precedes the older
+    ``NO_OUTPUT_AT_START`` watchdog path. A silent agent must therefore
+    clear its retry intent instead of attempting a same-session resume.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
@@ -614,7 +593,7 @@ def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
     )
 
     try:
-        with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        with pytest.raises(BrokenAgentExitError) as exc_info:
             list(
                 invoke_agent(
                     config,
@@ -626,14 +605,6 @@ def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
     finally:
         proc._gate.set()
 
-    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
-        f"Expected reason=NO_OUTPUT_AT_START, got {exc_info.value.reason}"
-    )
-    assert exc_info.value.session_resume_safe is True, (
-        f"Expected session_resume_safe=True for NO_OUTPUT_AT_START, "
-        f"got {exc_info.value.session_resume_safe}"
-    )
-    assert exc_info.value.resumable_session_id == "sess-no-output-at-start", (
-        f"Expected resumable_session_id='sess-no-output-at-start'"
-        f" (same-session resume contract), got {exc_info.value.resumable_session_id!r}"
-    )
+    assert exc_info.value.reason == "no_output"
+    assert exc_info.value.elapsed_seconds is not None
+    assert exc_info.value.elapsed_seconds >= 30.0

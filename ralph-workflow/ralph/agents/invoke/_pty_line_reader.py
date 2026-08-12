@@ -1373,68 +1373,11 @@ class PtyLineReader:
                 activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
                 and not activity_signal.is_harness_echo
             )
-            _record_embedded_error(watchdog, activity_signal)
-            if activity_signal.kind == AgentActivityKind.ERROR_LINE:
-                # Repeated identical errors must not reset the idle baseline or
-                # the repetition streak's progress counter; they feed the
-                # repeated-error circuit breaker instead.
-                watchdog.record_error_activity(activity_signal.raw)
-            elif activity_signal.kind == AgentActivityKind.PROGRESS_REPORT:
-                # Repeated identical progress heartbeats feed the breaker; a
-                # changed status counts as genuine progress (handled inside).
-                watchdog.record_progress_report(activity_signal.raw)
-            elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
-                # Cosmetic frames keep the agent off the idle deadline but do
-                # NOT count as forward progress for the circuit breaker.
+            if activity_signal.is_harness_echo:
+                # Keep the idle baseline current without treating echoed input as LLM output.
                 watchdog.record_lifecycle_activity()
             else:
-                if activity_signal.kind == AgentActivityKind.TOOL_USE:
-                    self._awaiting_post_tool_result_progress = False
-                    # NEW BEHAVIOR: feed the tool-call circuit
-                    # breaker so the watchdog can fire
-                    # REPEATED_IDENTICAL_TOOL_CALL when an agent
-                    # re-issues the same (tool_name, tool_args)
-                    # combination.  Without this call the
-                    # tracker dimension is unreachable in real
-                    # runs and the watchdog cannot detect a
-                    # tool-call wedge -- exactly the gap the
-                    # analysis feedback surfaced.  We swallow
-                    # extraction errors (non-JSON raw line) so
-                    # the breaker is fed only when we have a
-                    # stable (name, args) fingerprint to
-                    # contribute.
-                    tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
-                    self._last_tool_use_name = _tool_use_display_name(
-                        activity_signal.raw, tool_call
-                    )
-                    if tool_call is not None:
-                        watchdog.record_tool_call_activity(*tool_call)
-                    watchdog.record_tool_use_activity()
-                elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
-                    self._awaiting_post_tool_result_progress = True
-                    self._last_tool_result_at = self._clock.monotonic()
-                    self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
-                    # NOT record_activity(): its note_progress() wiped the
-                    # tool-call repetition streak after every completed call,
-                    # putting back exactly what record_tool_result_activity
-                    # documents it must not do. That method (called below)
-                    # already resets the idle baseline and marks meaningful
-                    # output.
-                elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
-                    self._awaiting_post_tool_result_progress = False
-                    watchdog.record_activity()
-                else:
-                    watchdog.record_activity()
-                # NEW BEHAVIOR: also record the post-tool-result
-                # activity so the watchdog's new direct-fire
-                # STALLED_AFTER_TOOL_RESULT path can detect the wedge
-                # in ~120s by default (the post-tool-result budget)
-                # rather than waiting for the full 300s idle timeout.
-                if activity_signal.kind == AgentActivityKind.TOOL_RESULT:
-                    _record_tool_result_activity(
-                        watchdog,
-                        is_harness_echo=activity_signal.is_harness_echo,
-                    )
+                self._record_non_echo_activity(watchdog, activity_signal)
         else:
             self._last_meaningful[0] = False
         self._strategy.observe_line(queued_line)
@@ -1449,6 +1392,34 @@ class PtyLineReader:
             pending_lines, exc = fire_result
             yield from pending_lines
             raise exc
+
+    def _record_non_echo_activity(
+        self, watchdog: IdleWatchdog, activity_signal: AgentActivitySignal
+    ) -> None:
+        _record_embedded_error(watchdog, activity_signal)
+        if activity_signal.kind == AgentActivityKind.ERROR_LINE:
+            watchdog.record_error_activity(activity_signal.raw)
+        elif activity_signal.kind == AgentActivityKind.PROGRESS_REPORT:
+            watchdog.record_progress_report(activity_signal.raw)
+        elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
+            watchdog.record_lifecycle_activity()
+        elif activity_signal.kind == AgentActivityKind.TOOL_USE:
+            self._awaiting_post_tool_result_progress = False
+            tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+            self._last_tool_use_name = _tool_use_display_name(activity_signal.raw, tool_call)
+            if tool_call is not None:
+                watchdog.record_tool_call_activity(*tool_call)
+            watchdog.record_tool_use_activity()
+        elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+            self._awaiting_post_tool_result_progress = True
+            self._last_tool_result_at = self._clock.monotonic()
+            self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
+            _record_tool_result_activity(watchdog, is_harness_echo=False)
+        elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
+            self._awaiting_post_tool_result_progress = False
+            watchdog.record_activity()
+        else:
+            watchdog.record_activity()
 
     def _with_prompt_echo_flag(
         self, activity_signal: AgentActivitySignal, queued_line: str

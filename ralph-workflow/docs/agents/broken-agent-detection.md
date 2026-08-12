@@ -29,3 +29,15 @@ The default `BROKEN_AGENT` backoff starts at 5 seconds and caps at 60 seconds. R
 Check the selected agent's credentials and provider availability first. A prompt-echo diagnosis also indicates that the harness started but the model did not provide meaningful output.
 
 After correcting credentials or provider configuration, allow the unavailable-agent cooldown to expire or restart the run using the configured recovery workflow.
+
+## Boundaries
+
+The detector uses only observable evidence from a single invocation. It does not diagnose a provider outage or infer that a model request was accepted.
+
+The grace timer applies while the process remains live and silent. It is intentionally independent of normal idle-watchdog thresholds so retry policy can respond quickly when an agent cannot begin useful work.
+
+A prompt echo is not a generic similarity check. The entire trimmed prompt must be present in the emitted line, which preserves short genuine responses that happen to share words with the prompt.
+
+Normal output mixed with an echoed prompt remains meaningful. In that case Ralph follows the regular completion and watchdog contracts rather than declaring the agent broken.
+
+See the recovery configuration documentation for chain order and cooldown behavior.
