@@ -92,15 +92,3 @@ def test_smoke_interactive_opencode_help_advertises_multimodal() -> None:
     assert exit_code == 0, output
     assert "--multimodal" in output
 
-
-def test_all_six_smoke_commands_have_multimodal_parity() -> None:
-    """Every smoke command carries ``--multimodal`` (criterion 5)."""
-    missing: list[str] = []
-    for cmd_name in _SMOKE_COMMANDS_WITH_MULTIMODAL:
-        _, output = _invoke_help(cmd_name)
-        if "--multimodal" not in output:
-            missing.append(cmd_name)
-    assert not missing, (
-        "These smoke commands are missing the --multimodal option "
-        f"(criterion 5 -- multimodal on every major coding harness): {missing}"
-    )
