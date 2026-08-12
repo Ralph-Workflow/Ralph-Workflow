@@ -66,8 +66,8 @@ def test_workspace_health_routes_json_through_shared_display(
     emitted: list[str] = []
 
     class _Display:
-        def emit_machine_json(self, message: str) -> None:
-            emitted.append(message)
+        def emit_json_payload(self, payload: dict[str, object]) -> None:
+            emitted.append(json.dumps(payload))
 
     display_context = object()
     monkeypatch.setattr(

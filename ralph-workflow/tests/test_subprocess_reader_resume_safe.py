@@ -40,7 +40,6 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
-    BrokenAgentExitError,
     InvokeOptions,
     invoke_agent,
 )
@@ -548,15 +547,14 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
     )
 
 
-def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_watchdog(
+def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_grace_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """S-6: a silent process raises the typed fallover error before the watchdog.
+    """S-6: deferring the broken-agent grace leaves the startup watchdog in charge.
 
-    The 30-second broken-agent timer intentionally precedes the older
-    ``NO_OUTPUT_AT_START`` watchdog path. A silent agent must therefore
-    clear its retry intent instead of attempting a same-session resume.
+    The test explicitly defers the broken-agent timer, so the configured
+    startup watchdog is the observable timeout contract.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
@@ -575,12 +573,8 @@ def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_wat
         "strategy_for_command",
         lambda *args, **kwargs: _ActiveStrategy(),
     )
-    # Keep the broken-agent grace timer (``_check_broken_agent_timer``,
-    # 12s default) out of this scenario: the test pins the
-    # NO_OUTPUT_AT_START *watchdog* path (15s default ceiling), and a
-    # shorter grace would win the race and raise
-    # ``BrokenAgentExitError`` instead of the resume-safe
-    # ``AgentInactivityTimeoutError`` under test.
+    # Keep the broken-agent grace timer out of this scenario so the
+    # NO_OUTPUT_AT_START watchdog path remains the observed behavior.
     monkeypatch.setattr(
         "ralph.agents.invoke._process_reader.BROKEN_AGENT_OUTPUT_GRACE_SECONDS",
         900.0,
@@ -603,7 +597,7 @@ def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_wat
     )
 
     try:
-        with pytest.raises(BrokenAgentExitError) as exc_info:
+        with pytest.raises(AgentInactivityTimeoutError) as exc_info:
             list(
                 invoke_agent(
                     config,
@@ -615,6 +609,5 @@ def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_wat
     finally:
         proc._gate.set()
 
-    assert exc_info.value.reason == "no_output"
-    assert exc_info.value.elapsed_seconds is not None
-    assert exc_info.value.elapsed_seconds >= 30.0
+    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_AT_START
+    assert exc_info.value.session_resume_safe is True
