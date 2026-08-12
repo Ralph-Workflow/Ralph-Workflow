@@ -37,6 +37,22 @@ status: completed
 - [DA-001] Added the missing edge-case regression test.
 ```
 
+## Adapted and not-applicable examples
+
+```markdown
+## Plan Items Proven
+
+- [S-3] Used the repository's existing serializer after the planned module was absent; `pytest tests/test_serialization.py -q` passes.
+  Disposition: adapted
+  Rationale: `src/planned_serializer.py` does not exist, while `src/serialization.py` owns the same request outcome and the focused regression test proves it.
+- [S-4] No migration was needed because the target schema already contains the requested indexed field at `db/schema.sql:42` and `pytest tests/test_schema.py -q` passes.
+  Disposition: not_applicable
+  Rationale: The plan assumed the indexed field was absent; the cited schema and focused check contradict that premise while preserving the request criterion.
+```
+
+Elapsed time, difficulty, an unrelated passing check, or an unsupported claim
+that a step is unnecessary are invalid rationales for `not_applicable`.
+
 ## Frontmatter
 
 - `type` — required; `development_result`.
@@ -77,7 +93,9 @@ next iteration resume.
 
 Hard errors, all of them for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation
-item; duplicate item IDs; and (at proof validation) plan-item IDs that
+item; duplicate item IDs; a missing or unknown `Disposition`; a missing
+`Rationale` for `adapted`, `not_applicable`, or `blocked`; `blocked` in a
+completed result; and (at proof validation) plan-item IDs that
 do not exactly match a plan step ID or work-unit id, missing proofs, or
 duplicates. An unrecognized `status` is a hard error at any status and
 reports the valid `completed` / `partial` / `failed` vocabulary.

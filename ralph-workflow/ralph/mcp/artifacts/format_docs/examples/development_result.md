@@ -22,6 +22,12 @@ status: completed
   Disposition: completed
 - [S-4] pytest tests/auth -q passed: 47 passed in 8.2s, zero failures, no new warnings.
   Disposition: completed
+- [S-5] Used src/auth/refresh.py after fresh inspection showed the planned src/auth/token_refresh.py route does not exist; pytest tests/auth/test_refresh_race.py -q passes.
+  Disposition: adapted
+  Rationale: The planned module premise was false, but the existing refresh owner implements and proves the same token-expiry outcome.
+- [S-6] No schema migration was needed because db/schema.sql:42 already contains the requested indexed token key and pytest tests/auth/test_schema.py -q passes.
+  Disposition: not_applicable
+  Rationale: The plan assumed the index was absent; the cited schema and focused check contradict that premise without weakening the request.
 
 ## Analysis Items Addressed
 

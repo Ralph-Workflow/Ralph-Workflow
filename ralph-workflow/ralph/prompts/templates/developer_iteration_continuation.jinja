@@ -55,7 +55,7 @@ Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}
 
 {% include 'shared/_parallel_execution.j2' %}
 
-Before submitting this continuation, re-check the remaining work against the execution plan, available continuation context, and the development-result proof requirements below. If a sub-agent is available, you MUST use at least one sub-agent as a hard gate for that fresh review; otherwise perform the same review sequentially. Until that review closes the remaining gap, you MUST NOT submit the artifact or declare completion.
+Before submitting this continuation, re-check the remaining work against the execution plan, available continuation context, and the development-result proof requirements below. Use an independent sub-agent when coordination costs less than sequential execution; otherwise perform the same review sequentially. Until that review closes the remaining gap, you MUST NOT submit the artifact or declare completion.
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 

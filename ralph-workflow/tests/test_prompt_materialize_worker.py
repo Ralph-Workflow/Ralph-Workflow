@@ -150,7 +150,7 @@ status: request_changes
     assert "## WORKER SCOPE" in rendered
     assert "**Unit ID**: api" in rendered
     assert str(tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md") in rendered
-    assert "you MUST use at least one sub-agent as a hard gate" in rendered
+    assert "when coordination costs less than sequential execution" in rendered
     assert "you MUST NOT submit the artifact or declare completion" in rendered
 
 
@@ -212,7 +212,7 @@ status: partial
     assert "Finish the worker-local API test." in rendered
     assert "worker-session-7" in rendered
     assert "WRONG SHARED CONTEXT" not in rendered
-    assert "you MUST use at least one sub-agent as a hard gate" in rendered
+    assert "when coordination costs less than sequential execution" in rendered
 
 
 def test_worker_materialization_preserves_shared_development_history(

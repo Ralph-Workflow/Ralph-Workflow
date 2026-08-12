@@ -14,7 +14,6 @@ Implement the assigned work unit and return proof that it satisfies its scope.
 {% include 'shared/_development_skills.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
 {% include 'shared/_run_budget.j2' %}
-{% include 'shared/_developer_iteration_guidance.j2' %}
 
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not complete successfully.
@@ -65,8 +64,10 @@ handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 Implement and verify only `{{ unit_id }}`. If the assignment is blocked, report
 the concrete blocker in the result instead of expanding scope.
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
+
 {% if IS_CONTINUATION %}
-Before submitting a continuation, re-check the assigned unit against its assignment, continuation context, and proof contract. If a sub-agent is available, you MUST use at least one sub-agent as a hard gate for that fresh review; otherwise perform the same review sequentially. Until that review closes the remaining gap, you MUST NOT submit the artifact or declare completion.
+Before submitting a continuation, re-check the assigned unit against its assignment, continuation context, and proof contract. Use an independent sub-agent when coordination costs less than sequential execution; otherwise perform the same review sequentially. Until that review closes the remaining gap, you MUST NOT submit the artifact or declare completion.
 {% endif %}
 
 {% set development_result_example %}
