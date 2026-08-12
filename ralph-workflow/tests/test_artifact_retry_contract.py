@@ -198,7 +198,9 @@ status: completed
 
 ## Plan Items Proven
 - [S-1] Implemented the test change in src/a.py.
+  Disposition: completed
 - [S-2] Ran pytest tests/test_artifact_retry_contract.py -q successfully.
+  Disposition: completed
 """
 
 _VALID_DEV_ANALYSIS_MARKDOWN = """\

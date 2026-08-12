@@ -124,6 +124,7 @@ status: completed
 - [F-1] src/ui/header.tsx
 ## Plan Items Proven
 - [UI-4] The header UI is capture-backed.
+  Disposition: completed
   Verdict ID: verdict-001
   Before Captures: {_BEFORE_HANDLE}
   After Captures: {_AFTER_HANDLE}

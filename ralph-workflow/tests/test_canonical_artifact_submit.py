@@ -73,6 +73,7 @@ status: completed
 ## Plan Items Proven
 
 - [S-1] The focused canonical submission tests pass.
+  Disposition: completed
 
 ## Analysis Items Addressed
 

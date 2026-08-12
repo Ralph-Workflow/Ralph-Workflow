@@ -340,7 +340,7 @@ SWEEP_CALLS: dict[str, dict[str, Any]] = {
             "---\n\n"
             "## Summary\n- [SUM-1] sweep\n"
             "## Files Changed\n- [F-1] tmp/sweep.txt\n"
-            "## Plan Items Proven\n- [S-1] sweep\n"
+            "## Plan Items Proven\n- [S-1] sweep\n  Disposition: completed\n"
         ),
     },
     RalphToolName.VERIFY_MD_ARTIFACT: {

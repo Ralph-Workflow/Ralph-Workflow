@@ -84,6 +84,7 @@ status: completed
 
 ## Plan Items Proven
 - [S-1] Worker {unit_id} completed the requested change.
+  Disposition: completed
 
 ## Analysis Items Addressed
 """

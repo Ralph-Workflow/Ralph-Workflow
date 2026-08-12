@@ -38,6 +38,7 @@ status: completed
 - [F1] tests/test_tool_artifact_1.py
 ## Plan Items Proven
 - [S-1] Focused tests pass.
+  Disposition: completed
 """
 
 _PARTIAL = "---\ntype: product_spec\n---\n## Title\n- [T1] Markdown artifacts\n"
