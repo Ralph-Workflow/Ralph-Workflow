@@ -335,6 +335,131 @@ def test_capacity_exhaustion_updates_shared_awareness_status(
     release_workspace_awareness(Path("/canonical-fallback"))
 
 
+def test_predicted_watch_capacity_skips_observer_and_updates_shared_awareness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A predicted capacity breach falls back before constructing an observer."""
+    workspace = Path("/synthetic-ws-predicted-capacity")
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: pytest.fail("over-budget workspaces must not construct an observer"),
+    )
+    monitor = WorkspaceMonitor(
+        workspace,
+        host_budget=500,
+        directory_counter=lambda _workspace, cap: 1000,
+        live_watch_total=0,
+    )
+
+    try:
+        monitor.start()
+
+        assert monitor.awareness_status["freshness"] == "live_fallback"
+        assert monitor.awareness_status["cause"] == "watch_capacity_predicted"
+        from ralph.workspace.awareness import awareness_for_workspace
+
+        assert awareness_for_workspace(workspace).snapshot()["cause"] == "watch_capacity_predicted"
+    finally:
+        from ralph.workspace.awareness import release_workspace_awareness
+
+        release_workspace_awareness(workspace)
+
+
+def test_predicted_watch_capacity_allows_an_under_budget_recursive_watch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected under-budget prediction keeps the existing recursive watch behavior."""
+    workspace = Path("/synthetic-ws-predicted-under-budget")
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(
+        workspace,
+        host_budget=500,
+        directory_counter=lambda _workspace, cap: 5,
+        live_watch_total=0,
+    )
+
+    monitor.start()
+
+    assert monitor.awareness_status["freshness"] == "current"
+    assert monitor.awareness_status["cause"] is None
+    assert len(fake.scheduled) == 1
+    _handler, path, recursive = fake.scheduled[0]
+    assert path == str(workspace)
+    assert recursive is True
+    monitor.stop()
+
+
+@pytest.mark.parametrize(
+    ("directory_count", "live_watch_total"),
+    ((500, 0), (100, 450), (None, 0)),
+)
+def test_predicted_watch_capacity_rejects_boundary_and_unbounded_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    directory_count: int | None,
+    live_watch_total: int,
+) -> None:
+    """The combined per-user prediction rejects equality and unknown over-cap counts."""
+    workspace = Path(f"/synthetic-ws-predicted-{directory_count}-{live_watch_total}")
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: pytest.fail("over-budget workspaces must not construct an observer"),
+    )
+    monitor = WorkspaceMonitor(
+        workspace,
+        host_budget=500,
+        directory_counter=lambda _workspace, cap: directory_count,
+        live_watch_total=live_watch_total,
+    )
+
+    try:
+        monitor.start()
+
+        assert monitor.awareness_status["cause"] == "watch_capacity_predicted"
+    finally:
+        from ralph.workspace.awareness import release_workspace_awareness
+
+        release_workspace_awareness(workspace)
+
+
+def test_predicted_watch_capacity_allows_retry_after_larger_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later lease can schedule after a prior predicted capacity fallback."""
+    workspace = Path("/synthetic-ws-predicted-retry")
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    rejected = WorkspaceMonitor(
+        workspace,
+        host_budget=500,
+        directory_counter=lambda _workspace, cap: 1000,
+        live_watch_total=0,
+    )
+    accepted = WorkspaceMonitor(
+        workspace,
+        host_budget=501,
+        directory_counter=lambda _workspace, cap: 5,
+        live_watch_total=0,
+    )
+
+    rejected.start()
+    accepted.start()
+
+    assert rejected.awareness_status["cause"] == "watch_capacity_predicted"
+    assert accepted.awareness_status["freshness"] == "current"
+    assert len(fake.scheduled) == 1
+    _handler, path, recursive = fake.scheduled[0]
+    assert path == str(workspace)
+    assert recursive is True
+    accepted.stop()
+
+
 def test_start_replay_preserves_one_live_workspace_watch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
