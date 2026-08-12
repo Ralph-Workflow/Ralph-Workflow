@@ -301,6 +301,7 @@ class CompletionCheckOptions:
     last_observed_tool_call: str | None = None
     last_evidence_summary: str | None = None
     elapsed_seconds: float | None = None
+    has_meaningful_output: bool | None = None
     input_prompt: str | None = None
     transcript_tail: tuple[str, ...] = ()
     _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
@@ -527,6 +528,19 @@ def _raise_if_broken_agent_exit(
     ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(agent_name, reason="prompt_echo")
+    if (
+        opts.elapsed_seconds is not None
+        and opts.elapsed_seconds >= BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+        and bounded_output
+        and opts.has_meaningful_output is False
+    ):
+        _teardown_subtree_if_pid_available(handle)
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="no_llm_activity",
+            elapsed_seconds=opts.elapsed_seconds,
+            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+        )
 
 
 def check_process_result(

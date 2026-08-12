@@ -10,6 +10,12 @@ Both subprocess and PTY line readers enforce the grace window while the process 
 
 A clean exit is also checked before the normal resumable-exit path. If the elapsed runtime reached the grace window and the bounded output is empty, the completion gate raises the same error.
 
+## Non-LLM Activity
+
+`reason="no_llm_activity"` identifies an invocation that exceeded the grace window without meaningful LLM output but did produce classified non-LLM activity, such as lifecycle frames, harness echoes, progress reports, errors, or tool events. This differs from `no_output`, where no classified output was seen, and `prompt_echo`, where every nonblank line was a deterministic echo of the input prompt.
+
+The completion check uses invocation age rather than time since the most recent activity, so continual lifecycle output cannot indefinitely hide this condition. Treat this reason as a credentials or provider-availability problem and follow the same fallover response as the other broken-agent reasons.
+
 ## Prompt Echoes
 
 Harness output is not evidence of LLM work when it deterministically echoes the input prompt. The transport-neutral `_is_prompt_echo_line` helper recognizes only nonblank lines that either equal the complete stripped prompt or contain that complete prompt verbatim.

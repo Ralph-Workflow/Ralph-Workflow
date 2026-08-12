@@ -8,37 +8,27 @@ import shutil
 import tomllib
 from pathlib import Path
 from re import Match
-from typing import TYPE_CHECKING, Literal, cast
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import Literal, cast
 
 from ralph.agents.builtin import builtin_supports
+from ralph.config._agent_overrides import opencode_binary_override
 from ralph.config.bootstrap import resolve_global_config_dir
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
-
-def opencode_binary_override(env_getter: Callable[[str], str | None] | None = None) -> str | None:
-    """Return the raw ``RALPH_OPENCODE_BINARY`` env value, if set.
-
-    Canonical home for the opencode-binary override read. Callers may
-    inject ``env_getter`` for tests and composed runtimes; the production
-    default is centralized here so no caller reads ambient environment
-    directly (the ``verify_drift`` canonical-three boundary).
-    """
-    getter = env_getter if env_getter is not None else os.environ.get
-    return getter("RALPH_OPENCODE_BINARY")
+__all__ = ["detect_installed_agents", "opencode_binary_override"]
 
 
 def _binary_for(name: str, cmd: str) -> str:
     """Return the PATH binary for a built-in command, honoring documented overrides."""
-    override_name = {
-        "agy": "RALPH_AGY_BINARY",
-        "cursor": "RALPH_CURSOR_BINARY",
-        "opencode": "RALPH_OPENCODE_BINARY",
-    }.get(name)
-    override = os.environ.get(override_name) if override_name is not None else None
+    override_name = {"agy": "RALPH_AGY_BINARY", "cursor": "RALPH_CURSOR_BINARY"}.get(name)
+    override = (
+        opencode_binary_override()
+        if name == "opencode"
+        else os.environ.get(override_name)
+        if override_name is not None
+        else None
+    )
     return (override or cmd).split(maxsplit=1)[0]
 
 

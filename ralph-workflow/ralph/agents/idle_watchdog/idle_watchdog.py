@@ -282,6 +282,7 @@ class IdleWatchdog:
     _session_started_at: float = field(init=False)
     _last_meaningful_output_at: float | None = field(default=None, init=False)
     _has_meaningful_output: bool = field(default=False, init=False)
+    _any_output_count: int = field(default=0, init=False)
     _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
@@ -506,6 +507,7 @@ class IdleWatchdog:
         self._invocation_started_at = None
         self._last_meaningful_output_at = None
         self._has_meaningful_output = False
+        self._any_output_count = 0
         self._waiting_on_child_started_at = None
         self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
@@ -789,6 +791,10 @@ class IdleWatchdog:
             return 0.0
         return self._clock.monotonic() - self._invocation_started_at
 
+    def record_any_output(self) -> None:
+        """Record one classified output signal without changing activity semantics."""
+        self._any_output_count += 1
+
     def record_prompt_echo(self, line: str) -> None:
         """Record a deterministic harness echo of the input prompt.
 
@@ -803,6 +809,10 @@ class IdleWatchdog:
     def has_meaningful_output(self) -> bool:
         """Return whether this invocation has emitted non-harness output."""
         return self._has_meaningful_output
+
+    def has_any_output(self) -> bool:
+        """Return whether this invocation has emitted any classified output."""
+        return self._any_output_count > 0
 
     def _is_no_progress_quiet(self, now: float, corroboration: CorroborationSnapshot) -> bool:
         return is_no_progress_quiet(self, now, corroboration)
@@ -848,6 +858,7 @@ class IdleWatchdog:
         must not mask a wedged retry loop. LIFECYCLE frames are deliberately
         excluded from the NO_OUTPUT_AT_START baseline.
         """
+        self.record_any_output()
         self._reset_idle_baseline()
 
     def record_tool_use_activity(self) -> None:

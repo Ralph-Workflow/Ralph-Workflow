@@ -63,6 +63,7 @@ from ralph.agents.invoke._process_reader import (
     _read_lines_from_process,
     _run_subprocess_and_read_lines,
     check_broken_agent_timer,
+    collect_r7_diagnostic_fields,
 )
 from ralph.agents.invoke._pty_helpers import (
     _extract_choice_menu_state,
@@ -102,6 +103,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.spec import AgentSpec
 from ralph.api.opencode import validate_local_model_support
+from ralph.config._agent_overrides import opencode_binary_override
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
@@ -601,13 +603,8 @@ def _fail_for_unsupported_local_opencode_model(
     # trip the ``verify_drift`` check that pins the canonical-three
     # ``RALPH_*`` env-var boundary.
     #
-    # The canonical override read lives in ``ralph.config.agent_detection``;
-    # importing it at module top would cycle (agent_detection pulls in
-    # ``ralph.agents.builtin``, which pulls in the execution-state factory
-    # that imports back from ``ralph.agents.invoke``), so the import is
-    # deferred to the call site. The ``env_getter`` injection keeps this
-    # function testable without mutating process state.
-    from ralph.config.agent_detection import opencode_binary_override  # noqa: PLC0415
+    # The dependency-light override accessor keeps this package independent
+    # from agent detection, whose built-in catalog imports the invoke surface.
 
     if opencode_binary_override(env_getter):
         return
@@ -754,6 +751,7 @@ __all__ = [
     "check_agent_available",
     "check_broken_agent_timer",
     "check_process_result",
+    "collect_r7_diagnostic_fields",
     "command_for_log",
     "discover_http_mcp_tool_names",
     "extract_choice_menu_state",

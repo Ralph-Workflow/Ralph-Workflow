@@ -22,10 +22,11 @@ from ralph.agents.invoke._errors import (
 from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
-    _collect_r7_diagnostic_fields,
+    _has_meaningful_output_from_reader,
     _is_resumable_fire_reason,
     _parent_broker_secret,
     _subprocess_env,
+    collect_r7_diagnostic_fields,
 )
 from ralph.agents.invoke._pty_extras import PtyExtras
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
@@ -215,7 +216,7 @@ def run_pty_and_read_lines(
         # fields on ``CompletionCheckOptions`` from the watchdog
         # state held on the PTY line reader (``pty_reader._watchdog``
         # was set at the start of ``read_lines()``). The helper at
-        # ``_process_reader._collect_r7_diagnostic_fields`` extracts
+        # ``_process_reader.collect_r7_diagnostic_fields`` extracts
         # the four fields into a tuple so this function stays under
         # the PLR0912 / PLR0915 branch / statement limits.
         (
@@ -223,7 +224,7 @@ def run_pty_and_read_lines(
             last_tool_call_str,
             elapsed_value,
             transcript_tail,
-        ) = _collect_r7_diagnostic_fields(
+        ) = collect_r7_diagnostic_fields(
             reader=pty_reader,
             clock=clock,
             parsed_output=parsed_output,
@@ -247,6 +248,7 @@ def run_pty_and_read_lines(
                 last_observed_tool_call=last_tool_call_str,
                 last_evidence_summary=evidence_summary_str,
                 elapsed_seconds=elapsed_value,
+                has_meaningful_output=_has_meaningful_output_from_reader(pty_reader),
                 input_prompt=_extras.input_prompt,
                 transcript_tail=transcript_tail,
                 sentinel_secret=_parent_broker_secret(),
