@@ -133,8 +133,7 @@ def _console_has_no_color(console: Console, *, injected_console: bool) -> bool:
 def _console_has_forced_color(console: Console) -> bool:
     """Return True when an injected console explicitly requests terminal color."""
     force_terminal_raw: object = getattr(console, "_force_terminal", None)
-    color_system_raw: object = getattr(console, "_color_system", None)
-    return force_terminal_raw is True and color_system_raw is not None
+    return force_terminal_raw is True
 
 
 def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedEnv) -> None:
