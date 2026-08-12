@@ -67,11 +67,14 @@ Implement the behavior.
     assert "integrate the combined result" not in rendered
     assert "- [S-1]" not in rendered
     assert "- [api]" in rendered
+    assert "assigned unit as your sole required plan reference" in rendered
+    assert "return that one unit result" in rendered
+    assert "advance to the next ready reference" not in rendered
     worker_namespace = tmp_path / ".agent" / "workers" / "api"
     assert str(worker_namespace / "artifacts" / "development_result.md") in rendered
     assert str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") in rendered
     assert "`.agent/tmp/development_result.md`" not in rendered
-    assert "A `status: partial` result is free-form below the frontmatter" in rendered
+    assert "A `status: partial` or `status: failed` result is free-form" in rendered
     assert "`## Next Steps`" in rendered
     assert "`## Continuation`" in rendered
     assert "Do not invent files or verification results." in rendered

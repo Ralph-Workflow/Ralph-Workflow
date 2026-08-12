@@ -522,7 +522,6 @@ class WorkspaceMonitor:
         self._started = True
         self._awareness_status = _current_status()
         awareness_for_workspace(self._workspace).set_watch_active()
-
     def record_event(self, src_path: str) -> None:
         """Record a file change event.
 

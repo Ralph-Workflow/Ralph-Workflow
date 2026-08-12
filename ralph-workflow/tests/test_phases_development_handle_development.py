@@ -68,6 +68,7 @@ status: completed
 - [F-1] src/a.py
 ## Plan Items Proven
 - [S-1] Implemented.
+  Disposition: completed
 ## Analysis Items Addressed
 """
 
@@ -81,6 +82,7 @@ status: partial
 - [F-1] src/a.py
 ## Plan Items Proven
 - [S-1] Implemented.
+  Disposition: completed
 ## Analysis Items Addressed
 ## Next Steps
 - [N-1] Finish the remaining increment.
@@ -193,7 +195,7 @@ class TestHandleDevelopment:
         result = handle_execution_phase(effect, ctx)
         assert result == [ExecutionResultEvent(phase="development", status="completed")]
 
-    def test_partial_result_flows_through_cleanup_and_commit_back_to_development(self) -> None:
+    def test_partial_result_flows_through_cleanup_and_commit_to_analysis(self) -> None:
         workspace = MagicMock()
         workspace.exists.side_effect = lambda path: (
             path
@@ -227,7 +229,7 @@ class TestHandleDevelopment:
         assert result == [ExecutionResultEvent(phase="development", status="partial")]
         assert cleanup_state.phase == "development_commit_cleanup"
         assert commit_state.phase == "development_commit"
-        assert next_state.phase == "development"
+        assert next_state.phase == "development_analysis"
         assert next_state.last_agent_session_id is None
         assert next_state.post_commit_phase_override is None
 

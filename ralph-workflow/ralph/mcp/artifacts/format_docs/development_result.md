@@ -28,7 +28,9 @@ status: completed
 ## Plan Items Proven
 
 - [S-1] Updated src/auth/refresh.py; tests/test_refresh.py::test_race passes.
+  Disposition: completed
 - [S-2] Ran make verify; exit 0.
+  Disposition: completed
 
 ## Analysis Items Addressed
 
@@ -38,15 +40,15 @@ status: completed
 ## Frontmatter
 
 - `type` — required; `development_result`.
-- `status` — required and closed: `completed` or `partial`. Any other value,
-  including `done` or `wrong`, is a hard error. The diagnostic names both
+- `status` — required and closed: `completed`, `partial`, or `failed`. Any other value,
+  including `done` or `wrong`, is a hard error. The diagnostic names all
   accepted values; correct the frontmatter and resubmit.
 
 ## Sections
 
 Every section rule below applies to `status: completed` only — a
 completion claim is the one thing this artifact can check. With
-`status: partial` the document is free-form below the frontmatter: no
+`status: partial` or `status: failed` the document is free-form below the frontmatter: no
 section is required or shaped and no proof is demanded. Still lead with
 what you did, what remains (`## Next Steps`) and your session id
 (`## Continuation`) — they are read when present and are what lets the
@@ -60,6 +62,10 @@ next iteration resume.
   work-unit plans use your assigned `[unit-ID]` bracket ID exactly as it
   appears in the plan's `## Work Units` items). The item text is
   the proof. Never write "Step N: title" — reference by ID only.
+  Add an indented `Disposition:` field with one of `completed`, `adapted`,
+  `not_applicable`, or `blocked`. Add an indented `Rationale:` for
+  `adapted`, `not_applicable`, and `blocked`. A completed artifact cannot
+  contain `blocked`; necessary blocked work requires `status: partial`.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## What Came Up Short` finding, using that
   finding's stable ID as the item ID and proof of closure as the text.
@@ -74,4 +80,4 @@ or Files Changed; more than one Summary, Next Steps, or Continuation
 item; duplicate item IDs; and (at proof validation) plan-item IDs that
 do not exactly match a plan step ID or work-unit id, missing proofs, or
 duplicates. An unrecognized `status` is a hard error at any status and
-reports the valid `completed` / `partial` vocabulary.
+reports the valid `completed` / `partial` / `failed` vocabulary.

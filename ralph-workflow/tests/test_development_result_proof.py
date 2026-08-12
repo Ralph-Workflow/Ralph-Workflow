@@ -255,7 +255,14 @@ def _write_dev_result(
     artifact_path: str = ".agent/artifacts/development_result.md",
 ) -> None:
     plan_entries = "\n".join(
-        f"- [{item['plan_item']}] {item['proof']}" for item in (plan_items or [])
+        "\n".join(
+            (
+                f"- [{item['plan_item']}] {item['proof']}",
+                f"  Disposition: {item.get('disposition', 'completed')}",
+                *((f"  Rationale: {item['rationale']}",) if item.get("rationale") else ()),
+            )
+        )
+        for item in (plan_items or [])
     )
     analysis_entries = "\n".join(
         f"- [{item['how_to_fix_item']}] {item['proof']}" for item in (analysis_items or [])

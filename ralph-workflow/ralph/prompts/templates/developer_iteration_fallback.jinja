@@ -116,7 +116,7 @@ The complete grammar lives in `.agent/artifact-formats/development_result.md`.
 
 Submit one native-markdown document:
 
-1. Use `type: development_result` and `status: completed|partial` frontmatter,
+1. Use `type: development_result` and `status: completed|partial|failed` frontmatter,
    then `## Summary` (exactly one item), `## Files Changed` (one item per
    file), and `## Plan Items Proven` —
 {% if IS_WORKER %}
@@ -130,13 +130,16 @@ Submit one native-markdown document:
    Copy every bracketed ID EXACTLY from the plan. When analysis feedback exists, add
    `## Analysis Items Addressed` with one item per prior `## How To Fix`
    entry, reusing that entry's stable ID.
+   Add `Disposition: completed|adapted|not_applicable|blocked` beneath every
+   plan proof and add `Rationale:` for adapted, not-applicable, or blocked
+   items. A completed result cannot contain blocked work.
    Every requirement above applies to `status: completed`. A `status: partial`
-   result is free-form below the frontmatter — no section or proof is required.
+   or `status: failed` result is free-form below the frontmatter — no section or proof is required.
    Include `## Next Steps` (the remaining work) and `## Continuation` (your
    session ID) so the next iteration can resume.
 {% if IS_WORKER %}
    For `status: completed`, cite the files changed and focused verification
-   result. For `status: partial`, state verified progress or the concrete
+   result. For `status: partial` or `status: failed`, state verified progress or the concrete
    blocker. Do not invent files or verification results.
 {% endif %}
 2. Submit with {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} (`artifact_type="development_result"`,

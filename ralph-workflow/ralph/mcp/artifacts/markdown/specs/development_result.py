@@ -1,7 +1,7 @@
 """Markdown mapping and validation rules for ``development_result`` artifacts.
 
 Frontmatter ``status`` always has the closed vocabulary ``completed`` |
-``partial`` (routing and continuation prompts read it — a wrong status
+``partial`` | ``failed`` (routing and continuation prompts read it — a wrong status
 such as ``done`` is a hard error naming the valid values). Everything
 below the frontmatter is validated only for a ``completed`` result,
 because only a completion claim is checkable: the required-section
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 from ralph.mcp.artifacts.markdown.registry import register_spec
 
-_STATUSES = ("completed", "partial")
+_STATUSES = ("completed", "partial", "failed")
 
 
 def _items(document: ParsedDocument, name: str) -> tuple[str, ...]:
@@ -62,6 +62,12 @@ def _proof_items(document: ParsedDocument, name: str, key: str) -> list[dict[str
             for line in item.fields
             if ": " in line.text
         }
+        disposition = fields.get("Disposition")
+        if disposition:
+            proof["disposition"] = disposition
+        rationale = fields.get("Rationale")
+        if rationale:
+            proof["rationale"] = rationale
         verdict_id = fields.get("Verdict ID")
         if verdict_id:
             proof["verdict_id"] = verdict_id
@@ -108,10 +114,8 @@ def _free_form_content(document: ParsedDocument) -> Content:
         "files_changed": "\n".join(
             item.text for item in _optional_items(document, "Files Changed") if item.text
         ),
-        "plan_items_proven": _well_formed_proofs(document, "Plan Items Proven", "plan_item"),
-        "analysis_items_addressed": _well_formed_proofs(
-            document, "Analysis Items Addressed", "how_to_fix_item"
-        ),
+        "plan_items_proven": [],
+        "analysis_items_addressed": [],
     }
     next_steps = _first_item(document, "Next Steps")
     if next_steps:
@@ -125,14 +129,6 @@ def _free_form_content(document: ParsedDocument) -> Content:
 def _optional_items(document: ParsedDocument, name: str) -> tuple[ParsedItem, ...]:
     section = document.section(name)
     return () if section is None else tuple(section.items)
-
-
-def _well_formed_proofs(document: ParsedDocument, name: str, key: str) -> list[dict[str, str]]:
-    return [
-        {key: item.identifier, "proof": item.text}
-        for item in _optional_items(document, name)
-        if item.identifier and item.text
-    ]
 
 
 def _to_content(document: ParsedDocument) -> Content:

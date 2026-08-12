@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -31,12 +31,18 @@ class PlanItemProof(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     plan_item: str = Field(..., min_length=1)
+    disposition: Literal["completed", "adapted", "not_applicable", "blocked"]
     proof: str = Field(..., min_length=1)
+    rationale: str | None = None
     verdict_id: str | None = None
     capture_handles: tuple[str, ...] = Field(default_factory=tuple)
 
     @model_validator(mode="after")
     def _validate_ui_evidence(self) -> PlanItemProof:
+        if self.disposition != "completed" and not (self.rationale or "").strip():
+            raise ValueError(f"{self.disposition} plan items require a non-empty rationale")
+        if self.disposition in {"not_applicable", "blocked"}:
+            return self
         if not UI_LABEL_RE.search(self.plan_item):
             return self
         if not self.verdict_id:

@@ -144,15 +144,35 @@ def test_result_status_post_commit_target_must_reference_known_phase() -> None:
         _custom_policy(result_status_post_commit={"partial": "missing"})
 
 
-def test_default_policy_routes_partial_development_result_back_after_commit() -> None:
+def test_default_policy_routes_every_development_result_to_analysis_after_commit() -> None:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
     development = load_policy(defaults_dir).pipeline.phases["development"]
 
-    assert development.result_status_post_commit == {"partial": "development"}
+    assert development.result_status_post_commit == {}
+
+    for status in ("completed", "partial", "failed"):
+        cleanup_state, _ = reducer_reduce(
+            PipelineState(phase="development"),
+            _execution_result_event("development", status),
+            load_policy(defaults_dir).pipeline,
+        )
+        commit_state, _ = reducer_reduce(
+            cleanup_state,
+            PipelineEvent.AGENT_SUCCESS,
+            load_policy(defaults_dir).pipeline,
+        )
+        analysis_state, _ = reducer_reduce(
+            commit_state,
+            PipelineEvent.COMMIT_SUCCESS,
+            load_policy(defaults_dir).pipeline,
+        )
+        assert analysis_state.phase == "development_analysis"
+        assert cleanup_state.phase == "development_commit_cleanup"
+        assert commit_state.phase == "development_commit"
 
 
-@pytest.mark.parametrize("status", ["completed", "partial"])
+@pytest.mark.parametrize("status", ["completed", "partial", "failed"])
 def test_development_result_regression_every_terminal_result_consumes_one_analysis_cycle(
     status: str,
 ) -> None:

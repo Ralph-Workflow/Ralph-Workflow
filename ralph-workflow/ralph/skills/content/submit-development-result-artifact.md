@@ -19,11 +19,11 @@ Submit with `ralph_submit_md_artifact`; pre-check with
 ## Document Shape
 
 Frontmatter: `type: development_result` and exactly one closed-vocabulary
-status: `completed` or `partial`. Any other status is invalid and must be
+status: `completed`, `partial`, or `failed`. Any other status is invalid and must be
 repaired before submission.
 
 The section rules below apply to `status: completed` only. A
-`status: partial` document is free-form below the frontmatter: no
+`status: partial` or `status: failed` document is free-form below the frontmatter: no
 section is required or shaped, and no proof is demanded. Write whatever
 best hands your unfinished work to the next iteration — `## Summary`,
 `## Next Steps` and `## Continuation` (your session ID) are read when
@@ -45,7 +45,10 @@ goes in the `[ID]` slot and the proof is the item text:
 
 - `## Plan Items Proven`: the item ID is the plan step's stable ID
   (`S-1`, `S-2`, …) exactly as it appears in the plan's `## Steps`
-  section. The text states the concrete evidence that the step is done.
+  section. The text states concrete evidence. Add an indented
+  `Disposition: completed|adapted|not_applicable|blocked` field. Add an
+  indented `Rationale:` for adapted, not-applicable, or blocked items. A
+  completed result cannot contain blocked work; submit a partial result.
 - `## Analysis Items Addressed`: the item ID is the stable ID of the
   `## What Came Up Short` finding in the analysis-decision artifact you are
   answering. The text states concrete evidence that the finding is closed.
@@ -82,7 +85,9 @@ status: completed
 ## Plan Items Proven
 
 - [S-1] tests/test_foo.py contains test_clamp_handles_out_of_range_index.
+  Disposition: completed
 - [S-2] src/foo.py clamps the index before lookup while preserving the public foo() signature.
+  Disposition: completed
 
 ## Analysis Items Addressed
 

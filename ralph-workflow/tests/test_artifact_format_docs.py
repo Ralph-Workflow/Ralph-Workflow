@@ -30,7 +30,7 @@ _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
 _ANALYSIS_DECISION_TYPES = tuple(spec.artifact_type for spec in ANALYSIS_DECISION_SPECS)
 _CLOSED_STATUS_VOCABULARIES = {
     "issues": ("issues_found", "no_issues"),
-    "development_result": ("completed", "partial"),
+    "development_result": ("completed", "partial", "failed"),
     "planning_analysis_decision": ("completed", "request_changes", "failed"),
     "development_analysis_decision": ("completed", "request_changes", "failed"),
     "review_analysis_decision": ("completed", "request_changes", "failed"),

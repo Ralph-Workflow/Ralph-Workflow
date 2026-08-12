@@ -38,7 +38,11 @@ class DevelopmentResult(RalphBaseModel):
         check: everything below the frontmatter is free-form prose the
         next iteration reads, never a structure this validator gates.
         """
-        allowed_statuses: tuple[Literal["completed", "partial"], ...] = ("completed", "partial")
+        allowed_statuses: tuple[Literal["completed", "partial", "failed"], ...] = (
+            "completed",
+            "partial",
+            "failed",
+        )
         if self.status not in allowed_statuses:
             msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             raise ValueError(msg)
@@ -48,6 +52,12 @@ class DevelopmentResult(RalphBaseModel):
             raise ValueError("completed development_result artifacts require summary")
         if not self.files_changed.strip():
             raise ValueError("completed development_result artifacts require files_changed")
+        blocked = [proof.plan_item for proof in self.plan_items_proven if proof.disposition == "blocked"]
+        if blocked:
+            raise ValueError(
+                "completed development_result artifacts cannot contain blocked plan items; "
+                f"submit status partial instead: {blocked}"
+            )
         return self
 
 
@@ -63,7 +73,7 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
             if isinstance(value, list):
                 for entry in value:
                     if isinstance(entry, dict):
-                        for default_field in ("capture_handles", "verdict_id"):
+                        for default_field in ("capture_handles", "rationale", "verdict_id"):
                             if entry.get(default_field) in (None, ()):
                                 entry.pop(default_field, None)
         return dumped

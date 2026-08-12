@@ -95,7 +95,7 @@ def test_development_result_skill_teaches_closed_status_vocabulary() -> None:
     text = _read("submit-development-result-artifact.md")
 
     assert "closed-vocabulary" in text
-    assert "`completed` or `partial`" in text
+    assert "`completed`, `partial`, or `failed`" in text
     assert "unknown status is coerced" not in text
 
 

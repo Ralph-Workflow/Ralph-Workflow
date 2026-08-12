@@ -83,6 +83,7 @@ status: completed
 
 ## Plan Items Proven
 - [{{ unit_id }}] Implemented this work unit; updated src/main.py and ran pytest tests/test_main.py -q; it passes.
+  Disposition: completed
 {% endset %}
 
 ## UNIT RESULT
@@ -91,10 +92,12 @@ For `status: completed`, submit exactly one proof item under
 `## Plan Items Proven`: `- [{{ unit_id }}]`, citing the files changed and the
 focused verification result. Do not submit another plan-step or work-unit ID.
 Do not invent files or verification results.
+Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
 
-A `status: partial` result is free-form below the frontmatter — no section or
+A `status: partial` or `status: failed` result is free-form below the frontmatter — no section or
 proof is required, so submit one as soon as you cannot finish rather than
-forcing an unprovable completion claim. State verified progress or the concrete
+forcing an unprovable completion claim. Use failed when the attempt cannot
+proceed. State verified progress or the concrete
 blocker, and include `## Next Steps` (the remaining work) and `## Continuation`
 (your session ID) so the next iteration can resume.
 

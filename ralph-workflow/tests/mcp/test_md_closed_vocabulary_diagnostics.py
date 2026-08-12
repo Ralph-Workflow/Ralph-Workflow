@@ -38,7 +38,7 @@ def _assert_closed_vocabulary_error(
             "development_result",
             ("type: development_result", "status: done"),
             "## Summary\n- [S1] Work finished\n## Files Changed\n- [F1] src/example.py",
-            ("completed", "partial"),
+            ("completed", "partial", "failed"),
             id="development-result",
         ),
         pytest.param(
@@ -141,7 +141,7 @@ def test_analysis_duplicate_status_diagnostic_names_every_accepted_value(
             "development_result",
             ("type: development_result",),
             "## Summary\n- [S1] Work finished\n## Files Changed\n- [F1] src/example.py",
-            ("completed", "partial"),
+            ("completed", "partial", "failed"),
             id="development-result",
         ),
         pytest.param(
@@ -188,7 +188,7 @@ def test_consumed_status_missing_or_empty_names_every_accepted_value(
         pytest.param(
             "development_result",
             ("type: development_result", "status: done"),
-            ("completed", "partial"),
+            ("completed", "partial", "failed"),
             False,
             id="development-result",
         ),
