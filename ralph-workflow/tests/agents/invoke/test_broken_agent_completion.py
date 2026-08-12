@@ -122,6 +122,24 @@ def test_completion_gate_regression_classifies_fast_credentials_in_output_as_bro
     assert excinfo.value.elapsed_seconds == 2.0
 
 
+def test_completion_gate_regression_prioritizes_credentials_over_no_llm_activity() -> None:
+    """DA-003: credential output wins even when the watchdog saw no LLM activity."""
+    with pytest.raises(BrokenAgentExitError) as excinfo:
+        check_process_result(
+            _Handle(),
+            "opencode",
+            ["openai_api_key: missing"],
+            _options(
+                elapsed_seconds=2.0,
+                input_prompt="implement the change",
+                has_meaningful_output=False,
+            ),
+            _clock=FakeClock(),
+        )
+
+    assert excinfo.value.reason == "no_output"
+
+
 def test_completion_gate_regression_classifies_fast_credentials_in_stderr_as_broken_agent() -> None:
     """S-5(b): a clean-exit stderr credential marker must bypass the grace window."""
     with pytest.raises(BrokenAgentExitError) as excinfo:

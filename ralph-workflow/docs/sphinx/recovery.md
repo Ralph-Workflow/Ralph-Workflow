@@ -220,3 +220,16 @@ Lock-in regression test: `tests/recovery/test_opencode_resumable_exit_classifica
 covers the deterministic classification, the propagation of
 `resumable_session_id` from the typed exception, and the resume/fresh
 recovery action mapping.
+
+## Fast no-work exits
+
+A clean agent exit is not resumable when Ralph Workflow has conclusive evidence
+that the agent did no model work: no captured output, only harness/prompt-echo
+output confirmed by the watchdog, or a recognized authentication failure in
+captured output or stderr. These exits raise `BrokenAgentExitError`, so recovery
+skips same-agent retries and proceeds through the configured agent chain.
+
+For nonzero exits, this credential classification applies only during the
+startup grace period. A later nonzero credential error remains a normal
+recoverable invocation failure, because it can be a transient loss during an
+otherwise active run.

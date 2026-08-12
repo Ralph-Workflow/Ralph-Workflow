@@ -109,9 +109,14 @@ def _make_change_tracker(workspace: Path, key: str) -> object:
     return _ChangeTrackerHandler()
 
 
+def _is_linux_host() -> bool:
+    """Return whether the running host exposes Linux's procfs inotify data."""
+    return sys.platform == "linux"
+
+
 def _read_inotify_watch_limit() -> int | None:
     """Return Linux's per-real-user inotify-watch ceiling when available."""
-    if sys.platform == "linux":
+    if _is_linux_host():
         try:
             return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
         except OSError:
@@ -121,7 +126,7 @@ def _read_inotify_watch_limit() -> int | None:
 
 def _read_inotify_watch_user_total() -> int | None:
     """Return the current real user's live inotify-watch count on Linux."""
-    if sys.platform == "linux":
+    if _is_linux_host():
         try:
             user_id = os.getuid()
             watch_total = 0
