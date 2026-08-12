@@ -22,11 +22,12 @@ dist_homebrew() {
 
 formula_check() {
   echo "Validating Homebrew formula..."
-  if command -v ruby >/dev/null 2>&1; then
-    ruby -c "$ROOT/Formula/ralph-workflow.rb"
-  else
-    echo "Ruby not installed, skipping formula check (install Ruby to enable)"
+  if ! command -v ruby >/dev/null 2>&1; then
+    echo "ERROR: Ruby is required for formula-check; install Ruby and retry." >&2
+    echo "See docs/ralph-workflow-policy/gate-script-policy.md § Default requirements: gates must fail closed and must not be hollow." >&2
+    return 127
   fi
+  ruby -c "$ROOT/Formula/ralph-workflow.rb"
 }
 
 case "${1:-}" in

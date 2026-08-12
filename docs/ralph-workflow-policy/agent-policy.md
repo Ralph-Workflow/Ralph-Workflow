@@ -92,12 +92,20 @@ mandatory audit in `ralph.verify._VERIFY_STEPS`, and the social-proof
 gate; a green run is the minimum evidence of compliance with this
 policy.
 
-The dogfooded commit rule (commit generation) is also gated here:
+The dogfooded commit rule (commit generation) is mandatory when an agent
+creates a commit, but it is not a bounded verification gate. It launches a
+configured remote coding agent and the current startup-silence allowance is
+120 seconds (`ralph/timeout_defaults.py:295-305`), so a valid invocation
+cannot truthfully promise a result within the policy probe's 10-second cap.
 
-RALPH-COMMAND: python -m ralph --generate-commit
+RALPH-PENDING: uv --directory ralph-workflow run python -m ralph --generate-commit (assumed 2026-08-11); review trigger: once commit generation has a local bounded preflight that emits an observable result and exits within 10 seconds before any remote agent is started
 
-This is the only permitted commit command per `AGENTS.md` § Commit
-rule; hand-rolled `git commit` is forbidden.
+The command above remains the only permitted commit-generation command per
+`AGENTS.md` Commit rule; hand-rolled `git commit` is forbidden. This dated
+deferral does not authorize an alternate commit path. The 2026-08-11 bounded
+probe launched Codex but received no agent output before it was terminated at
+12 seconds; this is diagnostic evidence of the current remote-agent contract,
+not a claim that the command is a fast verification gate.
 
 ## Exceptions
 

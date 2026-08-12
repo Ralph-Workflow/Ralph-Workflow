@@ -304,7 +304,7 @@ dist-homebrew: build-wheel
 # build stays non-budget-tracked and the immutable 60s test budget is
 # unchanged. `make docs` uses `uv run --extra docs sphinx-build -W` so any
 # Sphinx warning fails the build before the python-verify step runs.
-verify: verify-drift docs
+verify: formula-check verify-drift docs
 	@uv run python -m ralph.verify
 
 # Drift detection delegates to the bounded, fail-closed policy script.
