@@ -3219,6 +3219,13 @@ ralph.diagnostics.workspace_health
    :members:
    :show-inheritance:
 
+ralph.diagnostics.host_pressure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.diagnostics.host_pressure
+   :members:
+   :show-inheritance:
+
 ralph.display
 ~~~~~~~~~~~~~
 

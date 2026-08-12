@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-_CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, str, str], ...] = (
+from ralph.workspace.agent_dir_retention import DEFAULT_MAX_AGE_SECONDS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+_CATEGORY_POLICIES: tuple[
+    tuple[str, tuple[str, ...], str, str, str, str, bool, str, str, float | None],
+    ...,
+] = (
     (
         "project_content",
         (".",),
@@ -15,6 +25,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, 
         False,
         "loss is unrecoverable",
         "user",
+        None,
     ),
     (
         "workflow_records",
@@ -32,6 +43,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, 
         False,
         "needed to recover workflows",
         "workflow",
+        None,
     ),
     (
         "workspace_intelligence",
@@ -43,6 +55,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, 
         True,
         "rebuilt on next index",
         "explore",
+        None,
     ),
     (
         "operational_records",
@@ -50,10 +63,11 @@ _CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, 
         "operational logs and diagnostics",
         "run diagnostics",
         "required operational evidence",
-        "operational records are retained",
-        False,
+        "operational records older than the age bound are recreatable",
+        True,
         "needed for diagnosis",
         "operations",
+        DEFAULT_MAX_AGE_SECONDS,
     ),
     (
         "temporary_data",
@@ -65,6 +79,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, 
         True,
         "interrupted work is restarted",
         "run",
+        None,
     ),
 )
 
@@ -115,6 +130,7 @@ def inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
         recreatable,
         impact,
         owner,
+        max_age_seconds,
     ) in _CATEGORY_POLICIES:
         paths = tuple(workspace_root / relative for relative in relatives)
         bytes_used = 0
@@ -137,6 +153,7 @@ def inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
                 "recreatable": recreatable,
                 "recovery_impact": impact,
                 "active_owner": owner,
+                "max_age_seconds": max_age_seconds,
             }
         )
     return tuple(inventory)
@@ -144,11 +161,22 @@ def inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
 
 def plan_cleanup(
     inventory: tuple[dict[str, object], ...],
+    keep_run_ids: frozenset[str] = frozenset(),
     *,
-    active_run_id: str | None = None,
     retained_paths: tuple[Path, ...] = (),
+    now: Callable[[], float] | None = None,
 ) -> tuple[dict[str, object], ...]:
-    """Return removable derived/inactive paths without deleting any data."""
+    """Return removable derived/inactive paths without deleting any data.
+
+    ``keep_run_ids`` is the set of run ids whose data must survive the
+    plan: temporary directories matching a kept id are skipped, and
+    operational log files whose ``<run_id>.log`` prefix matches a kept
+    id are retained regardless of age. Callers should derive this set
+    from the shared active-run registry via
+    ``prune_lock_run_ids(workspace_root, extra_keep={...})`` so runs
+    registered by other processes are respected.
+    """
+    current = (now or time.time)()
     candidates: list[dict[str, object]] = []
     for entry in inventory:
         category = entry["category"]
@@ -163,8 +191,30 @@ def plan_cleanup(
             candidates.extend(
                 {"category": category, "path": child, "reason": entry["eligibility_reason"]}
                 for child in sorted(path.iterdir())
-                if child.name != active_run_id and child not in retained_paths
+                if child.name not in keep_run_ids and child not in retained_paths
             )
+        elif category == "operational_records" and path.is_dir():
+            max_age_seconds = entry.get("max_age_seconds")
+            if isinstance(max_age_seconds, (int, float)):
+                cutoff = current - float(max_age_seconds)
+                for child in sorted(path.iterdir()):
+                    if not child.is_file() or child in retained_paths:
+                        continue
+                    run_id = child.name.removesuffix(".log")
+                    if run_id in keep_run_ids:
+                        continue
+                    try:
+                        is_aged = child.stat().st_mtime < cutoff
+                    except OSError:
+                        continue
+                    if is_aged:
+                        candidates.append(
+                            {
+                                "category": category,
+                                "path": child,
+                                "reason": entry["eligibility_reason"],
+                            }
+                        )
     return tuple(candidates)
 
 

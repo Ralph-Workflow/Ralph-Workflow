@@ -17,8 +17,11 @@ dirty marking.
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Protocol, cast
 
+from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
 
 
@@ -140,6 +143,78 @@ def resolve_explore_index(session: object) -> ExploreIndexLike | None:
     return handle
 
 
+# --- Burst-debounced dirty-path drain (S-3) -------------------------------
+#
+# One process-level scheduler coalesces a burst of ``mark_path`` /
+# ``mark_paths`` calls into a single ``handle.mark_dirty`` fire per
+# debounce window. Pending marks are keyed by ``(id(handle), path)`` so
+# duplicate notifications for the same path collapse; the drain groups
+# by handle and issues one ``mark_dirty`` per handle with the unique
+# path set. The scheduler is passive: ``fire_if_due`` is polled on each
+# new mark (so a quiet window after a burst drains promptly without a
+# background thread) and at workflow lifecycle hooks.
+_PENDING_LOCK = threading.Lock()
+_PENDING_MARKS: dict[
+    tuple[int, str], tuple[ExploreIndexLike, str, str]
+] = {}  # bounded-accumulator-ok: drained on fire; bounded by distinct (handle,path) keys
+
+
+def _enqueue_mark(
+    handle: ExploreIndexLike,
+    normalized: str,
+    *,
+    source_tool: str,
+    reason: str,
+) -> None:
+    """Persist one dirty mark synchronously and arm the debounce scheduler.
+
+    The mark is visible in the store immediately (AC-02: prompt change
+    awareness). The BurstDebounceScheduler coalesces the reindex trigger
+    only — N marks in one debounce window produce one ``on_fire``, not N.
+    """
+    key = (id(handle), normalized)
+    with _PENDING_LOCK:
+        is_new = key not in _PENDING_MARKS
+        _PENDING_MARKS[key] = (handle, source_tool, reason)
+    if is_new:
+        handle.mark_dirty([normalized], source_tool=source_tool, reason=reason)
+    _dirty_scheduler.mark(lambda: None)
+    # Opportunistic drain: if the debounce window already elapsed (a
+    # quiet period since the last mark), fire immediately so the
+    # scheduler's pending batch resets without waiting for a lifecycle
+    # hook. This keeps the scheduler thread-free while bounding latency.
+    _dirty_scheduler.fire_if_due()
+
+
+def _drain_pending_marks() -> None:
+    """Clear pending marks after the debounce fire.
+
+    The ``on_fire`` callback bound to ``_dirty_scheduler``. Marks were
+    already persisted synchronously by each ``_enqueue_mark`` call; this
+    callback resets the pending dict so the next burst starts fresh.
+    The scheduler fires once per debounce window (coalescing N marks
+    into one fire), and lifecycle hooks observe the store's dirty queue
+    to decide when to reindex.
+    """
+    with _PENDING_LOCK:
+        _PENDING_MARKS.clear()
+
+
+def _system_clock() -> float:
+    return time.monotonic()
+
+
+#: ONE process-level scheduler. Production reads this attribute; tests
+#: replace it with a spy to assert the wiring without parallel
+#: construction. The debounce window is short (50 ms) so a burst
+#: coalesces but a quiet gap drains promptly.
+_dirty_scheduler: BurstDebounceScheduler = BurstDebounceScheduler(
+    clock=_system_clock,
+    on_fire=_drain_pending_marks,
+    debounce_window=0.05,
+)
+
+
 def mark_path(
     handle: ExploreIndexLike | None,
     *,
@@ -149,12 +224,17 @@ def mark_path(
 ) -> None:
     """Helper that always coerces the path before calling the handle.
 
-    Centralizes the path-normalization call so handlers stay tidy.
+    Routes through the module-level ``_dirty_scheduler`` so a burst of
+    dirty notifications for the same path coalesces into ONE
+    ``handle.mark_dirty`` call (and therefore one reindex fire) instead
+    of N. The normalized path is recorded in ``_pending_marks`` keyed by
+    ``(handle, path)`` so duplicates collapse; the scheduler's
+    ``on_fire`` drains the pending set once per debounce window.
     """
     if handle is None:
         return
     normalized = normalize_index_path(path)
-    handle.mark_dirty([normalized], source_tool=source_tool, reason=reason)
+    _enqueue_mark(handle, normalized, source_tool=source_tool, reason=reason)
 
 
 def mark_paths(
@@ -167,8 +247,9 @@ def mark_paths(
     """Helper for handlers that touch multiple paths (move/copy)."""
     if handle is None:
         return
-    normalized = [normalize_index_path(p) for p in paths]
-    handle.mark_dirty(normalized, source_tool=source_tool, reason=reason)
+    for raw in paths:
+        normalized = normalize_index_path(raw)
+        _enqueue_mark(handle, normalized, source_tool=source_tool, reason=reason)
 
 
 def build_sqlite_index_handle(

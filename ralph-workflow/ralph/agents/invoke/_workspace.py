@@ -19,6 +19,7 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._has_src_path import _HasSrcPath
+from ralph.workspace._cross_process_watch_lock import CrossProcessWatchLock
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
@@ -388,6 +389,7 @@ class WorkspaceMonitor:
         self._directory_counter = directory_counter
         self._live_watch_total = live_watch_total
         self._handler: object | None = None
+        self._cross_process_owner_id: str | None = None
         self._awareness_status: dict[str, object] = _live_fallback_status("unavailable")
 
     def start(self) -> None:
@@ -441,8 +443,17 @@ class WorkspaceMonitor:
                 )
                 return
 
+            # S-10: cross-process watch coordination. Another process may
+            # already own the recursive watchdog on this workspace root.
+            # When the cross-process lock is held, do NOT register an
+            # overlapping observer; fall back visibly so operators can see
+            # why no watch was scheduled.
+            if not self._acquire_cross_process_watch_lock():
+                return
+
             observer = _create_watchdog_observer()
             if observer is None:
+                self._release_cross_process_watch_lock()
                 self._awareness_status = _live_fallback_status("observer_unavailable")
                 awareness_for_workspace(self._workspace).set_live_fallback("observer_unavailable")
                 return
@@ -457,6 +468,7 @@ class WorkspaceMonitor:
                     self._stop_observer(observer)
                 self._observer = None
                 self._handler = None
+                self._release_cross_process_watch_lock()
                 if exc.errno in (errno.EMFILE, errno.ENOSPC):
                     self._awareness_status = _live_fallback_status("watch_capacity")
                     awareness_for_workspace(self._workspace).set_live_fallback("watch_capacity")
@@ -477,6 +489,7 @@ class WorkspaceMonitor:
                     self._stop_observer(observer)
                 self._observer = None
                 self._handler = None
+                self._release_cross_process_watch_lock()
                 raise
             shared = _SharedWorkspaceWatch(observer, handler)
             shared.monitors.add(self)
@@ -563,7 +576,17 @@ class WorkspaceMonitor:
         runs after a failed ``stop`` before the original failure propagates.
         """
         if not self._started:
+            # S-3: even a monitor that never acquired a watch (watchdog
+            # unavailable, live_fallback) still represents a workflow
+            # boundary, so release the process-level dirty-path debounce
+            # timer before returning.
+            from ralph.mcp.explore.dirty_paths import _dirty_scheduler
+
+            _dirty_scheduler.on_workflow_complete()
             return
+        # S-10: release the cross-process watch lock when this lease owns it,
+        # before tearing down the in-process shared observer.
+        self._release_cross_process_watch_lock()
         key = self._shared_key
         self._started = False
         self._shared_key = None
@@ -581,6 +604,14 @@ class WorkspaceMonitor:
         if observer is not None:
             self._stop_observer(observer)
             release_workspace_awareness(self._workspace)
+        # S-3: release the process-level dirty-path debounce timer on
+        # every workspace lease release so a completed/cancelled/failed
+        # workflow never strands a deferred reindex fire. The scheduler
+        # is owned by ``ralph.mcp.explore.dirty_paths``; ``WorkspaceMonitor``
+        # does NOT construct its own (single shared owner).
+        from ralph.mcp.explore.dirty_paths import _dirty_scheduler
+
+        _dirty_scheduler.on_workflow_complete()
         logger.debug(
             "Stopped workspace monitoring: {} ({} events)",
             self._workspace,
@@ -593,6 +624,41 @@ class WorkspaceMonitor:
             observer.stop()
         finally:
             observer.join(5)
+
+    def _release_cross_process_watch_lock(self) -> None:
+        """Release the cross-process watch lock when this lease owns it (S-10).
+
+        A no-op when this monitor never won the cross-process lock (e.g. it
+        joined an existing in-process shared watch, or it entered
+        ``live_fallback`` because another process held the lock). The owner
+        id is cleared before the release call so a reentrant stop is safe.
+        """
+        if self._cross_process_owner_id is None:
+            return
+        owner_id = self._cross_process_owner_id
+        self._cross_process_owner_id = None
+        CrossProcessWatchLock.release(self._workspace, owner_id)
+
+    def _acquire_cross_process_watch_lock(self) -> bool:
+        """Try to claim the cross-process watch lock for this lease (S-10).
+
+        Returns ``True`` when this lease may proceed to schedule an observer
+        (the lock was free and is now held by this process, or this process
+        already holds it). Returns ``False`` when another process holds the
+        lock; the awareness status is updated to ``live_fallback`` and the
+        caller must return without scheduling.
+        """
+        holder = CrossProcessWatchLock.try_acquire(self._workspace)
+        if holder is not None:
+            self._awareness_status = _live_fallback_status("cross_process_holder")
+            awareness_for_workspace(self._workspace).set_live_fallback(
+                "cross_process_holder"
+            )
+            return False
+        self._cross_process_owner_id = CrossProcessWatchLock.claimed_owner_id(
+            self._workspace
+        )
+        return True
 
     @classmethod
     def _record_event_for_key(cls, key: str, src_path: str) -> None:

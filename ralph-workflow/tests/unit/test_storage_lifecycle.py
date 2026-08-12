@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import os
+import time
 from pathlib import Path
 
 import pytest
 
+from ralph.workspace.agent_dir_retention import (
+    DEFAULT_MAX_AGE_SECONDS,
+    prune_lock_run_ids,
+    register_active_run,
+)
 from ralph.workspace.storage_lifecycle import inventory_storage, plan_cleanup
 
 # The AST writer-discovery walk parses three production trees on its first
@@ -41,6 +49,8 @@ def test_inventory_reports_all_storage_categories_without_creating_paths(tmp_pat
     assert entries["workflow_records"]["count"] == 1
     assert entries["workspace_intelligence"]["bytes"] == len("data")
     assert entries["operational_records"]["count"] == 1
+    assert entries["operational_records"]["max_age_seconds"] == DEFAULT_MAX_AGE_SECONDS
+    assert entries["operational_records"]["recreatable"] is True
     assert entries["temporary_data"]["count"] == 1
     assert not (tmp_path / ".agent" / "diagnostics").exists()
 
@@ -50,7 +60,9 @@ def test_cleanup_plan_only_selects_recreatable_inactive_storage(tmp_path: Path) 
     _write(tmp_path / ".agent" / "tmp" / "old-run" / "scratch.txt")
     _write(tmp_path / ".agent" / "tmp" / "active-run" / "scratch.txt")
 
-    candidates = plan_cleanup(inventory_storage(tmp_path), active_run_id="active-run")
+    candidates = plan_cleanup(
+        inventory_storage(tmp_path), keep_run_ids=frozenset({"active-run"})
+    )
 
     assert {(candidate["category"], candidate["path"].name) for candidate in candidates} == {
         ("workspace_intelligence", "ralph-explore"),
@@ -58,6 +70,63 @@ def test_cleanup_plan_only_selects_recreatable_inactive_storage(tmp_path: Path) 
     }
     assert (tmp_path / ".agent" / "ralph-explore").exists()
     assert (tmp_path / ".agent" / "tmp" / "old-run").exists()
+
+
+def test_operational_records_become_cleanup_eligible_after_age_bound(tmp_path: Path) -> None:
+    """Aged operational logs past the max-age bound are cleanup candidates."""
+    aged_log = tmp_path / ".agent" / "logs" / "stale-run.log"
+    _write(aged_log)
+    current = time.time()
+    aged_mtime = current - (DEFAULT_MAX_AGE_SECONDS + 3600)
+    os.utime(aged_log, (aged_mtime, aged_mtime))
+
+    candidates = plan_cleanup(
+        inventory_storage(tmp_path),
+        keep_run_ids=frozenset(),
+        now=lambda: current,
+    )
+
+    candidate_paths = {candidate["path"] for candidate in candidates}
+    assert aged_log in candidate_paths
+
+
+def test_operational_records_keep_concurrent_active_run(tmp_path: Path) -> None:
+    """Aged logs for a run registered by another process are retained."""
+    register_active_run(tmp_path, "run-current")
+    # Simulate a second process persisting its own run id to the shared registry.
+    active_runs_path = tmp_path / ".agent" / "active_runs.json"
+    _write(active_runs_path, json.dumps({"run_ids": ["run-current", "run-other"]}))
+
+    aged_log = tmp_path / ".agent" / "logs" / "run-other.log"
+    _write(aged_log)
+    current = time.time()
+    aged_mtime = current - (DEFAULT_MAX_AGE_SECONDS + 3600)
+    os.utime(aged_log, (aged_mtime, aged_mtime))
+
+    keep_run_ids = prune_lock_run_ids(tmp_path)
+    candidates = plan_cleanup(
+        inventory_storage(tmp_path),
+        keep_run_ids=keep_run_ids,
+        now=lambda: current,
+    )
+
+    candidate_paths = {candidate["path"] for candidate in candidates}
+    assert aged_log not in candidate_paths
+
+
+def test_operational_records_keep_current_run(tmp_path: Path) -> None:
+    """A fresh log for an active run is never a cleanup candidate."""
+    fresh_log = tmp_path / ".agent" / "logs" / "current-run.log"
+    _write(fresh_log)
+
+    candidates = plan_cleanup(
+        inventory_storage(tmp_path),
+        keep_run_ids=frozenset({"current-run"}),
+        now=time.time,
+    )
+
+    candidate_paths = {candidate["path"] for candidate in candidates}
+    assert fresh_log not in candidate_paths
 
 
 # ---------------------------------------------------------------------------

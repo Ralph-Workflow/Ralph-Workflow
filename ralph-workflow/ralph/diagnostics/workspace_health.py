@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
+from ralph.diagnostics.host_pressure import read_host_pressure
 from ralph.workspace.awareness import awareness_for_workspace
 from ralph.workspace.storage_lifecycle import inventory_storage, plan_cleanup
 
@@ -47,6 +48,31 @@ def _active_observation() -> list[dict[str, object]]:
             for monitor in monitors
         )
     return entries
+
+
+def _active_maintenance() -> dict[str, object]:
+    """Report in-process retention passes and dirty-scheduler pending state."""
+    # The retention coordinator is process-local in agent_dir_retention;
+    # read its pass counter defensively so a missing coordinator never
+    # breaks the health surface.
+    retention_passes = 0
+    try:
+        from ralph.workspace.agent_dir_retention import process_retention_coordinator
+
+        retention_passes = process_retention_coordinator().passes
+    except Exception:
+        retention_passes = 0
+    dirty_pending = False
+    try:
+        from ralph.mcp.explore.dirty_paths import _dirty_scheduler
+
+        dirty_pending = _dirty_scheduler.has_pending
+    except Exception:
+        dirty_pending = False
+    return {
+        "retention_passes": retention_passes,
+        "dirty_scheduler_pending": dirty_pending,
+    }
 
 
 def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
@@ -98,6 +124,7 @@ def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
     active_cleanup["by_category"] = by_category
 
     dirty_paths = snapshot.get("dirty_paths_count", 0)
+    mode = snapshot.get("mode")
     return {
         "workspace": str(root),
         "generated_at": time.time(),
@@ -118,11 +145,28 @@ def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
         "active_cleanup": active_cleanup,
         "active_recovery": [],
         "watch_capacity": {
-            "mode": snapshot.get("mode"),
+            "mode": mode,
             "cause": snapshot.get("cause"),
             "automatic_recovery": bool(snapshot.get("automatic_recovery")),
             "safe_next_action": snapshot.get("safe_next_action"),
         },
+        # S-4: host watch-pressure signal (ralph_descriptor is always
+        # certain because Ralph owns the workspace monitor; host_pressure
+        # carries the host-level attribution). The two sub-objects are
+        # distinct dicts so a caller never confuses Ralph's own mode with
+        # the host's uncertain estimate.
+        "host_watch_pressure": {
+            "ralph_descriptor": {
+                "attribution": "certain",
+                "mode": mode,
+                "owner": "WorkspaceMonitor",
+            },
+            "host_pressure": read_host_pressure(),
+        },
+        # S-4: active in-process maintenance so a reader can tell whether
+        # Ralph is currently sweeping (retention) or has a deferred
+        # refresh pending (dirty scheduler).
+        "active_maintenance": _active_maintenance(),
         "cleanup_eligibility": cleanup_eligibility,
         "recreatability": recreatability,
     }

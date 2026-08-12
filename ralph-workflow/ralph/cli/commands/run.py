@@ -512,17 +512,16 @@ def _execute_pipeline(
         active_display.emit_warning("Pipeline runner is unavailable")
         return _EXIT_CONFIG_ERROR
 
+    from ralph.mcp.explore.dirty_paths import _dirty_scheduler  # S-3: lifecycle hooks
+
     try:
-        kwargs = _build_runner_kwargs(
-            request,
-            display_context=display_context,
-            display=active_display,
-            display_is_active=display_is_active,
-            run_func=run_func,
-        )
-        return run_func(request.config, request.initial_state, **kwargs)
+        kwargs = _build_runner_kwargs(request, display_context=display_context, display=active_display, display_is_active=display_is_active, run_func=run_func)
+        result = run_func(request.config, request.initial_state, **kwargs)
+        _dirty_scheduler.on_workflow_complete()
+        return result
     except KeyboardInterrupt:
         active_display.emit_warning("\nInterrupted by user")
+        _dirty_scheduler.on_workflow_cancel()
         try:
             from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
@@ -533,12 +532,15 @@ def _execute_pipeline(
             _save_interrupt_checkpoint(request.initial_state)
         return _EXIT_INTERRUPT
     except CheckpointPolicyMismatchError as e:
+        _dirty_scheduler.on_workflow_restart()
         active_display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
         return _EXIT_PREFLIGHT
     except PolicyValidationError as e:
+        _dirty_scheduler.on_workflow_restart()
         active_display.emit_warning(_pipeline_config_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
     except Exception as e:
+        _dirty_scheduler.on_workflow_fail()
         logger.exception("Pipeline execution failed: {}")
         active_display.emit_warning(f"Pipeline failed: {e}")
         return _EXIT_CONFIG_ERROR
@@ -707,14 +709,15 @@ def _sync_shipped_skills_on_pipeline_run(
             "manually or re-run to retry.",
         )
     # RFC-013 P2: run-start retention sweep deletes aged bookkeeping
-    # under ``.agent`` (completion sentinels, receipt dirs, retry scratch)
-    # so long multi-instance runs do not accumulate one-file-per-event
-    # state under fseventsd. Best-effort: any error is swallowed so the
-    # pipeline always proceeds.
+    # under ``.agent`` so multi-instance runs don't accumulate state.
+    # Best-effort: any error is swallowed so the pipeline always proceeds.
     try:
-        from ralph.workspace.agent_dir_retention import sweep_agent_dir
+        from ralph.workspace.agent_dir_retention import (
+            process_retention_coordinator,
+            sweep_agent_dir,
+        )
 
-        removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id)
+        removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id, coordinator=process_retention_coordinator())
         if removed:
             logger.debug("Retention sweep removed {} stale .agent entries", removed)
     except Exception as exc:  # sweep is best-effort; never break the pipeline

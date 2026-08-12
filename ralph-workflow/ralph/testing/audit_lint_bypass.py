@@ -128,6 +128,11 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # with real MCP dispatch and the per-mode branching reads top-down.
     ("mock_multimodal_agent", "PLR0912"),
     ("mock_multimodal_agent", "PLR0915"),
+    # S-3: lazy imports break lifecycle/import-time coupling between the
+    # workspace monitor, the CLI run path, and the diagnostics surface.
+    ("_workspace", "PLC0415"),  # WorkspaceMonitor.stop releases the dirty scheduler
+    ("run", "PLC0415"),  # _execute_pipeline releases the scheduler at every exit branch
+    ("workspace_health", "PLC0415"),  # _active_maintenance reads the live coordinator/scheduler
     ("_metrics", "PLW0603"),
     # _sentry.py: scalar module-level state (_SESSION_STARTED_AT,
     # _SESSION_OUTCOME, _INITIALIZED, _EXTRA_SCRUB_PREFIXES) is the
@@ -396,6 +401,8 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/mcp/tools/workspace/**/*.py",
             "ralph/pipeline/**/*.py",
             "ralph/phases/**/*.py",
+            "ralph/agents/invoke/_workspace.py",
+            "ralph/diagnostics/**/*.py",
             "ralph/agents/builtin_spec.py",
             "ralph/agents/support.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
@@ -409,7 +416,9 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "before/after dev-fix session refresh hook; phases->pipeline"
             "->config->policy->loader->phases for the phase-handler "
             "registration seam so register_role_handlers can be defined "
-            "before ralph.policy.loader imports it. Mirrors the "
+            "before ralph.policy.loader imports it. _workspace<->dirty_paths "
+            "for the scheduler lifecycle; diagnostics<->CLI/explore for the "
+            "workspace-health maintenance read. Mirrors the "
             "CLI/config/display precedent."
         ),
     },

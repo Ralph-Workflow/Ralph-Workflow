@@ -37,6 +37,10 @@ ALLOWLIST: list[tuple[str, str]] = [
         "testing/audit_resource_lifecycle.py",
         "references subprocess/asyncio spawn names as detection-pattern strings; does not call subprocess",
     ),
+    (
+        "diagnostics/host_pressure.py",
+        "runs read-only sysctl -n kern.maxfiles with check=False and a 2s timeout; no shell, no user input",
+    ),
 ]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.

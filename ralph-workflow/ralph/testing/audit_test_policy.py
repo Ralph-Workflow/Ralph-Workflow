@@ -242,6 +242,16 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # processes; only the single-point timing measurement needs
     # this allowlist.
     "test_recovery_memory_regression",
+    # S-12 scenario baseline characterization harness: the
+    # responsiveness dimension measures real reindex + search
+    # elapsed time across 6 filesystem scenarios. The wall-clock
+    # measurement IS the characterization data being recorded
+    # (not a control-flow oracle); production code paths inside
+    # the cycle still use FakeClock for any timeout contract.
+    # Kept in the default suite because the harness uses no real
+    # child processes; only the single-point timing measurement
+    # needs this allowlist.
+    "test_filesystem_scenario_baseline",
 }
 
 # Files whose name contains "smoke" but that are NOT live/slow smoke

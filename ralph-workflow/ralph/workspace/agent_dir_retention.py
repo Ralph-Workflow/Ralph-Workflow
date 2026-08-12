@@ -585,9 +585,28 @@ def _sweep_agent_dir_body(
     return removed
 
 
+# Single-cell mutable holder so the lazy singleton avoids the ``global``
+# statement (PLW0603). Process-local; coalesces redundant in-process work.
+_RETENTION_COORDINATOR_HOLDER: list[RetentionPassCoordinator | None] = [None]
+
+
+def process_retention_coordinator() -> RetentionPassCoordinator:
+    """Return the single process-level retention coordinator.
+
+    Concurrent in-process ``sweep_agent_dir`` callers that share this
+    coordinator coalesce into one retention pass per wave.
+    """
+    if _RETENTION_COORDINATOR_HOLDER[0] is None:
+        _RETENTION_COORDINATOR_HOLDER[0] = RetentionPassCoordinator()
+    coordinator = _RETENTION_COORDINATOR_HOLDER[0]
+    assert coordinator is not None
+    return coordinator
+
+
 __all__ = [
     "DEFAULT_MAX_AGE_SECONDS",
     "RetentionPassCoordinator",
+    "process_retention_coordinator",
     "prune_lock_run_ids",
     "register_active_run",
     "register_temporary_path_owner",
