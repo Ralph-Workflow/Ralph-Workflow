@@ -40,6 +40,19 @@ status: completed
 ## Adapted and not-applicable examples
 
 ```markdown
+---
+type: development_result
+status: completed
+---
+
+## Summary
+
+- [SUM-1] Reconciled inaccurate plan premises without weakening the request.
+
+## Files Changed
+
+- [F-1] src/serialization.py
+
 ## Plan Items Proven
 
 - [S-3] Used the repository's existing serializer after the planned module was absent; `pytest tests/test_serialization.py -q` passes.
