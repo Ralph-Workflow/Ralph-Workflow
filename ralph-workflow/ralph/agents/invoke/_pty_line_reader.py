@@ -164,6 +164,14 @@ def _record_embedded_error(watchdog: IdleWatchdog, signal: AgentActivitySignal) 
         watchdog.record_error_activity(signal.error_message)
 
 
+def _record_tool_result_activity(watchdog: IdleWatchdog, *, is_harness_echo: bool) -> None:
+    """Record a tool result without requiring legacy fakes to accept the new flag."""
+    if is_harness_echo:
+        watchdog.record_tool_result_activity(is_harness_echo=True)
+    else:
+        watchdog.record_tool_result_activity()
+
+
 def _tool_use_display_name(
     raw: str,
     tool_call: tuple[str, dict[str, object]] | None,
@@ -1358,7 +1366,10 @@ class PtyLineReader:
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
             self._last_activity_kind = activity_signal.kind
-            self._last_meaningful[0] = activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+            self._last_meaningful[0] = (
+                activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+                and not activity_signal.is_harness_echo
+            )
             _record_embedded_error(watchdog, activity_signal)
             if activity_signal.kind == AgentActivityKind.ERROR_LINE:
                 # Repeated identical errors must not reset the idle baseline or
@@ -1417,7 +1428,10 @@ class PtyLineReader:
                 # in ~120s by default (the post-tool-result budget)
                 # rather than waiting for the full 300s idle timeout.
                 if activity_signal.kind == AgentActivityKind.TOOL_RESULT:
-                    watchdog.record_tool_result_activity()
+                    _record_tool_result_activity(
+                        watchdog,
+                        is_harness_echo=activity_signal.is_harness_echo,
+                    )
         else:
             self._last_meaningful[0] = False
         self._strategy.observe_line(queued_line)

@@ -9,6 +9,7 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
+from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
@@ -52,6 +53,44 @@ def test_out_of_credits_message_classifies_as_unavailable_with_per_reason_backof
     # claude has the OUT_OF_CREDITS base timeout (60_000ms)
     snapshot = controller.snapshot()
     assert snapshot["unavailable_timeouts"]["development:claude"] == 60_000
+
+
+def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credits_backoff() -> None:
+    """S-2: Codex capacity exhaustion advances to the next available agent."""
+    message = "Error: Selected model is at capacity. Please try a different model."
+    failure = FailureClassifier().classify(
+        AgentInvocationError("codex", 1, message),
+        phase="development",
+        agent="codex",
+        connectivity_state="online",
+    )
+    assert failure.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS
+
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+            event_bus=FailureEventBus(),
+        )
+    )
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(agents=["codex", "opencode"], current_index=0),
+        },
+    ).copy_with(last_connectivity_state="online")
+
+    state, _effects, failure_evt = controller.handle(
+        state,
+        AgentInvocationError("codex", 1, message),
+        FailureContext(phase="development", agent="codex"),
+    )
+
+    assert failure_evt.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS.value
+    assert state.chain_for_phase("development").current_index == 1
+    assert controller.snapshot()["unavailable_timeouts"]["development:codex"] == 60_000
 
 
 def test_out_of_credits_backoff_doubles_each_retry_up_to_thirty_minute_cap() -> None:

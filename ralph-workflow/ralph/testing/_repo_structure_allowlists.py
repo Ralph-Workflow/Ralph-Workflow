@@ -1296,7 +1296,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # the newly wired repo-structure audit. They mark complexity,
         # lazy-import, or global-state suppression in long-lived modules;
         # refactoring them is out of scope for this migration.
-        ("ralph/agents/execution_state/_factory.py", 300),
+        ("ralph/agents/execution_state/_factory.py", 266),
+        ("ralph/agents/execution_state/_factory.py", 329),
+        ("ralph/agents/execution_state/_factory.py", 332),
         ("ralph/agents/idle_watchdog/_active_branch.py", 227),
         ("ralph/agents/idle_watchdog/_fire_evaluators.py", 119),
         ("ralph/agents/idle_watchdog/_fire_evaluators.py", 304),

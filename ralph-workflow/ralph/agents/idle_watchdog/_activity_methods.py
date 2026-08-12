@@ -402,7 +402,7 @@ def record_tool_call_activity(
     self._repetition_tracker.mark_tool_call(tool_name, tool_args)
 
 
-def record_tool_result_activity(self: IdleWatchdog) -> None:
+def record_tool_result_activity(self: IdleWatchdog, *, is_harness_echo: bool = False) -> None:
     """Record that a TOOL_RESULT activity was observed.
 
     Sets the awaiting flag and records the timestamp. The next
@@ -412,11 +412,10 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
     If not, the watchdog fires STALLED_AFTER_TOOL_RESULT.
 
     Both line readers call this INSTEAD OF ``record_activity()`` on the
-    TOOL_RESULT branch. It does everything ``record_activity`` does -- resets
-    the idle baseline, marks meaningful output -- EXCEPT clear the repetition
-    streak, which is the whole point (see below). Calling both, as the PTY
-    reader used to, put the ``note_progress()`` back in and defeated the
-    contract this docstring describes.
+    TOOL_RESULT branch. A genuine tool result resets the idle baseline and
+    marks meaningful output, but a deterministic harness echo preserves the
+    tool-result wedge evidence without being treated as model output. Neither
+    path clears the repetition streak, which is the whole point (see below).
 
     Does NOT reset _session_started_at (the session ceiling
     remains absolute).
@@ -431,9 +430,10 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
     """
     now = self._clock.monotonic()
     self._accumulate_waiting_run(now)
-    self._reset_idle_baseline()
-    self._last_meaningful_output_at = now
-    self._has_meaningful_output = True
+    if not is_harness_echo:
+        self._reset_idle_baseline()
+        self._last_meaningful_output_at = now
+        self._has_meaningful_output = True
     self._last_tool_result_at = now
     self._awaiting_post_tool_result_progression = True
 

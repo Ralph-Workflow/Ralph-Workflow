@@ -174,6 +174,7 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "rate limit reached for requests",
     "billing hard limit reached",
     "monthly spend limit reached",
+    "selected model is at capacity",
     "you've run out of credits",
     # Anthropic / Claude API families
     "rate_limit_error",

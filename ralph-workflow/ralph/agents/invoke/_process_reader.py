@@ -767,6 +767,7 @@ class _ProcessLineReader:
         self._last_activity_kind = str(activity_signal.kind)
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+            and not activity_signal.is_harness_echo
         )
         if activity_signal.error_message is not None:
             # A failed tool call is BOTH a call and an error. Feeding only the
@@ -802,7 +803,10 @@ class _ProcessLineReader:
             # every completed call, and ``record_tool_result_activity`` was
             # never reached at all -- so STALLED_AFTER_TOOL_RESULT was
             # unreachable on opencode, claude, pi, cursor, and codex alike.
-            watchdog.record_tool_result_activity()
+            if activity_signal.is_harness_echo:
+                watchdog.record_tool_result_activity(is_harness_echo=True)
+            else:
+                watchdog.record_tool_result_activity()
         else:
             watchdog.record_activity()
 

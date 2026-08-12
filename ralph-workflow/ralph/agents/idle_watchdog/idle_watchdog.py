@@ -893,8 +893,8 @@ class IdleWatchdog:
         # dedupes so a redundant call is a no-op.
         self._set_stall(active=False, now=now, idle_elapsed=0.0)
 
-    def record_tool_result_activity(self) -> None:
-        activity_record_tool_result_activity(self)
+    def record_tool_result_activity(self, *, is_harness_echo: bool = False) -> None:
+        activity_record_tool_result_activity(self, is_harness_echo=is_harness_echo)
 
     def record_mcp_tool_call(self, now: float | None = None) -> None:
         """Record an MCP tool-call activity signal (new channel).

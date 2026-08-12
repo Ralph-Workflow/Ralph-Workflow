@@ -211,11 +211,24 @@ class TestCursorParserWireFormat:
         assert results[0].type == "status"
         assert results[0].content == "ready"
 
-    def test_user_event_is_suppressed(self) -> None:
-        """``user`` event is the input echo (the prompt Ralph sent); suppressed."""
+    def test_user_event_emits_nothing_not_text(self) -> None:
+        """S-2: a Cursor prompt echo must never surface as LLM text."""
         parser = CursorParser()
-        results = list(parser.parse(_lines(_line({"type": "user", "content": "echo"}))))
+        results = list(
+            parser.parse(_lines(_line({"type": "user", "content": "read PROMPT.md"})))
+        )
         assert results == []
+
+    def test_tool_result_with_prompt_text_does_not_yield_text(self) -> None:
+        """S-2: deterministic tool output is not an LLM text/thinking event."""
+        prompt = "Read the complete prompt from file at /workspace/PROMPT.md"
+        parser = CursorParser()
+        results = list(
+            parser.parse(_lines(_line({"type": "tool_result", "result": prompt})))
+        )
+        assert len(results) == 1
+        assert results[0].type == "tool_result"
+        assert results[0].content == prompt
 
     def test_thinking_event_yields_thinking(self) -> None:
         """``thinking`` event surfaces as ``type='thinking'`` with the delta."""

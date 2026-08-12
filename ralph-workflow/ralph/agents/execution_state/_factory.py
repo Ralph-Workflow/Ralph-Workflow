@@ -129,7 +129,17 @@ def _make_cursor_strategy(
 def _classify_cursor_activity(line: str) -> AgentActivitySignal | None:
     """Classify Cursor stream-json tool events for watchdog control."""
     obj = _parse_json_object(line)
-    if obj is None or obj.get("type") != "tool_call":
+    if obj is None:
+        return None
+    event_type = obj.get("type")
+    if event_type == "tool_result":
+        result = obj.get("result")
+        return AgentActivitySignal(
+            AgentActivityKind.TOOL_RESULT,
+            raw=line,
+            is_harness_echo=isinstance(result, str) and "Read the complete prompt from file at" in result,
+        )
+    if event_type != "tool_call":
         return None
     subtype = obj.get("subtype")
     if subtype == "completed":

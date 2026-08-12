@@ -33,3 +33,4 @@ class AgentActivitySignal:
     kind: AgentActivityKind
     raw: str = ""
     error_message: str | None = None
+    is_harness_echo: bool = False
