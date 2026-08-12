@@ -367,6 +367,13 @@ ralph.cli.commands.explain
    :members:
    :show-inheritance:
 
+ralph.cli.commands.workspace_health
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.workspace_health
+   :members:
+   :show-inheritance:
+
 Config
 ------
 
@@ -3202,6 +3209,13 @@ ralph.diagnostics.fs_health
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.diagnostics.fs_health
+   :members:
+   :show-inheritance:
+
+ralph.diagnostics.workspace_health
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.diagnostics.workspace_health
    :members:
    :show-inheritance:
 

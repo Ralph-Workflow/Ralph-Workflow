@@ -222,3 +222,66 @@ def test_sweep_does_not_create_state_db_when_absent(tmp_path: Path) -> None:
     assert not (tmp_path / ".agent" / "state.db").exists()
     assert not (tmp_path / ".agent" / "state.db-wal").exists()
     assert not (tmp_path / ".agent" / "state.db-shm").exists()
+
+
+def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
+    """AC-9 (in-process): the active-run registry protects both registered
+    runs from every parallel sweep, even when each caller passes a single
+    overlapping ``keep_run_id``.
+
+    B6 (independent-process coordination) remains an open gap; this test
+    closes only the in-process boundary.
+    """
+    import threading
+
+    from ralph.workspace.agent_dir_retention import (
+        register_active_run,
+        unregister_active_run,
+    )
+
+    now = 1_000_000_000.0
+    # Both runs carry aged bookkeeping that a naive sweep would reclaim.
+    _make_aged(tmp_path / ".agent" / "completion_seen_run-a.json", _WEEK + 10, now)
+    _make_aged(tmp_path / ".agent" / "completion_seen_run-b.json", _WEEK + 10, now)
+    _make_aged(tmp_path / ".agent" / "receipts" / "run-a" / "plan.json", _WEEK + 10, now)
+    _make_aged(tmp_path / ".agent" / "receipts" / "run-b" / "plan.json", _WEEK + 10, now)
+    # An unregistered run's aged bookkeeping is still reclaimable.
+    _make_aged(tmp_path / ".agent" / "completion_seen_run-dead.json", _WEEK + 10, now)
+
+    register_active_run(tmp_path, "run-a")
+    register_active_run(tmp_path, "run-b")
+    results: list[int] = []
+    results_lock = threading.Lock()
+    try:
+        def _sweep(keep_run_id: str) -> None:
+            removed = sweep_agent_dir(
+                tmp_path,
+                keep_run_id=keep_run_id,
+                now=lambda: now,
+            )
+            with results_lock:
+                results.append(removed)
+
+        threads = [
+            threading.Thread(target=_sweep, args=("run-a",)),
+            threading.Thread(target=_sweep, args=("run-b",)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        # Neither registered run lost data to either sweep.
+        assert (tmp_path / ".agent" / "completion_seen_run-a.json").exists()
+        assert (tmp_path / ".agent" / "completion_seen_run-b.json").exists()
+        assert (tmp_path / ".agent" / "receipts" / "run-a" / "plan.json").exists()
+        assert (tmp_path / ".agent" / "receipts" / "run-b" / "plan.json").exists()
+        # The unregistered run was reclaimed by the first sweep that saw it.
+        assert not (tmp_path / ".agent" / "completion_seen_run-dead.json").exists()
+        # The two sweep bodies raced for the same aged entry: each body
+        # removed it when it won the race, so the total removed count is
+        # at least 1 and at most one per caller.
+        assert 1 <= sum(results) <= 2
+    finally:
+        unregister_active_run(tmp_path, "run-a")
+        unregister_active_run(tmp_path, "run-b")

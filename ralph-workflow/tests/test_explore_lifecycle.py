@@ -245,7 +245,15 @@ def test_hooks_are_fail_open_on_runner_exception(tmp_path: Path) -> None:
     assert result.invoked is True
     assert result.timed_out is False
     assert result.skipped_reason == "error:RuntimeError"
-    store.close()
+    from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+
+    try:
+        awareness = awareness_for_workspace(workspace)
+        assert awareness.snapshot()["freshness"] == "partial"
+        assert awareness.snapshot()["cause"] == "refresh_RuntimeError"
+    finally:
+        release_workspace_awareness(workspace)
+        store.close()
 
 
 def test_hooks_report_timeout_when_runner_returns_timed_out(tmp_path: Path) -> None:

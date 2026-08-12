@@ -223,6 +223,20 @@ class WorkspaceMonitor:
     ] = {}  # bounded-accumulator-ok: leases remove the final workspace entry
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
+    @classmethod
+    def shared_watch_snapshot(cls) -> list[tuple[str, tuple[WorkspaceMonitor, ...]]]:
+        """Read-only snapshot of the shared lease table for diagnostics.
+
+        Returns sorted ``(scope_key, monitors)`` pairs so operator-facing
+        surfaces (``ralph workspace-health``) can report active
+        observation without touching private class state.
+        """
+        with cls._shared_lock:
+            return [
+                (key, tuple(sorted(shared.monitors, key=id)))
+                for key, shared in sorted(cls._shared_watches.items())
+            ]
+
     def __init__(
         self,
         workspace_path: Path,

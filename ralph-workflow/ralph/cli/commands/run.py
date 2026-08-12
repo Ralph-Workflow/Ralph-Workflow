@@ -722,6 +722,16 @@ def _sync_shipped_skills_on_pipeline_run(
             f"Retention sweep failed (non-fatal): {exc}. The run "
             "continues without cleanup; check .agent/ permissions.",
         )
+    # AC-9: register the active run in the process-local registry so every
+    # in-process retention sweep merges this run into its exclusion set and
+    # never removes an active workflow's receipts, sentinels, or DB rows.
+    if keep_run_id is not None:
+        try:
+            from ralph.workspace.agent_dir_retention import register_active_run
+
+            register_active_run(target_root, keep_run_id)
+        except Exception as exc:  # registration is best-effort; never break the pipeline
+            logger.debug("Active-run registration failed (non-fatal): {}", exc)
 
 
 def _emit_setup_warning(message: str) -> None:
@@ -940,28 +950,46 @@ def run_pipeline(
             load_result.policy_bundle,
             display_context=ctx,
         )
+        _unregister_active_run(load_result)
         return _EXIT_SUCCESS
 
     # Phase 4: Execute pipeline
-    with ExitStack() as _stack:
-        _maybe_enter_process_view(_stack)
-        return _execute_pipeline(
-            _ExecutePipelineRequest(
-                config=load_result.config,
-                initial_state=load_result.initial_state,
-                policy_bundle=load_result.policy_bundle,
-                verbosity=effective_request.verbosity,
-                counter_overrides=effective_counter_overrides,
-                config_path=effective_request.config_path,
-                cli_overrides=effective_request.cli_overrides,
-                parallel_worker_manifest=effective_request.parallel_worker_manifest,
-                pro_hooks=effective_request.pro_hooks,
-                model_identity=effective_request.model_identity,
-            ),
-            display_context=ctx,
-            display=active_display,
-            display_is_active=active_display is not None,
-        )
+    try:
+        with ExitStack() as _stack:
+            _maybe_enter_process_view(_stack)
+            return _execute_pipeline(
+                _ExecutePipelineRequest(
+                    config=load_result.config,
+                    initial_state=load_result.initial_state,
+                    policy_bundle=load_result.policy_bundle,
+                    verbosity=effective_request.verbosity,
+                    counter_overrides=effective_counter_overrides,
+                    config_path=effective_request.config_path,
+                    cli_overrides=effective_request.cli_overrides,
+                    parallel_worker_manifest=effective_request.parallel_worker_manifest,
+                    pro_hooks=effective_request.pro_hooks,
+                    model_identity=effective_request.model_identity,
+                ),
+                display_context=ctx,
+                display=active_display,
+                display_is_active=active_display is not None,
+            )
+    finally:
+        # AC-9: release the active-run lease on every pipeline exit path so
+        # a later sweep may reclaim this run's aged bookkeeping.
+        _unregister_active_run(load_result)
+
+
+def _unregister_active_run(load_result: _LoadResult) -> None:
+    """Best-effort release of the process-local active-run lease."""
+    if load_result.workspace_scope is None:
+        return
+    try:
+        from ralph.workspace.agent_dir_retention import unregister_active_run
+
+        unregister_active_run(load_result.workspace_scope.root, load_result.run_id)
+    except Exception as exc:  # release is best-effort; never break the pipeline
+        logger.debug("Active-run unregistration failed (non-fatal): {}", exc)
 
 
 validate_loaded_policy_bundle = _validate_loaded_policy_bundle

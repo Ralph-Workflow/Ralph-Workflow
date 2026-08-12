@@ -42,6 +42,7 @@ from ralph.cli.commands.smoke import (
     smoke_interactive_pi_command,
 )
 from ralph.cli.commands.star import star
+from ralph.cli.commands.workspace_health import workspace_health
 from ralph.config.bootstrap import (
     ensure_global_agents_config,
     ensure_global_config,
@@ -1061,6 +1062,7 @@ def main(
 app.callback(invoke_without_command=True)(main)
 app.command()(cleanup)
 app.command(name="contribute")(contribute)
+app.command(name="workspace-health")(workspace_health)
 
 
 def visual_judgement(

@@ -222,6 +222,7 @@ def _run_hook(
             kind,
             exc,
         )
+        awareness.set_freshness("partial", cause=f"refresh_{type(exc).__name__}")
         return LifecycleHookResult(
             invoked=True,
             timed_out=False,

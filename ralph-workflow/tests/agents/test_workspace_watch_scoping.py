@@ -81,8 +81,12 @@ class _ScheduleFailingObserver(_FakeObserver):
 class _StartFailingObserver(_FakeObserver):
     """Observer whose startup fails after a recursive watch is registered."""
 
+    def __init__(self, message: str = "watch startup failed") -> None:
+        super().__init__()
+        self._message = message
+
     def start(self) -> None:
-        raise OSError("watch startup failed")
+        raise OSError(self._message)
 
 
 class _CapacityFailingObserver(_FakeObserver):
@@ -165,10 +169,10 @@ def test_start_single_recursive_root_watch_when_classifier_none(
     assert fake.started is True
 
 
-def test_start_failure_allows_a_later_watch_registration_retry(
+def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registration_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-6 regression: a failed registration does not strand monitor lifecycle ownership."""
+    """S-2 regression: non-capacity observer failures degrade safely and remain retryable."""
     failing = _ScheduleFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
@@ -178,8 +182,36 @@ def test_start_failure_allows_a_later_watch_registration_retry(
     )
     monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
 
-    with pytest.raises(OSError, match="watch registration failed"):
-        monitor.start()
+    monitor.start()
+
+    assert monitor.awareness_status["freshness"] == "live_fallback"
+    assert monitor.awareness_status["cause"] == "observer_start_failed"
+    monitor.start()
+
+    assert len(failing.scheduled) == 1
+    assert failing.stopped is True
+    assert failing.joined is True
+    assert len(succeeding.scheduled) == 1
+    assert succeeding.started is True
+
+
+def test_start_failure_after_registration_enters_live_fallback_and_remains_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2 regression: a post-registration startup failure degrades safely and remains retryable."""
+    failing = _StartFailingObserver("watch registration failed")
+    succeeding = _FakeObserver()
+    observers = iter((failing, succeeding))
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: next(observers),
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+
+    monitor.start()
+
+    assert monitor.awareness_status["freshness"] == "live_fallback"
+    assert monitor.awareness_status["cause"] == "observer_start_failed"
     monitor.start()
 
     assert len(failing.scheduled) == 1
@@ -202,8 +234,10 @@ def test_workspace_monitor_regression_start_failure_after_registration_releases_
     )
     monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
 
-    with pytest.raises(OSError, match="watch startup failed"):
-        monitor.start()
+    monitor.start()
+
+    assert monitor.awareness_status["freshness"] == "live_fallback"
+    assert monitor.awareness_status["cause"] == "observer_start_failed"
     monitor.start()
 
     assert len(failing.scheduled) == 1
@@ -226,8 +260,10 @@ def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry(
     )
     monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
 
-    with pytest.raises(OSError, match="watch registration failed"):
-        monitor.start()
+    monitor.start()
+
+    assert monitor.awareness_status["freshness"] == "live_fallback"
+    assert monitor.awareness_status["cause"] == "observer_start_failed"
     monitor.start()
 
     assert failing.joined is True

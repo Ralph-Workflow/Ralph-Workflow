@@ -24,6 +24,7 @@ from __future__ import annotations
 import importlib
 import sqlite3
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -69,7 +70,14 @@ class _RaisingCloseDB:
     def clear_run_receipts(self, run_id: str) -> None:
         return None
 
-    def prune_older_than(self, cutoff: float, *, keep_run_id: str | None) -> int:
+    def prune_older_than(
+        self,
+        cutoff: float,
+        *,
+        keep_run_id: str | None = None,
+        keep_run_ids: Iterable[str] = (),
+    ) -> int:
+        del cutoff, keep_run_id, keep_run_ids
         return int(self.method_result)
 
     def close(self) -> None:
@@ -201,7 +209,7 @@ def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
     (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".agent" / "state.db").touch()
 
-    removed = _sweep_run_state_db_rows(tmp_path, cutoff=0.0, keep_run_id=None)
+    removed = _sweep_run_state_db_rows(tmp_path, cutoff=0.0, keep_run_ids=())
     assert removed == 3
 
 

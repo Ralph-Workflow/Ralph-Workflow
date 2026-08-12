@@ -22,6 +22,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
 
@@ -199,26 +200,36 @@ class RunStateDB:
 
     # -- retention ---------------------------------------------------------
 
-    def prune_older_than(self, cutoff: float, *, keep_run_id: str | None = None) -> int:
+    def prune_older_than(
+        self,
+        cutoff: float,
+        *,
+        keep_run_id: str | None = None,
+        keep_run_ids: Iterable[str] = (),
+    ) -> int:
         """Delete aged rows from both tables. Returns total row count removed.
 
         Used by the run-start retention sweep (RFC-013 P3) so DB rows do
         not accumulate alongside the file-glob bookkeeping sweep.
 
-        When ``keep_run_id`` is provided, rows for that run are skipped
-        regardless of age — mirrors the file-path ``keep_run_id``
-        contract so the DB-backed retention behavior matches the
-        on-disk convention during the rollout.
+        Rows for ``keep_run_id`` and every run id in ``keep_run_ids`` are
+        skipped regardless of age — mirrors the file-path keep contract
+        so the DB-backed retention behavior matches the on-disk
+        convention during the rollout. The merged exclusion set lets the
+        process-local active-run registry protect every in-flight run,
+        not just the caller's own.
         """
+        keep = set(keep_run_ids)
+        if keep_run_id is not None:
+            keep.add(keep_run_id)
         receipt_sql = "DELETE FROM receipts WHERE created_at < ?"
         sentinel_sql = "DELETE FROM completion_sentinels WHERE created_at < ?"
-        params: tuple[float | str, ...]
-        if keep_run_id is not None:
-            receipt_sql += " AND run_id != ?"
-            sentinel_sql += " AND run_id != ?"
-            params = (cutoff, keep_run_id)
-        else:
-            params = (cutoff,)
+        params: tuple[float | str, ...] = (cutoff,)
+        if keep:
+            placeholders = ", ".join("?" for _ in keep)
+            receipt_sql += f" AND run_id NOT IN ({placeholders})"
+            sentinel_sql += f" AND run_id NOT IN ({placeholders})"
+            params = (cutoff, *sorted(keep))
         with self._conn:
             receipt_rows = self._conn.execute(receipt_sql, params).rowcount
             sentinel_rows = self._conn.execute(sentinel_sql, params).rowcount

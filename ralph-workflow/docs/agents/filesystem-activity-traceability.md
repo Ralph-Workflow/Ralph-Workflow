@@ -21,7 +21,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | W4 | Stable persistence writers | `tests/test_idempotent_write.py`; `tests/test_idempotent_write_bytes.py` | COVERED for stable text/byte publication; inventory time-varying payloads and deliberate exceptions remains GAP. |
 | W5 | Atomic artifact persistence and Explore staged-index publication | `tests/test_atomic_write_if_changed.py` cleanup cases; `tests/test_explore_pipeline.py::test_mode_full_swap_io_failure_preserves_committed_generation` | COVERED for canonical artifact transient cleanup and Explore pre-publication failure cleanup; other transient paths are GAP. |
 | W6 | Atomic artifact persistence, checkpoint, and Explore staged-index publication | `tests/test_atomic_write_if_changed.py` (identical replay skips directory sync); `tests/test_checkpoint_idempotent.py` (changed checkpoint publication syncs its directory; identical replay skips it); `tests/test_explore_pipeline.py::test_mode_full_swap_io_failure_preserves_committed_generation` | COVERED for canonical atomic publication and checkpoint durability, including Explore's use of its pre-publication failure boundary; durability policy inventory is GAP. |
-| W7 | History, cache, and run directories | Existing retention owners | GAP: characterize every accumulating path and its policy. |
+| W7 | History, cache, and run directories | `tests/unit/test_storage_lifecycle.py` (AST-derived writer discovery over `ralph/workspace/`, `ralph/mcp/artifacts/`, and `ralph/mcp/explore/` asserts every accumulating-path literal maps to an `inventory_storage` row with `active_owner`) | COVERED for the characterized accumulating paths and their policies; newly introduced writers must extend the inventory. |
 | W8 | Engine-internal stores | Existing workspace/run scoping | GAP: identify watched-tree internal state eligible for relocation. |
 | R1 | `Workspace.snapshot`; MCP `read_file`; `FsWorkspace.read_lines` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; `tests/test_workspace_fs_fs_workspace_read_lines.py::TestFsWorkspaceReadLines::test_read_lines_regression_does_not_probe_metadata_before_its_content_observation`; read audit | COVERED for the full-file tool request and line reads: each uses one content observation rather than composing a metadata probe with a later read; broader reader inventory remains GAP. |
 | R2 | `FsWorkspace.iter_files` | shared skip set and read audit; `tests/test_workspace_fs_fs_workspace_iter_files.py::test_iter_files_does_not_follow_a_symlink_cycle` | COVERED for symlink cycle via `os.walk` default non-follow; broader traversal-owner coverage remains GAP. |
@@ -41,7 +41,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | D1 | Write/read/polling consolidation audits | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py`; `tests/test_audit_filesystem_polling_invocation.py`; `tests/test_audit_fsevents_watch_consolidation.py` (all wired into `ralph.verify`) | COVERED for audited raw accesses, polling, watch construction, and direct process selection. |
 | D2 | Audit diagnostics | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py` (actionable messages and tests) | COVERED for write/read audits. |
 | D3 | Local audit markers | `tests/test_audit_filesystem_write_consolidation.py` (marker parsing); `tests/test_audit_filesystem_write_fail_closed.py`; `tests/test_audit_filesystem_read_consolidation.py` | COVERED for write/read markers; validate existing markers behaviorally. |
-| E1 | Persistence and watch fake boundaries | baseline, idempotent-write, and watch-scoping tests | GAP: add black-box evidence for every matrix GAP as it closes. |
+| E1 | Persistence and watch fake boundaries | `tests/test_filesystem_criterion_catalog.py` asserts every `COVERED` row in this matrix references a real test path on disk (the inverse invariant — `GAP` rows carry no test path — is preserved) | COVERED: the catalog test is the only proof; a COVERED flip without a real test on disk fails the gate. W8 and B6 remain GAP. |
 | E2 | Regression tests | unchanged replay and atomic-skip tests | GAP: each future elimination must have a revert-sensitive test. |
 | E3 | Documentation | `scripts/fabrication_guard.py` (no unverified quantitative claim appears in this page) | COVERED. |
 | E4 | Verification budget | `tests/test_verify_invariants.py`; `tests/test_verify_budget_real_time.py` (injected fakes and project test budget) | COVERED for current baseline; recheck full gate after every slice. |
@@ -84,7 +84,10 @@ rejected by the package-wide read audit unless a local
 
 `WorkspaceMonitor` is the lifecycle owner of one recursive workspace-root watch. It
 retains that watch across unchanged cycles and releases it on normal stop or startup
-failure. `ralph.testing.audit_filesystem_polling_invocation` rejects raw timer polling,
+failure. Parallel in-process retention sweeps coalesce through
+`RetentionPassCoordinator` (one inner pass per wave) and the process-local active-run
+registry (`register_active_run` / `unregister_active_run`) protects every registered
+run's receipts, sentinels, and DB rows from the sweep. `ralph.testing.audit_filesystem_polling_invocation` rejects raw timer polling,
 watchdog observer construction, and product-owned direct subprocess choices outside their
 typed owners. A local `# filesystem-poll-ok: <reason>` marker requires a non-empty
 bounded-lifecycle explanation; it is for unavoidable protocol keepalives, process-exit
@@ -111,7 +114,8 @@ categories without mutating the workspace.
 The deterministic proof set is:
 
 ```text
-uv run pytest -q tests/test_filesystem_activity_baseline.py tests/agents/test_workspace_watch_scoping.py tests/test_explore_lifecycle.py tests/test_explore_pipeline.py tests/test_explore_bench_gates.py tests/unit/test_agent_dir_retention.py
+uv run pytest -q tests/test_filesystem_activity_baseline.py tests/agents/test_workspace_watch_scoping.py tests/test_explore_lifecycle.py tests/test_explore_pipeline.py tests/test_explore_bench_gates.py tests/unit/test_agent_dir_retention.py tests/unit/test_storage_lifecycle.py tests/test_cli_workspace_health.py
+uv run ralph workspace-health
 uv run python -m ralph.testing.audit_filesystem_read_consolidation
 uv run python -m ralph.testing.audit_filesystem_write_consolidation
 uv run python -m ralph.testing.audit_filesystem_polling_invocation

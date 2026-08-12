@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_CATEGORY_POLICIES: tuple[tuple[str, str, str, str, str, str, bool, str, str], ...] = (
+_CATEGORY_POLICIES: tuple[tuple[str, tuple[str, ...], str, str, str, str, bool, str, str], ...] = (
     (
         "project_content",
-        ".",
+        (".",),
         "user source and project content",
         "user changes",
         "explicit user retention",
@@ -18,7 +18,13 @@ _CATEGORY_POLICIES: tuple[tuple[str, str, str, str, str, str, bool, str, str], .
     ),
     (
         "workflow_records",
-        ".agent/receipts",
+        (
+            ".agent/receipts",
+            ".agent/state.db",
+            ".agent/artifacts/history",
+            ".agent/prompt_history",
+            ".agent/raw",
+        ),
         "workflow receipts and recoverable state",
         "workflow runs",
         "required recovery evidence",
@@ -29,7 +35,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, str, str, str, str, str, bool, str, str], .
     ),
     (
         "workspace_intelligence",
-        ".agent/ralph-explore",
+        (".agent/ralph-explore",),
         "derived workspace intelligence",
         "indexing",
         "rebuildable derived data",
@@ -40,7 +46,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, str, str, str, str, str, bool, str, str], .
     ),
     (
         "operational_records",
-        ".agent/logs",
+        (".agent/logs",),
         "operational logs and diagnostics",
         "run diagnostics",
         "required operational evidence",
@@ -51,7 +57,7 @@ _CATEGORY_POLICIES: tuple[tuple[str, str, str, str, str, str, bool, str, str], .
     ),
     (
         "temporary_data",
-        ".agent/tmp",
+        (".agent/tmp",),
         "interrupted-run temporary data",
         "run scratch creation",
         "inactive run ownership",
@@ -88,11 +94,20 @@ def _usage(path: Path, *, exclude_agent: bool = False) -> tuple[int, int]:
 
 
 def inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
-    """Return five category inventories without modifying the workspace."""
+    """Return five category inventories without modifying the workspace.
+
+    Each category row carries ``growth_trigger``, ``retention_basis``,
+    ``eligibility_reason``, ``recreatable``, ``recovery_impact``, and
+    ``active_owner`` plus a ``paths`` tuple covering every accumulating
+    writer the category owns: completion sentinels, receipt directories,
+    agent-retry scratch, codex-home directories, MCP session JSON, the
+    run state DB, the explore cache directory, log records, history
+    directories, and run-tmp directories.
+    """
     inventory: list[dict[str, object]] = []
     for (
         category,
-        relative,
+        relatives,
         purpose,
         trigger,
         retention,
@@ -101,12 +116,18 @@ def inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
         impact,
         owner,
     ) in _CATEGORY_POLICIES:
-        path = workspace_root / relative
-        bytes_used, count = _usage(path, exclude_agent=category == "project_content")
+        paths = tuple(workspace_root / relative for relative in relatives)
+        bytes_used = 0
+        count = 0
+        for path in paths:
+            path_bytes, path_count = _usage(path, exclude_agent=category == "project_content")
+            bytes_used += path_bytes
+            count += path_count
         inventory.append(
             {
                 "category": category,
-                "path": path,
+                "path": paths[0],
+                "paths": paths,
                 "purpose": purpose,
                 "bytes": bytes_used,
                 "count": count,

@@ -311,6 +311,11 @@ verify: formula-check verify-drift docs
 verify-drift:
 	@bash scripts/verify_drift.sh
 
+# Convenience wrapper for operators; the verifier's evidence path is the
+# direct script invocation `python scripts/record_verify_run.py`.
+verify-evidence:
+	@cd .. && uv run --project ralph-workflow python scripts/record_verify_run.py
+
 policy-loader-smoke:
 	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 

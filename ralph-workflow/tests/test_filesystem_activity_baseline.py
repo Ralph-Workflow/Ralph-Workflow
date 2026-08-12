@@ -145,3 +145,62 @@ def test_independent_monitors_for_one_workspace_share_one_recursive_registration
     first_monitor.stop()
     assert first.registrations == [("/virtual-ws", True)]
     second_monitor.stop()
+
+
+def test_shared_retention_coordinator_runs_one_pass_for_parallel_sweeps(
+    tmp_path: Path,
+) -> None:
+    """AC-3: N parallel sweeps under one coordinator coalesce into one pass.
+
+    Every caller enters the wave before any of them runs the inner sweep
+    body (``threading.Barrier``), so exactly one owner records the pass
+    and every caller receives the same shared ``removed`` count drawn
+    from the canonical first-sweep result.
+    """
+    import threading
+
+    from ralph.workspace.agent_dir_retention import (
+        RetentionPassCoordinator,
+        sweep_agent_dir,
+    )
+
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True)
+    sentinel = agent_dir / "completion_seen_aged.json"
+    sentinel.write_text("{}", encoding="utf-8")
+    aged = 1_000_000_000.0 - (7 * 24 * 3600.0) - 10
+    import os
+
+    os.utime(sentinel, (aged, aged))
+
+    now = 1_000_000_000.0
+    caller_count = 4
+    barrier = threading.Barrier(caller_count)
+    coordinator = RetentionPassCoordinator(on_wave_acquired=barrier.wait)
+    results: list[int] = []
+    results_lock = threading.Lock()
+
+    def _caller() -> None:
+        # The barrier fires inside the wave (owner and joiners alike), so
+        # every caller has entered the wave before the owner runs the
+        # inner sweep body.
+        removed = sweep_agent_dir(
+            tmp_path,
+            keep_run_id=None,
+            now=lambda: now,
+            coordinator=coordinator,
+        )
+        with results_lock:
+            results.append(removed)
+
+    threads = [threading.Thread(target=_caller) for _ in range(caller_count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=0.5)
+
+    assert len(results) == caller_count
+    assert coordinator.passes == 1
+    # Every caller received the same shared result: the aged sentinel was
+    # removed exactly once by the wave owner and joiners share its count.
+    assert all(removed == 1 for removed in results)
