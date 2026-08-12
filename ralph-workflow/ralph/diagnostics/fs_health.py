@@ -1,10 +1,7 @@
 """Filesystem-health diagnostics for the workspace volume (macOS-focused).
 
-Long multi-instance runs on an external volume can drive the macOS
-``fseventsd`` daemon to a full core when (a) Spotlight indexes the
-churned paths and (b) the volume's ``.fseventsd`` journal bloats.
-This check surfaces both so operators apply the documented mitigations
-(see docs/sphinx/diagnostics.md, "External-volume filesystem hygiene").
+Ralph reports host-level signals as potentially external activity. It keeps
+workspace observation bounded and does not require privileged host changes.
 """
 
 from __future__ import annotations
@@ -143,8 +140,8 @@ class FsHealth:
         fsevents_journal_bytes: Total size of files under
             ``<volume>/.fseventsd``. ``None`` when the directory cannot
             be enumerated (locked volume, permissions quirk).
-        warnings: Human-readable operator warnings. Each entry is one
-            diagnostic the operator should act on.
+        warnings: Human-readable product warnings that identify external
+            host pressure and Ralph's safe bounded behavior.
     """
 
     volume_root: str
@@ -194,8 +191,8 @@ class FsHealth:
 
         if health.spotlight_indexing_enabled is True:
             health.warnings.append(
-                f"Spotlight indexing is enabled on {volume}. "
-                "Disable with `sudo mdutil -i off <volume>`."
+                f"Spotlight indexing is enabled on {volume}; this is likely external "
+                "filesystem activity. Ralph will continue with bounded workspace awareness."
             )
         if (
             health.fsevents_journal_bytes is not None
@@ -203,9 +200,8 @@ class FsHealth:
         ):
             human_mb = health.fsevents_journal_bytes / (1024 * 1024)
             health.warnings.append(
-                f"fseventsd journal on {volume} is {human_mb:.1f} MB "
-                "(threshold 50 MB). Reset it with "
-                "`sudo rm -rf <volume>/.fseventsd` after stopping runs."
+                f"fseventsd journal on {volume} is {human_mb:.1f} MB; this is likely "
+                "external filesystem activity. Ralph will continue with bounded workspace awareness."
             )
 
         return health

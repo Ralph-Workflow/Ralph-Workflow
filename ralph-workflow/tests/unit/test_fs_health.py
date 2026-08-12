@@ -68,7 +68,7 @@ def test_warns_on_spotlight_and_fat_journal(tmp_path: Path, monkeypatch: object)
     assert len(health.warnings) == 2
     assert any("Spotlight indexing is enabled" in w for w in health.warnings)
     assert any("fseventsd journal" in w for w in health.warnings)
-    assert any("50" in w for w in health.warnings)
+    assert any("Ralph will continue with bounded workspace awareness" in w for w in health.warnings)
 
 
 # ---------------------------------------------------------------------------

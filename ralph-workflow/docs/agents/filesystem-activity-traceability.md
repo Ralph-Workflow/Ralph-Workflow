@@ -97,9 +97,31 @@ Write exceptions use the equivalent local `# filesystem-write-ok: <reason>` mark
 must identify the user-requested, append-only, transient, durability, or retention
 contract at the call site.
 
-## Next Step
+## Verified workspace-awareness boundaries
 
-Use the next unresolved row to create a red black-box test before changing production code. The highest-value current gap is cross-process shared-state coordination: prove independent publishers and watch consumers retain exact output and coverage without relying only on process-local ownership. The current in-process capacity path is explicit: `live_fallback` never claims current indexed freshness and directs the caller to the existing bounded live-read boundary while Ralph retries observation on a later lease.
+The maintained runtime uses one process-local recursive watch per workspace,
+shared by monitor leases. `WorkspaceAwareness` keeps at most 512 coalesced
+paths, exposes `current`, `pending`, `partial`, `stale`, `unavailable`, or
+`live_fallback`, and transfers observed paths to the persisted Explore dirty
+queue at bounded lifecycle boundaries. `ReindexWriter` coalesces refreshes;
+warm no-op reindexing parses zero files and a localized edit reparses only the
+affected file. `inventory_storage` and `plan_cleanup` report all five storage
+categories without mutating the workspace.
+
+The deterministic proof set is:
+
+```text
+uv run pytest -q tests/test_filesystem_activity_baseline.py tests/agents/test_workspace_watch_scoping.py tests/test_explore_lifecycle.py tests/test_explore_pipeline.py tests/test_explore_bench_gates.py tests/unit/test_agent_dir_retention.py
+uv run python -m ralph.testing.audit_filesystem_read_consolidation
+uv run python -m ralph.testing.audit_filesystem_write_consolidation
+uv run python -m ralph.testing.audit_filesystem_polling_invocation
+uv run python -m ralph.testing.audit_fsevents_watch_consolidation
+```
+
+Cross-process observer leasing remains an explicit future boundary: the current
+process-local owner does not claim cross-process watch sharing. A constrained
+host falls back visibly to `live_fallback` and keeps the last committed index
+distinct from current live content.
 
 ## Documentation review note
 
