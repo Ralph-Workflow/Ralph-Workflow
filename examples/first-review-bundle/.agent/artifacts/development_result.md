@@ -15,5 +15,8 @@ status: completed
 ## Plan Items Proven
 
 - [S-1] Added focused invalid-name cases to tests/test_create.py.
+  Disposition: completed
 - [S-2] Normalized and rejected empty names before the create flow writes files.
+  Disposition: completed
 - [S-3] Ran pytest tests/test_create.py successfully.
+  Disposition: completed
