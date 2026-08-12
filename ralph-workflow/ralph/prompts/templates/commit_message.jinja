@@ -1,4 +1,4 @@
-Task: Produce and submit one spec-compliant MCP commit_message artifact for the changes not yet committed—the current worktree vs the last commit.
+Produce and submit one valid `commit_message` artifact for the pending diff.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -8,9 +8,11 @@ Task: Produce and submit one spec-compliant MCP commit_message artifact for the 
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
-Read the diff, choose a commit or skip document, and submit it with the tool named below. Do not call bash or ask the user for confirmation, including “Would you like me to…?”.
+Read the diff, choose a commit or skip document, and submit it without commentary. Do not call bash; it is outside this phase's tool path.
 
 ## HOW TO WRITE THE SUBJECT
+
+Use this sequence once, then write the body.
 
 1. Choose the first matching kind:
 
@@ -34,6 +36,10 @@ Read the diff, choose a commit or skip document, and submit it with the tool nam
 ## HOW TO WRITE THE BODY
 
 For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item explaining why it was needed and what it affects. Use `## Body Summary`, `## Body Details`, and `## Body Footer` for migration steps, breaking changes, or issue references.
+
+## Submit the result
+
+The submission procedure below is the completion contract. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
 
 ## Document shape
 

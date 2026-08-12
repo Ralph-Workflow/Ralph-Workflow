@@ -29,10 +29,10 @@ Do not reject a correct implementation only because an inaccurate plan step chan
 Choose the outcome from fresh evidence, not the developer's status:
 
 - `completed`: every unchanged request criterion is met and no necessary plan work remains.
-- `request_changes`: localized unmet work is actionable. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
+- `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
-`failed` closes this cycle and is terminal instead of returning impossible work to development. Policy preserves and commits the cycle, then starts fresh planning when global cycle budget remains.
+`failed` closes this cycle instead of returning impossible work to development.
 
 {% set development_decision_example %}
 ---
