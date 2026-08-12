@@ -146,22 +146,22 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Carnegie Mellon Software Engineering Institute
   title: "Documenting Software Architectures: Views and Beyond"
   http: https://www.sei.cmu.edu/library/documenting-software-architectures/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Martin Fowler
   title: "Patterns of Enterprise Application Architecture"
   http: https://martinfowler.com/books/eaa.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: ThoughtWorks Technology Radar
   title: "Modular Monoliths over Microservices"
   http: https://martinfowler.com/bliki/MonolithFirst.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Open Agile Architecture group
   title: "Modular and Layered Architectures"
   http: https://www.opengroup.org/architecture/togaf
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

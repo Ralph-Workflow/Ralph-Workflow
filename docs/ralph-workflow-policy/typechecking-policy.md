@@ -191,22 +191,22 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Python Software Foundation
   title: "typing — Support for type hints (PEP 484)"
   http: https://docs.python.org/3/library/typing.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Microsoft TypeScript
   title: "TypeScript: Handbook - Type Checking .js Files"
   http: https://www.typescriptlang.org/docs/handbook/type-checking-javascript-files.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: The Rust Project
   title: "The Rust Reference: Types"
   http: https://doc.rust-lang.org/reference/types.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: mypy (Python typing project)
   title: "Using mypy with an existing codebase"
   http: https://mypy.readthedocs.io/en/stable/existing_code.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

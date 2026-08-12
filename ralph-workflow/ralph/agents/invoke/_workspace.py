@@ -350,6 +350,15 @@ class WorkspaceMonitor:
                     awareness_for_workspace(self._workspace).set_live_fallback("watch_capacity")
                     logger.warning("Workspace monitoring unavailable: inotify limit reached")
                     return
+                if exc.errno is None:
+                    self._awareness_status = _live_fallback_status("observer_start_failed")
+                    awareness_for_workspace(self._workspace).set_live_fallback(
+                        "observer_start_failed"
+                    )
+                    logger.opt(exception=True).warning(
+                        "Workspace watch registration failed; falling back to live reads"
+                    )
+                    return
                 raise
             except BaseException:
                 with suppress(BaseException):

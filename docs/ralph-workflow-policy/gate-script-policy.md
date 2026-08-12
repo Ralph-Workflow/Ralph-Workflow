@@ -219,17 +219,17 @@ This policy's FACTS MUST be reviewed in the same workflow as any of:
 * publisher: Google
   title: "Shell Style Guide"
   http: https://google.github.io/styleguide/shellguide.html
-  review date: 2026-07-13
+  review date: 2026-08-09
 
 * publisher: OpenSSF
   title: "Source Code Management Best Practices"
   http: https://best.openssf.org/SCM-BestPractices/
-  review date: 2026-07-13
+  review date: 2026-08-09
 
 * publisher: ShellCheck
   title: "ShellCheck Wiki"
   http: https://www.shellcheck.net/wiki/
-  review date: 2026-07-13
+  review date: 2026-08-09
 
 ## Living document contract
 

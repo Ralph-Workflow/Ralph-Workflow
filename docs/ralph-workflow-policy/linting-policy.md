@@ -154,22 +154,22 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Astral (ruff)
   title: "ruff documentation: Rules"
   http: https://docs.astral.sh/ruff/rules/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: ESLint Project
   title: "Configuring ESLint"
   http: https://eslint.org/docs/latest/use/configure/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: The Rust Project
   title: "Clippy documentation"
   http: https://doc.rust-lang.org/clippy/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Google Engineering Practices
   title: "The CL Author's Guide to Getting Through Code Review"
   http: https://google.github.io/eng-practices/review/developer/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

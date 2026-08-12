@@ -96,8 +96,11 @@ For non-Sphinx route pages:
 
 RALPH-COMMAND: python3 scripts/check_route_page_links.py README.md START_HERE.md docs/README.md ralph-workflow/docs/README.md
 
-This is the route-page link checker; failures list the affected
-file/line and the broken URL.
+This is the route-page link checker (wired in the ralph-workflow
+Makefile as `make -C ralph-workflow route-linkcheck`; a sibling
+`policy-citation-linkcheck` target runs the same script over the
+policy starters); failures list the affected file/line and the broken
+URL.
 
 ## Exceptions
 
@@ -119,22 +122,22 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Google Engineering Practices
   title: "Code Review: Comment Quality"
   http: https://google.github.io/eng-practices/review/developer/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Write the Docs
   title: "Documentation Style Guide"
   http: https://www.writethedocs.org/guide/writing/style-guides/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: The Twelve-Factor App
   title: "IX. Disposability"
   http: https://12factor.net/disposability
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Daniele Procida
   title: "Diátaxis Documentation Framework"
   http: https://diataxis.fr/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

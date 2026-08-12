@@ -96,6 +96,11 @@ Run every gate below before claiming a change complies with this policy.
 
 RALPH-COMMAND: make -C ralph-workflow dead-code
 
+A second dead-code-relevant gate is the Ruby formula check
+(`make -C ralph-workflow formula-check`); its command line is declared
+once in linting-policy.md under Verification, so it is not duplicated
+here.
+
 The expected successful result is a clean Vulture run (exit 0). Any
 finding is reported with file:line and the confidence score; the
 remediation is to remove the symbol, not to annotate it.
@@ -125,22 +130,22 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Robert C. Martin ("Uncle Bob")
   title: "The Clean Code Blog"
   http: https://blog.cleancoder.com/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Martin Fowler
   title: "Refactoring: Improving the Design of Existing Code"
   http: https://martinfowler.com/books/refactoring.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Google Engineering Practices
   title: "Code Health: Reduce Nesting, Reduce Complexity"
   http: https://google.github.io/eng-practices/review/developer/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Sandi Metz
   title: "Practical Object-Oriented Design in Ruby"
   http: https://www.poodr.com/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

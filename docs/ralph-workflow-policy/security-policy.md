@@ -282,37 +282,37 @@ any of:
 * publisher: OWASP Foundation
   title: "OWASP Top Ten"
   http: https://owasp.org/www-project-top-ten/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: OWASP Foundation
   title: "OWASP Application Security Verification Standard (ASVS)"
   http: https://owasp.org/www-project-application-security-verification-standard/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: OWASP Foundation
   title: "OWASP Cheat Sheet Series"
   http: https://cheatsheetseries.owasp.org/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: MITRE
   title: "CWE Top 25 Most Dangerous Software Weaknesses"
   http: https://cwe.mitre.org/top25/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: NIST
   title: "Secure Software Development Framework (SSDF)"
   http: https://csrc.nist.gov/projects/ssdf
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: OpenSSF (Linux Foundation)
   title: "Concise Guide for Developing More Secure Software"
   http: https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: MIT (Jerome H. Saltzer and Michael D. Schroeder)
   title: "The Protection of Information in Computer Systems"
   http: https://web.mit.edu/Saltzer/www/publications/protection/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

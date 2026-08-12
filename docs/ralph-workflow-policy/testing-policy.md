@@ -269,17 +269,17 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Google Testing Blog / Google Engineering Practices
   title: "Just Say No to More End-to-End Tests"
   http: https://testing.googleblog.com/2015/04/just-say-no-to-more-end-to-end-tests.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Google Testing Blog
   title: "Flaky Tests At Google and How We Mitigate Them"
   http: https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Martin Fowler
   title: "Test Pyramid"
   http: https://martinfowler.com/bliki/TestPyramid.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Martin Fowler
   title: "TestCoverage"

@@ -112,22 +112,22 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: OpenSSF (Linux Foundation)
   title: "Concise Guide for Evaluating Open Source Software"
   http: https://best.openssf.org/Concise-Guide-for-Evaluating-Open-Source-Software
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: The Twelve-Factor App
   title: "XII. Admin Processes"
   http: https://12factor.net/admin-processes
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: PyPA
   title: "Python Packaging User Guide: Managing Application Dependencies"
   http: https://packaging.python.org/en/latest/tutorials/managing-dependencies/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: OWASP Foundation
   title: "Top 10 Proactive Controls"
   http: https://owasp.org/www-project-proactive-controls/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

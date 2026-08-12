@@ -271,17 +271,17 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Google Engineering Practices
   title: "Code Review: Speed of Code Reviews"
   http: https://google.github.io/eng-practices/review/reviewer/speed.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Google SRE Book
   title: "Monitoring Distributed Systems"
   http: https://sre.google/sre-book/monitoring-distributed-systems/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Martin Fowler
   title: "Continuous Integration"
   http: https://martinfowler.com/articles/continuousIntegration.html
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 

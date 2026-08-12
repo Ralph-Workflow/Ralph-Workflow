@@ -128,17 +128,17 @@ This policy MUST be reviewed in the same workflow as any of:
 * publisher: Google Engineering Practices
   title: "Code Review: How to Review Code"
   http: https://google.github.io/eng-practices/review/reviewer/
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: Anthropic
   title: "Claude Code: Best Practices for Agent Workflows"
   http: https://docs.anthropic.com/en/docs/claude-code/best-practices
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 * publisher: OpenAI
   title: "Agent Design Patterns"
   http: https://platform.openai.com/docs/guides/agents
-  review date: 2026-07-12
+  review date: 2026-08-09
 
 ## Living document contract
 
