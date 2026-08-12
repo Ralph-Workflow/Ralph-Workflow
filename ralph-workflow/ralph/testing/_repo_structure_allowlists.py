@@ -1361,7 +1361,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # is the canonical seam (smoke_plumbing imports back from
         # ``ralph.agents.invoke`` for the smoke harness's other
         # seams so a top-level import would cycle).
-        ("ralph/agents/invoke/__init__.py", 596),
+        ("ralph/agents/invoke/__init__.py", 609),
         # wt-07-multimodal-visual: re-export of the three OpenCode
         # override helpers from ``_smoke_opencode_override``; the
         # helpers were extracted to keep ``smoke.py`` under the

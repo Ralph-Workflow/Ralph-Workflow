@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Files to audit for bare 'Ralph' branding (static list).
@@ -126,22 +128,20 @@ def _line_is_allowed(line: str) -> bool:
     return any(substring in line for substring, _ in _ALLOWLIST)
 
 
-def test_no_bare_ralph_in_user_facing_files() -> None:
-    """Bare 'Ralph' (project name) must appear as 'Ralph Workflow' in user-facing files."""
-    violations: list[str] = []
+@pytest.mark.parametrize(
+    "path",
+    _AUDIT_FILES + _sphinx_docs() + _jinja_templates(),
+    ids=lambda path: str(path.relative_to(REPO_ROOT)),
+)
+def test_no_bare_ralph_in_user_facing_files(path: Path) -> None:
+    """Each user-facing file names Ralph Workflow consistently within the test budget."""
+    assert path.exists(), f"MISSING FILE: {path.relative_to(REPO_ROOT)}"
 
-    all_files = _AUDIT_FILES + _sphinx_docs() + _jinja_templates()
-
-    for path in all_files:
-        if not path.exists():
-            violations.append(f"MISSING FILE: {path.relative_to(REPO_ROOT)}")
-            continue
-
-        text = path.read_text(encoding="utf-8")
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            if _BARE_RALPH_RE.search(line) and not _line_is_allowed(line):
-                rel = path.relative_to(REPO_ROOT)
-                violations.append(f"{rel}:{lineno}: {line.strip()!r}")
+    violations = [
+        f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()!r}"
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if _BARE_RALPH_RE.search(line) and not _line_is_allowed(line)
+    ]
 
     assert not violations, (
         "The following lines contain bare 'Ralph' (should be 'Ralph Workflow'):\n"

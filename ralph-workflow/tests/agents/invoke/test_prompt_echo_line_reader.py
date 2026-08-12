@@ -3,47 +3,58 @@
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
-from ralph.agents.invoke._process_reader import _ProcessLineReader
-from ralph.agents.invoke._pty_extras import _PtyExtras
-from ralph.agents.invoke._pty_line_reader import PtyLineReader
-from ralph.agents.invoke._types import _ProcessReaderCtx
+from ralph.agents.invoke import (
+    AgentRunCtx,
+    ProcessLineReader,
+    ProcessReaderCtx,
+    PtyExtras,
+    PtyLineReader,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
-
-if TYPE_CHECKING:
-    from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
-    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
-
+from ralph.process.manager import ManagedProcess, ManagedPtyProcess
 
 _PROMPT = "plan the implementation step by step"
 
 
-class _ProcessHandle:
-    pid = None
-    stdout = None
+class _ProcessHandle(ManagedProcess):
+    def __init__(self) -> None:
+        pass
+
+    @property
+    def pid(self) -> int:
+        return 0
+
+    @property
+    def stdout(self) -> None:
+        return None
 
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, grace_period_s: float | None = None) -> None:
         del grace_period_s
 
 
-class _PtyHandle:
-    pid = None
+class _PtyHandle(ManagedPtyProcess):
+    @property
+    def pid(self) -> int:
+        return 0
 
     def __init__(self, master_fd: int) -> None:
-        self.master_fd = master_fd
+        self._master_fd = master_fd
+
+    @property
+    def master_fd(self) -> int:
+        return self._master_fd
 
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, grace_period_s: float | None = None) -> None:
         del grace_period_s
 
     def descendant_snapshot(self) -> tuple[int, float | None]:
@@ -54,11 +65,11 @@ def _policy() -> TimeoutPolicy:
     return TimeoutPolicy(idle_timeout_seconds=300.0)
 
 
-def _process_reader() -> tuple[_ProcessLineReader, IdleWatchdog]:
+def _process_reader() -> tuple[ProcessLineReader, IdleWatchdog]:
     clock = FakeClock(start=0.0)
-    reader = _ProcessLineReader(
-        cast("ManagedProcess", _ProcessHandle()),
-        _ProcessReaderCtx(
+    reader = ProcessLineReader(
+        _ProcessHandle(),
+        ProcessReaderCtx(
             config=AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC),
             policy=_policy(),
             input_prompt=_PROMPT,
@@ -74,21 +85,17 @@ def _pty_reader() -> tuple[PtyLineReader, IdleWatchdog, int]:
     clock = FakeClock(start=0.0)
     master_fd = os.open("/dev/null", os.O_RDONLY)
     reader = PtyLineReader(
-        cast("ManagedPtyProcess", _PtyHandle(master_fd)),
+        _PtyHandle(master_fd),
         "test-agent",
-        cast(
-            "_AgentRunCtx",
-            SimpleNamespace(
-                config=AgentConfig(cmd="test-agent", transport=AgentTransport.CLAUDE_INTERACTIVE),
-                policy=_policy(),
-                monitor=None,
-                execution_strategy=None,
-                liveness_probe=None,
-                waiting_listener=None,
-            ),
+        AgentRunCtx(
+            config=AgentConfig(cmd="test-agent", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            show_progress=False,
+            extra_env=None,
+            workspace_path=None,
+            policy=_policy(),
         ),
         clock,
-        _PtyExtras(input_prompt=_PROMPT),
+        PtyExtras(input_prompt=_PROMPT),
     )
     watchdog = IdleWatchdog(_policy(), clock)
     watchdog.record_invocation_start()

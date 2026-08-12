@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ralph.mcp.tools.exec import (
+    CompletedProcessAdapter,
+    ExecRunDeps,
     WorkspaceWithRoot,
     run_command,
 )
@@ -21,6 +23,15 @@ class TestWorkspaceWithRootProtocol:
         assert ws.root == Path("/tmp")
 
     def test_str_root_also_works(self, tmp_path: Path) -> None:
-        # The _workspace_root helper should handle string roots
-        result = run_command("echo", ["test"], str(tmp_path), 5000)
+        seen: dict[str, Path] = {}
+
+        def runner(
+            _command: list[str], cwd: Path, _timeout_seconds: float | None
+        ) -> CompletedProcessAdapter:
+            seen["cwd"] = cwd
+            return CompletedProcessAdapter(stdout=b"test", stderr=b"", returncode=0)
+
+        result = run_command("echo", ["test"], str(tmp_path), 5000, ExecRunDeps(runner=runner))
+
         assert result.returncode == 0
+        assert seen["cwd"] == tmp_path

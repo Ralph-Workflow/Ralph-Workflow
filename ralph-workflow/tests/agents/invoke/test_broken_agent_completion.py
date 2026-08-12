@@ -10,12 +10,14 @@ import pytest
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import BrokenAgentExitError
-from ralph.agents.invoke._completion import _check_process_result, _CompletionCheckOptions
+from ralph.agents.invoke import (
+    BrokenAgentExitError,
+    CompletionCheckOptions,
+    check_process_result,
+)
 from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
-    from ralph.agents.execution_state._live_descendant_handle import _LiveDescendantHandle
     from ralph.process.liveness import LivenessProbe
 
 
@@ -28,7 +30,7 @@ class _ResumableStrategy(BaseExecutionStrategy):
 
     def classify_exit(
         self,
-        handle: _LiveDescendantHandle,
+        handle: object,
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
@@ -46,8 +48,8 @@ def _completion_signals(*args: object, **kwargs: object) -> CompletionSignals:
     return CompletionSignals(False, False, ())
 
 
-def _options(*, elapsed_seconds: float, input_prompt: str) -> _CompletionCheckOptions:
-    return _CompletionCheckOptions(
+def _options(*, elapsed_seconds: float, input_prompt: str) -> CompletionCheckOptions:
+    return CompletionCheckOptions(
         execution_strategy=_ResumableStrategy(),
         workspace_path=Path("synthetic://broken-agent"),
         policy=TimeoutPolicy(
@@ -63,7 +65,7 @@ def _options(*, elapsed_seconds: float, input_prompt: str) -> _CompletionCheckOp
 
 def test_completion_gate_classifies_empty_long_running_exit_as_broken_agent() -> None:
     with pytest.raises(BrokenAgentExitError) as excinfo:
-        _check_process_result(
+        check_process_result(
             _Handle(),
             "claude",
             [],
@@ -78,7 +80,7 @@ def test_completion_gate_classifies_empty_long_running_exit_as_broken_agent() ->
 def test_completion_gate_classifies_all_prompt_echo_output_as_broken_agent() -> None:
     prompt = "implement the change"
     with pytest.raises(BrokenAgentExitError) as excinfo:
-        _check_process_result(
+        check_process_result(
             _Handle(),
             "claude",
             [prompt, f"Input prompt: {prompt}"],
@@ -92,7 +94,7 @@ def test_completion_gate_classifies_all_prompt_echo_output_as_broken_agent() -> 
 def test_completion_gate_keeps_mixed_output_resumable() -> None:
     prompt = "implement the change"
     with pytest.raises(Exception) as excinfo:
-        _check_process_result(
+        check_process_result(
             _Handle(),
             "claude",
             [prompt, "thinking: checking the implementation"],

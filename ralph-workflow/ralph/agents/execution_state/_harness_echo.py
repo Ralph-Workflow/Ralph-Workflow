@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-def _is_prompt_echo_line(line: str, input_prompt: str | None) -> bool:
+def is_prompt_echo_line(line: str, input_prompt: str | None) -> bool:
     """Return whether a nonblank line repeats the complete input prompt."""
     stripped_line = line.strip()
     stripped_prompt = input_prompt.strip() if input_prompt is not None else ""
@@ -12,4 +12,4 @@ def _is_prompt_echo_line(line: str, input_prompt: str | None) -> bool:
     )
 
 
-__all__ = ["_is_prompt_echo_line"]
+__all__ = ["is_prompt_echo_line"]

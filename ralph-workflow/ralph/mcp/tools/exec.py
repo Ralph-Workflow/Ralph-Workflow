@@ -103,6 +103,7 @@ PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 # through exec does not time out on every call. Per-call
 # `timeout_ms` overrides this; the process tree is still killed on expiry.
 DEFAULT_TIMEOUT_MS = EXEC_DEFAULT_TIMEOUT_MS
+CompletedProcessAdapter = _CompletedProcessAdapter
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")

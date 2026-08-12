@@ -15,8 +15,11 @@ from ralph.agents.completion_signals import (
     _check_completion_sentinel,
     evaluate_completion,
 )
-from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
-from ralph.agents.execution_state._harness_echo import _is_prompt_echo_line
+from ralph.agents.execution_state import (
+    AgentExecutionState,
+    BaseExecutionStrategy,
+    is_prompt_echo_line,
+)
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
@@ -520,7 +523,7 @@ def _raise_if_broken_agent_exit(
         )
     nonblank_output = [line for line in bounded_output if line.strip()]
     if nonblank_output and all(
-        _is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
+        is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
     ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(agent_name, reason="prompt_echo")

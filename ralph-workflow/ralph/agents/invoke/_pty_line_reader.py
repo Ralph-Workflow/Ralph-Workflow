@@ -24,8 +24,8 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     BaseExecutionStrategy,
     GenericExecutionStrategy,
+    is_prompt_echo_line,
 )
-from ralph.agents.execution_state._harness_echo import _is_prompt_echo_line
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
     IdleWatchdog,
@@ -45,10 +45,10 @@ from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
 from ralph.agents.invoke._process_reader import (
     _NON_MEANINGFUL_ACTIVITY_KINDS,
     _TERMINAL_PROCESS_STATUSES,
-    _check_broken_agent_timer,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
     _parent_broker_secret,
+    check_broken_agent_timer,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import (
@@ -1424,7 +1424,7 @@ class PtyLineReader:
     def _with_prompt_echo_flag(
         self, activity_signal: AgentActivitySignal, queued_line: str
     ) -> AgentActivitySignal:
-        if not _is_prompt_echo_line(queued_line, self._input_prompt):
+        if not is_prompt_echo_line(queued_line, self._input_prompt):
             return activity_signal
         return AgentActivitySignal(
             kind=activity_signal.kind,
@@ -1454,7 +1454,7 @@ class PtyLineReader:
             pending_lines, exc = fire_result
             yield from pending_lines
             raise exc
-        _check_broken_agent_timer(self._handle, watchdog, self._agent_name)
+        check_broken_agent_timer(self._handle, watchdog, self._agent_name)
         self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
     def _strategy_registry_and_prefix(

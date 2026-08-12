@@ -18,8 +18,11 @@ from tqdm import tqdm
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import evaluate_completion
-from ralph.agents.execution_state import AgentExecutionState, GenericExecutionStrategy
-from ralph.agents.execution_state._harness_echo import _is_prompt_echo_line
+from ralph.agents.execution_state import (
+    AgentExecutionState,
+    GenericExecutionStrategy,
+    is_prompt_echo_line,
+)
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
     IdleWatchdog,
@@ -112,7 +115,7 @@ def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
 
 
-def _check_broken_agent_timer(
+def check_broken_agent_timer(
     handle: ManagedProcess | ManagedPtyProcess,
     watchdog: IdleWatchdog,
     agent_name: str,
@@ -794,7 +797,7 @@ class _ProcessLineReader:
         if activity_signal is None:
             self._last_activity_meaningful[0] = False
             return
-        if _is_prompt_echo_line(queued_line, self._input_prompt):
+        if is_prompt_echo_line(queued_line, self._input_prompt):
             activity_signal = AgentActivitySignal(
                 kind=activity_signal.kind,
                 raw=activity_signal.raw,
@@ -968,7 +971,7 @@ class _ProcessLineReader:
                     yield from pending_lines
                     raise exc
 
-                _check_broken_agent_timer(
+                check_broken_agent_timer(
                     self._handle,
                     watchdog,
                     _agent_command_name(self._config),

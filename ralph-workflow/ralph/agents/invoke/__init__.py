@@ -59,8 +59,10 @@ from ralph.agents.invoke._options import (
     build_invoke_options_from_config,
 )
 from ralph.agents.invoke._process_reader import (
+    _ProcessLineReader,
     _read_lines_from_process,
     _run_subprocess_and_read_lines,
+    check_broken_agent_timer,
 )
 from ralph.agents.invoke._pty_helpers import (
     _extract_choice_menu_state,
@@ -70,6 +72,7 @@ from ralph.agents.invoke._pty_helpers import (
     _permission_prompt_action_message,
     _plan_choice_menu_response,
 )
+from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
 from ralph.agents.invoke._runtime_resolvers import RUNTIME_RESOLVERS
 from ralph.agents.invoke._session import (
@@ -102,6 +105,7 @@ from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
@@ -240,16 +244,16 @@ def _shared_interactive_pty_extras(
             expected_session_id=opts.session_id,
             stop_sentinel_path=opts.stop_sentinel_path,
             permission_prompt_listener=opts.permission_prompt_listener,
-            input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
+            input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
         )
     if transport == AgentTransport.NANOCODER:
         return _PtyExtras(
             expected_session_id=opts.session_id,
-            input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
+            input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
         )
     return _PtyExtras(
         expected_session_id=opts.session_id,
-        input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
+        input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
     )
 
 
@@ -504,7 +508,7 @@ def invoke_agent(
             evaluate_completion_fn=evaluate_completion,
             connectivity_state_provider=opts.connectivity_state_provider,
             is_waiting_state_provider=opts.is_waiting_state_provider,
-            input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
+            input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
         )
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
@@ -713,7 +717,10 @@ discover_http_mcp_tool_names = _discover_http_mcp_tool_names
 CompletionCheckOptions = _CompletionCheckOptions
 check_process_result = _check_process_result
 IdleStreamTimeoutError = _IdleStreamTimeoutError
+AgentRunCtx = _AgentRunCtx
+ProcessLineReader = _ProcessLineReader
 ProcessReaderCtx = _ProcessReaderCtx
+PtyExtras = _PtyExtras
 read_lines_from_process = _read_lines_from_process
 wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
@@ -723,6 +730,7 @@ merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
 __all__ = [
     "AgentInactivityTimeoutError",
     "AgentInvocationError",
+    "AgentRunCtx",
     "BrokenAgentExitError",
     "BuildCommandOptions",
     "CompletionCheckOptions",
@@ -734,7 +742,10 @@ __all__ = [
     "OpenCodeResumableExitError",
     "PiContextExhaustedExitError",
     "PiProviderFailureExitError",
+    "ProcessLineReader",
     "ProcessReaderCtx",
+    "PtyExtras",
+    "PtyLineReader",
     "ResolvedInvocationRuntime",
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
@@ -746,6 +757,7 @@ __all__ = [
     "build_nanocoder_mcp_config",
     "build_opencode_provider_config",
     "check_agent_available",
+    "check_broken_agent_timer",
     "check_process_result",
     "command_for_log",
     "discover_http_mcp_tool_names",
