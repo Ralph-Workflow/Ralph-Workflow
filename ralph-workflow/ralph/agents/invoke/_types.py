@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
 from ralph.agents.invoke._build_command_options import _BuildCommandOptions
 from ralph.agents.invoke._choice_menu_option import _ChoiceMenuOption
 from ralph.agents.invoke._choice_menu_state import _ChoiceMenuState
 from ralph.agents.invoke._invoke_options import InvokeOptions
-from ralph.agents.invoke._pty_extras import _PtyExtras
+from ralph.agents.invoke._pty_extras import PtyExtras
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class _ProcessReaderCtx:
+class ProcessReaderCtx:
     config: AgentConfig
     policy: TimeoutPolicy
     execution_strategy: BaseExecutionStrategy | None = None
@@ -44,12 +44,12 @@ class _ProcessReaderCtx:
 
 
 __all__ = [
+    "AgentRunCtx",
     "InvokeOptions",
+    "ProcessReaderCtx",
+    "PtyExtras",
     "ResolvedInvocationRuntime",
-    "_AgentRunCtx",
     "_BuildCommandOptions",
     "_ChoiceMenuOption",
     "_ChoiceMenuState",
-    "_ProcessReaderCtx",
-    "_PtyExtras",
 ]

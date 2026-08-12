@@ -11,10 +11,6 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
 )
-from ralph.agents.invoke import (
-    CompletionCheckOptions,
-    check_process_result,
-)
 from ralph.process.liveness import FakeLivenessProbe
 from tests.fake_handle import _FakeHandle
 
@@ -23,8 +19,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestGenericExecutionStrategy:

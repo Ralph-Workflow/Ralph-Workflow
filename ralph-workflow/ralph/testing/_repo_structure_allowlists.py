@@ -277,7 +277,7 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         (
             "tests/test_completion_invocation_exit_logging.py",
             "ralph.agents.invoke._completion",
-            ("_log_invocation_exit",),
+            ("_extract_rejected_session_id_from_failure",),
         ),
         (
             "tests/test_in_memory_transport_round_trip.py",
@@ -345,7 +345,7 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_make_stdio_caller",),
         ),
         (
-            "tests/test_opencode_session_execution_check_process_result_completion_seam.py",
+            "tests/test_opencode_session_executioncheck_process_result_completion_seam.py",
             "ralph.agents.invoke",
             ("_completion",),
         ),
@@ -519,7 +519,7 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         (
             "tests/agents/test_agent_spawn_detaches_tty.py",
             "ralph.agents.invoke._agent_run_ctx",
-            ("_AgentRunCtx",),
+            ("AgentRunCtx",),
         ),
         (
             "tests/display/test_log_sink_terminal_containment.py",
@@ -691,7 +691,7 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         (
             "tests/test_agy_live_regression.py",
             "ralph.agents.invoke._agent_run_ctx",
-            ("_AgentRunCtx",),
+            ("AgentRunCtx",),
         ),
         (
             "tests/test_claude_interactive_pty.py",
@@ -748,37 +748,37 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         (
             "tests/agents/idle_watchdog/test_tool_result_routing.py",
             "ralph.agents.invoke._process_reader",
-            ("_ProcessLineReader",),
+            ("ProcessLineReader",),
         ),
         (
             "tests/agents/idle_watchdog/test_opencode_step_frames.py",
             "ralph.agents.invoke._process_reader",
-            ("_ProcessLineReader",),
+            ("ProcessLineReader",),
         ),
         (
             "tests/agents/idle_watchdog/test_both_repetition_dimensions.py",
             "ralph.agents.invoke._process_reader",
-            ("_ProcessLineReader",),
+            ("ProcessLineReader",),
         ),
         (
             "tests/agents/invoke/test_line_reader_queue_bound.py",
             "ralph.agents.invoke._process_reader",
-            ("_ProcessLineReader",),
+            ("ProcessLineReader",),
         ),
         (
             "tests/agents/invoke/test_line_reader_queue_bound.py",
             "ralph.agents.invoke._types",
-            ("_ProcessReaderCtx",),
+            ("ProcessReaderCtx",),
         ),
         (
             "tests/agents/invoke/test_cpu_baseline_pruning.py",
             "ralph.agents.invoke._process_reader",
-            ("_ProcessLineReader",),
+            ("ProcessLineReader",),
         ),
         (
             "tests/agents/invoke/test_cpu_baseline_pruning.py",
             "ralph.agents.invoke._types",
-            ("_ProcessReaderCtx",),
+            ("ProcessReaderCtx",),
         ),
         (
             "tests/agents/idle_watchdog/test_non_resumable_end_to_end.py",
@@ -1353,15 +1353,20 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # branches each their own short-circuit; restructuring further would scatter the
         # contract.
         ("ralph/pipeline/plumbing/smoke_plumbing.py", 1669),
-        # wt-07-multimodal-visual: deferred import of
-        # ``_opencode_binary_override_env`` from
-        # ``ralph.pipeline.plumbing.smoke_plumbing`` to break the
-        # invoke <-> smoke_plumbing cycle; ruff PLC0415 forbids
-        # function-level imports by default, and the inline import
-        # is the canonical seam (smoke_plumbing imports back from
-        # ``ralph.agents.invoke`` for the smoke harness's other
-        # seams so a top-level import would cycle).
-        ("ralph/agents/invoke/__init__.py", 609),
+        # wt-058-prompt-consistency (audit repair): the deferred import of
+        # ``opencode_binary_override`` from ``ralph.config.agent_detection``
+        # replaced the ``smoke_plumbing`` seam so the override read lives in
+        # the canonical env-boundary module; the lazy import still breaks
+        # the invoke <-> agent_detection chain (agent_detection ->
+        # ralph.agents.builtin -> execution_state -> invoke).
+        ("ralph/agents/invoke/__init__.py", 610),
+        # wt-058-prompt-consistency (audit repair): backward-compat delegate
+        # in ``smoke_plumbing`` lazily imports the canonical
+        # ``agent_detection.opencode_binary_override`` so smoke callers keep
+        # their import path while the env read lives in the canonical
+        # boundary module; the lazy import keeps the delegate free of the
+        # agent_detection import chain.
+        ("ralph/pipeline/plumbing/smoke_plumbing.py", 1548),
         # wt-07-multimodal-visual: re-export of the three OpenCode
         # override helpers from ``_smoke_opencode_override``; the
         # helpers were extracted to keep ``smoke.py`` under the

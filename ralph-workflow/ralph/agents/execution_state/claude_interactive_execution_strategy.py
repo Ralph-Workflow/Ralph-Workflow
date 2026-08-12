@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.interactive_transcript_event import InteractiveTranscriptEvent
     from ralph.process.liveness import LivenessProbe
 
-    from ._live_descendant_handle import _LiveDescendantHandle
+    from ._live_descendant_handle import LiveDescendantHandle
 
 
 def _interactive_tool_use_raw(event: InteractiveTranscriptEvent) -> str:
@@ -100,7 +100,7 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
 
     def classify_quiet(
         self,
-        handle: _LiveDescendantHandle,
+        handle: LiveDescendantHandle,
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         del handle, liveness_probe

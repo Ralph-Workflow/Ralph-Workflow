@@ -17,10 +17,8 @@ from ralph.agents.execution_state import (
 )
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
-    CompletionCheckOptions,
     IdleStreamTimeoutError,
     ProcessReaderCtx,
-    check_process_result,
     read_lines_from_process,
 )
 from ralph.agents.timeout_clock import FakeClock
@@ -33,8 +31,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestReadLinesFromProcessWaitingOnChildDeferred:

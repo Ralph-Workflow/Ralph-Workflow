@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.liveness import LivenessProbe
 
-    from ._live_descendant_handle import _LiveDescendantHandle
+    from ._live_descendant_handle import LiveDescendantHandle
 
 
 class CompletionEnforcingStrategy:
@@ -48,7 +48,7 @@ class CompletionEnforcingStrategy:
 
     def classify_exit(
         self,
-        handle: _LiveDescendantHandle,
+        handle: LiveDescendantHandle,
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:

@@ -166,7 +166,7 @@ def test_agy_invoke_completes_when_completion_signal_present(
             del is_exited_fn
             return object()
 
-    def fake_check_process_result(
+    def fakecheck_process_result(
         handle: object,
         agent_name: str,
         parsed_output: list[str],
@@ -200,8 +200,8 @@ def test_agy_invoke_completes_when_completion_signal_present(
         _FakePostExitWatchdog,
     )
     monkeypatch.setattr(
-        "ralph.agents.invoke._pty_runner._check_process_result",
-        fake_check_process_result,
+        "ralph.agents.invoke._pty_runner.check_process_result",
+        fakecheck_process_result,
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.agy_workspace_mcp_endpoint",
@@ -380,7 +380,7 @@ def test_ansi_wrapped_completion_marker_detected(
             del is_exited_fn
             return object()
 
-    def fake_check_process_result(
+    def fakecheck_process_result(
         handle: object,
         agent_name: str,
         parsed_output: list[str],
@@ -401,8 +401,8 @@ def test_ansi_wrapped_completion_marker_detected(
     monkeypatch.setattr("ralph.agents.invoke._pty_runner.PtyLineReader", _FakePtyLineReader)
     monkeypatch.setattr("ralph.agents.invoke._pty_runner.PostExitWatchdog", _FakePostExitWatchdog)
     monkeypatch.setattr(
-        "ralph.agents.invoke._pty_runner._check_process_result",
-        fake_check_process_result,
+        "ralph.agents.invoke._pty_runner.check_process_result",
+        fakecheck_process_result,
     )
 
     ctx = SimpleNamespace(

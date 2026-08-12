@@ -122,7 +122,7 @@ References:
       the typed-cause branch ordering.
     - ``ralph/agents/invoke/_errors.py`` for the ``AgentInvocationError``
       base class hierarchy.
-    - ``ralph/agents/invoke/_completion.py:_CompletionCheckOptions``
+    - ``ralph/agents/invoke/_completion.py:CompletionCheckOptions``
       for the dataclass that threads the diagnostic fields.
 """
 

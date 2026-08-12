@@ -1537,17 +1537,19 @@ def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | No
 def _opencode_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
     """Return the raw ``RALPH_OPENCODE_BINARY`` env value, if set.
 
-    Callers may inject ``env_getter`` for tests and composed runtimes; the
-    production default is centralized here so smoke plumbing callers do not
-    read ambient environment directly. The override is honored by the
+    Backward-compat delegate: the canonical home moved to
+    :func:`ralph.config.agent_detection.opencode_binary_override` so
+    non-smoke callers (``ralph.agents.invoke``) can read the override
+    without importing smoke plumbing. The override is honored by the
     smoke CLI's opencode smoke command and by the per-harness multimodal
     smoke suite when a deterministic stub agent needs to take the
-    opencode binary's place (the opencode runtime resolver exposes the
-    MCP endpoint via ``OPENCODE_CONFIG_CONTENT``, which both the real
-    ``opencode`` binary and the stub consume the same way).
+    opencode binary's place.
     """
-    getter = env_getter if env_getter is not None else os.environ.get
-    return getter("RALPH_OPENCODE_BINARY")
+    from ralph.config.agent_detection import (  # reason: lazy import keeps the backward-compat delegate free of the agent_detection<->smoke_plumbing chain
+        opencode_binary_override,
+    )
+
+    return opencode_binary_override(env_getter)
 
 
 def is_mock_agy_override() -> bool:

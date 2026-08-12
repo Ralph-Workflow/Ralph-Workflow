@@ -20,6 +20,7 @@ from ralph.cli.commands._smoke_opencode_override import (
     _maybe_apply_opencode_binary_override,
     _resolve_opencode_binary_override,
 )
+from ralph.config.agent_detection import opencode_binary_override
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
@@ -46,7 +47,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _build_smoke_prompt,
     _cursor_binary_override_env,
     _execute_smoke_turns,
-    _opencode_binary_override_env,
     is_mock_agy_override,
     record_conformance_matrix,
     resolve_smoke_harness_spec,
@@ -76,7 +76,7 @@ def get_cursor_binary_override() -> str:
 
 def get_opencode_binary_override() -> str:
     """Return the OpenCode binary path, honoring ``RALPH_OPENCODE_BINARY``."""
-    return _opencode_binary_override_env() or "opencode"
+    return opencode_binary_override() or "opencode"
 
 
 def _resolve_agy_binary_override() -> str | None:

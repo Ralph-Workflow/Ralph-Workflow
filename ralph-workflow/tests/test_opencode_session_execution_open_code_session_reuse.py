@@ -10,9 +10,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import (
     BuildCommandOptions,
-    CompletionCheckOptions,
     build_command,
-    check_process_result,
 )
 from ralph.agents.registry import builtin_agents
 
@@ -25,8 +23,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestOpenCodeSessionReuse:

@@ -109,7 +109,7 @@ def completion_run_id_from_extra_env(extra_env: dict[str, str] | None) -> str | 
     return extra_env.get(str(MCP_RUN_ID_ENV)) or None
 
 
-def _completion_run_id(opts: _CompletionCheckOptions) -> str | None:
+def _completion_run_id(opts: CompletionCheckOptions) -> str | None:
     """The run identity used to correlate completion receipts and the sentinel.
 
     Both the submission handler (which writes receipts keyed by the MCP session's
@@ -265,7 +265,7 @@ def _pi_provider_failure_reason(agent_name: str, output: list[str]) -> str | Non
 
 
 @dataclass(frozen=True)
-class _CompletionCheckOptions:
+class CompletionCheckOptions:
     execution_strategy: BaseExecutionStrategy | None = None
     workspace_path: Path | None = None
     liveness_probe: LivenessProbe | None = None
@@ -323,7 +323,7 @@ class _CompletionCheckOptions:
 
 def _apply_sentinel_signal(
     signals: CompletionSignals,
-    opts: _CompletionCheckOptions,
+    opts: CompletionCheckOptions,
     *,
     sentinel_run_id: str | None,
 ) -> CompletionSignals:
@@ -335,7 +335,7 @@ def _apply_sentinel_signal(
     ``_check_completion_sentinel`` is called with the
     ``sentinel_secret`` kwarg so the broker-owned HMAC is verified
     on the read path (RFC-013 P3). Extracted from
-    ``_check_process_result`` to keep its branch count under the
+    ``check_process_result`` to keep its branch count under the
     PLR0912 cap. ``opts.workspace_path`` is ``Path`` at this point
     (the caller checks ``opts.workspace_path is not None`` before
     entering the session-continuation / completion-enforcement
@@ -388,7 +388,7 @@ def _apply_sentinel_signal(
 
 def _wait_for_completion_grace(
     handle: ManagedProcess | ManagedPtyProcess,
-    opts: _CompletionCheckOptions,
+    opts: CompletionCheckOptions,
     parsed_output: list[str],
     *,
     clock: Clock | None = None,
@@ -441,7 +441,7 @@ def _wait_for_completion_grace(
 
 def _wait_for_descendants_then_recheck(
     handle: ManagedProcess | ManagedPtyProcess,
-    opts: _CompletionCheckOptions,
+    opts: CompletionCheckOptions,
     parsed_output: list[str],
     *,
     clock: Clock | None = None,
@@ -507,7 +507,7 @@ def _raise_if_broken_agent_exit(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
     bounded_output: list[str],
-    opts: _CompletionCheckOptions,
+    opts: CompletionCheckOptions,
 ) -> None:
     if (
         opts.elapsed_seconds is not None
@@ -529,11 +529,11 @@ def _raise_if_broken_agent_exit(
         raise BrokenAgentExitError(agent_name, reason="prompt_echo")
 
 
-def _check_process_result(
+def check_process_result(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
     parsed_output: list[str] | None = None,
-    check_options: _CompletionCheckOptions | None = None,
+    check_options: CompletionCheckOptions | None = None,
     *,
     _clock: Clock | None = None,
 ) -> None:
@@ -578,7 +578,7 @@ def _check_process_result(
                 ),
             ),
         )
-        _log_invocation_exit(exc)
+        log_invocation_exit(exc)
         _teardown_subtree_if_pid_available(handle)
         raise exc
 
@@ -785,7 +785,13 @@ def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str 
     return None
 
 
-def _log_invocation_exit(exc: AgentInvocationError) -> None:
+def log_invocation_exit(exc: AgentInvocationError) -> None:
+    """Public seam for the completion-gate exit log.
+
+    Extracted so tests assert against the public surface instead of a
+    private helper; the implementation logs the same WARNING/ERROR lines
+    the private helper did.
+    """
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
     retryable = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
     if classified.reset_session:

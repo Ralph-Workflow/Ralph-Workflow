@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.pipeline.plumbing.smoke_plumbing import _opencode_binary_override_env
+from ralph.config.agent_detection import opencode_binary_override
 
 if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -49,7 +49,7 @@ def _resolve_opencode_binary_override() -> str | None:
     ``OPENCODE_CONFIG_CONTENT`` -- both the real binary and the
     stub read the same env var to discover Ralph's MCP server.
     """
-    override = _opencode_binary_override_env()
+    override = opencode_binary_override()
     if not override:
         return None
     resolved = Path(override).expanduser()

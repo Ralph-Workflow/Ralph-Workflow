@@ -56,7 +56,7 @@ def _build_reader_with_strategy(strategy: object) -> PtyLineReader:
 
     ``__new__`` + attribute assignment avoids running the real
     ``__init__`` (which requires a real ``ManagedPtyProcess``,
-    ``_AgentRunCtx``, etc.) while still producing a usable instance
+    ``AgentRunCtx``, etc.) while still producing a usable instance
     for the helper methods we exercise.
     """
     reader = PtyLineReader.__new__(PtyLineReader)

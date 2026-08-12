@@ -29,8 +29,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 def test_agy_strategy_does_not_support_session_continuation() -> None:
@@ -56,11 +54,11 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
     )
 
     with pytest.raises(AgentInvocationError) as excinfo:
-        _check_process_result(
+        check_process_result(
             _FakeHandle(returncode=0),
             "agy",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy_for_transport(AgentTransport.AGY),
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
@@ -89,11 +87,11 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
     handle = _FakeHandle(returncode=0)
 
     with pytest.raises(AgentInvocationError):
-        _check_process_result(
+        check_process_result(
             handle,
             "agy",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
@@ -124,11 +122,11 @@ def test_declare_complete_sentinel_satisfies_artifact_free_completion_contract(
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
-    _check_process_result(
+    check_process_result(
         handle,
         "agy",
         raw_output,
-        _CompletionCheckOptions(
+        CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             captured_session_id="abc",
@@ -172,7 +170,7 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
 
-    options = _CompletionCheckOptions(
+    options = CompletionCheckOptions(
         execution_strategy=strategy,
         workspace_path=tmp_path,
         completion_run_id=run_id,
@@ -190,7 +188,7 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
     )
 
     with pytest.raises(AgentInvocationError):
-        _check_process_result(
+        check_process_result(
             handle,
             "agy",
             [],
@@ -199,7 +197,7 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
 
     sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
     sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
-    _check_process_result(
+    check_process_result(
         handle,
         "agy",
         [],
@@ -213,11 +211,11 @@ def test_sentinel_check_fn_true_without_artifact_contract_prevents_invocation_er
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
 
-    _check_process_result(
+    check_process_result(
         handle,
         "agy",
         [],
-        _CompletionCheckOptions(
+        CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             captured_session_id="captured-run-id",
@@ -236,11 +234,11 @@ def test_sentinel_check_fn_true_does_not_replace_required_receipt(
     handle = _FakeHandle(returncode=0)
 
     with pytest.raises(AgentInvocationError):
-        _check_process_result(
+        check_process_result(
             handle,
             "agy",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
@@ -262,11 +260,11 @@ def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -
     handle = _FakeHandle(returncode=0)
 
     with pytest.raises(AgentInvocationError):
-        _check_process_result(
+        check_process_result(
             handle,
             "agy",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
@@ -292,11 +290,11 @@ def test_sentinel_check_fn_receives_completion_run_id(tmp_path: Path) -> None:
         seen.append((workspace, run_id))
         return True
 
-    _check_process_result(
+    check_process_result(
         handle,
         "agy",
         [],
-        _CompletionCheckOptions(
+        CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             captured_session_id="captured-run-id",
@@ -315,11 +313,11 @@ def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
     sentinel.parent.mkdir(parents=True)
     sentinel.write_text('{"run_id": "observable-run-001"}', encoding="utf-8")
 
-    _check_process_result(
+    check_process_result(
         handle,
         "agy",
         [],
-        _CompletionCheckOptions(
+        CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             captured_session_id="parsed-session-001",
@@ -333,11 +331,11 @@ def test_sentinel_absent_without_pty_echo_raises(tmp_path: Path) -> None:
     handle = _FakeHandle(returncode=0)
 
     with pytest.raises(AgentInvocationError):
-        _check_process_result(
+        check_process_result(
             handle,
             "agy",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(

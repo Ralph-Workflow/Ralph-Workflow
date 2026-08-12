@@ -31,8 +31,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestCheckProcessResultClaudeInteractiveSeam:
@@ -52,11 +50,11 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
-        _check_process_result(
+        check_process_result(
             handle,
             "claude",
             raw_output,
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 captured_session_id="abc",
@@ -71,11 +69,11 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "claude",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
@@ -113,7 +111,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         strategy = ClaudeInteractiveExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
-        options = _CompletionCheckOptions(
+        options = CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             completion_run_id=run_id,
@@ -131,7 +129,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         )
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "claude",
                 [],
@@ -140,7 +138,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
 
         sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
-        _check_process_result(
+        check_process_result(
             handle,
             "claude",
             [],
@@ -153,11 +151,11 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "claude",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(

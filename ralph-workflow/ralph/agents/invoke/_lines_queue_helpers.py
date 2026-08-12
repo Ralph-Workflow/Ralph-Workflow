@@ -1,4 +1,4 @@
-"""Helpers for the pre-parse lines queue used by ``_ProcessLineReader`` and ``PtyLineReader``.
+"""Helpers for the pre-parse lines queue used by ``ProcessLineReader`` and ``PtyLineReader``.
 
 The production code keeps ``self._lines_queue`` as a
 ``BoundedLinesQueue`` (O(1) ``popleft``) but tests inject a raw

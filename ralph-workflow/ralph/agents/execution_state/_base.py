@@ -10,7 +10,8 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from ralph.agents.activity import AgentActivityKind
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.execution_state._harness_echo import is_prompt_echo_line
 from ralph.mcp.server._activity_sink import (
     get_subagent_sink as _has_subagent_sink,
 )
@@ -27,13 +28,34 @@ from ._helpers import (
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
-    from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.liveness import LivenessProbe
     from ralph.process.monitor import SubagentPidSource
 
-    from ._live_descendant_handle import _LiveDescendantHandle
+    from ._live_descendant_handle import LiveDescendantHandle
+
+
+def with_prompt_echo_flag(
+    activity_signal: AgentActivitySignal,
+    queued_line: str,
+    input_prompt: str | None,
+) -> AgentActivitySignal:
+    """Return ``activity_signal`` with the harness-echo flag when the line echoes the prompt.
+
+    Both line readers route a raw line through this public helper after
+    ``classify_activity_line`` so prompt-echo detection stays
+    transport-neutral and tests can exercise it without touching private
+    methods.
+    """
+    if not is_prompt_echo_line(queued_line, input_prompt):
+        return activity_signal
+    return AgentActivitySignal(
+        kind=activity_signal.kind,
+        raw=activity_signal.raw,
+        error_message=activity_signal.error_message,
+        is_harness_echo=True,
+    )
 
 
 class BaseExecutionStrategy:
@@ -66,7 +88,7 @@ class BaseExecutionStrategy:
         # registry-aware non-OpenCode transport (Claude / Pi / Codex /
         # Gemini / Generic / Agy / Claude-interactive); the filtered
         # count is the canonical signal. When neither is set, the
-        # legacy ``_LiveDescendantHandle.has_live_descendants()``
+        # legacy ``LiveDescendantHandle.has_live_descendants()``
         # fallback wins for backward compatibility with non-instrumented
         # tests.
         self._subagent_pid_source = subagent_pid_source
@@ -122,7 +144,7 @@ class BaseExecutionStrategy:
 
     def classify_quiet(
         self,
-        handle: _LiveDescendantHandle,
+        handle: LiveDescendantHandle,
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         del liveness_probe
@@ -181,7 +203,7 @@ class BaseExecutionStrategy:
 
     def classify_exit(
         self,
-        handle: _LiveDescendantHandle,
+        handle: LiveDescendantHandle,
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:

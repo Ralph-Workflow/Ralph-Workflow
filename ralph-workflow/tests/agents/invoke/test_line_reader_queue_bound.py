@@ -1,7 +1,7 @@
 """Black-box tests for the bounded pre-parse lines queue.
 
 wt-024 Step 10: the pre-parse ``_lines_queue`` on both
-``_ProcessLineReader`` and ``PtyLineReader`` is bounded via a
+``ProcessLineReader`` and ``PtyLineReader`` is bounded via a
 drop-oldest ``collections.deque(maxlen=N)`` so a burst of output
 (``find /``, ``git log`` on a huge repo) cannot spike memory
 unboundedly. The cap is aligned to the parsed-output tail (256
@@ -26,9 +26,9 @@ import pytest
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
-from ralph.agents.invoke._process_reader import _ProcessLineReader
+from ralph.agents.invoke._process_reader import ProcessLineReader
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
-from ralph.agents.invoke._types import _ProcessReaderCtx
+from ralph.agents.invoke._types import ProcessReaderCtx
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -81,7 +81,7 @@ def test_pre_parse_queue_cap_matches_parsed_output_tail() -> None:
 
     This is the structural invariant from the plan: the cap on the
     pre-parse queue (``BoundedLinesQueue(maxlen=...)`` in the
-    ``_ProcessLineReader.__init__``) MUST equal the parsed-output
+    ``ProcessLineReader.__init__``) MUST equal the parsed-output
     tail cap so the contract is consistent across both buffers. We
     use a representative cap of 256 here (the production default);
     the actual constants live in private modules and are exercised
@@ -121,10 +121,10 @@ _PROCESS_LINE_READER_CAP = 256
 
 class _FakeManagedProcess:
     """Minimal stand-in for ``ManagedProcess`` used to construct a real
-    ``_ProcessLineReader`` via its public ``__init__`` without spawning
+    ``ProcessLineReader`` via its public ``__init__`` without spawning
     any real subprocesses.
 
-    ``_ProcessLineReader.__init__`` reads a small, documented set of
+    ``ProcessLineReader.__init__`` reads a small, documented set of
     attributes off the handle (poll, pid, stdout). We provide no-ops
     so the test focuses on the queue-cap contract.
     """
@@ -140,8 +140,8 @@ class _FakeManagedProcess:
         pass
 
 
-def _make_subprocess_ctx() -> _ProcessReaderCtx:
-    return _ProcessReaderCtx(
+def _make_subprocess_ctx() -> ProcessReaderCtx:
+    return ProcessReaderCtx(
         config=AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC),
         policy=TimeoutPolicy(idle_timeout_seconds=300.0),
         execution_strategy=None,
@@ -153,7 +153,7 @@ def _make_subprocess_ctx() -> _ProcessReaderCtx:
 
 
 def test_process_line_reader_installs_bounded_pre_parse_queue() -> None:
-    """The public ``_ProcessLineReader.__init__`` installs a bounded queue.
+    """The public ``ProcessLineReader.__init__`` installs a bounded queue.
 
     Confirms the cap is wired through to the production reader path
     (no ``__new__`` bypass) and matches the parsed-output tail cap
@@ -161,7 +161,7 @@ def test_process_line_reader_installs_bounded_pre_parse_queue() -> None:
     """
     handle = _FakeManagedProcess()
     ctx = _make_subprocess_ctx()
-    reader = _ProcessLineReader(handle, ctx, FakeClock(start=0.0))
+    reader = ProcessLineReader(handle, ctx, FakeClock(start=0.0))
 
     assert isinstance(reader._lines_queue, BoundedLinesQueue)
     assert reader._lines_queue.maxlen == _PROCESS_LINE_READER_CAP
@@ -177,7 +177,7 @@ def test_process_line_reader_queue_bounds_burst_output() -> None:
     """
     handle = _FakeManagedProcess()
     ctx = _make_subprocess_ctx()
-    reader = _ProcessLineReader(handle, ctx, FakeClock(start=0.0))
+    reader = ProcessLineReader(handle, ctx, FakeClock(start=0.0))
 
     cap = _PROCESS_LINE_READER_CAP
     for index in range(cap * 3):

@@ -13,7 +13,7 @@ threads ``resumable_session_id`` through.
 
 THIS file pins the PRODUCER side: when an agent subprocess exits cleanly
 (rc=0) without a completion artifact AND without ``declare_complete``,
-``ralph.agents.invoke._completion._check_process_result`` raises
+``ralph.agents.invoke._completion.check_process_result`` raises
 ``OpenCodeResumableExitError`` with the captured ``session_id``. The
 producer path is the ROOT CAUSE of the typed exception -- without it
 the classifier-side determinism has nothing to consume.
@@ -42,8 +42,8 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke._completion import (
-    _check_process_result,
-    _CompletionCheckOptions,
+    CompletionCheckOptions,
+    check_process_result,
 )
 from ralph.agents.invoke._open_code_resumable_exit_error import (
     OpenCodeResumableExitError,
@@ -52,7 +52,7 @@ from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
     from ralph.agents.execution_state._live_descendant_handle import (
-        _LiveDescendantHandle,
+        LiveDescendantHandle,
     )
     from ralph.process.liveness import LivenessProbe
 
@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 class _ProducerStubStrategy(BaseExecutionStrategy):
     """Stub execution strategy whose ``classify_exit`` always returns RESUMABLE_CONTINUE.
 
-    Drives the producer path in ``_check_process_result`` end-to-end:
+    Drives the producer path in ``check_process_result`` end-to-end:
     when ``classify_exit`` returns ``AgentExecutionState.RESUMABLE_CONTINUE``,
     the completion gate raises ``OpenCodeResumableExitError`` with the
     captured ``session_id`` -- the canonical rc=0-no-evidence producer.
@@ -78,7 +78,7 @@ class _ProducerStubStrategy(BaseExecutionStrategy):
 
     def classify_exit(
         self,
-        handle: _LiveDescendantHandle,
+        handle: LiveDescendantHandle,
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
@@ -118,8 +118,8 @@ def _stub_sentinel(workspace_path: object, run_id: object) -> bool:
 
 def _make_producer_options(
     strategy: BaseExecutionStrategy, *, captured_session_id: str
-) -> _CompletionCheckOptions:
-    """Construct a stub ``_CompletionCheckOptions`` with deterministic stub fakes.
+) -> CompletionCheckOptions:
+    """Construct a stub ``CompletionCheckOptions`` with deterministic stub fakes.
 
     The workspace_path argument is a string (NOT a real Path on disk) so the
     test does not touch the filesystem. The evaluate_completion_fn and
@@ -133,7 +133,7 @@ def _make_producer_options(
         descendant_wait_timeout_seconds=0.0,
         descendant_wait_poll_seconds=0.001,
     )
-    return _CompletionCheckOptions(
+    return CompletionCheckOptions(
         execution_strategy=strategy,
         workspace_path=Path("synthetic://producer-path"),
         liveness_probe=None,
@@ -148,11 +148,11 @@ def _make_producer_options(
 
 
 def test_producer_path_raises_typed_exception_when_strategy_classifies_resumable_continue() -> None:
-    """R7 producer: ``_check_process_result`` raises ``OpenCodeResumableExitError``.
+    """R7 producer: ``check_process_result`` raises ``OpenCodeResumableExitError``.
 
     Drives the producer path end-to-end: a stub strategy whose
     ``classify_exit`` returns ``AgentExecutionState.RESUMABLE_CONTINUE``
-    + a stub handle with ``returncode=0`` + a stub ``_CompletionCheckOptions``
+    + a stub handle with ``returncode=0`` + a stub ``CompletionCheckOptions``
     with ``captured_session_id='sess-producer-test'`` triggers the
     ``raise OpenCodeResumableExitError(agent_name, session_id=session_id)``
     statement at ``ralph/agents/invoke/_completion.py:368`` -- the canonical
@@ -173,7 +173,7 @@ def test_producer_path_raises_typed_exception_when_strategy_classifies_resumable
     opts = _make_producer_options(strategy, captured_session_id="sess-producer-test")
 
     with pytest.raises(OpenCodeResumableExitError) as excinfo:
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             parsed_output=[],
@@ -205,7 +205,7 @@ def test_producer_path_prefers_captured_session_id_over_extractor() -> None:
     opts = _make_producer_options(strategy, captured_session_id="sess-captured-wins")
 
     with pytest.raises(OpenCodeResumableExitError) as excinfo:
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             parsed_output=["Session ID: sess-from-bounded-output"],

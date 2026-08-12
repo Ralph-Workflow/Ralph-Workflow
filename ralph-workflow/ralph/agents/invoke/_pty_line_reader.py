@@ -24,7 +24,7 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     BaseExecutionStrategy,
     GenericExecutionStrategy,
-    is_prompt_echo_line,
+    with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -50,7 +50,7 @@ from ralph.agents.invoke._process_reader import (
     _parent_broker_secret,
     check_broken_agent_timer,
 )
-from ralph.agents.invoke._pty_extras import _PtyExtras
+from ralph.agents.invoke._pty_extras import PtyExtras
 from ralph.agents.invoke._pty_helpers import (
     _MAX_TRANSCRIPT_SESSION_IDS,
     _MENU_QUIESCENCE_SECONDS,
@@ -111,7 +111,7 @@ if TYPE_CHECKING:
     from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-    from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx, _EvalCompletionFn
+    from ralph.agents.invoke._agent_run_ctx import AgentRunCtx, _EvalCompletionFn
     from ralph.agents.invoke._subagent_transcript import R7AbsentLayoutDiagnostic
     from ralph.agents.parsers.interactive_transcript_event import (
         InteractiveTranscriptEvent,
@@ -209,7 +209,7 @@ class _ReadLoopSetup(NamedTuple):
 
 
 def _resolve_pre_existing_transcript_names(
-    extras: _PtyExtras, workspace_path: Path | None
+    extras: PtyExtras, workspace_path: Path | None
 ) -> frozenset[str]:
     """Resolve the transcript names to exclude from live discovery.
 
@@ -232,7 +232,7 @@ def _resolve_pre_existing_transcript_names(
     construction (e.g. tests), not the primary path.
     """
     # ``getattr`` (not direct attribute access): some test doubles
-    # duck-type ``_PtyExtras`` with a bare ``SimpleNamespace`` that
+    # duck-type ``PtyExtras`` with a bare ``SimpleNamespace`` that
     # predates this field.
     snapshot = cast(
         "frozenset[str] | None", getattr(extras, "pre_existing_transcript_names", None)
@@ -249,13 +249,13 @@ class PtyLineReader:
         self,
         handle: ManagedPtyProcess,
         agent_name: str,
-        ctx: _AgentRunCtx,
+        ctx: AgentRunCtx,
         clock: Clock,
-        extras: _PtyExtras | None,
+        extras: PtyExtras | None,
         *,
         max_pending_chars: int = DEFAULT_MAX_BUFFER_CHARS,
     ) -> None:
-        _extras = extras or _PtyExtras()
+        _extras = extras or PtyExtras()
         self._handle = handle
         self._agent_name = agent_name
         self._started_at_wall_clock = time.time()
@@ -1367,7 +1367,9 @@ class PtyLineReader:
         self._observe_queued_line(queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
-            activity_signal = self._with_prompt_echo_flag(activity_signal, queued_line)
+            activity_signal = with_prompt_echo_flag(
+                activity_signal, queued_line, self._input_prompt
+            )
             self._last_activity_kind = activity_signal.kind
             self._last_meaningful[0] = (
                 activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
@@ -1375,7 +1377,7 @@ class PtyLineReader:
             )
             if activity_signal.is_harness_echo:
                 # Keep the idle baseline current without treating echoed input as LLM output.
-                watchdog.record_lifecycle_activity()
+                watchdog.record_prompt_echo(queued_line)
             else:
                 self._record_non_echo_activity(watchdog, activity_signal)
         else:
@@ -1420,18 +1422,6 @@ class PtyLineReader:
             watchdog.record_activity()
         else:
             watchdog.record_activity()
-
-    def _with_prompt_echo_flag(
-        self, activity_signal: AgentActivitySignal, queued_line: str
-    ) -> AgentActivitySignal:
-        if not is_prompt_echo_line(queued_line, self._input_prompt):
-            return activity_signal
-        return AgentActivitySignal(
-            kind=activity_signal.kind,
-            raw=activity_signal.raw,
-            error_message=activity_signal.error_message,
-            is_harness_echo=True,
-        )
 
     def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
         drain_deadline = (
@@ -1587,7 +1577,7 @@ class PtyLineReader:
         # R7 (Trustworthy Idle Watchdog): expose the watchdog
         # reference on the PTY line reader so the line-reader
         # layer can populate the R7 diagnostic fields on
-        # ``_CompletionCheckOptions`` at the construction site
+        # ``CompletionCheckOptions`` at the construction site
         # AFTER the iterator exhausts (post-read at
         # ``_pty_runner.py``).
         self._watchdog = watchdog

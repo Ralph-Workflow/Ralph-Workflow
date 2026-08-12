@@ -42,12 +42,10 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestCheckProcessResultWaitsForLiveChildren:
-    """_check_process_result waits for child agents before raising OpenCodeResumableExitError."""
+    """check_process_result waits for child agents before raising OpenCodeResumableExitError."""
 
     def test_raises_resumable_exit_when_wait_times_out_without_artifact(
         self, tmp_path: Path
@@ -94,11 +92,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
             pytest.raises(OpenCodeResumableExitError),
         ):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -150,11 +148,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
             pytest.raises(OpenCodeResumableExitError),
         ):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -251,7 +249,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         - t=0.5: second evaluate_completion → artifact now present → TERMINAL_COMPLETE
 
         The wait helper is invoked and correctly returns TERMINAL_COMPLETE when
-        the required artifact appears between polls, so _check_process_result
+        the required artifact appears between polls, so check_process_result
         does not raise OpenCodeResumableExitError.
         """
         probe = FakeLivenessProbe(active=True)  # Children alive initially
@@ -259,7 +257,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         handle = _FakeHandle(returncode=0, has_descendants=True)
 
         # Track which call to evaluate_completion we're on:
-        # 1. _check_process_result initial check → no artifact
+        # 1. check_process_result initial check → no artifact
         # 2. _wait_for_descendants_then_recheck first poll → no artifact
         # 3. _wait_for_descendants_then_recheck second poll → artifact appears!
         call_count = [0]
@@ -287,11 +285,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 liveness_probe=probe,
@@ -338,11 +336,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 liveness_probe=probe,
@@ -404,11 +402,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 liveness_probe=probe,
@@ -531,11 +529,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -578,11 +576,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
             pytest.raises(OpenCodeResumableExitError),
         ):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -661,11 +659,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
             pytest.raises(OpenCodeResumableExitError),
         ):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -736,11 +734,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         handle = _FakeHandle(returncode=0, has_descendants=True)
         probe = FakeLivenessProbe(active=True)  # children still running
 
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 completion_run_id=run_id,

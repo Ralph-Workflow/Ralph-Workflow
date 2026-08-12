@@ -12,10 +12,8 @@ import pytest
 
 from ralph.agents.invoke import (
     AgentInvocationError,
-    CompletionCheckOptions,
     InvokeOptions,
     OpenCodeResumableExitError,
-    check_process_result,
 )
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -39,8 +37,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestRunnerSessionContinuation:

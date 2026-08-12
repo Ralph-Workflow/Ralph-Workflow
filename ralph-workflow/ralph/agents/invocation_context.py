@@ -1,7 +1,7 @@
 """A single frozen dataclass threading the dependency-injection seams.
 
 Replaces the loose ``**kwargs`` trap in BaseExecutionStrategy and the
-duplicated ctx-shape in _ProcessLineReader / PtyLineReader.
+duplicated ctx-shape in ProcessLineReader / PtyLineReader.
 """
 
 from __future__ import annotations

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.liveness import LivenessProbe
 
-    from ._live_descendant_handle import _LiveDescendantHandle
+    from ._live_descendant_handle import LiveDescendantHandle
 
 
 _AGENT_LABEL_PREFIX = "agent:"
@@ -747,7 +747,7 @@ def _route_opencode_native_task(
 
 
 def _os_descendant_state(
-    handle: _LiveDescendantHandle,
+    handle: LiveDescendantHandle,
     default: AgentExecutionState,
 ) -> AgentExecutionState:
     if hasattr(handle, "has_live_descendants"):
@@ -825,7 +825,7 @@ def _probe_check_exit(
 
 
 def _evidence_precedence(
-    handle: _LiveDescendantHandle,
+    handle: LiveDescendantHandle,
     completion_signals: CompletionSignals,
     liveness_probe: LivenessProbe | None,
     label_prefix: str | None,

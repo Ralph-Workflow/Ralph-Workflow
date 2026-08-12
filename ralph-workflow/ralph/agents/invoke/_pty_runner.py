@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
-    _check_process_result,
-    _CompletionCheckOptions,
+    CompletionCheckOptions,
+    check_process_result,
     completion_run_id_from_extra_env,
 )
 from ralph.agents.invoke._errors import (
@@ -27,7 +27,7 @@ from ralph.agents.invoke._process_reader import (
     _parent_broker_secret,
     _subprocess_env,
 )
-from ralph.agents.invoke._pty_extras import _PtyExtras
+from ralph.agents.invoke._pty_extras import PtyExtras
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_transcript import existing_transcript_names
@@ -44,7 +44,7 @@ from ralph.process.teardown import teardown_subtree
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+    from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
 
 
 class _CompletionExitSentReader(Protocol):
@@ -98,10 +98,10 @@ def _terminate_pty_tree(handle: object) -> None:
 
 def run_pty_and_read_lines(
     cmd: list[str],
-    ctx: _AgentRunCtx,
-    extras: _PtyExtras | None = None,
+    ctx: AgentRunCtx,
+    extras: PtyExtras | None = None,
 ) -> Iterator[str]:
-    _extras = extras or _PtyExtras()
+    _extras = extras or PtyExtras()
     expected_session_id = _extras.expected_session_id
     completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
     if _extras.stop_sentinel_path is not None:
@@ -117,13 +117,13 @@ def run_pty_and_read_lines(
     # returns -- could already include the child's own freshly-created
     # transcript file and self-exclude the very file discovery needs to
     # find (see ``ralph.agents.invoke._pty_transcript.existing_transcript_names``).
-    # ``isinstance`` gates a real ``_PtyExtras`` (typed attribute access
+    # ``isinstance`` gates a real ``PtyExtras`` (typed attribute access
     # below) from a test double that duck-types it with a bare
     # ``SimpleNamespace`` predating this field -- such a double simply
     # skips the pre-spawn snapshot and falls back to ``PtyLineReader``'s
     # own (later, best-effort) live snapshot.
     if (
-        isinstance(_extras, _PtyExtras)
+        isinstance(_extras, PtyExtras)
         and _extras.pre_existing_transcript_names is None
         and ctx.workspace_path is not None
     ):
@@ -212,7 +212,7 @@ def run_pty_and_read_lines(
             raise
 
         # R7 (Trustworthy Idle Watchdog): populate the diagnostic
-        # fields on ``_CompletionCheckOptions`` from the watchdog
+        # fields on ``CompletionCheckOptions`` from the watchdog
         # state held on the PTY line reader (``pty_reader._watchdog``
         # was set at the start of ``read_lines()``). The helper at
         # ``_process_reader._collect_r7_diagnostic_fields`` extracts
@@ -229,11 +229,11 @@ def run_pty_and_read_lines(
             parsed_output=parsed_output,
         )
 
-        _check_process_result(
+        check_process_result(
             handle,
             _agent_command_name(ctx.config),
             list(parsed_output),
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=ctx.workspace_path,
                 liveness_probe=probe,

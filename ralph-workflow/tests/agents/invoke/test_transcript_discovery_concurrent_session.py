@@ -169,7 +169,7 @@ def test_pty_line_reader_prefers_extras_snapshot_over_live_snapshot(
             "test-agent",
             _make_pty_ctx(workspace_path=workspace_root),
             FakeClock(start=0.0),
-            extras=pty_extras_module._PtyExtras(pre_existing_transcript_names=frozenset()),
+            extras=pty_extras_module.PtyExtras(pre_existing_transcript_names=frozenset()),
         )
         # The caller's snapshot (taken before the child existed) is
         # honored verbatim -- it must NOT be overwritten by a live

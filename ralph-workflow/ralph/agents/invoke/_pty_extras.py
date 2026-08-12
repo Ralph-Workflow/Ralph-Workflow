@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class _PtyExtras:
+class PtyExtras:
     expected_session_id: str | None = None
     stop_sentinel_path: Path | None = None
     permission_prompt_listener: Callable[[str], None] | None = None

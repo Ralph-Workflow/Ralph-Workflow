@@ -7,18 +7,12 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 from __future__ import annotations
 
 from ralph.agents.completion_signals import extract_explicit_completion
-from ralph.agents.invoke import (
-    CompletionCheckOptions,
-    check_process_result,
-)
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestExtractExplicitCompletion:

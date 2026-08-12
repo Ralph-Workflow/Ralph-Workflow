@@ -36,9 +36,9 @@ from ralph.agents.invoke._commands import (
     check_agent_available,
 )
 from ralph.agents.invoke._completion import (
-    _check_process_result,
-    _CompletionCheckOptions,
+    CompletionCheckOptions,
     _wait_for_descendants_then_recheck,
+    check_process_result,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -59,7 +59,7 @@ from ralph.agents.invoke._options import (
     build_invoke_options_from_config,
 )
 from ralph.agents.invoke._process_reader import (
-    _ProcessLineReader,
+    ProcessLineReader,
     _read_lines_from_process,
     _run_subprocess_and_read_lines,
     check_broken_agent_timer,
@@ -87,12 +87,12 @@ from ralph.agents.invoke._session_resume import (
     resolve_resume_session_id,
 )
 from ralph.agents.invoke._types import (
+    AgentRunCtx,
     InvokeOptions,
+    ProcessReaderCtx,
+    PtyExtras,
     ResolvedInvocationRuntime,
-    _AgentRunCtx,
     _BuildCommandOptions,
-    _ProcessReaderCtx,
-    _PtyExtras,
 )
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import (
@@ -237,21 +237,21 @@ def _shared_interactive_pty_extras(
     transport: AgentTransport,
     opts: InvokeOptions,
     prompt_file: str,
-) -> _PtyExtras:
+) -> PtyExtras:
     """Build PTY extras for transports that share the interactive runner."""
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
-        return _PtyExtras(
+        return PtyExtras(
             expected_session_id=opts.session_id,
             stop_sentinel_path=opts.stop_sentinel_path,
             permission_prompt_listener=opts.permission_prompt_listener,
             input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
         )
     if transport == AgentTransport.NANOCODER:
-        return _PtyExtras(
+        return PtyExtras(
             expected_session_id=opts.session_id,
             input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
         )
-    return _PtyExtras(
+    return PtyExtras(
         expected_session_id=opts.session_id,
         input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
     )
@@ -259,7 +259,7 @@ def _shared_interactive_pty_extras(
 
 def _run_shared_interactive_pty(
     cmd: list[str],
-    ctx: _AgentRunCtx,
+    ctx: AgentRunCtx,
     opts: InvokeOptions,
     transport: AgentTransport,
     prompt_file: str,
@@ -490,7 +490,7 @@ def invoke_agent(
         )
         policy = _policy_from_options(opts)
 
-        ctx = _AgentRunCtx(
+        ctx = AgentRunCtx(
             config=config,
             show_progress=opts.show_progress,
             extra_env=runtime_env,
@@ -541,10 +541,10 @@ def invoke_agent(
                     yield from run_pty_and_read_lines(
                         cmd,
                         ctx,
-                        _PtyExtras(expected_session_id=run_id),
+                        PtyExtras(expected_session_id=run_id),
                     )
             else:
-                yield from run_pty_and_read_lines(cmd, ctx, _PtyExtras())
+                yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
         else:
             yield from run_subprocess_and_read_lines(cmd, ctx)
 
@@ -580,6 +580,7 @@ def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
 def _fail_for_unsupported_local_opencode_model(
     config: AgentConfig,
     options: InvokeOptions,
+    env_getter: Callable[[str], str | None] | None = None,
 ) -> None:
     if _agent_transport(config) != AgentTransport.OPENCODE:
         return
@@ -595,20 +596,20 @@ def _fail_for_unsupported_local_opencode_model(
     # preflight so the override can take effect; the operator owns the
     # choice and the smoke plumbing logs the override at INFO.
     #
-    # The env access goes through the same getter-indirection pattern
-    # the AGY/Cursor overrides use (``_opencode_binary_override_env`` in
-    # ``smoke_plumbing``); direct ``os.environ.get(...)`` here would
+    # The env access goes through the getter-indirection pattern the
+    # AGY/Cursor overrides use; direct ``os.environ.get(...)`` here would
     # trip the ``verify_drift`` check that pins the canonical-three
     # ``RALPH_*`` env-var boundary.
     #
-    # The helper lives in ``smoke_plumbing``; importing it at module
-    # top would cycle (smoke_plumbing imports back from
-    # ``ralph.agents.invoke`` for the smoke harness's other seams),
-    # so the import is deferred to the call site -- this is the
-    # canonical seam for breaking invoke <-> smoke_plumbing cycles.
-    from ralph.pipeline.plumbing.smoke_plumbing import _opencode_binary_override_env  # noqa: PLC0415, I001
+    # The canonical override read lives in ``ralph.config.agent_detection``;
+    # importing it at module top would cycle (agent_detection pulls in
+    # ``ralph.agents.builtin``, which pulls in the execution-state factory
+    # that imports back from ``ralph.agents.invoke``), so the import is
+    # deferred to the call site. The ``env_getter`` injection keeps this
+    # function testable without mutating process state.
+    from ralph.config.agent_detection import opencode_binary_override  # noqa: PLC0415
 
-    if _opencode_binary_override_env():
+    if opencode_binary_override(env_getter):
         return
     command_name = config.cmd.split()[0]
     message = validate_local_model_support(model_id, command=command_name)
@@ -714,13 +715,7 @@ BuildCommandOptions = _BuildCommandOptions
 command_for_log = _command_for_log
 provider_allowed_mcp_tool_names = _provider_allowed_mcp_tool_names
 discover_http_mcp_tool_names = _discover_http_mcp_tool_names
-CompletionCheckOptions = _CompletionCheckOptions
-check_process_result = _check_process_result
 IdleStreamTimeoutError = _IdleStreamTimeoutError
-AgentRunCtx = _AgentRunCtx
-ProcessLineReader = _ProcessLineReader
-ProcessReaderCtx = _ProcessReaderCtx
-PtyExtras = _PtyExtras
 read_lines_from_process = _read_lines_from_process
 wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options

@@ -1,7 +1,7 @@
 """Bounded pre-parse line queue shared by subprocess and PTY readers.
 
 wt-024 Step 10: the pre-parse ``_lines_queue`` on both
-``_ProcessLineReader`` and ``PtyLineReader`` was an unbounded
+``ProcessLineReader`` and ``PtyLineReader`` was an unbounded
 ``list[str]`` that could spike memory under burst output (e.g.
 ``find /`` on a large tree). The bounded wrapper here exposes the
 same surface as the prior list (append / extend / popleft /

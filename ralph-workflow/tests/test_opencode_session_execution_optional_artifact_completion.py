@@ -36,8 +36,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestOptionalArtifactCompletion:
@@ -63,11 +61,11 @@ class TestOptionalArtifactCompletion:
         sentinel.parent.mkdir(parents=True)
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 liveness_probe=probe,
@@ -96,11 +94,11 @@ class TestOptionalArtifactCompletion:
         probe = FakeLivenessProbe(active=False)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -116,7 +114,7 @@ class TestOptionalArtifactCompletion:
     def test_optional_artifact_malformed_present_does_not_raise(self, tmp_path: Path) -> None:
         """Optional artifact present but malformed must not raise OpenCodeResumableExitError.
 
-        _check_process_result is not responsible for validating artifact content.
+        check_process_result is not responsible for validating artifact content.
         When artifact_required=False the exit is terminal regardless of what the
         file contains; content validation is the execution.py layer's job.
         """
@@ -140,11 +138,11 @@ class TestOptionalArtifactCompletion:
         sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 liveness_probe=probe,
@@ -194,11 +192,11 @@ class TestOptionalArtifactCompletion:
             patch.object(threading.Event, "wait", _fake_event_wait),
             pytest.raises(OpenCodeResumableExitError),
         ):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,

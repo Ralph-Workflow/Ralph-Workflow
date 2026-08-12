@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from ralph.agents.execution_state._harness_echo import is_prompt_echo_line
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
 from ralph.agents.invoke import (
     AgentRunCtx,
@@ -12,6 +13,7 @@ from ralph.agents.invoke import (
     PtyExtras,
     PtyLineReader,
 )
+from ralph.agents.invoke._process_reader import make_line_reader, record_line_activity
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -67,7 +69,7 @@ def _policy() -> TimeoutPolicy:
 
 def _process_reader() -> tuple[ProcessLineReader, IdleWatchdog]:
     clock = FakeClock(start=0.0)
-    reader = ProcessLineReader(
+    reader = make_line_reader(
         _ProcessHandle(),
         ProcessReaderCtx(
             config=AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC),
@@ -104,8 +106,11 @@ def _pty_reader() -> tuple[PtyLineReader, IdleWatchdog, int]:
 
 def test_line_readers_regression_prompt_echo_does_not_count_as_meaningful_output() -> None:
     """S-7: both transports exclude deterministic prompt echoes from LLM activity."""
+    assert is_prompt_echo_line(_PROMPT, _PROMPT) is True
+    assert is_prompt_echo_line("thinking: planning next step", _PROMPT) is False
+
     process_reader, process_watchdog = _process_reader()
-    process_reader._record_line_activity(process_watchdog, _PROMPT)
+    record_line_activity(process_reader, process_watchdog, _PROMPT)
     assert process_watchdog.has_meaningful_output() is False
 
     pty_reader, pty_watchdog, master_fd = _pty_reader()
@@ -120,8 +125,8 @@ def test_process_line_reader_regression_real_output_counts_as_meaningful_after_e
     """S-7: echo traffic must not suppress a subsequent genuine LLM response."""
     reader, watchdog = _process_reader()
     for _ in range(5):
-        reader._record_line_activity(watchdog, _PROMPT)
+        record_line_activity(reader, watchdog, _PROMPT)
     assert watchdog.has_meaningful_output() is False
 
-    reader._record_line_activity(watchdog, "thinking: planning next step")
+    record_line_activity(reader, watchdog, "thinking: planning next step")
     assert watchdog.has_meaningful_output() is True

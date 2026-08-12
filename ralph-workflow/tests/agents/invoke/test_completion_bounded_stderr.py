@@ -91,7 +91,7 @@ def test_bounded_read_uses_only_capped_chunk_reads() -> None:
 def test_completion_uses_bounded_read_on_nonzero_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Wire ``_bounded_read`` into ``_check_process_result`` and assert the
+    """Wire ``_bounded_read`` into ``check_process_result`` and assert the
     captured stderr is bounded by the cap with a truncation marker."""
     captured: list[str] = []
 
@@ -113,7 +113,7 @@ def test_completion_uses_bounded_read_on_nonzero_exit(
     fake_handle = _FakeHandle()
 
     with pytest.raises(Exception) as excinfo:
-        completion_mod._check_process_result(fake_handle, "test-agent", None, None)
+        completion_mod.check_process_result(fake_handle, "test-agent", None, None)
     _ = excinfo.value
     assert captured, "_bounded_read must have been invoked"
     assert len(captured[0]) <= _MAX_STDERR_CAPTURE_BYTES + len(
@@ -133,7 +133,7 @@ def test_completion_no_stderr_pipe_does_not_crash() -> None:
         stderr = None
 
     with pytest.raises(Exception) as excinfo:
-        completion_mod._check_process_result(_FakeHandle(), "test-agent", None, None)
+        completion_mod.check_process_result(_FakeHandle(), "test-agent", None, None)
     assert "(unable to read stderr)" in str(excinfo.value), (
         f"expected fallback message; got {excinfo.value!r}"
     )

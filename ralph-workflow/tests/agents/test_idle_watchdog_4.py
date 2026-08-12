@@ -105,7 +105,7 @@ class _CompletionEnforcingStrategy:
         return True
 
 
-def test_check_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path) -> None:
+def testcheck_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path) -> None:
     """When the host process exits with a non-zero code, ``check_process_result``
     calls ``teardown_subtree`` on the handle's PID before raising
     ``AgentInvocationError``.
@@ -131,7 +131,7 @@ def test_check_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path
     assert teardown_subtree is not None
 
 
-def test_check_process_result_missing_completion_evidence_calls_teardown_subtree(
+def testcheck_process_result_missing_completion_evidence_calls_teardown_subtree(
     tmp_path: Path,
 ) -> None:
     """When a completion-enforcing agent exits without required completion
@@ -159,7 +159,7 @@ def test_check_process_result_missing_completion_evidence_calls_teardown_subtree
     mock_teardown.assert_called_once_with(5678)
 
 
-def test_check_process_result_error_path_does_not_mutate_clock() -> None:
+def testcheck_process_result_error_path_does_not_mutate_clock() -> None:
     """The error-path teardown call must not advance the injected FakeClock.
 
     This is a regression guard: the completion check should be a pure

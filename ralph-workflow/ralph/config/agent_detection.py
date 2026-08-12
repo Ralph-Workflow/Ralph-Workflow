@@ -8,12 +8,27 @@ import shutil
 import tomllib
 from pathlib import Path
 from re import Match
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from ralph.agents.builtin import builtin_supports
 from ralph.config.bootstrap import resolve_global_config_dir
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+
+
+def opencode_binary_override(env_getter: Callable[[str], str | None] | None = None) -> str | None:
+    """Return the raw ``RALPH_OPENCODE_BINARY`` env value, if set.
+
+    Canonical home for the opencode-binary override read. Callers may
+    inject ``env_getter`` for tests and composed runtimes; the production
+    default is centralized here so no caller reads ambient environment
+    directly (the ``verify_drift`` canonical-three boundary).
+    """
+    getter = env_getter if env_getter is not None else os.environ.get
+    return getter("RALPH_OPENCODE_BINARY")
 
 
 def _binary_for(name: str, cmd: str) -> str:

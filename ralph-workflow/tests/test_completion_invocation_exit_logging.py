@@ -14,7 +14,7 @@ from loguru import logger
 
 from ralph.agents.invoke._completion import (
     _extract_rejected_session_id_from_failure,
-    _log_invocation_exit,
+    log_invocation_exit,
 )
 from ralph.agents.invoke._errors import AgentInvocationError
 
@@ -23,7 +23,7 @@ def _capture_logs(exc: AgentInvocationError) -> str:
     captured: list[str] = []
     sink_id = logger.add(captured.append, level="TRACE", format="{message}")
     try:
-        _log_invocation_exit(exc)
+        log_invocation_exit(exc)
     finally:
         logger.remove(sink_id)
     return "".join(captured)
@@ -60,7 +60,7 @@ def _capture_levels(exc: AgentInvocationError) -> list[str]:
     levels: list[str] = []
     sink_id = logger.add(lambda message: levels.append(message.record["level"].name), level="TRACE")
     try:
-        _log_invocation_exit(exc)
+        log_invocation_exit(exc)
     finally:
         logger.remove(sink_id)
     return levels
@@ -154,7 +154,7 @@ def test_stale_session_exit_with_empty_stderr_does_not_crash_and_logs_meaningful
     """A stale-session exit with empty stderr (rare but possible -- the
     classifier also matches against parsed_output, so a marker carried in
     parsed_output triggers reset_session=True even when stderr is empty) must
-    NOT crash _log_invocation_exit and must still surface 'stale session' and
+    NOT crash log_invocation_exit and must still surface 'stale session' and
     the returncode."""
     exc = AgentInvocationError(
         "opencode",

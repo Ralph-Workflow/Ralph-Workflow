@@ -11,10 +11,6 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     OpenCodeExecutionStrategy,
 )
-from ralph.agents.invoke import (
-    CompletionCheckOptions,
-    check_process_result,
-)
 from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
@@ -22,8 +18,6 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestForegroundExitWithoutCompletion:

@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import AgentInvocationError, run_pty_and_read_lines
-from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -410,7 +410,7 @@ def test_live_agy_pty_read_thread_sees_output(
     """The PTY read thread in PtyLineReader must actually see real AGY output.
 
     Authoritative live-output proof: drive the live ``agy`` binary through the
-    PUBLIC ``run_pty_and_read_lines`` API (not the private ``_PtyExtras``) and
+    PUBLIC ``run_pty_and_read_lines`` API (not the private ``PtyExtras``) and
     assert at least one yielded line contains the literal text ``hello`` from
     the canonical "Reply with exactly the word: hello" prompt.
 
@@ -420,7 +420,7 @@ def test_live_agy_pty_read_thread_sees_output(
     sized to accommodate this one direct PTY invocation.
     """
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
-    ctx = _AgentRunCtx(
+    ctx = AgentRunCtx(
         config=config,
         show_progress=False,
         extra_env={

@@ -582,7 +582,7 @@ class _ModuleVisitor(ast.NodeVisitor):
         # Walk the FULL module (not just ``tree.body``) so the detector
         # finds ``_corroborate`` whether it is a top-level function or
         # a method of a class (the production readers define it as a
-        # method of ``_ProcessLineReader`` / ``PtyLineReader``).
+        # method of ``ProcessLineReader`` / ``PtyLineReader``).
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == _SUBAGENT_COUNTING_SEAM_FUNCTION:
                 target = node

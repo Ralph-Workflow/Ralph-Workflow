@@ -2,7 +2,7 @@
 
 wt-024 Step 3 (AC-01): the ``_cpu_baselines`` dict in
 ``PtyLineReader._probe_cpu_idle`` and
-``_ProcessLineReader._probe_cpu_idle`` previously grew by one
+``ProcessLineReader._probe_cpu_idle`` previously grew by one
 entry per distinct PID ever observed, with a child that exits
 cleanly between ticks never being pruned. The fix adds a sweep
 of any PID not present in the current ``child_pids`` list so
@@ -10,7 +10,7 @@ the baseline map cannot accumulate dead PIDs across a long
 session spawning transient subprocesses.
 
 The tests below drive the production ``_probe_cpu_idle`` entry
-point against a real ``PtyLineReader`` / ``_ProcessLineReader``
+point against a real ``PtyLineReader`` / ``ProcessLineReader``
 constructed via the PUBLIC ``__init__`` path with minimal fakes
 (``SimpleNamespace`` for the handle, ``TimeoutPolicy`` stub,
 ``FakeClock``). The ``psutil`` reference is patched in the
@@ -34,9 +34,9 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog import AliveBy, TimeoutPolicy
-from ralph.agents.invoke._process_reader import _ProcessLineReader
+from ralph.agents.invoke._process_reader import ProcessLineReader
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
-from ralph.agents.invoke._types import _ProcessReaderCtx
+from ralph.agents.invoke._types import ProcessReaderCtx
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -149,7 +149,7 @@ def _make_pty_reader() -> PtyLineReader:
     return reader
 
 
-def _make_process_reader() -> _ProcessLineReader:
+def _make_process_reader() -> ProcessLineReader:
     class _Handle:
         def __init__(self) -> None:
             self.pid: int | None = 100
@@ -162,7 +162,7 @@ def _make_process_reader() -> _ProcessLineReader:
             pass
 
     handle = _Handle()
-    ctx = _ProcessReaderCtx(
+    ctx = ProcessReaderCtx(
         config=AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC),
         policy=TimeoutPolicy(idle_timeout_seconds=300.0, cpu_idle_seconds=10.0),
         execution_strategy=None,
@@ -171,7 +171,7 @@ def _make_process_reader() -> _ProcessLineReader:
         monitor=None,
         workspace_path=None,
     )
-    return _ProcessLineReader(handle, ctx, FakeClock(start=0.0))
+    return ProcessLineReader(handle, ctx, FakeClock(start=0.0))
 
 
 def test_pty_line_reader_prunes_stale_pid_from_cpu_baselines(
@@ -230,18 +230,18 @@ def test_pty_line_reader_prunes_stale_pids_when_no_children_remain(
 def test_process_line_reader_prunes_stale_pid_from_cpu_baselines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_ProcessLineReader._probe_cpu_idle sweeps PIDs absent from current children list.
+    """ProcessLineReader._probe_cpu_idle sweeps PIDs absent from current children list.
 
     Same shape as the PTY case but driven through the
-    ``_ProcessLineReader`` production entry point. A real reader
+    ``ProcessLineReader`` production entry point. A real reader
     is constructed via its public ``__init__`` with a minimal
-    fake handle and a ``_ProcessReaderCtx``; the resulting
+    fake handle and a ``ProcessReaderCtx``; the resulting
     ``_cpu_baselines`` state is asserted via the public cache
     attribute.
     """
     child = _FakeProc(101, cpu_user=1.0)
     host = _FakeProc(100, children=[child])
-    _patch_psutil(monkeypatch, _ProcessLineReader, {100: host, 101: child})
+    _patch_psutil(monkeypatch, ProcessLineReader, {100: host, 101: child})
 
     reader = _make_process_reader()
     assert reader._probe_cpu_idle(scoped_active=True, alive_by=None) is False

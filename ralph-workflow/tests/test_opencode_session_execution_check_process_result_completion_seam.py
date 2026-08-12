@@ -11,6 +11,7 @@ import json
 from typing import TYPE_CHECKING
 
 import pytest
+from loguru import logger as completion_logger
 
 from ralph.agents.execution_state import (
     OpenCodeExecutionStrategy,
@@ -23,7 +24,6 @@ from ralph.agents.invoke import (
     PiContextExhaustedExitError,
     check_process_result,
 )
-from ralph.agents.invoke import _completion as completion_module
 from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.process.child_liveness import ChildLivenessRegistry
 from tests.fake_handle import _FakeHandle
@@ -37,12 +37,10 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 # Local aliases: tests call the same public functions but under the private-looking names
 # that were used when this module was monolithic (pre-package split).
-_check_process_result = check_process_result
-_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestCheckProcessResultCompletionSeam:
-    """_check_process_result end-to-end completion contract with OpenCodeExecutionStrategy."""
+    """check_process_result end-to-end completion contract with OpenCodeExecutionStrategy."""
 
     def test_explicit_completion_with_sentinel_does_not_raise(self, tmp_path: Path) -> None:
         """declare_complete marker plus completion sentinel is terminal without artifact.
@@ -58,11 +56,11 @@ class TestCheckProcessResultCompletionSeam:
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             raw_output,
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 captured_session_id="abc",
@@ -81,22 +79,22 @@ class TestCheckProcessResultCompletionSeam:
         seen_errors: list[tuple[object, ...]] = []
         seen_warnings: list[tuple[object, ...]] = []
         monkeypatch.setattr(
-            completion_module.logger,
+            completion_logger,
             "error",
             lambda *args, **kwargs: seen_errors.append(args),
         )
         monkeypatch.setattr(
-            completion_module.logger,
+            completion_logger,
             "warning",
             lambda *args, **kwargs: seen_warnings.append(args),
         )
 
         with pytest.raises(AgentInvocationError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 ['{"type":"tool_result","tool":"read_file"}'],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                 ),
@@ -131,11 +129,11 @@ class TestCheckProcessResultCompletionSeam:
         )
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 _FakeHandle(returncode=0),
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     policy=TimeoutPolicy(
@@ -152,11 +150,11 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
@@ -213,7 +211,7 @@ class TestCheckProcessResultCompletionSeam:
         )
         handle = _FakeHandle(returncode=0)
 
-        options = _CompletionCheckOptions(
+        options = CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             completion_run_id=run_id,
@@ -231,7 +229,7 @@ class TestCheckProcessResultCompletionSeam:
         )
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
@@ -240,7 +238,7 @@ class TestCheckProcessResultCompletionSeam:
 
         sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
-        _check_process_result(
+        check_process_result(
             handle,
             "opencode",
             [],
@@ -253,11 +251,11 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],  # no declare_complete marker
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
@@ -283,11 +281,11 @@ class TestCheckProcessResultCompletionSeam:
         ]
 
         with pytest.raises(PiContextExhaustedExitError) as excinfo:
-            _check_process_result(
+            check_process_result(
                 handle,
                 "pi/zai/glm-5.2",
                 raw_output,
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
@@ -313,11 +311,11 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
@@ -341,11 +339,11 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
@@ -365,11 +363,11 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
@@ -399,11 +397,11 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         with pytest.raises(OpenCodeResumableExitError):
-            _check_process_result(
+            check_process_result(
                 handle,
                 "opencode",
                 [],
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(

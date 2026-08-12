@@ -16,12 +16,12 @@ import psutil
 from loguru import logger
 from tqdm import tqdm
 
-from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
-    is_prompt_echo_line,
+    with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -36,8 +36,8 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import (
-    _check_process_result,
-    _CompletionCheckOptions,
+    CompletionCheckOptions,
+    check_process_result,
     completion_run_id_from_extra_env,
 )
 from ralph.agents.invoke._errors import (
@@ -56,7 +56,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.invoke._tool_call_extraction import (
     extract_tool_call_from_activity_signal as _extract_tool_call_from_activity_signal_impl,
 )
-from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
+from ralph.agents.invoke._types import AgentRunCtx, ProcessReaderCtx
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.display.raw_overflow import (
     get_or_create_raw_overflow_log,
@@ -138,6 +138,32 @@ def check_broken_agent_timer(
         elapsed_seconds=elapsed_seconds,
         grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
     )
+
+
+def make_line_reader(
+    handle: ManagedProcess,
+    ctx: ProcessReaderCtx,
+    clock: Clock,
+) -> ProcessLineReader:
+    """Public factory for the subprocess line reader.
+
+    Tests and production callers both route through this seam.
+    """
+    return ProcessLineReader(handle, ctx, clock)
+
+
+def record_line_activity(
+    reader: ProcessLineReader,
+    watchdog: IdleWatchdog,
+    queued_line: str,
+) -> None:
+    """Public seam that classifies one line and routes it to the watchdog.
+
+    The classification rule lives on the reader's private method; this
+    module-level function is the supported way to exercise it without
+    reaching into the reader's private surface.
+    """
+    reader._record_line_activity(watchdog, queued_line)
 
 
 # Canonical resumable-fire-reason set for the watchdog-kill -> resume
@@ -250,10 +276,10 @@ def _extract_tool_call_from_activity_signal(
     return _extract_tool_call_from_activity_signal_impl(raw)
 
 
-class _ProcessLineReader:
+class ProcessLineReader:
     """Reads lines from a subprocess stdout in a background thread."""
 
-    def __init__(self, handle: ManagedProcess, ctx: _ProcessReaderCtx, clock: Clock) -> None:
+    def __init__(self, handle: ManagedProcess, ctx: ProcessReaderCtx, clock: Clock) -> None:
         self._handle = handle
         self._config = ctx.config
         self._policy = ctx.policy
@@ -797,13 +823,9 @@ class _ProcessLineReader:
         if activity_signal is None:
             self._last_activity_meaningful[0] = False
             return
-        if is_prompt_echo_line(queued_line, self._input_prompt):
-            activity_signal = AgentActivitySignal(
-                kind=activity_signal.kind,
-                raw=activity_signal.raw,
-                error_message=activity_signal.error_message,
-                is_harness_echo=True,
-            )
+        activity_signal = with_prompt_echo_flag(
+            activity_signal, queued_line, self._input_prompt
+        )
         self._last_activity_kind = str(activity_signal.kind)
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
@@ -811,7 +833,7 @@ class _ProcessLineReader:
         )
         if activity_signal.is_harness_echo:
             # Keep the idle baseline current without treating echoed input as LLM output.
-            watchdog.record_lifecycle_activity()
+            watchdog.record_prompt_echo(queued_line)
             return
         if activity_signal.error_message is not None:
             # A failed tool call is BOTH a call and an error. Feeding only the
@@ -917,7 +939,7 @@ class _ProcessLineReader:
         # R7 (Trustworthy Idle Watchdog): expose the watchdog
         # reference on the reader so the line-reader layer can
         # populate the R7 diagnostic fields on
-        # ``_CompletionCheckOptions`` at the construction site
+        # ``CompletionCheckOptions`` at the construction site
         # AFTER the iterator exhausts (post-read at
         # ``_process_reader.py:945``). The watchdog is also
         # closed-loop in the ``finally`` block below; the reader
@@ -994,7 +1016,7 @@ class _ProcessLineReader:
 
 def _run_subprocess_and_read_lines(
     cmd: list[str],
-    ctx: _AgentRunCtx,
+    ctx: AgentRunCtx,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
@@ -1048,7 +1070,7 @@ def _run_subprocess_and_read_lines(
                 AgentExecutionState.TERMINAL_COMPLETE
             )
 
-        reader_ctx = _ProcessReaderCtx(
+        reader_ctx = ProcessReaderCtx(
             config=ctx.config,
             policy=ctx.policy,
             execution_strategy=ctx.execution_strategy,
@@ -1064,7 +1086,7 @@ def _run_subprocess_and_read_lines(
             completion_is_terminal=completion_is_terminal,
             input_prompt=ctx.input_prompt,
         )
-        reader = _ProcessLineReader(handle, reader_ctx, clock)
+        reader = ProcessLineReader(handle, reader_ctx, clock)
         lines_iter = reader.read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
@@ -1131,7 +1153,7 @@ def _run_subprocess_and_read_lines(
             ) from exc
 
         # R7 (Trustworthy Idle Watchdog): populate the diagnostic
-        # fields on ``_CompletionCheckOptions`` from the watchdog
+        # fields on ``CompletionCheckOptions`` from the watchdog
         # state held on the reader (``reader._watchdog`` was set
         # at the start of ``read_lines()``). The helper at
         # ``_collect_r7_diagnostic_fields`` extracts the four
@@ -1148,11 +1170,11 @@ def _run_subprocess_and_read_lines(
             parsed_output=parsed_output,
         )
 
-        _check_process_result(
+        check_process_result(
             handle,
             _agent_command_name(ctx.config),
             list(parsed_output),
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=ctx.workspace_path,
                 liveness_probe=probe,
@@ -1178,11 +1200,11 @@ def _run_subprocess_and_read_lines(
 def _read_lines_from_process(
     handle: ManagedProcess,
     *,
-    ctx: _ProcessReaderCtx,
+    ctx: ProcessReaderCtx,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
     clock: Clock = _clock or SystemClock()
-    return _ProcessLineReader(handle, ctx, clock).read_lines()
+    return ProcessLineReader(handle, ctx, clock).read_lines()
 
 
 def _collect_r7_diagnostic_fields(
@@ -1201,7 +1223,7 @@ def _collect_r7_diagnostic_fields(
     transcript_tail)`` extracted from the watchdog instance held
     on the line reader (``reader._watchdog``, set at the start of
     ``read_lines()``). The ``reader`` parameter is typed as
-    ``object`` so both ``_ProcessLineReader`` (subprocess transport,
+    ``object`` so both ``ProcessLineReader`` (subprocess transport,
     ``_process_reader.py``) and ``PtyLineReader`` (PTY transport,
     ``_pty_line_reader.py``) can be passed in -- both expose the
     same ``_watchdog`` attribute.
@@ -1222,7 +1244,7 @@ def _collect_r7_diagnostic_fields(
       A tuple of ``(last_evidence_summary, last_observed_tool_call,
       elapsed_seconds, transcript_tail)``. The dataclass field
       order matches the keyword-only signature of
-      ``_CompletionCheckOptions``.
+      ``CompletionCheckOptions``.
     """
     watchdog_for_diag: IdleWatchdog | None = getattr(reader, "_watchdog", None)
     if watchdog_for_diag is None:

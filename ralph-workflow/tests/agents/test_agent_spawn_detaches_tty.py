@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
 from ralph.agents.invoke import _process_reader
-from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.models import AgentConfig
 from ralph.pipeline.work_units import WorkUnit
@@ -64,9 +64,9 @@ if TYPE_CHECKING:
     from ralph.process.manager._spawn_options import SpawnOptions
 
 
-def _make_invoke_ctx() -> _AgentRunCtx:
-    """Build a minimal ``_AgentRunCtx`` that lets the reader reach spawn."""
-    return _AgentRunCtx(
+def _make_invoke_ctx() -> AgentRunCtx:
+    """Build a minimal ``AgentRunCtx`` that lets the reader reach spawn."""
+    return AgentRunCtx(
         config=AgentConfig(cmd="fake-binary"),
         show_progress=False,
         extra_env=None,

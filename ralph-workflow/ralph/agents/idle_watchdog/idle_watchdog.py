@@ -789,6 +789,17 @@ class IdleWatchdog:
             return 0.0
         return self._clock.monotonic() - self._invocation_started_at
 
+    def record_prompt_echo(self, line: str) -> None:
+        """Record a deterministic harness echo of the input prompt.
+
+        An echoed prompt is NOT meaningful LLM output: it keeps the idle
+        baseline current via the lifecycle channel without flipping
+        ``has_meaningful_output``. Both line readers route prompt echoes
+        through this public seam so the rule stays transport-neutral.
+        """
+        del line
+        self.record_lifecycle_activity()
+
     def has_meaningful_output(self) -> bool:
         """Return whether this invocation has emitted non-harness output."""
         return self._has_meaningful_output

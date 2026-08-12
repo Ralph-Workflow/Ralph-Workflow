@@ -31,7 +31,7 @@ from .unavailability_reason import UnavailabilityReason
 # is the LEGAL constructor set. The 5 actual construction sites are:
 #   - ralph/recovery/failure_classifier.py:should_reset_tool_registry (this file)
 #   - ralph/recovery/controller.py:RecoveryController.__init__
-#   - ralph/agents/invoke/_completion.py:_log_invocation_exit
+#   - ralph/agents/invoke/_completion.py:log_invocation_exit
 #   - ralph/pipeline/effect_executor.py:_run_attempt (recovery-decision seam)
 #   - ralph/pipeline/agent_retry_decision.py:resolve_retry_intent (recovery-decision seam)
 # Consumer-facing callers outside this package MUST route through

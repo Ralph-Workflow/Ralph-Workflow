@@ -18,6 +18,7 @@ from ralph.agents.invoke import (
 from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
+    from ralph.agents.execution_state._live_descendant_handle import LiveDescendantHandle
     from ralph.process.liveness import LivenessProbe
 
 
@@ -30,7 +31,7 @@ class _ResumableStrategy(BaseExecutionStrategy):
 
     def classify_exit(
         self,
-        handle: object,
+        handle: LiveDescendantHandle,
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:

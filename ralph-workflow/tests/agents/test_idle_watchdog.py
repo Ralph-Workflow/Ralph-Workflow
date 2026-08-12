@@ -185,10 +185,10 @@ from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.invoke._monitor_factory import _discovery_strategy_for_config
 from ralph.agents.invoke._process_reader import (
     _RESUMABLE_FIRE_REASONS,
+    ProcessLineReader,
     _convert_idle_stream_timeout_to_agent_error,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
-    _ProcessLineReader,
 )
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._session import _bounded_output_lines
@@ -1526,7 +1526,7 @@ def _harness() -> tuple[FakeClock, IdleWatchdog, object]:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    return clock, watchdog, MethodType(_ProcessLineReader._record_line_activity, reader)
+    return clock, watchdog, MethodType(ProcessLineReader._record_line_activity, reader)
 
 
 # === Helper: _transcript_line (from test_claude_interactive_tool_fingerprints.py) ===
@@ -2009,7 +2009,7 @@ def _build_pty_reader_with_strategy(strategy: object) -> PtyLineReader:
     """Construct a PtyLineReader with the given strategy.
 
     The reader's construction signature is broad (it takes
-    ``_AgentRunCtx``); we build a minimal SimpleNamespace that the
+    ``AgentRunCtx``); we build a minimal SimpleNamespace that the
     reader touches at the ``_handle_queued_line`` call site.  The
     master_fd is a real ``/dev/null`` fd because the reader
     constructor calls ``os.dup(master_fd)`` for the input writer;
@@ -2113,7 +2113,7 @@ def _make_watchdog_for_session_ceiling() -> tuple[IdleWatchdog, FakeClock]:
 def _fire_in_stream_reason(
     reason: WatchdogFireReason,
 ) -> tuple[list[str], _IdleStreamTimeoutError]:
-    """Drive ``IdleWatchdog.evaluate`` and ``_ProcessLineReader._check_fire``.
+    """Drive ``IdleWatchdog.evaluate`` and ``ProcessLineReader._check_fire``.
 
     Returns the pending lines and the wrapper exception carrying ``reason``.
     """
@@ -2137,7 +2137,7 @@ def _fire_in_stream_reason(
     assert watchdog.last_fire_reason == reason
 
     fake_self = _FakeCheckFireSelf(_policy=watchdog._config, _clock=clock)
-    result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
+    result = ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
     assert result is not None
     pending_lines, wrapper = result
     assert isinstance(wrapper, _IdleStreamTimeoutError)
@@ -7605,7 +7605,7 @@ def test_process_line_reader_routes_tool_use_to_record_tool_call_activity() -> N
         _last_activity_meaningful=[False],
     )
     # Bind the production method to the minimal reader-like object.
-    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
     bound_method(watchdog, raw)
@@ -7636,7 +7636,7 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
     for _ in range(3):
@@ -7664,7 +7664,7 @@ def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(
         TimeoutPolicy(
@@ -7697,7 +7697,7 @@ def test_repeated_tool_call_timeout_diagnostic_identifies_command() -> None:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(
         TimeoutPolicy(
@@ -7763,7 +7763,7 @@ def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
     for _ in range(3):
@@ -7789,7 +7789,7 @@ def test_process_line_reader_silently_skips_unrecognised_tool_envelopes() -> Non
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
     bound_method(watchdog, "not-json-{{{\n")
@@ -8522,7 +8522,7 @@ def test_wedge_trips_on_the_real_interleaved_stream() -> None:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    record = MethodType(_ProcessLineReader._record_line_activity, reader)
+    record = MethodType(ProcessLineReader._record_line_activity, reader)
 
     for _ in range(5):
         record(watchdog, _frame("step_start") + "\n")
@@ -8556,7 +8556,7 @@ def test_distinct_calls_on_the_real_stream_do_not_trip() -> None:
         _last_activity_kind="",
         _last_activity_meaningful=[False],
     )
-    record = MethodType(_ProcessLineReader._record_line_activity, reader)
+    record = MethodType(ProcessLineReader._record_line_activity, reader)
 
     for index in range(10):
         record(watchdog, _frame("step_start") + "\n")
@@ -9998,7 +9998,7 @@ def test_interleaved_output_still_trips() -> None:
 # === consolidated from test_resume_after_kill_contract.py ===
 def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     """Build an IdleWatchdog, force NO_OUTPUT_AT_START to fire, drive the
-    real ``_ProcessLineReader._check_fire`` path, and then exercise the
+    real ``ProcessLineReader._check_fire`` path, and then exercise the
     canonical invocation-layer seam
     (``_convert_idle_stream_timeout_to_agent_error``) that converts the
     watchdog fire into an ``AgentInactivityTimeoutError``.
@@ -10039,7 +10039,7 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
 
     # Drive the real line-reader fire path with a fake reader self.
     fake_self = _FakeCheckFireSelfResumeAfterKillContract(_policy=policy, _clock=clock)
-    result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
+    result = ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
     assert result is not None, "_check_fire must return a wrapper when the verdict is FIRE"
     pending_lines, wrapper = result
     assert isinstance(wrapper, _IdleStreamTimeoutError)
@@ -10253,7 +10253,7 @@ def test_no_output_at_start_fire_with_known_session_id_yields_resume_intent() ->
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
     fake_self = _FakeCheckFireSelfResumeAfterKillContract(_policy=policy, _clock=clock)
-    result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
+    result = ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
     assert result is not None
     pending_lines, wrapper = result
     assert isinstance(wrapper, _IdleStreamTimeoutError)
@@ -10905,7 +10905,7 @@ def test_process_reader_thread_expected_session_id_fallback_when_no_capture() ->
 
     The expected id is threaded via the production line reader's
     ``expected_session_id`` parameter (which itself comes from
-    ``InvokeOptions.session_id`` via ``_ProcessReaderCtx``).  The
+    ``InvokeOptions.session_id`` via ``ProcessReaderCtx``).  The
     fallback rule is symmetric to the PTY runner's.
     """
     exc = _raise_like_process_reader(
@@ -14871,7 +14871,7 @@ def test_tool_result_does_not_wipe_the_tool_call_streak() -> None:
     """Five identical calls must trip even though each result arrives."""
     clock = FakeClock()
     watchdog = _tool_result_routing_watchdog(clock)
-    record = MethodType(_ProcessLineReader._record_line_activity, _reader())
+    record = MethodType(ProcessLineReader._record_line_activity, _reader())
     call = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}})
     result = json.dumps({"type": "tool_result", "output": "ok"})
 
@@ -14903,7 +14903,7 @@ def test_tool_result_is_attributed_to_the_post_tool_result_stall() -> None:
         ),
         clock,
     )
-    record = MethodType(_ProcessLineReader._record_line_activity, _reader())
+    record = MethodType(ProcessLineReader._record_line_activity, _reader())
 
     record(watchdog, json.dumps({"type": "tool_result", "output": "ok"}) + "\n")
     clock.advance(400.0)
@@ -14930,7 +14930,7 @@ def test_tool_result_counts_as_meaningful_output() -> None:
         ),
         clock,
     )
-    record = MethodType(_ProcessLineReader._record_line_activity, _reader())
+    record = MethodType(ProcessLineReader._record_line_activity, _reader())
 
     record(watchdog, json.dumps({"type": "tool_result", "output": "ok"}) + "\n")
     clock.advance(60.0)
@@ -16182,7 +16182,7 @@ class _NoProcessMonitorNonResumableEndToEnd:
 
 # === consolidated from test_non_resumable_end_to_end.py ===
 class _FakeManagedProcess:
-    """Fake process handle for ``_ProcessLineReader._check_fire``."""
+    """Fake process handle for ``ProcessLineReader._check_fire``."""
 
     def __init__(self) -> None:
         self.pid: int | None = None
@@ -16195,7 +16195,7 @@ class _FakeManagedProcess:
 # === consolidated from test_non_resumable_end_to_end.py ===
 @dataclass
 class _FakeCheckFireSelf:
-    """Minimal fake reader self for calling ``_ProcessLineReader._check_fire``."""
+    """Minimal fake reader self for calling ``ProcessLineReader._check_fire``."""
 
     _policy: TimeoutPolicy
     _clock: FakeClock
@@ -16204,7 +16204,7 @@ class _FakeCheckFireSelf:
     _last_hard_stop: list[WaitingStatusEvent | None] = field(default_factory=lambda: [None])
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
-    # Mirrors ``_ProcessLineReader._captured_session_id`` so the kill
+    # Mirrors ``ProcessLineReader._captured_session_id`` so the kill
     # path can read the captured transport session id without walking
     # the stdout pipe. Default None for tests that do not exercise the
     # capture path.
@@ -16271,7 +16271,7 @@ class _NoProcessMonitorResumeAfterKillContract:
 
 # === consolidated from test_resume_after_kill_contract.py ===
 class _FakeManagedProcessResumeAfterKillContract:
-    """Fake process handle for exercising ``_ProcessLineReader._check_fire``.
+    """Fake process handle for exercising ``ProcessLineReader._check_fire``.
 
     ``_check_fire`` calls ``terminate`` and reads ``pid``; we keep
     ``pid`` as ``None`` so no real process tree teardown runs in the
@@ -16289,7 +16289,7 @@ class _FakeManagedProcessResumeAfterKillContract:
 # === consolidated from test_resume_after_kill_contract.py ===
 @dataclass
 class _FakeCheckFireSelfResumeAfterKillContract:
-    """Minimal fake reader self for calling ``_ProcessLineReader._check_fire``.
+    """Minimal fake reader self for calling ``ProcessLineReader._check_fire``.
 
     The method needs the policy, clock, lines queue, last hard-stop
     slot, and a fake handle.  Everything else is ignored.
@@ -16302,7 +16302,7 @@ class _FakeCheckFireSelfResumeAfterKillContract:
     _last_hard_stop: list[WaitingStatusEvent | None] = field(default_factory=lambda: [None])
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
-    # Mirrors ``_ProcessLineReader._captured_session_id`` so the kill
+    # Mirrors ``ProcessLineReader._captured_session_id`` so the kill
     # path can read the captured transport session id without walking
     # the stdout pipe. Default None for tests that do not exercise the
     # capture path.
@@ -16427,7 +16427,7 @@ class _FakeProcess:
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
 class _BaseFakeWatchdog:
     """Base watchdog double with the surface ``IdleWatchdog`` methods
-    touched by ``_ProcessLineReader``.
+    touched by ``ProcessLineReader``.
 
     Subclasses override :meth:`evaluate` to return FIRE or CONTINUE.
     """

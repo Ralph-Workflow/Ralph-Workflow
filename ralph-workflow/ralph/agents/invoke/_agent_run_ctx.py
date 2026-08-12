@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class _AgentRunCtx:
+class AgentRunCtx:
     config: AgentConfig
     show_progress: bool
     extra_env: dict[str, str] | None
