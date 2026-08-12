@@ -74,6 +74,7 @@ def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> No
         "dry_run",
         "blank_gap",
         "snapshot",
+        "machine_contract",
     }
 
 

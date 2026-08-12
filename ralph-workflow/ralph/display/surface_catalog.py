@@ -298,6 +298,15 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         entry_points=("emit_snapshot",),
         production_entry_points=("ParallelDisplay.emit_snapshot",),
     ),
+    SurfaceSpec(
+        "machine_contract",
+        "parallel_display",
+        format="verbatim: single serialized JSON object line",
+        overflow_policy="preserve: machine consumers parse the raw line",
+        scene="clean_run",
+        entry_points=("emit_json_payload",),
+        production_entry_points=("ParallelDisplay.emit_json_payload",),
+    ),
 )
 
 

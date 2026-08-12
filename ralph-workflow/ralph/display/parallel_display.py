@@ -95,6 +95,7 @@ import contextlib
 import json
 import queue
 import re
+import sys
 import threading
 import time
 import uuid
@@ -3532,6 +3533,17 @@ class ParallelDisplay:
                     agent_name=unit_id,
                 )
         self.emit_log_line(unit_id or "run", sanitized_line)
+
+    def emit_json_payload(self, payload: Mapping[str, object]) -> None:
+        """Emit one serialized JSON object as the shared machine-contract line.
+
+        The sole supported route for commands whose output contract is a
+        single JSON object (e.g. ``ralph workspace-health``). The payload is
+        written verbatim as one line so consumers can parse the final stdout
+        line; it intentionally bypasses ``_is_quiet`` because machine
+        consumers rely on the payload even in quiet runs.
+        """
+        sys.stdout.write(json.dumps(payload, default=str) + "\n")
 
     def emit_parsed_event(
         self,
