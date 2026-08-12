@@ -12,11 +12,26 @@ subprocess, so it can run as part of the regular suite.
 
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from ralph.cli.main import app
 
 _RUNNER = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _wide_help_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin a wide terminal for the duration of each parity test.
+
+    rich_click's help renderer lays the option column out against the
+    detected terminal width and drops long flags like ``--multimodal``
+    when the width is narrow (xdist workers run without a TTY, so the
+    detected width is whatever the environment happens to report).
+    Setting ``COLUMNS`` per-test — instead of relying on the ambient
+    shell width — keeps the assertion environment-independent.
+    """
+    monkeypatch.setenv("COLUMNS", "200")
 
 #: Every smoke command that exposes ``--multimodal``. The plan locks
 #: parity so the multimodal scenario is reachable on every major

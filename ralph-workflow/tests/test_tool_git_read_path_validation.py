@@ -93,6 +93,25 @@ def test_parent_repo_toplevel_bypass_is_refused(tmp_path: Path) -> None:
         parent_repo.close()
 
 
+def test_parent_repo_bypass_refused_for_omitted_and_empty_cwd(tmp_path: Path) -> None:
+    """DA-004: the top-level probe also applies when ``cwd`` is omitted or empty.
+
+    The legacy default (run in the workspace root) must not skip the
+    discovered-top-level check, else the parent-repo bypass survives on
+    every call that omits ``cwd``.
+    """
+    parent_repo = _init_repo_with_commit(tmp_path / "parent_repo")
+    try:
+        workspace_root = tmp_path / "parent_repo" / "subfolder" / "workspace"
+        workspace_root.mkdir(parents=True)
+        for params in ({}, {"cwd": ""}):
+            with pytest.raises(InvalidParamsError) as exc_info:
+                handle_git_status(_Session(), _Workspace(workspace_root), params)
+            assert str((tmp_path / "parent_repo").resolve()) in str(exc_info.value)
+    finally:
+        parent_repo.close()
+
+
 def test_workspace_root_and_dot_cwd_still_allowed(tmp_path: Path) -> None:
     """No regression on the legacy paths against a real repository."""
     workspace_repo = _init_repo_with_commit(tmp_path / "workspace")

@@ -299,13 +299,30 @@ NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
 #: (no stdout, no tool call, no file change, no subagent output) the watchdog
 #: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
 #: no-progress ceiling. Set to None to opt out.
-# 120s accommodates slow Claude Code initialization while remaining below the
-# 240s no-progress ceiling. Operators can lower or raise it through [general]
-# agent_no_output_at_start_seconds without disabling bounded hang detection.
-NO_OUTPUT_AT_START_SECONDS: float = 120.0
+#: The 15s default sits just above ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS``
+#: (12s): a silent or prompt-echo-only startup is classified as a broken
+#: agent at the fast grace window (unavailable + short backoff, advancing
+#: recovery to the next agent), and ``NO_OUTPUT_AT_START`` fires shortly
+#: after as the resume-safe backstop when the broken-agent timer does not
+#: apply. The previous 120s default let a silent startup wait ~2 minutes
+#: for a kill and raced the broken-agent timer; the 30s intermediate
+#: default still let a silent startup burn ~30s of recovery wall clock
+#: before the fast kill. Operators can raise it through [general]
+#: agent_no_output_at_start_seconds for agents with genuinely slow
+#: initialization.
+NO_OUTPUT_AT_START_SECONDS: float = 15.0
 
 #: Fast grace window for detecting a live agent with no meaningful LLM output.
-BROKEN_AGENT_OUTPUT_GRACE_SECONDS: float = 30.0
+#: Deliberately BELOW ``NO_OUTPUT_AT_START_SECONDS`` so the dedicated
+#: broken-agent kill (``_check_broken_agent_timer`` in the read loop, and
+#: ``_raise_if_broken_agent_exit`` in the completion gate) wins the race
+#: against the startup watchdog: a silent or prompt-echo-only agent past
+#: this grace window is unambiguously broken and is classified unavailable
+#: with a short backoff (advancing recovery to the next agent), which is a
+#: better recovery verdict than the generic ``NO_OUTPUT_AT_START`` kill.
+#: The startup watchdog remains the backstop for agents that produce
+#: channel evidence but never meaningful output.
+BROKEN_AGENT_OUTPUT_GRACE_SECONDS: float = 12.0
 
 #: Default per-(fire_reason, deferred_kind) log throttle for ``_gate_fire``.
 #: The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949`` while a

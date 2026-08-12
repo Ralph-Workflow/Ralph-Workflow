@@ -34,9 +34,9 @@ def _watchdog(clock: FakeClock) -> IdleWatchdog:
 
 
 def test_broken_agent_grace_is_fast_and_precedes_startup_watchdog() -> None:
-    assert BROKEN_AGENT_OUTPUT_GRACE_SECONDS == 30.0
+    assert BROKEN_AGENT_OUTPUT_GRACE_SECONDS == 12.0
     assert BROKEN_AGENT_OUTPUT_GRACE_SECONDS < NO_OUTPUT_AT_START_SECONDS
-    assert NO_OUTPUT_AT_START_SECONDS == 120.0
+    assert NO_OUTPUT_AT_START_SECONDS == 15.0
 
 
 def test_broken_agent_regression_silent_live_process_fails_before_startup_watchdog() -> None:

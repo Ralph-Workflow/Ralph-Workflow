@@ -122,8 +122,16 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # 1s is the lower bound that lets pytest print its summary line
 # before SIGKILL; shorter drain values produce empty ``pytest shard
 # did not exit after termination`` banners.
+# wt-059 DA-005: the ``run_verify`` cumulative budget is CHARGED at the
+# whole-step granularity: every tracked step must fit inside its own
+# 60 s cap AND leave room for the other tracked steps. The previous
+# ``_REQUIRED_E2E_WEIGHT_MULTIPLIER = 120`` let the shard runner spawn
+# a shard whose own pytest wall clock stayed under 60 s while the
+# cumulative timer exceeded the immutable combined budget (the real-git
+# shard carried two REQUIRED files at 120x weight and starved the
+# remaining unit-test shards).
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
-_REQUIRED_E2E_WEIGHT_MULTIPLIER = 120
+_REQUIRED_E2E_WEIGHT_MULTIPLIER = 60
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:

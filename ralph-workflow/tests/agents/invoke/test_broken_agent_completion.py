@@ -18,7 +18,7 @@ from ralph.agents.invoke import (
 from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
-    from ralph.agents.execution_state._live_descendant_handle import LiveDescendantHandle
+    from ralph.agents.execution_state import LiveDescendantHandle
     from ralph.process.liveness import LivenessProbe
 
 

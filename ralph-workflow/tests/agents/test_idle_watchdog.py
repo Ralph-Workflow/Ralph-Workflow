@@ -1525,6 +1525,11 @@ def _harness() -> tuple[FakeClock, IdleWatchdog, object]:
         _strategy=strategy_for_transport(AgentTransport.OPENCODE),
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run ctx;
+        # duck-typed doubles must declare it (``None`` = no prompt to echo-
+        # match) since ``_record_line_activity`` consults it for harness-
+        # echo classification.
+        _input_prompt=None,
     )
     return clock, watchdog, MethodType(ProcessLineReader._record_line_activity, reader)
 
@@ -2779,6 +2784,9 @@ def _reader() -> object:
         _strategy=_ResultThenCallStrategy(),
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; the double declares ``None`` (no prompt to echo-match).
+        _input_prompt=None,
     )
 
 
@@ -7603,6 +7611,10 @@ def test_process_line_reader_routes_tool_use_to_record_tool_call_activity() -> N
         _strategy=strategy,
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; duck-typed doubles declare ``None`` (no prompt to
+        # echo-match) so the harness-echo check reads a real attribute.
+        _input_prompt=None,
     )
     # Bind the production method to the minimal reader-like object.
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
@@ -7635,6 +7647,10 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
         _strategy=strategy,
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; duck-typed doubles declare ``None`` (no prompt to
+        # echo-match) so the harness-echo check reads a real attribute.
+        _input_prompt=None,
     )
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
@@ -7663,6 +7679,10 @@ def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
         _strategy=strategy,
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; duck-typed doubles declare ``None`` (no prompt to
+        # echo-match) so the harness-echo check reads a real attribute.
+        _input_prompt=None,
     )
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     clock = FakeClock(start=0.0)
@@ -7696,6 +7716,10 @@ def test_repeated_tool_call_timeout_diagnostic_identifies_command() -> None:
         _strategy=strategy,
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; duck-typed doubles declare ``None`` (no prompt to
+        # echo-match) so the harness-echo check reads a real attribute.
+        _input_prompt=None,
     )
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     clock = FakeClock(start=0.0)
@@ -7762,6 +7786,10 @@ def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
         _strategy=strategy,
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; duck-typed doubles declare ``None`` (no prompt to
+        # echo-match) so the harness-echo check reads a real attribute.
+        _input_prompt=None,
     )
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
@@ -7788,6 +7816,10 @@ def test_process_line_reader_silently_skips_unrecognised_tool_envelopes() -> Non
         _strategy=strategy,
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; duck-typed doubles declare ``None`` (no prompt to
+        # echo-match) so the harness-echo check reads a real attribute.
+        _input_prompt=None,
     )
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
@@ -8521,6 +8553,9 @@ def test_wedge_trips_on_the_real_interleaved_stream() -> None:
         _strategy=strategy_for_transport(AgentTransport.OPENCODE),
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; the double declares ``None`` (no prompt to echo-match).
+        _input_prompt=None,
     )
     record = MethodType(ProcessLineReader._record_line_activity, reader)
 
@@ -8555,6 +8590,9 @@ def test_distinct_calls_on_the_real_stream_do_not_trip() -> None:
         _strategy=strategy_for_transport(AgentTransport.OPENCODE),
         _last_activity_kind="",
         _last_activity_meaningful=[False],
+        # The production reader carries ``_input_prompt`` from its run
+        # ctx; the double declares ``None`` (no prompt to echo-match).
+        _input_prompt=None,
     )
     record = MethodType(ProcessLineReader._record_line_activity, reader)
 
@@ -15454,6 +15492,17 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
                     ):
                         return True
             if isinstance(node, ast.Attribute) and node.attr == "_completion_is_terminal":
+                return True
+            # ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS`` elapsed-grace guard:
+            # ``_check_broken_agent_timer`` kills only after the grace
+            # window elapsed with zero meaningful output (a fire-class
+            # verdict in its own right), so it is a legitimate kill site.
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS"
+            ):
+                return True
+            if isinstance(node, ast.Name) and node.id == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS":
                 return True
         return False
 

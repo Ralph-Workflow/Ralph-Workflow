@@ -575,6 +575,16 @@ def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_wat
         "strategy_for_command",
         lambda *args, **kwargs: _ActiveStrategy(),
     )
+    # Keep the broken-agent grace timer (``_check_broken_agent_timer``,
+    # 12s default) out of this scenario: the test pins the
+    # NO_OUTPUT_AT_START *watchdog* path (15s default ceiling), and a
+    # shorter grace would win the race and raise
+    # ``BrokenAgentExitError`` instead of the resume-safe
+    # ``AgentInactivityTimeoutError`` under test.
+    monkeypatch.setattr(
+        "ralph.agents.invoke._process_reader.BROKEN_AGENT_OUTPUT_GRACE_SECONDS",
+        900.0,
+    )
 
     proc = _FakeProcess(stdout_lines=[])
 

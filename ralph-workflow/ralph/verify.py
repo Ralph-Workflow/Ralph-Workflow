@@ -156,7 +156,18 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "mypy", "ralph/"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
-    ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
+    # wt-059 DA-005: the ``make test`` step's own pytest wall clock is
+    # ~40-45 s on the maintained 12-core dev host, so the budget-tracked
+    # step timeout must leave the remaining tracked steps (multimodal
+    # smoke ~7 s, visual smoke ~1 s) real headroom inside the immutable
+    # 60 s combined budget. The previous ``_TOTAL_TEST_BUDGET_SECONDS``
+    # step cap let ``make test`` legitimately consume the entire budget
+    # (e.g. 58 s under load) and then fail the NEXT tracked step as
+    # "budget exhausted" even though every step individually fit its
+    # cap. Charging this step at 50 s fails the suite itself (not the
+    # cumulative tracker) when it overruns, which is the diagnostic the
+    # operator actually needs (the slow shard is named by the runner).
+    ("make test", "make", ("test",), 50.0),
     (
         "lint bypass audit (audit_lint_bypass)",
         "uv",

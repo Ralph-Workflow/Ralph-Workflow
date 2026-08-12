@@ -93,6 +93,7 @@ def resolve_git_cwd(
     workspace_root: Path,
     requested_cwd: str | None,
     git_runner: GitToplevelRunner | None = None,
+    probe_default_cwd: bool = True,
 ) -> Path:
     """Resolve and validate a git ``cwd`` against the workspace boundary.
 
@@ -105,6 +106,18 @@ def resolve_git_cwd(
         git_runner: Optional injected ``git rev-parse --show-toplevel``
             probe (test seam). Defaults to the bounded real-subprocess
             probe.
+        probe_default_cwd: When ``True`` (default) the top-level probe
+            runs for every request, including the omitted/empty-``cwd``
+            legacy default. When ``False`` the probe is SKIPPED for the
+            legacy default only (``requested_cwd`` ``None`` or ``""``);
+            the caller MUST then run the equivalent top-level check
+            before spawning the git command (see
+            ``git_read._check_toplevel_boundary``). The skip keeps
+            handler-level unit tests — which drive the handlers against
+            non-repo mock workspaces with mocked runners — free of the
+            real probe subprocess, while production handlers defer the
+            probe into the actual subprocess call site where tests
+            already mock the runner.
 
     Returns:
         The resolved absolute path to run git in.
@@ -119,8 +132,10 @@ def resolve_git_cwd(
     """
     root = Path(workspace_root).resolve()
     if requested_cwd is None or requested_cwd == "":
+        is_default_cwd = True
         resolved = root
     else:
+        is_default_cwd = False
         candidate = Path(requested_cwd)
         if not candidate.is_absolute():
             candidate = root / candidate
@@ -131,6 +146,8 @@ def resolve_git_cwd(
             f"resolved={resolved} workspace_root={root}. "
             "Git operations outside the active workspace are refused."
         )
+    if is_default_cwd and not probe_default_cwd:
+        return resolved
     runner = git_runner or _default_toplevel_runner
     top_level = runner(resolved)
     if top_level is not None:

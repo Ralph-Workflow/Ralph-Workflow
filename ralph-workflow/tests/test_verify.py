@@ -342,7 +342,11 @@ def test_main_runs_all_verify_steps_when_successful(
     assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS
+    assert runner.calls[2][3] == 50.0, (
+        "make test step timeout must leave headroom inside the immutable "
+        "60s combined budget for the two trailing tracked smoke steps "
+        "(wt-059 DA-005)"
+    )
     assert runner.calls[3][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[4][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[5][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS

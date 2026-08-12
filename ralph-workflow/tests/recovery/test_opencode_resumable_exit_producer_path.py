@@ -41,7 +41,7 @@ import pytest
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke._completion import (
+from ralph.agents.invoke import (
     CompletionCheckOptions,
     check_process_result,
 )
@@ -51,9 +51,7 @@ from ralph.agents.invoke._open_code_resumable_exit_error import (
 from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
-    from ralph.agents.execution_state._live_descendant_handle import (
-        LiveDescendantHandle,
-    )
+    from ralph.agents.execution_state import LiveDescendantHandle
     from ralph.process.liveness import LivenessProbe
 
 

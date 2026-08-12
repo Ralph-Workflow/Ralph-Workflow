@@ -45,7 +45,11 @@ Every handler accepts an optional ``cwd`` parameter so an agent can
 read a *nested* repository contained inside the active workspace:
 
 1. ``cwd=None`` or ``cwd=""`` resolves to the workspace root
-   (the legacy default; no behavior change).
+   (the legacy default; no behavior change) — and the top-level
+   probe below still applies (deferred to the git subprocess call
+   site so unit tests with mocked runners skip it), so a workspace
+   inside an unrelated parent repository is refused even when
+   ``cwd`` is omitted.
 2. ``cwd=<path>`` resolves relative to the workspace root and the
    git command runs in the resolved directory (absolute paths are
    taken as-is).
@@ -88,7 +92,11 @@ from ralph.mcp.explore.dirty_paths import (
     resolve_explore_index,
 )
 from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
-from ralph.mcp.tools._git_cwd_validator import resolve_git_cwd
+from ralph.mcp.tools._git_cwd_validator import (
+    GitToplevelRunner,
+    _default_toplevel_runner,
+    resolve_git_cwd,
+)
 from ralph.mcp.tools._git_diff_params import GitDiffParams
 from ralph.mcp.tools._git_execution_error import ExecutionError
 from ralph.mcp.tools._git_log_params import GitLogParams
@@ -296,21 +304,52 @@ def _resolve_git_cwd(workspace: object, params: Mapping[str, object]) -> Path:
     top-level inside the workspace, else ``InvalidParamsError`` is
     raised (converted to ``ToolResult(is_error=True)`` by the framework
     boundary).
+
+    DA-004: the top-level probe still applies to the omitted/empty
+    legacy default. It is DEFERRED (``probe_default_cwd=False``) to the
+    actual git subprocess call site in ``run_git_command`` /
+    ``run_git_command_lenient`` so handler-level unit tests driving
+    mock workspaces with mocked runners never spawn the real probe.
     """
     raw: object = params.get("cwd") if params else None
     if raw is not None and not isinstance(raw, str):
         raise InvalidParamsError(f"Invalid cwd: expected a string, got {type(raw).__name__}")
-    if raw is None or raw == "":
-        # Legacy default: run in the workspace root without the
-        # ``git rev-parse`` top-level probe. Existing unit tests drive
-        # the handlers against mock workspaces (non-repo tmp dirs)
-        # with mocked runners; spawning a real probe there would blow
-        # the 1s per-test budget. The outside-workspace shapes are
-        # pinned by the real-git regression suite
-        # (``tests/test_tool_git_read_path_validation.py``), which
-        # always passes an explicit ``cwd``.
-        return _workspace_root(workspace)
-    return resolve_git_cwd(workspace_root=_workspace_root(workspace), requested_cwd=raw)
+    return resolve_git_cwd(
+        workspace_root=_workspace_root(workspace),
+        requested_cwd=raw if isinstance(raw, str) else None,
+        probe_default_cwd=False,
+    )
+
+
+def _check_toplevel_boundary(
+    workspace: object,
+    effective_cwd: Path,
+    *,
+    git_runner: GitToplevelRunner | None = None,
+) -> None:
+    """Run the deferred discovered-top-level check for the resolved cwd.
+
+    Called from ``run_git_command`` / ``run_git_command_lenient`` right
+    before the git subprocess is spawned so the parent-repo bypass is
+    refused on EVERY git-read request — including the omitted/empty
+    ``cwd`` legacy default — without handler-level unit tests paying
+    for a real ``git rev-parse`` subprocess against a mock workspace
+    (those tests patch the runner, which replaces this whole path).
+    """
+    runner = git_runner or _default_toplevel_runner
+    top_level = runner(effective_cwd)
+    if top_level is None:
+        return
+    root = _workspace_root(workspace).resolve()
+    resolved_top = top_level.resolve()
+    if resolved_top == root or root in resolved_top.parents:
+        return
+    raise InvalidParamsError(
+        "git repository top-level is outside the workspace: "
+        f"top_level={resolved_top} resolved={effective_cwd} "
+        f"workspace_root={root}. Git operations outside the "
+        "active workspace are refused."
+    )
 
 
 def run_git_command(
@@ -324,6 +363,8 @@ def run_git_command(
     """Execute git and require a successful exit status."""
     git_runner = runner or _run_git_subprocess
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
+    if runner is None:
+        _check_toplevel_boundary(workspace, effective_cwd)
     try:
         output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
@@ -362,6 +403,8 @@ def run_git_command_lenient(
     """
     git_runner = runner or _run_git_subprocess
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
+    if runner is None:
+        _check_toplevel_boundary(workspace, effective_cwd)
     try:
         output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:

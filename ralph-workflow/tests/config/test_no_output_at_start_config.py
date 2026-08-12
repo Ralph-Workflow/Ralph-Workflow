@@ -19,16 +19,22 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.general_config import GeneralConfig
 
 
-def test_claude_startup_regression_default_grace_tolerates_30_seconds_then_fires_at_120() -> None:
-    """S-3: A silent cold start has a bounded 120-second grace period."""
+def test_claude_startup_regression_default_grace_tolerates_15_seconds_then_fires_at_15() -> None:
+    """S-3: A silent cold start has a bounded 15-second grace period.
+
+    The default startup ceiling sits just above the broken-agent grace
+    window (12s): a silent startup is unambiguously a broken agent, so
+    the watchdog's NO_OUTPUT_AT_START backstop fires at 15s rather than
+    the historical 120s.
+    """
     clock = FakeClock()
     watchdog = IdleWatchdog(TimeoutPolicy(idle_timeout_seconds=300.0), clock)
     watchdog.record_invocation_start()
 
-    clock.advance(30.0)
+    clock.advance(14.0)
     assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) != WatchdogVerdict.FIRE
 
-    clock.advance(90.0)
+    clock.advance(2.0)
     assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
