@@ -25,7 +25,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
+    "tests/test_auto_integrate_end_to_end.py",
+    "tests/test_tool_git_read_path_validation.py",
+)
 
 
 def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:

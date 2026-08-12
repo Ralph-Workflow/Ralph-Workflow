@@ -43,6 +43,30 @@ def _timeout_ms_property() -> dict[str, object]:
     }
 
 
+def _cwd_property() -> dict[str, object]:
+    """Schema for the optional workspace-bounded ``cwd`` param on git read tools.
+
+    The handler resolves ``cwd`` against the workspace root
+    (``..`` collapsed, symlinks followed) and refuses the request when
+    the resolved path — or the discovered repository top-level — is
+    outside the workspace, so the advertised contract can never drift
+    from the enforced boundary.
+    """
+    return {
+        "type": "string",
+        "description": (
+            "Optional working directory for the git command, resolved against "
+            "the workspace root. Omit or pass '' to run in the workspace root "
+            "(default). Use a nested path (e.g. 'nested-repo') to read a "
+            "repository contained inside the workspace. The resolved path and "
+            "the discovered repository top-level must both stay inside the "
+            "workspace; symlinks and '..' are resolved before the check, and "
+            "a path outside the workspace is refused with an is_error result "
+            "that names the resolved path and the workspace root."
+        ),
+    }
+
+
 def git_exec_specs() -> list[ToolSpec]:
     """Return tool specs for git and exec operations."""
     return [
@@ -70,6 +94,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                             "default": "raw",
                         },
+                        "cwd": _cwd_property(),
                     },
                 },
                 required_capability=McpCapability.GIT_STATUS_READ.value,
@@ -144,6 +169,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             "minimum": 1,
                             "maximum": 50000,
                         },
+                        "cwd": _cwd_property(),
                     },
                 },
                 # Matches handle_git_diff's gate (GIT_DIFF_READ_CAPABILITY). Resolves
@@ -192,6 +218,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                             "default": "raw",
                         },
+                        "cwd": _cwd_property(),
                     },
                 },
                 required_capability=McpCapability.GIT_STATUS_READ.value,
@@ -237,6 +264,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                             "default": "raw",
                         },
+                        "cwd": _cwd_property(),
                     },
                     "required": ["ref"],
                 },

@@ -37,6 +37,38 @@ stdout/stderr. No write to the workspace, no network call. Timeouts
 are converted into a non-retryable ``is_error`` result that names the
 likely cause (vendor/ submodule or held lock) and tells the agent
 *not* to retry unchanged.
+
+Workspace-bounded cwd contract
+------------------------------
+
+Every handler accepts an optional ``cwd`` parameter so an agent can
+read a *nested* repository contained inside the active workspace:
+
+1. ``cwd=None`` or ``cwd=""`` resolves to the workspace root
+   (the legacy default; no behavior change).
+2. ``cwd=<path>`` resolves relative to the workspace root and the
+   git command runs in the resolved directory (absolute paths are
+   taken as-is).
+3. The resolved directory must be inside the workspace root.
+   ``..`` segments are collapsed and symlinks are followed
+   (``Path.resolve``) *before* the check, so neither can smuggle the
+   subprocess outside the workspace.
+4. The resolved directory's ``git rev-parse --show-toplevel`` must
+   also be inside the workspace root. This defeats the parent-repo
+   bypass: when the workspace is itself a subdirectory of an
+   unrelated parent repository, git would otherwise operate on the
+   parent's commits even though the resolved cwd is inside the
+   workspace.
+5. A violated boundary raises ``InvalidParamsError`` whose message
+   names the resolved path, the discovered top-level (when the
+   second check fails), and the workspace root, so the framework
+   boundary returns ``ToolResult(is_error=True)`` to the caller.
+
+The two-dimensional check lives in
+:func:`ralph.mcp.tools._git_cwd_validator.resolve_git_cwd`; the four
+handlers resolve once per request and thread the resulting ``Path``
+through ``run_git_command`` / ``run_git_command_lenient`` (via the
+``cwd=`` kwarg) into every summary-payload code path.
 """
 
 from __future__ import annotations
@@ -56,6 +88,7 @@ from ralph.mcp.explore.dirty_paths import (
     resolve_explore_index,
 )
 from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
+from ralph.mcp.tools._git_cwd_validator import resolve_git_cwd
 from ralph.mcp.tools._git_diff_params import GitDiffParams
 from ralph.mcp.tools._git_execution_error import ExecutionError
 from ralph.mcp.tools._git_log_params import GitLogParams
@@ -254,17 +287,45 @@ def _decode_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _resolve_git_cwd(workspace: object, params: Mapping[str, object]) -> Path:
+    """Resolve the optional ``cwd`` param against the workspace boundary.
+
+    The workspace-bounded contract (see the module docstring):
+    ``cwd=None`` / ``cwd=""`` runs in the workspace root; any other
+    value must resolve inside the workspace AND discover a repository
+    top-level inside the workspace, else ``InvalidParamsError`` is
+    raised (converted to ``ToolResult(is_error=True)`` by the framework
+    boundary).
+    """
+    raw: object = params.get("cwd") if params else None
+    if raw is not None and not isinstance(raw, str):
+        raise InvalidParamsError(f"Invalid cwd: expected a string, got {type(raw).__name__}")
+    if raw is None or raw == "":
+        # Legacy default: run in the workspace root without the
+        # ``git rev-parse`` top-level probe. Existing unit tests drive
+        # the handlers against mock workspaces (non-repo tmp dirs)
+        # with mocked runners; spawning a real probe there would blow
+        # the 1s per-test budget. The outside-workspace shapes are
+        # pinned by the real-git regression suite
+        # (``tests/test_tool_git_read_path_validation.py``), which
+        # always passes an explicit ``cwd``.
+        return _workspace_root(workspace)
+    return resolve_git_cwd(workspace_root=_workspace_root(workspace), requested_cwd=raw)
+
+
 def run_git_command(
     workspace: object,
     args: list[str],
     *,
     runner: GitRunner | None = None,
     cwd_provider: CwdProvider = Path.cwd,
+    cwd: Path | None = None,
 ) -> str:
     """Execute git and require a successful exit status."""
     git_runner = runner or _run_git_subprocess
+    effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
     try:
-        output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
+        output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
         raise ExecutionError(
             f"git command timed out after {exc.timeout:g}s: {' '.join(args)}",
@@ -292,6 +353,7 @@ def run_git_command_lenient(
     *,
     runner: GitRunner | None = None,
     cwd_provider: CwdProvider = Path.cwd,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Execute git and return a :class:`CompletedProcess` regardless of exit code.
 
@@ -299,8 +361,9 @@ def run_git_command_lenient(
     join ``result.stdout`` and ``result.stderr`` themselves.
     """
     git_runner = runner or _run_git_subprocess
+    effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
     try:
-        output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
+        output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
         raise ExecutionError(
             f"git command timed out after {exc.timeout:g}s: {' '.join(args)}",
@@ -386,15 +449,18 @@ def handle_git_status(
     (ranked changed paths with role tags + byte budget).
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
+    resolved_cwd = _resolve_git_cwd(workspace, params)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "compact"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'compact'")
     if format_value == "raw":
-        return _git_read_result(lambda: run_git_command(workspace, ["status"]))
+        return _git_read_result(lambda: run_git_command(workspace, ["status"], cwd=resolved_cwd))
     # AC-11: compact mode runs through the same timeout-wrapping
     # helper as raw mode so a hung ``git status`` returns an
     # actionable is_error result rather than an uncaught exception.
-    return _git_read_result(lambda: _build_compact_status_payload(workspace, session=session))
+    return _git_read_result(
+        lambda: _build_compact_status_payload(workspace, session=session, cwd=resolved_cwd)
+    )
 
 
 def _resolve_compact_status_index(
@@ -589,6 +655,7 @@ def _strict_max_bytes_param(
 def _build_compact_status_payload(
     workspace: object,
     session: object | None = None,
+    cwd: Path | None = None,
 ) -> str:
     """Build the compact-mode JSON payload for ``git status``.
 
@@ -628,7 +695,7 @@ def _build_compact_status_payload(
     list lets tests and downstream tools assert exactly
     why a card ranked above another card.
     """
-    raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"])
+    raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"], cwd=cwd)
     lines = raw_result.stdout.decode("utf-8", errors="replace").splitlines()
     cards: list[dict[str, object]] = []
     for line in lines:
@@ -780,25 +847,31 @@ def handle_git_diff(
     values.
     """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
+    resolved_cwd = _resolve_git_cwd(workspace, params)
     parsed = parse_git_diff_params(params)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'summary'")
     if format_value == "raw":
         return _git_read_result(
-            lambda: lenient_stdout(run_git_command_lenient(workspace, ["diff", *parsed.args]))
+            lambda: lenient_stdout(
+                run_git_command_lenient(workspace, ["diff", *parsed.args], cwd=resolved_cwd)
+            )
         )
     max_bytes = _strict_max_bytes_param(params)
     # AC-11: wrap the summary branch in ``_git_read_result`` so a
     # timeout converts into the same actionable ``is_error`` result
     # as the raw branch, never an uncaught exception.
-    return _git_read_result(lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes))
+    return _git_read_result(
+        lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes, cwd=resolved_cwd)
+    )
 
 
 def _build_diff_summary_payload(
     workspace: object,
     git_args: Sequence[str],
     max_bytes: int,
+    cwd: Path | None = None,
 ) -> str:
     """Build the summary-mode JSON payload for ``git diff``.
 
@@ -815,7 +888,7 @@ def _build_diff_summary_payload(
     Ponytail: isolated helper so the timeout-wrapping
     ``_git_read_result`` can call it without a try/except chain.
     """
-    raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *git_args])
+    raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *git_args], cwd=cwd)
     numstat_output = raw_result.stdout.decode("utf-8", errors="replace")
     cards: list[dict[str, object]] = []
     for line in numstat_output.splitlines():
@@ -842,7 +915,7 @@ def _build_diff_summary_payload(
     # so the caller never holds an unbounded buffer. The
     # returned string is UTF-8 safe (errors="replace") and the
     # re-encoded length never exceeds ``max_bytes``.
-    full_text, truncated = _collect_git_diff_capped(workspace, git_args, max_bytes)
+    full_text, truncated = _collect_git_diff_capped(workspace, git_args, max_bytes, cwd=cwd)
     added_total = sum(c["added"] for c in cards if isinstance(c["added"], int))
     removed_total = sum(c["removed"] for c in cards if isinstance(c["removed"], int))
     payload: dict[str, object] = {
@@ -862,6 +935,7 @@ def _collect_git_diff_capped(
     workspace: object,
     git_args: Sequence[str],
     max_bytes: int,
+    cwd: Path | None = None,
 ) -> tuple[str, bool]:
     """Run ``git diff`` and stream at most ``max_bytes`` bytes.
 
@@ -886,11 +960,11 @@ def _collect_git_diff_capped(
     """
     if max_bytes <= 0:
         return ("", False)
-    cwd = str(_workspace_root(workspace))
+    effective_cwd = cwd if cwd is not None else _workspace_root(workspace)
     proc = get_process_manager().spawn(
         ["git", "diff", *git_args],
         SpawnOptions(
-            cwd=cwd,
+            cwd=str(effective_cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             label="git-mcp-read",
@@ -1026,15 +1100,22 @@ def handle_git_log(
         No workspace writes, no network calls.
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
+    resolved_cwd = _resolve_git_cwd(workspace, params)
     parsed = parse_git_log_params(params)
     if parsed.format == "raw":
         return _git_read_result(
-            lambda: run_git_command(workspace, ["log", f"-{parsed.count}", "--oneline"])
+            lambda: run_git_command(
+                workspace, ["log", f"-{parsed.count}", "--oneline"], cwd=resolved_cwd
+            )
         )
-    return _git_read_result(lambda: _build_git_log_summary_payload(workspace, parsed.count))
+    return _git_read_result(
+        lambda: _build_git_log_summary_payload(workspace, parsed.count, cwd=resolved_cwd)
+    )
 
 
-def _build_git_log_summary_payload(workspace: object, count: int) -> str:
+def _build_git_log_summary_payload(
+    workspace: object, count: int, cwd: Path | None = None
+) -> str:
     """Build the summary-mode JSON envelope for ``git log``.
 
     Ponytail: isolated helper so the timeout-wrapping
@@ -1044,7 +1125,7 @@ def _build_git_log_summary_payload(workspace: object, count: int) -> str:
     so an empty log still produces an empty ``commits`` list rather
     than a fake sentinel.
     """
-    raw = run_git_command(workspace, ["log", f"-{count}", "--oneline"])
+    raw = run_git_command(workspace, ["log", f"-{count}", "--oneline"], cwd=cwd)
     raw_bytes = raw.encode("utf-8")
     commits: list[dict[str, object]] = []
     for line in raw.splitlines():
@@ -1102,13 +1183,20 @@ def handle_git_show(
         No workspace writes, no network calls.
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
+    resolved_cwd = _resolve_git_cwd(workspace, params)
     parsed = parse_git_show_params(params)
     if parsed.format == "raw":
-        return _git_read_result(lambda: run_git_command(workspace, ["show", parsed.git_ref]))
-    return _git_read_result(lambda: _build_git_show_summary_payload(workspace, parsed.git_ref))
+        return _git_read_result(
+            lambda: run_git_command(workspace, ["show", parsed.git_ref], cwd=resolved_cwd)
+        )
+    return _git_read_result(
+        lambda: _build_git_show_summary_payload(workspace, parsed.git_ref, cwd=resolved_cwd)
+    )
 
 
-def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
+def _build_git_show_summary_payload(
+    workspace: object, ref: str, cwd: Path | None = None
+) -> str:
     """Build the summary-mode JSON envelope for ``git show``.
 
     Ponytail: isolated helper so the timeout-wrapping
@@ -1122,7 +1210,7 @@ def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
     of parents in the header.
     """
     fmt = "%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%P%x1f%D%x1f%H"
-    raw = run_git_command(workspace, ["show", "--no-patch", f"--format={fmt}", ref])
+    raw = run_git_command(workspace, ["show", "--no-patch", f"--format={fmt}", ref], cwd=cwd)
     raw_bytes = raw.encode("utf-8")
     fields = raw.split("\x1f")
     # ``%D`` is appended to the format above to also include the
