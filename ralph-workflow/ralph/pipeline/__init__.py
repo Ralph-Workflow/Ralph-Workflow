@@ -6,6 +6,7 @@ advance the state machine.
 """
 
 from ralph.config.enums import PipelinePhase
+from ralph.pipeline._runner_session import apply_session_capture
 from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
@@ -15,5 +16,6 @@ __all__ = [
     "PipelineEvent",
     "PipelinePhase",
     "PipelineState",
+    "apply_session_capture",
     "reduce",
 ]

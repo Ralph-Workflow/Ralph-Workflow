@@ -507,7 +507,16 @@ def _invoke_agent_with_recovery(
                     )
                 )
                 if recovery_plan is None:
-                    _set_last_captured_retry_intent(cleared_agent_retry_intent())
+                    retry_intent = resolve_retry_intent(
+                        exc,
+                        phase=str(ctx.effect.phase),
+                        agent=ctx.effect.agent_name,
+                        session_id=session_id,
+                        inactivity_error_type=AgentInactivityTimeoutError,
+                    )
+                    _set_last_captured_retry_intent(
+                        retry_intent if retry_intent is not None else cleared_agent_retry_intent()
+                    )
                     raise
                 failure_signature = retry_failure_signature(
                     recovery_plan.reason, list(rendered_output)

@@ -26,6 +26,7 @@ _RETRY_FAILURE_EVIDENCE_LINES = 5
 class _DirectMcpRetryPlan:
     session_id: str | None
     reset_tool_registry: bool
+    skip_same_agent_retries: bool
 
 
 def default_direct_mcp_retry_limit(raw_limit: object) -> int:
@@ -78,6 +79,7 @@ def _retry_plan_for_exception(
     return _DirectMcpRetryPlan(
         session_id=intent.session_id,
         reset_tool_registry=intent.reset_tool_registry,
+        skip_same_agent_retries=intent.skip_same_agent_retries,
     )
 
 
@@ -113,7 +115,7 @@ def run_with_direct_mcp_recovery[T](
                 attempt_lines=list(_exception_parsed_output(exc)),
                 current_session_id=observed_session_id,
             )
-            if retry_plan is None:
+            if retry_plan is None or retry_plan.skip_same_agent_retries:
                 raise
             if on_retry_failure is not None:
                 on_retry_failure(list(_exception_parsed_output(exc)))

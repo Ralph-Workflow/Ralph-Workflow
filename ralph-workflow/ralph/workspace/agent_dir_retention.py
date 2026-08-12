@@ -52,6 +52,7 @@ from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.mcp.artifacts.state_db import DB_RELPATH, RunStateDB
 
 DEFAULT_MAX_AGE_SECONDS = 7 * 24 * 3600.0
+_COALESCED_WAVE_WINDOW_SECONDS = 0.05
 
 _SCRATCH_GLOBS: tuple[str, ...] = (
     "agent_retry_*.md",
@@ -73,9 +74,9 @@ class RetentionPassCoordinator:
     process-local pass counter exactly once. Concurrent callers arriving
     while the wave is in flight join that wave, observe the same
     ``Wave.removed`` value, and do NOT re-run the inner body or
-    increment the counter. Once the owner exits, the wave slot clears
-    and the next arrival starts a new wave with a fresh counter
-    increment.
+    increment the counter. A completed wave remains available for a brief
+    bounded burst window so callers queued behind a saturated executor join
+    the same concurrent sweep rather than starting redundant passes.
     """
 
     def __init__(self, *, on_wave_acquired: Callable[[], None] | None = None) -> None:
@@ -84,6 +85,7 @@ class RetentionPassCoordinator:
         # Shared result of one coalesced retention pass (the removed count),
         # or ``None`` while the owning wave is still in flight.
         self._wave: int | None = None
+        self._published_until = 0.0
         self._in_flight = False
         self._joiners = 0
         # Test seam: invoked once per caller AFTER the wave is acquired
@@ -106,8 +108,13 @@ class RetentionPassCoordinator:
         """
         del workspace_root  # one coordinator per process is sufficient today
         with self._condition:
-            if self._wave is not None:
-                # Wave result already published: join without waiting.
+            now = time.monotonic()
+            if self._wave is not None and (
+                self._in_flight or now < self._published_until
+            ):
+                # A published result stays available through the bounded burst
+                # window so work queued behind an executor's worker cap joins
+                # the same concurrent wave.
                 yield_wave: int | None = self._wave
                 owner = False
                 consume = False
@@ -144,19 +151,19 @@ class RetentionPassCoordinator:
             yield None
         finally:
             with self._condition:
-                # Hold the published wave until every joiner consumed it;
-                # only then clear the slot so the next arrival owns a new
-                # wave with a fresh pass-count increment.
+                # Hold the published wave until every joiner consumed it.
+                # The bounded burst window keeps it available to callers
+                # queued behind a saturated executor after the owner exits.
                 while self._joiners > 0:
                     self._condition.wait()
                 self._in_flight = False
-                self._wave = None
                 self._condition.notify_all()
 
     def record(self, removed: int) -> None:
         """Publish the owner's removed count and count exactly one pass."""
         with self._condition:
             self._wave = removed
+            self._published_until = time.monotonic() + _COALESCED_WAVE_WINDOW_SECONDS
             self._pass_count += 1
             self._condition.notify_all()
 

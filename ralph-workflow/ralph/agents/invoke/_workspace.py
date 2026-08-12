@@ -111,30 +111,30 @@ def _make_change_tracker(workspace: Path, key: str) -> object:
 
 def _read_inotify_watch_limit() -> int | None:
     """Return Linux's per-real-user inotify-watch ceiling when available."""
-    if sys.platform == "linux":
-        try:
-            return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
-        except OSError:
-            return None
-    return None
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
+    except OSError:
+        return None
 
 
 def _read_inotify_watch_user_total() -> int | None:
     """Return the current real user's live inotify-watch count on Linux."""
-    if sys.platform == "linux":
-        try:
-            user_id = os.getuid()
-            watch_total = 0
-            for process in Path("/proc").iterdir():  # filesystem-read-ok: Linux /proc kernel tree, not workspace content
-                if not process.name.isdigit() or process.stat().st_uid != user_id:
-                    continue
-                for fdinfo in (process / "fdinfo").iterdir():
-                    with fdinfo.open() as stream:
-                        watch_total += sum(line.startswith("wd:") for line in stream)
-        except OSError:
-            return None
-        return watch_total
-    return None
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        user_id = os.getuid()
+        watch_total = 0
+        for process in Path("/proc").iterdir():  # filesystem-read-ok: Linux /proc kernel tree, not workspace content
+            if not process.name.isdigit() or process.stat().st_uid != user_id:
+                continue
+            for fdinfo in (process / "fdinfo").iterdir():
+                with fdinfo.open() as stream:
+                    watch_total += sum(line.startswith("wd:") for line in stream)
+    except OSError:
+        return None
+    return watch_total
 
 
 def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
@@ -427,52 +427,26 @@ class WorkspaceMonitor:
 
         key = _shared_workspace_key(self._workspace)
         with self._shared_lock:
-            shared = self._shared_watches.get(key)
-            if shared is not None and not shared.monitors:
-                self._shared_watches.pop(key, None)
-                self._stop_observer(shared.observer)
-                shared = None
-            if shared is not None:
-                shared.monitors.add(self)
-                self._shared_key = key
-                self._handler = shared.handler
-                self._started = True
-                self._awareness_status = _current_status()
-                awareness_for_workspace(self._workspace).set_watch_active()
+            if self._attach_existing_watch(key):
                 return
-
-            if _watch_capacity_is_predicted(
-                self._workspace,
-                self._host_budget,
-                self._directory_counter,
-                self._live_watch_total,
-            ):
-                self._awareness_status = _live_fallback_status("watch_capacity_predicted")
-                awareness_for_workspace(self._workspace).set_live_fallback(
-                    "watch_capacity_predicted"
-                )
+            if self._watch_capacity_is_predicted():
+                self._activate_live_fallback("watch_capacity_predicted")
                 logger.warning(
                     "Workspace monitoring unavailable: predicted watch count exceeds host budget"
                 )
                 return
-
-            # S-10: cross-process watch coordination. Another process may
-            # already own the recursive watchdog on this workspace root.
-            # When the cross-process lock is held, do NOT register an
-            # overlapping observer; fall back visibly so operators can see
-            # why no watch was scheduled.
             if not self._acquire_cross_process_watch_lock():
                 return
-
-            observer = _create_watchdog_observer()
-            if observer is None:
-                self._release_cross_process_watch_lock()
-                self._awareness_status = _live_fallback_status("observer_unavailable")
-                awareness_for_workspace(self._workspace).set_live_fallback("observer_unavailable")
+            if not self._prepare_new_shared_watch(key):
                 return
-            handler = _make_change_tracker(self._workspace, key)
-            self._observer = observer
-            self._handler = handler
+            observer = self._observer
+            handler = self._handler
+            if observer is None or handler is None:
+                msg = "prepared workspace watch is missing its observer or handler"
+                raise RuntimeError(msg)
+            if self._observer is None:
+                msg = "prepared workspace watch lost its lifecycle-owned observer"
+                raise RuntimeError(msg)
             try:
                 self._observer.schedule(handler, str(self._workspace), recursive=True)
                 self._observer.start()
@@ -480,22 +454,74 @@ class WorkspaceMonitor:
                 self._abort_start_on_oserror(exc, observer)
                 return
             except BaseException:
-                with suppress(BaseException):
-                    self._stop_observer(observer)
-                self._observer = None
-                self._handler = None
-                self._release_cross_process_watch_lock()
+                self._abort_unexpected_watch_start(observer)
                 raise
-            shared = _SharedWorkspaceWatch(
-                observer, handler, cross_process_owner_id=self._cross_process_owner_id
-            )
-            shared.monitors.add(self)
-            self._shared_watches[key] = shared
-            self._shared_key = key
-            self._started = True
-            self._awareness_status = _current_status()
-            awareness_for_workspace(self._workspace).set_watch_active()
+            self._register_new_shared_watch(key, observer, handler)
         logger.debug("Started workspace monitoring: {}", self._workspace)
+
+    def _attach_existing_watch(self, key: str) -> bool:
+        """Attach this monitor to a live in-process watch when one exists."""
+        shared = self._shared_watches.get(key)
+        if shared is not None and not shared.monitors:
+            self._shared_watches.pop(key, None)
+            self._stop_observer(shared.observer)
+            shared = None
+        if shared is None:
+            return False
+        shared.monitors.add(self)
+        self._shared_key = key
+        self._handler = shared.handler
+        self._started = True
+        self._awareness_status = _current_status()
+        awareness_for_workspace(self._workspace).set_watch_active()
+        return True
+
+    def _watch_capacity_is_predicted(self) -> bool:
+        """Return whether starting another recursive watch would exceed capacity."""
+        return _watch_capacity_is_predicted(
+            self._workspace,
+            self._host_budget,
+            self._directory_counter,
+            self._live_watch_total,
+        )
+
+    def _activate_live_fallback(self, reason: str) -> None:
+        """Record a visible live-read fallback for this workspace."""
+        self._awareness_status = _live_fallback_status(reason)
+        awareness_for_workspace(self._workspace).set_live_fallback(reason)
+
+    def _prepare_new_shared_watch(self, key: str) -> bool:
+        """Create the observer resources needed for a new shared watch."""
+        observer = _create_watchdog_observer()
+        if observer is None:
+            self._release_cross_process_watch_lock()
+            self._activate_live_fallback("observer_unavailable")
+            return False
+        self._observer = observer
+        self._handler = _make_change_tracker(self._workspace, key)
+        return True
+
+    def _abort_unexpected_watch_start(self, observer: _ObserverProtocol) -> None:
+        """Release partially started watch resources before propagating an error."""
+        with suppress(BaseException):
+            self._stop_observer(observer)
+        self._observer = None
+        self._handler = None
+        self._release_cross_process_watch_lock()
+
+    def _register_new_shared_watch(
+        self, key: str, observer: _ObserverProtocol, handler: object
+    ) -> None:
+        """Publish a successfully started shared observer to all local leases."""
+        shared = _SharedWorkspaceWatch(
+            observer, handler, cross_process_owner_id=self._cross_process_owner_id
+        )
+        shared.monitors.add(self)
+        self._shared_watches[key] = shared
+        self._shared_key = key
+        self._started = True
+        self._awareness_status = _current_status()
+        awareness_for_workspace(self._workspace).set_watch_active()
 
     def record_event(self, src_path: str) -> None:
         """Record a file change event.
