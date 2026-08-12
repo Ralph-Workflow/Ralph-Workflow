@@ -33,9 +33,15 @@ import contextlib
 import json
 import shutil
 import sqlite3
+import sys
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -53,13 +59,14 @@ _SCRATCH_GLOBS: tuple[str, ...] = (
 )
 _ACTIVE_RUNS_RELPATH = ".agent/active_runs.json"
 _OWNERSHIP_RELPATH = ".agent/tmp/ownership.json"
+_METADATA_LOCK_RELPATH = ".agent/.retention-metadata.lock"
 
 
 class RetentionPassCoordinator:
     """Coalesce parallel retention passes into one inner sweep per wave.
 
-    This coordinator is process-local; it intentionally does not coordinate
-    independent processes, which remains the B6 future boundary.
+    This coordinator is process-local; shared metadata separately protects
+    ownership across independent processes.
 
     The first thread entering ``guard`` becomes the wave owner: it runs
     the inner sweep body, stores the ``Wave`` result, and increments the
@@ -157,6 +164,31 @@ class RetentionPassCoordinator:
 _active_run_lock = threading.Lock()
 
 
+@contextlib.contextmanager
+def _metadata_lock(workspace_root: Path) -> Iterator[None]:
+    """Serialize shared-retention metadata read-modify-write transactions."""
+    lock_path = workspace_root / _METADATA_LOCK_RELPATH
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    # filesystem-write-ok: persistent advisory-lock sidecar serializes cross-process retention metadata updates.
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        if sys.platform == "win32":
+            if handle.tell() == 0:
+                handle.write("0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _read_json(path: Path) -> object:
     try:
         decoded: object = json.loads(path.read_text(encoding="utf-8"))
@@ -188,7 +220,7 @@ def _active_run_ids(workspace_root: Path) -> frozenset[str]:
 
 def register_active_run(workspace_root: Path, run_id: str) -> None:
     """Mark ``run_id`` active in the shared registry so every process keeps its data."""
-    with _active_run_lock:
+    with _active_run_lock, _metadata_lock(workspace_root):
         _write_json(
             workspace_root / _ACTIVE_RUNS_RELPATH,
             {"run_ids": sorted(_active_run_ids(workspace_root) | {run_id})},
@@ -197,7 +229,7 @@ def register_active_run(workspace_root: Path, run_id: str) -> None:
 
 def unregister_active_run(workspace_root: Path, run_id: str) -> None:
     """Release ``run_id`` from the shared active-run registry."""
-    with _active_run_lock:
+    with _active_run_lock, _metadata_lock(workspace_root):
         _write_json(
             workspace_root / _ACTIVE_RUNS_RELPATH,
             {"run_ids": sorted(_active_run_ids(workspace_root) - {run_id})},
@@ -216,51 +248,65 @@ def prune_lock_run_ids(
 def register_temporary_path_owner(workspace_root: Path, path: Path, run_id: str) -> None:
     """Record the run that owns a retry scratch file or workspace Codex home."""
     ownership_path = workspace_root / _OWNERSHIP_RELPATH
-    raw = _read_json(ownership_path)
-    owners: dict[str, object] = (
-        {key: value for key, value in raw.items() if isinstance(key, str)}
-        if isinstance(raw, dict)
-        else {}
-    )
     try:
         relative_path = path.relative_to(workspace_root / ".agent").as_posix()
     except ValueError:
         return
-    owners[relative_path] = {"run_id": run_id, "created_at": time.time()}
-    _write_json(ownership_path, owners)
+    with _metadata_lock(workspace_root):
+        raw = _read_json(ownership_path)
+        owners: dict[str, object] = (
+            {
+                key: cast("object", value)
+                for key, value in raw.items()
+                if isinstance(key, str)
+            }
+            if isinstance(raw, dict)
+            else {}
+        )
+        owners[relative_path] = {"run_id": run_id, "created_at": time.time()}
+        _write_json(ownership_path, owners)
 
 
 def unregister_temporary_path_owner(workspace_root: Path, path: Path) -> None:
     """Remove ownership metadata after the normal owner has released its path."""
     ownership_path = workspace_root / _OWNERSHIP_RELPATH
-    raw = _read_json(ownership_path)
-    if not isinstance(raw, dict):
-        return
     try:
         relative_path = path.relative_to(workspace_root / ".agent").as_posix()
     except ValueError:
         return
-    owners: dict[str, object] = {key: value for key, value in raw.items() if isinstance(key, str)}
-    if relative_path in owners:
-        owners.pop(relative_path)
-        _write_json(ownership_path, owners)
+    with _metadata_lock(workspace_root):
+        raw = _read_json(ownership_path)
+        if not isinstance(raw, dict):
+            return
+        owners: dict[str, object] = {
+            key: value for key, value in raw.items() if isinstance(key, str)
+        }
+        if relative_path in owners:
+            owners.pop(relative_path)
+            _write_json(ownership_path, owners)
 
 
-def _prune_missing_temporary_path_owners(workspace_root: Path, owners: dict[str, str]) -> None:
+def _prune_missing_temporary_path_owners(workspace_root: Path) -> None:
     """Drop ownership entries once their temporary path was reclaimed."""
-    retained = {
-        relative_path: run_id
-        for relative_path, run_id in owners.items()
-        if (workspace_root / ".agent" / relative_path).exists()
-    }
-    if retained != owners:
-        _write_json(
-            workspace_root / _OWNERSHIP_RELPATH,
-            {
-                relative_path: {"run_id": run_id, "created_at": time.time()}
-                for relative_path, run_id in retained.items()
-            },
-        )
+    ownership_path = workspace_root / _OWNERSHIP_RELPATH
+    with _metadata_lock(workspace_root):
+        raw = _read_json(ownership_path)
+        if not isinstance(raw, dict):
+            return
+        owners = _temporary_path_owners(workspace_root)
+        retained = {
+            relative_path: run_id
+            for relative_path, run_id in owners.items()
+            if (workspace_root / ".agent" / relative_path).exists()
+        }
+        if retained != owners:
+            _write_json(
+                ownership_path,
+                {
+                    relative_path: {"run_id": run_id, "created_at": time.time()}
+                    for relative_path, run_id in retained.items()
+                },
+            )
 
 
 def _temporary_path_owners(workspace_root: Path) -> dict[str, str]:
@@ -525,7 +571,7 @@ def _sweep_agent_dir_body(
     removed += _sweep_codex_home_dirs(
         tmp_dir, cutoff=cutoff, owners=owners, active_run_ids=keep_run_ids
     )
-    _prune_missing_temporary_path_owners(workspace_root, owners)
+    _prune_missing_temporary_path_owners(workspace_root)
     removed += _sweep_session_files(agent_dir, cutoff=cutoff)
     removed += _sweep_run_state_db_rows(workspace_root, cutoff=cutoff, keep_run_ids=keep_run_ids)
     return removed

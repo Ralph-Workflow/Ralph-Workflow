@@ -651,9 +651,12 @@ def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scen
     catalog = {
         entry_point: surface for surface in SURFACE_CATALOG for entry_point in surface.entry_points
     }
+    rendered_scenes: dict[str, str] = {}
     for emitter, carrier in expected_carriers.items():
-        rendered = render_scene(catalog[emitter].scene, common, terminal_bg_is_light=False)
-        assert carrier in rendered, emitter
+        scene = catalog[emitter].scene
+        if scene not in rendered_scenes:
+            rendered_scenes[scene] = render_scene(scene, common, terminal_bg_is_light=False)
+        assert carrier in rendered_scenes[scene], emitter
 
 
 def test_generated_scene_regression_clean_run_never_emits_an_empty_structural_rule() -> None:
