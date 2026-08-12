@@ -97,10 +97,10 @@ Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignmen
 
 A `status: partial` or `status: failed` result is free-form below the frontmatter — no section or
 proof is required, so submit one as soon as you cannot finish rather than
-forcing an unprovable completion claim. Use failed when the attempt cannot
-proceed. State verified progress or the concrete
-blocker, and include `## Next Steps` (the remaining work) and `## Continuation`
-(your session ID) so the next iteration can resume.
+forcing an unprovable completion claim. Use `partial` for a safe worker-local
+continuation and include `## Next Steps` plus `## Continuation`. Use `failed`
+when no safe worker-local continuation exists; report the blocker and evidence
+without promising another iteration. Neither status decides the run outcome.
 
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example) }}
 

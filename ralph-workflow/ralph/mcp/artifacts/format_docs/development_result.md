@@ -79,9 +79,11 @@ Every section rule below applies to `status: completed` only — a
 completion claim is the one thing this artifact can check. With
 `status: partial` or `status: failed` the document is free-form below the frontmatter: no
 section is required or shaped and no proof is demanded. Still lead with
-what you did, what remains (`## Next Steps`) and your session id
-(`## Continuation`) — they are read when present and are what lets the
-next iteration resume.
+what you did and what remains. For `partial`, include `## Next Steps` and your
+session id in `## Continuation` so a safe concrete continuation can resume. Use
+`failed` when no safe developer continuation exists under current evidence or
+authority; report the blocker without promising another iteration. Neither
+status decides whether the run ends.
 
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.

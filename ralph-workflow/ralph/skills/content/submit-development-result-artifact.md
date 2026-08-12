@@ -25,9 +25,11 @@ repaired before submission.
 The section rules below apply to `status: completed` only. A
 `status: partial` or `status: failed` document is free-form below the frontmatter: no
 section is required or shaped, and no proof is demanded. Write whatever
-best hands your unfinished work to the next iteration — `## Summary`,
-`## Next Steps` and `## Continuation` (your session ID) are read when
-present and are the most useful things to include.
+best records the attempt. Use `partial` when a safe concrete continuation
+exists, with `## Next Steps` and `## Continuation` (your session ID). Use
+`failed` when no safe developer continuation exists under current evidence or
+authority, and report the blocker without promising another iteration. Neither
+status decides whether the run ends.
 
 | Section | Required (`completed`) | Items |
 |---|---|---|

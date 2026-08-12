@@ -137,8 +137,10 @@ Submit one native-markdown document:
    items. A completed result cannot contain blocked work.
    Every requirement above applies to `status: completed`. A `status: partial`
    or `status: failed` result is free-form below the frontmatter — no section or proof is required.
-   When the result is resumable, include `## Next Steps` (the remaining work)
-   and `## Continuation` (your session ID) so the next iteration can resume.
+   Use `partial` only when a safe concrete continuation exists, and include
+   `## Next Steps` plus `## Continuation`. Use `failed` when no safe developer
+   continuation exists under current evidence or authority; report the blocker
+   without promising another iteration. Neither status decides the run outcome.
 {% if IS_WORKER %}
    For `status: completed`, cite the files changed and focused verification
    result. For `status: partial` or `status: failed`, state verified progress or the concrete
