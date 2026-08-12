@@ -214,7 +214,8 @@ the wired audits:
   `checkpoint`, `config`, `exit_pause`, `files`, `platform`, `project_policy`,
   `skills`, and `interrupt`. The ONLY bypass is an inline
   `# bounded-accumulator-ok: <reason>` marker naming the cap or drain.
-* The drift audit (`verify-drift` Makefile target, followed by
+* The drift audit (`verify-drift` Makefile target invoking
+  `scripts/verify_drift.sh`, which delegates to
   `scripts/wt028-drift-check.sh`) catches new uses of the canonical
   Pro-contract surface (hardcoded PROMPT.md literals outside the
   resolver, new uses of `.ralph/run.json` outside the marker reader,
@@ -236,7 +237,8 @@ target runs the four canonical Pro-contract drift greps (no
 hardcoded `PROMPT.md` references outside the resolver; no
 `.ralph/run.json` references outside the marker reader; no
 `time.sleep` in `ralph/pro_support/`; no rogue `RALPH_*` env vars
-beyond the canonical three) and then invokes
+beyond the canonical three) and then delegates through
+`scripts/verify_drift.sh` to
 `scripts/wt028-drift-check.sh` to catch the consolidated single-mode
 invariant drift. It does NOT run the lint/typecheck/MCP/resource-lifecycle
 audits; those audits are separate `_VERIFY_STEPS` entries invoked
