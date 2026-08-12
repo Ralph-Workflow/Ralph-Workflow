@@ -40,6 +40,7 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
+    BrokenAgentExitError,
     InvokeOptions,
     invoke_agent,
 )
@@ -547,16 +548,16 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
     )
 
 
-def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_grace_is_deferred(
+def test_subprocess_reader_regression_silent_agent_falls_over_before_startup_watchdog(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """S-6: deferring the broken-agent grace leaves the startup watchdog in charge.
+    """S-6: the broken-agent grace wins before the startup watchdog.
 
     The 12-second broken-agent timer (the ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS``
-    default) intentionally precedes the older ``NO_OUTPUT_AT_START``
-    watchdog path (15s default). A silent agent must therefore clear its
-    retry intent instead of attempting a same-session resume.
+    default) intentionally precedes the ``NO_OUTPUT_AT_START`` watchdog path
+    (15s default). A silent agent therefore clears retry intent instead of
+    attempting a same-session resume.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
@@ -593,7 +594,7 @@ def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_gr
     )
 
     try:
-        with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        with pytest.raises(BrokenAgentExitError) as exc_info:
             list(
                 invoke_agent(
                     config,
@@ -606,5 +607,5 @@ def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_gr
         proc._gate.set()
 
     assert exc_info.value.reason == "no_output"
-    assert exc_info.value.elapsed_seconds is not None
     assert exc_info.value.elapsed_seconds >= 12.0
+    assert exc_info.value.grace_seconds == 12.0
