@@ -67,7 +67,9 @@ def _lifecycle_only_watchdog(clock: FakeClock) -> IdleWatchdog:
     return watchdog
 
 
-def _completion_options(elapsed_seconds: float) -> CompletionCheckOptions:
+def _completion_options(
+    elapsed_seconds: float, has_meaningful_output: bool
+) -> CompletionCheckOptions:
     return CompletionCheckOptions(
         execution_strategy=_ResumableStrategy(),
         workspace_path=Path("synthetic://no-llm-activity"),
@@ -78,7 +80,7 @@ def _completion_options(elapsed_seconds: float) -> CompletionCheckOptions:
         ),
         evaluate_completion_fn=lambda *args, **kwargs: CompletionSignals(False, False, ()),
         elapsed_seconds=elapsed_seconds,
-        has_meaningful_output=False,
+        has_meaningful_output=has_meaningful_output,
     )
 
 
@@ -110,13 +112,14 @@ def _assert_completion_gate_classifies_lifecycle_only_run(
 
     assert elapsed_seconds is not None
     assert elapsed_seconds >= BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+    assert watchdog.has_any_output() is True
 
     with pytest.raises(BrokenAgentExitError) as excinfo:
         check_process_result(
             _ExitedHandle(),
             "claude",
             ["session-id: test", "thinking: checking credentials"],
-            _completion_options(elapsed_seconds),
+            _completion_options(elapsed_seconds, bool(watchdog.has_meaningful_output())),
             _clock=clock,
         )
 
