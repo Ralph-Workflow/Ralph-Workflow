@@ -111,6 +111,8 @@ def _all_string_literals(source: str) -> set[str]:
     adjacent_parts: list[str] = []
     for token in tokenize.generate_tokens(StringIO(source).readline):
         if token.type == tokenize.STRING:
+            if "mcp__" not in token.string and not adjacent_parts:
+                continue
             value = ast.literal_eval(token.string)
             if isinstance(value, str):
                 adjacent_parts.append(value)
@@ -127,6 +129,13 @@ def _all_string_literals(source: str) -> set[str]:
 
 
 _WIRE_FORM_RE = re.compile(r"^mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+$")
+
+
+def test_wire_form_literal_scan_keeps_adjacent_literals() -> None:
+    """Regression: token filtering retains a wire literal split across strings."""
+    source = 'name = "mcp__server" "__tool"\n'
+
+    assert _wire_form_literals_in_source(source) == {"mcp__server__tool"}
 
 
 def _wire_form_literals_in_source(source: str) -> set[str]:

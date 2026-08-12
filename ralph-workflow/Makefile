@@ -2,8 +2,8 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 10 keeps the slowest shard below the 50-second tracked gate cap
-# on the maintained host; lower fan-out has exhausted that cap under load.
+# Default: 12 keeps the slowest shard below the tracked cap while avoiding
+# the oversubscription observed with larger fan-out under host load.
 # Operators may override after measuring their own host.
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
@@ -11,7 +11,7 @@
 # literally, so this exported default governs both ralph.test_suites and
 # the raw-target paths. Keep conditional assignment so operators can
 # override:
-#   PYTEST_WORKERS=10 make test   # maintained baseline
+#   PYTEST_WORKERS=12 make test   # maintained baseline
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
 #   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
 #
@@ -21,7 +21,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 10
+PYTEST_WORKERS ?= 12
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
