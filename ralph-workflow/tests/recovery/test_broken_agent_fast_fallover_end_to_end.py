@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from ralph.agents.invoke import AgentInvocationError, BrokenAgentExitError
+from ralph.agents.completion_signals import CompletionSignals
+from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
+from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke import AgentInvocationError, CompletionCheckOptions, check_process_result
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import CcsConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import apply_session_capture
@@ -19,7 +25,36 @@ from tests._pipeline_deps_factory import _FakeBridge, make_test_pipeline_deps
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+    from ralph.agents.execution_state import LiveDescendantHandle
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+    from ralph.process.liveness import LivenessProbe
+
+
+class _CompletionGateStrategy(BaseExecutionStrategy):
+    def supports_session_continuation(self) -> bool:
+        return True
+
+    def supports_completion_enforcement(self) -> bool:
+        return True
+
+    def classify_exit(
+        self,
+        handle: LiveDescendantHandle,
+        completion_signals: CompletionSignals,
+        liveness_probe: LivenessProbe | None = None,
+    ) -> AgentExecutionState:
+        del handle, completion_signals, liveness_probe
+        return AgentExecutionState.RESUMABLE_CONTINUE
+
+
+class _ExitedHandle:
+    returncode = 0
+    pid = None
+
+
+def _no_completion_signals(*args: object, **kwargs: object) -> CompletionSignals:
+    del args, kwargs
+    return CompletionSignals(False, False, ())
 
 
 def _registry_factory(return_value: object) -> object:
@@ -55,9 +90,27 @@ def test_broken_agent_regression_falls_over_without_direct_mcp_retries(
     )
     invocations: list[str] = []
 
-    def broken_agent_invoke(*_args: object, **_kwargs: object) -> object:
+    def broken_agent_invoke(*_args: object, **_kwargs: object) -> Iterator[str]:
+        """S-6: trigger the real fast-exit completion gate, not a direct raise."""
         invocations.append("dev")
-        raise BrokenAgentExitError("dev", reason="no_output")
+        yield from ()
+        check_process_result(
+            _ExitedHandle(),
+            "dev",
+            [],
+            CompletionCheckOptions(
+                execution_strategy=_CompletionGateStrategy(),
+                workspace_path=Path("synthetic://broken-agent"),
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
+                    descendant_wait_timeout_seconds=0.0,
+                ),
+                evaluate_completion_fn=_no_completion_signals,
+                elapsed_seconds=2.0,
+            ),
+            _clock=FakeClock(),
+        )
 
     state = PipelineState.model_validate({"phase": "development"})
 

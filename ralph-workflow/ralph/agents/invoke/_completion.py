@@ -60,6 +60,30 @@ _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
 
+#: Markers emitted by common agent harnesses when their model credentials are
+#: absent, invalid, or rejected. A fast exit carrying one is not resumable.
+CREDENTIALS_FAILURE_SUBSTRINGS = (
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "api key",
+    "apikey",
+    "authentication",
+    "credentials",
+    "openai_api_key",
+    "anthropic_api_key",
+    "please set",
+    "missing key",
+    "invalid key",
+    "expired key",
+)
+
+
+def _looks_like_credentials_failure(text: str) -> bool:
+    """Return whether text carries a known credential/authentication failure marker."""
+    return contains_casefolded_marker([text], CREDENTIALS_FAILURE_SUBSTRINGS)
+
 
 def _truncation_marker(capped_bytes: int) -> str:
     """Return the canonical truncation marker used when the stderr pipe holds
@@ -509,12 +533,20 @@ def _raise_if_broken_agent_exit(
     agent_name: str,
     bounded_output: list[str],
     opts: CompletionCheckOptions,
+    *,
+    stderr_text: str = "",
 ) -> None:
-    if (
-        opts.elapsed_seconds is not None
-        and opts.elapsed_seconds >= BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-        and not bounded_output
+    if _looks_like_credentials_failure(stderr_text) or any(
+        _looks_like_credentials_failure(line) for line in bounded_output
     ):
+        _teardown_subtree_if_pid_available(handle)
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="no_output",
+            elapsed_seconds=opts.elapsed_seconds,
+            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+        )
+    if opts.elapsed_seconds is not None and not bounded_output:
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(
             agent_name,
@@ -528,12 +560,7 @@ def _raise_if_broken_agent_exit(
     ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(agent_name, reason="prompt_echo")
-    if (
-        opts.elapsed_seconds is not None
-        and opts.elapsed_seconds >= BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-        and bounded_output
-        and opts.has_meaningful_output is False
-    ):
+    if bounded_output and opts.has_meaningful_output is False:
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(
             agent_name,
@@ -574,13 +601,26 @@ def check_process_result(
             completion evidence and no child agents are still running.
     """
     returncode = int(handle.returncode or 0)
+    stderr_pipe = cast(
+        "IO[str] | None", getattr(handle, "stderr", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    stderr_text = _bounded_read(stderr_pipe) if stderr_pipe is not None else ""
     if returncode != 0:
-        stderr_pipe = cast(
-            "IO[str] | None", getattr(handle, "stderr", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        stderr = (
-            _bounded_read(stderr_pipe) if stderr_pipe is not None else "(unable to read stderr)"
-        )
+        if _looks_like_credentials_failure(stderr_text) and (
+            check_options is None
+            or check_options.elapsed_seconds is None
+            or check_options.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+        ):
+            _teardown_subtree_if_pid_available(handle)
+            raise BrokenAgentExitError(
+                agent_name,
+                reason="no_output",
+                elapsed_seconds=(
+                    check_options.elapsed_seconds if check_options is not None else None
+                ),
+                grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+            )
+        stderr = stderr_text if stderr_pipe is not None else "(unable to read stderr)"
         exc = AgentInvocationError(
             agent_name,
             returncode,
@@ -650,7 +690,13 @@ def check_process_result(
             )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
-            _raise_if_broken_agent_exit(handle, agent_name, bounded_output, opts)
+            _raise_if_broken_agent_exit(
+                handle,
+                agent_name,
+                bounded_output,
+                opts,
+                stderr_text=stderr_text,
+            )
             session_id = opts.captured_session_id or extract_transport_session_id(bounded_output)
             if session_id is None and bounded_output:
                 # PTY fallback: the bounded_output window may have closed

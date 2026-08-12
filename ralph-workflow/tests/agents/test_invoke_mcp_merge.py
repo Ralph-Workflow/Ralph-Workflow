@@ -48,7 +48,7 @@ class _FakeProcess:
 
     def __init__(self) -> None:
         self.stdout = iter(["Task declared complete: session_id=test, summary=done, timestamp=1\n"])
-        self.stderr = SimpleNamespace(read=lambda: "")
+        self.stderr = SimpleNamespace(read=lambda _size: "")
         self.returncode = 0
 
     def __enter__(self) -> _FakeProcess:
