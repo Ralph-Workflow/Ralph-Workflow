@@ -95,15 +95,36 @@ inaccurate implementation route is not itself a defect. An unjustified
 `not_applicable`, an alternate route that misses the original outcome, or a
 completed result containing uncovered necessary work requires changes.
 
-The analyzer selects its terminal meaning from fresh evidence rather than the
+The analyzer selects its cycle outcome from fresh evidence rather than the
 developer's label. It returns `completed` when the request criteria are met and
 no necessary work remains, including after a partial or failed developer
 handoff. It returns `request_changes` only for localized work another developer
-iteration can perform. It returns terminal `failed` when a criterion is
-impossible, contradictory, or not evaluable, or necessary work has no
-actionable developer route. This prevents an unproductive retry loop while
-preserving a distinct failure outcome rather than mislabeling an impossible
-request as successful.
+iteration can perform. It returns terminal `failed` when the current plan is
+impossible, contradictory, not evaluable, or has no actionable developer route.
+That terminal decision ends the current planning/development cycle; it does not
+declare the overall objective permanently impossible and does not end the run
+while global cycle budget remains.
+
+## Cycle-terminal invariant
+
+`terminal` always describes the boundary of the current plan/build/commit
+cycle, never an irreversible judgment about the whole run. Every terminal
+cycle outcome follows the same lifecycle:
+
+1. preserve and commit useful completed, partial, or failed work;
+2. record whether the cycle completed or failed for diagnostics;
+3. start a fresh planning cycle when global cycle budget remains; and
+4. end the run only when global cycle budget is exhausted or the operator
+   explicitly cancels it.
+
+Development-analysis `failed` therefore routes through the same cleanup and
+commit boundary as `completed`, while carrying a failed cycle outcome into
+post-commit routing. `request_changes` alone remains inside the current cycle.
+Runtime faults that exhaust their bounded technical recovery also close and
+commit the current cycle before the budget router decides whether another
+planning cycle can start. Policy names such as `failed_terminal`, terminal
+roles, terminal outcome rendering, and prompt prose must use this cycle-scoped
+meaning consistently.
 
 ## Compatibility and scope
 
@@ -129,6 +150,10 @@ Black-box tests cover:
 - initial, continuation, worker, and fallback prompts share the reconciliation
   loop and do not duplicate divergent rules;
 - the analyzer independently audits adapted and not-applicable items;
+- terminal analyzer outcomes close and commit the current cycle, then route to
+  fresh planning whenever global cycle budget remains;
+- exhausted global budget and explicit cancellation are the only run-ending
+  conditions;
 - compact and large-plan guidance selects progress without requiring
   unnecessary delegation; and
 - existing visual proof and analysis-feedback contracts remain intact.
@@ -203,7 +228,7 @@ research basis and a bounded interpretation:
 | Require focused tool evidence and a final repository gate | CRITIC; Cannot Self-Correct Yet | External feedback is safer than relying on intrinsic self-correction alone. |
 | Have analysis independently re-derive criteria and dispositions | CRITIC; Cannot Self-Correct Yet | A separate evidence pass reduces reliance on an implementer's unsupported self-assessment; it does not guarantee correctness. |
 | Approve partial/failed handoffs when fresh evidence shows no necessary work remains | ReAct; CRITIC | Outcome should follow observed task state, not the producer's label. |
-| Retry only actionable localized gaps; terminate impossible or non-evaluable outcomes | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported. |
+| Retry only actionable localized gaps inside one cycle; close the cycle and replan impossible or non-evaluable outcomes | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported, while a fresh plan may expose a different route. |
 
 Artifact grammar, stable IDs, routing names, and commit mechanics are local
 workflow constraints rather than empirical claims about model cognition. They
