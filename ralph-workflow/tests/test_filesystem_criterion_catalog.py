@@ -183,6 +183,23 @@ def test_covered_rows_cover_canonical_boundaries() -> None:
         )
 
 
+def test_w8_b1_e2_b6_row_outcomes() -> None:
+    """S-6: the four planned matrix outcomes cannot silently drift."""
+    text = _traceability_text()
+    expected = (
+        ("W8", "COVERED", "tests/agents/test_workspace_watch_scoping.py"),
+        ("B1", "COVERED", "tests/test_filesystem_activity_baseline.py"),
+        ("E2", "COVERED", "tests/test_audit_regression_test_elimination.py"),
+    )
+    for criterion, status, reference in expected:
+        row = _row_for_criterion(text, criterion)
+        assert status in row
+        assert reference in row
+    b6 = _row_for_criterion(text, "B6")
+    assert "GAP" in b6
+    assert not _referenced_test_paths(b6)
+
+
 def test_canonical_seam_imports_still_resolve() -> None:
     """The public seams named in the traceability matrix must still import."""
     from ralph.agents.invoke._workspace import WorkspaceMonitor

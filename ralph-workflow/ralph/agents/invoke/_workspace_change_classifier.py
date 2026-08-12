@@ -69,6 +69,7 @@ _ALLOWED_WEIGHTS: frozenset[float] = frozenset({0.0, 1.0})
 #: ARTIFACT (the rule order in ``classify`` checks CACHE first, then
 #: ARTIFACT, so ``.agent/tmp`` and ``.agent/raw`` are correctly CACHE
 #: while ``.agent/artifacts/plan.md`` is correctly ARTIFACT).
+# regression-test-elimination: tests/agents/test_workspace_watch_scoping.py::test_engine_internal_paths_classify_as_drop
 CACHE_PARENT_DIRS: frozenset[str] = frozenset(
     {
         ".git",

@@ -24,7 +24,10 @@ from pathlib import Path
 import pytest
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
-from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+from ralph.agents.invoke._workspace_change_classifier import (
+    WorkspaceChangeClassifier,
+    WorkspaceChangeKind,
+)
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -371,6 +374,65 @@ def test_stop_failure_releases_monitor_for_a_later_watch_registration(
     assert failing.joined is True
     assert len(succeeding.scheduled) == 1
     assert succeeding.started is True
+
+
+# ---------------------------------------------------------------------------
+# W8: engine-internal classifier boundary
+# ---------------------------------------------------------------------------
+
+ENGINE_INTERNAL_PATHS: tuple[str, ...] = (
+    ".agent/tmp/foo.py",
+    ".agent/raw/bar.log",
+    ".agent/ralph-explore/index.sqlite",
+    ".git/HEAD",
+    ".venv/lib/x.py",
+    "node_modules/foo/bar.js",
+    "__pycache__/x.pyc",
+    ".mypy_cache/x/0.json",
+    ".ruff_cache/x/0.json",
+    ".pytest_cache/x/v/cache",
+    ".agent/artifacts/plan.md",
+    "app.log",
+    "scratch.tmp",
+    "checkpoint.bak",
+    "editor.swp",
+    "notes~",
+    ".agent/completion_seen_run-1.json",
+    ".agent/state.db",
+    ".agent/state.db-wal",
+    ".agent/state.db-shm",
+)
+
+
+def test_engine_internal_paths_classify_as_drop() -> None:
+    """S-2: each enumerated engine-internal path is excluded from activity."""
+    classifier = WorkspaceChangeClassifier()
+
+    for path in ENGINE_INTERNAL_PATHS:
+        kind, weight = classifier.classify(path)
+        assert (kind, weight) in {
+            (WorkspaceChangeKind.CACHE, 0.0),
+            (WorkspaceChangeKind.ARTIFACT, 0.0),
+            (WorkspaceChangeKind.LOG, 0.0),
+        }
+
+
+def test_user_source_paths_classify_as_source() -> None:
+    """S-2: receipts are run state, not relocatable engine bookkeeping.
+
+    Rule 6 classifies source extensions outside explicit cache/artifact/log
+    boundaries as source, so W8 cannot claim universal drop classification.
+    """
+    classifier = WorkspaceChangeClassifier()
+
+    for path in (
+        "src/app.py",
+        "README.md",
+        "pyproject.toml",
+        "tests/test_workspace_watch_scoping.py",
+        ".agent/receipts/run-1/plan.json",
+    ):
+        assert classifier.classify(path) == (WorkspaceChangeKind.SOURCE, 1.0)
 
 
 # ---------------------------------------------------------------------------

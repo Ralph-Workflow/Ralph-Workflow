@@ -54,6 +54,9 @@ _SCRATCH_GLOBS: tuple[str, ...] = (
 class RetentionPassCoordinator:
     """Coalesce parallel retention passes into one inner sweep per wave.
 
+    This coordinator is process-local; it intentionally does not coordinate
+    independent processes, which remains the B6 future boundary.
+
     The first thread entering ``guard`` becomes the wave owner: it runs
     the inner sweep body, stores the ``Wave`` result, and increments the
     process-local pass counter exactly once. Concurrent callers arriving

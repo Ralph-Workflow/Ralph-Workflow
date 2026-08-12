@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
-from ralph.workspace.agent_dir_retention import sweep_agent_dir
+from ralph.workspace.agent_dir_retention import RetentionPassCoordinator, sweep_agent_dir
 
 _WEEK = 7 * 24 * 3600.0
 
@@ -222,6 +223,31 @@ def test_sweep_does_not_create_state_db_when_absent(tmp_path: Path) -> None:
     assert not (tmp_path / ".agent" / "state.db").exists()
     assert not (tmp_path / ".agent" / "state.db-wal").exists()
     assert not (tmp_path / ".agent" / "state.db-shm").exists()
+
+
+def test_retention_coordinator_is_process_local(tmp_path: Path) -> None:
+    """S-4: one coordinator coalesces threads, while another owns its own pass."""
+    coordinator = RetentionPassCoordinator(on_wave_acquired=threading.Barrier(4).wait)
+    results: list[int] = []
+    results_lock = threading.Lock()
+
+    def _sweep() -> None:
+        removed = sweep_agent_dir(tmp_path, keep_run_id=None, coordinator=coordinator)
+        with results_lock:
+            results.append(removed)
+
+    threads = [threading.Thread(target=_sweep) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1.0)
+
+    assert len(results) == 4
+    # Cross-process coordination is deliberately out of scope.
+    assert coordinator.passes == 1
+    other = RetentionPassCoordinator()
+    assert sweep_agent_dir(tmp_path, keep_run_id=None, coordinator=other) == 0
+    assert other.passes == 1
 
 
 def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:

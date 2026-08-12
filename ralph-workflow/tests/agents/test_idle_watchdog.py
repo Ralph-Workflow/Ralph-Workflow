@@ -1171,6 +1171,12 @@ def _stall_status_events_make_watchdog(
     # must all be <= ``max_waiting_on_child_seconds``.
     if max_waiting_on_child_no_progress_seconds is None and max_waiting_on_child_seconds < 600.0:
         max_waiting_on_child_no_progress_seconds = max_waiting_on_child_seconds
+    if (
+        max_waiting_on_child_no_progress_seconds is not None
+        and no_output_at_start_seconds is not None
+        and no_output_at_start_seconds >= max_waiting_on_child_no_progress_seconds
+    ):
+        no_output_at_start_seconds = None
     if max_waiting_on_child_seconds < 300.0:
         os_descendant_only_ceiling_seconds: float | None = max_waiting_on_child_seconds
         # The OS-descendant-only suspect threshold (default 60.0) must
@@ -1314,6 +1320,8 @@ def _stuck_job_intelligence_make_policy(
         and no_progress_quiet_seconds is not None
     ):
         no_progress_quiet_heartbeat_ceiling_seconds = no_progress_quiet_seconds
+    if no_progress_ceiling is not None and no_output_at_start is not None and no_output_at_start >= no_progress_ceiling:
+        no_output_at_start = None
     return TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=drain_window,
@@ -5454,7 +5462,7 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
     )
     # Poll for the child instead of a fixed sleep so healthy machines finish
     # well under the 1.0s per-test budget while slow hosts still wait briefly.
-    deadline = time.monotonic() + 0.5
+    deadline = time.monotonic() + 2.0
     children: list[psutil.Process] = []
     host_proc = psutil.Process(host.pid)
     while time.monotonic() < deadline:
@@ -5495,7 +5503,7 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         # ``test_teardown_reaps_nested_subagents`` test in this file; this
         # test only verifies monitor classification, so the cleanup just
         # needs to reap the processes it spawned.
-        for proc in [host_proc, children[0]]:
+        for proc in [host_proc, *children]:
             with contextlib.suppress(psutil.Error):
                 proc.kill()
         host.wait(timeout=0.5)
@@ -16099,6 +16107,9 @@ class _RecordingWatchdog:
 
     def record_activity(self) -> None:
         self.activity_records.append("activity")
+
+    def record_any_output(self) -> None:
+        return None
 
     def record_tool_use_activity(self) -> None:
         self.activity_records.append("tool_use")

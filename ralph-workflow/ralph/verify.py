@@ -412,6 +412,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "regression-test elimination audit (audit_regression_test_elimination)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_regression_test_elimination"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # wt-043: render-integrity audit for the packaged prompt
         # templates. Renders every top-level .jinja template through the
         # real registry/partials/render_template path across the main

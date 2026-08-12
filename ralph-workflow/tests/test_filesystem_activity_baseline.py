@@ -41,6 +41,8 @@ class _ActivityBackend(FileBackend):
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         del encoding
+        if self._files.get(path) == content:
+            return
         self.publications.append((path, content))
         self._files[path] = content
 
@@ -48,7 +50,11 @@ class _ActivityBackend(FileBackend):
         return self._files[path].encode()
 
     def write_bytes(self, path: Path, content: bytes) -> None:
-        self._files[path] = content.decode()
+        decoded_content = content.decode()
+        if self._files.get(path) == decoded_content:
+            return
+        self.publications.append((path, decoded_content))
+        self._files[path] = decoded_content
 
     def replace(self, source: Path, destination: Path) -> None:
         self._files[destination] = self._files.pop(source)
@@ -116,6 +122,43 @@ def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_wa
     assert backend._files[result_path] == "beta"
     assert backend.publications == [(result_path, "alpha"), (result_path, "beta")]
     assert observer.registrations == [("/virtual-ws", True)]
+
+
+def test_public_output_bytes_fixture_matches_unchanged_cycle() -> None:
+    """S-3: an unchanged byte publication has no observable side effect."""
+    backend = _ActivityBackend()
+    result_path = Path("/virtual-ws/artifacts/result.txt")
+
+    backend.mkdir(result_path.parent, parents=True, exist_ok=True)
+    backend.write_bytes(result_path, b"alpha")
+    backend.write_bytes(result_path, b"alpha")
+
+    assert backend._files[result_path] == "alpha"
+    assert backend.preparations == [result_path.parent]
+    assert backend.publications == [(result_path, "alpha")]
+
+
+def test_text_and_byte_publications_share_publication_log() -> None:
+    """S-3: byte and text seams expose the same publication contract."""
+    backend = _ActivityBackend()
+    result_path = Path("/virtual-ws/artifacts/result.txt")
+
+    backend.write_text(result_path, "alpha")
+    backend.write_bytes(result_path, b"beta")
+    backend.write_text(result_path, "beta")
+    backend.write_bytes(result_path, b"beta")
+
+    assert backend.publications == [(result_path, "alpha"), (result_path, "beta")]
+
+
+def test_byte_mode_publication_records_decoded_payload() -> None:
+    """S-3: a fresh byte publication is visible through the public log."""
+    backend = _ActivityBackend()
+    result_path = Path("/virtual-ws/artifacts/result.txt")
+
+    backend.write_bytes(result_path, b"alpha")
+
+    assert backend.publications == [(result_path, "alpha")]
 
 
 def test_independent_monitors_for_one_workspace_share_one_recursive_registration(

@@ -2,9 +2,8 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: `auto` preserves one core while capping at thirty-two shards. The
-# 1.0 s per-test SIGALRM budget charges wall clock; the full host profile
-# keeps collection and audit-heavy files below the immutable suite deadline.
+# Default: 8 is the measured 12-core sweet spot: pytest ~28.6s / total
+# ~46.8s; higher fan-out regresses from pytest coordination overhead.
 # Operators may override after measuring their own host.
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
@@ -12,7 +11,7 @@
 # literally, so this exported default governs both ralph.test_suites and
 # the raw-target paths. Keep conditional assignment so operators can
 # override:
-#   PYTEST_WORKERS=24 make test   # measured automatic profile
+#   PYTEST_WORKERS=8 make test    # maintained 12-core baseline
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
 #   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
 #
@@ -22,7 +21,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= auto
+PYTEST_WORKERS ?= 8
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
