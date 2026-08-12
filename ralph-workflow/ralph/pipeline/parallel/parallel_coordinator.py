@@ -426,7 +426,7 @@ async def _run_worker(
             worker_succeeded = True
         finally:
             if bundle is not None:
-                bundle.mcp_handle.shutdown()
+                bundle.close()
             label_env: dict[str, str] | None = None
             if bundle is not None and same_workspace is not None:
                 label_env = {str(AGENT_LABEL_SCOPE_ENV): bundle.session.session_id}

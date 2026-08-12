@@ -209,8 +209,8 @@ def test_build_agents_policy_includes_custom_drains() -> None:
     assert policy.agent_drains["my_custom_drain"].chain == "custom_chain"
 
 
-def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() -> None:
-    """Default policy must treat failed analysis as stronger rework, not termination."""
+def test_default_policy_only_routes_actionable_analysis_back_to_rework() -> None:
+    """Development failure terminates; request changes remains actionable rework."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
     bundle = load_policy(defaults_dir)
@@ -219,9 +219,9 @@ def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() 
 
     assert development_decisions is not None
     assert planning_decisions is not None
-    assert development_decisions["failed"].target == development_decisions["request_changes"].target
     assert planning_decisions["failed"].target == planning_decisions["request_changes"].target
-    assert development_decisions["failed"].target == "development"
+    assert development_decisions["request_changes"].target == "development"
+    assert development_decisions["failed"].target == "failed_terminal"
     assert planning_decisions["failed"].target == "planning"
 
 

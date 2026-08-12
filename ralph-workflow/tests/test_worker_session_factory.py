@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -74,6 +75,25 @@ def test_mcp_handle_stored(tmp_path: Path) -> None:
     factory = FakeMcpFactory(handle)
     bundle = build_worker_session(_make_unit(), factory, _make_scope(tmp_path))
     assert bundle.mcp_handle is handle
+
+
+def test_bundle_close_releases_mcp_and_explore_store(tmp_path: Path) -> None:
+    shutdown = MagicMock()
+    handle = McpServerHandle(endpoint="http://localhost:9999", pid=1234, shutdown=shutdown)
+    bundle = build_worker_session(
+        _make_unit(), FakeMcpFactory(handle), _make_scope(tmp_path)
+    )
+    explore_index = bundle.session.explore_index
+    assert explore_index is not None
+    store = explore_index.store
+    close = MagicMock(wraps=store.close)
+    store.close = close
+
+    bundle.close()
+    bundle.close()
+
+    shutdown.assert_called_once_with()
+    close.assert_called_once_with()
 
 
 def test_workspace_scope_rooted_at_repo(tmp_path: Path) -> None:

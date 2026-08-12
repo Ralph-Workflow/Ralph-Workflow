@@ -20,6 +20,8 @@ Retrieve PROMPT and PLAN. This analysis runs after every development result (`co
 
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is a proposed implementation route, not an additional product requirement unless the request or plan explicitly makes its outcome an acceptance criterion. Independently determine whether each required plan reference was completed as written, needed an adapted route, was not applicable, or remains blocked. For `adapted`, verify that fresh evidence required the route change and that the original intended outcome still holds. For `not_applicable`, verify the plan assumption, contradictory or already-satisfied workspace evidence, and continued coverage of every affected request criterion. Do not reject solely because the implementation departed from an inaccurate step. Do not use an implementer disposition, rationale, or proof as evidence; derive the disposition from PROMPT, PLAN, and fresh workspace evidence.
 
+Select the analysis outcome from fresh evidence, never from the developer's result status. Emit `completed` when every unchanged request criterion is met and no necessary plan work remains, even if the developer reported `partial` or `failed`. Emit `request_changes` only when localized unmet work is actionable by another developer iteration. Emit `failed` when a criterion is impossible, contradictory, or not evaluable, or necessary work is blocked with no actionable developer route; `failed` is terminal and must not send the same impossible work back to development.
+
 {% set development_decision_example %}
 ---
 type: development_analysis_decision

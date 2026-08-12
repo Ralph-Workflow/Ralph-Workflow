@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, Event, ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
@@ -170,6 +170,20 @@ def test_default_policy_routes_every_development_result_to_analysis_after_commit
         assert analysis_state.phase == "development_analysis"
         assert cleanup_state.phase == "development_commit_cleanup"
         assert commit_state.phase == "development_commit"
+
+
+def test_failed_development_analysis_is_terminal_not_another_developer_loop() -> None:
+    """An analyzer finding no actionable developer path must terminate honestly."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    next_state, _ = reducer_reduce(
+        PipelineState(phase="development_analysis"),
+        AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
+        policy,
+    )
+
+    assert next_state.phase == "failed_terminal"
 
 
 @pytest.mark.parametrize("status", ["completed", "partial", "failed"])

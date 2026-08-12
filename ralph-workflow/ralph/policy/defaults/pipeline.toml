@@ -200,8 +200,8 @@ reset_loop = true
 target = "development"
 reset_loop = false
 [blocks.development_analysis.phase.decisions.failed]
-target = "development"
-reset_loop = false
+target = "failed_terminal"
+reset_loop = true
 
 [blocks.development_final_commit_cleanup]
 kind = "individual"

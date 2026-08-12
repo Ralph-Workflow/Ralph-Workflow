@@ -132,3 +132,6 @@ def test_development_analyzer_separates_request_criteria_from_plan_routes() -> N
     assert "Do not reject solely because" in prompt
     assert "every required plan reference whose independently derived disposition" in prompt
     assert "independently derived plan dispositions" in prompt
+    assert "even if the developer reported `partial` or `failed`" in prompt
+    assert "only when localized unmet work is actionable" in prompt
+    assert "`failed` is terminal" in prompt
