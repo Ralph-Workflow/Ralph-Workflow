@@ -429,27 +429,39 @@ def _scenario_concurrent(
         _build_index(store, ws_root)
 
         errors: list[str] = []
-        barrier = threading.Barrier(2)
+        # Two barriers guarantee the two monitors are ACTIVE simultaneously.
+        # Neither thread may stop() until both have started() and completed
+        # their active-run work; otherwise one thread can tear down its
+        # watch (popping the shared-watch entry and releasing the cross-
+        # process lock) before the other calls start(), producing a second
+        # observer.schedule. The product coalescing only applies to
+        # genuinely-overlapping leases, so the test must guarantee overlap.
+        start_barrier = threading.Barrier(2)
+        stop_barrier = threading.Barrier(2)
         monitors: list[WorkspaceMonitor] = []
         monitors_lock = threading.Lock()
 
         def _thread_work(run_id: str) -> None:
+            m: WorkspaceMonitor | None = None
             try:
-                barrier.wait(timeout=10.0)
+                start_barrier.wait(timeout=5.0)
                 m = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
                 m.start()
                 with monitors_lock:
                     monitors.append(m)
-                try:
-                    register_active_run(ws_root, run_id)
-                    locked = prune_lock_run_ids(ws_root)
-                    if run_id not in locked:
-                        err = f"{run_id} not in prune_lock_run_ids result: {locked}"
-                        errors.append(err)
-                finally:
-                    m.stop()
+                register_active_run(ws_root, run_id)
+                locked = prune_lock_run_ids(ws_root)
+                if run_id not in locked:
+                    errors.append(
+                        f"{run_id} not in prune_lock_run_ids result: {locked}"
+                    )
+                stop_barrier.wait(timeout=5.0)
             except Exception as exc:
                 errors.append(repr(exc))
+            finally:
+                if m is not None:
+                    with contextlib.suppress(Exception):
+                        m.stop()
 
         threads = [
             threading.Thread(target=_thread_work, args=("run-alpha",)),
