@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -493,9 +494,10 @@ class TestDetermineEffect:
             ),
             artifacts=ArtifactsPolicy(artifacts={}),
         )
-        config = MagicMock()
-        config.agent_chains = {"commit_chain": ["ccs/mm"]}
-        config.agent_drains = {"development_commit": "commit_chain"}
+        config = SimpleNamespace(
+            agent_chains={"commit_chain": ["ccs/mm"]},
+            agent_drains={"development_commit": "commit_chain"},
+        )
 
         effect = runner_module.determine_effect_from_policy(
             state,
