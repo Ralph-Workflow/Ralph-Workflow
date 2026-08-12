@@ -29,8 +29,8 @@ Tables and panels
     emit_diagnose_inventory_table, emit_diagnose_probe_table,
     emit_diagnose_servers_table, emit_capability_summary, emit_info_panel
 
-Status and warnings
-    emit_status, emit_warning, emit_skill_failure_warning,
+Machine output, status and warnings
+    emit_machine_json, emit_status, emit_warning, emit_skill_failure_warning,
     emit_fallback_next_steps
 
 First-run and welcome
@@ -5347,6 +5347,14 @@ class ParallelDisplay:
                 for agent_label, skill_root, scope, status_text in skill_rows:
                     skill_table.add_row(agent_label, skill_root, scope, status_text)
                 self._console.print(skill_table)
+
+    def emit_machine_json(self, payload: str) -> None:
+        """Emit one parseable JSON record through the shared display console."""
+        if self._is_quiet:
+            return
+        self._console.print(
+            strip_terminal_control(payload), markup=False, highlight=False, soft_wrap=True
+        )
 
     def emit_status(self, message: str) -> None:
         """Emit a status line through the consolidated display.

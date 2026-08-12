@@ -59,6 +59,7 @@ def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> No
         "tool_error",
         "raw_warning_status",
         "table",
+        "machine_json",
         "cli_status",
         "cli_warning",
         "panel",

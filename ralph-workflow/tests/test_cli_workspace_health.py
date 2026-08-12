@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer.testing
+
+if TYPE_CHECKING:
+    import pytest
 
 from ralph.cli.main import app
 
@@ -51,6 +55,31 @@ def _invoke(workspace: Path) -> dict[str, object]:
     # The JSON payload is the final line; earlier lines may carry rich
     # display decorations from the CLI callback bootstrap.
     return json.loads(result.output.strip().splitlines()[-1])
+
+
+def test_workspace_health_routes_json_through_shared_display(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command uses the shared display surface for operator output."""
+    from ralph.cli.commands import workspace_health as command_module
+
+    emitted: list[str] = []
+
+    class _Display:
+        def emit_machine_json(self, message: str) -> None:
+            emitted.append(message)
+
+    display_context = object()
+    monkeypatch.setattr(
+        command_module,
+        "resolve_active_display",
+        lambda _display, context: _Display() if context is display_context else None,
+    )
+
+    command_module._emit_workspace_health(str(tmp_path), display_context=display_context)
+
+    assert len(emitted) == 1
+    assert json.loads(emitted[0])["workspace"] == str(tmp_path.absolute())
 
 
 def test_workspace_health_reports_every_ac11_key(tmp_path: Path) -> None:

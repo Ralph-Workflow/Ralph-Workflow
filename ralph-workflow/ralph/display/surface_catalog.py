@@ -158,6 +158,14 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         ),
     ),
     SurfaceSpec(
+        "machine_json",
+        "parallel_display",
+        format="record: one parseable JSON object",
+        scene="clean_run",
+        entry_points=("emit_machine_json",),
+        production_entry_points=("ParallelDisplay.emit_machine_json",),
+    ),
+    SurfaceSpec(
         "cli_status",
         "parallel_display",
         format="label: INFO state message",
