@@ -290,35 +290,33 @@ def _prune_missing_temporary_path_owners(workspace_root: Path) -> None:
     """Drop ownership entries once their temporary path was reclaimed."""
     ownership_path = workspace_root / _OWNERSHIP_RELPATH
     with _metadata_lock(workspace_root):
-        raw = _read_json(ownership_path)
-        if not isinstance(raw, dict):
-            return
         owners = _temporary_path_owners(workspace_root)
         retained = {
-            relative_path: run_id
-            for relative_path, run_id in owners.items()
+            relative_path: entry
+            for relative_path, entry in owners.items()
             if (workspace_root / ".agent" / relative_path).exists()
         }
         if retained != owners:
             _write_json(
                 ownership_path,
                 {
-                    relative_path: {"run_id": run_id, "created_at": time.time()}
-                    for relative_path, run_id in retained.items()
+                    relative_path: {"run_id": run_id, "created_at": created_at}
+                    for relative_path, (run_id, created_at) in retained.items()
                 },
             )
 
 
-def _temporary_path_owners(workspace_root: Path) -> dict[str, str]:
+def _temporary_path_owners(workspace_root: Path) -> dict[str, tuple[str, float]]:
     raw = _read_json(workspace_root / _OWNERSHIP_RELPATH)
     if not isinstance(raw, dict):
         return {}
-    owners: dict[str, str] = {}
+    owners: dict[str, tuple[str, float]] = {}
     for path, entry in raw.items():
         if isinstance(path, str) and isinstance(entry, dict):
             run_id = entry.get("run_id")
-            if isinstance(run_id, str):
-                owners[path] = run_id
+            created_at = entry.get("created_at")
+            if isinstance(run_id, str) and isinstance(created_at, (int, float)):
+                owners[path] = (run_id, float(created_at))
     return owners
 
 
@@ -389,14 +387,19 @@ def _sweep_receipt_dirs(
 
 
 def _sweep_codex_home_dirs(
-    tmp_dir: Path, *, cutoff: float, owners: dict[str, str], active_run_ids: frozenset[str]
+    tmp_dir: Path,
+    *,
+    cutoff: float,
+    owners: dict[str, tuple[str, float]],
+    active_run_ids: frozenset[str],
 ) -> int:
     """Remove aged Codex-home directories using their own metadata (never raises)."""
     if not tmp_dir.is_dir():
         return 0
     removed = 0
     for home in tmp_dir.glob("codex-home-*"):
-        if owners.get(home.relative_to(tmp_dir.parent).as_posix()) in active_run_ids:
+        owner = owners.get(home.relative_to(tmp_dir.parent).as_posix())
+        if owner is not None and (owner[0] in active_run_ids or owner[1] >= cutoff):
             continue
         try:
             is_aged_dir = home.is_dir() and home.lstat().st_mtime < cutoff
@@ -428,7 +431,11 @@ def _sweep_session_files(agent_dir: Path, *, cutoff: float) -> int:
 
 
 def _sweep_scratch_files(
-    tmp_dir: Path, *, cutoff: float, owners: dict[str, str], active_run_ids: frozenset[str]
+    tmp_dir: Path,
+    *,
+    cutoff: float,
+    owners: dict[str, tuple[str, float]],
+    active_run_ids: frozenset[str],
 ) -> int:
     """Remove aged ``agent_retry_*`` scratch files (never raises)."""
     if not tmp_dir.is_dir():
@@ -436,7 +443,8 @@ def _sweep_scratch_files(
     removed = 0
     for pattern in _SCRATCH_GLOBS:
         for scratch in tmp_dir.glob(pattern):
-            if owners.get(scratch.relative_to(tmp_dir.parent).as_posix()) in active_run_ids:
+            owner = owners.get(scratch.relative_to(tmp_dir.parent).as_posix())
+            if owner is not None and (owner[0] in active_run_ids or owner[1] >= cutoff):
                 continue
             if not _older_than(scratch, cutoff):
                 continue

@@ -243,7 +243,7 @@ def test_retention_coordinator_is_process_local(tmp_path: Path) -> None:
         thread.join(timeout=1.0)
 
     assert len(results) == 4
-    # Cross-process coordination is deliberately out of scope.
+    # The coordinator only coalesces callers within this process.
     assert coordinator.passes == 1
     other = RetentionPassCoordinator()
     assert sweep_agent_dir(tmp_path, keep_run_id=None, coordinator=other) == 0
@@ -279,15 +279,23 @@ def test_sweep_consults_ownership_map_for_scratch_and_codex_home(tmp_path: Path)
     tmp_dir = tmp_path / ".agent" / "tmp"
     owned_scratch = tmp_dir / "agent_retry_owned.md"
     dead_scratch = tmp_dir / "agent_retry_dead.md"
+    fresh_claim_scratch = tmp_dir / "agent_retry_fresh-claim.md"
     owned_home = tmp_dir / "codex-home-owned"
     dead_home = tmp_dir / "codex-home-dead"
-    for path in (owned_scratch, dead_scratch, owned_home / "config.toml", dead_home / "config.toml"):
+    for path in (
+        owned_scratch,
+        dead_scratch,
+        fresh_claim_scratch,
+        owned_home / "config.toml",
+        dead_home / "config.toml",
+    ):
         _make_aged(path, _WEEK + 10, now)
     (tmp_path / ".agent" / "active_runs.json").write_text(
         '{"run_ids":["shared-run"]}', encoding="utf-8"
     )
     (tmp_dir / "ownership.json").write_text(
         '{"tmp/agent_retry_owned.md":{"run_id":"shared-run","created_at":1},'
+        '"tmp/agent_retry_fresh-claim.md":{"run_id":"inactive-run","created_at":1000000000},'
         '"tmp/codex-home-owned":{"run_id":"shared-run","created_at":1}}',
         encoding="utf-8",
     )
@@ -295,6 +303,7 @@ def test_sweep_consults_ownership_map_for_scratch_and_codex_home(tmp_path: Path)
     sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: now)
 
     assert owned_scratch.exists()
+    assert fresh_claim_scratch.exists()
     assert owned_home.exists()
     assert not dead_scratch.exists()
     assert not dead_home.exists()
@@ -305,8 +314,8 @@ def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
     runs from every parallel sweep, even when each caller passes a single
     overlapping ``keep_run_id``.
 
-    B6 (independent-process coordination) remains an open gap; this test
-    closes only the in-process boundary.
+    This exercises the public registry seam within one process; separate
+    tests cover the shared-file boundary used across processes.
     """
     import threading
 
