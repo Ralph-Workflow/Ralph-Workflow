@@ -149,9 +149,15 @@ class TestHandleGitStatus:
                 stdout=b"M  a.py\n",
                 stderr=b"",
             )
-            with patch(
-                "ralph.mcp.tools.git_read.run_git_command_lenient",
-                return_value=completed,
+            with (
+                patch(
+                    "ralph.mcp.tools.git_read._resolve_git_cwd",
+                    return_value=(workspace_dir, False, workspace_dir),
+                ),
+                patch(
+                    "ralph.mcp.tools.git_read.run_git_command_lenient",
+                    return_value=completed,
+                ),
             ):
                 result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)
@@ -298,9 +304,15 @@ class TestHandleGitStatus:
                 stdout=b"M  a.py\n",
                 stderr=b"",
             )
-            with patch(
-                "ralph.mcp.tools.git_read.run_git_command_lenient",
-                return_value=completed,
+            with (
+                patch(
+                    "ralph.mcp.tools.git_read._resolve_git_cwd",
+                    return_value=(workspace_dir, False, workspace_dir),
+                ),
+                patch(
+                    "ralph.mcp.tools.git_read.run_git_command_lenient",
+                    return_value=completed,
+                ),
             ):
                 result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)

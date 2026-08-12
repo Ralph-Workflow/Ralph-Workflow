@@ -63,10 +63,10 @@ def test_workspace_health_routes_json_through_shared_display(
     """The command uses the shared display surface for operator output."""
     from ralph.cli.commands import workspace_health as command_module
 
-    emitted: list[str] = []
+    emitted: list[dict[str, object]] = []
 
     class _Display:
-        def emit_machine_json(self, payload: str) -> None:
+        def emit_json_payload(self, payload: dict[str, object]) -> None:
             emitted.append(payload)
 
     display_context = object()
@@ -79,7 +79,7 @@ def test_workspace_health_routes_json_through_shared_display(
     command_module._emit_workspace_health(str(tmp_path), display_context=display_context)
 
     assert len(emitted) == 1
-    assert json.loads(emitted[0])["workspace"] == str(tmp_path.absolute())
+    assert emitted[0]["workspace"] == str(tmp_path.absolute())
 
 
 def test_workspace_health_reports_every_ac11_key(tmp_path: Path) -> None:

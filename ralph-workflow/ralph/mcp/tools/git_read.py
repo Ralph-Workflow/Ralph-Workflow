@@ -92,11 +92,7 @@ from ralph.mcp.explore.dirty_paths import (
     resolve_explore_index,
 )
 from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
-from ralph.mcp.tools._git_cwd_validator import (
-    GitToplevelRunner,
-    _default_toplevel_runner,
-    resolve_git_cwd,
-)
+from ralph.mcp.tools._git_cwd_validator import resolve_git_cwd
 from ralph.mcp.tools._git_diff_params import GitDiffParams
 from ralph.mcp.tools._git_execution_error import ExecutionError
 from ralph.mcp.tools._git_log_params import GitLogParams
@@ -295,7 +291,9 @@ def _decode_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _resolve_git_cwd(workspace: object, params: Mapping[str, object]) -> Path:
+def _resolve_git_cwd(
+    workspace: object, params: Mapping[str, object]
+) -> tuple[Path, bool, Path | None]:
     """Resolve the optional ``cwd`` param against the workspace boundary.
 
     The workspace-bounded contract (see the module docstring):
@@ -317,39 +315,21 @@ def _resolve_git_cwd(workspace: object, params: Mapping[str, object]) -> Path:
     return resolve_git_cwd(
         workspace_root=_workspace_root(workspace),
         requested_cwd=raw if isinstance(raw, str) else None,
-        probe_default_cwd=False,
     )
 
 
-def _check_toplevel_boundary(
-    workspace: object,
-    effective_cwd: Path,
-    *,
-    git_runner: GitToplevelRunner | None = None,
-) -> None:
-    """Run the deferred discovered-top-level check for the resolved cwd.
-
-    Called from ``run_git_command`` / ``run_git_command_lenient`` right
-    before the git subprocess is spawned so the parent-repo bypass is
-    refused on EVERY git-read request — including the omitted/empty
-    ``cwd`` legacy default — without handler-level unit tests paying
-    for a real ``git rev-parse`` subprocess against a mock workspace
-    (those tests patch the runner, which replaces this whole path).
-    """
-    runner = git_runner or _default_toplevel_runner
-    top_level = runner(effective_cwd)
-    if top_level is None:
-        return
+def _make_outside_workspace_warning(
+    workspace: object, resolved_path: Path, *, top_level: Path | None = None
+) -> ToolResult:
+    """Return the non-executing warning for a cwd outside the workspace."""
     root = _workspace_root(workspace).resolve()
-    resolved_top = top_level.resolve()
-    if resolved_top == root or root in resolved_top.parents:
-        return
-    raise InvalidParamsError(
-        "git repository top-level is outside the workspace: "
-        f"top_level={resolved_top} resolved={effective_cwd} "
-        f"workspace_root={root}. Git operations outside the "
-        "active workspace are refused."
+    message = (
+        "WARNING: git cwd is outside the workspace: "
+        f"resolved={resolved_path} workspace_root={root}"
     )
+    if top_level is not None:
+        message += f" top_level={top_level}"
+    return ToolResult(content=[ToolContent.text_content(message)], is_error=False)
 
 
 def run_git_command(
@@ -363,8 +343,6 @@ def run_git_command(
     """Execute git and require a successful exit status."""
     git_runner = runner or _run_git_subprocess
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
-    if runner is None:
-        _check_toplevel_boundary(workspace, effective_cwd)
     try:
         output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
@@ -403,8 +381,6 @@ def run_git_command_lenient(
     """
     git_runner = runner or _run_git_subprocess
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
-    if runner is None:
-        _check_toplevel_boundary(workspace, effective_cwd)
     try:
         output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
@@ -492,7 +468,9 @@ def handle_git_status(
     (ranked changed paths with role tags + byte budget).
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
-    resolved_cwd = _resolve_git_cwd(workspace, params)
+    resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
+    if is_outside:
+        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "compact"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'compact'")
@@ -890,7 +868,9 @@ def handle_git_diff(
     values.
     """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
-    resolved_cwd = _resolve_git_cwd(workspace, params)
+    resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
+    if is_outside:
+        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
     parsed = parse_git_diff_params(params)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
@@ -1143,7 +1123,9 @@ def handle_git_log(
         No workspace writes, no network calls.
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
-    resolved_cwd = _resolve_git_cwd(workspace, params)
+    resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
+    if is_outside:
+        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
     parsed = parse_git_log_params(params)
     if parsed.format == "raw":
         return _git_read_result(
@@ -1226,7 +1208,9 @@ def handle_git_show(
         No workspace writes, no network calls.
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
-    resolved_cwd = _resolve_git_cwd(workspace, params)
+    resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
+    if is_outside:
+        return _make_outside_workspace_warning(workspace, resolved_cwd, top_level=top_level)
     parsed = parse_git_show_params(params)
     if parsed.format == "raw":
         return _git_read_result(

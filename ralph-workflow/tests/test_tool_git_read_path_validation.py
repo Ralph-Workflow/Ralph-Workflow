@@ -1,34 +1,27 @@
-"""Real-Git regression for the workspace-bounded git cwd contract.
-
-Pins the two bypass shapes the MCP git read boundary must refuse:
-
-1. A symlink inside the workspace pointing at an external repository.
-2. A workspace that is itself a plain subdirectory of an unrelated
-   parent repository (git discovers the parent's top-level).
-
-Both must raise ``InvalidParamsError`` naming the offending path and
-the workspace root; the framework boundary converts that into a
-``ToolResult(is_error=True)`` for the wire response (covered by the
-existing MCP framework tests). The legacy paths (``cwd=None`` and
-``cwd="."``) must keep working against a real repository.
-"""
+"""Real-git coverage for git-read cwd validation."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
 
-from ralph.mcp.tools.coordination import InvalidParamsError
-from ralph.mcp.tools.git_read import handle_git_status
+if TYPE_CHECKING:
+    from ralph.mcp.tools.coordination import ToolResult
+from ralph.mcp.tools.git_read import (
+    handle_git_diff,
+    handle_git_log,
+    handle_git_show,
+    handle_git_status,
+)
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 class _Session:
-    """Session stub approving every capability the handlers gate on."""
-
     def check_capability(self, capability: str) -> str:
         return "approved"
 
@@ -47,96 +40,114 @@ def _init_repo_with_commit(path: Path) -> Repo:
         writer.set_value("user", "email", "test@example.com")
     finally:
         writer.release()
-    readme = path / "README.md"
-    readme.write_text("seed", encoding="utf-8")
+    (path / "README.md").write_text("seed", encoding="utf-8")
     repo.index.add(["README.md"])
     repo.index.commit("initial commit")
     return repo
 
 
-def test_symlink_to_external_repo_is_refused(tmp_path: Path) -> None:
-    workspace_root = tmp_path / "workspace"
-    workspace_repo = _init_repo_with_commit(workspace_root)
+def _assert_warning(
+    result: ToolResult, resolved: Path, workspace: Path, top_level: Path | None = None
+) -> None:
+    assert result.is_error is False
+    text = result.content[0].text
+    assert text.startswith("WARNING: ")
+    assert "outside the workspace" in text
+    assert str(resolved.resolve()) in text
+    assert str(workspace.resolve()) in text
+    if top_level is not None:
+        assert f"top_level={top_level.resolve()}" in text
+
+
+def test_symlink_to_external_repo_warns(tmp_path: Path) -> None:
+    workspace_repo = _init_repo_with_commit(tmp_path / "workspace")
+    external_repo = _init_repo_with_commit(tmp_path / "external_repo")
     try:
-        external_repo = _init_repo_with_commit(tmp_path / "external_repo")
-        try:
-            sneaky = workspace_root / "sneaky"
-            sneaky.symlink_to(tmp_path / "external_repo")
-            with pytest.raises(InvalidParamsError) as exc_info:
-                handle_git_status(_Session(), _Workspace(workspace_root), {"cwd": "sneaky"})
-            message = str(exc_info.value)
-            assert str((tmp_path / "external_repo").resolve()) in message
-            assert str(workspace_root.resolve()) in message
-        finally:
-            external_repo.close()
+        workspace = tmp_path / "workspace"
+        (workspace / "sneaky").symlink_to(tmp_path / "external_repo")
+        result = handle_git_status(_Session(), _Workspace(workspace), {"cwd": "sneaky"})
+        _assert_warning(result, tmp_path / "external_repo", workspace, tmp_path / "external_repo")
     finally:
+        external_repo.close()
         workspace_repo.close()
 
 
-def test_parent_repo_toplevel_bypass_is_refused(tmp_path: Path) -> None:
-    """A workspace inside an unrelated parent repo must be refused.
-
-    The resolved cwd is inside the workspace, but git's discovered
-    top-level is the parent repository outside the workspace — the
-    two-dimensional check exists precisely for this shape.
-    """
+def test_parent_repo_discovery_appears_in_warning_text(tmp_path: Path) -> None:
     parent_repo = _init_repo_with_commit(tmp_path / "parent_repo")
     try:
-        workspace_root = tmp_path / "parent_repo" / "subfolder" / "workspace"
-        workspace_root.mkdir(parents=True)
-        with pytest.raises(InvalidParamsError) as exc_info:
-            handle_git_status(_Session(), _Workspace(workspace_root), {"cwd": "."})
-        message = str(exc_info.value)
-        assert str((tmp_path / "parent_repo").resolve()) in message
-        assert str(workspace_root.resolve()) in message
+        workspace = tmp_path / "parent_repo" / "subfolder" / "workspace"
+        workspace.mkdir(parents=True)
+        result = handle_git_status(_Session(), _Workspace(workspace), {"cwd": "."})
+        _assert_warning(result, workspace, workspace, tmp_path / "parent_repo")
     finally:
         parent_repo.close()
 
 
-def test_parent_repo_bypass_refused_for_omitted_and_empty_cwd(tmp_path: Path) -> None:
-    """DA-004: the top-level probe also applies when ``cwd`` is omitted or empty.
-
-    The legacy default (run in the workspace root) must not skip the
-    discovered-top-level check, else the parent-repo bypass survives on
-    every call that omits ``cwd``.
-    """
+def test_parent_repo_bypass_warns_for_omitted_and_empty_cwd(tmp_path: Path) -> None:
     parent_repo = _init_repo_with_commit(tmp_path / "parent_repo")
     try:
-        workspace_root = tmp_path / "parent_repo" / "subfolder" / "workspace"
-        workspace_root.mkdir(parents=True)
+        workspace = tmp_path / "parent_repo" / "subfolder" / "workspace"
+        workspace.mkdir(parents=True)
         for params in ({}, {"cwd": ""}):
-            with pytest.raises(InvalidParamsError) as exc_info:
-                handle_git_status(_Session(), _Workspace(workspace_root), params)
-            assert str((tmp_path / "parent_repo").resolve()) in str(exc_info.value)
+            result = handle_git_status(_Session(), _Workspace(workspace), params)
+            _assert_warning(result, workspace, workspace, tmp_path / "parent_repo")
     finally:
         parent_repo.close()
 
 
 def test_workspace_root_and_dot_cwd_still_allowed(tmp_path: Path) -> None:
-    """No regression on the legacy paths against a real repository."""
     workspace_repo = _init_repo_with_commit(tmp_path / "workspace")
     try:
         workspace = _Workspace(tmp_path / "workspace")
-        session = _Session()
-        result_none = handle_git_status(session, workspace, {})
-        assert result_none.is_error is False
-        result_dot = handle_git_status(session, workspace, {"cwd": "."})
-        assert result_dot.is_error is False
+        for params in ({}, {"cwd": "."}):
+            assert handle_git_status(_Session(), workspace, params).is_error is False
     finally:
         workspace_repo.close()
 
 
-def test_nested_repo_inside_workspace_is_allowed(tmp_path: Path) -> None:
-    """The feature: a nested repository contained in the workspace works."""
+@pytest.mark.parametrize(
+    ("handler", "params"),
+    [
+        (handle_git_status, {"cwd": "nested-repo"}),
+        (handle_git_diff, {"cwd": "nested-repo"}),
+        (handle_git_log, {"cwd": "nested-repo"}),
+        (handle_git_show, {"cwd": "nested-repo", "ref": "HEAD"}),
+    ],
+)
+def test_all_four_handlers_allow_nested_repo_cwd(
+    tmp_path: Path,
+    handler: Callable[[_Session, _Workspace, dict[str, object]], ToolResult],
+    params: dict[str, object],
+) -> None:
     workspace_repo = _init_repo_with_commit(tmp_path / "workspace")
+    nested_repo = _init_repo_with_commit(tmp_path / "workspace" / "nested-repo")
     try:
-        nested_repo = _init_repo_with_commit(tmp_path / "workspace" / "nested-repo")
-        try:
-            result = handle_git_status(
-                _Session(), _Workspace(tmp_path / "workspace"), {"cwd": "nested-repo"}
-            )
-            assert result.is_error is False
-        finally:
-            nested_repo.close()
+        assert handler(_Session(), _Workspace(tmp_path / "workspace"), params).is_error is False
     finally:
+        nested_repo.close()
+        workspace_repo.close()
+
+
+@pytest.mark.parametrize(
+    ("handler", "params"),
+    [
+        (handle_git_status, {}),
+        (handle_git_diff, {}),
+        (handle_git_log, {}),
+        (handle_git_show, {"ref": "HEAD"}),
+    ],
+)
+def test_all_four_handlers_warn_on_outside_repo_cwd(
+    tmp_path: Path,
+    handler: Callable[[_Session, _Workspace, dict[str, object]], object],
+    params: dict[str, object],
+) -> None:
+    workspace_repo = _init_repo_with_commit(tmp_path / "workspace")
+    external_repo = _init_repo_with_commit(tmp_path / "external_repo")
+    try:
+        external = tmp_path / "external_repo"
+        result = handler(_Session(), _Workspace(tmp_path / "workspace"), {**params, "cwd": str(external)})
+        _assert_warning(result, external, tmp_path / "workspace", external)
+    finally:
+        external_repo.close()
         workspace_repo.close()
