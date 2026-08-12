@@ -438,13 +438,15 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     for free. On a 1300-file tree this saves ~5s of redundant ``ast.parse``
     work in the parent process, which directly lowers the slowest-shard
     wall time under the 60s combined budget. Required auto-integrate E2E
-    files receive their fixed multiplier in the weight cache so their
-    weight computation also avoids a second file read.
+    files also cache their source; the multiplier is applied once by
+    ``_test_file_weight`` when the shard plan is built.
     """
     discovered: list[str] = []
     for path in _discover_all_test_files(cwd):
         if path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
-            _FILE_WEIGHT_CACHE[path] = _REQUIRED_E2E_WEIGHT_MULTIPLIER
+            source = (cwd / path).read_text(encoding="utf-8")
+            _cache_source(path, source)
+            _FILE_WEIGHT_CACHE[path] = estimate_test_file_weight(source)
             discovered.append(path)
             continue
         source_bytes = (cwd / path).read_bytes()

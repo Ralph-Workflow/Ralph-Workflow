@@ -233,6 +233,26 @@ def test_static_discovery_populates_weight_cache_for_retained_files(
     assert test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_two.py") == 2
 
 
+def test_static_discovery_keeps_required_real_git_weight_unmultiplied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    required = "tests/test_real_git.py"
+    (tests_root / "test_real_git.py").write_text(
+        "def test_real_git() -> None: pass\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", (required,))
+    test_suites_module.reset_discovery_cache()
+
+    test_suites_module.discover_test_files(tmp_path)
+
+    assert test_suites_module._FILE_WEIGHT_CACHE[required] == 1
+    assert test_suites_module._test_file_weight(tmp_path, required) == (
+        test_suites_module._REQUIRED_E2E_WEIGHT_MULTIPLIER
+    )
+
+
 def test_required_real_git_file_weight_accounts_for_process_cost(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
