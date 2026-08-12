@@ -147,7 +147,7 @@ def test_localized_change_parses_one(tmp_path: Path) -> None:
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         # Mutate exactly one file's bytes.
-        (workspace / "c.py").write_text("def fn_c():\n    return 2\n")
+        (workspace / "c.py").write_text("def fn_c():\n    return 22\n")
         third = reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         assert third.status == "ok"
         assert third.parse_count == 1
