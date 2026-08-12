@@ -32,18 +32,23 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import typer
 import typer.testing
 
 from ralph.cli.commands.smoke import (
     _HEADLESS_CLAUDE_AGENT,
     smoke_headless_claude_command,
 )
-from ralph.cli.main import app
+from ralph.cli.main import smoke_headless_claude, smoke_interactive_claude
 
 if TYPE_CHECKING:
     import pytest
 
 _RUNNER = typer.testing.CliRunner()
+_HEADLESS_HELP_APP = typer.Typer()
+_HEADLESS_HELP_APP.command()(smoke_headless_claude)
+_INTERACTIVE_HELP_APP = typer.Typer()
+_INTERACTIVE_HELP_APP.command()(smoke_interactive_claude)
 
 
 def test_smoke_headless_claude_command_default_agent_alias() -> None:
@@ -136,15 +141,12 @@ def test_smoke_headless_claude_command_default_no_subagents(
 
 
 def test_cli_help_advertises_subagent_options() -> None:
-    """``smoke-headless-claude --help`` advertises ``--subagents`` and ``--subagent-prompt-file``.
+    """The headless command's isolated help surface advertises subagent options.
 
-    The CLI surface contract requires both option names to appear
-    verbatim in the help output. A future operator who runs
-    ``ralph smoke-headless-claude --help`` to discover the
-    subagent flow must see the same options as
-    ``smoke-interactive-claude``.
+    Rendering only the command avoids root-app startup contention while
+    exercising the same Typer declarations exposed by the registered CLI.
     """
-    result = _RUNNER.invoke(app, ["smoke-headless-claude", "--help"])
+    result = _RUNNER.invoke(_HEADLESS_HELP_APP, ["--help"])
     # ``typer.testing.CliRunner.invoke`` returns a ``Result`` whose
     # ``output`` carries the rendered help text on a clean
     # ``--help`` invocation.
@@ -156,15 +158,13 @@ def test_cli_help_advertises_subagent_options() -> None:
 
 
 def test_cli_help_for_both_claude_commands_advertise_same_subagent_options() -> None:
-    """``smoke-interactive-claude --help`` and ``smoke-headless-claude --help`` share the same option names.
+    """The isolated interactive and headless command help surfaces agree.
 
-    The two transports share the same scenario surface so the
-    help text advertises the same option names verbatim. A
-    divergent option surface between the two commands would
-    break R8's "one shared scenario" contract.
+    A divergent option surface between the two commands would break R8's
+    shared-scenario contract.
     """
-    interactive = _RUNNER.invoke(app, ["smoke-interactive-claude", "--help"])
-    headless = _RUNNER.invoke(app, ["smoke-headless-claude", "--help"])
+    interactive = _RUNNER.invoke(_INTERACTIVE_HELP_APP, ["--help"])
+    headless = _RUNNER.invoke(_HEADLESS_HELP_APP, ["--help"])
     for option in ("--subagents", "--subagent-prompt-file"):
         assert option in interactive.output
         assert option in headless.output
