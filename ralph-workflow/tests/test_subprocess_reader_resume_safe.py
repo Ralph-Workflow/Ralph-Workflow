@@ -553,8 +553,10 @@ def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_gr
 ) -> None:
     """S-6: deferring the broken-agent grace leaves the startup watchdog in charge.
 
-    The test explicitly defers the broken-agent timer, so the configured
-    startup watchdog is the observable timeout contract.
+    The 12-second broken-agent timer (the ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS``
+    default) intentionally precedes the older ``NO_OUTPUT_AT_START``
+    watchdog path (15s default). A silent agent must therefore clear its
+    retry intent instead of attempting a same-session resume.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
@@ -572,12 +574,6 @@ def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_gr
         invoke_module,
         "strategy_for_command",
         lambda *args, **kwargs: _ActiveStrategy(),
-    )
-    # Keep the broken-agent grace timer out of this scenario so the
-    # NO_OUTPUT_AT_START watchdog path remains the observed behavior.
-    monkeypatch.setattr(
-        "ralph.agents.invoke._process_reader.BROKEN_AGENT_OUTPUT_GRACE_SECONDS",
-        900.0,
     )
 
     proc = _FakeProcess(stdout_lines=[])
@@ -609,5 +605,6 @@ def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_gr
     finally:
         proc._gate.set()
 
-    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_AT_START
-    assert exc_info.value.session_resume_safe is True
+    assert exc_info.value.reason == "no_output"
+    assert exc_info.value.elapsed_seconds is not None
+    assert exc_info.value.elapsed_seconds >= 12.0

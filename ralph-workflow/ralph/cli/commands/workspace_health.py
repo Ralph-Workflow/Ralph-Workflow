@@ -6,11 +6,12 @@ covering storage by category, freshness/readiness, coverage gaps,
 active observation/refresh/cleanup/recovery work, watch-capacity
 status, cleanup eligibility, and recreatability. Read-only: the
 command never mutates the workspace. Output routes through the shared
-display's machine-contract JSON line (``emit_json_payload``).
+display's machine-contract JSON line (``emit_machine_json``).
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -38,7 +39,7 @@ def _emit_workspace_health(
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     payload = collect_workspace_health(Path(workspace))
-    display.emit_json_payload(payload)
+    display.emit_machine_json(json.dumps(payload, default=str))
 
 
 __all__ = ["workspace_health"]
