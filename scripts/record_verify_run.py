@@ -7,8 +7,11 @@ Runs ``make docs`` (Sphinx, ``-W --keep-going``) then
 writes ``.agent/evidence/verify-run.json`` with:
 
 * ``make_exit_code`` — the ``make -C ralph-workflow verify`` exit code;
-* ``combined_wall_seconds`` — wall clock of the verify invocation
-  (``time.monotonic()`` around it);
+* ``combined_wall_seconds`` — the authoritative combined test wall time
+  parsed from the ``Cumulative test elapsed: X s / budget: 60.0 s`` marker
+  that ``ralph/verify.py`` emits from its ``time.monotonic()`` tracker;
+* ``make_wall_seconds`` — total wall clock of the verify invocation
+  (``time.monotonic()`` around it), recorded for diagnostics only;
 * ``per_step`` — list of ``{"label", "status", "elapsed_seconds"}``;
 * ``matrix_artifact_path`` — the durable acceptance-matrix path.
 
@@ -111,6 +114,15 @@ def _render_matrix_artifact() -> None:
     )
 
 
+def _combined_test_seconds(verify_output: str) -> float | None:
+    """Parse the authoritative cumulative test marker from verify output."""
+    for line in verify_output.splitlines():
+        match = _CUMULATIVE_LINE.match(line.strip())
+        if match is not None:
+            return float(match.group("elapsed"))
+    return None
+
+
 def main() -> int:
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -121,13 +133,15 @@ def main() -> int:
     )
 
     per_step = _per_step_from_output(verify_output)
+    combined_test_seconds = _combined_test_seconds(verify_output)
 
     _render_matrix_artifact()
 
     receipt = {
         "make_exit_code": verify_code,
         "docs_exit_code": docs_code,
-        "combined_wall_seconds": round(verify_elapsed, 3),
+        "combined_wall_seconds": combined_test_seconds,
+        "make_wall_seconds": round(verify_elapsed, 3),
         "per_step": per_step,
         "matrix_artifact_path": str(MATRIX_ARTIFACT.relative_to(WORKSPACE_ROOT)),
     }
