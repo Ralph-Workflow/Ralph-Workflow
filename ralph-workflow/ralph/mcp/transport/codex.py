@@ -22,6 +22,10 @@ from ralph.mcp.tools.names import (
 )
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+from ralph.workspace.agent_dir_retention import (
+    register_temporary_path_owner,
+    unregister_temporary_path_owner,
+)
 
 #: Sane upper bound for the in-process Codex-home registry. The deque
 #: provides FIFO eviction so a long-lived process that spawns many
@@ -110,6 +114,10 @@ def release_codex_home(codex_home: str) -> bool:
     every allocated home on disk for the entire interpreter lifetime
     and grows the registry unboundedly across a long run.
     """
+    home_path = Path(codex_home)
+    workspace_root = _workspace_root_for_codex_home(home_path)
+    if workspace_root is not None:
+        unregister_temporary_path_owner(workspace_root, home_path)
     _all_allocated_codex_homes.discard(codex_home)
     try:
         _allocated_codex_homes.remove(codex_home)
@@ -125,6 +133,16 @@ def release_codex_home(codex_home: str) -> bool:
 atexit.register(cleanup_codex_homes)
 
 
+def _workspace_root_for_codex_home(path: Path) -> Path | None:
+    """Return the workspace root when *path* is directly under ``.agent/tmp``."""
+    try:
+        if path.parent.name == "tmp" and path.parent.parent.name == ".agent":
+            return path.parent.parent.parent
+    except OSError:
+        return None
+    return None
+
+
 def prepare_codex_home(
     endpoint: str | None,
     *,
@@ -132,6 +150,7 @@ def prepare_codex_home(
     existing_home: str | None,
     master_prompt_file: str | None,
     unsafe_mode: bool = False,
+    run_id: str | None = None,
 ) -> str:
     """Prepare an isolated Codex home directory and return its path."""
     codex_home, _upstreams = prepare_codex_home_with_upstreams(
@@ -140,6 +159,7 @@ def prepare_codex_home(
         existing_home=existing_home,
         master_prompt_file=master_prompt_file,
         unsafe_mode=unsafe_mode,
+        run_id=run_id,
     )
     return codex_home
 
@@ -164,9 +184,12 @@ def prepare_codex_home_with_upstreams(
     existing_home: str | None,
     master_prompt_file: str | None,
     unsafe_mode: bool = False,
+    run_id: str | None = None,
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     """Prepare an isolated Codex home directory and return its path with upstream servers."""
     codex_root = _allocate_codex_home_dir(workspace_path)
+    if workspace_path is not None and run_id is not None:
+        register_temporary_path_owner(workspace_path, codex_root, run_id)
     # filesystem-write-ok: create this run-scoped isolated Codex home before materializing configuration
     codex_root.mkdir(parents=True, exist_ok=True)
 

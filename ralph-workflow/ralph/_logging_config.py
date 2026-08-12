@@ -18,6 +18,7 @@ class LoggingConfig:
     run_id: str | None = None
     structured: bool = False
     rotation: str | int | None = "10 MB"
+    retention: str | int | None = "14 days"
 
 
 __all__ = ["LoggingConfig"]

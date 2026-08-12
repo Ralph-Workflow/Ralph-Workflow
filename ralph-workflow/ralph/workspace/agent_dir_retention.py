@@ -12,25 +12,25 @@ Everything here is best-effort: a failed unlink is skipped, never raised,
 so a permission quirk cannot break run startup. The DB prune (RFC-013
 P3) is invoked with the same best-effort contract.
 
-Two process-local coordination seams keep concurrent in-process callers
-safe:
+Two coordination seams keep concurrent callers safe:
 
 * ``RetentionPassCoordinator`` coalesces parallel ``sweep_agent_dir``
   callers into one retention pass per wave generation: the first entrant
   runs the inner sweep body and every concurrent caller joins that wave
   and shares its ``removed`` count instead of re-running the sweep.
-* The active-run registry (``register_active_run`` /
-  ``unregister_active_run`` / ``prune_lock_run_ids``) protects the
-  receipts, sentinels, and DB rows of every run registered in this
-  process, so a retention sweep never removes an active workflow's data.
+* The filesystem-backed active-run registry (``register_active_run`` /
+  ``unregister_active_run`` / ``prune_lock_run_ids``) protects receipts,
+  sentinels, DB rows, and owned temporary paths for every registered run
+  across processes.
 
-Both seams are explicitly in-process: independent-process coordination
-(B6) remains an open gap.
+``RetentionPassCoordinator`` remains process-local because it only coalesces
+redundant work; the shared files preserve cross-process ownership.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import shutil
 import sqlite3
 import threading
@@ -41,6 +41,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
     from pathlib import Path
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.mcp.artifacts.state_db import DB_RELPATH, RunStateDB
 
 DEFAULT_MAX_AGE_SECONDS = 7 * 24 * 3600.0
@@ -49,6 +51,8 @@ _SCRATCH_GLOBS: tuple[str, ...] = (
     "agent_retry_*.md",
     "agent_retry_context_*.md",
 )
+_ACTIVE_RUNS_RELPATH = ".agent/active_runs.json"
+_OWNERSHIP_RELPATH = ".agent/tmp/ownership.json"
 
 
 class RetentionPassCoordinator:
@@ -151,26 +155,53 @@ class RetentionPassCoordinator:
 
 
 _active_run_lock = threading.Lock()
-_active_runs: dict[Path, set[str]] = {}  # bounded-accumulator-ok: unregister removes the entry
+
+
+def _read_json(path: Path) -> object:
+    try:
+        decoded: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return decoded
+
+
+def _write_json(path: Path, value: object) -> None:
+    # filesystem-write-ok: atomic cross-process retention metadata publication
+    atomic_write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        path,
+        json.dumps(value, sort_keys=True, separators=(",", ":")),
+        tmp_path=path.with_name(f".{path.name}.tmp"),
+        prepare_write=lambda: path.parent.mkdir(parents=True, exist_ok=True),
+    )
+
+
+def _active_run_ids(workspace_root: Path) -> frozenset[str]:
+    raw = _read_json(workspace_root / _ACTIVE_RUNS_RELPATH)
+    if not isinstance(raw, dict):
+        return frozenset()
+    values = raw.get("run_ids")
+    if not isinstance(values, list):
+        return frozenset()
+    return frozenset(value for value in values if isinstance(value, str))
 
 
 def register_active_run(workspace_root: Path, run_id: str) -> None:
-    """Mark ``run_id`` as active in this process so sweeps keep its data."""
-    key = workspace_root.absolute()
+    """Mark ``run_id`` active in the shared registry so every process keeps its data."""
     with _active_run_lock:
-        _active_runs.setdefault(key, set()).add(run_id)
+        _write_json(
+            workspace_root / _ACTIVE_RUNS_RELPATH,
+            {"run_ids": sorted(_active_run_ids(workspace_root) | {run_id})},
+        )
 
 
 def unregister_active_run(workspace_root: Path, run_id: str) -> None:
-    """Release the active-run lease for ``run_id`` under ``workspace_root``."""
-    key = workspace_root.absolute()
+    """Release ``run_id`` from the shared active-run registry."""
     with _active_run_lock:
-        runs = _active_runs.get(key)
-        if runs is None:
-            return
-        runs.discard(run_id)
-        if not runs:
-            _active_runs.pop(key, None)
+        _write_json(
+            workspace_root / _ACTIVE_RUNS_RELPATH,
+            {"run_ids": sorted(_active_run_ids(workspace_root) - {run_id})},
+        )
 
 
 def prune_lock_run_ids(
@@ -178,10 +209,71 @@ def prune_lock_run_ids(
     *,
     extra_keep: Iterable[str] = (),
 ) -> frozenset[str]:
-    """Return the merged exclusion set: registered active runs plus ``extra_keep``."""
-    with _active_run_lock:
-        registered = _active_runs.get(workspace_root.absolute(), set())
-        return frozenset(registered) | frozenset(extra_keep)
+    """Return shared active runs merged with explicit exclusions."""
+    return _active_run_ids(workspace_root) | frozenset(extra_keep)
+
+
+def register_temporary_path_owner(workspace_root: Path, path: Path, run_id: str) -> None:
+    """Record the run that owns a retry scratch file or workspace Codex home."""
+    ownership_path = workspace_root / _OWNERSHIP_RELPATH
+    raw = _read_json(ownership_path)
+    owners: dict[str, object] = (
+        {key: value for key, value in raw.items() if isinstance(key, str)}
+        if isinstance(raw, dict)
+        else {}
+    )
+    try:
+        relative_path = path.relative_to(workspace_root / ".agent").as_posix()
+    except ValueError:
+        return
+    owners[relative_path] = {"run_id": run_id, "created_at": time.time()}
+    _write_json(ownership_path, owners)
+
+
+def unregister_temporary_path_owner(workspace_root: Path, path: Path) -> None:
+    """Remove ownership metadata after the normal owner has released its path."""
+    ownership_path = workspace_root / _OWNERSHIP_RELPATH
+    raw = _read_json(ownership_path)
+    if not isinstance(raw, dict):
+        return
+    try:
+        relative_path = path.relative_to(workspace_root / ".agent").as_posix()
+    except ValueError:
+        return
+    owners: dict[str, object] = {key: value for key, value in raw.items() if isinstance(key, str)}
+    if relative_path in owners:
+        owners.pop(relative_path)
+        _write_json(ownership_path, owners)
+
+
+def _prune_missing_temporary_path_owners(workspace_root: Path, owners: dict[str, str]) -> None:
+    """Drop ownership entries once their temporary path was reclaimed."""
+    retained = {
+        relative_path: run_id
+        for relative_path, run_id in owners.items()
+        if (workspace_root / ".agent" / relative_path).exists()
+    }
+    if retained != owners:
+        _write_json(
+            workspace_root / _OWNERSHIP_RELPATH,
+            {
+                relative_path: {"run_id": run_id, "created_at": time.time()}
+                for relative_path, run_id in retained.items()
+            },
+        )
+
+
+def _temporary_path_owners(workspace_root: Path) -> dict[str, str]:
+    raw = _read_json(workspace_root / _OWNERSHIP_RELPATH)
+    if not isinstance(raw, dict):
+        return {}
+    owners: dict[str, str] = {}
+    for path, entry in raw.items():
+        if isinstance(path, str) and isinstance(entry, dict):
+            run_id = entry.get("run_id")
+            if isinstance(run_id, str):
+                owners[path] = run_id
+    return owners
 
 
 
@@ -250,12 +342,16 @@ def _sweep_receipt_dirs(
     return removed
 
 
-def _sweep_codex_home_dirs(tmp_dir: Path, *, cutoff: float) -> int:
+def _sweep_codex_home_dirs(
+    tmp_dir: Path, *, cutoff: float, owners: dict[str, str], active_run_ids: frozenset[str]
+) -> int:
     """Remove aged Codex-home directories using their own metadata (never raises)."""
     if not tmp_dir.is_dir():
         return 0
     removed = 0
     for home in tmp_dir.glob("codex-home-*"):
+        if owners.get(home.relative_to(tmp_dir.parent).as_posix()) in active_run_ids:
+            continue
         try:
             is_aged_dir = home.is_dir() and home.lstat().st_mtime < cutoff
         except OSError:
@@ -285,13 +381,17 @@ def _sweep_session_files(agent_dir: Path, *, cutoff: float) -> int:
     return removed
 
 
-def _sweep_scratch_files(tmp_dir: Path, *, cutoff: float) -> int:
+def _sweep_scratch_files(
+    tmp_dir: Path, *, cutoff: float, owners: dict[str, str], active_run_ids: frozenset[str]
+) -> int:
     """Remove aged ``agent_retry_*`` scratch files (never raises)."""
     if not tmp_dir.is_dir():
         return 0
     removed = 0
     for pattern in _SCRATCH_GLOBS:
         for scratch in tmp_dir.glob(pattern):
+            if owners.get(scratch.relative_to(tmp_dir.parent).as_posix()) in active_run_ids:
+                continue
             if not _older_than(scratch, cutoff):
                 continue
             try:
@@ -418,8 +518,14 @@ def _sweep_agent_dir_body(
         keep_run_ids=keep_run_ids,
     )
     tmp_dir = agent_dir / "tmp"
-    removed += _sweep_scratch_files(tmp_dir, cutoff=cutoff)
-    removed += _sweep_codex_home_dirs(tmp_dir, cutoff=cutoff)
+    owners = _temporary_path_owners(workspace_root)
+    removed += _sweep_scratch_files(
+        tmp_dir, cutoff=cutoff, owners=owners, active_run_ids=keep_run_ids
+    )
+    removed += _sweep_codex_home_dirs(
+        tmp_dir, cutoff=cutoff, owners=owners, active_run_ids=keep_run_ids
+    )
+    _prune_missing_temporary_path_owners(workspace_root, owners)
     removed += _sweep_session_files(agent_dir, cutoff=cutoff)
     removed += _sweep_run_state_db_rows(workspace_root, cutoff=cutoff, keep_run_ids=keep_run_ids)
     return removed
@@ -430,6 +536,8 @@ __all__ = [
     "RetentionPassCoordinator",
     "prune_lock_run_ids",
     "register_active_run",
+    "register_temporary_path_owner",
     "sweep_agent_dir",
     "unregister_active_run",
+    "unregister_temporary_path_owner",
 ]

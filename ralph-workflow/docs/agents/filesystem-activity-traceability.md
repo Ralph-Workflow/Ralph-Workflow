@@ -37,7 +37,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | B3 | Atomic publication helper, checkpoint, and Explore full reindex | `tests/test_atomic_write_if_changed.py` (atomic replace and sync); `tests/test_idempotent_write.py`; `tests/test_checkpoint_idempotent.py` (directory sync on changed checkpoint publication and skip on replay); `tests/test_explore_pipeline.py::test_mode_full_swap_io_failure_preserves_committed_generation` | COVERED for helper and checkpoint durability behavior and Explore staged-index recovery from a pre-publication failure; all durability callers are GAP. |
 | B4 | Atomic staging helper and Explore full reindex | `tests/test_atomic_write_if_changed.py::test_atomic_write_concurrent_writers_publish_independent_final_bytes`; `tests/test_atomic_write_if_changed.py::test_atomic_write_concurrent_identical_writers_skip_redundant_publications`; `tests/test_explore_pipeline.py::test_mode_full_swap_io_failure_preserves_committed_generation` | COVERED for in-process helper publication and Explore's fail-safe pre-publication recovery through the canonical primitive; cross-process publication remains GAP. |
 | B5 | Live stream writers | `tests/test_raw_overflow.py::test_time_based_flush`; `tests/test_raw_overflow.py::test_close_flushes_and_reopen_appends` | COVERED for injected-clock periodic visibility and completion flush at current stream boundaries; exceptional-owner inventory remains GAP. |
-| B6 | Shared persistence/watch state | unique staging path behavior | GAP: independent-process coordination proof. |
+| B6 | Shared retention state | `tests/unit/test_agent_dir_retention.py::test_sweep_consults_shared_active_run_registry`; `tests/unit/test_agent_dir_retention.py::test_sweep_consults_ownership_map_for_scratch_and_codex_home` | COVERED for shared active-run and temporary-path ownership protection across processes. |
 | D1 | Write/read/polling consolidation audits | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py`; `tests/test_audit_filesystem_polling_invocation.py`; `tests/test_audit_fsevents_watch_consolidation.py` (all wired into `ralph.verify`) | COVERED for audited raw accesses, polling, watch construction, and direct process selection. |
 | D2 | Audit diagnostics | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py` (actionable messages and tests) | COVERED for write/read audits. |
 | D3 | Local audit markers | `tests/test_audit_filesystem_write_consolidation.py` (marker parsing); `tests/test_audit_filesystem_write_fail_closed.py`; `tests/test_audit_filesystem_read_consolidation.py` | COVERED for write/read markers; validate existing markers behaviorally. |
@@ -85,9 +85,10 @@ rejected by the package-wide read audit unless a local
 `WorkspaceMonitor` is the lifecycle owner of one recursive workspace-root watch. It
 retains that watch across unchanged cycles and releases it on normal stop or startup
 failure. Parallel in-process retention sweeps coalesce through
-`RetentionPassCoordinator` (one inner pass per wave) and the process-local active-run
+`RetentionPassCoordinator` (one inner pass per wave). The filesystem-backed active-run
 registry (`register_active_run` / `unregister_active_run`) protects every registered
-run's receipts, sentinels, and DB rows from the sweep. `ralph.testing.audit_filesystem_polling_invocation` rejects raw timer polling,
+run's receipts, sentinels, and DB rows across processes; the temporary ownership map
+also protects active retry scratch and Codex homes from the sweep. `ralph.testing.audit_filesystem_polling_invocation` rejects raw timer polling,
 watchdog observer construction, and product-owned direct subprocess choices outside their
 typed owners. A local `# filesystem-poll-ok: <reason>` marker requires a non-empty
 bounded-lifecycle explanation; it is for unavoidable protocol keepalives, process-exit
@@ -123,7 +124,8 @@ uv run python -m ralph.testing.audit_fsevents_watch_consolidation
 ```
 
 Cross-process observer leasing remains an explicit future boundary: the current
-process-local owner does not claim cross-process watch sharing. A constrained
+process-local watcher owner does not claim cross-process watch sharing. Retention
+ownership is coordinated separately through shared active-run and temporary-path maps. A constrained
 host falls back visibly to `live_fallback` and keeps the last committed index
 distinct from current live content.
 

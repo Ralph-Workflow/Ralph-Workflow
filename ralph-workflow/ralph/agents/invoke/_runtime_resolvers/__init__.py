@@ -17,7 +17,7 @@ from loguru import logger
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
-from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
+from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
     ensure_no_preflight_error,
@@ -80,6 +80,7 @@ class _InvokeCompatibilitySeam(Protocol):
         existing_home: str | None,
         master_prompt_file: str | None,
         unsafe_mode: bool = False,
+        run_id: str | None = None,
     ) -> tuple[str, tuple[UpstreamMcpServer, ...]]: ...
 
     def load_existing_claude_upstream_servers(
@@ -136,6 +137,7 @@ class _InvokeModule(Protocol):
         existing_home: str | None,
         master_prompt_file: str | None,
         unsafe_mode: bool = False,
+        run_id: str | None = None,
     ) -> tuple[str, tuple[object, ...]]: ...
 
     def load_existing_claude_upstream_servers(
@@ -369,13 +371,24 @@ class CodexRuntimeResolver:
         if not endpoint and master_prompt_file is None:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
-        codex_home, upstreams = _invoke_module().prepare_codex_home_with_upstreams(
-            endpoint,
-            workspace_path=workspace_path,
-            existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
-            master_prompt_file=master_prompt_file,
-            unsafe_mode=unsafe_mode,
-        )
+        run_id = runtime_env.get(str(MCP_RUN_ID_ENV))
+        if run_id is None:
+            codex_home, upstreams = _invoke_module().prepare_codex_home_with_upstreams(
+                endpoint,
+                workspace_path=workspace_path,
+                existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
+                master_prompt_file=master_prompt_file,
+                unsafe_mode=unsafe_mode,
+            )
+        else:
+            codex_home, upstreams = _invoke_module().prepare_codex_home_with_upstreams(
+                endpoint,
+                workspace_path=workspace_path,
+                existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
+                master_prompt_file=master_prompt_file,
+                unsafe_mode=unsafe_mode,
+                run_id=run_id,
+            )
         runtime_env["CODEX_HOME"] = codex_home
 
         _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)

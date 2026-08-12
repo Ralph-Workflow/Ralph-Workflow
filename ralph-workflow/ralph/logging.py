@@ -87,6 +87,7 @@ def configure_logging(
     run_id: str | None = None,
     structured: bool = False,
     rotation: str | int | None = "10 MB",
+    retention: str | int | None = "14 days",
     console_sink: Callable[[str], None] | None = None,
     sink_adder: SinkAdder | None = None,
 ) -> LoggingSession:
@@ -102,6 +103,7 @@ def configure_logging(
         run_id: Optional run identifier for per-run log directories.
         structured: Whether to emit JSON structured logs.
         rotation: Optional loguru rotation policy for file handlers.
+        retention: Optional loguru retention policy for rotated file handlers.
         console_sink: Optional callable that replaces the terminal
             ``logger.add`` sink. When ``None`` (default) the
             library/worker fallback ``make_stderr_log_sink`` is used,
@@ -129,6 +131,7 @@ def configure_logging(
         run_id=run_id,
         structured=structured,
         rotation=rotation,
+        retention=retention,
     )
 
     logger.remove()
@@ -229,6 +232,7 @@ def _configure_file_handlers(
         backtrace=True,
         diagnose=False,
         rotation=config.rotation,
+        retention=config.retention,
     )
 
     structured_log_path: Path | None = None
@@ -243,6 +247,7 @@ def _configure_file_handlers(
             backtrace=True,
             diagnose=False,
             rotation=config.rotation,
+            retention=config.retention,
         )
 
     return LoggingPaths(

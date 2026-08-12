@@ -250,6 +250,56 @@ def test_retention_coordinator_is_process_local(tmp_path: Path) -> None:
     assert other.passes == 1
 
 
+def test_sweep_consults_shared_active_run_registry(tmp_path: Path) -> None:
+    """S-3/B6: another process's active run protects aged durable records."""
+    now = 1_000_000_000.0
+    agent_dir = tmp_path / ".agent"
+    run_id = "shared-run"
+    _make_aged(agent_dir / f"completion_seen_{run_id}.json", _WEEK + 10, now)
+    _make_aged(agent_dir / "receipts" / run_id / "plan.json", _WEEK + 10, now)
+    db = RunStateDB(tmp_path)
+    db.upsert_receipt(run_id, "plan", "sig")
+    db.upsert_completion_sentinel(run_id, "sig")
+    db.close()
+    (agent_dir / "active_runs.json").write_text('{"run_ids":["shared-run"]}', encoding="utf-8")
+
+    sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: time.time() + _WEEK * 2)
+
+    assert (agent_dir / f"completion_seen_{run_id}.json").exists()
+    assert (agent_dir / "receipts" / run_id).exists()
+    db = RunStateDB(tmp_path)
+    assert db.get_receipt_hmac(run_id, "plan") == "sig"
+    assert db.get_completion_sentinel_hmac(run_id) == "sig"
+    db.close()
+
+
+def test_sweep_consults_ownership_map_for_scratch_and_codex_home(tmp_path: Path) -> None:
+    """S-3/B6: active owners protect scratch while inactive entries are reclaimed."""
+    now = 1_000_000_000.0
+    tmp_dir = tmp_path / ".agent" / "tmp"
+    owned_scratch = tmp_dir / "agent_retry_owned.md"
+    dead_scratch = tmp_dir / "agent_retry_dead.md"
+    owned_home = tmp_dir / "codex-home-owned"
+    dead_home = tmp_dir / "codex-home-dead"
+    for path in (owned_scratch, dead_scratch, owned_home / "config.toml", dead_home / "config.toml"):
+        _make_aged(path, _WEEK + 10, now)
+    (tmp_path / ".agent" / "active_runs.json").write_text(
+        '{"run_ids":["shared-run"]}', encoding="utf-8"
+    )
+    (tmp_dir / "ownership.json").write_text(
+        '{"tmp/agent_retry_owned.md":{"run_id":"shared-run","created_at":1},'
+        '"tmp/codex-home-owned":{"run_id":"shared-run","created_at":1}}',
+        encoding="utf-8",
+    )
+
+    sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: now)
+
+    assert owned_scratch.exists()
+    assert owned_home.exists()
+    assert not dead_scratch.exists()
+    assert not dead_home.exists()
+
+
 def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
     """AC-9 (in-process): the active-run registry protects both registered
     runs from every parallel sweep, even when each caller passes a single

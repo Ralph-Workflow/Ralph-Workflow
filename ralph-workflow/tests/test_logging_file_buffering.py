@@ -186,6 +186,27 @@ def test_engine_file_sinks_are_block_buffered(tmp_path: Path) -> None:
     assert session.paths.run_directory.exists()
 
 
+def test_file_sinks_carry_retention_kwarg(tmp_path: Path) -> None:
+    """S-4: rotated operational records have a bounded 14-day retention policy."""
+    adder = _RecordingSinkAdder()
+
+    configure_logging(
+        log_directory=tmp_path,
+        run_id="run-retention",
+        structured=True,
+        sink_adder=adder,
+    )
+
+    assert [_find_call_for(adder.calls, suffix) is not None for suffix in ("ralph.log", "ralph.jsonl")] == [
+        True,
+        True,
+    ]
+    for suffix in ("ralph.log", "ralph.jsonl"):
+        call = _find_call_for(adder.calls, suffix)
+        assert call is not None
+        assert call.kwargs.get("retention") == "14 days"
+
+
 def test_ralph_log_text_sink_is_buffered_when_structured_disabled(tmp_path: Path) -> None:
     """When ``structured=False``, exactly ONE sink-adder call (the
     ralph.log text sink) is recorded -- and it MUST still be passed

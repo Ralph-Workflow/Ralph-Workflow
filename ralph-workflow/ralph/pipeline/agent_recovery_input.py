@@ -36,3 +36,4 @@ class AgentRecoveryInput:
     stale_session_id: str | None = None
     transport: str | None = None
     model: str | None = None
+    run_id: str | None = None

@@ -196,8 +196,10 @@ def test_w8_b1_e2_b6_row_outcomes() -> None:
         assert status in row
         assert reference in row
     b6 = _row_for_criterion(text, "B6")
-    assert "GAP" in b6
-    assert not _referenced_test_paths(b6)
+    assert "COVERED" in b6
+    assert "tests/unit/test_agent_dir_retention.py" in b6
+    assert "test_sweep_consults_shared_active_run_registry" in b6
+    assert "test_sweep_consults_ownership_map_for_scratch_and_codex_home" in b6
 
 
 def test_canonical_seam_imports_still_resolve() -> None:

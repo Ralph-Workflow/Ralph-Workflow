@@ -503,6 +503,7 @@ def _invoke_agent_with_recovery(
                         session_id=session_id,
                         raw_output=raw_output,
                         rendered_output=rendered_output,
+                        run_id=effective_run_id,
                     )
                 )
                 if recovery_plan is None:
@@ -1034,6 +1035,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         stale_session_id=prompt_stale_session_id,
         transport=prompt_transport,
         model=prompt_model,
+        run_id=recovery_input.run_id,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
@@ -1107,6 +1109,7 @@ def _build_recovery_input_for_attempt(
     session_id: str | None,
     raw_output: deque[str],
     rendered_output: deque[str],
+    run_id: str,
 ) -> AgentRecoveryInput:
     """Build an ``AgentRecoveryInput`` from an attempt-failure context.
 
@@ -1162,6 +1165,7 @@ def _build_recovery_input_for_attempt(
         ),
         transport=_transport_value if is_stale_session_failure else None,
         model=_model_value if is_stale_session_failure else None,
+        run_id=run_id,
     )
 
 
@@ -1234,6 +1238,7 @@ def _retry_prompt_file_for_context(
     stale_session_id: str | None = None,
     transport: str | None = None,
     model: str | None = None,
+    run_id: str | None = None,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -1245,6 +1250,7 @@ def _retry_prompt_file_for_context(
         stale_session_id=stale_session_id,
         transport=transport,
         model=model,
+        run_id=run_id,
     )
 
 
@@ -1293,7 +1299,11 @@ def _stale_session_recovery_block(
 
 
 def _write_retry_context_file(
-    *, workspace_root: Path, context_lines: list[str], untruncated: bool = False
+    *,
+    workspace_root: Path,
+    context_lines: list[str],
+    untruncated: bool = False,
+    run_id: str | None = None,
 ) -> Path:
     prompt_dir = workspace_root / ".agent" / "tmp"
     prompt_dir.mkdir(parents=True, exist_ok=True)
@@ -1302,6 +1312,10 @@ def _write_retry_context_file(
     summary = "\n".join(condensed) if condensed else "(no output captured)"
     # filesystem-write-ok: UUID-keyed retry context file under .agent/tmp; each call writes a fresh path
     context_path.write_text(summary, encoding="utf-8")
+    if run_id is not None:
+        from ralph.workspace.agent_dir_retention import register_temporary_path_owner
+
+        register_temporary_path_owner(workspace_root, context_path, run_id)
     return context_path
 
 
@@ -1316,6 +1330,7 @@ def _write_agent_retry_prompt(
     stale_session_id: str | None = None,
     transport: str | None = None,
     model: str | None = None,
+    run_id: str | None = None,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -1325,6 +1340,7 @@ def _write_agent_retry_prompt(
         workspace_root=workspace_root,
         context_lines=context_lines,
         untruncated=untruncated,
+        run_id=run_id,
     )
     condensed = _condense_recovery_context_lines(context_lines, untruncated=untruncated)
     summary = "\n".join(condensed) if condensed else "(no output captured)"
@@ -1348,6 +1364,10 @@ def _write_agent_retry_prompt(
             (f"{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
             encoding="utf-8",
         )
+        if run_id is not None:
+            from ralph.workspace.agent_dir_retention import register_temporary_path_owner
+
+            register_temporary_path_owner(workspace_root, retry_prompt_path, run_id)
         return str(retry_prompt_path)
     # Fresh (and the defensive ``None`` default): inline the original task
     # body so a brand-new session has the full context. This preserves
@@ -1417,6 +1437,10 @@ def _write_agent_retry_prompt(
         "\n".join(body_parts) + "\n",
         encoding="utf-8",
     )
+    if run_id is not None:
+        from ralph.workspace.agent_dir_retention import register_temporary_path_owner
+
+        register_temporary_path_owner(workspace_root, retry_prompt_path, run_id)
     return str(retry_prompt_path)
 
 
