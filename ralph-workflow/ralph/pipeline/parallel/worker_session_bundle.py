@@ -7,6 +7,7 @@ from threading import Lock
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.mcp.explore.handlers import ExploreIndex
     from ralph.mcp.protocol.session import AgentSession
     from ralph.mcp.server.factory import McpServerHandle
     from ralph.workspace.scope import WorkspaceScope
@@ -32,7 +33,7 @@ class WorkerSessionBundle:
             self.mcp_handle.shutdown()
         finally:
             explore_index = self.session.explore_index
-            store = getattr(explore_index, "store", None)
-            close = getattr(store, "close", None)
-            if callable(close):
-                close()
+            if explore_index is not None:
+                from typing import cast
+
+                cast("ExploreIndex", explore_index).store.close()
