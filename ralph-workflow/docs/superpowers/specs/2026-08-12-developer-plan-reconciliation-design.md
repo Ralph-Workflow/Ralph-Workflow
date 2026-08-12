@@ -95,6 +95,16 @@ inaccurate implementation route is not itself a defect. An unjustified
 `not_applicable`, an alternate route that misses the original outcome, or a
 completed result containing uncovered necessary work requires changes.
 
+The analyzer selects its terminal meaning from fresh evidence rather than the
+developer's label. It returns `completed` when the request criteria are met and
+no necessary work remains, including after a partial or failed developer
+handoff. It returns `request_changes` only for localized work another developer
+iteration can perform. It returns terminal `failed` when a criterion is
+impossible, contradictory, or not evaluable, or necessary work has no
+actionable developer route. This prevents an unproductive retry loop while
+preserving a distinct failure outcome rather than mislabeling an impossible
+request as successful.
+
 ## Compatibility and scope
 
 The markdown section name and stable plan IDs remain unchanged. The new
@@ -176,3 +186,26 @@ The evidence supports the execution shape but cannot prove that this exact
 prompt delivers timely completion. That product claim requires an agent
 evaluation across compact, inaccurate, adapted, blocked, and large work-unit
 plans, including the weakest supported agent.
+
+## Prompt-to-evidence traceability
+
+Every normative prompting behavior introduced by this design has an explicit
+research basis and a bounded interpretation:
+
+| Prompt behavior | Evidence basis | Supported inference |
+|---|---|---|
+| Follow the supplied plan and avoid broad rediscovery | Agentless; SWE-agent | A constrained localization/repair interface can reduce discretionary search; this is not evidence that plans are infallible. |
+| Process the next ready dependency and verify each increment | ReAct; SWE-bench | Interleaved actions and observations support state tracking across repository changes. |
+| Adapt only when fresh tool evidence falsifies the immediate premise | ReAct; PlanBench; CRITIC | Plans can be wrong, and external feedback is a stronger correction signal than unaided reconsideration. |
+| Record a bounded failure, cause, and changed next action | Reflexion | Retained feedback can improve a later attempt; the evidence does not support unlimited retry history. |
+| Keep shared guidance short and adjacent to the active plan | Lost in the Middle | Long-context retrieval is position-sensitive, so critical instructions should be concise and salient. |
+| Use independent work units concurrently only when coordination is worthwhile | SWE-bench; SWE-agent; long-software-task measurements | Multi-file tasks benefit from explicit interfaces and verifiable decomposition; mandatory delegation for compact work is not supported. |
+| Require focused tool evidence and a final repository gate | CRITIC; Cannot Self-Correct Yet | External feedback is safer than relying on intrinsic self-correction alone. |
+| Have analysis independently re-derive criteria and dispositions | CRITIC; Cannot Self-Correct Yet | A separate evidence pass reduces reliance on an implementer's unsupported self-assessment; it does not guarantee correctness. |
+| Approve partial/failed handoffs when fresh evidence shows no necessary work remains | ReAct; CRITIC | Outcome should follow observed task state, not the producer's label. |
+| Retry only actionable localized gaps; terminate impossible or non-evaluable outcomes | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported. |
+
+Artifact grammar, stable IDs, routing names, and commit mechanics are local
+workflow constraints rather than empirical claims about model cognition. They
+are covered by repository tests and policy verification, not attributed to AI
+research.

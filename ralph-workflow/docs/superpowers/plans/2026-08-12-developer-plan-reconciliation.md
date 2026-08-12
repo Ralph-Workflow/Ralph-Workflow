@@ -62,3 +62,25 @@ commit workflow for the final commit.
 
 Verify: both pre-rebase and post-rebase authoritative gates exit zero with no
 warnings or errors; the final worktree records the Ralph-generated commit.
+
+### [S-7] Terminate non-actionable analysis outcomes
+
+Make analysis interpret every developer result from fresh evidence: complete
+when criteria are already satisfied, request changes only for an actionable
+localized gap, and fail terminally when the request is impossible, not
+evaluable, or blocked without a developer route. Route analysis `failed` to the
+failure terminal instead of repeating development.
+
+Verify: render the analyzer decision rules, assert all developer-result
+statuses still reach analysis, and prove `failed` analysis enters the terminal
+failure phase while `request_changes` alone returns to development.
+
+### [S-8] Trace prompting rules to research evidence
+
+Map every normative developer/analyzer prompt behavior in the design to a
+primary AI-agent or reasoning source, state the narrow inference each source
+supports, and distinguish local workflow contracts that require repository
+tests rather than research citations.
+
+Verify: run the fabrication guard and documentation checks, then independently
+review the traceability table for unsupported or overstated claims.
