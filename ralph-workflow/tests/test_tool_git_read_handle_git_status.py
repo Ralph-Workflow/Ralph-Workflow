@@ -482,9 +482,17 @@ class TestHandleGitStatus:
             stdout=b" M b.py\n M a.py\n",
             stderr=b"",
         )
-        with patch(
-            "ralph.mcp.tools.git_read.run_git_command_lenient",
-            return_value=completed,
+        # Ranking does not exercise cwd validation; keep this unit regression
+        # hermetic rather than spawning the validator's git top-level probe.
+        with (
+            patch(
+                "ralph.mcp.tools.git_read._resolve_git_cwd",
+                return_value=(tmp_path, False, None),
+            ),
+            patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ),
         ):
             result = handle_git_status(session, workspace, {"format": "compact"})
         payload = json.loads(result.content[0].text)
