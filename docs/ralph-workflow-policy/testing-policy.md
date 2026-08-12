@@ -126,6 +126,9 @@ RALPH-FACT: slow_test_report_command: cd ralph-workflow && uv run python -m pyte
 RALPH-FACT: suite_review_cadence_and_owner: RALPH-PENDING (assumed 2026-08-09); review trigger: once a named person or team and recurring cadence are recorded for the RALPH-REVIEW suite-quality procedure; current maintenance triggers are change-driven only
 RALPH-FACT: suite_test_count_command: cd ralph-workflow && uv run python -m pytest --collect-only -q (prints the collected-test count for the current checkout)
 RALPH-FACT: supported_platform_matrix: Linux only is CI-verified for tests (`ubuntu-latest`, Python 3.12, `.github/workflows/verify.yml`); no macOS or Windows test CI matrix is declared, regardless of packaging classifiers
+RALPH-FACT: design_capture_command: RALPH-PENDING (assumed 2026-08-11); review trigger: when the managed repository declares its executable web-UI renderer command in docs/ralph-workflow-policy/design-system-policy.md, the workspace-relative path ralph-workflow/ralph/visual/policy_facts.py:DESIGN_SYSTEM_POLICY_RELPATH reads (the seeded starter ralph-workflow/ralph/project_policy/starters/design-system-policy.md declares that location and today carries the field as an unresolved placeholder)
+RALPH-FACT: visual_capture_handle: ralph://media/{artifact_id}
+RALPH-FACT: visual_verdict_artifact: design_verdict
 
 ## AI execution instructions
 

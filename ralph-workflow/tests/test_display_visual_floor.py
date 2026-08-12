@@ -610,9 +610,12 @@ def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
     from rich.syntax import Syntax
 
     stream = StringIO()
+    # no_color=False: the host's NO_COLOR env (set in some agent sandboxes)
+    # must not silently blank the truecolour fill this witness counts.
     console = Console(
         file=stream,
         force_terminal=True,
+        no_color=False,
         color_system="truecolor",
         width=80,
         theme=theme.theme_for_background(False),
