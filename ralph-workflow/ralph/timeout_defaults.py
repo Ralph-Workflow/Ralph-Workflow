@@ -304,6 +304,9 @@ NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
 # agent_no_output_at_start_seconds without disabling bounded hang detection.
 NO_OUTPUT_AT_START_SECONDS: float = 120.0
 
+#: Fast grace window for detecting a live agent with no meaningful LLM output.
+BROKEN_AGENT_OUTPUT_GRACE_SECONDS: float = 30.0
+
 #: Default per-(fire_reason, deferred_kind) log throttle for ``_gate_fire``.
 #: The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949`` while a
 #: fire was deferred (SILENT_SUBAGENT or generic non-STUCK kind); that per-tick
@@ -387,6 +390,10 @@ CHILD_EXIT_RECONCILE_SECONDS: float = 5.0
 # import, are not stripped by ``-O``, and pin the contract that operators
 # rely on.
 
+if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS < NO_OUTPUT_AT_START_SECONDS:
+    raise RuntimeError(
+        "BROKEN_AGENT_OUTPUT_GRACE_SECONDS must be less than NO_OUTPUT_AT_START_SECONDS"
+    )
 if not (WEBSEARCH_BACKEND_TIMEOUT_SECONDS > 0.0 and WEBSEARCH_SDK_TIMEOUT_SECONDS > 0.0):
     raise RuntimeError(
         "websearch timeout constants must be positive; "

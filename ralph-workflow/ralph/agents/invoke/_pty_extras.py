@@ -13,6 +13,7 @@ class _PtyExtras:
     expected_session_id: str | None = None
     stop_sentinel_path: Path | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
+    input_prompt: str | None = None
     # wt-04-claude-parsing: the ``*.jsonl`` transcript names already on
     # disk for the workspace, snapshotted by the caller BEFORE the PTY
     # child process is spawned. ``PtyLineReader`` cannot take this

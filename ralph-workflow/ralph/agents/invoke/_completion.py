@@ -16,8 +16,10 @@ from ralph.agents.completion_signals import (
     evaluate_completion,
 )
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
+from ralph.agents.execution_state._harness_echo import _is_prompt_echo_line
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
+from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
@@ -38,6 +40,7 @@ from ralph.recovery.failure_classifier import (
     FailureClassifier,
 )
 from ralph.recovery.failure_details import contains_casefolded_marker
+from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
 #: Hard upper bound on the bytes captured from the subprocess stderr pipe on
 #: a non-zero exit. A crashing agent that spews megabytes of traceback to
@@ -295,6 +298,7 @@ class _CompletionCheckOptions:
     last_observed_tool_call: str | None = None
     last_evidence_summary: str | None = None
     elapsed_seconds: float | None = None
+    input_prompt: str | None = None
     transcript_tail: tuple[str, ...] = ()
     _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
     #: RFC-013 P3: broker-owned secret threaded into the sentinel HMAC
@@ -496,6 +500,32 @@ def _wait_for_descendants_then_recheck(
     return AgentExecutionState.RESUMABLE_CONTINUE
 
 
+def _raise_if_broken_agent_exit(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
+    bounded_output: list[str],
+    opts: _CompletionCheckOptions,
+) -> None:
+    if (
+        opts.elapsed_seconds is not None
+        and opts.elapsed_seconds >= BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+        and not bounded_output
+    ):
+        _teardown_subtree_if_pid_available(handle)
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="no_output",
+            elapsed_seconds=opts.elapsed_seconds,
+            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+        )
+    nonblank_output = [line for line in bounded_output if line.strip()]
+    if nonblank_output and all(
+        _is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
+    ):
+        _teardown_subtree_if_pid_available(handle)
+        raise BrokenAgentExitError(agent_name, reason="prompt_echo")
+
+
 def _check_process_result(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
@@ -603,6 +633,7 @@ def _check_process_result(
             )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            _raise_if_broken_agent_exit(handle, agent_name, bounded_output, opts)
             session_id = opts.captured_session_id or extract_transport_session_id(bounded_output)
             if session_id is None and bounded_output:
                 # PTY fallback: the bounded_output window may have closed

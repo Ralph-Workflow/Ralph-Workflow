@@ -35,6 +35,7 @@ class UnavailabilityReason(StrEnum):
     """Why an agent is temporarily unavailable."""
 
     OUT_OF_CREDITS = "out_of_credits"
+    BROKEN_AGENT = "broken_agent"
     NO_OUTPUT_AT_START = "no_output_at_start"
     NO_OUTPUT_AFTER_ACTIVITY = "no_output_after_activity"
     SUSPICIOUS_TIMEOUT_NO_OUTPUT = "suspicious_timeout_no_output"
@@ -67,6 +68,10 @@ DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {  # bounded-accumulator-ok: static
     UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
         base_backoff_ms=60_000,
         max_backoff_ms=1_800_000,
+    ),
+    UnavailabilityReason.BROKEN_AGENT: ReasonBackoffPolicy(
+        base_backoff_ms=5_000,
+        max_backoff_ms=60_000,
     ),
     UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
         base_backoff_ms=5_000,

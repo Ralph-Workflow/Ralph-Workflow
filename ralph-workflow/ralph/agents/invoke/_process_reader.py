@@ -16,9 +16,10 @@ import psutil
 from loguru import logger
 from tqdm import tqdm
 
-from ralph.agents.activity import AgentActivityKind
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import AgentExecutionState, GenericExecutionStrategy
+from ralph.agents.execution_state._harness_echo import _is_prompt_echo_line
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
     IdleWatchdog,
@@ -39,6 +40,7 @@ from ralph.agents.invoke._completion import (
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    BrokenAgentExitError,
     InactivityTimeoutOpts,
     _IdleStreamTimeoutError,
 )
@@ -78,6 +80,7 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.teardown import teardown_subtree
+from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
 from ._monitor_factory import _make_process_monitor
 
@@ -88,7 +91,9 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
     from ralph.mcp.server._activity_sink import ActivitySink
+    from ralph.process.manager import ManagedPtyProcess
     from ralph.process.monitor import ProcessMonitor
+    from ralph.process.teardown import ProcessTeardown
 
 _MAX_PARSED_OUTPUT_LINES = 256
 _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
@@ -105,6 +110,34 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
 
 def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
+
+
+def _check_broken_agent_timer(
+    handle: ManagedProcess | ManagedPtyProcess,
+    watchdog: IdleWatchdog,
+    agent_name: str,
+    process_teardown: ProcessTeardown | None = None,
+) -> None:
+    """Terminate a silent live agent before the slower startup watchdog fires."""
+    elapsed_seconds = watchdog.invocation_elapsed_seconds
+    if (
+        elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+        or watchdog.has_meaningful_output()
+    ):
+        return
+    handle.terminate(grace_period_s=0.5)
+    pid = cast("int | None", getattr(handle, "pid", None))
+    if pid is not None:
+        if process_teardown is None:
+            teardown_subtree(pid)
+        else:
+            process_teardown.teardown_subtree(pid)
+    raise BrokenAgentExitError(
+        agent_name,
+        reason="no_output",
+        elapsed_seconds=elapsed_seconds,
+        grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+    )
 
 
 # Canonical resumable-fire-reason set for the watchdog-kill -> resume
@@ -234,6 +267,7 @@ class _ProcessLineReader:
         self._connectivity_state_provider = ctx.connectivity_state_provider
         self._is_waiting_state_provider = ctx.is_waiting_state_provider
         self._completion_is_terminal = ctx.completion_is_terminal
+        self._input_prompt = ctx.input_prompt
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
@@ -764,6 +798,13 @@ class _ProcessLineReader:
         if activity_signal is None:
             self._last_activity_meaningful[0] = False
             return
+        if _is_prompt_echo_line(queued_line, self._input_prompt):
+            activity_signal = AgentActivitySignal(
+                kind=activity_signal.kind,
+                raw=activity_signal.raw,
+                error_message=activity_signal.error_message,
+                is_harness_echo=True,
+            )
         self._last_activity_kind = str(activity_signal.kind)
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
@@ -930,6 +971,12 @@ class _ProcessLineReader:
                     yield from pending_lines
                     raise exc
 
+                _check_broken_agent_timer(
+                    self._handle,
+                    watchdog,
+                    _agent_command_name(self._config),
+                    self._process_teardown,
+                )
                 self._clock.wait_for_event(
                     self._lines_event, self._policy.idle_poll_interval_seconds
                 )
@@ -1015,6 +1062,7 @@ def _run_subprocess_and_read_lines(
             connectivity_state_provider=ctx.connectivity_state_provider,
             is_waiting_state_provider=ctx.is_waiting_state_provider,
             completion_is_terminal=completion_is_terminal,
+            input_prompt=ctx.input_prompt,
         )
         reader = _ProcessLineReader(handle, reader_ctx, clock)
         lines_iter = reader.read_lines()
@@ -1118,6 +1166,7 @@ def _run_subprocess_and_read_lines(
                 last_observed_tool_call=last_tool_call_str,
                 last_evidence_summary=evidence_summary_str,
                 elapsed_seconds=elapsed_value,
+                input_prompt=ctx.input_prompt,
                 transcript_tail=transcript_tail,
                 sentinel_secret=_parent_broker_secret(),
                 receipt_secret=_parent_broker_secret(),

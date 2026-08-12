@@ -751,9 +751,12 @@ class FailureClassifier:
         # the agent unavailable, fall over to the next chain agent, and
         # clear ``last_agent_session_id`` -- silently dropping the
         # captured id and starting a fresh session.
+        broken_agent = exc_obj is not None and type(exc_obj).__name__ == "BrokenAgentExitError"
         base_unavailable = (
-            category == FailureCategory.AGENT
-            and (connectivity_state or "").casefold() == "online"
+            broken_agent
+            or (
+                category == FailureCategory.AGENT
+                and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
             and (
                 (
@@ -787,6 +790,7 @@ class FailureClassifier:
                     )
                 )
             )
+            )
         )
         resumable_kill = (
             base_unavailable
@@ -796,7 +800,9 @@ class FailureClassifier:
         is_unavailable = base_unavailable and not resumable_kill
 
         unavailability_reason: UnavailabilityReason | None = None
-        if is_unavailable:
+        if broken_agent:
+            unavailability_reason = UnavailabilityReason.BROKEN_AGENT
+        elif is_unavailable:
             unavailability_reason = _classify_unavailability_reason(
                 watchdog_reason,
                 detail_parts,
@@ -893,8 +899,8 @@ class FailureClassifier:
             if predicate:
                 return result
         type_name = type(exc).__name__
-        if type_name == "AgentInactivityTimeoutError":
-            return FailureCategory.AGENT, True, False
+        if type_name in {"AgentInactivityTimeoutError", "BrokenAgentExitError"}:
+            return FailureCategory.AGENT, True, type_name == "BrokenAgentExitError"
         # OpenCodeResumableExitError is a subclass of AgentInvocationError
         # raised when an agent session exits without completion evidence
         # (no durable sentinel, or no required artifact receipt). It MUST be classified as

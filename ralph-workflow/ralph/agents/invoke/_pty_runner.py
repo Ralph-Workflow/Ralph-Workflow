@@ -247,6 +247,7 @@ def run_pty_and_read_lines(
                 last_observed_tool_call=last_tool_call_str,
                 last_evidence_summary=evidence_summary_str,
                 elapsed_seconds=elapsed_value,
+                input_prompt=_extras.input_prompt,
                 transcript_tail=transcript_tail,
                 sentinel_secret=_parent_broker_secret(),
                 receipt_secret=_parent_broker_secret(),

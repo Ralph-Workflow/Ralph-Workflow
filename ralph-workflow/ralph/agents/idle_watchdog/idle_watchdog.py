@@ -789,6 +789,10 @@ class IdleWatchdog:
             return 0.0
         return self._clock.monotonic() - self._invocation_started_at
 
+    def has_meaningful_output(self) -> bool:
+        """Return whether this invocation has emitted non-harness output."""
+        return self._has_meaningful_output
+
     def _is_no_progress_quiet(self, now: float, corroboration: CorroborationSnapshot) -> bool:
         return is_no_progress_quiet(self, now, corroboration)
 

@@ -40,6 +40,7 @@ class _ProcessReaderCtx:
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
     completion_is_terminal: Callable[[], bool] | None = None
+    input_prompt: str | None = None
 
 
 __all__ = [

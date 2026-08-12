@@ -18,13 +18,14 @@ import psutil
 from loguru import logger
 
 from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, clamp_tail
-from ralph.agents.activity import AgentActivityKind
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
 from ralph.agents.execution_state import (
     AgentExecutionState,
     BaseExecutionStrategy,
     GenericExecutionStrategy,
 )
+from ralph.agents.execution_state._harness_echo import _is_prompt_echo_line
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
     IdleWatchdog,
@@ -44,6 +45,7 @@ from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
 from ralph.agents.invoke._process_reader import (
     _NON_MEANINGFUL_ACTIVITY_KINDS,
     _TERMINAL_PROCESS_STATUSES,
+    _check_broken_agent_timer,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
     _parent_broker_secret,
@@ -108,7 +110,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from contextvars import Token
 
-    from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx, _EvalCompletionFn
     from ralph.agents.invoke._subagent_transcript import R7AbsentLayoutDiagnostic
@@ -296,6 +297,7 @@ class PtyLineReader:
             getattr(ctx, "is_waiting_state_provider", None),
         )
         self._expected_session_id = _extras.expected_session_id
+        self._input_prompt = _extras.input_prompt
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
         self._completion_run_id = completion_run_id_from_extra_env(
@@ -1365,6 +1367,7 @@ class PtyLineReader:
         self._observe_queued_line(queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
+            activity_signal = self._with_prompt_echo_flag(activity_signal, queued_line)
             self._last_activity_kind = activity_signal.kind
             self._last_meaningful[0] = (
                 activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
@@ -1447,6 +1450,18 @@ class PtyLineReader:
             yield from pending_lines
             raise exc
 
+    def _with_prompt_echo_flag(
+        self, activity_signal: AgentActivitySignal, queued_line: str
+    ) -> AgentActivitySignal:
+        if not _is_prompt_echo_line(queued_line, self._input_prompt):
+            return activity_signal
+        return AgentActivitySignal(
+            kind=activity_signal.kind,
+            raw=activity_signal.raw,
+            error_message=activity_signal.error_message,
+            is_harness_echo=True,
+        )
+
     def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
         drain_deadline = (
             self._clock.monotonic() + self._policy.drain_window_seconds
@@ -1468,6 +1483,7 @@ class PtyLineReader:
             pending_lines, exc = fire_result
             yield from pending_lines
             raise exc
+        _check_broken_agent_timer(self._handle, watchdog, self._agent_name)
         self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
     def _strategy_registry_and_prefix(

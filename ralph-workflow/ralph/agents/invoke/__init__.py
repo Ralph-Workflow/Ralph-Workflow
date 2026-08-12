@@ -17,6 +17,7 @@ import shutil
 import sqlite3
 import subprocess
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -42,6 +43,7 @@ from ralph.agents.invoke._completion import (
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    BrokenAgentExitError,
     InactivityTimeoutOpts,
     InteractivePermissionPromptError,
     OpenCodeResumableExitError,
@@ -153,7 +155,6 @@ _MODELED_FLAG_PARTS = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
-    from pathlib import Path
 
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
@@ -239,10 +240,17 @@ def _shared_interactive_pty_extras(
             expected_session_id=opts.session_id,
             stop_sentinel_path=opts.stop_sentinel_path,
             permission_prompt_listener=opts.permission_prompt_listener,
+            input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
         )
     if transport == AgentTransport.NANOCODER:
-        return _PtyExtras(expected_session_id=opts.session_id)
-    return _PtyExtras(expected_session_id=opts.session_id)
+        return _PtyExtras(
+            expected_session_id=opts.session_id,
+            input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
+        )
+    return _PtyExtras(
+        expected_session_id=opts.session_id,
+        input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
+    )
 
 
 def _run_shared_interactive_pty(
@@ -496,6 +504,7 @@ def invoke_agent(
             evaluate_completion_fn=evaluate_completion,
             connectivity_state_provider=opts.connectivity_state_provider,
             is_waiting_state_provider=opts.is_waiting_state_provider,
+            input_prompt=Path(prompt_file).read_text(encoding="utf-8"),
         )
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
@@ -714,6 +723,7 @@ merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
 __all__ = [
     "AgentInactivityTimeoutError",
     "AgentInvocationError",
+    "BrokenAgentExitError",
     "BuildCommandOptions",
     "CompletionCheckOptions",
     "IdleStreamTimeoutError",

@@ -39,7 +39,7 @@ def resolve_retry_intent(
     tool-registry reset. ``session_id`` is the caller-resolved observed session id
     (the intent clears it when the failure semantics demand a fresh session).
     """
-    if type(exc).__name__ == "PiContextExhaustedExitError":
+    if type(exc).__name__ in {"BrokenAgentExitError", "PiContextExhaustedExitError"}:
         return AgentRetryIntent(
             failure_reason=type(exc).__name__,
             skip_same_agent_retries=True,
