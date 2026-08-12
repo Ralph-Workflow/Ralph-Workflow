@@ -104,10 +104,9 @@ def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:
     assert "final acceptance verification" in source
 
 
-def test_continuation_template_requires_subagent_gate_before_submission() -> None:
-    """A failed continuation must not allow artifact submission before a
-    sub-agent gate clears the remaining work when that capability exists.
-    """
+def test_continuation_template_requires_fresh_review_before_submission() -> None:
+    """A continuation requires review without imposing coordination overhead."""
     source = _read_continuation_template()
-    assert "you MUST use at least one sub-agent as a hard gate" in source
+    assert "when coordination costs less than sequential execution" in source
+    assert "otherwise perform the same review sequentially" in source
     assert "you MUST NOT submit the artifact or declare completion" in source
