@@ -111,37 +111,37 @@ def _make_change_tracker(workspace: Path, key: str) -> object:
 
 def _read_inotify_watch_limit() -> int | None:
     """Return Linux's per-real-user inotify-watch ceiling when available."""
-    if sys.platform != "linux":
-        return None
-    try:
-        return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())
-    except OSError:
-        return None
+    if sys.platform == "linux":
+        try:
+            return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
+        except OSError:
+            return None
+    return None
 
 
 def _read_inotify_watch_user_total() -> int | None:
     """Return the current real user's live inotify-watch count on Linux."""
-    if sys.platform != "linux":
-        return None
-    try:
-        user_id = os.getuid()
-        watch_total = 0
-        for process in Path("/proc").iterdir():
-            if not process.name.isdigit() or process.stat().st_uid != user_id:
-                continue
-            for fdinfo in (process / "fdinfo").iterdir():
-                with fdinfo.open() as stream:
-                    watch_total += sum(line.startswith("wd:") for line in stream)
-    except OSError:
-        return None
-    return watch_total
+    if sys.platform == "linux":
+        try:
+            user_id = os.getuid()
+            watch_total = 0
+            for process in Path("/proc").iterdir():  # filesystem-read-ok: Linux /proc kernel tree, not workspace content
+                if not process.name.isdigit() or process.stat().st_uid != user_id:
+                    continue
+                for fdinfo in (process / "fdinfo").iterdir():
+                    with fdinfo.open() as stream:
+                        watch_total += sum(line.startswith("wd:") for line in stream)
+        except OSError:
+            return None
+        return watch_total
+    return None
 
 
 def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
     """Count workspace directories, returning None once ``cap`` is reached."""
     directory_count = 0
     try:
-        for _root, directories, _files in os.walk(workspace):
+        for _root, directories, _files in os.walk(workspace):  # filesystem-read-ok: bounded capacity counter before Workspace exists
             directory_count += 1
             if directory_count >= cap:
                 return None
@@ -248,12 +248,25 @@ def _can_bind_n(signature_obj: inspect.Signature, n: int) -> bool:
 
 
 class _SharedWorkspaceWatch:
-    """One observer plus weak leases for a canonical workspace root."""
+    """One observer plus weak leases for a canonical workspace root.
 
-    def __init__(self, observer: _ObserverProtocol, handler: object) -> None:
+    ``cross_process_owner_id`` tracks the advisory-lock owner so the
+    cross-process lock is released exactly when the shared observer is
+    torn down (the final in-process lease), not when any single lease
+    stops (S-10 / DA-001 / DA-009).
+    """
+
+    def __init__(
+        self,
+        observer: _ObserverProtocol,
+        handler: object,
+        *,
+        cross_process_owner_id: str | None = None,
+    ) -> None:
         self.observer = observer
         self.handler = handler
         self.monitors: weakref.WeakSet[WorkspaceMonitor] = weakref.WeakSet()
+        self.cross_process_owner_id = cross_process_owner_id
 
 
 def _shared_workspace_key(workspace: Path) -> str:
@@ -464,26 +477,8 @@ class WorkspaceMonitor:
                 self._observer.schedule(handler, str(self._workspace), recursive=True)
                 self._observer.start()
             except OSError as exc:
-                with suppress(BaseException):
-                    self._stop_observer(observer)
-                self._observer = None
-                self._handler = None
-                self._release_cross_process_watch_lock()
-                if exc.errno in (errno.EMFILE, errno.ENOSPC):
-                    self._awareness_status = _live_fallback_status("watch_capacity")
-                    awareness_for_workspace(self._workspace).set_live_fallback("watch_capacity")
-                    logger.warning("Workspace monitoring unavailable: inotify limit reached")
-                    return
-                if exc.errno is None:
-                    self._awareness_status = _live_fallback_status("observer_start_failed")
-                    awareness_for_workspace(self._workspace).set_live_fallback(
-                        "observer_start_failed"
-                    )
-                    logger.opt(exception=True).warning(
-                        "Workspace watch registration failed; falling back to live reads"
-                    )
-                    return
-                raise
+                self._abort_start_on_oserror(exc, observer)
+                return
             except BaseException:
                 with suppress(BaseException):
                     self._stop_observer(observer)
@@ -491,7 +486,9 @@ class WorkspaceMonitor:
                 self._handler = None
                 self._release_cross_process_watch_lock()
                 raise
-            shared = _SharedWorkspaceWatch(observer, handler)
+            shared = _SharedWorkspaceWatch(
+                observer, handler, cross_process_owner_id=self._cross_process_owner_id
+            )
             shared.monitors.add(self)
             self._shared_watches[key] = shared
             self._shared_key = key
@@ -574,6 +571,12 @@ class WorkspaceMonitor:
         raises. This prevents a failed release from stranding lifecycle
         ownership and suppressing a later required registration; joining still
         runs after a failed ``stop`` before the original failure propagates.
+
+        The cross-process watch lock is released only when the final
+        in-process lease tears down the shared observer, so a non-final
+        lease stopping does not let another process register a duplicate
+        observer while this process's shared watch is still active
+        (S-10 / DA-001 / DA-009).
         """
         if not self._started:
             # S-3: even a monitor that never acquired a watch (watchdog
@@ -584,15 +587,13 @@ class WorkspaceMonitor:
 
             _dirty_scheduler.on_workflow_complete()
             return
-        # S-10: release the cross-process watch lock when this lease owns it,
-        # before tearing down the in-process shared observer.
-        self._release_cross_process_watch_lock()
         key = self._shared_key
         self._started = False
         self._shared_key = None
         self._observer = None
         self._handler = None
         observer: _ObserverProtocol | None = None
+        cross_process_owner_id: str | None = None
         if key is not None:
             with self._shared_lock:
                 shared = self._shared_watches.get(key)
@@ -601,9 +602,16 @@ class WorkspaceMonitor:
                     if not shared.monitors:
                         self._shared_watches.pop(key, None)
                         observer = shared.observer
+                        cross_process_owner_id = shared.cross_process_owner_id
         if observer is not None:
             self._stop_observer(observer)
             release_workspace_awareness(self._workspace)
+        # S-10: release the cross-process watch lock only when the final
+        # in-process lease tore down the shared observer, using the owner
+        # id stored on the shared watch (not the per-monitor id, which
+        # could belong to a lease that stopped before the final one).
+        if cross_process_owner_id is not None:
+            CrossProcessWatchLock.release(self._workspace, cross_process_owner_id)
         # S-3: release the process-level dirty-path debounce timer on
         # every workspace lease release so a completed/cancelled/failed
         # workflow never strands a deferred reindex fire. The scheduler
@@ -624,6 +632,38 @@ class WorkspaceMonitor:
             observer.stop()
         finally:
             observer.join(5)
+
+    def _abort_start_on_oserror(
+        self, exc: OSError, observer: _ObserverProtocol
+    ) -> None:
+        """Clean up after an OSError during observer start.
+
+        Tears down the partially-started observer, releases the
+        cross-process lock, and sets a bounded ``live_fallback``
+        awareness status. Returns normally (caller returns from
+        ``start``) for recognized capacity/failure errnos; re-raises
+        ``exc`` for unrecognized errnos so they propagate.
+        """
+        with suppress(BaseException):
+            self._stop_observer(observer)
+        self._observer = None
+        self._handler = None
+        self._release_cross_process_watch_lock()
+        if exc.errno in (errno.EMFILE, errno.ENOSPC):
+            self._awareness_status = _live_fallback_status("watch_capacity")
+            awareness_for_workspace(self._workspace).set_live_fallback("watch_capacity")
+            logger.warning("Workspace monitoring unavailable: inotify limit reached")
+            return
+        if exc.errno is None:
+            self._awareness_status = _live_fallback_status("observer_start_failed")
+            awareness_for_workspace(self._workspace).set_live_fallback(
+                "observer_start_failed"
+            )
+            logger.opt(exception=True).warning(
+                "Workspace watch registration failed; falling back to live reads"
+            )
+            return
+        raise exc
 
     def _release_cross_process_watch_lock(self) -> None:
         """Release the cross-process watch lock when this lease owns it (S-10).

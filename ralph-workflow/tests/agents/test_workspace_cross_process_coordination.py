@@ -182,3 +182,42 @@ def test_non_owner_stop_does_not_release_and_does_not_raise(
     monitor.stop()  # must not raise and must not release
 
     assert fake_lock.release_calls == []
+
+
+def test_shared_lease_releases_cross_process_lock_only_at_final_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-001/DA-009: stopping one in-process lease while another lease still
+    shares the observer must leave the cross-process lock held; only the final
+    matching ``stop()`` releases it."""
+    fake_lock = _FakeCrossProcessWatchLock(holder=None)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
+    )
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
+    )
+
+    # Monitor A: creates the shared watch and acquires the cross-process lock.
+    monitor_a = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor_a.start()
+    assert len(fake.scheduled) == 1
+    assert fake_lock.acquire_calls == [Path("/ws")]
+
+    # Monitor B: joins the existing shared watch (no new observer, no acquire).
+    monitor_b = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor_b.start()
+    assert len(fake.scheduled) == 1
+    assert len(fake_lock.acquire_calls) == 1
+
+    # Monitor A stops first: NOT the final lease, so the lock stays held.
+    monitor_a.stop()
+    assert fake_lock.release_calls == []
+
+    # Monitor B stops: IS the final lease, so the lock is released.
+    monitor_b.stop()
+    assert len(fake_lock.release_calls) == 1
+    released_workspace, released_owner = fake_lock.release_calls[0]
+    assert released_workspace == Path("/ws")
+    assert released_owner is not None
