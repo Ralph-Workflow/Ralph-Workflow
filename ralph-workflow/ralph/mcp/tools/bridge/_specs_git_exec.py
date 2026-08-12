@@ -47,10 +47,9 @@ def _cwd_property() -> dict[str, object]:
     """Schema for the optional workspace-bounded ``cwd`` param on git read tools.
 
     The handler resolves ``cwd`` against the workspace root
-    (``..`` collapsed, symlinks followed) and refuses the request when
-    the resolved path — or the discovered repository top-level — is
-    outside the workspace, so the advertised contract can never drift
-    from the enforced boundary.
+    (``..`` collapsed, symlinks followed). When the resolved path — or
+    discovered repository top-level — is outside the workspace, it does
+    not execute git and returns a ``WARNING:`` result with ``is_error=False``.
     """
     return {
         "type": "string",
@@ -60,9 +59,10 @@ def _cwd_property() -> dict[str, object]:
             "(default). Use a nested path (e.g. 'nested-repo') to read a "
             "repository contained inside the workspace. The resolved path and "
             "the discovered repository top-level must both stay inside the "
-            "workspace; symlinks and '..' are resolved before the check, and "
-            "a path outside the workspace is refused with an is_error result "
-            "that names the resolved path and the workspace root."
+            "workspace; symlinks and '..' are resolved before the check. A "
+            "path outside the workspace does not execute git and returns a "
+            "WARNING: result with is_error=False that names the resolved path "
+            "and the workspace root."
         ),
     }
 

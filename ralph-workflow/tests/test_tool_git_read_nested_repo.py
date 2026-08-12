@@ -81,4 +81,9 @@ def test_git_read_schemas_declare_cwd() -> None:
     specs = {spec.metadata.definition.name.value: spec for spec in git_exec_specs()}
     for name in (GIT_STATUS_TOOL, GIT_DIFF_TOOL, GIT_LOG_TOOL, GIT_SHOW_TOOL):
         properties = specs[name].metadata.definition.input_schema.get("properties", {})
-        assert properties["cwd"]["type"] == "string"
+        cwd = properties["cwd"]
+        assert cwd["type"] == "string"
+        description = cwd["description"]
+        assert "WARNING:" in description
+        assert "does not execute" in description
+        assert "is_error=False" in description

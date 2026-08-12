@@ -23,6 +23,15 @@ if TYPE_CHECKING:
 CUSTOM_LOG_COUNT = 20
 
 
+@pytest.fixture(autouse=True)
+def _resolve_cwd_without_git_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep mocked-handler tests hermetic despite the mandatory cwd probe."""
+    monkeypatch.setattr(
+        "ralph.mcp.tools.git_read._resolve_git_cwd",
+        lambda _workspace, _params: (tmp_path, False, None),
+    )
+
+
 # AC-06 / analysis-feedback regression: see
 # ``test_tool_git_read_handle_git_log.py`` for the precedent.
 # ``_build_git_show_summary_payload`` previously computed
