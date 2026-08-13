@@ -65,6 +65,7 @@ def nearest_rank_p95(samples: Sequence[float]) -> float:
 def load_product_baseline_limits(path: str) -> Mapping[str, object]:
     """Load the checked-in S-1 oracle JSON; fail closed on invalid content."""
     try:
+        # filesystem-read-ok: product-baseline harness reads the operator-supplied oracle JSON once per explicit --product-baseline invocation
         raw: object = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid product-baseline limits file {path}: {exc}") from exc
