@@ -105,7 +105,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.spec import AgentSpec
 from ralph.api.opencode import validate_local_model_support
-from ralph.config._agent_overrides import opencode_binary_override
+from ralph.config._agent_overrides import agent_environment_value, opencode_binary_override
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
@@ -381,7 +381,8 @@ def invoke_agent(
     _fail_for_missing_credentials(
         config,
         base_opts,
-        env_getter=lambda name: (base_opts.extra_env or {}).get(name) or os.environ.get(name),
+        env_getter=lambda name: (base_opts.extra_env or {}).get(name)
+        or agent_environment_value(name),
     )
     _fail_for_unsupported_local_opencode_model(config, base_opts)
     runtime = resolve_invocation_runtime(

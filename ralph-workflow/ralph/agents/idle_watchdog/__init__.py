@@ -25,6 +25,7 @@ DESCENDANT_HANG. See ``._post_exit_watchdog`` for the post-exit family.
 
 from ralph.process.child_liveness import AliveBy
 
+from ._circumstantial_evidence import CircumstantialEvidence
 from ._post_exit_verdict import PostExitVerdict
 from ._post_exit_watchdog import PostExitWatchdog
 from ._stuck_classifier import StuckKind, classify_stuck
@@ -34,7 +35,7 @@ from .corroboration_snapshot import (
     CorroborationSnapshot,
     WaitingCorroborator,
 )
-from .idle_watchdog import CircumstantialEvidence, IdleWatchdog
+from .idle_watchdog import IdleWatchdog
 from .timeout_policy import TimeoutPolicy
 from .waiting_status_event import WaitingStatusEvent, WaitingStatusListener
 from .waiting_status_kind import WaitingStatusKind

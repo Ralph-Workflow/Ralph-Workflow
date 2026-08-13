@@ -1401,6 +1401,19 @@ def _build_recovery_controller(
     return controller, _cycle_cap
 
 
+def build_recovery_controller(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    config: UnifiedConfig,
+) -> tuple[RecoveryController, int]:
+    """Build a recovery controller from runtime configuration.
+
+    This public seam exposes the configuration-to-controller wiring for
+    deterministic callers without bypassing the runtime's canonical builder.
+    """
+    return _build_recovery_controller(state, policy_bundle, config)
+
+
 def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], None]:
     """Subscribe a recovery event logger to controller; return the unsubscribe callable."""
 

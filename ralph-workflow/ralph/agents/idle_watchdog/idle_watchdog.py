@@ -88,6 +88,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents.idle_watchdog._circumstantial_evidence import CircumstantialEvidence
 from ralph.agents.idle_watchdog._evidence_tier import (
     ChannelEvidenceSummary,
     ChannelName,
@@ -217,19 +218,6 @@ if _actual != _EXPECTED_FIRE_REASONS:
         " Update BOTH this assertion AND the watchdog owner's classification"
         " logic so the fire decision is consistent with the new enum set."
     )
-
-
-@dataclass
-class CircumstantialEvidence:
-    """Snapshot of the evidence used to diagnose a silent agent invocation."""
-
-    process_alive: bool
-    has_stdout_bytes: bool
-    has_meaningful_output: bool
-    captured_session_id: str | None
-    has_session_id_captured: bool
-    process_started_at: float | None
-    elapsed_seconds: float
 
 
 @dataclass

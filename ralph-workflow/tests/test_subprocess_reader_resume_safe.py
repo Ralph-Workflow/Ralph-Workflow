@@ -61,7 +61,11 @@ class _FakeProcess:
         self._gate.set()  # Let the first line yield immediately.
         self.stdout = self._stdout_iter()
         self.stderr = self._stderr()
-        self.returncode: int | None = 0
+        # The reader tests exercise watchdog fires while the agent is still
+        # running. A completed process is now correctly classified as a
+        # broken agent immediately, so model the intentionally blocked stdout
+        # stream as a live process until the watchdog terminates it.
+        self.returncode: int | None = None
         self.terminated = False
 
     def _stdout_iter(self) -> Iterator[str]:
@@ -101,7 +105,7 @@ class _FakeProcess:
 
     def wait(self, timeout: float | None = None) -> int:
         del timeout
-        return self.returncode
+        return self.returncode if self.returncode is not None else 0
 
     def terminate(self) -> None:
         self.terminated = True

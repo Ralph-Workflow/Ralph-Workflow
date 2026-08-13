@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from ralph.agents.invoke import BrokenAgentExitError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.loader import load_config
-from ralph.pipeline.run_loop import _build_recovery_controller
+from ralph.pipeline.run_loop import build_recovery_controller
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.classifier import FailureContext
@@ -65,7 +65,7 @@ def test_broken_agent_same_shape_limit_from_general_config_reaches_runtime_build
     )
     config = load_config(config_path=config_file)
     policy_bundle = _minimal_policy_bundle()
-    controller, _ = _build_recovery_controller(_single_agent_state(), policy_bundle, config)
+    controller, _ = build_recovery_controller(_single_agent_state(), policy_bundle, config)
 
     state = _single_agent_state()
     for _ in range(3):
