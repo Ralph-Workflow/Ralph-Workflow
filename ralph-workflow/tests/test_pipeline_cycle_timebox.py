@@ -12,10 +12,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ralph.pipeline.cycle_timing import RoutingTiming, cycle_timebox_warning
-from ralph.pipeline.events import AnalysisDecisionEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
+from ralph.policy.models import PhaseWorkflowFallback
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
@@ -178,6 +179,97 @@ def test_first_development_entry_always_permitted_even_if_clock_advanced() -> No
     )
     assert next_state.phase == "development"
     assert next_state.cycle_timebox_active is True
+
+
+# ---------------------------------------------------------------------------
+# Deadline enforcement on workflow_fallback routes (FR-4: every guarded entry)
+# ---------------------------------------------------------------------------
+
+
+def _policy_with_development_fallback():
+    """Default policy with ``development_analysis.workflow_fallback -> development``.
+
+    This adds a non-analysis-decision route that can enter the guarded
+    development entry, so the cycle deadline guard must cover it just like the
+    ``request_changes`` loopback. Both the non-recoverable PhaseFailureEvent
+    path and the exhausted-agent-chain path can take this route.
+    """
+    policy = _policy()
+    dev_analysis = policy.phases["development_analysis"]
+    return policy.model_copy(
+        update={
+            "phases": {
+                **policy.phases,
+                "development_analysis": dev_analysis.model_copy(
+                    update={"workflow_fallback": PhaseWorkflowFallback(target="development")}
+                ),
+            }
+        }
+    )
+
+
+def test_phase_failure_workflow_fallback_enforces_deadline() -> None:
+    """A non-recoverable phase failure's workflow_fallback into the guarded
+    development entry redirects to finalization at the cycle deadline.
+
+    Covers FR-4 / AC-8 for the workflow_fallback route (the DA-020
+    counterexample): every policy route about to enter the configured guarded
+    phase must enforce the active deadline, not only the analysis
+    ``request_changes`` decision.
+    """
+    policy = _policy_with_development_fallback()
+    state = _state(
+        "development_analysis",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=7200.0,
+    )
+    event = PhaseFailureEvent(
+        phase="development_analysis",
+        reason="non-recoverable handler failure",
+        recoverable=False,
+    )
+    next_state, _ = reduce(state, event, policy, routing_timing=_rt(7200.0))
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.cycle_timebox_active is False
+
+
+def test_phase_failure_workflow_fallback_permitted_before_deadline() -> None:
+    """Before the deadline the same workflow_fallback enters development normally."""
+    policy = _policy_with_development_fallback()
+    state = _state(
+        "development_analysis",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=100.0,
+    )
+    event = PhaseFailureEvent(
+        phase="development_analysis",
+        reason="non-recoverable handler failure",
+        recoverable=False,
+    )
+    next_state, _ = reduce(state, event, policy, routing_timing=_rt(100.0))
+    assert next_state.phase == "development"
+    assert next_state.cycle_timebox_active is True
+
+
+def test_agent_failure_workflow_fallback_enforces_deadline() -> None:
+    """An exhausted-agent-chain workflow_fallback into the guarded development
+    entry also redirects to finalization at the cycle deadline (FR-4)."""
+    policy = _policy_with_development_fallback()
+    state = _state(
+        "development_analysis",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=7200.0,
+        phase_chains={
+            "development_analysis": AgentChainState(
+                agents=["claude"], current_index=0, retries=3
+            )
+        },
+    )
+    next_state, _ = reduce(
+        state, PipelineEvent.AGENT_FAILURE, policy, routing_timing=_rt(7200.0)
+    )
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.cycle_timebox_active is False
 
 
 # ---------------------------------------------------------------------------

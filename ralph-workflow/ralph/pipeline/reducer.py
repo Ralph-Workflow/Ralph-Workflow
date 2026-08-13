@@ -180,6 +180,7 @@ def _reduce_phase_failure(
     event: PhaseFailureEvent,
     pipeline_policy: PipelinePolicy | None,
     recovery: RecoveryController | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if recovery is not None:
         classified_failure = None
@@ -212,7 +213,9 @@ def _reduce_phase_failure(
                 policy=pipeline_policy,
             )
         return _restore_work_units(state, new_state), effects
-    return _handle_phase_failure(state, event, policy=pipeline_policy)
+    return _handle_phase_failure(
+        state, event, policy=pipeline_policy, routing_timing=routing_timing
+    )
 
 
 def _reduce_result_event(
@@ -338,7 +341,9 @@ def reduce(
     if isinstance(event, PostFanoutVerificationEvent):
         reduced_event = _reduce_post_fanout_verification(state, event, pipeline_policy)
     elif isinstance(event, PhaseFailureEvent):
-        reduced_event = _reduce_phase_failure(state, event, pipeline_policy, recovery)
+        reduced_event = _reduce_phase_failure(
+            state, event, pipeline_policy, recovery, routing_timing
+        )
     elif isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
         reduced_event = _reduce_result_event(state, event, pipeline_policy, routing_timing)
     if reduced_event is not None:
@@ -431,6 +436,8 @@ def _handle_phase_failure(
     state: PipelineState,
     event: PhaseFailureEvent,
     policy: PipelinePolicy | None = None,
+    *,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle PhaseFailureEvent from phase handlers.
 
@@ -469,7 +476,9 @@ def _handle_phase_failure(
                     skip_same_agent_retries=True,
                 )
             )
-        return _handle_agent_failure(state_with_error, policy=policy)
+        return _handle_agent_failure(
+            state_with_error, policy=policy, routing_timing=routing_timing
+        )
     # Non-recoverable failures: check workflow_fallback before global failure route.
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
     if policy is not None:
@@ -484,7 +493,15 @@ def _handle_phase_failure(
                     "non-recoverable failure — routing via policy workflow_fallback",
                 )
             )
-            new_state = progress.advance_phase(state, fallback_target, policy=policy).copy_with(
+            # Route the fallback through the cycle-timebox guard so every entry
+            # into the configured guarded phase enforces the active deadline
+            # (FR-4), not only the analysis request_changes loopback.
+            advanced_state, advanced_target = _prepare_phase_advance(
+                state, fallback_target, policy, routing_timing=routing_timing
+            )
+            new_state = progress.advance_phase(
+                advanced_state, advanced_target, policy=policy
+            ).copy_with(
                 last_error=failure_message,
             )
             return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
@@ -564,7 +581,13 @@ def _handle_agent_failure(
                     "agent chain exhausted — routing via policy workflow_fallback",
                 )
             )
-            new_state = progress.advance_phase(state, fallback_target, policy=policy)
+            # Route the fallback through the cycle-timebox guard so every entry
+            # into the configured guarded phase enforces the active deadline
+            # (FR-4), not only the analysis request_changes loopback.
+            advanced_state, advanced_target = _prepare_phase_advance(
+                state, fallback_target, policy, routing_timing=routing_timing
+            )
+            new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
             return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
     failure_reason = _failure_reason(
