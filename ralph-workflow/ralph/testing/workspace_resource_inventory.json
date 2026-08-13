@@ -1,0 +1,242 @@
+{
+  "workspace_owners": [
+    {
+      "site": "agents/invoke/_workspace.py:WorkspaceMonitor",
+      "responsibilities": ["discovery", "read", "change"],
+      "summary": "Lifecycle owner of the single recursive watchdog watch; classifies and bounds workspace change events into awareness and the dirty-path queue; shares one observer across in-process leases and coordinates cross-process ownership."
+    },
+    {
+      "site": "workspace/awareness.py:WorkspaceAwareness",
+      "responsibilities": ["change"],
+      "summary": "Per-workspace awareness state that records dirty paths, watch-active/live-fallback mode, and freshness; shared across equivalent in-process consumers so duplicate leases do not multiply observation."
+    },
+    {
+      "site": "workspace/_cross_process_watch_lock.py:CrossProcessWatchLock",
+      "responsibilities": ["change"],
+      "summary": "Advisory cross-process coordination so concurrent workflows against the same workspace share one watch owner without weakening isolation; released exactly when the final in-process lease tears down."
+    },
+    {
+      "site": "workspace/fs.py:FsWorkspace",
+      "responsibilities": ["discovery", "read", "write"],
+      "summary": "Bounded workspace read/write boundary: snapshots, idempotent writes, mkdirs, copy, and listing that respect roots, excludes, inaccessible content, links, cycles, and size caps."
+    },
+    {
+      "site": "workspace/storage_lifecycle.py:inventory_storage",
+      "responsibilities": ["retention", "cleanup", "discovery"],
+      "summary": "Five-category storage inventory and cleanup planner; reports eligibility reason, bytes/counts, recreatability, owner, and recovery impact; protects active run IDs, explicit retention, and the last recoverable state."
+    },
+    {
+      "site": "workspace/agent_dir_retention.py:RetentionPassCoordinator",
+      "responsibilities": ["retention", "recovery", "cleanup"],
+      "summary": "Run-start retention and recovery sweeper: registers active run IDs and temporary-path owners, reclaims stale temporary/operational/derived data, and preserves required artifacts, evidence, and recoverable state."
+    },
+    {
+      "site": "mcp/explore/pipeline.py:reindex",
+      "responsibilities": ["index", "search"],
+      "summary": "Single ReindexWriter pipeline that hashes a deterministic manifest, reuses unchanged rows, publishes generations atomically, and processes only affected files on localized change."
+    },
+    {
+      "site": "mcp/explore/dirty_paths.py:mark_path",
+      "responsibilities": ["change", "index"],
+      "summary": "Persisted dirty-path queue that unifies observer events and MCP mutations; coalesces bursts by final path state and drains pending marks into the single reindex writer."
+    },
+    {
+      "site": "mcp/explore/lifecycle.py:ReindexRunner",
+      "responsibilities": ["index", "recovery"],
+      "summary": "Lifecycle hooks that hand dirty paths to the persisted explore queue and ReindexWriter; removes recurring refreshes that do work solely because a phase or loop repeats."
+    },
+    {
+      "site": "mcp/explore/handlers.py:ExploreIndex",
+      "responsibilities": ["search", "index"],
+      "summary": "Agent-facing search/navigation surface: ranked files/content, symbols, structure, graph relationships, impact, and tests backed by source evidence with freshness and fallback metadata."
+    },
+    {
+      "site": "mcp/artifacts/history.py:archive_artifact_before_overwrite",
+      "responsibilities": ["retention", "recovery"],
+      "summary": "Atomic history archival and bounded pruning for workflow records; protects the last valid recoverable state across interrupted or failed publication."
+    },
+    {
+      "site": "cli/commands/run.py:run_pipeline",
+      "responsibilities": ["retention", "recovery"],
+      "summary": "Pipeline entry that registers the active run ID, runs retention on start, reconciles interrupted work on restart, and unregisters the active run on every terminal path."
+    },
+    {
+      "site": "mcp/artifacts/idempotent_write.py:write_text_if_changed",
+      "responsibilities": ["write"],
+      "summary": "Canonical atomic-write primitive: repeating an operation with unchanged retained content creates no persistent content change, duplicate history, or unnecessary refresh."
+    },
+    {
+      "site": "mcp/artifacts/file_backend.py:FileBackend",
+      "responsibilities": ["read", "write"],
+      "summary": "Shared filesystem backend interface that consolidates bounded read/write/stat/exists/list operations behind the canonical boundary used by workspace and artifact code."
+    },
+    {
+      "site": "mcp/artifacts/_path_file_backend.py:PathFileBackend",
+      "responsibilities": ["read", "write"],
+      "summary": "Concrete Path-backed implementation of FileBackend; the lowest-level atomic-replace/fsync/unlink boundary that every consolidated write routes through."
+    },
+    {
+      "site": "prompts/template_registry.py:TemplateRegistry",
+      "responsibilities": ["read", "discovery"],
+      "summary": "Canonical template reader/cache boundary that consolidates filesystem reads of packaged and project prompt templates behind a shared registry."
+    },
+    {
+      "site": "prompts/master_prompt.py:materialize_master_prompt",
+      "responsibilities": ["write"],
+      "summary": "Master-prompt materialization boundary that writes the durable prompt snapshot through the canonical idempotent primitive rather than raw filesystem calls."
+    },
+    {
+      "site": "executor/process.py:run_process",
+      "responsibilities": ["discovery"],
+      "summary": "Typed process executor that owns bounded subprocess execution, termination grace, and output decoding; the sole product-owned boundary for invoking external processes."
+    },
+    {
+      "site": "process/manager/_process_manager.py:ProcessManager",
+      "responsibilities": ["discovery"],
+      "summary": "Process lifecycle manager that owns typed process construction and bounded termination; the canonical allowlist site for raw os-fd and child-spawn calls."
+    },
+    {
+      "site": "process/manager/__init__.py:_default_sync_process_factory",
+      "responsibilities": ["discovery"],
+      "summary": "Default typed process factory boundary re-exported by the process manager package; the canonical entry point that selects the ProcessManager's sync/async/pty backend without exposing raw subprocess construction."
+    },
+    {
+      "site": "logging.py:configure_logging",
+      "responsibilities": ["write"],
+      "summary": "Logging configurator that adds buffered file sinks (buffering=8192) so high-volume operational records finalize without per-event durable rewrites."
+    }
+  ],
+  "watch_consumers": [
+    {
+      "site": "agents/invoke/_workspace.py:WorkspaceMonitor",
+      "scope": "Recursive workspace root (single watch per canonical workspace identity).",
+      "purpose": "Detect meaningful workspace changes made by agents, users, and external tools and forward bounded dirty paths into awareness and the explore dirty queue.",
+      "start_owner": "WorkspaceMonitor.start() schedules exactly one recursive observer, attaching to an existing in-process shared watch when present.",
+      "stop_owner": "WorkspaceMonitor.stop() releases the observer, cross-process lock, scheduler, and awareness state on success, cancellation, failure, restart, and abnormal-exit recovery.",
+      "sharing": "Equivalent in-process consumers share one observer through a weak-lease table; concurrent processes coordinate through CrossProcessWatchLock without weakening isolation.",
+      "exclusions": "Ralph-managed paths (logs, records, temporary data, derived index state) are classified and excluded before they become activity or dirty work.",
+      "capacity_failure_behavior": "Predicted or actual watch exhaustion enters a bounded live-fallback mode that reports cause, freshness impact, automatic recovery, and safest next action; it never silently serves stale knowledge as current."
+    },
+    {
+      "site": "workspace/_cross_process_watch_lock.py:CrossProcessWatchLock",
+      "scope": "Per-workspace advisory lock coordinating equivalent observers across processes.",
+      "purpose": "Prevent concurrent processes from registering duplicate recursive watches on the same workspace.",
+      "start_owner": "WorkspaceMonitor._acquire_cross_process_watch_lock() claims the lock before scheduling a new observer.",
+      "stop_owner": "WorkspaceMonitor.stop() releases the lock only when the final in-process lease tears down the shared observer, using the owner id stored on the shared watch.",
+      "sharing": "Inter-process: the first process to claim the lock owns the observer; later processes enter live fallback and reconcile through bounded live reads.",
+      "exclusions": "No watch is scheduled while another process holds the lock; the lock is advisory and does not weaken process isolation.",
+      "capacity_failure_behavior": "When the lock cannot be acquired, awareness is set to live_fallback with the cross_process_holder cause and automatic recovery on the next lease."
+    },
+    {
+      "site": "workspace/awareness.py:WorkspaceAwareness",
+      "scope": "Per-workspace awareness state shared across equivalent in-process leases.",
+      "purpose": "Record dirty paths and observation mode so duplicate consumers read one awareness record instead of registering duplicate observation.",
+      "start_owner": "awareness_for_workspace() returns the shared instance; WorkspaceMonitor sets it watch-active on a successful start.",
+      "stop_owner": "release_workspace_awareness() is called when the final lease tears down the shared observer.",
+      "sharing": "In-process: a ClassVar table keyed by canonical workspace identity; weak references allow garbage collection once no lease remains.",
+      "exclusions": "Internal Ralph activity is filtered by the change classifier before reaching awareness.",
+      "capacity_failure_behavior": "set_live_fallback() marks awareness with the bounded cause so consumers reconcile through bounded live workspace behavior."
+    }
+  ],
+  "storage_classes": [
+    {
+      "site": "mcp/artifacts/idempotent_write.py:write_text_if_changed",
+      "category": "workflow_records",
+      "growth_trigger": "New durable plans, results, evidence, and recovery records produced by workflow phases.",
+      "user_value": "Authoritative workflow output and recovery state required for correctness and audit.",
+      "owner": "ralph.mcp.artifacts.idempotent_write / ralph.mcp.artifacts.history",
+      "retention_bound": "Bounded by artifact history pruning and run-start retention sweeps.",
+      "cleanup_result": "Identical-content rewrites create no persistent change; superseded history is pruned to a bounded count.",
+      "recreatability": "Not recreatable; durable workflow records are protected from cleanup and deletion.",
+      "recovery_impact": "Interrupted publication preserves the last valid result; cleanup never removes required artifacts or evidence."
+    },
+    {
+      "site": "mcp/artifacts/file_backend.py:FileBackend",
+      "category": "workflow_records",
+      "growth_trigger": "Artifact and receipt writes routed through the shared backend.",
+      "user_value": "Single consolidation boundary for all workflow-record persistence.",
+      "owner": "ralph.mcp.artifacts.file_backend",
+      "retention_bound": "Bounded by the idempotent-write and history layers above it.",
+      "cleanup_result": "No independent cleanup; delegates durability to the canonical atomic-write primitive.",
+      "recreatability": "Not recreatable; persists required workflow records.",
+      "recovery_impact": "Atomic replace protects the last valid state across partial writes."
+    },
+    {
+      "site": "mcp/artifacts/_path_file_backend.py:PathFileBackend",
+      "category": "workflow_records",
+      "growth_trigger": "Concrete Path-level writes implementing FileBackend.",
+      "user_value": "Lowest-level atomic-replace/fsync boundary that every consolidated write routes through.",
+      "owner": "ralph.mcp.artifacts._path_file_backend",
+      "retention_bound": "Bounded by the callers above; this module is the abstraction, not a growth source.",
+      "cleanup_result": "No independent cleanup; provides the atomic primitives callers use.",
+      "recreatability": "Not recreatable; persists required workflow records.",
+      "recovery_impact": "Atomic rename + fsync preserves recoverability across crashes."
+    },
+    {
+      "site": "mcp/explore/pipeline.py:reindex",
+      "category": "workspace_intelligence",
+      "growth_trigger": "Source changes that produce new/updated symbols, chunks, structure, and graph rows.",
+      "user_value": "Fast evidence-backed codebase search, navigation, relationships, impact, and tests.",
+      "owner": "ralph.mcp.explore.pipeline / ralph.mcp.explore.store",
+      "retention_bound": "Derived and disposable; rebuilt incrementally from project content on change.",
+      "cleanup_result": "Deleting derived intelligence is isolated and safely rebuildable; a no-change refresh reprocesses nothing.",
+      "recreatability": "Fully recreatable from project content via a bounded full refresh.",
+      "recovery_impact": "When unavailable, rebuilding, or degraded, a correct live-workspace path preserves useful agent work without misrepresenting results."
+    },
+    {
+      "site": "mcp/explore/store.py:<module>",
+      "category": "workspace_intelligence",
+      "growth_trigger": "Indexed symbols, chunks, structure, and graph edges derived from project content.",
+      "user_value": "Backing store for ranked search, structure, graph, impact, and test discovery.",
+      "owner": "ralph.mcp.explore.store",
+      "retention_bound": "Disposable derived data; bounded by the source content it indexes.",
+      "cleanup_result": "Removal does not affect project content or workflow records; rebuild produces equivalent logical results.",
+      "recreatability": "Fully recreatable; rebuild equivalence is verified.",
+      "recovery_impact": "Absence triggers bounded live-search fallback, never stale results presented as current."
+    },
+    {
+      "site": "mcp/artifacts/history.py:archive_artifact_before_overwrite",
+      "category": "workflow_records",
+      "growth_trigger": "Each artifact overwrite archives the prior version for audit and recovery.",
+      "user_value": "Durable history of plans, results, and evidence supporting recovery and review.",
+      "owner": "ralph.mcp.artifacts.history",
+      "retention_bound": "Bounded by prune_artifact_history to a configurable count per artifact.",
+      "cleanup_result": "prune_artifact_history reclaims superseded archives while protecting the last valid recoverable state.",
+      "recreatability": "Not recreatable; archives are durable records of prior workflow output.",
+      "recovery_impact": "Protects the last valid recoverable state across interrupted or failed publication."
+    },
+    {
+      "site": "logging.py:configure_logging",
+      "category": "operational_records",
+      "growth_trigger": "Diagnostic log events emitted during active workflow execution.",
+      "user_value": "Diagnostics for debugging, attribution, and health reporting.",
+      "owner": "ralph.logging",
+      "retention_bound": "Bounded by buffered sinks (buffering=8192) and log rotation; finalized at completion without per-event durable rewrites.",
+      "cleanup_result": "Stale operational logs are reclaimed by retention sweeps; active workflows are protected.",
+      "recreatability": "Replaceable; operational logs are not required workflow records.",
+      "recovery_impact": "Loss does not affect project content or required workflow records."
+    },
+    {
+      "site": "workspace/agent_dir_retention.py:RetentionPassCoordinator",
+      "category": "temporary_data",
+      "growth_trigger": "Replaceable or incomplete data used during active work; stale completion sentinels, receipt dirs, session and scratch files.",
+      "user_value": "Bounded temporary workspace for in-flight workflows; reclamation prevents unbounded growth.",
+      "owner": "ralph.workspace.agent_dir_retention",
+      "retention_bound": "Reclaimed during recovery and normal cleanup once no active run owns the data.",
+      "cleanup_result": "Safely removes incomplete data while preserving active-run ownership and the last recoverable state.",
+      "recreatability": "Replaceable; temporary data is regenerated by the workflow that needs it.",
+      "recovery_impact": "Failed, cancelled, and interrupted work leaves no permanent temporary growth; recovery reclaims safely removable data."
+    },
+    {
+      "site": "workspace/storage_lifecycle.py:plan_cleanup",
+      "category": "temporary_data",
+      "growth_trigger": "Cleanup preview and planning across all five categories.",
+      "user_value": "Operator-visible eligibility, bytes/counts, recreatability, owner, and recovery impact before any deletion.",
+      "owner": "ralph.workspace.storage_lifecycle",
+      "retention_bound": "Planning surface; the categories it previews each have their own bound.",
+      "cleanup_result": "Preview reports what cleanup reclaims and protects; concurrent cleanup is ownership-safe.",
+      "recreatability": "The planner is stateless; preview reflects current storage state.",
+      "recovery_impact": "Cleanup protects active workflows, required records, explicitly retained data, and the last recoverable state."
+    }
+  ]
+}

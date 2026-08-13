@@ -54,6 +54,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
             "ralph/testing/audit_test_policy.py",
             "ralph/testing/audit_typecheck_bypass.py",
             "ralph/testing/audit_watchdog_drift.py",
+            "ralph/testing/audit_workspace_resource_inventory.py",
             "ralph/testing/audit_appearance_assertion_prohibition.py",
         ),
         "AST-only audit CLI; no process spawn seam",

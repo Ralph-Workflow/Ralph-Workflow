@@ -285,6 +285,15 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="cast policy audit ok\n",
         ),
+        (
+            "uv",
+            ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
+        ): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
+            returncode=0,
+            stdout="workspace resource inventory audit: OK\n",
+        ),
         ("make", ("test-multimodal-smoke",)): _result(
             command="make",
             args=("test-multimodal-smoke",),
@@ -346,6 +355,10 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
+        (
+            "uv",
+            ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
+        ),
         ("make", ("test-multimodal-smoke",)),
         ("make", ("test-visual-smoke",)),
     ]

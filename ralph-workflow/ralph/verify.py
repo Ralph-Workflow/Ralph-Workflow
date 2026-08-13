@@ -470,6 +470,23 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # wt-057: product-level workspace resource inventory completeness
+        # audit. Layers a structured inventory (workspace_resource_inventory.json)
+        # over the five constituent filesystem audits (fsevents watch,
+        # polling/invocation, read consolidation, write consolidation, resource
+        # lifecycle): every discovered site plus every canonical-primitive
+        # owner must have an inventory entry, and every inventory site must
+        # resolve to a real source symbol. AST + Path.read_text only -- no
+        # subprocess, no sleep, no real I/O. Appended BEFORE the two trailing
+        # smoke steps so the index-based budget tracking (len-2, len-1) still
+        # points at the smoke steps; NOT budget-tracked (does not count
+        # against the immutable 60-second combined test budget).
+        "workspace resource inventory audit (audit_workspace_resource_inventory)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # Criterion 5 multimodal proof: drive the deterministic multimodal
         # stub agent across all six harness identities (claude /
         # claude-headless / agy / nanocoder / cursor / opencode) and
@@ -657,6 +674,18 @@ for _filesystem_audit in (
             f"A verify step running '{_filesystem_audit}' must be present in "
             "_VERIFY_STEPS (the filesystem consolidation contract cannot be silently dropped)"
         )
+
+# (h) The workspace resource inventory audit must remain wired. This guards
+# the product-level completeness contract over the workspace-awareness surface
+# (watches, reads, writes, polling, lifecycle): without it, a site that loses
+# its constituent-audit marker could go undocumented in the inventory, and a
+# refactor that deletes or renames an owner would not fail closed.
+if not any("audit_workspace_resource_inventory" in label for label, *_rest in _VERIFY_STEPS):
+    raise RuntimeError(
+        "A verify step running 'audit_workspace_resource_inventory' must be present in "
+        "_VERIFY_STEPS (the workspace resource inventory completeness contract cannot be "
+        "silently dropped)"
+    )
 
 
 def _default_runner(

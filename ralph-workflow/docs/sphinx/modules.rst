@@ -4063,6 +4063,13 @@ ralph.testing.audit_watchdog_drift
    :members:
    :show-inheritance:
 
+ralph.testing.audit_workspace_resource_inventory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_workspace_resource_inventory
+   :members:
+   :show-inheritance:
+
 ralph.telemetry
 ~~~~~~~~~~~~~~~
 
