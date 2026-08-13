@@ -269,7 +269,6 @@ def _load_configuration(
         config,
         workspace_scope.root if workspace_scope is not None else None,
     )
-
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None
 
@@ -589,8 +588,7 @@ def _warn_if_capabilities_degraded(display_context: DisplayContext, workspace_ro
     state_path = default_state_path()
     if not state_path.exists():
         return  # no state file yet; skip (first run before init)
-    manager = SkillManager()
-    health = manager.check_baseline_health()
+    health = SkillManager().check_baseline_health()
     mandatory_keys = ("web_search", "visit_url", "skills")
     if any(not health.get(k) for k in mandatory_keys):
         display = resolve_active_display(None, display_context)
@@ -604,12 +602,11 @@ def _warn_if_capabilities_degraded(display_context: DisplayContext, workspace_ro
 
 
 def _print_project_skill_conflict_hint(failures: list[str]) -> None:
-    """Surface a NEEDS_REPAIR on the project-scope auto-seed to the user.
+    """Surface a NEEDS_REPAIR project-scope auto-seed hint to the user.
 
-    Per the prompt, when a conflict blocks the project-scope install during a
-    normal `ralph` run, the user must be reminded that `ralph --force-init-skills`
-    is the remediation path. The hint is intentionally NOT routed through
-    `logger.debug` so the user actually sees it on a non-DEBUG channel.
+    When a conflict blocks the project-scope install during a normal `ralph`
+    run, the user must see that `ralph --force-init-skills` is the remediation
+    path, so the hint is NOT routed through `logger.debug`.
     """
     if not failures:
         return
@@ -620,14 +617,9 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
 def _print_user_global_update_hint() -> None:
     """Surface an outdated user-global baseline on a normal ``ralph`` run.
 
-    The user-global canonical root is intentionally NOT auto-repaired on a
-    normal ``ralph`` run (see ``SkillManager.check_skills_for_updates``);
-    the run records ``update_available=True`` in capability state and
-    delegates the user-visible hint to this helper. Called from
-    ``_sync_shipped_skills_on_pipeline_run`` only when an update is
-    available, so the helper unconditionally prints the remediation
-    hint on the same non-DEBUG channel as the project-scope conflict
-    hint.
+    The user-global canonical root is NOT auto-repaired on a normal run (see
+    ``SkillManager.check_skills_for_updates``); this helper prints the
+    remediation hint on the same non-DEBUG channel as the project-scope hint.
     """
     display = resolve_active_display(None, make_display_context())
     display.emit_warning(
@@ -641,17 +633,17 @@ def _sync_shipped_skills_on_pipeline_run(
     workspace_root: Path | None = None,
     *,
     keep_run_id: str | None = None,
+    retention_max_age_seconds: float | None = None,
 ) -> None:
+    """Sync skills, then run the best-effort run-start retention sweep."""
     target_root = workspace_root or Path.cwd()
     update_available = False
     try:
         update_available = SkillManager().check_skills_for_updates()
     except Exception as exc:  # user-global check is best-effort; must not break the pipeline
-        # Non-fatal: surface as a visible warning so a broken user-global
-        # skill root (read-only $XDG_CONFIG_HOME, corrupted JSON, missing
-        # index) is not silently swallowed at default log level. The run
-        # continues; the operator can repair via
-        # ``ralph --force-init-skills``.
+        # Non-fatal, but never silently swallowed: a broken user-global skill
+        # root (read-only $XDG_CONFIG_HOME, corrupted JSON, missing index)
+        # is repairable via ``ralph --force-init-skills``.
         _emit_setup_warning(
             f"User-global skill update check failed (non-fatal): {exc}. "
             "Run `ralph --force-init-skills` to repair, or "
@@ -680,14 +672,12 @@ def _sync_shipped_skills_on_pipeline_run(
         auto_seed_default_git_exclude(target_root)
     except Exception as exc:  # gitignore / git exclude auto-seed is best-effort
         _emit_setup_warning(
-            f"Project .gitignore/.git/info/exclude auto-seed failed "
-            f"(non-fatal): {exc}. Re-run `ralph` or check file permissions "
-            "on .gitignore and .git/info/exclude.",
+            f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. "
+            "Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude.",
         )
     # Deterministic skill-update auto-commit (wt-025): runs AFTER the
     # project-scope install AND the gitignore/exclude auto-seed so the
     # auto-commit diff is purely skill content (no gitignore noise).
-    # Lazy-imported to avoid coupling this module to git at import time.
     try:
         from ralph.git.operations import create_commit
         from ralph.skills._auto_commit import commit_skill_updates
@@ -696,12 +686,9 @@ def _sync_shipped_skills_on_pipeline_run(
         if sha:
             logger.info("Auto-committed skill updates: {}", sha[:8])
     except Exception as exc:  # auto-commit is best-effort; never break the pipeline
-        # The literal ``Skill auto-commit failed (non-fatal): {}`` is
-        # required by ``ralph.testing.audit_skill_auto_commit`` (plan
-        # step 12) to pin the failure-path contract -- a refactor that
-        # silently drops the handler is caught at audit time. It's
-        # emitted at debug level so the operator still sees a visible
-        # warning via ``_emit_setup_warning`` below.
+        # The literal ``Skill auto-commit failed (non-fatal): {}`` is pinned by
+        # ``ralph.testing.audit_skill_auto_commit`` (plan step 12) so a refactor
+        # that silently drops this handler is caught at audit time.
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
         _emit_setup_warning(
             f"Skill auto-commit failed (non-fatal): {exc}. The run "
@@ -710,14 +697,40 @@ def _sync_shipped_skills_on_pipeline_run(
         )
     # RFC-013 P2: run-start retention sweep deletes aged bookkeeping
     # under ``.agent`` so multi-instance runs don't accumulate state.
-    # Best-effort: any error is swallowed so the pipeline always proceeds.
+    _run_start_retention_sweep(
+        target_root,
+        keep_run_id=keep_run_id,
+        retention_max_age_seconds=retention_max_age_seconds,
+    )
+
+
+def _run_start_retention_sweep(
+    target_root: Path,
+    *,
+    keep_run_id: str | None,
+    retention_max_age_seconds: float | None,
+) -> None:
+    """Delete aged ``.agent`` bookkeeping, then register the active run lease.
+
+    Best-effort: any error is swallowed so the pipeline always proceeds. The
+    operator's validated ``[general] retention_max_age_days`` preference is
+    honored; ``None`` keeps the sweep's built-in default.
+    """
     try:
         from ralph.workspace.agent_dir_retention import (
+            DEFAULT_MAX_AGE_SECONDS,
             process_retention_coordinator,
             sweep_agent_dir,
         )
 
-        removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id, coordinator=process_retention_coordinator())
+        if retention_max_age_seconds is None:
+            retention_max_age_seconds = DEFAULT_MAX_AGE_SECONDS
+        removed = sweep_agent_dir(
+            target_root,
+            keep_run_id=keep_run_id,
+            max_age_seconds=retention_max_age_seconds,
+            coordinator=process_retention_coordinator(),
+        )
         if removed:
             logger.debug("Retention sweep removed {} stale .agent entries", removed)
     except Exception as exc:  # sweep is best-effort; never break the pipeline
@@ -870,7 +883,8 @@ def run_pipeline(
             pro_hooks=effective_request.pro_hooks,
         )
 
-    # Phase 1: Load configuration
+    # Phase 1: Load configuration, then run preflight validation (before any
+    # pipeline activity)
     load_result = _load_configuration(
         effective_request.config_path,
         effective_request.cli_overrides or {},
@@ -879,8 +893,6 @@ def run_pipeline(
     )
     if isinstance(load_result, int):
         return load_result
-
-    # Phase 2: Preflight validation (before any pipeline activity)
     preflight_result = _run_preflight_checks(
         _PreflightRequest(
             config=load_result.config,
@@ -898,16 +910,10 @@ def run_pipeline(
 
     # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
-        # RFC-013 P2: thread a canonical run identifier into the retention
-        # sweep so the 7-day sweep honors the "always keeps the current run"
-        # contract. The id is generated once in ``_load_configuration``
-        # (stored on ``_LoadResult.run_id``) and threaded through the
-        # pipeline so receipts, completion sentinels, and the retention
-        # sweep share a single identity.
-        sweep_keep_run_id = load_result.run_id
         _sync_shipped_skills_on_pipeline_run(
             workspace_root=load_result.workspace_scope.root,
-            keep_run_id=sweep_keep_run_id,
+            keep_run_id=load_result.run_id,
+            retention_max_age_seconds=load_result.config.general.retention_max_age_days * 86400.0,
         )
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
 
@@ -918,10 +924,8 @@ def run_pipeline(
     # POLICY NEVER BLOCKS THE RUN. The orchestrator is a fault boundary that
     # swallows every failure -- including its own bugs -- and returns
     # _EXIT_SUCCESS, so a policy problem cannot cost the user their development
-    # run. The ONLY non-zero it can return is for an --*-only mode, which has no
-    # development run to proceed to. That is what this branch checks: we return
-    # early because the user asked for policy work ONLY, not because policy
-    # failed.
+    # run. The ONLY non-zero it can return is for an --*-only mode, which has
+    # no development run to proceed to. That is what this branch checks.
     active_display: ParallelDisplay | None = None
     if load_result.workspace_scope is not None:
         active_display = resolve_active_display(None, ctx)
@@ -935,29 +939,26 @@ def run_pipeline(
         if effective_request.policy_mode.exits_after():
             active_display.stop()
             return policy_readiness_result
-        # Defence in depth: a normal run continues regardless of what the
-        # preflight returned. Nothing about policy may abort the pipeline.
         if policy_readiness_result != _EXIT_SUCCESS:
             logger.warning(
                 "project-policy preflight returned {}; continuing the run anyway",
                 policy_readiness_result,
             )
 
-    # Phase 3: Handle dry-run
-    if effective_request.dry_run:
-        if active_display is not None:
-            active_display.stop()
-        print_dry_run(
-            load_result.initial_state,
-            load_result.config,
-            load_result.policy_bundle,
-            display_context=ctx,
-        )
-        _unregister_active_run(load_result)
-        return _EXIT_SUCCESS
-
-    # Phase 4: Execute pipeline
+    # Phase 3/4: dry-run, then execute the pipeline; every exit path releases
+    # the active-run lease (AC-9) so a later sweep may reclaim this run's
+    # aged bookkeeping.
     try:
+        if effective_request.dry_run:
+            if active_display is not None:
+                active_display.stop()
+            print_dry_run(
+                load_result.initial_state,
+                load_result.config,
+                load_result.policy_bundle,
+                display_context=ctx,
+            )
+            return _EXIT_SUCCESS
         with ExitStack() as _stack:
             _maybe_enter_process_view(_stack)
             return _execute_pipeline(
@@ -978,8 +979,6 @@ def run_pipeline(
                 display_is_active=active_display is not None,
             )
     finally:
-        # AC-9: release the active-run lease on every pipeline exit path so
-        # a later sweep may reclaim this run's aged bookkeeping.
         _unregister_active_run(load_result)
 
 

@@ -127,6 +127,7 @@ commit = "commit"
 # max_backoff_ms = 60000                # Change only when a provider needs a different maximum retry wait.
 # max_cycles = 3                        # Raise only for work that needs more fallback cycles.
 # execution_history_limit = 1000        # Leave alone unless a long project run needs more retained history.
+# retention_max_age_days = 7.0          # Stricter/looser retention for THIS project: aged Ralph-managed bookkeeping, receipts, scratch, and logs older than this many days are reclaimed at run start (active runs always protected). Must be > 0 and <= 3650; invalid values are rejected at config load.
 
 # [general.workflow] -- Workflow automation flags
 

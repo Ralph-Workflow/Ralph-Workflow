@@ -150,6 +150,7 @@ commit = "commit"
 # max_backoff_ms = 60000                # Change only when your provider needs a different maximum retry wait.
 # max_cycles = 3                        # Raise only for work that legitimately needs more agent fallback cycles.
 # execution_history_limit = 1000        # Leave this alone unless a long run needs more retained history.
+# retention_max_age_days = 7.0          # Stricter/looser Ralph-managed retention: aged run bookkeeping, receipts, scratch, Codex homes, session files, state.db rows, and operational logs older than this are reclaimed at run start and by cleanup planning (active runs are always protected). Lower for stricter retention; must be > 0 and <= 3650, invalid values are rejected at config load.
 # agent_idle_timeout_seconds = 300.0    # max idle seconds before killing a stalled agent process (>0)
 # agent_no_output_at_start_seconds = 120.0  # initial-output grace for a completely silent agent (>0); lower or raise this for provider startup latency while keeping bounded hang detection.
 # agent_idle_max_waiting_on_child_seconds = 1800.0  # hard ceiling on cumulative WAITING_ON_CHILD deferral (>0)

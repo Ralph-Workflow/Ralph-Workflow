@@ -51,7 +51,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | Area | Consumer / owner | Scope and lifecycle | Exclusions or retention | Failure behavior and user value |
 |---|---|---|---|---|
 | Project content | `FsWorkspace` | Caller-scoped reads and idempotent writes | Workspace root validation; unchanged content skips publication | Preserves user bytes; callers receive the underlying operation failure. |
-| Workflow records | `.agent` artifact/state owners | Per run; `sweep_agent_dir` protects the active run | Aged receipts, sentinels, scratch, session metadata, and DB rows are swept after seven days | Best-effort cleanup preserves active recovery data. |
+| Workflow records | `.agent` artifact/state owners | Per run; `sweep_agent_dir` protects the active run | Aged receipts, sentinels, scratch, session metadata, and DB rows are swept after seven days (configurable via `[general] retention_max_age_days`; impossible values are rejected at config load) | Best-effort cleanup preserves active recovery data. |
 | Workspace intelligence | `ExploreStore` | Workspace-scoped SQLite index; single reindex writer | `.agent/ralph-explore/` is disposable; jobs and tombstones have age/count caps | Last committed generation remains usable when refresh fails. |
 | Operational records | log/raw writers | Buffered per run | Existing bounded sink/overflow policies | Buffered visibility and completion flush preserve diagnostics. |
 | Temporary data | `.agent/tmp` retry/Codex homes | Active run only; recovery/startup sweep | Age-based removal; active run excluded | Best-effort cleanup removes interrupted work without affecting project content. |

@@ -130,6 +130,21 @@ class GeneralConfig(RalphBaseModel):
     max_backoff_ms: int = Field(default=60000, ge=0)
     max_cycles: int = Field(default=3, ge=1)
     execution_history_limit: int = Field(default=1000, ge=1)
+    retention_max_age_days: float = Field(
+        default=7.0,
+        gt=0.0,
+        le=3650.0,
+        description=(
+            "Maximum age in days for Ralph-managed retention data (aged run"
+            " bookkeeping, receipt directories, retry scratch, Codex homes, MCP"
+            " session files, state.db rows, and operational logs). The run-start"
+            " sweep and cleanup planning remove entries older than this bound"
+            " while always protecting active and explicitly retained runs."
+            " Lower the value for stricter retention; raise it to keep history"
+            " longer. Values must be > 0 and <= 3650 days; anything else is"
+            " rejected at config-load time with a field-name error."
+        ),
+    )
     auto_integrate_enabled: bool = Field(
         default=True,
         description="Enable local auto-integration at pipeline seams.",
