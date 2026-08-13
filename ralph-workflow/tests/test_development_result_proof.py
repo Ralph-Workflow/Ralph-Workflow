@@ -109,7 +109,7 @@ status: request_changes
 - [SUM-1] Issues found.
 
 ## What Came Up Short
-- [DA-001] Plan-level: Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.
+- [DA-001] Plan-level: Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py. Remaining work: add the missing edge-case test.
 
 ## Criterion Verdicts
 - [DA-001] Criterion: edge-case coverage exists. Expected observation: the focused test covers the edge case. Verdict: not met. Evidence: no matching test. Location: tests/test_main.py.

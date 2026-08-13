@@ -15,6 +15,7 @@ from ralph.policy.models._loop_counter_config import LoopCounterConfig
 from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
 from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
 from ralph.policy.models._phase_definition import PhaseDefinition
+from ralph.policy.models._phase_invocation_gate import PhaseInvocationGate
 from ralph.policy.models._phase_loop_policy import PhaseLoopPolicy
 from ralph.policy.models._phase_parallelization import PhaseParallelization
 from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
@@ -47,6 +48,7 @@ __all__ = [
     "PhaseCommitPolicy",
     "PhaseDecisionRoute",
     "PhaseDefinition",
+    "PhaseInvocationGate",
     "PhaseLoopPolicy",
     "PhaseParallelization",
     "PhaseRetryPolicy",

@@ -29,7 +29,7 @@ Do not reject a correct implementation only because an inaccurate plan step chan
 Choose the outcome from fresh evidence, not the developer's status:
 
 - `completed`: every unchanged request criterion is met and no necessary plan work remains.
-- `request_changes`: localized unmet work is actionable in this development cycle.
+- `request_changes`: localized unmet work is actionable. Each finding must include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
 `failed` closes this cycle and is terminal instead of returning impossible work to development. Policy preserves and commits the cycle, then starts fresh planning when global cycle budget remains.
@@ -44,7 +44,7 @@ status: request_changes
 - [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add a parametrized oversized-index test case to tests/test_foo.py.
 
 ## Criterion Verdicts
 - [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.

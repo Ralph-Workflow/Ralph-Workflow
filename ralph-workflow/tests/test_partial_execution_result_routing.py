@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
+from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.events import AnalysisDecisionEvent, Event, ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
@@ -84,6 +86,26 @@ def _advance_to_commit(state: PipelineState, policy: PipelinePolicy) -> Pipeline
     return cleanup_state
 
 
+def _dev_timing(seconds: float) -> PhaseTimingRecord:
+    """Create a development phase timing record with the given elapsed seconds."""
+    return PhaseTimingRecord(
+        phase="development",
+        iteration=0,
+        started_at=0.0,
+        elapsed=timedelta(seconds=seconds),
+        elapsed_seconds=int(seconds),
+    )
+
+
+def _state_with_dev_time(seconds: float, **kwargs: object) -> PipelineState:
+    """Create a development-phase state with a single timing record."""
+    return PipelineState(
+        phase="development",
+        phase_timings=(_dev_timing(seconds),),
+        **kwargs,
+    )
+
+
 def test_partial_result_commits_then_returns_to_same_execution_phase_in_new_session() -> None:
     policy = _custom_policy(result_status_post_commit={"partial": "builder"})
     state = PipelineState(phase="builder", last_agent_session_id="session-1")
@@ -146,26 +168,27 @@ def test_result_status_post_commit_target_must_reference_known_phase() -> None:
 
 def test_default_policy_routes_every_development_result_to_analysis_after_commit() -> None:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
 
-    development = load_policy(defaults_dir).pipeline.phases["development"]
-
+    development = policy.phases["development"]
     assert development.result_status_post_commit == {}
 
     for status in ("completed", "partial", "failed"):
+        state = _state_with_dev_time(900.0)
         cleanup_state, _ = reducer_reduce(
-            PipelineState(phase="development"),
+            state,
             _execution_result_event("development", status),
-            load_policy(defaults_dir).pipeline,
+            policy,
         )
         commit_state, _ = reducer_reduce(
             cleanup_state,
             PipelineEvent.AGENT_SUCCESS,
-            load_policy(defaults_dir).pipeline,
+            policy,
         )
         analysis_state, _ = reducer_reduce(
             commit_state,
             PipelineEvent.COMMIT_SUCCESS,
-            load_policy(defaults_dir).pipeline,
+            policy,
         )
         assert analysis_state.phase == "development_analysis"
         assert cleanup_state.phase == "development_commit_cleanup"
@@ -223,18 +246,20 @@ def test_failed_cycle_commits_then_replans_only_while_budget_remains(
 def test_development_result_regression_every_terminal_result_consumes_one_analysis_cycle(
     status: str,
 ) -> None:
-    """S-1: terminal development results advance the declared analysis counter once."""
+    """S-1: terminal development results charge analysis at the post-commit seam, not before."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
 
     next_state, _ = reducer_reduce(
-        PipelineState(phase="development"),
+        _state_with_dev_time(900.0),
         _execution_result_event("development", status),
         policy,
     )
 
     assert next_state.phase == "development_commit_cleanup"
-    assert next_state.get_loop_iteration("development_analysis_iteration") == 1
+    # The analysis counter is NOT charged at execution-result time;
+    # it is charged at the post-commit seam when analysis is entered.
+    assert next_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
 def test_development_result_regression_analysis_loopback_does_not_double_charge_cycle() -> None:
@@ -243,7 +268,7 @@ def test_development_result_regression_analysis_loopback_does_not_double_charge_
     policy = load_policy(defaults_dir).pipeline
 
     cleanup_state, _ = reducer_reduce(
-        PipelineState(phase="development"),
+        _state_with_dev_time(900.0),
         _execution_result_event("development", "completed"),
         policy,
     )
@@ -254,3 +279,153 @@ def test_development_result_regression_analysis_loopback_does_not_double_charge_
     assert analysis_state.phase == "development_analysis"
     assert next_state.phase == "development"
     assert next_state.get_loop_iteration("development_analysis_iteration") == 1
+
+
+@pytest.mark.parametrize(
+    ("seconds", "enters_analysis"),
+    [(0.0, False), (899.9, False), (900.0, True), (900.1, True), (1200.0, True)],
+)
+def test_invocation_gate_threshold_controls_analysis_entry(
+    seconds: float,
+    enters_analysis: bool,
+) -> None:
+    """S-1: cumulative unrounded dev time at or above 900.0s enters analysis."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    state = _state_with_dev_time(seconds)
+    cleanup_state, _ = reducer_reduce(
+        state, _execution_result_event("development", "completed"), policy
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    if enters_analysis:
+        assert next_state.phase == "development_analysis"
+        assert next_state.get_loop_iteration("development_analysis_iteration") == 1
+    else:
+        assert next_state.phase == "development_final_commit_cleanup"
+        assert next_state.pending_cycle_outcome == "completed"
+        assert next_state.get_loop_iteration("development_analysis_iteration") == 0
+
+
+def test_invocation_gate_fractional_records_straddle_threshold() -> None:
+    """S-1: split fractional records totaling 899.9 skip; 900.0 enter analysis."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    for total, enters in [(899.9, False), (900.0, True)]:
+        half = total / 2
+        timings = (_dev_timing(half), _dev_timing(half))
+        state = PipelineState(phase="development", phase_timings=timings)
+        cleanup_state, _ = reducer_reduce(
+            state, _execution_result_event("development", "completed"), policy
+        )
+        commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+        next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+        if enters:
+            assert next_state.phase == "development_analysis"
+        else:
+            assert next_state.phase == "development_final_commit_cleanup"
+
+
+def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
+    """S-1: when analysis is skipped by the gate, the completed cycle outcome is set."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    state = _state_with_dev_time(100.0)
+    cleanup_state, _ = reducer_reduce(
+        state, _execution_result_event("development", "completed"), policy
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.pending_cycle_outcome == "completed"
+
+
+def test_session_ceiling_partial_result_commits_before_analysis() -> None:
+    """S-1: a session-ceiling partial result commits before any analysis route."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    state = _state_with_dev_time(100.0, last_agent_session_id="session-1")
+    cleanup_state, _ = reducer_reduce(
+        state, _execution_result_event("development", "partial"), policy
+    )
+    # The partial result routes to commit cleanup, not analysis
+    assert cleanup_state.phase == "development_commit_cleanup"
+
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert commit_state.phase == "development_commit"
+
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+    # Below the threshold, analysis is skipped and the cycle goes to final commit cleanup
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.pending_cycle_outcome == "completed"
+
+
+def test_failed_analysis_replans_while_budget_remains() -> None:
+    """S-1: failed analyzer decision replans to planning only when outer budget remains."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    for completed_cycles, expected_phase in [(0, "planning"), (1, "failed_terminal")]:
+        state = PipelineState(
+            phase="development_analysis",
+            budget_caps={"iteration": 2},
+            outer_progress={"iteration": completed_cycles},
+        )
+        cleanup_state, _ = reducer_reduce(
+            state,
+            AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
+            policy,
+        )
+        commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+        next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+        assert next_state.phase == expected_phase
+        assert next_state.get_outer_progress("iteration") == completed_cycles + 1
+
+
+def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
+    """S-1: earlier cycle timings cannot make a short later cycle eligible for analysis."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    # Simulate a state at development_final_commit with one prior cycle's timing (900s)
+    # plus the current cycle's short timing (10s).
+    old_timing = _dev_timing(900.0)
+    new_timing = _dev_timing(10.0)
+    state = PipelineState(
+        phase="development_final_commit",
+        phase_timings=(old_timing, new_timing),
+        cycle_timing_start_index=1,  # current cycle starts at index 1
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 0},
+        pending_cycle_outcome="completed",
+    )
+
+    commit_state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    # The lifecycle commit should advance to planning (budget remaining)
+    # and reset cycle_timing_start_index so the old 900s record is excluded.
+    assert commit_state.phase == "planning"
+    assert commit_state.cycle_timing_start_index == 2  # len(phase_timings)
+
+    # Now if the next development cycle is short, it should NOT enter analysis
+    # because only the new cycle's 10s is counted.
+    next_dev_state = PipelineState(
+        phase="development",
+        phase_timings=(old_timing, new_timing, _dev_timing(10.0)),
+        cycle_timing_start_index=2,
+    )
+    cleanup_state, _ = reducer_reduce(
+        next_dev_state, _execution_result_event("development", "completed"), policy
+    )
+    commit_state2, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state2, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert next_state.phase == "development_final_commit_cleanup"

@@ -233,21 +233,31 @@ def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
     The auto profile caps the shard count at ``available_cores - 1``,
-    bounded by ``_MAX_PYTEST_WORKERS = 32``. The maintained 32-core
-    CI profile uses 31 shards * 1 plain-pytest worker = 31 parallel
-    pytest workers and keeps the slowest shard well under 40 s.
-    Smaller hosts (fewer cores) get a smaller shard count, but every
-    host reserves one core for the runner process and the per-shard
-    drain / SIGCHLD cleanup loop. The Makefile comment recommends
-    ``PYTEST_WORKERS=24 make test`` on the 32-core CI profile as the
-    legacy 24-shard cap; the runtime default above is the same value
-    for 32-core hosts and is the source of truth for ``make test``.
+    bounded by ``_MAX_PYTEST_WORKERS = 32``. Explicit overrides are capped
+    at ``available_cores - 2``: one core for the parent process (shard
+    polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
+    Makefile default ``PYTEST_WORKERS=12`` is set for the maintained
+    32-core CI profile and is preserved unchanged on hosts with 14+ cores;
+    on smaller hosts it is capped down so the slowest shard stays well
+    under the verify step timeout even under system load.
+    Empirically, ``cores - 1`` shards on a 12-core host produces a
+    slowest-shard wall clock of 38-54 s (33 % failure rate against the
+    50 s step timeout), while ``cores - 2`` shards produces 30-39 s
+    (consistent pass). The extra reserved core absorbs the background
+    I/O and scheduler overhead that the original 32-core profile did
+    not account for.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
-    if raw != "auto":
-        return raw
     available_cores = os.cpu_count() or 2
-    return str(max(1, min(_MAX_PYTEST_WORKERS, available_cores - 1)))
+    auto_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 1))
+    if raw == "auto":
+        return str(auto_max)
+    try:
+        requested = int(raw)
+    except ValueError:
+        return raw
+    explicit_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 2))
+    return str(max(1, min(requested, explicit_max)))
 
 
 def _xdist_workers_per_shard() -> str:

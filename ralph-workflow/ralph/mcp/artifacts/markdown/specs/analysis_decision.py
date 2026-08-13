@@ -12,7 +12,10 @@ from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_analysis_decision_content
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
+    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _ANALYSIS_TYPES = (
     "planning_analysis_decision",
@@ -26,8 +29,20 @@ _FINDING_TARGET_PATTERN = re.compile(r"(?:Step:\s*)?\[(S-[1-9][0-9]*)\]|Plan-lev
 _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
 _REQUIRED_VERDICT_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
+
+
+def _extract_verdict(text: str) -> str | None:
+    """Extract the lowercased verdict from a finding/verdict line, or ``None``."""
+    match = _VERDICT_PATTERN.search(text)
+    if match is None:
+        return None
+    value = match.group(1)
+    return value.casefold() if isinstance(value, str) else None
 _EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
 _LOCATION_PATTERN = re.compile(r"Location:\s*(.*?)\s*$", re.IGNORECASE)
+_REMAINING_WORK_PATTERN = re.compile(r"Remaining work:\s*(.+)", re.IGNORECASE)
+_PLAN_REFERENCE_PATTERN = re.compile(r"Plan reference:\s*\[S-[1-9][0-9]*\]", re.IGNORECASE)
+_PLACEHOLDER_LOCATIONS = frozenset({"unknown", "n/a", "none", "tbd", "not provided", ""})
 _VERIFICATION_ID_PATTERNS = {
     "planning_analysis_decision": re.compile(r"PA-[0-9]+"),
     "development_analysis_decision": re.compile(r"DA-[0-9]+"),
@@ -194,6 +209,52 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
     return diagnostics
 
 
+def _validate_request_changes_predicate(
+    what_items: Sequence[ParsedItem],
+) -> list[Diagnostic]:
+    """Validate that request_changes findings carry actionable remaining work."""
+    diagnostics: list[Diagnostic] = []
+    has_criterion_or_plan_ref = False
+    # Location in What Came Up Short may be followed by Remaining work:, so
+    # stop the capture there rather than consuming the rest of the line.
+    loc_re = re.compile(r"Location:\s*(.*?)(?=\s*Remaining work:|$)", re.IGNORECASE)
+    for item in what_items:
+        remaining_match = _REMAINING_WORK_PATTERN.search(item.text)
+        if remaining_match is None:
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "What Came Up Short",
+                    "ANALYSIS015",
+                    "request_changes finding must include a non-empty 'Remaining work:' statement",
+                )
+            )
+        loc_match = loc_re.search(item.text)
+        if loc_match is not None:
+            location = str(loc_match.group(1)).strip().rstrip(".").casefold()
+            if location in _PLACEHOLDER_LOCATIONS:
+                diagnostics.append(
+                    _validation_diagnostic(
+                        item.line,
+                        "What Came Up Short",
+                        "ANALYSIS016",
+                        "request_changes finding Location: must be a concrete repository path, not a placeholder",
+                    )
+                )
+        if "Criterion:" in item.text or _PLAN_REFERENCE_PATTERN.search(item.text):
+            has_criterion_or_plan_ref = True
+    if what_items and not has_criterion_or_plan_ref:
+        diagnostics.append(
+            _validation_diagnostic(
+                what_items[0].line,
+                "What Came Up Short",
+                "ANALYSIS017",
+                "request_changes requires at least one finding identifying 'Criterion:' or 'Plan reference: [S-n]'",
+            )
+        )
+    return diagnostics
+
+
 def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
     artifact_type = document.frontmatter["type"]
     status = document.frontmatter["status"]
@@ -311,6 +372,22 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
             if all(field in item.text for field in _REQUIRED_VERDICT_FIELDS)
             and item.identifier not in verdict_by_id
         )
+        shortfall_item_by_id = {item.identifier: item for item in what_items}
+        diagnostics.extend(
+            _validation_diagnostic(
+                shortfall_item_by_id[v_item.identifier].line,
+                "What Came Up Short",
+                "ANALYSIS018",
+                "a What Came Up Short item's Verdict must match its mirrored Criterion Verdict",
+            )
+            for v_item in verdict_items
+            if v_item.identifier in shortfall_item_by_id
+            and _extract_verdict(v_item.text) is not None
+            and _extract_verdict(shortfall_item_by_id[v_item.identifier].text) is not None
+            and _extract_verdict(v_item.text) != _extract_verdict(shortfall_item_by_id[v_item.identifier].text)
+        )
+        if artifact_type == "development_analysis_decision" and status == "request_changes":
+            diagnostics.extend(_validate_request_changes_predicate(what_items))
         return diagnostics
     if artifact_type != "review_analysis_decision":
         return diagnostics

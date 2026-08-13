@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -9,6 +10,7 @@ import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -67,6 +69,15 @@ def _make_initial_state() -> PipelineState:
         },
         rebase=RebaseState(),
         commit=CommitState(),
+        phase_timings=[
+            PhaseTimingRecord(
+                phase="development",
+                iteration=0,
+                started_at=0.0,
+                elapsed=timedelta(seconds=900),
+                elapsed_seconds=900,
+            ),
+        ],
     )
 
 

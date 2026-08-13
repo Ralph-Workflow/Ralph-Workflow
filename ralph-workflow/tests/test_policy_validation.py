@@ -76,6 +76,7 @@ from ralph.policy.models import (
     PhaseCommitPolicy,
     PhaseDecisionRoute,
     PhaseDefinition,
+    PhaseInvocationGate,
     PhaseLoopPolicy,
     PhaseParallelization,
     PhaseTransition,
@@ -3407,4 +3408,90 @@ class TestValidateWorkUnitsAgainstPolicy:
 
         with pytest.raises(PolicyValidationError, match="does not declare parallelization"):
             validate_work_units_against_policy(work_units, pipeline, phase="planning")
+
+
+# === consolidated from invocation_gate success-path validation (DA-006) ===
+class TestInvocationGateSuccessPath:
+    """DA-006: invocation_gate must validate success-path reachability."""
+
+    def _bundle(self, *, builder_on_success: str) -> PolicyBundle:
+        agents = AgentsPolicy(
+            agent_chains={"chain": AgentChainConfig(agents=["claude"])},
+            agent_drains={"drain": AgentDrainConfig(chain="chain")},
+        )
+        pipeline = PipelinePolicy(
+            entry_phase="builder",
+            terminal_phase="done",
+            phases={
+                "builder": PhaseDefinition(
+                    drain="drain",
+                    role="execution",
+                    transitions=PhaseTransition(
+                        on_success=builder_on_success,
+                        on_failure="failed_terminal",
+                    ),
+                ),
+                "inspector": PhaseDefinition(
+                    drain="drain",
+                    role="analysis",
+                    transitions=PhaseTransition(
+                        on_success="done", on_loopback="builder"
+                    ),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="inspector_iteration"
+                    ),
+                    decisions={
+                        "completed": PhaseDecisionRoute(target="done"),
+                        "request_changes": PhaseDecisionRoute(target="builder"),
+                        "failed": PhaseDecisionRoute(target="failed_terminal"),
+                    },
+                    invocation_gate=PhaseInvocationGate(
+                        upstream_execution_phase="builder",
+                        minimum_elapsed_seconds=900.0,
+                    ),
+                ),
+                "done": PhaseDefinition(
+                    drain="done",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="failed_terminal",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
+                ),
+            },
+            loop_counters={
+                "inspector_iteration": LoopCounterConfig(default_max=3),
+            },
+            recovery=RecoveryPolicy(failed_route="failed_terminal"),
+        )
+        return PolicyBundle(
+            agents=agents,
+            pipeline=pipeline,
+            artifacts=ArtifactsPolicy(
+                artifacts={
+                    "inspector_decision": ArtifactContract(
+                        drain="drain",
+                        artifact_type="development_analysis_decision",
+                        decision_vocabulary=["completed", "request_changes", "failed"],
+                    ),
+                }
+            ),
+        )
+
+    def test_gate_rejects_upstream_not_on_success_path(self) -> None:
+        """Builder's on_success goes to done, not inspector — gate must reject."""
+        bundle = self._bundle(builder_on_success="done")
+        with pytest.raises(
+            PolicyValidationError, match="must reach .* via on_success"
+        ):
+            validate_policy_completeness(bundle)
+
+    def test_gate_accepts_upstream_on_success_path(self) -> None:
+        """Builder's on_success goes to inspector — gate accepts."""
+        bundle = self._bundle(builder_on_success="inspector")
+        validate_policy_completeness(bundle)  # must not raise
 

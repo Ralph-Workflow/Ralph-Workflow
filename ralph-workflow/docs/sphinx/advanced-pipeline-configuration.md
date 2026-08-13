@@ -173,6 +173,51 @@ target = "development"
 reset_loop = false
 ```
 
+### `[phases.<name>.invocation_gate]`
+
+An optional gate on an analysis phase that delays analysis until the upstream
+execution phase has accumulated enough wall-clock time in the current outer
+cycle. The bundled `development_analysis` phase ships one:
+
+```toml
+[phases.development_analysis.invocation_gate]
+upstream_execution_phase = "development"
+minimum_elapsed_seconds = 900.0
+```
+
+| Key | Description |
+|-----|-------------|
+| `upstream_execution_phase` | Name of the execution phase whose cumulative timing is measured. Must have `role = "execution"` and match the phase reached by following this analysis phase's success and loopback transitions. |
+| `minimum_elapsed_seconds` | Cumulative elapsed seconds at or above which analysis runs. Below it the committed result skips to the analysis phase's policy-declared success route without consuming an analysis cycle. |
+
+The gate sums the **unrounded** `elapsed.total_seconds()` values from all
+`upstream_execution_phase` timing records in the current outer development
+cycle — not the separately truncated `elapsed_seconds` display field.
+Fractional totals that straddle the threshold (for example, 899.9 vs 900.1)
+are resolved correctly. The cycle-start marker resets at each outer lifecycle
+commit so a short later cycle cannot borrow time from an earlier one.
+
+Omitting `invocation_gate` preserves the existing behavior: every committed
+development result enters analysis immediately.
+
+### Analysis decision outcomes
+
+When the gate admits a development result, the analysis agent produces a
+decision artifact with one of three statuses. The pipeline routes each status
+through the phase's `decisions` table:
+
+- **`completed`** — all criterion verdicts are `met`; the result advances to
+  the success route.
+- **`request_changes`** — actionable development work remains. Every finding
+  must include a `Remaining work:` statement naming the executable change, a
+  concrete repository `Location:` (path, optionally with line/span), and
+  identify either `Criterion:` or `Plan reference: [S-n]`. Placeholder
+  locations such as `unknown` or `n/a` are rejected. The result loops back to
+  development.
+- **`failed`** — the analyzer found an impossible, contradictory, or unsafe
+  condition (including `not evaluable` verdicts); the result follows the
+  failure route.
+
 ### `[phases.<name>.commit_policy]`
 
 Commit phases define whether a commit advances budget and resets loops.

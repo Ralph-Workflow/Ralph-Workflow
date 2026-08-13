@@ -35,7 +35,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add a parametrized oversized-index test case to tests/test_foo.py.
 
 ## Criterion Verdicts
 
@@ -51,7 +51,9 @@ status: request_changes
   non-met verdict has a same-ID mirror in `## What Came Up Short`.
 - `## What Came Up Short` is required and non-empty for `request_changes` and
   `failed`; it mirrors localized non-met criterion verdicts and is omitted for
-  `completed`.
+  `completed`. For `request_changes`, each finding must include a non-empty
+  `Remaining work:` statement, a concrete repository `Location:` (not
+  `unknown`/`N/A`/`none`), and identify `Criterion:` or `Plan reference: [S-n]`.
 - `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
   stable finding ID as its closure reference, not a remedy authored by the
   verifier.

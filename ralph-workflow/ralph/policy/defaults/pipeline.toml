@@ -191,6 +191,9 @@ clear_on_fresh_entry = false
 [blocks.development_analysis.phase.transitions]
 on_success = "development_final_commit_cleanup"
 on_loopback = "development"
+[blocks.development_analysis.phase.invocation_gate]
+upstream_execution_phase = "development"
+minimum_elapsed_seconds = 900.0
 [blocks.development_analysis.phase.loop_policy]
 iteration_state_field = "development_analysis_iteration"
 [blocks.development_analysis.phase.decisions.completed]

@@ -33,7 +33,11 @@ def _markdown(artifact_type: str, verdict: str, evidence: str, location: str) ->
         f"- [{prefix}-001] {target}Criterion: behavior holds. Expected observation: focused evidence observes it. "
         f"Verdict: {verdict}. Evidence: {evidence} Location: {location}."
     )
-    shortfall = "" if verdict == "met" else f"\n## What Came Up Short\n\n{verdict_item}\n"
+    if verdict != "met" and artifact_type == "development_analysis_decision":
+        shortfall_item = f"{verdict_item} Remaining work: fix the failing behavior."
+    else:
+        shortfall_item = verdict_item
+    shortfall = "" if verdict == "met" else f"\n## What Came Up Short\n\n{shortfall_item}\n"
     return f"""---
 type: {artifact_type}
 status: {status}

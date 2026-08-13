@@ -69,6 +69,7 @@ def _validate_analysis_phase(
                 f"explicit route in the decisions table."
                 for v in uncovered
             )
+    _validate_invocation_gate(phase_name, phase_def, bundle.pipeline, errors)
 
 
 def _validate_review_phase(
@@ -268,4 +269,64 @@ def _validate_loop_policy_role(
         errors.append(
             f"phases.{phase_name}: loop_policy is only valid for role='analysis' "
             f"or role='commit_cleanup' (got role='{phase_def.role}')"
+        )
+
+
+def _phases_reachable_via_success(
+    policy: PipelinePolicy, start: str
+) -> set[str]:
+    """Collect phases reachable from *start* via ``on_success`` transitions only."""
+    visited: set[str] = set()
+    queue: list[str] = [start]
+    while queue:
+        current = queue.pop()
+        if current in visited or current not in policy.phases:
+            continue
+        visited.add(current)
+        next_phase = policy.phases[current].transitions.on_success
+        if next_phase is not None and next_phase not in visited:
+            queue.append(next_phase)
+    return visited
+
+
+def _validate_invocation_gate(
+    phase_name: str,
+    phase_def: PhaseDefinition,
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate an analysis phase's optional invocation_gate declaration."""
+    gate = phase_def.invocation_gate
+    if gate is None:
+        return
+    upstream = gate.upstream_execution_phase
+    if upstream not in policy.phases:
+        errors.append(
+            f"phases.{phase_name}.invocation_gate.upstream_execution_phase: "
+            f"'{upstream}' is not a declared phase."
+        )
+        return
+    upstream_def = policy.phases[upstream]
+    if upstream_def.role != "execution":
+        errors.append(
+            f"phases.{phase_name}.invocation_gate.upstream_execution_phase: "
+            f"'{upstream}' must have role='execution' (got role='{upstream_def.role}')."
+        )
+    if phase_def.transitions.on_loopback != upstream:
+        errors.append(
+            f"phases.{phase_name}.invocation_gate.upstream_execution_phase: "
+            f"'{upstream}' must match the analysis phase's transitions.on_loopback "
+            f"('{phase_def.transitions.on_loopback}')."
+        )
+    if gate.minimum_elapsed_seconds < 0:
+        errors.append(
+            f"phases.{phase_name}.invocation_gate.minimum_elapsed_seconds: "
+            f"must be non-negative (got {gate.minimum_elapsed_seconds})."
+        )
+    reachable = _phases_reachable_via_success(policy, upstream)
+    if phase_name not in reachable:
+        errors.append(
+            f"phases.{phase_name}.invocation_gate.upstream_execution_phase: "
+            f"'{upstream}' must reach '{phase_name}' via on_success transitions "
+            f"(the policy-defined success path), but no such path exists."
         )

@@ -57,6 +57,7 @@
   "post_commit_phase_override": null,
   "pending_cycle_outcome": null,
   "execution_cycle_charged": false,
+  "cycle_timing_start_index": 0,
   "work_units": [],
   "worker_states": {},
   "phase_timings": [],

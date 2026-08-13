@@ -81,6 +81,37 @@ def test_explicit_worker_count_overrides_the_auto_resolution(
 
 
 @pytest.mark.parametrize(
+    ("cpu_count", "requested", "expected"),
+    (
+        (12, "12", "10"),
+        (12, "32", "10"),
+        (8, "12", "6"),
+        (32, "12", "12"),
+        (4, "3", "2"),
+    ),
+)
+def test_explicit_worker_count_capped_at_cores_minus_two(
+    monkeypatch: pytest.MonkeyPatch,
+    cpu_count: int,
+    requested: str,
+    expected: str,
+) -> None:
+    """Explicit PYTEST_WORKERS is capped at available_cores - 2.
+
+    One core is reserved for the parent process (shard polling, SIGCHLD
+    cleanup) and one for OS / I/O overhead. On a 12-core host the Makefile
+    default ``PYTEST_WORKERS=12`` is capped to 10; on a 32-core CI host
+    12 is preserved unchanged. Empirically, ``cores - 2`` shards produces
+    a consistent 30-39 s slowest-shard wall clock on the 12-core dev host,
+    well under the 50 s verify step timeout.
+    """
+    monkeypatch.setenv("PYTEST_WORKERS", requested)
+    monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
+
+    assert test_suites_module._pytest_workers() == expected
+
+
+@pytest.mark.parametrize(
     ("cpu_count", "shard_count"),
     (
         (None, "1"),

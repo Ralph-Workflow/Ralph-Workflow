@@ -668,7 +668,7 @@ def _handle_execution_result(
         post_commit_phase_override=phase_def.result_status_post_commit.get(event.status)
     )
     new_state, effects = _resolve_or_terminal(routed_state, "success", policy, "execution result")
-    return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), effects
+    return new_state, effects
 
 
 def _handle_analysis_loopback(
@@ -925,6 +925,7 @@ def _handle_commit_success(
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
     except ValueError as exc:
@@ -951,6 +952,7 @@ def _handle_commit_skipped(
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
     except ValueError as exc:
@@ -966,6 +968,43 @@ def _handle_commit_failure(
     """Handle commit failure."""
     failure_reason = commit_failure_reason(state)
     return _enter_failed_recovery(state, failure_reason, policy)
+
+
+def _apply_invocation_gate(
+    state: PipelineState,
+    next_phase: PipelinePhase,
+    policy: PipelinePolicy,
+) -> tuple[PipelinePhase, PipelineState]:
+    """Check an analysis phase's invocation gate and adjust routing accordingly.
+
+    When the next phase is an analysis phase with an ``invocation_gate``, the
+    cumulative unrounded elapsed seconds for the gate's ``upstream_execution_phase``
+    are summed from the current cycle's timing start index. At or above the
+    threshold, analysis is entered and one analysis-loop cycle is charged.
+    Below the threshold, analysis is bypassed: routing continues to the
+    analysis phase's policy-declared success transition, the completed
+    decision's cycle outcome is set, and no analysis count is consumed.
+    """
+    phase_def = policy.phases.get(next_phase)
+    if phase_def is None or phase_def.invocation_gate is None:
+        return next_phase, state
+
+    gate = phase_def.invocation_gate
+    cumulative = progress.cumulative_execution_seconds(state, gate.upstream_execution_phase)
+
+    if cumulative >= gate.minimum_elapsed_seconds:
+        charged = progress.charge_analysis_cycle_for_gate(
+            state, gate.upstream_execution_phase, policy=policy
+        )
+        return next_phase, charged
+
+    # Gate denies entry: skip analysis and route to its success transition.
+    bypass_target = phase_def.transitions.on_success
+    completed_route = phase_def.decisions.get("completed")
+    cycle_outcome = completed_route.cycle_outcome if completed_route is not None else None
+    if cycle_outcome is not None:
+        state = state.copy_with(pending_cycle_outcome=cycle_outcome)
+    return bypass_target, state
 
 
 def _handle_checkpoint_saved(state: PipelineState) -> tuple[PipelineState, list[Effect]]:

@@ -33,7 +33,10 @@ def test_request_changes_requires_a_step_or_plan_level_target() -> None:
 def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> None:
     document = _decision("The implementation omits a required negative test.").replace(
         "planning_analysis_decision", "development_analysis_decision"
-    ).replace("PA-001", "DA-001")
+    ).replace("PA-001", "DA-001").replace(
+        "Location: plan step.\n## Criterion",
+        "Location: src/example.py:1. Remaining work: add the missing negative test.\n## Criterion",
+    )
 
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
 
@@ -201,7 +204,7 @@ status: request_changes
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error")]
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error"), ("ANALYSIS018", "error")]
 
 
 def test_not_evaluable_verdict_requires_failed_status() -> None:
@@ -245,7 +248,7 @@ status: request_changes
 - [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
-- [DA-002] Criterion: another behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:11.
+- [DA-002] Criterion: another behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:11. Remaining work: implement the missing behavior.
 
 ## Criterion Verdicts
 - [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.

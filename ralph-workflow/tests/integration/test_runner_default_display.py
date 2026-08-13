@@ -9,6 +9,7 @@ real pipeline state.
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -20,6 +21,7 @@ import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -107,6 +109,15 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     state = PipelineState(
         phase="planning",
         budget_caps={"iteration": 1, "reviewer_pass": 0},
+        phase_timings=[
+            PhaseTimingRecord(
+                phase="development",
+                iteration=0,
+                started_at=0.0,
+                elapsed=timedelta(seconds=900),
+                elapsed_seconds=900,
+            ),
+        ],
     )
 
     exit_code = runner_module.run(

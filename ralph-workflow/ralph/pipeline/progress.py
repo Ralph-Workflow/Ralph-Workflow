@@ -255,6 +255,46 @@ def apply_execution_cycle_outcome(
     ).copy_with(execution_cycle_charged=True)
 
 
+def charge_analysis_cycle_for_gate(
+    state: PipelineState,
+    execution_phase: str,
+    *,
+    policy: PipelinePolicy,
+) -> PipelineState:
+    """Charge one analysis-loop cycle when the invocation gate admits analysis.
+
+    Uses the gate's declared ``execution_phase`` (rather than the current
+    commit-phase state) to resolve the analysis loop counter.
+    """
+    iteration_field = resolve_execution_cycle_loop_counter(execution_phase, policy)
+    if iteration_field is None:
+        return state
+    return state.with_loop_iteration(
+        iteration_field,
+        AnalysisLoopCounter(
+            state.get_loop_iteration(iteration_field),
+            resolve_analysis_cap(iteration_field, policy),
+        ).next_completed,
+    ).copy_with(execution_cycle_charged=True)
+
+
+def cumulative_execution_seconds(
+    state: PipelineState,
+    execution_phase: str,
+) -> float:
+    """Sum unrounded elapsed seconds for ``execution_phase`` in the current cycle.
+
+    Uses ``elapsed.total_seconds()`` (not the truncated ``elapsed_seconds``)
+    so fractional totals that straddle the threshold are resolved correctly.
+    """
+    start = state.cycle_timing_start_index
+    return sum(
+        record.elapsed.total_seconds()
+        for record in state.phase_timings[start:]
+        if record.phase == execution_phase
+    )
+
+
 def analysis_loopback_is_already_charged(
     phase: str,
     state: PipelineState,
@@ -309,7 +349,8 @@ def _apply_lifecycle_completion_policy(
     counter = lifecycle.increments_counter
     if counter is None or counter == "none":
         return result
-    return result.with_outer_progress(counter, state.get_outer_progress(counter) + 1)
+    result = result.with_outer_progress(counter, state.get_outer_progress(counter) + 1)
+    return result.copy_with(cycle_timing_start_index=len(result.phase_timings))
 
 
 def _apply_commit_outcome_policy_driven(

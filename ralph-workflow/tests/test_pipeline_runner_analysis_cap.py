@@ -5,9 +5,11 @@ These tests verify correction-phase routing at the analysis cap.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
@@ -69,14 +71,23 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         assert new_state.phase == "development"
         assert new_state.get_loop_iteration("development_analysis_iteration") == _DEV_MAX_ANALYSIS
 
-    def test_dev_analysis_commit_preserves_counter_without_incrementing_iteration(self) -> None:
-        """Pre-analysis commit success preserves analysis_iteration and budget."""
+    def test_dev_analysis_commit_routes_to_analysis_with_single_charge(self) -> None:
+        """Post-commit gate admits analysis and charges exactly one analysis cycle."""
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": _DEV_ANALYSIS_BELOW_CAP},
             outer_progress={"iteration": 1},
             budget_caps={"iteration": 3, "reviewer_pass": 2},
+            phase_timings=[
+                PhaseTimingRecord(
+                    phase="development",
+                    iteration=0,
+                    started_at=0.0,
+                    elapsed=timedelta(seconds=900),
+                    elapsed_seconds=900,
+                ),
+            ],
         )
 
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -84,4 +95,4 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         assert new_state.get_outer_progress("iteration") == state.get_outer_progress("iteration")
         assert new_state.get_loop_iteration(
             "development_analysis_iteration"
-        ) == state.get_loop_iteration("development_analysis_iteration")
+        ) == state.get_loop_iteration("development_analysis_iteration") + 1

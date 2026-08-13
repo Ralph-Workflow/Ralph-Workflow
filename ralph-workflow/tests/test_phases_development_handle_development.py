@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import timedelta
 from functools import lru_cache
 from io import StringIO
 from pathlib import Path
@@ -13,6 +14,7 @@ from rich.console import Console
 
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
+from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import ExecutionResultEvent, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -218,8 +220,19 @@ class TestHandleDevelopment:
         )
 
         result = handle_execution_phase(effect, ctx)
+        timing = PhaseTimingRecord(
+            phase="development",
+            iteration=0,
+            started_at=0.0,
+            elapsed=timedelta(seconds=900.0),
+            elapsed_seconds=900,
+        )
         cleanup_state, _ = reducer_reduce(
-            PipelineState(phase="development", last_agent_session_id="session-1"),
+            PipelineState(
+                phase="development",
+                last_agent_session_id="session-1",
+                phase_timings=(timing,),
+            ),
             result[0],
             policy,
         )

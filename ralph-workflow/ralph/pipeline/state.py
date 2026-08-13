@@ -152,6 +152,10 @@ class PipelineState(_FrozenPipelineStateModel):
     post_commit_phase_override: PipelinePhase | None = None
     pending_cycle_outcome: str | None = None
     execution_cycle_charged: bool = False
+    # Index into phase_timings marking the start of the current outer development
+    # cycle. Timing records at or after this index are summed for the analysis
+    # invocation gate. Reset when the lifecycle commit advances to a new cycle.
+    cycle_timing_start_index: int = 0
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)

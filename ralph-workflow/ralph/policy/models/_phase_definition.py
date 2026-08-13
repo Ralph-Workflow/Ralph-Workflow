@@ -9,6 +9,7 @@ from ralph.policy.models._artifact_proof_policy import ArtifactProofPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
 from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
+from ralph.policy.models._phase_invocation_gate import PhaseInvocationGate
 from ralph.policy.models._phase_loop_policy import PhaseLoopPolicy
 from ralph.policy.models._phase_parallelization import PhaseParallelization
 from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
@@ -157,6 +158,16 @@ class PhaseDefinition(_FrozenPolicyModel):
             "the planning phase a distinct color from other execution-role phases. "
             "Available theme keys include theme.phase.planning, theme.phase.development, "
             "theme.phase.development_analysis, theme.phase.commit, and theme.phase.failed."
+        ),
+    )
+    invocation_gate: PhaseInvocationGate | None = Field(
+        default=None,
+        description=(
+            "Optional duration gate for analysis phases. When set, the post-commit "
+            "routing seam sums unrounded elapsed seconds for upstream_execution_phase "
+            "in the current cycle; analysis is invoked only at or above "
+            "minimum_elapsed_seconds, otherwise the analysis phase's success route "
+            "is taken without consuming an analysis-loop cycle."
         ),
     )
 
