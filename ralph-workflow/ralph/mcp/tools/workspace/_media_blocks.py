@@ -374,6 +374,16 @@ def _handle_workspace_media(
     # the optimal inline-or-typed-block path. ``is_error`` is False
     # so the call still surfaces multimodal-shaped content the agent
     # can act on.
+    if verdict.delivery == DeliveryMode.UNSUPPORTED and modality != "image":
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Media file '{path}' ({modality}, {mime_type}) is not supported "
+                    f"for provider '{verdict.provider}': {verdict.reason}"
+                )
+            ],
+            is_error=True,
+        )
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
         warning = _build_warning_block(
             provider=verdict.provider,

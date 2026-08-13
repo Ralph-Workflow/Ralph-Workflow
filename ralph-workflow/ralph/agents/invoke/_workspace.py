@@ -19,7 +19,15 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._has_src_path import _HasSrcPath
-from ralph.workspace._cross_process_watch_lock import CrossProcessWatchLock
+from ralph.workspace._cross_process_watch_lock import (
+    CrossProcessWatchLock,
+    WatchLockIOError,
+)
+from ralph.workspace._shared_awareness import (
+    SharedAwarenessError,
+    remove_shared_awareness_sidecar,
+    shared_awareness_for_workspace,
+)
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
@@ -368,10 +376,13 @@ class WorkspaceMonitor:
                 is logged at DEBUG.
             classifier: Optional ``WorkspaceChangeClassifier`` used to
                 classify each event into a ``WorkspaceChangeKind`` and a
-                binary weight. When omitted (or ``None``), every event
-                is classified as ``OTHER`` with weight ``1.0`` (the legacy
-                behavior: every file change counts as activity). When
-                provided, events with weight ``0.0`` are dropped
+                binary weight. When omitted (or ``None``), a default
+                classifier is used that keeps ``SOURCE`` paths at weight
+                ``1.0`` and drops Ralph-managed internal paths (``.agent``
+                bookkeeping, caches, logs) at weight ``0.0`` so internal
+                activity never recursively triggers workspace awareness
+                (S-2 internal-path exclusion). An explicit classifier
+                overrides this; events with weight ``0.0`` are dropped
                 before ``on_event`` is invoked: the timestamp and
                 counter are NOT updated and the callback is NOT
                 invoked. Events with weight ``1.0`` are passed to the
@@ -402,12 +413,29 @@ class WorkspaceMonitor:
                 )
                 raise ValueError(msg)
         self._on_event: WorkspaceEventCallback | None = on_event
-        self._classifier: WorkspaceChangeClassifier | None = classifier
+        if classifier is None:
+            # S-2: default to the source-only classifier so Ralph-managed
+            # internal paths (``.agent`` bookkeeping, caches, logs) are
+            # dropped on the production observer/sidecar route, which
+            # bypasses any explicit per-lease classifier.
+            from ralph.agents.invoke._workspace_change_classifier import (
+                WorkspaceChangeClassifier,
+                _normalize_workspace_change_weights,
+            )
+
+            classifier = WorkspaceChangeClassifier(
+                weights=_normalize_workspace_change_weights({"source": 1.0})
+            )
+        self._classifier: WorkspaceChangeClassifier = classifier
         self._host_budget = host_budget
         self._directory_counter = directory_counter
         self._live_watch_total = live_watch_total
         self._handler: object | None = None
         self._cross_process_owner_id: str | None = None
+        self._owns_shared_awareness = False
+        self._shared_consumer = False
+        self._prior_lock_holder: str | None = None
+        self._shared_awareness_io_error: SharedAwarenessError | None = None
         self._awareness_status: dict[str, object] = _live_fallback_status("unavailable")
 
     def start(self) -> None:
@@ -558,6 +586,8 @@ class WorkspaceMonitor:
         if weight == 0.0:
             return
         awareness_for_workspace(self._workspace).record(src_path)
+        if self._owns_shared_awareness:
+            self._publish_shared_awareness_change(src_path)
         self._seen_files.pop(src_path, None)
         self._seen_files[src_path] = None
         while len(self._seen_files) > _MAX_WORKSPACE_CHANGED_FILES:
@@ -585,15 +615,35 @@ class WorkspaceMonitor:
     def classify_path(self, src_path: str) -> tuple[WorkspaceChangeKind, float]:
         """Classify a single workspace path via the configured classifier.
 
-        When no classifier is configured, every path is classified as
-        ``OTHER`` with weight ``1.0`` (the legacy behavior: every
-        file change counts as activity). This helper is the
-        canonical seam for tests and dry-run checks that want to
-        inspect the classifier output without recording an event.
+        The monitor's classifier is always set (the constructor installs a
+        default source-only classifier when none is supplied), so this is a
+        direct delegation. This helper is the canonical seam for tests and
+        dry-run checks that want to inspect the classifier output without
+        recording an event.
         """
-        if self._classifier is None:
-            return WorkspaceChangeKind.OTHER, 1.0
         return self._classifier.classify(src_path)
+
+    def _publish_shared_awareness_change(self, src_path: str) -> None:
+        """Publish one observed source change to the cross-process sidecar.
+
+        Owner-only: a sidecar I/O failure is surfaced as explicit
+        ``live_fallback`` (bounded live reconciliation) rather than a
+        duplicate observer or silently dropped change (S-2).
+        """
+        if self._shared_awareness_io_error is not None:
+            self._activate_live_fallback("shared_awareness_io_failed")
+            return
+        sidecar = shared_awareness_for_workspace(self._workspace)
+        try:
+            relative = Path(src_path).absolute().relative_to(self._workspace.absolute())
+        except ValueError:
+            return
+        try:
+            sidecar.publish_changes([relative.as_posix()])
+        except SharedAwarenessError as exc:
+            with suppress(SharedAwarenessError):
+                sidecar.publish_error(str(exc))
+            self._activate_live_fallback("shared_awareness_io_failed")
 
     def stop(self) -> None:
         """Stop monitoring the workspace and release its watch on every exit path.
@@ -603,11 +653,12 @@ class WorkspaceMonitor:
         ownership and suppressing a later required registration; joining still
         runs after a failed ``stop`` before the original failure propagates.
 
-        The cross-process watch lock is released only when the final
-        in-process lease tears down the shared observer, so a non-final
-        lease stopping does not let another process register a duplicate
-        observer while this process's shared watch is still active
-        (S-10 / DA-001 / DA-009).
+        The cross-process watch lock and shared-awareness sidecar ownership
+        are released only when the final in-process lease tears down the
+        shared observer, so a non-final lease stopping does not let another
+        process register a duplicate observer while this process's shared
+        watch is still active (S-10 / DA-001 / DA-009). A consumer lease
+        (no observer of its own) detaches without touching either (S-2).
         """
         if not self._started:
             # S-3: even a monitor that never acquired a watch (watchdog
@@ -637,12 +688,21 @@ class WorkspaceMonitor:
         if observer is not None:
             self._stop_observer(observer)
             release_workspace_awareness(self._workspace)
+            remove_shared_awareness_sidecar(self._workspace)
         # S-10: release the cross-process watch lock only when the final
         # in-process lease tore down the shared observer, using the owner
         # id stored on the shared watch (not the per-monitor id, which
         # could belong to a lease that stopped before the final one).
         if cross_process_owner_id is not None:
             CrossProcessWatchLock.release(self._workspace, cross_process_owner_id)
+        # S-2: a shared-awareness consumer lease detaches from the owner
+        # sidecar; the file itself remains for the owner and future owners.
+        if self._shared_consumer or self._owns_shared_awareness:
+            from ralph.workspace._shared_awareness import release_shared_awareness
+
+            release_shared_awareness(self._workspace)
+        self._owns_shared_awareness = False
+        self._shared_consumer = False
         # S-3: release the process-level dirty-path debounce timer on
         # every workspace lease release so a completed/cancelled/failed
         # workflow never strands a deferred reindex fire. The scheduler
@@ -711,25 +771,86 @@ class WorkspaceMonitor:
         CrossProcessWatchLock.release(self._workspace, owner_id)
 
     def _acquire_cross_process_watch_lock(self) -> bool:
-        """Try to claim the cross-process watch lock for this lease (S-10).
+        """Try to claim the cross-process watch lock for this lease (S-2/S-10).
 
         Returns ``True`` when this lease may proceed to schedule an observer
         (the lock was free and is now held by this process, or this process
         already holds it). Returns ``False`` when another process holds the
-        lock; the awareness status is updated to ``live_fallback`` and the
-        caller must return without scheduling.
+        lock; the lease polls the owner's shared-awareness sidecar instead of
+        registering an overlapping observer (S-2). Sidecar or lock I/O
+        failure yields explicit ``live_fallback`` rather than a standalone
+        duplicate observer.
         """
-        holder = CrossProcessWatchLock.try_acquire(self._workspace)
+        try:
+            holder = CrossProcessWatchLock.try_acquire(self._workspace)
+        except WatchLockIOError:
+            self._activate_live_fallback("shared_awareness_io_failed")
+            return False
         if holder is not None:
-            self._awareness_status = _live_fallback_status("cross_process_holder")
-            awareness_for_workspace(self._workspace).set_live_fallback(
-                "cross_process_holder"
-            )
+            self._enter_shared_awareness_consumer(holder)
             return False
         self._cross_process_owner_id = CrossProcessWatchLock.claimed_owner_id(
             self._workspace
         )
+        if self._cross_process_owner_id is None:
+            self._activate_live_fallback("cross_process_holder")
+            return False
+        self._prior_lock_holder = CrossProcessWatchLock.last_released_holder(
+            self._workspace
+        )
+        try:
+            shared_awareness_for_workspace(self._workspace).begin_ownership(
+                self._cross_process_owner_id,
+                prior_holder=self._prior_lock_holder,
+            )
+        except SharedAwarenessError as exc:
+            self._shared_awareness_io_error = exc
+        self._owns_shared_awareness = True
         return True
+
+    def _enter_shared_awareness_consumer(self, holder: str) -> None:
+        """Poll the owning process's sidecar instead of registering an observer.
+
+        Owner-published change paths are durably claimed into the
+        process-local awareness before the lease reports a non-current
+        freshness, so a crash cannot silently drop owner-published changes.
+        A sidecar that is unreadable, corrupt, or carries an owner-side
+        error yields explicit ``live_fallback`` (S-2).
+        """
+        sidecar = shared_awareness_for_workspace(self._workspace)
+        try:
+            state = sidecar.poll()
+        except SharedAwarenessError:
+            self._activate_live_fallback("shared_awareness_io_failed")
+            return
+        self._shared_consumer = True
+        self._started = True
+        awareness = awareness_for_workspace(self._workspace)
+        paths = [str(path) for path in state["paths"]]
+        if paths or state["overflowed"]:
+            for path in paths:
+                awareness.record_relative(path)
+            try:
+                from ralph.mcp.explore.dirty_paths import (
+                    enqueue_workspace_dirty_paths,
+                )
+
+                enqueue_workspace_dirty_paths(self._workspace, paths)
+            except (ImportError, OSError):
+                pass
+        sidecar.claim_epoch(int(state["epoch"]))
+        self._awareness_status = {
+            "mode": "shared_awareness",
+            "freshness": awareness.snapshot()["freshness"],
+            "cause": "cross_process_holder",
+            "shared_owner": holder,
+            "shared_epoch": int(state["epoch"]),
+            "automatic_recovery": True,
+            "safe_next_action": (
+                "Consuming the owning process's shared awareness; no duplicate "
+                "observer is registered."
+            ),
+        }
 
     @classmethod
     def _record_event_for_key(cls, key: str, src_path: str) -> None:

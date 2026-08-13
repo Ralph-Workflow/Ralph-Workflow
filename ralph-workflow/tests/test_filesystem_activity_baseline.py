@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 from ralph.mcp.artifacts.file_backend import FileBackend
@@ -17,7 +19,70 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Dict
 
-    import pytest
+
+class _HealthyCrossProcessLock:
+    """In-memory cross-process lock fake: always free, no filesystem sidecar."""
+
+    def __init__(self) -> None:
+        self._owner_id: str | None = None
+
+    def try_acquire(self, workspace_root: Path) -> str | None:
+        del workspace_root
+        self._owner_id = "us:1"
+        return None
+
+    def claimed_owner_id(self, workspace_root: Path) -> str | None:
+        del workspace_root
+        return self._owner_id
+
+    def last_released_holder(self, workspace_root: Path) -> str | None:
+        del workspace_root
+        return None
+
+    def release(self, workspace_root: Path, owner_id: str) -> None:
+        del workspace_root, owner_id
+        self._owner_id = None
+
+
+class _InMemorySidecar:
+    """In-memory shared-awareness sidecar fake."""
+
+    def __init__(self) -> None:
+        self.epoch = 0
+
+    def begin_ownership(self, owner_id: str, *, prior_holder: str | None) -> int:
+        del owner_id, prior_holder
+        self.epoch += 1
+        return self.epoch
+
+    def publish_changes(self, paths: list[str], *, overflowed: bool = False) -> int:
+        del paths, overflowed
+        self.epoch += 1
+        return self.epoch
+
+    def publish_error(self, cause: str) -> None:
+        del cause
+
+    def end_ownership(self) -> None:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _mock_coordination(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route lock/sidecar coordination through in-memory fakes (virtual roots)."""
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.CrossProcessWatchLock",
+        _HealthyCrossProcessLock(),
+    )
+    sidecar = _InMemorySidecar()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
+        lambda _root: sidecar,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.remove_shared_awareness_sidecar",
+        lambda _root: None,
+    )
 
 
 class _ActivityBackend(FileBackend):

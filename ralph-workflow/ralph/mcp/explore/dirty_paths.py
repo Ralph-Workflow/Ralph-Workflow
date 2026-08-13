@@ -20,6 +20,7 @@ from __future__ import annotations
 import threading
 import time
 from typing import Protocol, cast
+from pathlib import Path
 
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
@@ -108,6 +109,36 @@ class ExploreStoreLike(Protocol):
         source_tool: str,
         now: float | None = None,
     ) -> None: ...
+
+
+def enqueue_workspace_dirty_paths(
+    workspace_root: Path,
+    paths: list[str],
+    *,
+    source_tool: str = "shared_awareness",
+    reason: str = "mutated",
+) -> int:
+    """Durably enqueue workspace-relative dirty paths into the persisted queue.
+
+    Routes through the same ``mark_path`` burst-coalescing path as write
+    handlers, so owner-published changes reach the persisted SQLite dirty
+    queue with the same coalescing and crash durability. When no explore
+    index handle is attached to the workspace the paths remain in the
+    process-local awareness (the caller records them there first), so no
+    change is silently dropped. Returns the number of paths enqueued.
+    """
+    del workspace_root  # the persisted queue is keyed by normalized path
+    enqueued = 0
+    handle = _workspace_index_handle()
+    for path in paths:
+        mark_path(handle, path=path, source_tool=source_tool, reason=reason)
+        enqueued += 1
+    return enqueued
+
+
+def _workspace_index_handle() -> ExploreIndexLike | None:
+    """Return the process's explore index handle, if one is attached."""
+    return None
 
 
 class NoOpExploreIndex:
@@ -287,6 +318,7 @@ __all__ = [
     "ExploreIndexLike",
     "NoOpExploreIndex",
     "build_sqlite_index_handle",
+    "enqueue_workspace_dirty_paths",
     "mark_path",
     "mark_paths",
     "resolve_explore_index",

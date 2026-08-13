@@ -607,11 +607,12 @@ def test_workspace_monitor_rejects_three_arg_callback(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_workspace_monitor_classifier_none_legacy_behavior(tmp_path: Path) -> None:
-    """When ``classifier=None`` is passed (or omitted), every event
-    is classified OTHER with weight 1.0 and the on_event callback is
-    invoked with ``(OTHER, 1.0)``. This is the legacy behavior for
-    callers that do not opt into the new class-aware verdict.
+def test_workspace_monitor_classifier_none_uses_default_source_only(tmp_path: Path) -> None:
+    """When ``classifier`` is omitted, a default source-only classifier is
+    installed: source paths count as activity (``SOURCE, 1.0``) and
+    Ralph-managed internal paths (``.agent`` bookkeeping, logs) are dropped.
+    This is the S-2 default: internal activity must not recursively trigger
+    workspace awareness on the production observer route.
     """
     callback_invocations: list[tuple[WorkspaceChangeKind, float]] = []
 
@@ -619,8 +620,12 @@ def test_workspace_monitor_classifier_none_legacy_behavior(tmp_path: Path) -> No
         callback_invocations.append((kind, weight))
 
     monitor = WorkspaceMonitor(tmp_path, on_event=on_event)  # classifier omitted
+    # A log path is dropped by the default source-only classifier.
     monitor.record_event("/repo/agent.log")
-    assert callback_invocations == [(WorkspaceChangeKind.OTHER, 1.0)]
+    assert callback_invocations == []
+    # A source path counts as full activity.
+    monitor.record_event(str(tmp_path / "src" / "app.py"))
+    assert callback_invocations == [(WorkspaceChangeKind.SOURCE, 1.0)]
 
 
 # ---------------------------------------------------------------------------

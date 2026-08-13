@@ -71,6 +71,25 @@ class WorkspaceAwareness:
             self._cause = cause
             self._freshness_override = "stale"
 
+    def record_relative(self, relative_path: str) -> None:
+        """Remember one workspace-relative path from the shared owner sidecar.
+
+        The path is coalesced with locally observed changes and marks the
+        knowledge state non-current until drained into the persisted dirty
+        queue (S-2: a non-owner must durably claim owner-published changes
+        before claiming current freshness).
+        """
+        path = relative_path.strip("/")
+        if not path or path.startswith(".."):
+            return
+        with self._lock:
+            self._dirty_paths.pop(path, None)
+            self._dirty_paths[path] = None
+            while len(self._dirty_paths) > _MAX_DIRTY_PATHS:
+                self._dirty_paths.popitem(last=False)
+            if self._freshness_override is None:
+                self._freshness_override = "pending"
+
     def drain(self) -> list[str]:
         """Return the coalesced dirty set once, in deterministic arrival order."""
         with self._lock:

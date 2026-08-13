@@ -16498,6 +16498,9 @@ class _BaseFakeWatchdog:
     def record_invocation_start(self) -> None:
         pass
 
+    def record_session_id_capture(self, session_id: str) -> None:
+        pass
+
     def record_invocation_end(self) -> None:
         pass
 

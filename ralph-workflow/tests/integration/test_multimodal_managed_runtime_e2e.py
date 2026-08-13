@@ -337,6 +337,14 @@ def test_unknown_provider_preserves_supported_modalities_as_replayable_resources
     """
     for modality in sorted(SUPPORTED_MODALITIES):
         verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
+        if modality == "image":
+            # Images are always deliverable inline: the verdict does not
+            # guess model capability (criterion 14: unresolvable -> capable).
+            assert verdict.delivery == DeliveryMode.INLINE_IMAGE, (
+                f"modality='image' must be INLINE_IMAGE even for unknown provider, "
+                f"got {verdict.delivery!r}"
+            )
+            continue
         assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
             f"modality={modality!r} must be RESOURCE_REFERENCE_REPLAY for unknown provider, "
             f"got {verdict.delivery!r}"

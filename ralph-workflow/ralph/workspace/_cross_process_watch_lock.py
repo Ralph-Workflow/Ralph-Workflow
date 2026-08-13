@@ -50,7 +50,9 @@ class CrossProcessWatchLock:
     returns that holder's owner id so the caller can report it. ``release``
     drops the lock only when the caller's owner id matches the recorded
     holder, so a stale release from a previous owner cannot drop the
-    active holder's lock.
+    active holder's lock. The released holder id is retained per workspace
+    so the next acquirer can distinguish a live prior owner (retain its
+    shared-awareness sidecar) from a stale one (reconcile and restart).
 
     The lock is held by keeping the lock file descriptor open for the
     process's lifetime (or until ``release``). A process-local registry
@@ -59,6 +61,7 @@ class CrossProcessWatchLock:
     """
 
     _holds: ClassVar[dict[str, tuple[TextIO, str]]] = {}  # bounded-accumulator-ok: release removes the final workspace entry
+    _last_released: ClassVar[dict[str, str]] = {}  # bounded-accumulator-ok: one entry per workspace, replaced on each release
     _counter_lock: ClassVar[threading.Lock] = threading.Lock()
     _counter: ClassVar[int] = 0
 
@@ -94,8 +97,10 @@ class CrossProcessWatchLock:
             # filesystem-write-ok: persistent advisory-lock sidecar serializes cross-process watchdog ownership.
             handle = lock_path.open("a+", encoding="utf-8")
         except OSError:
-            # Best-effort: proceed without cross-process coordination.
-            return None
+            # S-2: lock sidecar I/O failure must not silently duplicate a
+            # watch. Returning the synthetic ``io_error`` holder drives the
+            # caller into the bounded live-fallback path.
+            return "io_error"
 
         if not cls._try_lock(handle):
             with suppress(OSError):
@@ -108,11 +113,11 @@ class CrossProcessWatchLock:
             handle.truncate()
             handle.write(owner_id)
             handle.flush()
-        except OSError:
+        except OSError as exc:
             cls._unlock(handle)
             with suppress(OSError):
                 handle.close()
-            return None
+            raise WatchLockIOError(str(exc)) from exc
         with cls._counter_lock:
             cls._holds[key] = (handle, owner_id)
         return None
@@ -135,6 +140,7 @@ class CrossProcessWatchLock:
             if held_owner_id != owner_id:
                 return
             cls._holds.pop(key, None)
+            cls._last_released[key] = owner_id
         cls._unlock(handle)
         with suppress(OSError):
             handle.close()
@@ -153,6 +159,20 @@ class CrossProcessWatchLock:
         if entry is None:
             return None
         return entry[1]
+
+    @classmethod
+    def last_released_holder(cls, workspace_root: Path) -> str | None:
+        """Return the most recently released holder id for ``workspace_root``.
+
+        Lets a new owner distinguish a live prior owner (whose
+        shared-awareness sidecar should be retained) from a stale one
+        (whose sidecar is reconciled and whose epoch restarts). ``None``
+        means no prior release is known, i.e. any existing sidecar is
+        stale.
+        """
+        key = str(workspace_root.absolute())
+        with cls._counter_lock:
+            return cls._last_released.get(key)
 
     @classmethod
     def _try_lock(cls, handle: TextIO) -> bool:
@@ -201,4 +221,8 @@ class CrossProcessWatchLock:
         return text or "unknown"
 
 
-__all__ = ["CrossProcessWatchLock"]
+class WatchLockIOError(OSError):
+    """Raised when lock sidecar I/O fails; callers must enter live fallback."""
+
+
+__all__ = ["CrossProcessWatchLock", "WatchLockIOError"]

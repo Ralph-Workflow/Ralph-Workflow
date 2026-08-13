@@ -28,6 +28,91 @@ from ralph.agents.invoke._workspace_change_classifier import (
     WorkspaceChangeClassifier,
     WorkspaceChangeKind,
 )
+from ralph.workspace._shared_awareness import release_shared_awareness
+from ralph.workspace.awareness import release_workspace_awareness
+
+
+class _FakeCrossProcessWatchLock:
+    """In-memory stand-in for ``CrossProcessWatchLock`` that always succeeds."""
+
+    def __init__(self) -> None:
+        self._owner_id: str | None = None
+        self._counter = 0
+
+    def try_acquire(self, workspace_root: Path) -> str | None:
+        del workspace_root
+        self._counter += 1
+        self._owner_id = f"us:{self._counter}"
+        return None
+
+    def claimed_owner_id(self, workspace_root: Path) -> str | None:
+        del workspace_root
+        return self._owner_id
+
+    def last_released_holder(self, workspace_root: Path) -> str | None:
+        del workspace_root
+        return None
+
+    def release(self, workspace_root: Path, owner_id: str) -> None:
+        del workspace_root, owner_id
+        self._owner_id = None
+
+
+class _FakeSharedAwarenessSidecar:
+    """In-memory stand-in for the shared-awareness sidecar."""
+
+    def __init__(self) -> None:
+        self.owner_id: str | None = None
+        self.epoch = 0
+        self.paths: list[str] = []
+        self.overflowed = False
+
+    def begin_ownership(self, owner_id: str, *, prior_holder: str | None) -> int:
+        del prior_holder
+        self.owner_id = owner_id
+        self.epoch += 1
+        return self.epoch
+
+    def publish_changes(self, paths: list[str], *, overflowed: bool = False) -> int:
+        for path in paths:
+            if path not in self.paths:
+                self.paths.append(path)
+        self.overflowed = self.overflowed or overflowed
+        self.epoch += 1
+        return self.epoch
+
+    def publish_error(self, cause: str) -> None:
+        del cause
+
+    def end_ownership(self) -> None:
+        self.owner_id = None
+
+
+@pytest.fixture(autouse=True)
+def _mock_cross_process_coordination(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route cross-process coordination through in-memory fakes.
+
+    The watch-scoping tests use synthetic workspace roots (``/ws``) that
+    cannot host a real lock sidecar; the fakes keep the coordination
+    contract observable without filesystem access.
+    """
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.CrossProcessWatchLock",
+        _FakeCrossProcessWatchLock(),
+    )
+    sidecar = _FakeSharedAwarenessSidecar()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
+        lambda _root: sidecar,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.remove_shared_awareness_sidecar",
+        lambda _root: None,
+    )
+    yield
+    release_workspace_awareness(Path("/ws"))
+    release_shared_awareness(Path("/ws"))
+
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -153,9 +238,11 @@ def test_start_schedules_single_recursive_root_watch(
 def test_start_single_recursive_root_watch_when_classifier_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With ``classifier=None`` (legacy), ``start()`` also schedules
-    exactly one recursive watch on the workspace root. Parity across
-    configs."""
+    """With ``classifier=None`` (default), ``start()`` also schedules
+    exactly one recursive watch on the workspace root. The default
+    source-only classifier drops Ralph-managed internal paths so internal
+    activity never recursively triggers workspace awareness (S-2).
+    Parity across configs."""
     fake = _FakeObserver()
     monkeypatch.setattr(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
@@ -170,6 +257,11 @@ def test_start_single_recursive_root_watch_when_classifier_none(
     assert path == "/ws"
     assert recursive is True
     assert fake.started is True
+    # The default classifier drops internal paths, counts source paths.
+    monitor.dispatch_event(_FakeEvent("/ws/.agent/tmp/foo.py"))
+    assert monitor.event_count == 0
+    monitor.dispatch_event(_FakeEvent("/ws/src/app.py"))
+    assert monitor.event_count == 1
 
 
 def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registration_retry(
