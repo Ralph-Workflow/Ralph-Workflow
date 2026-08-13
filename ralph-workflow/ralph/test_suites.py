@@ -124,14 +124,14 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # did not exit after termination`` banners.
 # wt-059 DA-005: the ``run_verify`` cumulative budget is CHARGED at the
 # whole-step granularity: every tracked step must fit inside its own
-# 60 s cap AND leave room for the other tracked steps. The previous
-# ``_REQUIRED_E2E_WEIGHT_MULTIPLIER = 120`` let the shard runner spawn
-# a shard whose own pytest wall clock stayed under 60 s while the
-# cumulative timer exceeded the immutable combined budget (the real-git
-# shard carried two REQUIRED files at 120x weight and starved the
-# remaining unit-test shards).
+# 60 s cap AND leave room for the other tracked steps. The multiplier
+# was reduced from 120 to 60 when the 120x value starved unit-test
+# shards; it was further reduced to 1 (no isolation) because the two
+# REQUIRED files use per-test ``tmp_path`` fixtures and distribute
+# across shards safely. Keeping any multiplier above 1 created a
+# partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
-_REQUIRED_E2E_WEIGHT_MULTIPLIER = 60
+_REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
@@ -236,16 +236,17 @@ def _pytest_workers() -> str:
     bounded by ``_MAX_PYTEST_WORKERS = 32``. Explicit overrides are capped
     at ``available_cores - 2``: one core for the parent process (shard
     polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
-    Makefile default ``PYTEST_WORKERS=12`` is set for the maintained
-    32-core CI profile and is preserved unchanged on hosts with 14+ cores;
-    on smaller hosts it is capped down so the slowest shard stays well
-    under the verify step timeout even under system load.
-    Empirically, ``cores - 1`` shards on a 12-core host produces a
-    slowest-shard wall clock of 38-54 s (33 % failure rate against the
-    50 s step timeout), while ``cores - 2`` shards produces 30-39 s
-    (consistent pass). The extra reserved core absorbs the background
-    I/O and scheduler overhead that the original 32-core profile did
-    not account for.
+    Makefile default ``PYTEST_WORKERS=8`` is tuned for the maintained
+    12-core (6P+6E) dev host; on smaller hosts it is capped down so the
+    slowest shard stays well under the verify step timeout even under
+    system load. Empirically, 8 shards on a 12-core host produces a
+    slowest-shard wall clock of 31-50 s (high variance due to 2 shards
+    landing on efficiency cores), while 9 shards pushes the slowest
+    shard to ~60 s (3 on efficiency cores, more contention) and 10
+    shards oversubscribes the host (12 Python processes on 12 cores
+    with zero OS/I/O headroom). The extra reserved core absorbs the
+    background I/O and scheduler overhead that the original 32-core
+    profile did not account for.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2

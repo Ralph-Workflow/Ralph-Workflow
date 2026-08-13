@@ -20,8 +20,12 @@ import pytest
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+from ralph.workspace._shared_awareness import (
+    SharedAwarenessError,
+    SharedAwarenessState,
+    release_shared_awareness,
+)
 from ralph.workspace.awareness import release_workspace_awareness
-from ralph.workspace._shared_awareness import release_shared_awareness
 
 
 class _FakeObserver:
@@ -129,19 +133,17 @@ class _FakeSharedAwarenessSidecar:
     def end_ownership(self) -> None:
         self.owner_id = None
 
-    def poll(self) -> dict[str, object]:
+    def poll(self) -> SharedAwarenessState:
         self.poll_calls += 1
         if self.error is not None:
-            from ralph.workspace._shared_awareness import SharedAwarenessError
-
             raise SharedAwarenessError(self.error)
-        return {
-            "epoch": self.epoch,
-            "paths": list(self.paths),
-            "overflowed": self.overflowed,
-            "owner_id": self.owner_id or "unknown",
-            "changed": True,
-        }
+        return SharedAwarenessState(
+            epoch=self.epoch,
+            paths=list(self.paths),
+            overflowed=self.overflowed,
+            owner_id=self.owner_id or "unknown",
+            changed=True,
+        )
 
     def claim_epoch(self, epoch: int) -> None:
         self.claim_calls.append(epoch)
@@ -439,7 +441,7 @@ def test_crash_takeover_restarts_sidecar_epoch(
         assert new_epoch == 1, "stale owner id must restart the epoch"
         assert crashed_epoch > new_epoch
         state = new_owner.poll()
-        assert state["owner_id"] == "us:1"
-        assert state["paths"] == []
+        assert state.owner_id == "us:1"
+        assert state.paths == []
     finally:
         release_shared_awareness(workspace)

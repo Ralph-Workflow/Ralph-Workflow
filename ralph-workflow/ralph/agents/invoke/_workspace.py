@@ -826,8 +826,8 @@ class WorkspaceMonitor:
         self._shared_consumer = True
         self._started = True
         awareness = awareness_for_workspace(self._workspace)
-        paths = [str(path) for path in state["paths"]]
-        if paths or state["overflowed"]:
+        paths = list(state.paths)
+        if paths or state.overflowed:
             for path in paths:
                 awareness.record_relative(path)
             try:
@@ -838,13 +838,13 @@ class WorkspaceMonitor:
                 enqueue_workspace_dirty_paths(self._workspace, paths)
             except (ImportError, OSError):
                 pass
-        sidecar.claim_epoch(int(state["epoch"]))
+        sidecar.claim_epoch(state.epoch)
         self._awareness_status = {
             "mode": "shared_awareness",
             "freshness": awareness.snapshot()["freshness"],
             "cause": "cross_process_holder",
             "shared_owner": holder,
-            "shared_epoch": int(state["epoch"]),
+            "shared_epoch": state.epoch,
             "automatic_recovery": True,
             "safe_next_action": (
                 "Consuming the owning process's shared awareness; no duplicate "

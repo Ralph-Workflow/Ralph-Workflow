@@ -2,19 +2,22 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 10 keeps the slowest shard below the tracked cap while avoiding
-# the oversubscription observed with larger fan-out under host load. 12
-# deterministically oversubscribes a 12-core host (12 shards + the runner
-# + the harness = 14 Python processes on 12 cores), which macOS surfaces
-# as EXC_GUARD SIGKILLs against shard processes.
-# Operators may override after measuring their own host.
+# Default: 8 on the maintained 12-core (6P+6E) host. 8 shards give
+# each shard ~172 files; with macOS's ASYM_PACKING scheduler 6 shards
+# land on P cores and 2 on efficiency cores. The slowest E-core shard
+# wall clock varies 31-50 s depending on system load. 9 shards puts 3
+# on efficiency cores, increasing per-shard contention and pushing the
+# slowest shard to ~60 s. 10 deterministically oversubscribes a 12-core
+# host (10 shards + the runner + the harness = 12 Python processes on 12
+# cores with zero headroom for OS / I/O). Operators may override after
+# measuring their own host.
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
 # literally, so this exported default governs both ralph.test_suites and
 # the raw-target paths. Keep conditional assignment so operators can
 # override:
-#   PYTEST_WORKERS=10 make test  # maintained baseline
+#   PYTEST_WORKERS=8 make test   # maintained baseline
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
 #   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
 #
@@ -24,7 +27,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 10
+PYTEST_WORKERS ?= 8
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
@@ -180,8 +183,22 @@ test-live-agy:
 # The trailing `-m "smoke and subprocess_e2e"` overrides the
 # `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
 # file the regular profile deliberately skips.
+#
+# wt-056: the 19 smoke tests are I/O-bound (each spawns a stub
+# subprocess), so fewer xdist workers reduce startup overhead and CPU
+# contention without sacrificing throughput. Benchmarked on the
+# maintained 12-core host: -n 4 completes in ~13 s wall vs ~19 s for
+# -n 8, saving ~4 s of combined-budget headroom for the trailing
+# visual-smoke step.
+#
+# wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
+# here -- its ~1 s of Python import / arg-parse startup is pure overhead
+# for 19 I/O-bound tests. Per-test timeout enforcement is handled by
+# ``ralph.testing.pytest_timeout_plugin`` (loaded via ``conftest.py``);
+# the suite-level cap is provided by the verify runner's cumulative
+# tracker.
 test-multimodal-smoke:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 8 --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 4 --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,
@@ -206,8 +223,15 @@ test-visual-verdict:
 # the smoke-marked fixture judge. No real subprocess, renderer, or paid
 # backend is used. The immutable 60-second cap applies across `make test`,
 # `make test-multimodal-smoke`, and `make test-visual-smoke` together.
+#
+# wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
+# here — its ~1 s of Python import / arg-parse startup is pure overhead
+# for 3 fixtures that complete in < 0.3 s. Per-test timeout enforcement
+# is handled by ``ralph.testing.pytest_timeout_plugin`` (loaded via
+# ``conftest.py``) with the default 1.0 s budget; the suite-level cap is
+# provided by the verify runner's cumulative tracker.
 test-visual-smoke:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_visual_smoke.py -q -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_visual_smoke.py -q -m "smoke and subprocess_e2e"
 
 # Focused profile over the same explicit registry used by the
 # combined ``make test`` invocation.

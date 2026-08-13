@@ -33,6 +33,8 @@ if sys.platform == "win32":
 else:
     import fcntl
 
+from ralph.workspace._watch_lock_io_error import WatchLockIOError
+
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import TextIO
@@ -219,10 +221,6 @@ class CrossProcessWatchLock:
         except OSError:
             return "unknown"
         return text or "unknown"
-
-
-class WatchLockIOError(OSError):
-    """Raised when lock sidecar I/O fails; callers must enter live fallback."""
 
 
 __all__ = ["CrossProcessWatchLock", "WatchLockIOError"]

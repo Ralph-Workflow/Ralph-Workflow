@@ -30,10 +30,15 @@ changes.
 from __future__ import annotations
 
 import json
-import os
 import threading
 from contextlib import suppress
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ralph.workspace._shared_awareness_error import SharedAwarenessError
+from ralph.workspace._shared_awareness_state import SharedAwarenessState
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 SIDECAR_RELPATH = ".agent/.workspace-awareness.json"
 
@@ -43,8 +48,45 @@ _POLL_NEVER = -1
 _CLAIM_NEVER = 0
 
 
-class SharedAwarenessError(RuntimeError):
-    """Raised when sidecar I/O fails; callers must enter bounded live fallback."""
+def _document_int(document: dict[str, object], key: str, default: int = 0) -> int:
+    """Return ``key`` from ``document`` as ``int``, or ``default`` if absent."""
+    value = document.get(key, default)
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _document_str(document: dict[str, object], key: str, default: str = "") -> str:
+    """Return ``key`` from ``document`` as ``str``, or ``default`` if absent."""
+    value = document.get(key, default)
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return default
+    return str(value)
+
+
+def _document_str_list(document: dict[str, object], key: str) -> list[str]:
+    """Return ``key`` from ``document`` as ``list[str]``, or empty if absent."""
+    value = document.get(key, [])
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return []
+
+
+def _document_bool(document: dict[str, object], key: str, default: bool = False) -> bool:
+    """Return ``key`` from ``document`` as ``bool``, or ``default`` if absent."""
+    value = document.get(key, default)
+    if isinstance(value, bool):
+        return value
+    return default
 
 
 class SharedAwarenessSidecar:
@@ -56,7 +98,7 @@ class SharedAwarenessSidecar:
         self._lock = threading.Lock()
         self._owner_id: str | None = None
         self._epoch = 0
-        self._paths: list[str] = []
+        self._paths: list[str] = []  # bounded-accumulator-ok: capped at _MAX_PUBLISHED_PATHS by publish_changes truncation
         self._overflowed = False
         self._polled_epoch = _POLL_NEVER
         self._last_claimed_epoch = _CLAIM_NEVER
@@ -77,9 +119,9 @@ class SharedAwarenessSidecar:
                 document = self._read_document()
                 if document.get("owner_id") == prior_holder:
                     self._owner_id = prior_holder
-                    self._epoch = int(document.get("epoch", 0))
-                    self._paths = [str(p) for p in document.get("paths", [])][:_MAX_PUBLISHED_PATHS]
-                    self._overflowed = bool(document.get("overflowed", False))
+                    self._epoch = _document_int(document, "epoch")
+                    self._paths = _document_str_list(document, "paths")[:_MAX_PUBLISHED_PATHS]
+                    self._overflowed = _document_bool(document, "overflowed")
                 else:
                     self._reset_locked()
             else:
@@ -139,35 +181,33 @@ class SharedAwarenessSidecar:
 
     # -- non-owner lifecycle ----------------------------------------------
 
-    def poll(self) -> dict[str, object]:
+    def poll(self) -> SharedAwarenessState:
         """Return the owner-published state newer than the last claim.
 
         Raises ``SharedAwarenessError`` on unreadable/corrupt sidecar so the
-        caller can enter bounded live fallback. The returned mapping carries
-        ``epoch``, ``paths``, ``overflowed``, ``owner_id``, and optional
-        ``error``. An unchanged epoch returns the last claimed state with
-        ``changed`` False.
+        caller can enter bounded live fallback. An unchanged epoch returns
+        the last claimed state with ``changed`` False.
         """
         with self._lock:
             document = self._read_document()
-            epoch = int(document.get("epoch", 0))
-            if document.get("error"):
-                raise SharedAwarenessError(str(document["error"]))
+            epoch = _document_int(document, "epoch")
+            error = document.get("error")
+            if error is not None:
+                raise SharedAwarenessError(str(error))
             changed = epoch > self._last_claimed_epoch
             self._polled_epoch = epoch
-            return {
-                "epoch": epoch,
-                "paths": [str(p) for p in document.get("paths", [])],
-                "overflowed": bool(document.get("overflowed", False)),
-                "owner_id": str(document.get("owner_id", "unknown")),
-                "changed": changed,
-            }
+            return SharedAwarenessState(
+                epoch=epoch,
+                paths=_document_str_list(document, "paths"),
+                overflowed=_document_bool(document, "overflowed"),
+                owner_id=_document_str(document, "owner_id", "unknown"),
+                changed=changed,
+            )
 
     def claim_epoch(self, epoch: int) -> None:
         """Durably mark ``epoch`` as consumed so it is not re-reported."""
         with self._lock:
-            if epoch > self._last_claimed_epoch:
-                self._last_claimed_epoch = epoch
+            self._last_claimed_epoch = max(epoch, self._last_claimed_epoch)
 
     # -- internals ---------------------------------------------------------
 
@@ -193,7 +233,7 @@ class SharedAwarenessSidecar:
             temp_path = self._path.with_name(self._path.name + ".tmp")
             # filesystem-write-ok: atomic shared-awareness sidecar publication.
             temp_path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
-            os.replace(temp_path, self._path)
+            temp_path.replace(self._path)
         except OSError as exc:
             raise SharedAwarenessError(str(exc)) from exc
 
@@ -205,7 +245,7 @@ class SharedAwarenessSidecar:
         except OSError as exc:
             raise SharedAwarenessError(str(exc)) from exc
         try:
-            document = json.loads(text)
+            document: object = json.loads(text)
         except ValueError as exc:
             raise SharedAwarenessError(f"corrupt awareness sidecar: {exc}") from exc
         if not isinstance(document, dict):
@@ -252,6 +292,7 @@ __all__ = [
     "SIDECAR_RELPATH",
     "SharedAwarenessError",
     "SharedAwarenessSidecar",
+    "SharedAwarenessState",
     "release_shared_awareness",
     "remove_shared_awareness_sidecar",
     "shared_awareness_for_workspace",

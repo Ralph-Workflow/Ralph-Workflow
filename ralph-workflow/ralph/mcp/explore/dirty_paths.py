@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Protocol, cast
 from pathlib import Path
+from typing import Protocol, cast
 
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path

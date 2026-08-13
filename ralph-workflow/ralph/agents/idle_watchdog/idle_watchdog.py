@@ -96,7 +96,6 @@ from ralph.agents.idle_watchdog._evidence_tier import (
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.process.child_liveness import AliveBy
 
-from ._circumstantial_evidence import CircumstantialEvidence
 from ._active_branch import (
     build_evidence_summary_diag,
     emit,

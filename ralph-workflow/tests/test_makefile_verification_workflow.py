@@ -62,7 +62,7 @@ def test_default_worker_count_preserves_verify_budget_headroom() -> None:
     """The maintained worker baseline leaves room for both smoke gates."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
-    assert "PYTEST_WORKERS ?= 10" in makefile_text
+    assert "PYTEST_WORKERS ?= 8" in makefile_text
 
 
 def test_install_targets_delegate_to_the_installer() -> None:
@@ -131,7 +131,9 @@ def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
     """The budget-tracked smoke suite must not serialize independent harnesses."""
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    assert "-n 8 --dist worksteal" in body[0]
+    # wt-056: -n 4 is the measured optimum for these I/O-bound stub tests
+    # (fewer xdist workers = less startup overhead + less CPU contention).
+    assert "-n 4 --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

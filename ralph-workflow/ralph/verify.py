@@ -156,18 +156,19 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "mypy", "ralph/"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
-    # wt-059 DA-005: the ``make test`` step's own pytest wall clock is
-    # ~40-45 s on the maintained 12-core dev host, so the budget-tracked
-    # step timeout must leave the remaining tracked steps (multimodal
-    # smoke ~7 s, visual smoke ~1 s) real headroom inside the immutable
-    # 60 s combined budget. The previous ``_TOTAL_TEST_BUDGET_SECONDS``
-    # step cap let ``make test`` legitimately consume the entire budget
-    # (e.g. 58 s under load) and then fail the NEXT tracked step as
-    # "budget exhausted" even though every step individually fit its
-    # cap. Charging this step at 50 s fails the suite itself (not the
-    # cumulative tracker) when it overruns, which is the diagnostic the
-    # operator actually needs (the slow shard is named by the runner).
-    ("make test", "make", ("test",), 50.0),
+    # wt-056: the ``make test`` step is charged against the immutable
+    # 60 s combined budget via ``_BUDGET_TRACKED_STEPS``. Its per-step
+    # timeout is ``_TOTAL_TEST_BUDGET_SECONDS`` so the cumulative
+    # tracker — not an arbitrary per-step cap — decides when the budget
+    # is exhausted. On the maintained 6P+6E Apple Silicon host the
+    # slowest shard wall clock varies 31-50 s (8 shards, 2 on efficiency
+    # cores); a per-step cap below 60 s intermittently kills the suite
+    # mid-run even when the cumulative budget would still accommodate
+    # the trailing smoke steps (~12 s multimodal at -n 4, ~1 s visual).
+    # The cumulative tracker naturally reduces the trailing steps'
+    # effective timeout by the elapsed make-test time, so no separate
+    # per-step cap is needed.
+    ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
     (
         "lint bypass audit (audit_lint_bypass)",
         "uv",
