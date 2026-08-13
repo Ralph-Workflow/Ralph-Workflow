@@ -10,6 +10,7 @@ from :class:`PipelineCore` so they share the same underlying collaborators.
 from __future__ import annotations
 
 import dataclasses
+import time
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import ralph.pipeline.session_bridge as _session_bridge
@@ -277,6 +278,10 @@ class PipelineDeps:
     commit_effect_executor: Callable[[object, Path], object] | None = None
     has_uncommitted_changes: Callable[[Path], bool] | None = None
     agy_agents_probe: Callable[[], str] | None = None
+    # Injectable monotonic clock (default ``time.monotonic``) used by the
+    # runner to sample wall-clock time for the cycle timebox. Tests inject
+    # a fake clock for deterministic boundary verification.
+    monotonic: Callable[[], float] = time.monotonic
 
     def __init__(
         self,
@@ -315,6 +320,7 @@ class PipelineDeps:
         commit_effect_executor: Callable[[object, Path], object] | None = None,
         has_uncommitted_changes: Callable[[Path], bool] | None = None,
         agy_agents_probe: Callable[[], str] | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -431,6 +437,7 @@ class PipelineDeps:
         object.__setattr__(self, "commit_effect_executor", commit_effect_executor)
         object.__setattr__(self, "has_uncommitted_changes", has_uncommitted_changes)
         object.__setattr__(self, "agy_agents_probe", agy_agents_probe)
+        object.__setattr__(self, "monotonic", monotonic)
 
     @property
     def display_context(self) -> DisplayContext:

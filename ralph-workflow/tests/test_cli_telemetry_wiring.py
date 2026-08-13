@@ -426,7 +426,7 @@ def test_run_pipeline_step_records_phase_via_try_finally(
     monkeypatch.setattr(
         runner_module,
         "reducer_reduce",
-        lambda current_state, _event, _policy, recovery=None: (current_state, []),
+        lambda current_state, _event, _policy, recovery=None, routing_timing=None: (current_state, []),
     )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda *_a, **_kw: None)
 

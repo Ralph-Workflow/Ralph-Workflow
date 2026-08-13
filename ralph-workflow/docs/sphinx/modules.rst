@@ -595,6 +595,13 @@ ralph.policy.explain.commit_policy_explanation
    :members:
    :show-inheritance:
 
+ralph.policy.explain.cycle_timebox_explanation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.policy.explain.cycle_timebox_explanation
+   :members:
+   :show-inheritance:
+
 ralph.policy.explain.loop_counter_explanation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -700,6 +707,13 @@ ralph.pipeline.cycle_baseline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.cycle_baseline
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.cycle_timing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.cycle_timing
    :members:
    :show-inheritance:
 

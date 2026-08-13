@@ -96,7 +96,8 @@ def test_development_result_accepts_failed_free_form_handoff() -> None:
 type: development_result
 status: failed
 ---
-The required environment could not be brought up.
+## Summary
+- [SUM-1] The required environment could not be brought up.
 """,
         DEVELOPMENT_RESULT_SPEC,
     )
@@ -112,6 +113,8 @@ def test_non_completed_result_ignores_incidental_proof_shaped_sections(status: s
 type: development_result
 status: {status}
 ---
+## Summary
+- [SUM-1] Work stopped early.
 ## Plan Items Proven
 - [S-1] Progress made without completed-proof metadata.
 """,
@@ -208,3 +211,87 @@ status: completed
 
     assert content == {}
     assert any("blocked" in diagnostic.message.lower() for diagnostic in diagnostics)
+
+
+@pytest.mark.parametrize("status", ("partial", "failed"))
+def test_non_completed_result_requires_summary_section(status: str) -> None:
+    """A partial/failed result without a Summary section fails validation.
+
+    The Summary is the concise reason the operator and next iteration
+    need to triage the outcome. Silent omission is rejected mechanically.
+    """
+    content, diagnostics = parse_and_validate(
+        f"""---
+type: development_result
+status: {status}
+---
+The work could not be completed in time.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert content == {}
+    assert any("summary" in diagnostic.message.lower() for diagnostic in diagnostics)
+
+
+def test_partial_with_summary_and_incomplete_work_passes() -> None:
+    """A warned partial result with Summary and honest incomplete-work detail passes."""
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Completed items S-1 through S-3; S-4 needs more iteration time.
+## Files Changed
+- [F-1] src/feature.py
+## Incomplete Work
+- [S-4] Rename API endpoints: half-applied, tests not updated.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    assert content["status"] == "partial"
+    assert "S-4" in content["summary"]
+
+
+def test_warned_partial_without_incomplete_work_is_rejected() -> None:
+    """cycle_timebox_warned: true without Incomplete Work section is rejected."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+cycle_timebox_warned: true
+---
+## Summary
+- [SUM-1] Ran out of time before finishing S-4.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+    assert any("Incomplete Work" in d.message for d in diagnostics)
+
+
+def test_warned_partial_with_incomplete_work_passes() -> None:
+    """cycle_timebox_warned: true with Incomplete Work section passes."""
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+cycle_timebox_warned: true
+---
+## Summary
+- [SUM-1] Completed S-1 through S-3; S-4 interrupted by deadline.
+## Incomplete Work
+- [S-4] Rename API endpoints: started but tests not updated.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    assert content["status"] == "partial"
+    assert content["incomplete_work"] == [
+        "Rename API endpoints: started but tests not updated."
+    ]

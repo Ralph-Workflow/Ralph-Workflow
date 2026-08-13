@@ -76,6 +76,23 @@ def _default_policy_bundle() -> object:
     return load_policy(DEFAULT_POLICY_DIR)
 
 
+def _strip_invocation_gates(bundle: PolicyBundle) -> PolicyBundle:
+    """Remove invocation gates so iteration routing is tested in isolation.
+
+    The default policy gates ``development_analysis`` entry on cumulative
+    upstream execution time (≥ 15 min). These tests mock instant agent
+    invocations, so the gate would bypass analysis entirely — obscuring
+    the iteration-counting behaviour under test.
+    """
+    phases = dict(bundle.pipeline.phases)
+    for name, phase_def in phases.items():
+        if phase_def.invocation_gate is not None:
+            phases[name] = phase_def.model_copy(update={"invocation_gate": None})
+    return bundle.model_copy(
+        update={"pipeline": bundle.pipeline.model_copy(update={"phases": phases})}
+    )
+
+
 def _config() -> UnifiedConfig:
     # Keep incidental auto-integrate git work out of the e2e wall-clock budget.
     return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
@@ -103,6 +120,7 @@ def _run_pipeline(
 ) -> tuple[int, list[PipelineState]]:
     saved_states: list[PipelineState] = []
     policy_bundle = _default_policy_bundle() if policy_bundle is None else policy_bundle
+    policy_bundle = _strip_invocation_gates(policy_bundle)
 
     def fake_execute_effect(
         effect: Effect,

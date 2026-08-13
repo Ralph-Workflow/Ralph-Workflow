@@ -47,6 +47,24 @@ tracks_budget = true
 default_max = 5
 
 # ---------------------------------------------------------------------------
+# Edit this only if you need to bound the plan-to-final-commit cycle wall-clock.
+# Cycle timebox
+# ---------------------------------------------------------------------------
+
+# This bounds the wall-clock time of each plan-to-final-commit cycle: once the
+# configured deadline elapses, Ralph Workflow redirects further development
+# entries through final commit instead of starting another development
+# invocation. The soft warning begins at 80% of the duration (96 minutes under
+# the 120-minute default, leaving 24 minutes before finalization).
+# Lower it to fail fast on long cycles; raise it for harder tasks. Must be > 0.
+[cycle_timebox]
+duration_seconds = 7200
+start_entry = "development"
+guarded_entry = "development"
+end_entry = "development_final_commit_cleanup"
+finalization_target = "development_final_commit_cleanup"
+
+# ---------------------------------------------------------------------------
 # Edit this only if you are changing the workflow phases or their order.
 # Block-authored default workflow
 # ---------------------------------------------------------------------------

@@ -161,6 +161,20 @@ class PipelineState(_FrozenPipelineStateModel):
     # cycle. Timing records at or after this index are summed for the analysis
     # invocation gate. Reset when the lifecycle commit advances to a new cycle.
     cycle_timing_start_index: int = 0
+    # Plan-to-final-commit cycle timebox state (serialized, resume-safe).
+    # ``cycle_timebox_active`` is True while a cycle timer is running; the
+    # runner folds elapsed wall-clock time into ``cycle_timebox_consumed_seconds``
+    # on every step so this value stays current without a process-local
+    # monotonic epoch in the checkpoint payload. Both default so legacy
+    # checkpoints load cleanly.
+    cycle_timebox_active: bool = False
+    cycle_timebox_consumed_seconds: float = 0.0
+    # When the cycle concluded via a deadline redirect, the concise operator
+    # reason (carrying configured and elapsed seconds) is persisted here so
+    # run-report and status surfaces can distinguish a redirect from an
+    # ordinary completion. Cleared when the next cycle starts. Defaults so
+    # legacy checkpoints load cleanly.
+    cycle_timebox_redirect_reason: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)

@@ -138,6 +138,7 @@ class PromptPhaseOptions:
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
     work_unit: WorkUnit | None = None
+    cycle_timebox_warning: dict[str, object] | None = None
 
 
 def __getattr__(name: str) -> object:
@@ -148,6 +149,44 @@ def __getattr__(name: str) -> object:
         return typing.cast("object", module.MultimodalSidecarEntry)
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
+
+
+def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
+    """Format the cycle-timebox warning payload as a Markdown prompt appendix.
+
+    Appended only to the guarded development entry's prompt when elapsed
+    time has reached or passed the 80% soft-warning threshold.
+    """
+    elapsed = float(cast("float", warning.get("elapsed_seconds", 0)))
+    remaining = float(cast("float", warning.get("remaining_seconds", 0)))
+    duration = float(cast("float", warning.get("duration_seconds", 0)))
+    target = str(warning.get("finalization_target", "final commit"))
+    elapsed_min = elapsed / 60.0
+    remaining_min = remaining / 60.0
+    duration_min = duration / 60.0
+    return (
+        "\n\n---\n\n"
+        "## ⚠ Cycle Timebox Warning\n\n"
+        f"The plan-to-final-commit cycle has consumed **{elapsed_min:.0f} minutes** "
+        f"of its **{duration_min:.0f}-minute** budget; "
+        f"**{remaining_min:.0f} minutes** remain.\n\n"
+        f"When the budget is exhausted, development entries are automatically "
+        f"redirected to **{target}** — you will NOT get another development "
+        "iteration. Prioritize accordingly:\n\n"
+        "1. **Highest-value-first**: Focus on the plan items with the greatest "
+        "user impact. Defer polish, refactoring, and nice-to-haves.\n"
+        "2. **Feasibility reassessment**: If any remaining plan item cannot be "
+        "completed, tested, and verified within the remaining time, report it as "
+        "partial or failed with a stable ID, supporting evidence, and a concise "
+        "reason — do NOT fabricate completion or weaken verification.\n"
+        "3. **Honest triage**: A `partial` or `failed` result with clear evidence "
+        "and next steps is strictly better than a fabricated `completed` result.\n"
+        "4. **Mandatory incomplete-work reporting**: If you submit `partial` or "
+        "`failed`, set `cycle_timebox_warned: true` in the artifact frontmatter "
+        "and include an `## Incomplete Work` section with at least one stable-ID "
+        "item for each unfinished plan step. This is required for the artifact "
+        "to validate.\n"
+    )
 
 
 def materialize_prompt_for_phase(
@@ -194,6 +233,9 @@ def materialize_prompt_for_phase(
                 work_unit=cast(
                     "WorkUnit | None", kwargs.get("work_unit")
                 ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                cycle_timebox_warning=cast(
+                    "dict[str, object] | None", kwargs.get("cycle_timebox_warning")
+                ),
             )
     opts = options or PromptPhaseOptions()
     if opts.work_unit is not None and opts.worker_namespace is None:
@@ -204,6 +246,8 @@ def materialize_prompt_for_phase(
             ),
         )
     prompt = _render_prompt_for_phase(context, opts)
+    if opts.cycle_timebox_warning:
+        prompt += _format_cycle_timebox_warning(opts.cycle_timebox_warning)
     path = dump_rendered_prompt(
         context.workspace,
         context.phase,

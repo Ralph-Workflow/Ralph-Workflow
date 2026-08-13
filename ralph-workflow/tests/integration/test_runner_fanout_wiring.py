@@ -364,6 +364,7 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
         current_state: PipelineState,
         event: Event,
         pipeline_policy: PipelinePolicy | None = None,
+        **_kwargs: object,
     ) -> tuple[PipelineState, object]:
         seen_events.append(event)
         return original_reduce(current_state, event, pipeline_policy)
@@ -483,8 +484,9 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
         current_state: PipelineState,
         event: object,
         pipeline_policy: object | None = None,
+        **_kwargs: object,
     ) -> tuple[PipelineState, None]:
-        del event, pipeline_policy
+        del event, pipeline_policy, _kwargs
         next_state = current_state.copy_with(phase=current_state.phase)
         reduced_phases.append(next_state.phase)
         return next_state, None

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import time
 import uuid
 from inspect import signature
 from typing import TYPE_CHECKING, cast
@@ -99,6 +100,7 @@ from ralph.pipeline.cycle_baseline import (
     read_cycle_baseline,
     write_cycle_baseline,
 )
+from ralph.pipeline.cycle_timing import RoutingTiming
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
@@ -177,6 +179,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
+        CycleTimeboxPolicy,
         PhaseDefinition,
         PipelinePolicy,
         PolicyBundle,
@@ -1257,6 +1260,40 @@ def _finalize_agent_invocation(
     return state, event
 
 
+def _sample_cycle_timing(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    pipeline_deps: PipelineDeps | None,
+    cycle_sample_box: list[float | None] | None,
+) -> tuple[RoutingTiming | None, float | None, float, CycleTimeboxPolicy | None]:
+    """Sample the monotonic clock and build routing timing for one step.
+
+    Returns ``(routing_timing, cycle_now, cycle_delta, ct_policy)``. When
+    no sample box or no timebox policy is configured, returns all-None / zero
+    so the caller's behavior is unchanged.
+    """
+    ct_policy = pipeline_policy.cycle_timebox
+    if cycle_sample_box is None or ct_policy is None:
+        return None, None, 0.0, ct_policy
+    monotonic_fn = (
+        pipeline_deps.monotonic
+        if pipeline_deps is not None and pipeline_deps.monotonic is not None
+        else time.monotonic
+    )
+    cycle_now = monotonic_fn()
+    last_sample = cycle_sample_box[0]
+    cycle_delta = (
+        max(0.0, cycle_now - last_sample)
+        if state.cycle_timebox_active and last_sample is not None
+        else 0.0
+    )
+    routing_timing = RoutingTiming(
+        monotonic_now=cycle_now,
+        total_elapsed_seconds=state.cycle_timebox_consumed_seconds + cycle_delta,
+    )
+    return routing_timing, cycle_now, cycle_delta, ct_policy
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -1273,6 +1310,7 @@ def _run_pipeline_step(
     cli_overrides: dict[str, object] | None = None,
     _monitor_stop_cb: Callable[[], None] | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    _cycle_sample_box: list[float | None] | None = None,
 ) -> PipelineState | int:
     # Phase telemetry primitives — bound BEFORE the try/except so the
     # ``finally`` clause can read them on every exit path. PhaseRole is
@@ -1299,6 +1337,13 @@ def _run_pipeline_step(
             if isinstance(result, PipelineState)
             else result
         )
+
+    # --- Cycle timebox: sample the monotonic clock ONCE per step and build
+    # routing timing for both prompt materialization (the 80% warning) and
+    # the reducer (deadline enforcement).
+    _routing_timing, _cycle_now, _cycle_delta, ct_policy = _sample_cycle_timing(
+        state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
+    )
 
     try:
         effect = call_determine_effect_from_policy(
@@ -1404,6 +1449,11 @@ def _run_pipeline_step(
                     policy_bundle,
                     registry,
                     materialize_fn=_materialize_fn,
+                    cycle_total_elapsed=(
+                        _routing_timing.total_elapsed_seconds
+                        if _routing_timing is not None
+                        else None
+                    ),
                 )
             except MissingPlanHandoffError as exc:
                 _phase_outcome = "skipped"
@@ -1466,12 +1516,41 @@ def _run_pipeline_step(
             display_context=display_context,
         )
         _phase_outcome = _coarse_outcome_for_event(event)
+        # Resample the monotonic clock AFTER the agent invocation so the
+        # reducer's deadline guard sees elapsed time that includes the
+        # just-finished invocation. The step-start sample remains
+        # authoritative for the prompt warning; this post-invocation sample
+        # is authoritative for the routing guard and the consumed-seconds fold.
+        _reduce_routing_timing, _reduce_now, _reduce_delta, _ = _sample_cycle_timing(
+            state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
+        )
         next_state, _ = reducer_reduce(
             state,
             event,
             policy_bundle.pipeline,
             recovery=recovery_controller,
+            routing_timing=_reduce_routing_timing,
         )
+        # Fold the post-invocation wall-clock delta into serialized consumed
+        # so the budget survives a crash-resume. Fold whenever the cycle was
+        # active coming into this step (whether or not it just concluded via a
+        # deadline redirect) so the concluded state carries the accurate
+        # elapsed duration for operator surfaces.
+        if (
+            _cycle_sample_box is not None
+            and ct_policy is not None
+            and state.cycle_timebox_active
+            and _reduce_delta > 0.0
+        ):
+            next_state = next_state.model_copy(
+                update={
+                    "cycle_timebox_consumed_seconds": (
+                        next_state.cycle_timebox_consumed_seconds + _reduce_delta
+                    ),
+                }
+            )
+        if _cycle_sample_box is not None and ct_policy is not None and _reduce_now is not None:
+            _cycle_sample_box[0] = _reduce_now
         # Thread the integration outcome into the persisted checkpoint.
         # Must happen AFTER reducer_reduce (so the state model is
         # consistent) and BEFORE _save_checkpoint_or_log (so the

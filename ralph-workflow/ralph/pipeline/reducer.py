@@ -16,6 +16,7 @@ not hardcoded match arms. All workflow semantics are expressed in policy.
 
 from __future__ import annotations
 
+import functools
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -48,6 +49,7 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
+from ralph.pipeline.cycle_timing import RoutingTiming, apply_cycle_timebox
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
@@ -217,10 +219,11 @@ def _reduce_result_event(
     state: PipelineState,
     event: AnalysisDecisionEvent | ExecutionResultEvent,
     pipeline_policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if isinstance(event, AnalysisDecisionEvent):
-        return _handle_analysis_decision(state, event, pipeline_policy)
-    return _handle_execution_result(state, event, pipeline_policy)
+        return _handle_analysis_decision(state, event, pipeline_policy, routing_timing)
+    return _handle_execution_result(state, event, pipeline_policy, routing_timing)
 
 
 def _reduce_captured_agent_failure(
@@ -263,13 +266,13 @@ def _reduce_captured_agent_failure(
 
 _EVENT_HANDLERS: dict[  # bounded-accumulator-ok: static
     PipelineEvent,
-    Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
+    Callable[[PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]],
 ] = {}
 
 
 def _get_event_handlers() -> dict[
     PipelineEvent,
-    Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
+    Callable[[PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]],
 ]:
     if not _EVENT_HANDLERS:
         _EVENT_HANDLERS.update(
@@ -306,6 +309,8 @@ def reduce(
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,
     recovery: RecoveryController | None = None,
+    *,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Pure state transition function.
 
@@ -335,7 +340,7 @@ def reduce(
     elif isinstance(event, PhaseFailureEvent):
         reduced_event = _reduce_phase_failure(state, event, pipeline_policy, recovery)
     elif isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
-        reduced_event = _reduce_result_event(state, event, pipeline_policy)
+        reduced_event = _reduce_result_event(state, event, pipeline_policy, routing_timing)
     if reduced_event is not None:
         return reduced_event
     if event == PipelineEvent.AGENT_FAILURE:
@@ -350,16 +355,17 @@ def reduce(
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if handler is None:
         return state, []
-    new_state, effects = handler(state, pipeline_policy)
+    new_state, effects = handler(state, pipeline_policy, routing_timing)
     return _restore_work_units(state, new_state), effects
 
 
 def _ignore_policy(
     handler: Callable[[PipelineState], tuple[PipelineState, list[Effect]]],
-) -> Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]]:
+) -> Callable[[PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]]:
     def wrapper(
         state: PipelineState,
         _policy: PipelinePolicy | None,
+        _routing_timing: RoutingTiming | None = None,
     ) -> tuple[PipelineState, list[Effect]]:
         return handler(state)
 
@@ -369,6 +375,7 @@ def _ignore_policy(
 def _return_state(
     state: PipelineState,
     _policy: PipelinePolicy | None,
+    _routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     return state, []
 
@@ -487,6 +494,7 @@ def _handle_phase_failure(
 def _handle_agent_success(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful agent completion."""
     if state.last_retry_delay_ms > 0:
@@ -507,14 +515,15 @@ def _handle_agent_success(
         return state.copy_with(commit=updated_commit), []
 
     if phase_def.role == "analysis":
-        return _handle_analysis_success(state, policy)
+        return _handle_analysis_success(state, policy, routing_timing)
 
-    return _resolve_or_terminal(state, "success", policy, "agent success")
+    return _resolve_or_terminal(state, "success", policy, "agent success", routing_timing=routing_timing)
 
 
 def _handle_agent_failure(
     state: PipelineState,
     policy: PipelinePolicy | None = None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
@@ -609,6 +618,7 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
 def _handle_analysis_success(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful analysis decision (continue/approve).
 
@@ -621,7 +631,7 @@ def _handle_analysis_success(
 
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
-        new_state, effects = _advance_phase(state, next_phase, policy)
+        new_state, effects = _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
         progress_state = progress.apply_analysis_success(state, new_state, policy=policy)
         phase_def = policy.phases.get(state.phase)
         completed_route = (
@@ -647,6 +657,7 @@ def _handle_execution_result(
     state: PipelineState,
     event: ExecutionResultEvent,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Route an execution result while carrying any policy-declared commit override."""
     if policy is None:
@@ -668,13 +679,14 @@ def _handle_execution_result(
         post_commit_phase_override=phase_def.result_status_post_commit.get(event.status),
         last_execution_result_status=event.status,
     )
-    new_state, effects = _resolve_or_terminal(routed_state, "success", policy, "execution result")
+    new_state, effects = _resolve_or_terminal(routed_state, "success", policy, "execution result", routing_timing=routing_timing)
     return new_state, effects
 
 
 def _handle_analysis_loopback(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle analysis loopback decision (retry/request changes) — policy-driven."""
     if policy is None:
@@ -693,16 +705,17 @@ def _handle_analysis_loopback(
             phase_def,
             review_outcome=phase_def.loop_policy.loopback_review_outcome,
             advance_to_failed=_advance_to_failed,
-            resolve_or_terminal=_resolve_or_terminal,
-            advance_phase=_advance_phase,
+            resolve_or_terminal=functools.partial(_resolve_or_terminal, routing_timing=routing_timing),
+            advance_phase=functools.partial(_advance_phase, routing_timing=routing_timing),
         )
 
-    return _resolve_or_terminal(state, "loopback", policy, "analysis loopback")
+    return _resolve_or_terminal(state, "loopback", policy, "analysis loopback", routing_timing=routing_timing)
 
 
 def _handle_phase_loopback(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle generic bounded phase loopback for non-analysis phases."""
     if policy is None:
@@ -719,17 +732,18 @@ def _handle_phase_loopback(
             phase_def,
             review_outcome=None,
             advance_to_failed=_advance_to_failed,
-            resolve_or_terminal=_resolve_or_terminal,
-            advance_phase=_advance_phase,
+            resolve_or_terminal=functools.partial(_resolve_or_terminal, routing_timing=routing_timing),
+            advance_phase=functools.partial(_advance_phase, routing_timing=routing_timing),
         )
 
-    return _resolve_or_terminal(state, "loopback", policy, "phase loopback")
+    return _resolve_or_terminal(state, "loopback", policy, "phase loopback", routing_timing=routing_timing)
 
 
 def _handle_analysis_decision(
     state: PipelineState,
     event: AnalysisDecisionEvent,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle AnalysisDecisionEvent: route directly through decisions[decision].target.
 
@@ -810,7 +824,7 @@ def _handle_analysis_decision(
         )
         return _enter_failed_recovery(progress_state, failure_reason, policy)
 
-    advanced_state, advanced_target = _prepare_phase_advance(progress_state, route.target, policy)
+    advanced_state, advanced_target = _prepare_phase_advance(progress_state, route.target, policy, routing_timing=routing_timing)
     logger.bind(component="policy.routing").info(
         explain_routing_decision(event.phase, advanced_target, "decision", event.decision)
     )
@@ -821,6 +835,7 @@ def _handle_analysis_decision(
 def _handle_review_clean(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle clean review (no issues found).
 
@@ -845,16 +860,17 @@ def _handle_review_clean(
                 state.phase, next_phase, "bypass route", phase_def.clean_outcome
             )
         )
-        new_state, effects = _advance_phase(state, next_phase, policy)
+        new_state, effects = _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
         return new_state.copy_with(review_outcome=None), effects
 
-    new_state, effects = _resolve_or_terminal(state, "success", policy, "review clean")
+    new_state, effects = _resolve_or_terminal(state, "success", policy, "review clean", routing_timing=routing_timing)
     return new_state.copy_with(review_outcome=None), effects
 
 
 def _handle_review_issues_found(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle review with issues found.
 
@@ -877,23 +893,25 @@ def _handle_review_issues_found(
             "See docs/sphinx/concepts.md.",
             policy,
         )
-    new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found")
+    new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found", routing_timing=routing_timing)
     return new_state.copy_with(review_outcome=phase_def.issues_outcome), effects
 
 
 def _handle_fix_success(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful fix."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for fix success routing", policy)
-    return _resolve_or_terminal(state, "success", policy, "fix success")
+    return _resolve_or_terminal(state, "success", policy, "fix success", routing_timing=routing_timing)
 
 
 def _handle_fix_failure(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle fix failure."""
     if policy is None:
@@ -906,7 +924,7 @@ def _handle_fix_failure(
         if next_phase == failed_route or next_phase not in policy.phases:
             failure_reason = _failure_reason(state, "Fix phase failed")
             return _enter_failed_recovery(state, failure_reason, policy)
-        return _advance_phase(state, next_phase, policy)
+        return _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
     except ValueError as exc:
         return _advance_to_failed(
             state, f"Routing error after fix failure in '{state.phase}': {exc}", policy
@@ -916,6 +934,7 @@ def _handle_fix_failure(
 def _handle_commit_success(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful commit."""
     if policy is None:
@@ -928,7 +947,7 @@ def _handle_commit_success(
         progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
-        new_state, effects = _advance_phase(progress_state, next_phase, policy)
+        new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
         return new_state, effects
     except ValueError as exc:
         return _advance_to_failed(
@@ -939,6 +958,7 @@ def _handle_commit_success(
 def _handle_commit_skipped(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle a skipped commit (no diff to commit).
 
@@ -956,7 +976,7 @@ def _handle_commit_skipped(
         progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
-        new_state, effects = _advance_phase(progress_state, next_phase, policy)
+        new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
         return new_state, effects
     except ValueError as exc:
         return _advance_to_failed(
@@ -967,6 +987,7 @@ def _handle_commit_skipped(
 def _handle_commit_failure(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
     failure_reason = commit_failure_reason(state)
@@ -1028,6 +1049,7 @@ def _handle_interrupted(state: PipelineState) -> tuple[PipelineState, list[Effec
 def _handle_complete(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline completion — routes to the policy-declared terminal success phase."""
     terminal = _terminal_success_route(policy)
@@ -1038,6 +1060,7 @@ def _handle_complete(
 def _handle_failed(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline failure.
 
@@ -1058,21 +1081,34 @@ def _handle_failed(
 def _handle_phase_advance(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle explicit phase advance request."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for phase advance routing", policy)
-    return _resolve_or_terminal(state, "success", policy, "phase advance")
+    return _resolve_or_terminal(state, "success", policy, "phase advance", routing_timing=routing_timing)
 
 
 def _prepare_phase_advance(
     state: PipelineState,
     target_phase: PipelinePhase,
     policy: PipelinePolicy | None = None,
+    *,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, PipelinePhase]:
     """Resolve the effective phase target before applying the transition."""
     if policy is None:
         return state, target_phase
+
+    # Apply the plan-to-final-commit cycle timebox guard first so every route
+    # that can enter the configured guarded phase uses one timing authority.
+    timebox = apply_cycle_timebox(
+        state, target_phase, policy=policy, routing_timing=routing_timing
+    )
+    if timebox.redirected and timebox.redirect_reason is not None:
+        logger.bind(component="policy.routing").info(timebox.redirect_reason)
+    state = timebox.state
+    target_phase = timebox.target_phase
 
     current_phase_def = policy.phases.get(state.phase)
     if current_phase_def is not None and current_phase_def.role == "analysis":
@@ -1093,6 +1129,8 @@ def _advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,
     policy: PipelinePolicy | None = None,
+    *,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Advance to a new phase with proper state resets.
 
@@ -1104,7 +1142,9 @@ def _advance_phase(
     Returns:
         Tuple of (new_state, effects).
     """
-    advanced_state, advanced_target = _prepare_phase_advance(state, target_phase, policy)
+    advanced_state, advanced_target = _prepare_phase_advance(
+        state, target_phase, policy, routing_timing=routing_timing
+    )
     new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
     return new_state, []
 
@@ -1123,6 +1163,8 @@ def _resolve_or_terminal(
     signal: str,
     policy: PipelinePolicy,
     label: str,
+    *,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     try:
         next_phase = resolve_next_phase(state.phase, signal, policy)
@@ -1132,7 +1174,9 @@ def _resolve_or_terminal(
             f"Routing error after {label} in '{state.phase}': {exc}",
             policy,
         )
-    advanced_state, advanced_target = _prepare_phase_advance(state, next_phase, policy)
+    advanced_state, advanced_target = _prepare_phase_advance(
+        state, next_phase, policy, routing_timing=routing_timing
+    )
     logger.bind(component="policy.routing").info(
         explain_routing_decision(state.phase, advanced_target, "signal", signal)
     )
@@ -1143,6 +1187,7 @@ def _resolve_or_terminal(
 def _handle_all_workers_complete(
     state: PipelineState,
     policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if not state.worker_states:
         return state, []
@@ -1165,7 +1210,7 @@ def _handle_all_workers_complete(
         )
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
-        return _advance_phase(state, next_phase, policy)
+        return _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
     except ValueError:
         return _advance_to_failed(
             state,

@@ -140,6 +140,21 @@ def render_run_time_report(
             + "; fallbacks: "
             + _format_count(state.metrics.total_fallbacks)
             + ".\n"
+            + (
+                (
+                    "\n## Cycle Timebox\n"
+                    + f"- [CT-1] Consumed: {_format_elapsed(state.cycle_timebox_consumed_seconds)}s;"
+                    + (" active." if state.cycle_timebox_active else " concluded.")
+                    + "\n"
+                    + (
+                        f"- [CT-2] Redirected: {state.cycle_timebox_redirect_reason}.\n"
+                        if state.cycle_timebox_redirect_reason
+                        else ""
+                    )
+                )
+                if state.cycle_timebox_consumed_seconds > 0
+                else ""
+            )
         )
         if len(report) <= _REPORTING_BUDGET_CHARACTERS:
             return report

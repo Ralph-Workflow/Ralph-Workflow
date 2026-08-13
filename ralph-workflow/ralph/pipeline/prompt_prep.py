@@ -6,9 +6,12 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline.cycle_timing import RoutingTiming, cycle_timebox_warning
 from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.handoffs import resolve_phase_drain
@@ -300,6 +303,7 @@ def _materialize_agent_prompt_if_needed(
     registry: _RegistryLike,
     *,
     materialize_fn: _MaterializePromptFn | None = None,
+    cycle_total_elapsed: float | None = None,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
@@ -307,6 +311,33 @@ def _materialize_agent_prompt_if_needed(
     agent = registry.get(effect.agent_name)
     agent_drain = effect.drain or resolve_phase_drain(effect.phase, policy_bundle.pipeline) or effect.phase
     media_entries = collect_media_entries_for_phase(workspace, effect.phase, drain=agent_drain) or None
+    # Build the optional cycle-timebox warning payload for the guarded
+    # development entry when elapsed >= 80% of the configured duration.
+    _warning_data = None
+    if cycle_total_elapsed is not None:
+        _warning_data = cycle_timebox_warning(
+            state,
+            effect.phase,
+            policy=policy_bundle.pipeline,
+            routing_timing=RoutingTiming(
+                monotonic_now=0.0,
+                total_elapsed_seconds=cycle_total_elapsed,
+            ),
+        )
+    if _warning_data is not None:
+        _raw_elapsed = _warning_data.get("elapsed_seconds", 0.0)
+        _raw_duration = _warning_data.get("duration_seconds", 0.0)
+        _elapsed = float(_raw_elapsed) if isinstance(_raw_elapsed, (int, float)) else 0.0
+        _duration = float(_raw_duration) if isinstance(_raw_duration, (int, float)) else 0.0
+        _pct = (_elapsed / _duration * 100.0) if _duration > 0 else 0.0
+        logger.warning(
+            "cycle-timebox warning: {:.0f}s consumed of {:.0f}s budget "
+            "({:.0f}% elapsed) on phase {!r}",
+            _elapsed,
+            _duration,
+            _pct,
+            effect.phase,
+        )
     _mat = materialize_fn or materialize_prompt_for_phase
     _mat(
         phase=effect.phase,
@@ -333,6 +364,7 @@ def _materialize_agent_prompt_if_needed(
             )
         ),
         multimodal_entries=media_entries,
+        cycle_timebox_warning=_warning_data,
     )
 
 

@@ -371,6 +371,46 @@ Recovery defines cycle caps and the terminal-failure route.
 
 This is where you change how far the workflow is allowed to keep trying before it gives up.
 
+### `[cycle_timebox]`
+
+The cycle timebox imposes a configurable wall-clock limit on each
+plan-to-final-commit development cycle. When the budget is exhausted,
+subsequent development entries are redirected to the configured
+finalization target (the final-commit cleanup phase) so the cycle
+concludes with a real commit rather than looping indefinitely.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `duration_seconds` | `7200` (120 min) | Finite, positive. Total wall-clock budget per cycle. |
+| `start_entry` | `development` | Phase where timing begins (first entry while inactive). |
+| `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
+| `end_entry` | `development_final_commit_cleanup` | Phase whose entry clears timing. |
+| `finalization_target` | `development_final_commit_cleanup` | Redirect target when the deadline is reached. |
+
+The 80% soft-warning threshold is derived automatically: at the default
+`7200`s duration the warning fires at `5760`s (96 min), giving the
+agent a 24-minute window to triage and finalize. The warning is
+injected into the development prompt and surfaces in the run-time
+report; it does not interrupt an already-running invocation.
+
+The timebox is independent of the per-phase invocation gate timeout
+and the analysis-loop iteration cap. It accumulates across phases,
+checkpoints, and crash-resumes via a serialized consumed-seconds
+counter.
+
+The bundled workflow declares a sensible default; no customization is
+required.
+
+#### Example: a shorter development cycle
+
+```toml
+[cycle_timebox]
+duration_seconds = 3600
+```
+
+This reduces the budget to 60 minutes; the 80% warning fires at 48
+minutes (2880 seconds).
+
 ## Common advanced user stories
 
 ### I want a longer development-analysis loop

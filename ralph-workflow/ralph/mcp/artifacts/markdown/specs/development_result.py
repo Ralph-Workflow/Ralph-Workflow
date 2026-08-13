@@ -7,9 +7,10 @@ below the frontmatter is validated only for a ``completed`` result,
 because only a completion claim is checkable: the required-section
 skeleton, the ``Plan Items Proven`` / ``Analysis Items Addressed`` item
 IDs (proof gating cross-references them) and the ``Continuation``
-session ID. A non-``completed`` result is free-form prose — no section
-is required or shaped, and it is mapped best-effort so the next
-iteration can read whatever the agent managed to write.
+session ID. A non-``completed`` result requires at minimum a ``Summary``
+section (the concise reason for the outcome) so silent omission is
+rejected mechanically; the rest of the body is mapped best-effort so
+the next iteration can read whatever the agent managed to write.
 
 Within a ``completed`` body the rest stays descriptive: sections
 tolerate multi-line prose and unknown ``Key: value`` continuation lines
@@ -102,12 +103,25 @@ def _first_item(document: ParsedDocument, name: str) -> str | None:
 def _free_form_content(document: ParsedDocument) -> Content:
     """Map a non-``completed`` result: status plus whatever prose exists.
 
-    Nothing below the frontmatter is required or shaped, so every
-    section is read best-effort and a missing one simply contributes
-    nothing. Proof entries are carried only when they are well formed —
-    proof gating is skipped for a non-completion claim, so a degenerate
-    entry is dropped rather than rejected.
+    A ``Summary`` section is required so the operator and the next
+    iteration always have a concise reason for the partial/failed
+    outcome — silent omission is rejected mechanically rather than
+    relying on prompt prose alone. Everything else is read best-effort:
+    missing sections contribute nothing, and proof entries are carried
+    only when well formed (proof gating is skipped for a non-completion
+    claim, so a degenerate entry is dropped rather than rejected).
+
+    When ``cycle_timebox_warned: true`` is set in the frontmatter, an
+    ``## Incomplete Work`` section with at least one stable-ID item is
+    required so the operator can trace what was interrupted by the
+    deadline without re-reading the entire transcript.
     """
+    summary = _first_item(document, "Summary")
+    if not summary:
+        raise ValueError(
+            "Summary section with at least one item is required for "
+            "partial/failed development results"
+        )
     content: Content = {
         "status": document.frontmatter["status"],
         "summary": _first_item(document, "Summary") or "",
@@ -117,6 +131,21 @@ def _free_form_content(document: ParsedDocument) -> Content:
         "plan_items_proven": [],
         "analysis_items_addressed": [],
     }
+    # When the cycle timebox fired a warning before the partial/failed
+    # outcome, require an Incomplete Work section listing what remains.
+    warned = document.frontmatter.get("cycle_timebox_warned")
+    if warned is not None and str(warned).lower() in ("true", "1", "yes"):
+        incomplete_items = _optional_items(document, "Incomplete Work")
+        if not incomplete_items:
+            raise ValueError(
+                "Incomplete Work section with at least one stable-ID item "
+                "is required when cycle_timebox_warned is set"
+            )
+        content["incomplete_work"] = [item.text for item in incomplete_items]
+    else:
+        existing = _optional_items(document, "Incomplete Work")
+        if existing:
+            content["incomplete_work"] = [item.text for item in existing]
     next_steps = _first_item(document, "Next Steps")
     if next_steps:
         content["next_steps"] = next_steps
@@ -170,6 +199,7 @@ DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
         "Analysis Items Addressed": SectionRule(required=False, allow_body=True),
         "Next Steps": SectionRule(required=False, require_items=True, max_items=1, allow_body=True),
         "Continuation": SectionRule(required=False, require_items=True, max_items=1),
+        "Incomplete Work": SectionRule(required=False, require_items=True, allow_body=True),
     },
     to_content=_to_content,
     normalize_content=normalize_development_result_content,

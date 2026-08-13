@@ -141,3 +141,23 @@ class TestRenderExplanationText:
         assert "AUTHORED BLOCKS" in text
         assert "LIFECYCLE COMPLETION" in text
         assert "development_final_commit" in text
+
+    # --- Cycle timebox (S-6) ---
+
+    def test_cycle_timebox_section_appears_for_default_policy(self) -> None:
+        bundle = load_policy(_DEFAULT_POLICY_DIR)
+        exp = explain_policy(bundle)
+        assert exp.cycle_timebox is not None
+        text = render_explanation_text(exp)
+        assert "CYCLE TIMEBOX POLICY" in text
+        assert "7200s" in text
+        assert "5760s" in text
+        assert "development" in text
+        assert "development_final_commit_cleanup" in text
+
+    def test_cycle_timebox_section_absent_when_policy_omits_it(self) -> None:
+        bundle = load_policy(_DEFAULT_POLICY_DIR)
+        exp = explain_policy(bundle)
+        exp.cycle_timebox = None
+        text = render_explanation_text(exp)
+        assert "CYCLE TIMEBOX POLICY" not in text

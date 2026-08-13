@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .budget_counter_explanation import BudgetCounterExplanation
+    from .cycle_timebox_explanation import CycleTimeboxExplanation
     from .lifecycle_explanation import LifecycleExplanation
     from .loop_counter_explanation import LoopCounterExplanation
     from .parallel_explanation import ParallelExplanation
@@ -33,3 +34,4 @@ class PolicyExplanation:
     parallel_executions: list[ParallelExplanation] = field(default_factory=list)
     post_commit_routes: list[PostCommitRouteExplanation] = field(default_factory=list)
     recovery: RecoveryExplanation | None = None
+    cycle_timebox: CycleTimeboxExplanation | None = None

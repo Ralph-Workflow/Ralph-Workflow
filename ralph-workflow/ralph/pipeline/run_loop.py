@@ -37,6 +37,7 @@ from ralph.pipeline.auto_integrate_agent import (
     emit_integration_warn_line,
 )
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
+from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -99,6 +100,7 @@ if TYPE_CHECKING:
             cli_overrides: dict[str, object],
             _monitor_stop_cb: Callable[[], None] | None,
             pipeline_deps: PipelineDeps | None = None,
+            _cycle_sample_box: list[float | None] | None = None,
         ) -> PipelineState | int: ...
 
     class _ConnectivityMonitorLike(Protocol):
@@ -1165,6 +1167,19 @@ def _run_inner_loop(
     last_status_sig: (
         tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None
     ) = None
+    # Mutable box holding the last monotonic sample for the cycle
+    # timebox per-step fold. Persists across loop iterations so the
+    # runner can compute wall-clock delta on every step. A fresh ``None``
+    # on (re)start is correct: the first active step establishes the
+    # baseline sample and the serialized ``cycle_timebox_consumed_seconds``
+    # already carries the budget accumulated before the restart.
+    cycle_sample_box: list[float | None] = [None]
+    # Initialize cycle timing for an older checkpoint resumed directly inside
+    # the development loop so the timer is tracked from the resume time
+    # without charging pre-resume downtime.
+    state = initialize_legacy_cycle_on_resume(
+        state, ctx.policy_bundle.pipeline
+    )
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
@@ -1198,6 +1213,7 @@ def _run_inner_loop(
             cli_overrides=ctx.cli_overrides,
             _monitor_stop_cb=ctx.monitor_stop,
             pipeline_deps=iter_pipeline_deps,
+            _cycle_sample_box=cycle_sample_box,
         )
         if isinstance(step_result, int):
             return state, prev_phase, step_result

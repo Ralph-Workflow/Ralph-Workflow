@@ -131,6 +131,7 @@ PIPELINE_POLICY_FIELDS = frozenset(
         "lifecycle_phases",
         "default_phase_retry_policy",
         "recovery",
+        "cycle_timebox",
     }
 )
 _BLOCKS_ADAPTER = TypeAdapter(dict[str, PolicyBlock])

@@ -134,3 +134,64 @@ def test_run_time_report_regression_preserves_negative_extreme_signal_counts() -
 
     assert len(report) <= 1_600
     assert "Agent calls: -~1e2000" in report
+
+
+def test_run_time_report_includes_cycle_timebox_when_consumed() -> None:
+    """The report shows cycle timebox diagnostics when budget was consumed."""
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=3600.0,
+        ),
+        outcome="completed",
+        elapsed_seconds=3600.0,
+    )
+    assert "## Cycle Timebox" in report
+    assert "[CT-1]" in report
+    assert "3600" in report
+    assert "active" in report
+    assert len(report) <= 1_600
+
+
+def test_run_time_report_omits_cycle_timebox_when_unused() -> None:
+    """No cycle timebox section when the budget was never consumed."""
+    report = render_run_time_report(
+        state=PipelineState(phase="planning"),
+        outcome="completed",
+        elapsed_seconds=10.0,
+    )
+    assert "## Cycle Timebox" not in report
+
+
+def test_run_time_report_shows_concluded_when_cycle_ended() -> None:
+    """After the cycle ends, the report shows 'concluded' not 'active'."""
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="complete",
+            cycle_timebox_active=False,
+            cycle_timebox_consumed_seconds=7200.0,
+        ),
+        outcome="completed",
+        elapsed_seconds=7200.0,
+    )
+    assert "## Cycle Timebox" in report
+    assert "concluded" in report
+
+
+def test_run_time_report_shows_redirect_reason_when_set() -> None:
+    """When redirect_reason is set, the report shows a CT-2 redirect line."""
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="development_final_commit_cleanup",
+            cycle_timebox_active=False,
+            cycle_timebox_consumed_seconds=7200.0,
+            cycle_timebox_redirect_reason="cycle_deadline_expired",
+        ),
+        outcome="completed",
+        elapsed_seconds=7200.0,
+    )
+    assert "[CT-1]" in report
+    assert "[CT-2]" in report
+    assert "cycle_deadline_expired" in report
+    assert "concluded" in report

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from .budget_counter_explanation import BudgetCounterExplanation
 from .commit_policy_explanation import CommitPolicyExplanation
+from .cycle_timebox_explanation import CycleTimeboxExplanation
 from .lifecycle_explanation import LifecycleExplanation
 from .loop_counter_explanation import LoopCounterExplanation
 from .loop_policy_explanation import LoopPolicyExplanation
@@ -209,12 +210,24 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
         preserve_session_on_categories=list(r.preserve_session_on_categories),
     )
 
+    ct = pipeline.cycle_timebox
+    if ct is not None:
+        explanation.cycle_timebox = CycleTimeboxExplanation(
+            duration_seconds=ct.duration_seconds,
+            warning_threshold_seconds=ct.warning_threshold_seconds,
+            start_entry=ct.start_entry,
+            guarded_entry=ct.guarded_entry,
+            end_entry=ct.end_entry,
+            finalization_target=ct.finalization_target,
+        )
+
     return explanation
 
 
 __all__ = [
     "BudgetCounterExplanation",
     "CommitPolicyExplanation",
+    "CycleTimeboxExplanation",
     "LifecycleExplanation",
     "LoopCounterExplanation",
     "LoopPolicyExplanation",

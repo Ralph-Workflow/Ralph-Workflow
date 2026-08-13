@@ -787,3 +787,87 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
     for idx, (fmt, value) in enumerate(expected_messages):
         assert mock_logger.error.call_args_list[idx][0][0] == fmt
         assert mock_logger.error.call_args_list[idx][0][1] == value
+
+
+
+# ---------------------------------------------------------------------------
+# cycle_timebox policy tests
+# ---------------------------------------------------------------------------
+
+_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+
+def test_default_cycle_timebox_values() -> None:
+    bundle = load_policy(_DEFAULTS_DIR)
+    ct = bundle.pipeline.cycle_timebox
+    assert ct is not None
+    assert ct.duration_seconds == 7200.0
+    assert ct.warning_threshold_seconds == 5760.0
+    assert ct.remaining_at_warning_seconds == 1440.0
+    assert ct.start_entry == "development"
+    assert ct.guarded_entry == "development"
+    assert ct.end_entry == "development_final_commit_cleanup"
+    assert ct.finalization_target == "development_final_commit_cleanup"
+
+
+def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    pipeline = (tmp_path / "pipeline.toml").read_text()
+    pipeline = pipeline.replace("duration_seconds = 7200", "duration_seconds = 3600")
+    (tmp_path / "pipeline.toml").write_text(pipeline)
+    bundle = load_policy(tmp_path)
+    ct = bundle.pipeline.cycle_timebox
+    assert ct is not None
+    assert ct.duration_seconds == 3600.0
+    # 80% of 3600 -> 2880 elapsed; 720 remaining (12 minutes).
+    assert ct.warning_threshold_seconds == 2880.0
+    assert ct.remaining_at_warning_seconds == 720.0
+
+
+def test_cycle_timebox_accepts_non_canonical_valid_phase_references(
+    tmp_path: Path,
+) -> None:
+    """A cycle_timebox may reference any declared phase, not just canonical names."""
+    _copy_default_policy_files(tmp_path)
+    pipeline = (tmp_path / "pipeline.toml").read_text()
+    pipeline = pipeline.replace(
+        'guarded_entry = "development"', 'guarded_entry = "planning"'
+    )
+    (tmp_path / "pipeline.toml").write_text(pipeline)
+    bundle = load_policy(tmp_path)
+    ct = bundle.pipeline.cycle_timebox
+    assert ct is not None
+    assert ct.guarded_entry == "planning"
+
+
+@pytest.mark.parametrize("bad_duration", [0, -1, -600, float("inf"), float("nan")])
+def test_cycle_timebox_rejects_invalid_duration(bad_duration: float) -> None:
+    from pydantic import ValidationError
+
+    from ralph.policy.models import CycleTimeboxPolicy
+
+    with pytest.raises(ValidationError) as excinfo:
+        CycleTimeboxPolicy(
+            duration_seconds=bad_duration,
+            start_entry="development",
+            guarded_entry="development",
+            end_entry="development_final_commit_cleanup",
+            finalization_target="development_final_commit_cleanup",
+        )
+    assert "duration_seconds must be finite and greater than zero" in str(excinfo.value)
+
+
+def test_cycle_timebox_rejects_unknown_target(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    pipeline = (tmp_path / "pipeline.toml").read_text()
+    pipeline = pipeline.replace(
+        'finalization_target = "development_final_commit_cleanup"',
+        'finalization_target = "no_such_phase"',
+    )
+    # The toml has two lines matching the replacement target; replace only the
+    # one inside [cycle_timebox] by rewriting the whole cycle_timebox block.
+    (tmp_path / "pipeline.toml").write_text(pipeline)
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy(tmp_path)
+    assert "cycle_timebox" in excinfo.value.message
+    assert "no_such_phase" in excinfo.value.message

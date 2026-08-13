@@ -37,6 +37,8 @@ def render_explanation_text(exp: object) -> str:
         _render_parallel_text(exp, lines)
     if exp.recovery is not None:
         _render_recovery_text(exp, lines)
+    if exp.cycle_timebox is not None:
+        _render_cycle_timebox_text(exp, lines)
 
     lines.append("")
     lines.append("=" * 70)
@@ -263,6 +265,24 @@ def _render_recovery_text(exp: object, lines: list[str]) -> None:
     lines.append(f"  Max recovery cycles : {r.cycle_cap}")
     lines.append(f"  Terminal failure route: {r.terminal_recovery_route}")
     lines.append(f"  Session preserved on: {', '.join(r.preserve_session_on_categories) or 'none'}")
+
+
+def _render_cycle_timebox_text(exp: object, lines: list[str]) -> None:
+    if not isinstance(exp, PolicyExplanation):
+        return
+    ct = exp.cycle_timebox
+    if ct is None:
+        return
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("CYCLE TIMEBOX POLICY")
+    lines.append("-" * 70)
+    lines.append(f"  Duration            : {ct.duration_seconds:.0f}s ({ct.duration_seconds / 60:.0f} min)")
+    lines.append(f"  Warning at 80%      : {ct.warning_threshold_seconds:.0f}s ({ct.warning_threshold_seconds / 60:.0f} min)")
+    lines.append(f"  Start entry         : {ct.start_entry}")
+    lines.append(f"  Guarded entry       : {ct.guarded_entry}")
+    lines.append(f"  End entry           : {ct.end_entry}")
+    lines.append(f"  Finalization target : {ct.finalization_target}")
 
 
 def _render_phase_routing(phase: PhaseExplanation, lines: list[str]) -> None:

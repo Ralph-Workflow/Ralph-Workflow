@@ -139,8 +139,9 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         _event: object,
         _policy: object,
         recovery: object | None = None,
+        routing_timing: object | None = None,
     ) -> object:
-        del recovery
+        del recovery, routing_timing
         return current_state.copy_with(phase="complete"), None
 
     def fake_invoke_agent(
@@ -240,8 +241,9 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         _event: object,
         _policy: object,
         recovery: object | None = None,
+        routing_timing: object | None = None,
     ) -> object:
-        del recovery
+        del recovery, routing_timing
         return next(next_states), None
 
     def fake_invoke_agent(
@@ -336,8 +338,9 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         _event: object,
         _policy: object,
         recovery: object | None = None,
+        routing_timing: object | None = None,
     ) -> object:
-        del recovery
+        del recovery, routing_timing
         next_state = current_state.copy_with(phase="complete")
         call_order.append(("reduce", next_state.phase))
         return next_state, None

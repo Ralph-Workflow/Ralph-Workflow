@@ -5,6 +5,7 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
+from ralph.policy.models._cycle_timebox_policy import CycleTimeboxPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._lifecycle_phase_policy import LifecyclePhasePolicy
 from ralph.policy.models._loop_counter_config import LoopCounterConfig
@@ -67,6 +68,15 @@ class PipelinePolicy(_FrozenPolicyModel):
     recovery: RecoveryPolicy = Field(
         default_factory=RecoveryPolicy,
         description="Pipeline-wide recovery configuration",
+    )
+    cycle_timebox: CycleTimeboxPolicy | None = Field(
+        default=None,
+        description=(
+            "Optional transition-bounded wall-clock timebox for a plan-to-final-commit "
+            "cycle. When set, starts a cycle timer on the first entry to the guarded "
+            "phase, warns development agents from 80% elapsed, and redirects expired "
+            "re-entries through the finalization target."
+        ),
     )
 
     @model_validator(mode="before")
@@ -253,6 +263,26 @@ class PipelinePolicy(_FrozenPolicyModel):
                 f"recovery.terminal_failure_phase: '{tfp}' must have "
                 f"role='terminal' and terminal_outcome='failure'"
             )
+        return self
+
+    @model_validator(mode="after")
+    def cycle_timebox_references_known_phases(self) -> Self:
+        ct = self.cycle_timebox
+        if ct is None:
+            return self
+        ts = self.terminal_states()
+        for label, target in [
+            ("start_entry", ct.start_entry),
+            ("guarded_entry", ct.guarded_entry),
+            ("end_entry", ct.end_entry),
+            ("finalization_target", ct.finalization_target),
+        ]:
+            if target not in ts and target not in self.phases:
+                raise ValueError(
+                    f"cycle_timebox.{label} references unknown phase or terminal "
+                    f"'{target}'. Update the reference to a declared phase, or remove "
+                    "the [cycle_timebox] section to disable the timebox."
+                )
         return self
 
     def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:

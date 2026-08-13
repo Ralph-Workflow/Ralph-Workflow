@@ -257,7 +257,7 @@ def test_run_pipeline_step_inline_path_runs_boundary_integration(
     monkeypatch.setattr(
         runner, "call_determine_effect_from_policy", lambda *_a, **_k: SaveCheckpointEffect()
     )
-    monkeypatch.setattr(runner, "reducer_reduce", lambda s, e, p, recovery=None: (s, []))
+    monkeypatch.setattr(runner, "reducer_reduce", lambda s, e, p, recovery=None, routing_timing=None: (s, []))
     monkeypatch.setattr(runner.ckpt, "save", MagicMock())
     monkeypatch.setattr(runner, "_save_checkpoint_or_log", lambda *a, **k: None)
 
@@ -355,7 +355,7 @@ def test_non_state_returning_inline_effect_does_not_attempt_copy(
         "call_determine_effect_from_policy",
         lambda *_a, **_k: ExitSuccessEffect(),
     )
-    monkeypatch.setattr(runner, "reducer_reduce", lambda s, e, p, recovery=None: (s, []))
+    monkeypatch.setattr(runner, "reducer_reduce", lambda s, e, p, recovery=None, routing_timing=None: (s, []))
     monkeypatch.setattr(runner.ckpt, "save", MagicMock())
     monkeypatch.setattr(runner, "_save_checkpoint_or_log", lambda *a, **k: None)
 

@@ -28,6 +28,7 @@ class DevelopmentResult(RalphBaseModel):
     analysis_items_addressed: list[AnalysisItemProof] = Field(default_factory=list)
     next_steps: str | None = None
     continuation: Continuation | None = None
+    incomplete_work: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_status_requirements(self) -> DevelopmentResult:
@@ -76,6 +77,9 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
                         for default_field in ("capture_handles", "rationale", "verdict_id"):
                             if entry.get(default_field) in (None, ()):
                                 entry.pop(default_field, None)
+        # Strip empty incomplete_work so non-warned results keep their shape.
+        if not dumped.get("incomplete_work"):
+            dumped.pop("incomplete_work", None)
         return dumped
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
