@@ -114,7 +114,10 @@ def _free_form_content(document: ParsedDocument) -> Content:
     When ``cycle_timebox_warned: true`` is set in the frontmatter, an
     ``## Incomplete Work`` section with at least one stable-ID item is
     required so the operator can trace what was interrupted by the
-    deadline without re-reading the entire transcript.
+    deadline without re-reading the entire transcript. Each item must
+    include a concise ``Reason:`` field and a supporting ``Evidence:``
+    field with a reproducible location; items without these are rejected
+    so fabricated completion or silent omission cannot pass validation.
     """
     summary = _first_item(document, "Summary")
     if not summary:
@@ -139,9 +142,13 @@ def _free_form_content(document: ParsedDocument) -> Content:
         if not incomplete_items:
             raise ValueError(
                 "Incomplete Work section with at least one stable-ID item "
-                "is required when cycle_timebox_warned is set"
+                "is required when cycle_timebox_warned is set; each item "
+                "must include a 'Reason:' and 'Evidence:' field"
             )
-        content["incomplete_work"] = [item.text for item in incomplete_items]
+        _validate_warned_incomplete_items(incomplete_items)
+        content["incomplete_work"] = [
+            f"[{item.identifier}] {item.text}" for item in incomplete_items
+        ]
     else:
         existing = _optional_items(document, "Incomplete Work")
         if existing:
@@ -158,6 +165,47 @@ def _free_form_content(document: ParsedDocument) -> Content:
 def _optional_items(document: ParsedDocument, name: str) -> tuple[ParsedItem, ...]:
     section = document.section(name)
     return () if section is None else tuple(section.items)
+
+
+def _item_fields(item: ParsedItem) -> dict[str, str]:
+    """Extract ``Key: value`` pairs from an item's indented continuation lines."""
+    return {
+        line.text.split(": ", 1)[0]: line.text.split(": ", 1)[1]
+        for line in item.fields
+        if ": " in line.text
+    }
+
+
+def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
+    """Mechanically require a stable ID, evidence, and reason for warned items.
+
+    When the cycle timebox fired a soft warning, each ``## Incomplete Work``
+    item must carry a stable-ID bracket, a concise ``Reason:`` field, and a
+    supporting ``Evidence:`` field with a reproducible location — so the
+    operator and next iteration can triage what was interrupted without
+    re-reading the transcript or accepting fabricated completion.
+    """
+    for item in items:
+        if not item.identifier:
+            raise ValueError(
+                f"Incomplete Work items must include a stable-ID bracket "
+                f"(line {item.line})"
+            )
+        fields = _item_fields(item)
+        reason = fields.get("Reason", "").strip()
+        if not reason:
+            raise ValueError(
+                f"Incomplete Work item [{item.identifier}] must include a "
+                f"concise 'Reason:' field explaining why the step is "
+                f"incomplete or infeasible (line {item.line})"
+            )
+        evidence = fields.get("Evidence", "").strip()
+        if not evidence:
+            raise ValueError(
+                f"Incomplete Work item [{item.identifier}] must include a "
+                f"supporting 'Evidence:' field with a reproducible location "
+                f"(line {item.line})"
+            )
 
 
 def _to_content(document: ParsedDocument) -> Content:

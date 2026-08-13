@@ -391,15 +391,67 @@ The 80% soft-warning threshold is derived automatically: at the default
 `7200`s duration the warning fires at `5760`s (96 min), giving the
 agent a 24-minute window to triage and finalize. The warning is
 injected into the development prompt and surfaces in the run-time
-report; it does not interrupt an already-running invocation.
+report; it does not interrupt an already-running invocation. Each
+subsequent development invocation in the same cycle receives an updated
+warning with the current elapsed and remaining time.
 
-The timebox is independent of the per-phase invocation gate timeout
-and the analysis-loop iteration cap. It accumulates across phases,
-checkpoints, and crash-resumes via a serialized consumed-seconds
-counter.
+#### Relationship to other limits
+
+The cycle timebox is independent of the existing **60-minute
+per-invocation development-phase limit** (the soft timeout that bounds a
+single agent invocation) and the analysis-loop iteration cap. The
+cycle timebox bounds the *full* plan-to-final-commit cycle — across
+development, intermediate commit, development analysis, and every
+loopback — while the 60-minute limit bounds a *single* phase invocation
+and resets on each fresh attempt. Neither limit substitutes for the
+other; both are enforced independently.
+
+#### Timer reset and checkpoint behavior
+
+The timer starts only when planning routes into development. Time spent
+in planning or planning analysis before that transition does not count.
+The deadline is preserved across every development, intermediate-commit,
+and development-analysis phase in the same cycle and is **not** reset or
+extended when an agent emits output, a phase succeeds, development
+analysis requests changes, or an intermediate commit completes. Timing
+ends when routing enters the final-commit path (`end_entry`); final
+commit execution time is excluded. After final commit, no new timer
+starts until the next planner-to-development handoff.
+
+Consumed cycle time is persisted via a serialized consumed-seconds
+counter, so checkpoint/resume does not grant a fresh full budget to the
+same cycle. On resume, the runtime combines the persisted elapsed total
+with a fresh monotonic anchor to continue the same deadline. An older
+checkpoint that predates this feature and has no cycle timing state
+initializes safely from the resume time without a migration failure and
+without charging pre-resume time.
+
+#### Warning guidance and honest incomplete-work reporting
+
+When the 80% threshold is reached, the development agent's prompt
+instructs it to prioritize the highest-value remaining plan steps,
+reassess whether any step is infeasible within the remaining time
+(dependency, missing authority, excessive scope, technical blocker), and
+report incomplete or infeasible steps honestly. A warned `partial` or
+`failed` development result must set `cycle_timebox_warned: true` in the
+artifact frontmatter and include an `## Incomplete Work` section. Each
+incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
+`Reason:` field explaining why the step is incomplete or infeasible, and
+an `Evidence:` field with a reproducible location (file, test, or
+command). Items missing any of these three are rejected by artifact
+validation — fabricated completion, weakened verification, and silent
+omission are not accepted.
 
 The bundled workflow declares a sensible default; no customization is
 required.
+
+#### Validation
+
+`duration_seconds` must be finite and greater than zero; zero, negative,
+non-finite values, or unknown phase/transition targets fail policy
+validation with a message that identifies the offending field. The
+80% warning point is always derived from the configured duration, so a
+custom value retains the same 80% behavior without a second setting.
 
 #### Example: a shorter development cycle
 

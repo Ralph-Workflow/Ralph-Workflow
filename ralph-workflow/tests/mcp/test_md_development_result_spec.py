@@ -275,7 +275,7 @@ cycle_timebox_warned: true
 
 
 def test_warned_partial_with_incomplete_work_passes() -> None:
-    """cycle_timebox_warned: true with Incomplete Work section passes."""
+    """cycle_timebox_warned: true with complete Incomplete Work items passes."""
     content, diagnostics = parse_and_validate(
         """---
 type: development_result
@@ -285,7 +285,9 @@ cycle_timebox_warned: true
 ## Summary
 - [SUM-1] Completed S-1 through S-3; S-4 interrupted by deadline.
 ## Incomplete Work
-- [S-4] Rename API endpoints: started but tests not updated.
+- [S-4] Rename API endpoints: half-applied.
+  Reason: Tests not updated; only half the endpoints renamed.
+  Evidence: tests/test_api.py:42 still references the old endpoint names.
 """,
         DEVELOPMENT_RESULT_SPEC,
     )
@@ -293,5 +295,47 @@ cycle_timebox_warned: true
     assert diagnostics == []
     assert content["status"] == "partial"
     assert content["incomplete_work"] == [
-        "Rename API endpoints: started but tests not updated."
+        "[S-4] Rename API endpoints: half-applied."
     ]
+
+
+def test_warned_partial_without_reason_is_rejected() -> None:
+    """cycle_timebox_warned Incomplete Work item without Reason is rejected."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+cycle_timebox_warned: true
+---
+## Summary
+- [SUM-1] S-4 incomplete.
+## Incomplete Work
+- [S-4] Rename API endpoints: half-applied.
+  Evidence: tests/test_api.py:42 references the old endpoint names.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+    assert any("Reason" in d.message for d in diagnostics)
+
+
+def test_warned_partial_without_evidence_is_rejected() -> None:
+    """cycle_timebox_warned Incomplete Work item without Evidence is rejected."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+cycle_timebox_warned: true
+---
+## Summary
+- [SUM-1] S-4 incomplete.
+## Incomplete Work
+- [S-4] Rename API endpoints: half-applied.
+  Reason: Tests not updated.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+    assert any("Evidence" in d.message for d in diagnostics)

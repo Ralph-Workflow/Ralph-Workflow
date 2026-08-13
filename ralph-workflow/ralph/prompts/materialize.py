@@ -183,9 +183,11 @@ def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
         "and next steps is strictly better than a fabricated `completed` result.\n"
         "4. **Mandatory incomplete-work reporting**: If you submit `partial` or "
         "`failed`, set `cycle_timebox_warned: true` in the artifact frontmatter "
-        "and include an `## Incomplete Work` section with at least one stable-ID "
-        "item for each unfinished plan step. This is required for the artifact "
-        "to validate.\n"
+        "and include an `## Incomplete Work` section. Each item must use a "
+        "stable-ID bracket (e.g., `[S-4]`), a `Reason:` field explaining why "
+        "the step is incomplete or infeasible, and an `Evidence:` field with a "
+        "reproducible location (file, test, or command). Items without all "
+        "three are rejected by artifact validation.\n"
     )
 
 
