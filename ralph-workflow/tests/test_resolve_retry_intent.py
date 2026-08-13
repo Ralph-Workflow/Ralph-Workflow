@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
+from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
@@ -139,3 +140,21 @@ def test_pi_context_exhaustion_skips_same_agent_retries() -> None:
     assert intent.session_id is None
     assert intent.skip_same_agent_retries is True
     assert intent.failure_reason == "PiContextExhaustedExitError"
+    assert intent.failed_agent_name == "pi/zai/glm-5.2"
+    assert intent.broken_agent_reason is None
+
+
+def test_broken_agent_regression_intent_captures_reconstruction_data() -> None:
+    """Broken-agent fallover retains the typed failure facts for the reducer."""
+    intent = resolve_retry_intent(
+        BrokenAgentExitError("claude", reason="no_output"),
+        phase="development",
+        agent="claude",
+        session_id=None,
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+
+    assert intent is not None
+    assert intent.failure_reason == "BrokenAgentExitError"
+    assert intent.failed_agent_name == "claude"
+    assert intent.broken_agent_reason == "no_output"

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Final, cast
 from loguru import logger
 
 from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
+from ralph.agents.catalog import AgentCatalog
 from ralph.agents.completion_signals import (
     _check_completion_sentinel,
     is_artifact_submitted,
@@ -2222,31 +2223,15 @@ def _run_smoke_agent(
     if params.support_resolver is not None:
         resolved_support = params.support_resolver(params.agent_name)
     else:
-        # Prefer the ``AgentConfig``'s attached ``_support`` (set when
-        # the config was registered through ``AgentCatalog.add`` / the
-        # legacy ``register_agent_support`` API), which is the
-        # transport-neutral way to read the registered support and
-        # bypasses the catalog round-trip. The catalog fallback still
-        # works for dynamic-alias synthesised supports whose
-        # ``AgentConfig`` is built by ``_resolve_dynamic_agent`` and
-        # attaches the synthesised ``_support`` immediately. The
-        # try/except on ``AttributeError`` keeps existing tests that
-        # monkey-patch ``AgentRegistry`` (returning a stand-in with no
-        # ``.catalog`` attribute) hermetic; production registry mocks
-        # always expose ``.catalog``.
-        attached_support: AgentSupport | None = cast(
-            "AgentSupport | None", getattr(params.config, "_support", None)
-        )
-        if attached_support is not None:
-            resolved_support = attached_support
-        else:
-            try:
-                resolved_support = (
-                    AgentRegistry.from_config(params.unified_config)
-                    .catalog.get(params.agent_name)
-                )
-            except AttributeError:
-                resolved_support = None
+        # The catalog's dynamic-alias resolver is the authoritative source
+        # for the capability contract. Do not suppress a missing catalog:
+        # doing so turns a resolver wiring error into an ungraded smoke run.
+        from ralph.agents.registry import AgentRegistry as FreshAgentRegistry
+
+        resolved_support = FreshAgentRegistry.from_config(
+            params.unified_config,
+            catalog=AgentCatalog(),
+        ).catalog.get(params.agent_name)
 
     errors = _detect_smoke_errors(
         params,

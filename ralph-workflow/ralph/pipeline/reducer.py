@@ -223,6 +223,44 @@ def _reduce_result_event(
     return _handle_execution_result(state, event, pipeline_policy)
 
 
+def _reduce_captured_agent_failure(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy | None,
+    recovery: RecoveryController | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Delegate typed broken-agent failures to the recovery controller."""
+    intent = state.agent_retry_intent
+    if recovery is None or intent.failed_agent_name is None:
+        return None
+    if intent.failure_reason == "BrokenAgentExitError":
+        if intent.broken_agent_reason is None:
+            return None
+        from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
+
+        failure: Exception = BrokenAgentExitError(
+            intent.failed_agent_name,
+            reason=intent.broken_agent_reason,
+        )
+    elif intent.failure_reason == "PiContextExhaustedExitError":
+        from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
+
+        failure = PiContextExhaustedExitError(intent.failed_agent_name)
+    else:
+        return None
+    new_state, effects, _ = recovery.handle(
+        state,
+        failure,
+        FailureContext(phase=state.phase, agent=state.current_agent()),
+    )
+    if pipeline_policy is not None and new_state.phase != state.phase:
+        new_state = progress.apply_execution_cycle_outcome(
+            state,
+            new_state,
+            policy=pipeline_policy,
+        )
+    return _restore_work_units(state, new_state), effects
+
+
 _EVENT_HANDLERS: dict[  # bounded-accumulator-ok: static
     PipelineEvent,
     Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
@@ -291,12 +329,19 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
+    reduced_event: tuple[PipelineState, list[Effect]] | None = None
     if isinstance(event, PostFanoutVerificationEvent):
-        return _reduce_post_fanout_verification(state, event, pipeline_policy)
-    if isinstance(event, PhaseFailureEvent):
-        return _reduce_phase_failure(state, event, pipeline_policy, recovery)
-    if isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
-        return _reduce_result_event(state, event, pipeline_policy)
+        reduced_event = _reduce_post_fanout_verification(state, event, pipeline_policy)
+    elif isinstance(event, PhaseFailureEvent):
+        reduced_event = _reduce_phase_failure(state, event, pipeline_policy, recovery)
+    elif isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
+        reduced_event = _reduce_result_event(state, event, pipeline_policy)
+    if reduced_event is not None:
+        return reduced_event
+    if event == PipelineEvent.AGENT_FAILURE:
+        recovered_agent_failure = _reduce_captured_agent_failure(state, pipeline_policy, recovery)
+        if recovered_agent_failure is not None:
+            return recovered_agent_failure
     worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
     if worker_result is not None:
         return worker_result

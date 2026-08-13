@@ -297,7 +297,12 @@ class AgentRegistry:
         return self._catalog
 
     @classmethod
-    def from_config(cls, config: UnifiedConfig) -> AgentRegistry:
+    def from_config(
+        cls,
+        config: UnifiedConfig,
+        *,
+        catalog: AgentCatalog | None = None,
+    ) -> AgentRegistry:
         """Create registry from UnifiedConfig.
 
         Args:
@@ -306,8 +311,9 @@ class AgentRegistry:
         Returns:
             Populated AgentRegistry instance.
         """
-        registry = cls(ccs_defaults=config.ccs)
-        _seed_catalog_with_builtins(default_catalog())
+        registry = cls(ccs_defaults=config.ccs, catalog=catalog)
+        if catalog is None:
+            _seed_catalog_with_builtins(default_catalog())
 
         for name, agent_config in builtin_agents().items():
             registry.register(name, agent_config)

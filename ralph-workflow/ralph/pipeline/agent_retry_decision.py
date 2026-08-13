@@ -19,6 +19,7 @@ counts are invariant — do not raise them.
 
 from __future__ import annotations
 
+from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent, agent_retry_intent_for_failure
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.recovery.failure_classifier import FailureClassifier
@@ -40,9 +41,12 @@ def resolve_retry_intent(
     (the intent clears it when the failure semantics demand a fresh session).
     """
     if type(exc).__name__ in {"BrokenAgentExitError", "PiContextExhaustedExitError"}:
+        broken_agent_reason = exc.reason if isinstance(exc, BrokenAgentExitError) else None
         return AgentRetryIntent(
             failure_reason=type(exc).__name__,
             skip_same_agent_retries=True,
+            failed_agent_name=agent,
+            broken_agent_reason=broken_agent_reason,
         )
     if retryable_agent_failure_reason(exc, inactivity_error_type) is None:
         return None

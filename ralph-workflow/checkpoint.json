@@ -72,7 +72,9 @@
     "session_id": null,
     "reset_tool_registry": false,
     "failure_reason": "",
-    "skip_same_agent_retries": false
+    "skip_same_agent_retries": false,
+    "failed_agent_name": null,
+    "broken_agent_reason": null
   },
   "last_unavailability_reason": null,
   "is_waiting_state": false

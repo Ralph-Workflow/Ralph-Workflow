@@ -1507,6 +1507,7 @@ def _set_pi_context_exhaustion_intent(exc: Exception) -> None:
             AgentRetryIntent(
                 failure_reason=type(exc).__name__,
                 skip_same_agent_retries=True,
+                failed_agent_name=exc.agent_name,
             )
         )
 

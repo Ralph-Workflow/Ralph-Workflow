@@ -261,14 +261,14 @@ class TestRenderExplanationAscii:
         # Check for the specific decisions we know exist
         assert "+--[failed]-->" in output or "+--[request_changes]-->" in output
 
-    def test_failed_decision_branches_render_configured_terminal_target(self) -> None:
-        """Failed analysis cycles route through the commit boundary, not directly to terminal.
+    def test_failed_decision_branches_render_configured_target(self) -> None:
+        """Render only failed branches that differ from on_success.
 
-        After rerouting, the development_analysis ``failed`` decision flows to
-        ``development_final_commit_cleanup`` instead of short-circuiting to
-        ``failed_terminal``.  The ``failed_terminal`` node still appears as the
-        global failure terminal; it just no longer receives a direct ``[failed]``
-        branch from any analysis phase.
+        The planning-analysis failed branch targets planning and renders. The
+        development-analysis failed branch targets its on_success route and is
+        intentionally suppressed; the loaded policy preserves that target.
+        Failed analysis cycles still route through the commit boundary rather
+        than directly to the global ``failed_terminal`` node.
         """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
@@ -276,6 +276,14 @@ class TestRenderExplanationAscii:
         output = render_explanation_ascii(explanation)
 
         lines = output.split("\n")
+        assert any(
+            "[failed]" in line and "-->" in line and "planning" in line
+            for line in lines
+        )
+        assert (
+            bundle.pipeline.phases["development_analysis"].decisions["failed"].target
+            == "development_final_commit_cleanup"
+        )
         # failed_terminal is still rendered as the global failure terminal.
         assert "failed_terminal" in output
         # No analysis [failed] branch short-circuits to failed_terminal.
