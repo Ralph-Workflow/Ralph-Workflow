@@ -215,6 +215,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
         explanation.cycle_timebox = CycleTimeboxExplanation(
             duration_seconds=ct.duration_seconds,
             warning_threshold_seconds=ct.warning_threshold_seconds,
+            start_source=ct.start_source,
             start_entry=ct.start_entry,
             guarded_entry=ct.guarded_entry,
             end_entry=ct.end_entry,

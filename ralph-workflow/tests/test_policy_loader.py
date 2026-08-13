@@ -804,6 +804,7 @@ def test_default_cycle_timebox_values() -> None:
     assert ct.duration_seconds == 7200.0
     assert ct.warning_threshold_seconds == 5760.0
     assert ct.remaining_at_warning_seconds == 1440.0
+    assert ct.start_source == "planning_analysis"
     assert ct.start_entry == "development"
     assert ct.guarded_entry == "development"
     assert ct.end_entry == "development_final_commit_cleanup"
@@ -849,6 +850,7 @@ def test_cycle_timebox_rejects_invalid_duration(bad_duration: float) -> None:
     with pytest.raises(ValidationError) as excinfo:
         CycleTimeboxPolicy(
             duration_seconds=bad_duration,
+            start_source="planning_analysis",
             start_entry="development",
             guarded_entry="development",
             end_entry="development_final_commit_cleanup",
@@ -871,3 +873,97 @@ def test_cycle_timebox_rejects_unknown_target(tmp_path: Path) -> None:
         load_policy(tmp_path)
     assert "cycle_timebox" in excinfo.value.message
     assert "no_such_phase" in excinfo.value.message
+
+
+def test_cycle_timebox_rejects_undeclared_start_edge(tmp_path: Path) -> None:
+    """An explicit cycle_timebox whose start_source -> start_entry edge is not
+    declared in the graph is rejected with an actionable error (FR-1, AC-14)."""
+    _copy_default_policy_files(tmp_path)
+    pipeline = (tmp_path / "pipeline.toml").read_text()
+    # planning -> development is NOT a declared edge (planning on_success is
+    # planning_analysis), so this start transition must be rejected.
+    pipeline = pipeline.replace(
+        'start_source = "planning_analysis"',
+        'start_source = "planning"',
+    )
+    (tmp_path / "pipeline.toml").write_text(pipeline)
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy(tmp_path)
+    assert "cycle_timebox" in excinfo.value.message
+    assert "planning" in excinfo.value.message
+    assert "development" in excinfo.value.message
+
+
+def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -> None:
+    """An inherited (bundled-default) cycle_timebox is disabled, not rejected,
+    when the merged graph lacks the referenced phases or start edge (FR-1, FR-7).
+
+    A custom non-canonical graph without planning_analysis/development must
+    silently drop the inherited timebox, while the same graph declaring the
+    block explicitly must be rejected strictly.
+    """
+    custom_graph = {
+        "entry_block": "work_group",
+        "terminal_phase": "done",
+        "blocks": {
+            "work_group": {
+                "kind": "group",
+                "child_blocks": ["plan", "build", "done"],
+                "completion_block": "done",
+            },
+            "plan": {
+                "kind": "individual",
+                "phase_name": "plan",
+                "phase": {
+                    "drain": "planning",
+                    "role": "execution",
+                    "prompt_template": "planning.jinja",
+                    "transitions": {"on_success": "build"},
+                },
+            },
+            "build": {
+                "kind": "individual",
+                "phase_name": "build",
+                "phase": {
+                    "drain": "development",
+                    "role": "execution",
+                    "prompt_template": "developer_iteration.jinja",
+                    "transitions": {"on_success": "done"},
+                },
+            },
+            "done": {
+                "kind": "individual",
+                "phase_name": "done",
+                "phase": {
+                    "drain": "complete",
+                    "role": "terminal",
+                    "terminal_outcome": "success",
+                    "transitions": {"on_success": "done", "on_loopback": "done"},
+                },
+            },
+        },
+        # Simulate the bundled-default cycle_timebox inherited into this graph.
+        # It references canonical phases (planning_analysis, development) that
+        # do NOT exist in the custom graph.
+        "cycle_timebox": {
+            "duration_seconds": 7200,
+            "start_source": "planning_analysis",
+            "start_entry": "development",
+            "guarded_entry": "development",
+            "end_entry": "development_final_commit_cleanup",
+            "finalization_target": "development_final_commit_cleanup",
+        },
+    }
+
+    # Inherited (not explicit): the incompatible timebox is disabled silently.
+    inherited = policy_loader._validate_pipeline(
+        custom_graph, cycle_timebox_explicit=False
+    )
+    assert inherited.cycle_timebox is None
+
+    # Explicit: the same incompatible timebox is rejected strictly.
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        policy_loader._validate_pipeline(
+            custom_graph, cycle_timebox_explicit=True
+        )
+    assert "cycle_timebox" in excinfo.value.message

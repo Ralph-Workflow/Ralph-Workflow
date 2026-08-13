@@ -382,7 +382,8 @@ concludes with a real commit rather than looping indefinitely.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `duration_seconds` | `7200` (120 min) | Finite, positive. Total wall-clock budget per cycle. |
-| `start_entry` | `development` | Phase where timing begins (first entry while inactive). |
+| `start_source` | `planning_analysis` | Source phase of the transition that starts the timer. |
+| `start_entry` | `development` | Target phase of the start transition (phase whose entry begins the cycle). |
 | `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
 | `end_entry` | `development_final_commit_cleanup` | Phase whose entry clears timing. |
 | `finalization_target` | `development_final_commit_cleanup` | Redirect target when the deadline is reached. |
@@ -408,8 +409,12 @@ other; both are enforced independently.
 
 #### Timer reset and checkpoint behavior
 
-The timer starts only when planning routes into development. Time spent
-in planning or planning analysis before that transition does not count.
+The timer starts only when routing advances from `start_source` to
+`start_entry` — by default, the `planning_analysis` → `development`
+transition. Time spent in planning or planning analysis before that
+handoff does not count. An unrelated route into the same phase (for
+example, a loopback from development analysis) does not start or reset
+the cycle.
 The deadline is preserved across every development, intermediate-commit,
 and development-analysis phase in the same cycle and is **not** reset or
 extended when an agent emits output, a phase succeeds, development
@@ -449,8 +454,14 @@ required.
 
 `duration_seconds` must be finite and greater than zero; zero, negative,
 non-finite values, or unknown phase/transition targets fail policy
-validation with a message that identifies the offending field. The
-80% warning point is always derived from the configured duration, so a
+validation with a message that identifies the offending field.
+`start_source`, `start_entry`, `guarded_entry`, `end_entry`, and
+`finalization_target` must each reference a declared phase (or terminal
+for `finalization_target`). The `start_source` → `start_entry` edge
+must be a declared transition in the active graph — it can appear as a
+phase transition, analysis decision target, bypass route,
+post-commit route, or result-status post-commit route. The 80%
+warning point is always derived from the configured duration, so a
 custom value retains the same 80% behavior without a second setting.
 
 #### Example: a shorter development cycle
@@ -458,10 +469,17 @@ custom value retains the same 80% behavior without a second setting.
 ```toml
 [cycle_timebox]
 duration_seconds = 3600
+start_source = "planning_analysis"
+start_entry = "development"
+guarded_entry = "development"
+end_entry = "development_final_commit_cleanup"
+finalization_target = "development_final_commit_cleanup"
 ```
 
 This reduces the budget to 60 minutes; the 80% warning fires at 48
-minutes (2880 seconds).
+minutes (2880 seconds). Only `duration_seconds` is required to change
+the budget — the remaining fields are shown for completeness and match
+the bundled defaults.
 
 ## Common advanced user stories
 

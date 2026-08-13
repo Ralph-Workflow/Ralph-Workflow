@@ -195,3 +195,34 @@ def test_run_time_report_shows_redirect_reason_when_set() -> None:
     assert "[CT-2]" in report
     assert "cycle_deadline_expired" in report
     assert "concluded" in report
+
+
+def test_run_time_report_shows_configured_limit_and_target_when_policy_given() -> None:
+    """When the cycle_timebox policy is threaded in, the report includes the
+    configured deadline and finalization target (FR-6, S-5)."""
+    from ralph.policy.models import CycleTimeboxPolicy
+
+    ct = CycleTimeboxPolicy(
+        duration_seconds=7200.0,
+        start_source="planning_analysis",
+        start_entry="development",
+        guarded_entry="development",
+        end_entry="development_final_commit_cleanup",
+        finalization_target="development_final_commit_cleanup",
+    )
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=3600.0,
+        ),
+        outcome="completed",
+        elapsed_seconds=3600.0,
+        cycle_timebox=ct,
+    )
+    assert "## Cycle Timebox" in report
+    assert "[CT-1]" in report
+    assert "Limit: 7200" in report
+    assert "consumed: 3600" in report
+    assert "Finalization: development_final_commit_cleanup" in report
+    assert len(report) <= 1_600

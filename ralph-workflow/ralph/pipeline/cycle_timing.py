@@ -9,8 +9,9 @@ of ``(state, target_phase, policy, routing_timing)``.
 
 Timer model
 -----------
-* The timer starts on the first entry to ``guarded_entry`` while the cycle is
-  inactive, and is preserved across every loop phase until the cycle ends.
+* The timer starts on the configured ``start_source`` -> ``start_entry``
+  transition while the cycle is inactive, and is preserved across every loop
+  phase until the cycle ends.
 * The timer ends when routing enters ``end_entry`` (the final-commit path) or
   when an expired guarded entry is redirected to ``finalization_target``.
 * The deadline is enforced only at the routing boundary: an invocation already
@@ -116,13 +117,15 @@ def apply_cycle_timebox(
             timing_ended=True,
         )
 
-    # Start the timer on first entry to the start_entry or guarded_entry
-    # while inactive. In the bundled workflow start_entry == guarded_entry;
-    # in a custom graph the start_entry may be a distinct phase that precedes
-    # the guarded entry, or the guarded entry may be reached directly.
+    # Start the timer ONLY on the declared start_source -> start_entry
+    # transition while inactive, so an unrelated route into the same phase
+    # cannot start or reset a cycle. In the bundled workflow the transition
+    # is planning_analysis -> development; a custom graph declares its own
+    # start_source/start_entry edge.
     if (
-        target_phase in (ct.start_entry, ct.guarded_entry)
-        and not state.cycle_timebox_active
+        not state.cycle_timebox_active
+        and state.phase == ct.start_source
+        and target_phase == ct.start_entry
     ):
         return CycleTimeboxDecision(
             state=_started(state),

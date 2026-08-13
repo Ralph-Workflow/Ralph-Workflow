@@ -20,13 +20,16 @@ WARNING_THRESHOLD_RATIO: float = 0.8
 class CycleTimeboxPolicy(_FrozenPolicyModel):
     """Transition-bounded wall-clock timebox for a plan-to-final-commit cycle.
 
-    Declares a generic cycle deadline that starts on the first entry to the
-    guarded phase while a cycle is inactive, softly warns development agents
-    once 80% of the duration has elapsed, and redirects expired re-entries
-    through the finalization target so the workflow enters its existing
-    final-commit path instead of starting another development invocation.
+    Declares a generic cycle deadline that starts on the configured
+    ``start_source`` -> ``start_entry`` transition (while a cycle is inactive),
+    softly warns development agents once 80% of the duration has elapsed, and
+    redirects expired re-entries through the finalization target so the
+    workflow enters its existing final-commit path instead of starting another
+    development invocation.
 
-    The warning point is derived as ``WARNING_THRESHOLD_RATIO`` of
+    The start transition is identified by its source AND target so an
+    unrelated route into the same phase cannot start or reset a cycle. The
+    warning point is derived as ``WARNING_THRESHOLD_RATIO`` of
     ``duration_seconds`` and is never stored as a second independent duration,
     so a custom deadline retains the same 80% behavior without code changes.
     """
@@ -38,17 +41,26 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
             "The bundled default is 7200 (120 minutes)."
         ),
     )
+    start_source: str = Field(
+        description=(
+            "Source phase of the transition that starts the timer. The timer "
+            "starts only when routing advances from start_source to start_entry "
+            "while the cycle is inactive. Must reference a declared phase, and "
+            "the start_source -> start_entry edge must be declared in the graph."
+        ),
+    )
     start_entry: str = Field(
         description=(
-            "Phase whose first entry while the cycle is inactive starts the timer. "
-            "Must reference a declared phase or terminal."
+            "Target phase of the transition that starts the timer (the phase "
+            "whose entry begins the cycle). Must reference a declared phase "
+            "or terminal."
         ),
     )
     guarded_entry: str = Field(
         description=(
-            "Phase whose entries are guarded by the deadline. The timer starts on "
-            "the first entry to this phase while the cycle is inactive, and every "
-            "later entry is checked against the deadline. Must reference a declared phase."
+            "Phase whose entries are guarded by the deadline. Every entry to this "
+            "phase while the cycle is active is checked against the deadline. "
+            "Must reference a declared phase."
         ),
     )
     end_entry: str = Field(

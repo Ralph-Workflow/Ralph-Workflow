@@ -152,7 +152,7 @@ class TestRenderExplanationText:
         assert "CYCLE TIMEBOX POLICY" in text
         assert "7200s" in text
         assert "5760s" in text
-        assert "development" in text
+        assert "planning_analysis -> development" in text
         assert "development_final_commit_cleanup" in text
 
     def test_cycle_timebox_section_absent_when_policy_omits_it(self) -> None:

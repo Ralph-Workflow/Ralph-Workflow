@@ -31,6 +31,7 @@ from ralph.policy.models import (
     AgentsPolicy,
     ArtifactsPolicy,
     IndividualPolicyBlock,
+    PhaseDefinition,
     PipelinePolicy,
     PolicyBlock,
     PolicyBundle,
@@ -301,11 +302,120 @@ def _validate_agents(data: dict[str, object]) -> AgentsPolicy:
         ) from exc
 
 
-def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
+def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
+    """Return whether *phase_def* routes directly to *target*.
+
+    Checks transitions, decisions, bypass routes, result-status post-commit
+    routes, and post-commit routes declared on the phase definition.
+    """
+    t = phase_def.transitions
+    for candidate in (t.on_success, t.on_failure, t.on_loopback):
+        if candidate == target:
+            return True
+    for route in phase_def.decisions.values():
+        if route.target == target:
+            return True
+    for routes_attr in ("bypass_routes", "result_status_post_commit"):
+        routes: dict[str, str] = getattr(phase_def, routes_attr)
+        for route_target in routes.values():
+            if route_target == target:
+                return True
+    return False
+
+
+def _edge_declared_in_normalized(
+    normalized: dict[str, object], source: str, target: str
+) -> bool:
+    """Return whether ``source`` declares a direct route to ``target``.
+
+    Operates on the normalized (block-compiled) pipeline data before Pydantic
+    validation: phase definitions are ``PhaseDefinition`` objects while
+    ``post_commit_routes`` may still be raw TOML dicts.
+    """
+    phases = normalized.get("phases")
+    if isinstance(phases, Mapping):
+        typed_phases: Mapping[str, PhaseDefinition] = cast(
+            "Mapping[str, PhaseDefinition]", phases
+        )
+        phase_def = typed_phases.get(source)
+        if phase_def is not None and _phase_def_declares_edge(phase_def, target):
+            return True
+    routes = normalized.get("post_commit_routes")
+    if isinstance(routes, list):
+        for route in routes:
+            if isinstance(route, Mapping):
+                typed_route: Mapping[str, object] = cast(
+                    "Mapping[str, object]", route
+                )
+                when_val = typed_route.get("when")
+                if isinstance(when_val, Mapping):
+                    typed_when: Mapping[str, object] = cast(
+                        "Mapping[str, object]", when_val
+                    )
+                    if (
+                        typed_when.get("phase") == source
+                        and typed_route.get("target") == target
+                    ):
+                        return True
+    return False
+
+
+def _disable_incompatible_inherited_cycle_timebox(
+    normalized: dict[str, object],
+) -> dict[str, object]:
+    """Disable an inherited ``[cycle_timebox]`` that does not fit the graph.
+
+    When the bundled default ``[cycle_timebox]`` is inherited (not explicitly
+    supplied by a project-local or user-global override) and the fully merged
+    active graph lacks a referenced phase or the declared start edge, the
+    timebox is silently disabled rather than rejected. An explicitly supplied
+    timebox is validated strictly by the Pydantic model instead.
+    """
+    ct = normalized.get("cycle_timebox")
+    if not isinstance(ct, Mapping):
+        return normalized
+    phases = normalized.get("phases")
+    if not isinstance(phases, Mapping):
+        return normalized
+    typed_phases: Mapping[str, PhaseDefinition] = cast(
+        "Mapping[str, PhaseDefinition]", phases
+    )
+    phase_names: set[str] = set(typed_phases.keys())
+    for key in (
+        "start_source",
+        "start_entry",
+        "guarded_entry",
+        "end_entry",
+        "finalization_target",
+    ):
+        val = ct.get(key)
+        if not isinstance(val, str) or val not in phase_names:
+            result = dict(normalized)
+            result.pop("cycle_timebox", None)
+            return result
+    start_source = ct.get("start_source")
+    start_entry = ct.get("start_entry")
+    if not _edge_declared_in_normalized(
+        normalized,
+        start_source if isinstance(start_source, str) else "",
+        start_entry if isinstance(start_entry, str) else "",
+    ):
+        result = dict(normalized)
+        result.pop("cycle_timebox", None)
+        return result
+    return normalized
+
+
+def _validate_pipeline(
+    data: dict[str, object], *, cycle_timebox_explicit: bool = True
+) -> PipelinePolicy:
     """Validate and return PipelinePolicy.
 
     Args:
         data: Raw TOML dictionary.
+        cycle_timebox_explicit: When False, an inherited ``[cycle_timebox]``
+            that does not fit the compiled graph is disabled rather than
+            rejected.
 
     Returns:
         Validated PipelinePolicy instance.
@@ -314,6 +424,8 @@ def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
         PolicyValidationError: On validation failure.
     """
     normalized = _normalize_pipeline_data(data)
+    if not cycle_timebox_explicit:
+        normalized = _disable_incompatible_inherited_cycle_timebox(normalized)
     try:
         return PipelinePolicy.model_validate(normalized)
     except ValidationError as exc:
@@ -418,11 +530,21 @@ def _resolve_pipeline_data(
     default_policy_dir: Path,
     pipeline_path: Path,
     global_pipeline_path: Path | None,
-) -> dict[str, object]:
+) -> tuple[dict[str, object], bool]:
+    """Resolve merged pipeline data and whether cycle_timebox was explicit.
+
+    Returns ``(pipeline_data, cycle_timebox_explicit)``. The explicit flag is
+    True when either the local or global override supplies a ``[cycle_timebox]``
+    block; it is False when the block is inherited from the bundled default.
+    The loader uses the flag to distinguish strict validation (explicit) from
+    disable-if-incompatible (inherited) for custom graphs.
+    """
     default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
     local_pipeline_data = _load_toml(pipeline_path)
     if global_pipeline_path is None:
-        return local_pipeline_data or default_pipeline_data
+        data = local_pipeline_data or default_pipeline_data
+        explicit = bool(local_pipeline_data and "cycle_timebox" in local_pipeline_data)
+        return data, explicit
 
     global_pipeline_data = _load_toml(global_pipeline_path)
     if _is_phase_authored_pipeline_data(global_pipeline_data):
@@ -433,7 +555,11 @@ def _resolve_pipeline_data(
     pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
     if local_pipeline_data:
         pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
-    return pipeline_data
+    explicit = (
+        (bool(global_pipeline_data) and "cycle_timebox" in global_pipeline_data)
+        or (bool(local_pipeline_data) and "cycle_timebox" in local_pipeline_data)
+    )
+    return pipeline_data, explicit
 
 
 def _config_defines_agent_policy(config: object) -> bool:
@@ -696,7 +822,7 @@ def _load_policy_from_paths(
         global_policy_paths if global_policy_paths is not None else (None, None)
     )
     default_policy_dir = default_dir()
-    pipeline_data = _resolve_pipeline_data(
+    pipeline_data, cycle_timebox_explicit = _resolve_pipeline_data(
         default_policy_dir=default_policy_dir,
         pipeline_path=pipeline_path,
         global_pipeline_path=global_pipeline_path,
@@ -716,7 +842,9 @@ def _load_policy_from_paths(
             artifacts_data = _merge_mapping_defaults(artifacts_data, local_artifacts_data)
 
     agents_policy = _load_agents_policy_from_path(agents_path, config=config)
-    pipeline_policy = _validate_pipeline(pipeline_data)
+    pipeline_policy = _validate_pipeline(
+        pipeline_data, cycle_timebox_explicit=cycle_timebox_explicit
+    )
     artifacts_policy = _validate_artifacts(artifacts_data)
 
     try:

@@ -272,6 +272,7 @@ class PipelinePolicy(_FrozenPolicyModel):
             return self
         ts = self.terminal_states()
         for label, target in [
+            ("start_source", ct.start_source),
             ("start_entry", ct.start_entry),
             ("guarded_entry", ct.guarded_entry),
             ("end_entry", ct.end_entry),
@@ -283,6 +284,23 @@ class PipelinePolicy(_FrozenPolicyModel):
                     f"'{target}'. Update the reference to a declared phase, or remove "
                     "the [cycle_timebox] section to disable the timebox."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def cycle_timebox_start_edge_declared(self) -> Self:
+        ct = self.cycle_timebox
+        if ct is None:
+            return self
+        if not _phase_declares_edge(self, ct.start_source, ct.start_entry):
+            raise ValueError(
+                f"cycle_timebox.start_source -> start_entry edge "
+                f"'{ct.start_source}' -> '{ct.start_entry}' is not a declared "
+                f"transition in the graph. The timer starts only on this exact "
+                f"transition, so it must be reachable via a transition, decision, "
+                f"bypass route, result-status post-commit route, or post-commit "
+                f"route of '{ct.start_source}'. Update start_source/start_entry "
+                f"to a declared edge, or remove the [cycle_timebox] section."
+            )
         return self
 
     def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:
@@ -301,3 +319,35 @@ def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
     }
     names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
     return names
+
+
+def _phase_declares_edge(
+    policy: PipelinePolicy, source: str, target: str
+) -> bool:
+    """Return whether ``source`` declares a direct route to ``target``.
+
+    A declared edge is any transition, decision target, bypass route,
+    result-status post-commit target, or post-commit route whose source
+    phase is ``source`` and whose target is ``target``. This is the graph
+    predicate the cycle-timebox start transition must satisfy.
+    """
+    phase_def = policy.phases.get(source)
+    if phase_def is not None:
+        t = phase_def.transitions
+        for candidate in (t.on_success, t.on_failure, t.on_loopback):
+            if candidate == target:
+                return True
+        if phase_def.decisions:
+            for route in phase_def.decisions.values():
+                if route.target == target:
+                    return True
+        for route_target in phase_def.bypass_routes.values():
+            if route_target == target:
+                return True
+        for route_target in phase_def.result_status_post_commit.values():
+            if route_target == target:
+                return True
+    for pc_route in policy.post_commit_routes:
+        if pc_route.when.phase == source and pc_route.target == target:
+            return True
+    return False

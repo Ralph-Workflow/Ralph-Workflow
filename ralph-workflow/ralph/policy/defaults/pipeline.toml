@@ -59,6 +59,7 @@ default_max = 5
 # Lower it to fail fast on long cycles; raise it for harder tasks. Must be > 0.
 [cycle_timebox]
 duration_seconds = 7200
+start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
 end_entry = "development_final_commit_cleanup"

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import CycleTimeboxPolicy
 
 _REPORTING_BUDGET_CHARACTERS = 1_600
 _MAX_REPORTED_PHASES = 6
@@ -76,6 +77,7 @@ def render_run_time_report(
     outcome: str,
     elapsed_seconds: float,
     getenv: Callable[[str], str | None] = os.environ.get,
+    cycle_timebox: CycleTimeboxPolicy | None = None,
 ) -> str:
     """Return the stable, bounded Markdown report for one pipeline execution."""
     safe_phase = _safe_text(state.phase)
@@ -143,9 +145,16 @@ def render_run_time_report(
             + (
                 (
                     "\n## Cycle Timebox\n"
-                    + f"- [CT-1] Consumed: {_format_elapsed(state.cycle_timebox_consumed_seconds)}s;"
-                    + (" active." if state.cycle_timebox_active else " concluded.")
-                    + "\n"
+                    + (
+                        f"- [CT-1] Limit: {_format_elapsed(cycle_timebox.duration_seconds)}s;"
+                        + f" consumed: {_format_elapsed(state.cycle_timebox_consumed_seconds)}s;"
+                        + (" active." if state.cycle_timebox_active else " concluded.")
+                        + f" Finalization: {_safe_text(cycle_timebox.finalization_target)}.\n"
+                        if cycle_timebox is not None
+                        else f"- [CT-1] Consumed: {_format_elapsed(state.cycle_timebox_consumed_seconds)}s;"
+                        + (" active." if state.cycle_timebox_active else " concluded.")
+                        + "\n"
+                    )
                     + (
                         f"- [CT-2] Redirected: {state.cycle_timebox_redirect_reason}.\n"
                         if state.cycle_timebox_redirect_reason
@@ -175,6 +184,7 @@ def emit_run_time_report(
     outcome: str,
     elapsed_seconds: float,
     getenv: Callable[[str], str | None] = os.environ.get,
+    cycle_timebox: CycleTimeboxPolicy | None = None,
 ) -> None:
     """Validate and persist a report without changing the pipeline's outcome."""
     __import__("ralph.mcp.artifacts.markdown.specs")
@@ -184,6 +194,7 @@ def emit_run_time_report(
         outcome=outcome,
         elapsed_seconds=elapsed_seconds,
         getenv=getenv,
+        cycle_timebox=cycle_timebox,
     )
     if len(markdown) > _REPORTING_BUDGET_CHARACTERS:
         raise ValueError("run_time_report exceeds its reporting budget")
@@ -206,6 +217,7 @@ def emit_run_time_report_safely(
     outcome: str,
     elapsed_seconds: float,
     getenv: Callable[[str], str | None] = os.environ.get,
+    cycle_timebox: CycleTimeboxPolicy | None = None,
 ) -> None:
     """Write the report while preserving the original pipeline exit status."""
     try:
@@ -215,6 +227,7 @@ def emit_run_time_report_safely(
             outcome=outcome,
             elapsed_seconds=elapsed_seconds,
             getenv=getenv,
+            cycle_timebox=cycle_timebox,
         )
     except Exception as exc:
         logger.error("run_time_report emission failed: {}", exc)

@@ -1799,6 +1799,7 @@ def _execute_with_cleanup(
             state=state,
             outcome="completed" if exit_code == 0 else "failed",
             elapsed_seconds=time.monotonic() - started_at,
+            cycle_timebox=loop_ctx.policy_bundle.pipeline.cycle_timebox,
         )
         _cleanup_pipeline(loop_ctx, unsubscribe_bus, unsubscribe_display, display_stop, state)
     return exit_code

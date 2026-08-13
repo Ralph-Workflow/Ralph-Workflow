@@ -150,6 +150,7 @@ def test_custom_deadline_keeps_redirect_at_new_boundary() -> None:
     custom = policy.model_copy(update={
         "cycle_timebox": CycleTimeboxPolicy(
             duration_seconds=600.0,
+            start_source="planning_analysis",
             start_entry="development",
             guarded_entry="development",
             end_entry="development_final_commit_cleanup",
@@ -177,6 +178,46 @@ def test_first_development_entry_always_permitted_even_if_clock_advanced() -> No
     )
     assert next_state.phase == "development"
     assert next_state.cycle_timebox_active is True
+
+
+# ---------------------------------------------------------------------------
+# Transition-specific start (FR-2: only the declared source->target starts)
+# ---------------------------------------------------------------------------
+
+
+def test_timer_does_not_start_on_unrelated_route_into_guarded_phase() -> None:
+    """Only the declared start_source -> start_entry transition starts the timer.
+
+    An unrelated route into the guarded phase while the cycle is inactive
+    must NOT start or reset the cycle (FR-2, AC-1).
+    """
+    from ralph.pipeline.cycle_timing import apply_cycle_timebox
+
+    policy = _policy()
+    # Inactive cycle, routing from a phase that is NOT the declared start_source
+    # (planning_analysis) into development (the guarded/start entry).
+    state = _state("development_commit")
+    decision = apply_cycle_timebox(
+        state, "development", policy=policy, routing_timing=_rt(0.0)
+    )
+    assert decision.timing_started is False
+    assert decision.state.cycle_timebox_active is False
+    # The entry is still permitted (not redirected) — it just isn't timed.
+    assert decision.redirected is False
+    assert decision.target_phase == "development"
+
+
+def test_timer_starts_only_from_declared_start_source() -> None:
+    """Entering the start entry from the declared start_source starts the timer."""
+    from ralph.pipeline.cycle_timing import apply_cycle_timebox
+
+    policy = _policy()
+    state = _state("planning_analysis")  # == start_source
+    decision = apply_cycle_timebox(
+        state, "development", policy=policy, routing_timing=_rt(0.0)
+    )
+    assert decision.timing_started is True
+    assert decision.state.cycle_timebox_active is True
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +357,7 @@ def _custom_policy(duration: float = 100.0):
         update={
             "cycle_timebox": CycleTimeboxPolicy(
                 duration_seconds=duration,
+                start_source="planning_analysis",
                 start_entry="development",
                 guarded_entry="development",
                 end_entry="development_final_commit_cleanup",
@@ -463,6 +505,7 @@ def test_distinct_start_entry_starts_timer_separately_from_guarded_entry() -> No
         update={
             "cycle_timebox": CycleTimeboxPolicy(
                 duration_seconds=500.0,
+                start_source="planning_analysis",
                 start_entry="development",
                 guarded_entry="development_analysis",
                 end_entry="development_final_commit_cleanup",

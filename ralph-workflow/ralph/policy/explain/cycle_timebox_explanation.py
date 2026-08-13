@@ -17,6 +17,7 @@ class CycleTimeboxExplanation:
 
     duration_seconds: float
     warning_threshold_seconds: float
+    start_source: str
     start_entry: str
     guarded_entry: str
     end_entry: str
