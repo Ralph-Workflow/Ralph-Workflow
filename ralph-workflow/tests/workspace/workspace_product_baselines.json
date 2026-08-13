@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "purpose": "S-1 falsifiable oracle for the workspace product baseline matrix. Every limit here is a fixed, checked-in bound: the product-baseline harness (ralph.mcp.explore.bench --product-baseline <this file>) loads these values and fails any scenario that exceeds them; thresholds are never derived from the current run.",
+  "observers": {
+    "max_recursive_observers_per_canonical_workspace": 1,
+    "max_recursive_observers_degraded_mode": 0,
+    "max_observer_growth_across_repeats": 0
+  },
+  "settled_repeat": {
+    "scans": 0,
+    "parses": 0,
+    "reads": 0,
+    "writes": 0,
+    "events": 0,
+    "observations": 0,
+    "retained_byte_growth": 0,
+    "retained_count_growth": 0
+  },
+  "localized_change": {
+    "parsed_files": 1,
+    "relationship_rows_scope": "changed_file_only"
+  },
+  "storage_limits": {
+    "workflow_records": {"max_entries": 1000, "max_bytes": 268435456},
+    "workspace_intelligence": {"max_generations": 2, "max_bytes": 536870912},
+    "operational_records": {"max_files": 20, "max_bytes": 67108864},
+    "temporary_data": {"max_entries": 1000, "max_bytes": 268435456}
+  },
+  "representative_queries": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "require_resolvable_evidence": true
+  },
+  "response_limits_ms": {
+    "file_content_search": 50,
+    "symbol_structure": 75,
+    "graph_impact_tests": 150
+  },
+  "response_measurement": {
+    "repetitions_per_flow": 20,
+    "warmup_repetitions": 1,
+    "p95_rule": "nearest_rank"
+  }
+}

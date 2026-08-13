@@ -62,7 +62,7 @@ def test_default_worker_count_preserves_verify_budget_headroom() -> None:
     """The maintained worker baseline leaves room for both smoke gates."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
-    assert "PYTEST_WORKERS ?= 12" in makefile_text
+    assert "PYTEST_WORKERS ?= 10" in makefile_text
 
 
 def test_install_targets_delegate_to_the_installer() -> None:

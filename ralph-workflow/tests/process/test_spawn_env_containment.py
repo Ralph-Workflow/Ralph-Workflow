@@ -24,6 +24,11 @@ _GUARD_ALLOWLIST: dict[str, str] = {
         "in-process benchmark CLI; reindex runs inside the current "
         "process (no subprocess spawn), so the guard is safe to keep."
     ),
+    "ralph/mcp/explore/bench.py": (
+        "S-1 product-baseline CLI; representative flows run in-process "
+        "through real MCP handlers (no subprocess spawn), so the guard "
+        "is safe to keep."
+    ),
     **dict.fromkeys(
         (
             "ralph/testing/audit_activity_aware_watchdog.py",

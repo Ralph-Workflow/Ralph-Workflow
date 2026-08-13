@@ -14,8 +14,9 @@ hub module dependency graph acyclic and the markers disappear.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +78,15 @@ class BenchmarkCounters:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkResult:
-    """Result of a single benchmark question (one fixture)."""
+    """Result of a single benchmark question (one fixture).
+
+    S-1: ``response_times_seconds`` carries the measured per-sample
+    response times for the indexed flow when the harness recorded them
+    (empty under the default scripted path), and ``retained_growth``
+    carries the per-category ``(bytes_delta, count_delta)`` deltas the
+    scenario harness observed across the flow (empty when the fixture
+    does not measure retained growth).
+    """
 
     question_id: str
     baseline: BenchmarkCounters
@@ -86,6 +95,8 @@ class BenchmarkResult:
     changed_file_count: int = 0
     index_storage_bytes: int = 0
     notes: tuple[str, ...] = field(default_factory=tuple)
+    response_times_seconds: tuple[float, ...] = ()
+    retained_growth: tuple[tuple[str, int, int], ...] = ()
 
     def bytes_savings_ratio(self) -> float:
         """Return 1 - (indexed.bytes / baseline.bytes); 0.0 if baseline is 0."""
@@ -98,9 +109,33 @@ class BenchmarkResult:
         return self.indexed.tool_calls <= baseline
 
 
+@runtime_checkable
+class ToolResultLike(Protocol):
+    """Narrow shape the S-1 baseline dispatcher needs from a ToolResult."""
+
+    content: Sequence[object]
+    is_error: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FlowTiming:
+    """S-1 measured response profile for one representative flow.
+
+    ``samples_seconds`` is the full recorded post-warmup sample set
+    (the checked-in profile is 20 samples) and ``p95_seconds`` is the
+    nearest-rank 95th percentile computed from those samples.
+    """
+
+    flow_id: str
+    samples_seconds: tuple[float, ...]
+    p95_seconds: float
+
+
 __all__ = [
     "BenchmarkCounters",
     "BenchmarkFixture",
     "BenchmarkResult",
+    "FlowTiming",
     "ScriptedCall",
+    "ToolResultLike",
 ]

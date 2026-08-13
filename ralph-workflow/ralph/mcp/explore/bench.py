@@ -43,12 +43,23 @@ from ralph.mcp.explore._bench_fixtures import (
     REQUIRED_BENCH_WORKFLOW_IDS,
     REQUIRED_FIXTURES,
 )
+from ralph.mcp.explore._bench_product_baseline import (
+    gate_product_baseline,
+    load_product_baseline_limits,
+    main,
+    measure_representative_flows,
+    nearest_rank_p95,
+    run_product_baseline,
+)
 from ralph.mcp.explore._bench_types import (
     BenchmarkCounters,
     BenchmarkFixture,
     BenchmarkResult,
     ScriptedCall,
 )
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 # Ponytail: fixed tokenizer. Counts ASCII whitespace-separated tokens
@@ -465,6 +476,14 @@ __all__ = [
     "BenchmarkFixture",
     "BenchmarkResult",
     "ScriptedCall",
+    "SystemClock",
     "derive_visible_catalog",
+    "gate_product_baseline",
+    "load_product_baseline_limits",
+    "main",
+    "measure_representative_flows",
+    "nearest_rank_p95",
     "run_benchmark",
+    "run_product_baseline",
+    "tool_catalog_tokens",
 ]
