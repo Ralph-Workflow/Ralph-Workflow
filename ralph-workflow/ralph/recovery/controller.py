@@ -874,6 +874,13 @@ class RecoveryController:
                 prior_consecutive=prior_consecutive,
             )
         except BrokenAgentSameShapeLimitError as exc:
+            logger.warning(
+                "broken-agent same-shape bound reached: phase={} agent={} consecutive={} limit={}",
+                phase,
+                agent,
+                exc.consecutive,
+                exc.limit,
+            )
             return exc
         self._broken_agent_same_shape_state[phase] = (fingerprint, consecutive)
         return None

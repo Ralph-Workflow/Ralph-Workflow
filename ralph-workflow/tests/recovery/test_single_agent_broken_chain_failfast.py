@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.agents.invoke import BrokenAgentExitError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.loader import load_config
@@ -88,14 +90,31 @@ def test_broken_agent_same_shape_bound_fails_second_consecutive_sole_agent_attem
         )
     )
 
-    first_state = _broken_agent_failure(controller, _single_agent_state())
-    assert first_state.phase == "development"
-    assert first_state.is_waiting_state is True
-    assert first_state.last_retry_delay_ms > 0
+    warning_messages: list[str] = []
 
-    second_state = _broken_agent_failure(controller, first_state)
+    def _sink(message: object) -> None:
+        warning_messages.append(message.record["message"])
+
+    sink_id = logger.add(_sink, level="WARNING", format="{message}")
+    try:
+        first_state = _broken_agent_failure(controller, _single_agent_state())
+        assert first_state.phase == "development"
+        assert first_state.is_waiting_state is True
+        assert first_state.last_retry_delay_ms > 0
+
+        second_state = _broken_agent_failure(controller, first_state)
+    finally:
+        logger.remove(sink_id)
 
     assert second_state.phase == policy_bundle.pipeline.recovery.failed_route
     assert second_state.is_waiting_state is False
     assert second_state.last_retry_delay_ms == 0
     assert "BROKEN_AGENT_NO_FALLOVER" in (second_state.last_error or "")
+    bound_warnings = [
+        message for message in warning_messages if "broken-agent same-shape bound reached" in message
+    ]
+    assert len(bound_warnings) == 1
+    assert "phase=development" in bound_warnings[0]
+    assert "agent=opencode" in bound_warnings[0]
+    assert "consecutive=2" in bound_warnings[0]
+    assert "limit=2" in bound_warnings[0]

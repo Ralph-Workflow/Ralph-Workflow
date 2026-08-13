@@ -30,6 +30,8 @@ Readers mark matching lines as harness echoes, so `IdleWatchdog.has_meaningful_o
 
 The default `BROKEN_AGENT` backoff starts at 5 seconds and caps at 60 seconds. Recovery publishes the normal fallover event and advances the agent chain.
 
+Repeated identical broken-agent failures are also bounded. `BROKEN_AGENT_SAME_SHAPE_DEFAULT` defaults to 2 consecutive fingerprints for the same agent and reason; `agent_max_broken_agent_same_shape_resumes` is the `[general]` TOML configuration key. The first failure advances to the next available agent when the chain has one; a sole-agent chain waits for its cooldown. Once the sole agent reaches the bound, `ralph/recovery/controller.py` in `_check_broken_agent_same_shape_bound` routes the phase to `failed_route` with `BROKEN_AGENT_NO_FALLOVER` instead of permitting another no-output retry.
+
 ## Operator Response
 
 Check the selected agent's credentials and provider availability first. A prompt-echo diagnosis also indicates that the harness started but the model did not provide meaningful output.
