@@ -693,6 +693,9 @@ class PtyLineReader:
         # ``IdleWatchdogKilledError.resumable_session_id`` so the
         # recovery controller can resume the same agent session.
         self._captured_session_id = session_id
+        watchdog = getattr(self, "_watchdog", None)
+        if watchdog is not None:
+            watchdog.record_session_id_capture(session_id)
 
     def _transcript_session_id_candidates(self) -> tuple[str, ...]:
         with self._transcript_session_ids_lock:
@@ -1583,6 +1586,8 @@ class PtyLineReader:
         # AFTER the iterator exhausts (post-read at
         # ``_pty_runner.py``).
         self._watchdog = watchdog
+        if self._captured_session_id is not None:
+            watchdog.record_session_id_capture(self._captured_session_id)
         self._bind_workspace_monitor(watchdog)
         sink_token, subagent_token, subagent_sink = self._register_active_sinks(watchdog)
         # RC1 + RC3 (wt-04-claude-parsing): bind the watchdog's

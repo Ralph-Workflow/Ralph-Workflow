@@ -220,6 +220,19 @@ if _actual != _EXPECTED_FIRE_REASONS:
 
 
 @dataclass
+class CircumstantialEvidence:
+    """Snapshot of the evidence used to diagnose a silent agent invocation."""
+
+    process_alive: bool
+    has_stdout_bytes: bool
+    has_meaningful_output: bool
+    captured_session_id: str | None
+    has_session_id_captured: bool
+    process_started_at: float | None
+    elapsed_seconds: float
+
+
+@dataclass
 class IdleWatchdog:
     """Tracks agent idle time and decides when to fire the timeout.
 
@@ -283,6 +296,8 @@ class IdleWatchdog:
     _last_meaningful_output_at: float | None = field(default=None, init=False)
     _has_meaningful_output: bool = field(default=False, init=False)
     _any_output_count: int = field(default=0, init=False)
+    _captured_session_id: str | None = field(default=None, init=False)
+    _process_alive: bool = field(default=True, init=False)
     _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
@@ -508,6 +523,8 @@ class IdleWatchdog:
         self._last_meaningful_output_at = None
         self._has_meaningful_output = False
         self._any_output_count = 0
+        self._captured_session_id = None
+        self._process_alive = True
         self._waiting_on_child_started_at = None
         self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
@@ -790,6 +807,26 @@ class IdleWatchdog:
         if self._invocation_started_at is None:
             return 0.0
         return self._clock.monotonic() - self._invocation_started_at
+
+    def circumstantial_evidence(self) -> CircumstantialEvidence:
+        """Return an independent snapshot of the current silent-agent evidence."""
+        return CircumstantialEvidence(
+            process_alive=self._process_alive,
+            has_stdout_bytes=self._any_output_count > 0,
+            has_meaningful_output=self.has_meaningful_output(),
+            captured_session_id=self._captured_session_id,
+            has_session_id_captured=self._captured_session_id is not None,
+            process_started_at=self._invocation_started_at,
+            elapsed_seconds=self.invocation_elapsed_seconds,
+        )
+
+    def record_process_liveness(self, is_alive: bool) -> None:
+        """Record the current liveness of the agent process for the next snapshot."""
+        self._process_alive = is_alive
+
+    def record_session_id_capture(self, session_id: str) -> None:
+        """Record the transport session id that proves a session was established."""
+        self._captured_session_id = session_id
 
     def record_any_output(self) -> None:
         """Record one classified output signal without changing activity semantics."""

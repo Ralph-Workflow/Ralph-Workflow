@@ -13,6 +13,7 @@ Key features:
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -46,6 +47,7 @@ from ralph.agents.invoke._errors import (
     BrokenAgentExitError,
     InactivityTimeoutOpts,
     InteractivePermissionPromptError,
+    MissingCredentialsError,
     OpenCodeResumableExitError,
     PiContextExhaustedExitError,
     PiProviderFailureExitError,
@@ -376,6 +378,11 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     base_opts = options or InvokeOptions()
+    _fail_for_missing_credentials(
+        config,
+        base_opts,
+        env_getter=lambda name: (base_opts.extra_env or {}).get(name) or os.environ.get(name),
+    )
     _fail_for_unsupported_local_opencode_model(config, base_opts)
     runtime = resolve_invocation_runtime(
         config,
@@ -579,6 +586,31 @@ def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
     return None
 
 
+def _fail_for_missing_credentials(
+    config: AgentConfig,
+    options: InvokeOptions,
+    env_getter: Callable[[str], str | None] | None = None,
+) -> None:
+    """Raise before launching a hosted provider without its required credential."""
+    transport = _agent_transport(config)
+    required_env_var: str | None = None
+    if transport in {AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE}:
+        required_env_var = "ANTHROPIC_API_KEY"
+    elif transport == AgentTransport.OPENCODE:
+        model_id = _normalized_opencode_model_id(options.model_flag or config.model_flag)
+        provider = model_id.split("/", maxsplit=1)[0] if model_id is not None else ""
+        required_env_var = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY",
+        }.get(provider)
+    if required_env_var is None:
+        return
+    getter = env_getter if env_getter is not None else os.environ.get
+    if getter(required_env_var):
+        return
+    raise MissingCredentialsError(config.cmd.split()[0], f"{required_env_var} not set")
+
+
 def _fail_for_unsupported_local_opencode_model(
     config: AgentConfig,
     options: InvokeOptions,
@@ -729,6 +761,7 @@ __all__ = [
     "IdleStreamTimeoutError",
     "InactivityTimeoutOpts",
     "InteractivePermissionPromptError",
+    "MissingCredentialsError",
     "InvokeOptions",
     "InvokeRuntimeOptions",
     "OpenCodeResumableExitError",

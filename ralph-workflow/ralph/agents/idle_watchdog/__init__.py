@@ -34,7 +34,7 @@ from .corroboration_snapshot import (
     CorroborationSnapshot,
     WaitingCorroborator,
 )
-from .idle_watchdog import IdleWatchdog
+from .idle_watchdog import CircumstantialEvidence, IdleWatchdog
 from .timeout_policy import TimeoutPolicy
 from .waiting_status_event import WaitingStatusEvent, WaitingStatusListener
 from .waiting_status_kind import WaitingStatusKind
@@ -44,6 +44,7 @@ from .watchdog_verdict import WatchdogVerdict
 __all__ = [
     "AliveBy",
     "ChannelEvidenceSummary",
+    "CircumstantialEvidence",
     "CorroborationSnapshot",
     "IdleWatchdog",
     "PostExitVerdict",

@@ -121,9 +121,28 @@ def check_broken_agent_timer(
     agent_name: str,
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
-    """Terminate a silent live agent before the slower startup watchdog fires."""
+    """Fail over promptly when a silent agent exits, or after a live-startup grace window."""
     elapsed_seconds = watchdog.invocation_elapsed_seconds
-    if elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS or watchdog.has_meaningful_output():
+    try:
+        process_alive = handle.poll() is None
+    except Exception:
+        # Liveness is circumstantial evidence: an unavailable probe must not
+        # manufacture a clean-exit diagnosis, so preserve the live grace path.
+        process_alive = True
+    watchdog.record_process_liveness(process_alive)
+    evidence = watchdog.circumstantial_evidence()
+    if (
+        not evidence.process_alive
+        and not evidence.has_meaningful_output
+        and not evidence.has_session_id_captured
+    ):
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="no_output",
+            elapsed_seconds=elapsed_seconds,
+            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+        )
+    if elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS or evidence.has_meaningful_output:
         return
     handle.terminate(grace_period_s=0.5)
     pid = cast("int | None", getattr(handle, "pid", None))
@@ -620,6 +639,9 @@ class ProcessLineReader:
                 session_id = extract_transport_session_id_from_line(line)
                 if session_id is not None:
                     self._captured_session_id = session_id
+                    watchdog = getattr(self, "_watchdog", None)
+                    if watchdog is not None:
+                        watchdog.record_session_id_capture(session_id)
         except Exception:
             pass
         finally:
@@ -947,6 +969,8 @@ class ProcessLineReader:
         # closed-loop in the ``finally`` block below; the reader
         # only consumes the reference while it is in scope.
         self._watchdog = watchdog
+        if self._captured_session_id is not None:
+            watchdog.record_session_id_capture(self._captured_session_id)
 
         sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)
         try:
