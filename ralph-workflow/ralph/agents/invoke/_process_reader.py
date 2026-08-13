@@ -641,7 +641,7 @@ class ProcessLineReader:
                 session_id = extract_transport_session_id_from_line(line)
                 if session_id is not None:
                     self._captured_session_id = session_id
-                    watchdog = cast("IdleWatchdog | None", getattr(self, "_watchdog", None))
+                    watchdog: IdleWatchdog | None = getattr(self, "_watchdog", None)
                     if watchdog is not None:
                         watchdog.record_session_id_capture(session_id)
         except Exception:

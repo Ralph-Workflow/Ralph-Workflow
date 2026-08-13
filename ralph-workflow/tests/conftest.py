@@ -256,6 +256,12 @@ def _isolate_process_home(
     monkeypatch.setenv("HOME", fake_home)
     monkeypatch.setenv("XDG_CONFIG_HOME", fake_home + "/.config")
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+    # Dummy provider keys so the credential preflight does not abort
+    # agent-invoking tests that fake the process layer. Dedicated preflight
+    # tests inject their own ``env_getter`` and are unaffected by these
+    # ``os.environ`` defaults.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-dummy-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-dummy-key")
 
 
 #: Per-worker base temp dir cache. ``tmp_path_factory`` is session-scoped

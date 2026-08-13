@@ -132,6 +132,7 @@ _SEAM_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         ("_fields", "str | None"),
         ("_grep_handlers", "sqlite3.Row"),
         ("_handlers_reindex", "Workspace"),
+        ("_harness_echo", "list[str]"),
         ("_lazy_tool_handler", "ToolHandler"),
         ("_mcp_server", "_ModelDump | None"),
         ("_mcp_server", "_ToDict | None"),

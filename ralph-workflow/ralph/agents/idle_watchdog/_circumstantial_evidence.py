@@ -1,4 +1,8 @@
-"""Snapshot model for silent-agent circumstantial evidence."""
+"""Snapshot dataclass for silent-agent diagnostic evidence.
+
+Extracted from ``idle_watchdog.py`` so the module satisfies the
+repo-structure audit's one-top-level-class rule.
+"""
 
 from __future__ import annotations
 

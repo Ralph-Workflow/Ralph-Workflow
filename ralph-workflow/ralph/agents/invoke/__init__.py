@@ -378,12 +378,7 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     base_opts = options or InvokeOptions()
-    _fail_for_missing_credentials(
-        config,
-        base_opts,
-        env_getter=lambda name: (base_opts.extra_env or {}).get(name)
-        or agent_environment_value(name),
-    )
+    _fail_for_missing_credentials(config, base_opts, env_getter=agent_environment_value)
     _fail_for_unsupported_local_opencode_model(config, base_opts)
     runtime = resolve_invocation_runtime(
         config,
@@ -605,6 +600,10 @@ def _fail_for_missing_credentials(
             "openai": "OPENAI_API_KEY",
         }.get(provider)
     if required_env_var is None:
+        return
+    # Per-invocation overrides take precedence over ambient env.
+    extra_env = options.extra_env or {}
+    if extra_env.get(required_env_var):
         return
     getter = env_getter if env_getter is not None else os.environ.get
     if getter(required_env_var):
