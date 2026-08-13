@@ -88,7 +88,6 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.idle_watchdog._circumstantial_evidence import CircumstantialEvidence
 from ralph.agents.idle_watchdog._evidence_tier import (
     ChannelEvidenceSummary,
     ChannelName,

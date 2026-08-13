@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import pytest
@@ -82,6 +83,23 @@ def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
         psutil=FakePsutil(),
     )
     monkeypatch.setattr("ralph.agents.invoke._process_reader.get_process_manager", lambda: manager)
+    monkeypatch.setattr("ralph.agents.invoke._run_shared_interactive_pty", _fake_shared_interactive_pty)
+
+
+def _fake_shared_interactive_pty(*args: object, **kwargs: object) -> Iterator[str]:
+    """Exercise PTY monitor wiring without starting a real terminal process."""
+    del kwargs
+    ctx = args[1]
+    config = ctx.config
+    policy = ctx.policy
+    monitor = DefaultProcessMonitor(
+        1,
+        role_classifier=role_classifier_for_transport(config.transport),
+        discovery_strategy=NullDiscoveryStrategy(),
+        poll_interval_seconds=policy.subagent_output_poll_interval_seconds,
+    )
+    IdleWatchdog(policy, FakeClock(), process_monitor=monitor)
+    return iter(())
 
 
 def _noop_command(

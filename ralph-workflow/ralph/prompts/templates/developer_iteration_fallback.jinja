@@ -103,6 +103,7 @@ and one next step.
 {% endif %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
+{% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if IS_CONTINUATION %}
 Before submitting a continuation, re-check the remaining work against the execution plan, continuation context, and proof contract. Use an independent sub-agent when coordination costs less than sequential execution; otherwise perform the same review sequentially. Submit only after the remaining gap is closed.

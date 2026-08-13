@@ -65,6 +65,7 @@ Implement and verify only `{{ unit_id }}`, then return that one unit result. If 
 the concrete blocker in the result instead of expanding scope.
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
+{% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if IS_CONTINUATION %}
 Before submitting a continuation, check the unit against its assignment and

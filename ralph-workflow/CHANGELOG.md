@@ -66,6 +66,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(prompts): require development and analysis agents to resolve every surfaced issue** — the shared failure-ownership prompt rule rejects both "no such thing as a blocking issue" and "no such thing as a pre-existing issue" exemptions; locked by `tests/test_prompts_no_exemption_for_failures.py`.
 - **feat(install): report, rather than resolve, a global `ralph` conflict during `make install`** — `make install` / `make dev` install only the `rdev` launcher, so a detected global `ralph` is now left untouched with a notice explaining that `rdev` is used instead; `rdev` itself is overwritten on every refresh, and `make stable` keeps the continue/remove/abort prompt because it owns the global `ralph`. Locked by `tests/test_install.py`.
 - **docs(display): document the bounded terminal-background query timeout** — the operator manual now lists `RALPH_TERMINAL_BG_TIMEOUT_MS`, including its positive-integer input contract and 100 ms fallback. Locked by `tests/test_sphinx_documentation_setup.py`.
 - **fix(display): exercise catalogued console seams in generated scenes** — phase-close and every operator table now render through their production owners with observable transcript carriers; empty analysis-decision and commit-message artifacts remain intentionally silent. Locked by `tests/test_display_generated_scenes.py` and `tests/test_parallel_display_markdown_handoff.py`.

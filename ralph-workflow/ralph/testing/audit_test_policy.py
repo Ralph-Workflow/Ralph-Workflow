@@ -104,6 +104,10 @@ _IO_ALLOWLIST: set[str] = {
     "test_analysis_context_partial_analysis_context_suppression",
     "test_analysis_prompt_payload_contract_analysis_template_payload_contract",
     "test_analysis_prompt_payload_contract_retry_hint_guard_in_templates",
+    # Failure-ownership prompt guard reads the shared partial and five source
+    # templates because their literal contents are the regression contract;
+    # fixture text would not detect prompt-source drift.
+    "test_prompts_no_exemption_for_failures",
     # Source-inspection guard that reads production Python source files
     # (prompts/materialize.py, mcp/tools/artifact.py, display/parallel_display.py,
     # display/completion_summary.py, cli/commands/run.py, pipeline/handoffs.py,

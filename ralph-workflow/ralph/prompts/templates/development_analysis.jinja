@@ -60,5 +60,9 @@ Emit one stable `DA-###` item per unchanged request criterion in `## Criterion V
 
 Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. Include one evidence-citing `## Summary` item and the criterion verdict block; do not read or use development-result/history narrative as evidence.
 
+{% include 'shared/_no_exemption_for_failures.j2' %}
+
+Your verdict is independent of who caused the failure: not met stays not met whether an issue is pre-existing, blocking, or development-introduced.
+
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 {{ render_artifact_submission('development_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}
