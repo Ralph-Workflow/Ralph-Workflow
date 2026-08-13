@@ -50,7 +50,11 @@ from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, 
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
-from ralph.timeout_defaults import SAME_SHAPE_RETRY_DEFAULT, WAITING_STATUS_INTERVAL_SECONDS
+from ralph.timeout_defaults import (
+    BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+    SAME_SHAPE_RETRY_DEFAULT,
+    WAITING_STATUS_INTERVAL_SECONDS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1371,6 +1375,19 @@ def _build_recovery_controller(
         if isinstance(raw_same_shape_limit, int) and raw_same_shape_limit >= 1
         else SAME_SHAPE_RETRY_DEFAULT
     )
+    raw_broken_agent_same_shape_limit: object = getattr(
+        config.general,
+        "agent_max_broken_agent_same_shape_resumes",
+        None,
+    )
+    broken_agent_same_shape_limit = (
+        raw_broken_agent_same_shape_limit
+        if (
+            isinstance(raw_broken_agent_same_shape_limit, int)
+            and raw_broken_agent_same_shape_limit >= 1
+        )
+        else BROKEN_AGENT_SAME_SHAPE_DEFAULT
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
@@ -1378,6 +1395,7 @@ def _build_recovery_controller(
             budget_registry=_seed_budget_registry(policy_bundle),
             technical_retry_cap=technical_retry_cap,
             same_shape_retry_limit=same_shape_limit,
+            broken_agent_same_shape_limit=broken_agent_same_shape_limit,
         )
     )
     return controller, _cycle_cap

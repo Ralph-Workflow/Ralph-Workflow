@@ -58,6 +58,11 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
+from ralph.recovery._broken_agent_same_shape_error import BrokenAgentSameShapeLimitError
+from ralph.recovery._broken_agent_same_shape_tracker import (
+    BrokenAgentFingerprint,
+    BrokenAgentSameShapeTracker,
+)
 from ralph.recovery._same_shape_retry_tracker import (
     SameShapeRetryLoopError,
     SameShapeRetryTracker,
@@ -522,6 +527,9 @@ class RecoveryController:
         # loop in development and a no_progress_quiet loop in commit
         # are independent shapes.
         self._same_shape_tracker = SameShapeRetryTracker(limit=opts.same_shape_retry_limit)
+        self._broken_agent_same_shape_tracker = BrokenAgentSameShapeTracker(
+            limit=opts.broken_agent_same_shape_limit
+        )
         # The per-(phase, watchdog_reason) tracker state: each entry
         # stores the prior fingerprint four-tuple, the consecutive
         # count, and a progress snapshot (total_retries,
@@ -533,6 +541,9 @@ class RecoveryController:
         self._same_shape_state: dict[
             str, tuple[tuple[str, str, bool, bool], int, tuple[int, int]]
         ] = {}  # bounded-accumulator-ok: bounded by phase x fire_reason; lives only for the controller instance
+        self._broken_agent_same_shape_state: dict[
+            str, tuple[BrokenAgentFingerprint, int]
+        ] = {}  # bounded-accumulator-ok: bounded by phase; lives only for the controller instance
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -632,38 +643,12 @@ class RecoveryController:
             is_waiting_state=False,
         )
 
-        if failure.category == FailureCategory.ENVIRONMENTAL:
-            logger.info(
-                "Environmental failure in phase={} (not counted against budget): {}",
-                phase,
-                failure.reason[:200],
-            )
-            new_state = new_state.copy_with(last_error=failure.reason)
-            new_state, effects, failure_evt = self._handle_technical_retry_exhaustion(
-                new_state,
-                failure,
-                phase,
-                agent,
-                retry_in_session=retry_in_session,
-                failure_evt=failure_evt,
-            )
-            return new_state, effects, failure_evt
-
         if failure.category in (
+            FailureCategory.ENVIRONMENTAL,
             FailureCategory.ARTIFACT_VALIDATION,
             FailureCategory.AMBIGUOUS,
         ):
-            category_label = (
-                "Artifact validation"
-                if failure.category == FailureCategory.ARTIFACT_VALIDATION
-                else "Ambiguous"
-            )
-            logger.info(
-                "{} failure in phase={} (retry without budget debit): {}",
-                category_label,
-                phase,
-                failure.reason[:200],
-            )
+            self._log_technical_failure(phase, failure)
             new_state = new_state.copy_with(last_error=failure.reason)
             new_state, effects, failure_evt = self._handle_technical_retry_exhaustion(
                 new_state,
@@ -752,6 +737,26 @@ class RecoveryController:
         # terminal failure here so the pipeline emits an exit-failure
         # effect with the fingerprint evidence rather than silently
         # discarding the loop.
+        broken_agent_bound_exception = self._check_broken_agent_same_shape_bound(
+            phase, agent, failure, chain
+        )
+        if broken_agent_bound_exception is not None:
+            logger.error(
+                "broken-agent same-shape bound exceeded in phase={} agent={}: {}",
+                phase,
+                agent,
+                broken_agent_bound_exception,
+            )
+            return (
+                self._enter_phase_failed(
+                    new_state,
+                    str(broken_agent_bound_exception),
+                    failure.category,
+                ),
+                [],
+                failure_evt,
+            )
+
         if retry_in_session:
             bound_exception = self._check_same_shape_bound(phase, failure, state)
             if bound_exception is not None:
@@ -797,6 +802,27 @@ class RecoveryController:
 
         return new_state, effects, failure_evt
 
+    def _log_technical_failure(self, phase: str, failure: ClassifiedFailure) -> None:
+        """Log a no-budget-debit failure before routing it to technical retry."""
+        if failure.category == FailureCategory.ENVIRONMENTAL:
+            logger.info(
+                "Environmental failure in phase={} (not counted against budget): {}",
+                phase,
+                failure.reason[:200],
+            )
+            return
+        category_label = (
+            "Artifact validation"
+            if failure.category == FailureCategory.ARTIFACT_VALIDATION
+            else "Ambiguous"
+        )
+        logger.info(
+            "{} failure in phase={} (retry without budget debit): {}",
+            category_label,
+            phase,
+            failure.reason[:200],
+        )
+
     def _mark_agent_unavailable(
         self,
         phase: str,
@@ -818,6 +844,39 @@ class RecoveryController:
     def _is_agent_available(self, phase: str, agent: str) -> bool:
         """Return True when the agent is not currently marked unavailable."""
         return self._unavailability_tracker.is_available(phase, agent)
+
+    def _check_broken_agent_same_shape_bound(
+        self,
+        phase: str,
+        agent: str | None,
+        failure: ClassifiedFailure,
+        chain: AgentChainState | None,
+    ) -> BrokenAgentSameShapeLimitError | None:
+        """Fail a sole-agent chain after repeated identical broken-agent failures."""
+        if agent is None or chain is None or len(chain.agents) != 1:
+            return None
+        exception = failure.original_exception
+        if type(exception).__name__ != "BrokenAgentExitError":
+            return None
+        broken_reason = cast(
+            "object", getattr(exception, "reason", None)
+        )  # cast-policy: seam: structural boundary (typed exception attribute)
+        if not isinstance(broken_reason, str):
+            return None
+        prior = self._broken_agent_same_shape_state.get(phase)
+        prior_fingerprint = prior[0] if prior is not None else None
+        prior_consecutive = prior[1] if prior is not None else 0
+        try:
+            fingerprint, consecutive = self._broken_agent_same_shape_tracker.record_failure(
+                broken_agent_reason=broken_reason,
+                agent_name=agent,
+                prior_fingerprint=prior_fingerprint,
+                prior_consecutive=prior_consecutive,
+            )
+        except BrokenAgentSameShapeLimitError as exc:
+            return exc
+        self._broken_agent_same_shape_state[phase] = (fingerprint, consecutive)
+        return None
 
     def _check_same_shape_bound(
         self,

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import re
-
 HARNESS_ECHO_MARKERS: tuple[str, ...] = ("<|user|>", "<|im_start|>", "[INST]")
 _SHELL_PROMPT_PREFIXES: tuple[str, ...] = ("> ", "$ ", "% ", "# ")
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_TERMINATORS: tuple[str, ...] = (". ", "! ", "? ")
+_MINIMUM_MULTI_SENTENCE_COUNT = 2
 
 
 def _looks_like_chat_template_marker(line: str) -> bool:
@@ -16,10 +15,21 @@ def _looks_like_chat_template_marker(line: str) -> bool:
 
 def _prompt_edge_sentences(prompt: str) -> tuple[str, ...]:
     """Return the first and last sentences of a multi-sentence prompt."""
-    sentences = tuple(
-        sentence.strip() for sentence in _SENTENCE_BOUNDARY.split(prompt) if sentence.strip()
-    )
-    if len(sentences) < 2:
+    sentences: list[str] = []
+    remaining = prompt.strip()
+    while remaining:
+        boundaries = [
+            position
+            for terminator in _SENTENCE_TERMINATORS
+            if (position := remaining.find(terminator)) >= 0
+        ]
+        if not boundaries:
+            sentences.append(remaining)
+            break
+        boundary = min(boundaries) + 1
+        sentences.append(remaining[:boundary].strip())
+        remaining = remaining[boundary + 1 :].lstrip()
+    if len(sentences) < _MINIMUM_MULTI_SENTENCE_COUNT:
         return ()
     return sentences[0], sentences[-1]
 

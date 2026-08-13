@@ -693,7 +693,7 @@ class PtyLineReader:
         # ``IdleWatchdogKilledError.resumable_session_id`` so the
         # recovery controller can resume the same agent session.
         self._captured_session_id = session_id
-        watchdog = getattr(self, "_watchdog", None)
+        watchdog = cast("IdleWatchdog | None", getattr(self, "_watchdog", None))
         if watchdog is not None:
             watchdog.record_session_id_capture(session_id)
 

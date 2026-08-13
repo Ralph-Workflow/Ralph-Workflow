@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.timeout_defaults import SAME_SHAPE_RETRY_DEFAULT
+from ralph.timeout_defaults import BROKEN_AGENT_SAME_SHAPE_DEFAULT, SAME_SHAPE_RETRY_DEFAULT
 
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
@@ -42,6 +42,9 @@ class RecoveryControllerOptions:
     # ``ralph/pipeline/run_loop.py::_build_recovery_controller``. Must be
     # >= 1; a bound of 0 would silently disable the R6 contract.
     same_shape_retry_limit: int = SAME_SHAPE_RETRY_DEFAULT
+    # Consecutive identical broken-agent failures on one sole agent fail the
+    # phase instead of entering the all-agents-unavailable cooldown loop.
+    broken_agent_same_shape_limit: int = BROKEN_AGENT_SAME_SHAPE_DEFAULT
     # Initial unavailable timeout state, keyed by "phase:agent" with values as
     # monotonic timestamps in milliseconds. Used to inject test state; in
     # production this starts empty and is populated by the controller.

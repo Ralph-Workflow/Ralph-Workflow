@@ -9,6 +9,7 @@ from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
+    BROKEN_AGENT_SAME_SHAPE_DEFAULT,
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
@@ -112,6 +113,15 @@ class GeneralConfig(RalphBaseModel):
             " Operators extend the leash by raising this value in"
             " ralph-workflow.toml; setting it to 0 or a negative value is"
             " rejected by the validator."
+        ),
+    )
+    agent_max_broken_agent_same_shape_resumes: int = Field(
+        default=BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+        ge=1,
+        description=(
+            "Broken-agent sole-chain bound. Consecutive identical broken-agent"
+            " failures for the same sole agent fail the phase instead of waiting"
+            " for that agent's cooldown."
         ),
     )
     max_retries: int = Field(default=3, ge=0)

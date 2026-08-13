@@ -132,7 +132,8 @@ def check_broken_agent_timer(
     watchdog.record_process_liveness(process_alive)
     evidence = watchdog.circumstantial_evidence()
     if (
-        not evidence.process_alive
+        elapsed_seconds > 0.0
+        and not evidence.process_alive
         and not evidence.has_meaningful_output
         and not evidence.has_session_id_captured
     ):
@@ -312,6 +313,7 @@ class ProcessLineReader:
         self._is_waiting_state_provider = ctx.is_waiting_state_provider
         self._completion_is_terminal = ctx.completion_is_terminal
         self._input_prompt = ctx.input_prompt
+        self._expected_session_id = ctx.expected_session_id
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
@@ -639,7 +641,7 @@ class ProcessLineReader:
                 session_id = extract_transport_session_id_from_line(line)
                 if session_id is not None:
                     self._captured_session_id = session_id
-                    watchdog = getattr(self, "_watchdog", None)
+                    watchdog = cast("IdleWatchdog | None", getattr(self, "_watchdog", None))
                     if watchdog is not None:
                         watchdog.record_session_id_capture(session_id)
         except Exception:
@@ -960,6 +962,8 @@ class ProcessLineReader:
         if self._is_waiting_state_provider is not None:
             watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
+        if self._expected_session_id is not None:
+            watchdog.record_session_id_capture(self._expected_session_id)
         # R7 (Trustworthy Idle Watchdog): expose the watchdog
         # reference on the reader so the line-reader layer can
         # populate the R7 diagnostic fields on

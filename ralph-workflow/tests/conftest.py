@@ -44,6 +44,13 @@ pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
+@pytest.fixture(autouse=True)
+def _placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep fake agent-process tests independent of real provider credentials."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _fake_agy_models_probe() -> Generator[None, None, None]:
     """Keep default tests independent of the locally installed AGY binary."""

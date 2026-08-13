@@ -382,6 +382,10 @@ WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS: float = 30.0
 #: configuration surface is single-sourced.
 SAME_SHAPE_RETRY_DEFAULT: int = 3
 
+#: Default maximum consecutive identical broken-agent failures for a sole
+#: agent before recovery fails the phase instead of waiting for cooldown.
+BROKEN_AGENT_SAME_SHAPE_DEFAULT: int = 2
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

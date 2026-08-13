@@ -6,11 +6,11 @@ from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityT
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._idle_stream_timeout_error import _IdleStreamTimeoutError
-from ralph.agents.invoke._missing_credentials_error import MissingCredentialsError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.invoke._interactive_permission_prompt_error import (
     InteractivePermissionPromptError,
 )
+from ralph.agents.invoke._missing_credentials_error import MissingCredentialsError
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
@@ -21,8 +21,8 @@ __all__ = [
     "AgentInvocationError",
     "BrokenAgentExitError",
     "InactivityTimeoutOpts",
-    "MissingCredentialsError",
     "InteractivePermissionPromptError",
+    "MissingCredentialsError",
     "OpenCodeResumableExitError",
     "PiContextExhaustedExitError",
     "PiProviderFailureExitError",

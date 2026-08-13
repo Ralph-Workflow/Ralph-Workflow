@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.agents.invoke import InvokeOptions, MissingCredentialsError
-from ralph.agents.invoke import _fail_for_missing_credentials
+from ralph.agents.invoke import (
+    InvokeOptions,
+    MissingCredentialsError,
+    _fail_for_missing_credentials,
+)
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
 
