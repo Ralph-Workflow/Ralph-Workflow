@@ -13,9 +13,9 @@ from ralph.workspace.memory import MemoryWorkspace
 
 SHIPPED_SKILLS_DISCOVERY_HINTS = (
     "## SHIPPED SKILLS",
-    "runtimes that support\nskill discovery",
-    "Read a selected `SKILL.md`",
-    "When the execution plan names skills",
+    "runtime lists as available",
+    "documented mechanism",
+    "plan-named skill",
 )
 
 DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (
@@ -73,10 +73,10 @@ class TestDeveloperTemplatesShippedSkills:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         _assert_shipped_skills_discovery(prompt)
 
-    def test_developer_iteration_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
+    def test_developer_iteration_jinja_docs_mcp_false_branch_is_not_advertised(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
-            assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
+            assert hint_phrase not in prompt
 
     def test_developer_iteration_jinja_docs_mcp_true_branch_active(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(True, tmp_path=tmp_path)
@@ -91,11 +91,11 @@ class TestDeveloperTemplatesShippedSkills:
         )
         _assert_shipped_skills_discovery(prompt)
 
-    def test_developer_iteration_fallback_jinja_docs_mcp_false_branch_visible(
+    def test_developer_iteration_fallback_jinja_docs_mcp_false_branch_is_not_advertised(
         self, tmp_path: Path
     ) -> None:
         prompt = _shared_render_developer(
             False, template="developer_iteration_fallback.jinja", tmp_path=tmp_path
         )
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK:
-            assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
+            assert hint_phrase not in prompt

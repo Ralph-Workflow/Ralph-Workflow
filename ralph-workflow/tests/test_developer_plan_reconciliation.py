@@ -37,13 +37,10 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     prompt = _render_developer(tmp_path, template_name)
 
     assert "request and its acceptance criteria as authoritative" in prompt
-    assert "start from the execution plan and follow its steps" in prompt
-    assert "planning phase already performed exploration" in prompt
-    assert "Do not repeat broad repository exploration" in prompt
+    assert "execution plan's steps" in prompt
+    assert "performed broad exploration" in prompt
     assert "first ready reference" in prompt
     assert "advance to the next ready reference" in prompt
-    assert "Keep orientation and premise checks bounded" in prompt
-    assert "do not re-read material already established by the plan" in prompt
     assert "`completed`" in prompt
     assert "`adapted`" in prompt
     assert "`not_applicable`" in prompt
@@ -55,8 +52,8 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
 def test_continuation_preserves_verified_delivery_and_run_budget(tmp_path: Path) -> None:
     prompt = _render_developer(tmp_path, "developer_iteration_continuation.jinja")
 
-    assert "## Verified delivery" in prompt
-    assert "Keep each wait bounded" in prompt
+    assert "## Verification" in prompt
+    assert "bounded" in prompt
 
 
 def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> None:
@@ -102,8 +99,8 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
             context.partials,
         )
         assert "## Plan fidelity" in prompt
-        assert "## Verified delivery" in prompt
-        assert "Keep each wait bounded" in prompt
+        assert "## Verification" in prompt
+        assert "bounded" in prompt
         assert "when coordination costs less than sequential execution" in prompt
         assert "MUST use at least one sub-agent as a hard gate" not in prompt
 
@@ -124,14 +121,13 @@ def test_development_analyzer_separates_request_criteria_from_plan_routes() -> N
         context.partials,
     )
 
-    assert "plan step is a proposed implementation route" in prompt
-    assert "not an additional product requirement" in prompt
-    assert "Independently determine" in prompt
+    assert "plan step is an implementation route" in prompt
+    assert "not a new product requirement" in prompt
+    assert "Independently classify" in prompt
     assert "adapted" in prompt
     assert "not applicable" in prompt
-    assert "Do not reject solely because" in prompt
-    assert "every required plan reference whose independently derived disposition" in prompt
-    assert "independently derived plan dispositions" in prompt
-    assert "even if the developer reported `partial` or `failed`" in prompt
-    assert "only when localized unmet work is actionable" in prompt
-    assert "`failed` closes this planning/development cycle" in prompt
+    assert "Do not reject a correct implementation only because" in prompt
+    assert "every required plan reference" in prompt
+    assert "Choose the outcome from fresh evidence" in prompt
+    assert "localized unmet work is actionable" in prompt
+    assert "`failed` closes this cycle" in prompt

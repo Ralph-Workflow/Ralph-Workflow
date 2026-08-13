@@ -1,22 +1,5 @@
-{# Single-shot markdown artifact submission contract. Single source of truth
-   so the prose cannot drift between commit_message, development_analysis,
-   review, worker_developer, etc.
-
-   Designed for cheap / small / "dumb" agents that follow numbered steps
-   and pattern-match examples. Failure modes the macro defuses: wrong
-   artifact_type alias, JSON payloads instead of markdown, wrong section
-   headings or item syntax, prose echo, and ambiguous final actions.
-
-   A required artifact receipt and the durable declare_complete sentinel are
-   independent evidence. Both are mandatory; stopping after submit caused a
-   production retry hang and must remain impossible to misread here.
-
-   ``example_doc`` is a complete example markdown document, typically
-   built at the call site with {% set example_doc %}...{% endset %}.
-   ``verify_tool_reference`` is optional because some renderers (commit,
-   reviewer, worker) do not expose the verify tool.
-#}
-{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_doc, write_file_tool_reference='', verify_tool_reference='') -%}
+{# Canonical markdown submission and completion contract. #}
+{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_doc, write_file_tool_reference='', verify_tool_reference='', fallback_path='') -%}
 ## Submit a `{{ artifact_type }}` artifact
 
 Complete all five steps.
@@ -35,15 +18,14 @@ Complete all five steps.
 
 3. **Persist the document.** Call {{ submit_tool_reference }} with two
    arguments: `artifact_type` set to `"{{ artifact_type }}"` and `content`
-   set to the complete markdown document from step 2 (the full markdown
-   text as a plain string — never JSON).
+   set to the complete document from step 2 as full markdown: raw markdown text, never JSON.
 {%- if verify_tool_reference %}
    Optionally call {{ verify_tool_reference }} first with the same two
    arguments to validate without persisting.
 {%- endif %}
 {% if write_file_tool_reference %}
    If the submit tool does not exist, write the same complete markdown
-   document to `.agent/tmp/{{ artifact_type }}.md` via
+   document to `{{ fallback_path or '.agent/tmp/' ~ artifact_type ~ '.md' }}` via
    {{ write_file_tool_reference }}. Then continue immediately to step 5. The
    completion gate validates and promotes the fallback after that final call;
    it completes the phase only when both the sentinel and promoted receipt exist.
@@ -51,17 +33,16 @@ Complete all five steps.
 
 4. **Wait for a valid durable receipt.** For a submit-tool result with
    `valid: false`, each diagnostic carries a line number, section, and rule
-   code — fix every reported line and resubmit ONCE with all repairs applied.
-   A direct-submit receipt proves acceptance; the receipt is not phase completion. For a write-file
-   fallback, step 5 triggers the completion gate that validates and promotes it.
+   code — fix every reported line and resubmit until the receipt is valid.
+   The receipt is not phase completion. For a write-file fallback, step 5
+   triggers validation and promotion.
 
-5. **MANDATORY FINAL ACTION: You MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your explicit final action.**
-   This writes the separate durable completion sentinel. For a write-file
-   fallback, make this call immediately after writing the complete document;
-   the runtime then validates and promotes it. Do not stop until the call succeeds.
+5. **MANDATORY FINAL ACTION:** Call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} after persistence.
+   This writes the separate durable completion sentinel. For a write-file fallback,
+   call it immediately after writing; the runtime then validates and promotes the document.
+   Do not finish until this call succeeds.
 
    Optional `summary` param. Example:
    `{{ DECLARE_COMPLETE_TOOL_NAME }}(summary="{{ artifact_type }}")`.
 
-Use the canonical type and raw markdown text—never JSON—and persist before the explicit completion action.
 {%- endmacro %}

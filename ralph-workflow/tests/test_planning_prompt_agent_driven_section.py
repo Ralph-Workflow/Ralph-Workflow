@@ -27,6 +27,6 @@ def test_planning_prompt_keeps_readable_optional_structure() -> None:
 
 def test_analysis_reviews_substance_not_parallel_document_shape() -> None:
     source = _source("planning_analysis.jinja")
-    assert "do not grade document shape" in source
-    assert "fresh repository evidence" in source
+    assert "criterion-level verdicts, not a holistic quality score" in source
+    assert "fresh evidence" in source
     assert "nine-dimension" not in source

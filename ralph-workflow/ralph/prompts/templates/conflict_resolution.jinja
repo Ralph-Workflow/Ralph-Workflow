@@ -19,9 +19,7 @@ conflicts.
 
 Round {{ round_index }} of {{ round_cap }}.
 {% endif %}
-Resolving those conflicts is your ONLY job. You are not implementing a
-feature, not reviewing the project, and not fixing unrelated failures. Nothing
-outside the conflicted regions listed below is in scope.
+Resolve only the conflicted paths listed below; unrelated implementation and review are out of scope.
 
 {% include 'shared/_unattended_mode.j2' %}
 
@@ -47,10 +45,8 @@ outside the conflicted regions listed below is in scope.
 - DO NOT run any git command. Ralph Workflow stages the resolved files and
   {% if replaying_commit_sha %}continues the rebase{% else %}creates the merge commit{% endif %} itself. You only edit file contents. Git is
   denied to this session by the exec policy, so attempting it wastes the round.
-- Do not modify ANY file that is not listed under "Conflicted files" above.
-  Not a neighbouring module, not a test, not an import, not a formatting nit.
-  If the resolved code needs a change elsewhere, leave it: that belongs to a
-  later run, not to this one.
+- Do not modify ANY file that is not listed under "Conflicted files". If resolution requires one,
+  leave it unchanged and report the blocker.
 {% if replaying_commit_sha %}- Ralph Workflow re-reads the worktree after you return. An edit to ANY tracked
   path that is not listed above REJECTS the whole resolution and aborts the
   rebase, discarding your work on the listed files too.

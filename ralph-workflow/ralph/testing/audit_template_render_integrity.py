@@ -278,7 +278,7 @@ def _render_targets(context: TemplateContext) -> tuple[_RenderTarget, ...]:
                 source=source,
                 drain=(
                     SessionDrain.PLANNING
-                    if name in {"shared/_mcp_tools", "shared/_planning_subagents"}
+                    if name == "shared/_mcp_tools"
                     else SessionDrain.DEVELOPMENT
                 ),
                 fixed_scenarios=fixed_scenarios_by_name.get(name, ()),

@@ -993,7 +993,4 @@ def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> Non
         )
     )
     assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered
-    assert rendered.startswith(
-        "Keep unsafe and machine-local files out of the pending commit without "
-        "changing what the commit means.\n\nCOMMIT CLEANUP MODE"
-    )
+    assert rendered.startswith("Classify only the pending diff's unsafe or machine-local files")

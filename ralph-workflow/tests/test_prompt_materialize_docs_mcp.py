@@ -110,7 +110,7 @@ def test_planning_prompt_materialization_uses_docs_mcp_fallback_branch(
         tmp_path=tmp_path,
     )
 
-    assert PLANNING_FALLBACK_HINT in rendered
+    assert PLANNING_FALLBACK_HINT not in rendered
     assert PLANNING_ACTIVE_INSTRUCTION not in rendered
 
 
@@ -139,7 +139,7 @@ def test_planning_analysis_prompt_materialization_uses_docs_mcp_fallback_branch(
         tmp_path=tmp_path,
     )
 
-    assert PLANNING_ANALYSIS_FALLBACK_HINT in rendered
+    assert PLANNING_ANALYSIS_FALLBACK_HINT not in rendered
     assert PLANNING_ANALYSIS_ACTIVE_INSTRUCTION not in rendered
 
 
@@ -168,5 +168,5 @@ def test_developer_prompt_materialization_uses_docs_mcp_fallback_branch(
         tmp_path=tmp_path,
     )
 
-    assert DEVELOPER_FALLBACK_HINT in rendered
+    assert DEVELOPER_FALLBACK_HINT not in rendered
     assert DEVELOPER_ACTIVE_INSTRUCTION not in rendered

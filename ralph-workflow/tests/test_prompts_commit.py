@@ -24,9 +24,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "## HOW TO WRITE THE BODY" in prompt
     # Anti-churn: a weak model told only to "write a good subject" enumerates
     # candidates and re-picks. The prompt must give a terminating procedure.
-    assert "do not generate candidate subjects and compare them" in prompt.lower()
-    assert "the subject is finished. do not look for a better one" in prompt.lower()
-    assert "do not reconsider it" in prompt.lower()
+    assert "first valid lowercase imperative subject" in prompt.lower()
+    assert "do not generate alternatives" in prompt.lower()
     # No unenforced constraint an agent could keep failing (e.g. a length cap
     # the canonical validator never checks).
     assert "there is no length limit" in prompt.lower()
@@ -39,7 +38,6 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     # ``declare_complete``, leaving the gate to retry forever. The macro
     # is the single source of truth for the completion contract.
     assert "output only the commit subject line" not in prompt.lower()
-    assert "artifact submission procedure above is authoritative" in prompt.lower()
     assert "declare_complete" in prompt.lower()
     # The artifact is a markdown document: the decision lives in frontmatter.
     assert "type: commit" in prompt
@@ -62,9 +60,6 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "no dots, no uppercase" in prompt.lower()
     assert "quotes become part of the subject" in prompt.lower()
     assert "starts with a lowercase letter or digit" in prompt.lower()
-    assert "## WORKED EXAMPLES" in prompt
-    assert "`chore: update files`" in prompt
-    assert "`fix: stuff`" in prompt
     assert "changes not yet committed" in prompt.lower()
     assert "current worktree vs the last commit" in prompt.lower()
 
@@ -132,8 +127,6 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "do not generate alternatives" in prompt
     assert "there is no length limit" in prompt.lower()
     assert "no dots, no uppercase" in prompt
-    assert "Bad" in prompt
-    assert "Good" in prompt
     assert prompt.startswith("Task:")
 
 
@@ -149,7 +142,7 @@ def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None
     # The skip-output instruction is not a duplicate procedure; the shared
     # artifact submission macro is the authoritative completion contract.
     assert "output only the commit subject line" not in prompt.lower()
-    assert "follow the artifact submission procedure above" in prompt.lower()
+    assert "MANDATORY FINAL ACTION" in prompt
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:

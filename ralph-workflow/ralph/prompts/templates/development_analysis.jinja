@@ -54,7 +54,7 @@ status: request_changes
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-For each unchanged request criterion and every required plan reference whose independently derived disposition is `adapted`, `not_applicable`, or `blocked`, emit one stable `DA-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Audit these independently derived plan dispositions even when the request criteria otherwise pass. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not request or prescribe a remedy. A `not evaluable` criterion requires `failed`.
+Emit one stable `DA-###` item per unchanged request criterion in `## Criterion Verdicts`, with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Emit a separate item for every required plan reference, adding `Plan reference:` and `Disposition: completed|adapted|not_applicable|blocked`. Map `completed`, `adapted`, and justified `not_applicable` to `met`; map `blocked` to `not met` when actionable or `not evaluable` otherwise. `completed` requires all criteria to be `met` and no blocked plan reference. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not prescribe a remedy. A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 

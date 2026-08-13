@@ -1,16 +1,4 @@
-Keep unsafe and machine-local files out of the pending commit without changing what the commit means.
-
-COMMIT CLEANUP MODE
-Analyze the current git state and perform only the necessary housekeeping for binaries, build artifacts, temporary files, and other noise.
-The diff below shows both the tracked changes not yet committed and the untracked
-files that are present in the workspace but not yet in git. Untracked files are
-listed by name only (no diff body). For machine-local artifacts, use
-`add_to_git_exclude` so `.git/info/exclude` prevents future additions. For a
-tracked recognized secret (`.env`, `.env.local`, `.env.*.local`, `secrets.yml`,
-or `credentials.json`), that action also removes the matching file from the
-index while retaining its working-tree copy. It never automatically untracks
-arbitrary project files. Use `delete_file` only for actual binary or generated
-artifacts that should never remain in the workspace.
+Classify only the pending diff's unsafe or machine-local files and submit cleanup actions without changing the commit's meaning.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -18,125 +6,48 @@ artifacts that should never remain in the workspace.
 
 {% include 'shared/_unattended_mode.j2' %}
 
-Note: the phase PRE-EMPTIVELY UNTRACKS tracked engine-internal files at startup (via ``untrack_engine_internal_files``) -- any path in the runtime-artifact allowlist (see RUNTIME ARTIFACT ALLOWLIST below) that is currently tracked in HEAD is removed from the index BEFORE the artifact loads. This means the diff you see in this prompt will already exclude those files. Focus on non-engine cleanup (build artifacts, env files, accidentally staged noise); if an allowlisted path still appears in the diff anyway, recommend ``delete_file`` for it without hesitation.
+The diff contains tracked changes plus untracked filenames. Runtime files are pre-emptively untracked before this prompt; if one still appears, classify it as `delete_file`.
 
-## RUNTIME ARTIFACT ALLOWLIST
+## Decision rules
 
-The following paths are Ralph Workflow runtime artifacts. They are unconditionally deletable from any commit, even when tracked in HEAD. Recommend them with ``delete_file``:
+| Path class | Action | Boundary |
+|---|---|---|
+| Ralph Workflow runtime artifact listed below | `delete_file` | exact basename, glob, directory, and extension rules only |
+| binary, build output, cache, editor/OS file, log, coverage, backup, or temporary artifact | `delete_file`; optionally `add_to_gitignore` | delete only an actual generated file in the diff; add a pattern only when project-wide or recurrent |
+| machine-local file or pattern | `add_to_git_exclude` | use for the recognized secret family below and editor state |
+| generated untracked text/JSON named for session, transcript, prompt, analysis, checkpoint, verify, output, report, log, trace, debug, dump, temp, artifact, capture, completion, note, pipeline, response, review, summary, worker, chat, message, plan, model, llm, brainstorm, interaction, or inference | `delete_file` | untracked only |
+| generated untracked source whose name contains `temp`, `tmp`, `scratch`, `generated`, `throwaway`, or `dump`, or lies under `tmp/`, `temp/`, `generated/`, or `artifacts/` | `delete_file` | untracked only |
+| uncertain, user-authored, intentional config, test, documentation, lockfile, or tracked source | no action | never change commit meaning |
 
-- **Top-level basenames under ``.agent/``** (the canonical allowlist):
-  ``.agent/PRODUCT_CRITERIA.md``, ``.agent/PLAN.md``, ``.agent/ISSUES.md``, ``.agent/DEVELOPMENT_RESULT.md``, ``.agent/FIX_RESULT.md``, ``.agent/DEVELOPMENT_ANALYSIS_DECISION.md``, ``.agent/PLANNING_ANALYSIS_DECISION.md``, ``.agent/REVIEW_ANALYSIS_DECISION.md``, ``.agent/checkpoint.json``, ``.agent/rebase_checkpoint.json``, ``.agent/rebase_checkpoint.json.bak``, ``.agent/auto_integrate_in_progress.json``, ``.agent/rebase.lock``, ``.agent/start_commit``, ``.agent/mcp.toml``, ``.agent/state.db``, ``.agent/state.db-wal``, ``.agent/state.db-shm``.
-- **Completion sentinels**: any ``.agent/completion_seen_*.json`` (the filename glob is ``completion_seen_*.json``, NOT ``completion_sentinel_*.json``).
-- **Root-level**: bare ``checkpoint.json`` at the repo root.
-- **Files inside engine-internal directories ONLY when their extension matches the engine-written file types for that directory**:
-  - ``.agent/raw/`` -- ``.log`` files only (e.g. ``.agent/raw/opencode.log``)
-  - ``.agent/tmp/`` -- ``.log``, ``.md``, ``.json`` files (e.g. ``.agent/tmp/mcp-server.log``)
-  - ``.agent/artifacts/`` -- ``.md`` files (e.g. ``.agent/artifacts/commit_cleanup.md``)
-  - ``.agent/receipts/<run-id>/`` -- ``.json`` files (e.g. ``.agent/receipts/run-1/commit_cleanup.json``)
-  - ``.agent/prompt_history/`` -- ``.json`` files
-  - ``.agent/artifact-formats/`` -- ``.md`` files (e.g. ``.agent/artifact-formats/commit_message.md``)
-  - ``.agent/workers/<unit>/...`` -- ``.log``, ``.md``, ``.json`` files at any depth
+Recognized secrets are `.env`, `.env.local`, `.env.*.local`, `secrets.yml`, and `credentials.json`. `add_to_git_exclude` preserves their working-tree copies and untracks only this recognized family; it never untracks arbitrary project files.
 
-## SECURITY BOUNDARY
+Common generated categories include compiled extensions (`.exe`, `.dll`, `.so`, `.dylib`, `.pdb`, `.a`, `.o`, `.class`, `.pyc`, `.pyo`); build/dependency/cache directories (`build/`, `dist/`, `node_modules/`, `vendor/`, `.next/`, `.nuxt/`, `.output/`, `__pycache__/`, `.eggs/`, `*.egg-info/`, `.bundle/`, `.gradle/`, `.m2/`); editor/OS files (`.DS_Store`, `Thumbs.db`, `._*`, `*.swp`, `*.swo`, `*.orig`, `*~`, `.vscode/`, `.idea/`); temporary/log/coverage files (`*.bak`, `*.tmp`, `*.temp`, `*.old`, `*.rej`, `*.patch`, `*.log`, `*.trace`, `*.profile`, `coverage/`, `.coverage`, `coverage.xml`, `htmlcov/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`).
 
-The directory allowlist above is RESTRICTED by file extension. Files under the listed directories with a different extension are USER-AUTHORED content and MUST NOT be deleted, even when tracked in HEAD. Examples that MUST be rejected:
+Never remove dependency lockfiles such as `package-lock.json`, `yarn.lock`, `Cargo.lock`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, `composer.lock`, `Gemfile.lock`, or `go.sum`.
 
-- ``.agent/raw/script.py``, ``.agent/raw/main.go``, ``.agent/raw/notes.md`` -- only ``.log`` is deletable in ``raw/``
-- ``.agent/tmp/config.yaml``, ``.agent/tmp/main.py`` -- only ``.log``, ``.md``, ``.json`` are deletable in ``tmp/``
-- ``.agent/artifacts/notes.json`` -- only ``.md`` is deletable in ``artifacts/``
-- ``.agent/receipts/run-1/note.md`` -- only ``.json`` is deletable in ``receipts/``
-- ``.agent/artifact-formats/data.json`` -- only ``.md`` is deletable in ``artifact-formats/``
-- ``.agent/workers/unit-a/src/main.py``, ``.agent/workers/unit-a/src/foo.go`` -- only ``.log``, ``.md``, ``.json`` are deletable in ``workers/``
+## Ralph Workflow runtime artifact allowlist
 
-For source-code files at the ``.agent/`` top level that are NOT in the canonical basenames list above (e.g. ``.agent/test.py``, ``.agent/CHANGELOG.md``, ``.agent/utils.py``, ``.agent/scripts/build.sh``), and for arbitrary subdirectories under ``.agent/`` (e.g. ``.agent/notes/foo.txt``, ``.agent/data/seed.json``), DO NOT recommend ``delete_file`` -- they are user-authored content even if they happen to live under ``.agent/``. The same applies to source-code files anywhere else in the repo.
+`delete_file` is allowed for:
 
-**Do NOT recommend broad ``.agent/`` directory deletion** -- only the specific basenames/extensions listed above. Do NOT recommend broad ``artifacts/`` or ``reports/`` directory deletion -- they may contain user-authored content.
+- `.agent/` top-level basenames: `PRODUCT_CRITERIA.md`, `PLAN.md`, `ISSUES.md`, `DEVELOPMENT_RESULT.md`, `FIX_RESULT.md`, `DEVELOPMENT_ANALYSIS_DECISION.md`, `PLANNING_ANALYSIS_DECISION.md`, `REVIEW_ANALYSIS_DECISION.md`, `checkpoint.json`, `rebase_checkpoint.json`, `rebase_checkpoint.json.bak`, `auto_integrate_in_progress.json`, `rebase.lock`, `start_commit`, `mcp.toml`, `state.db`, `state.db-wal`, `state.db-shm`.
+- `.agent/completion_seen_*.json` and root `checkpoint.json`.
+- `.agent/raw/*.log`.
+- `.agent/tmp/*.{log,md,json}`.
+- `.agent/artifacts/*.md`.
+- `.agent/receipts/<run-id>/*.json`.
+- `.agent/prompt_history/*.json`.
+- `.agent/artifact-formats/*.md`.
+- `.agent/workers/<unit>/**/*.{log,md,json}`.
 
-## OTHER HOUSEKEEPING CATEGORIES
+These directory rules are extension-restricted. Any other extension is user-authored: for example `.agent/raw/script.py`, `.agent/tmp/config.yaml`, `.agent/artifacts/notes.json`, `.agent/receipts/run-1/note.md`, `.agent/artifact-formats/data.json`, or worker source files. Top-level `.agent/` files absent from the basename list and arbitrary `.agent/` subdirectories are also user-authored. Never recommend broad deletion of `.agent/`, `artifacts/`, or `reports/`.
 
-For files OUTSIDE the Ralph Workflow runtime-artifact allowlist above, recommend removal only if they match these clearly-temporary categories:
-
-**Compiled binaries and build outputs:**
-- ``.exe``, ``.dll``, ``.so``, ``.dylib``, ``.pdb``, ``.a``, ``.o``, ``.class``, ``.pyc``, ``.pyo``
-- ``build/``, ``dist/``, ``__pycache__/``, ``.eggs/``, ``*.egg-info/``
-- ``node_modules/`` (if accidentally staged)
-- ``.next/``, ``.nuxt/``, ``.output/``
-
-**Editor and OS artifacts:**
-- ``.DS_Store``, ``Thumbs.db``, ``._*``
-- ``*.swp``, ``*.swo``, ``*.orig``, ``*~``
-- ``.vscode/``, ``.idea/`` (if accidentally staged)
-
-**Auto-generated files already covered by .gitignore:**
-- Any file already matched by a ``.gitignore`` pattern that was somehow staged anyway
-
-**Backup and temporary files:**
-- ``*.bak``, ``*.tmp``, ``*.temp``, ``*.old``, ``*.rej``, ``*.patch``
-
-**Log, trace, and coverage files:**
-- ``*.log``, ``*.trace``, ``*.profile``
-- ``coverage/``, ``.coverage``, ``coverage.xml``, ``htmlcov/``, ``.pytest_cache/``, ``.mypy_cache/``, ``.ruff_cache/``
-
-**Package manager caches and vendored dependencies:**
-- ``vendor/``, ``.bundle/``, ``.gradle/``, ``.m2/``
-
-**Environment and secret files:**
-- ``.env``, ``.env.local``, ``.env.*.local``, ``secrets.yml``, ``credentials.json``
-- Use ``add_to_git_exclude`` for these, NEVER ``delete_file``. If one is
-  already tracked, the cleanup helper removes it from the index and preserves
-  the local file.
-
-**Generated text/Markdown artifacts (untracked only):**
-- Untracked ``.txt`` or ``.json`` files with a name token such as ``session``, ``transcript``, ``prompt``, ``analysis``, ``checkpoint``, ``verify``, ``output``, ``report``, ``log``, ``trace``, ``debug``, ``dump``, ``temp``, ``tmp``, ``artifact``, ``capture``, ``generated``, ``completion``, ``note``, ``pipeline``, ``response``, ``review``, ``summary``, ``worker``, ``chat``, ``message``, ``plan``, ``model``, ``llm``, ``brainstorm``, ``interaction``, ``inference`` (e.g. ``verify-output.txt``, ``session-transcript.txt``, ``analysis-output.json``).
-
-**Generated source-code files (untracked only):**
-- Untracked source code files whose name contains one of the clearly-temporary tokens ``temp``, ``tmp``, ``scratch``, ``generated``, ``throwaway``, ``dump`` (e.g. ``temp_script.py``, ``scratch_test.go``, ``dump_helper.rs``, ``throwaway.java``).
-- Untracked source files inside ``tmp/``, ``temp/``, ``generated/``, or ``artifacts/`` directories (e.g. ``tmp/scratch.py``, ``temp/App.java``).
-- **Tracked source files are NEVER safe to delete** regardless of name or directory.
-
-## CRITICAL CONSTRAINT
-
-**NEVER recommend deleting:**
-- Source code files (``.py``, ``.js``, ``.ts``, ``.rs``, ``.go``, etc.) -- unless they match the runtime-artifact allowlist above or the narrow untracked-source temporary-token rule.
-- Test files (even if temporarily modified).
-- Documentation files (``.md``, ``.rst``, and human-authored ``.txt`` notes/docs).
-- Configuration files that were intentionally modified for this commit.
-- Any file whose removal would change what the commit does.
-
-**Always cross-check the RUNTIME ARTIFACT ALLOWLIST and SECURITY BOUNDARY sections above** before recommending ``delete_file``. A blanket ``.agent/`` or ``artifacts/`` or ``reports/`` directory recommendation will be rejected by the runtime safety boundary.
-
-**If you are unsure whether a file should be removed, do NOT include it in your actions.**
-
-## ACTION GUIDANCE
-
-- Use ``add_to_gitignore`` for **project-wide patterns** like ``*.pyc``, ``build/``, ``dist/``.
-- Use ``add_to_git_exclude`` for **machine-local files** like ``.env.local``, ``.vscode/``. Only the recognized secret family named above is automatically untracked; other tracked project files remain tracked.
-- Use ``delete_file`` only for **actual binary or generated files** present in the diff OR for paths in the RUNTIME ARTIFACT ALLOWLIST above.
-- The cleanup is best-effort: if any unsafe ``delete_file`` action is rejected, the phase will log a WARNING and continue with the rest of the batch. The phase only returns ``PhaseFailureEvent`` when EVERY delete action was rejected AND no safe action was applied -- in that case the event's ``reason`` field will contain a structured retry hint naming the rejected paths so you can resubmit without them or reclassify them as ``add_to_git_exclude``.
-- NEVER remove ``.lock`` files (``package-lock.json``, ``yarn.lock``, ``Cargo.lock``, ``poetry.lock``, ``uv.lock``, ``Pipfile.lock``, ``composer.lock``, ``Gemfile.lock``, ``go.sum``) -- these are intentional committed dependency manifests.
+If an unsafe `delete_file` action is rejected, use the returned retry hint to omit it or reclassify a genuinely machine-local path as `add_to_git_exclude`. When unsure, submit no action.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
-## OUTPUT FORMAT
+## Output
 
-Submit a ``commit_cleanup`` artifact: a markdown document with frontmatter ``type: commit_cleanup`` and ``analysis_complete: true|false``, plus a ``## Actions`` section holding one ``- [ID] <action> | <path-or-pattern>`` item per action (actions: ``delete_file`` with a path, ``add_to_gitignore`` or ``add_to_git_exclude`` with a pattern). An optional ``## Reason`` section (one item) may explain the decision.
-
-**If the diff contains nothing that needs cleanup**, set ``analysis_complete: true`` and leave ``## Actions`` empty.
-
-**If cleanup is needed**, perform one iteration and set ``analysis_complete: true`` once done, or set ``analysis_complete: false`` to request another cleanup pass.
-
-Example document with actions:
-
-```markdown
----
-type: commit_cleanup
-analysis_complete: true
----
-
-## Actions
-- [A-1] delete_file | tmp/debug.log
-- [A-2] add_to_gitignore | tmp/*.log
-```
+Submit a `commit_cleanup` markdown artifact with `analysis_complete: true|false` and `## Actions`. Each action is `- [ID] <delete_file|add_to_gitignore|add_to_git_exclude> | <path-or-pattern>`. Leave `## Actions` empty when no cleanup is needed. Set `analysis_complete: false` only when another cleanup pass is required.
 
 {% set commit_cleanup_example %}
 ---

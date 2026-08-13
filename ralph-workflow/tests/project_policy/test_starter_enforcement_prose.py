@@ -182,11 +182,11 @@ def test_remediation_prompt_owns_the_fill_in_instructions() -> None:
     """The instructions removed from starters must exist in the remediation
     prompt so the remediating agent still receives them."""
     prompt = remediation._render_prompt([])
-    assert "Replace every `RALPH-FACT:` line" in prompt
+    assert "Replace every `RALPH-FACT:` placeholder" in prompt
     # Completion is the absence of unresolved markers — the prompt must say
     # so and must NOT instruct adding any completion marker.
-    assert "no completion marker" in prompt.lower()
-    assert "INSPECT the project" in prompt
+    assert "no unresolved or completion marker" in prompt.lower()
+    assert "inspect the project's languages" in prompt
     assert "inactive conditional domain" in prompt
     assert "stricter" in prompt
     assert "RALPH-STARTER-TEMPLATE" in prompt

@@ -18,5 +18,5 @@ def test_planning_edit_variants_reuse_shared_thinking_guidance() -> None:
 
 def test_planning_edit_treats_analysis_as_evidence_not_a_checklist() -> None:
     source = _source("planning_edit.jinja")
-    assert "fresh repository\nevidence" in source
-    assert "not a document-shape checklist" in source
+    assert "fresh repository evidence" in source
+    assert "not a document-shape\nchecklist" in source

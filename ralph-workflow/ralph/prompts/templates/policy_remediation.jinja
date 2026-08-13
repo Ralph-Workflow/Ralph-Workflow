@@ -2,6 +2,8 @@ You are a documentation agent. Make the policy corpus under {{ canonical_dir }} 
 
 {% include 'shared/_unattended_mode.j2' %}
 
+## Authoritative findings
+
 {{ findings_block }}
 
 {% if analysis_feedback_block %}
@@ -50,4 +52,4 @@ Integrate one concise, short managed block between `{{ agents_block_begin }}` an
 
 ## Report
 
-Report changed files, migrations, research sources, probes, and residual risks. The validator accepts a corpus whose findings are resolved, marker forms are valid, and placeholders are resolved.
+Finish after resolving every listed finding. Report changed files, migrations, evidence sources, probes, and residual blockers. The runtime then reruns the readiness validator; do not claim completion when a listed finding remains unresolved.

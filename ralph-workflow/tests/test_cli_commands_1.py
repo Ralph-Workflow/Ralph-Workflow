@@ -794,7 +794,7 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     assert captured_prompt
     assert "ralph_submit_md_artifact" in captured_prompt[0]
     assert "mcp__ralph__ralph_submit_md_artifact" in captured_prompt[0]
-    assert "same complete markdown document" in captured_prompt[0].lower()
+    assert "same complete markdown" in captured_prompt[0].lower()
     assert ".agent/tmp/commit_message.md" in captured_prompt[0]
 
 

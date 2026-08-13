@@ -2,6 +2,7 @@ Implement the assigned plan in the smallest proven increments.
 
 IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 
+{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -109,53 +110,23 @@ Before submitting a continuation, re-check the remaining work against the execut
 
 ## Development result artifact contract
 
-You MUST submit a `development_result` artifact before declaring completion.
-The complete grammar lives in `.agent/artifact-formats/development_result.md`.
+{% include 'shared/_development_result_proof.j2' %}
 
-Submit one native-markdown document:
+{% set development_result_example %}
+---
+type: development_result
+status: completed
+---
 
-1. Use `type: development_result` and `status: completed|partial|failed` frontmatter,
-   then `## Summary` (exactly one item), `## Files Changed` (one item per
-   file), and `## Plan Items Proven` —
-{% if IS_WORKER %}
-   exactly one `- [{{unit_id}}] <proof>` item for this assigned unit and no
-   other proof ID.
-{% else %}
-   one `- [S-n] <proof>` item per plan step, or, when the plan explicitly uses
-   `## Work Units`, one `- [unit-ID] <proof>` item for every work unit in the
-   plan.
-{% endif %}
-   Copy every bracketed ID EXACTLY from the plan. When analysis feedback exists, add
-   `## Analysis Items Addressed` with one item per prior `## How To Fix`
-   entry, reusing that entry's stable ID.
-   Add `Disposition: completed|adapted|not_applicable|blocked` beneath every
-   plan proof and add `Rationale:` for adapted, not-applicable, or blocked
-   items. A completed result cannot contain blocked work.
-   Every requirement above applies to `status: completed`. A `status: partial`
-   or `status: failed` result is free-form below the frontmatter — no section or proof is required.
-   Use `partial` only when a safe concrete continuation exists, and include
-   `## Next Steps` plus `## Continuation`. Use `failed` when no safe developer
-   continuation exists under current evidence or authority; report the blocker
-   without promising another iteration. Neither status decides the run outcome.
-{% if IS_WORKER %}
-   For `status: completed`, cite the files changed and focused verification
-   result. For `status: partial` or `status: failed`, state verified progress or the concrete
-   blocker. Do not invent files or verification results.
-{% endif %}
-2. Submit with {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} (`artifact_type="development_result"`,
-   `content` = the full markdown document — never JSON).
-3. If you called the submit tool, wait for its result and repair every
-   diagnostic before resubmitting. A valid receipt proves the artifact was
-   accepted; the receipt is not phase completion. Do not stop after the receipt.
-4. If the submit tool is unavailable, write the same complete document to
-{% if IS_WORKER %}
-   `{{WORKER_FALLBACK_PATH}}`
-{% else %}
-   `.agent/tmp/development_result.md`
-{% endif %}
-   instead, then continue immediately to step 5.
-5. **MANDATORY FINAL ACTION:** After a valid direct-submit receipt, or
-   immediately after writing the complete fallback document, call
-   {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your explicit final action. For
-   fallback, the completion gate then validates and promotes the document and
-   completes only when both the sentinel and durable receipt exist.
+## Summary
+- [SUM-1] Implemented and verified the assigned work.
+
+## Files Changed
+- [FC-1] path/to/file
+
+## Plan Items Proven
+{% if IS_WORKER %}- [{{unit_id}}] Focused verification passed.
+{% else %}- [S-1] Focused verification passed.
+{% endif %}  Disposition: completed
+{% endset %}
+{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, fallback_path=(WORKER_FALLBACK_PATH if IS_WORKER else '.agent/tmp/development_result.md')) }}

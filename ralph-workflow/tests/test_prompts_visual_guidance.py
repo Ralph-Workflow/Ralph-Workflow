@@ -81,7 +81,7 @@ def test_developer_iteration_prompt_carries_visual_review_section() -> None:
 def test_developer_iteration_prompt_names_retained_pre_change_baseline() -> None:
     """The prompt must direct the agent to trust the retained pre-change baseline."""
     rendered = _render_developer_iteration(tmp_path=Path("/tmp"))
-    assert "retained pre-change baseline" in rendered
+    assert "retained pre-change capture" in rendered
 
 
 def test_developer_iteration_prompt_directs_post_change_capture() -> None:
@@ -102,8 +102,8 @@ def test_developer_iteration_prompt_enforces_three_input_verdict_contract() -> N
 def test_developer_iteration_prompt_forbids_source_reading_substitute() -> None:
     """The prompt must forbid substituting diff/DOM/stylesheet for captures."""
     rendered = _render_developer_iteration(tmp_path=Path("/tmp"))
-    assert "Diff, DOM, stylesheet" in rendered
-    assert "NOT verdict inputs" in rendered
+    assert "code, DOM, CSS" in rendered
+    assert "not visual-verdict evidence" in rendered
 
 
 def test_developer_iteration_prompt_requires_capture_id_citations() -> None:
@@ -148,7 +148,7 @@ def test_developer_iteration_prompt_prohibits_appearance_assertions() -> None:
     """The prompt must forbid using appearance assertions as design proof."""
     rendered = _render_developer_iteration(tmp_path=Path("/tmp"))
     assert "appearance" in rendered.lower()
-    assert "padding" in rendered
+    assert "functional appearance assertions" in rendered
 
 
 def test_developer_iteration_prompt_directs_missing_baseline_to_block() -> None:
@@ -228,6 +228,6 @@ def test_both_iteration_templates_carry_visual_guidance(
         template_name=template_name,
     )
     assert "Visual review" in rendered
-    assert "retained pre-change baseline" in rendered
+    assert "retained pre-change capture" in rendered
     assert "media.capture" in rendered
     assert "design_verdict" in rendered

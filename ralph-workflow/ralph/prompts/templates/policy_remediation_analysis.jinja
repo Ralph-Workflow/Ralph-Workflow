@@ -6,7 +6,7 @@ Review the policy corpus, not product code. Treat each declared fact, command, m
 
 Run each `RALPH-COMMAND` as a bounded probe. Inspect each resolved `RALPH-FACT:`, `RALPH-PENDING` marker, and declared script against `{{ gate_script_policy_path }}`. For `RALPH-PENDING`, verify the approved first token, date, concrete trigger, and truthful deferral instead of probing its deferred gate (approved first tokens: {{ approved_tools }}). A truthful `RALPH-PENDING` marker is compatible with `completed`.
 
-reconcile independent evidence with read-only subagents when helpful and submit from the main session. A working gate's product-code failure is attribution: Record the attribution; do not request changes. Run the discovered fast path first and the full gate where applicable. A green gate means no counterexample was found, not proof.
+Reconcile independent evidence with read-only subagents when helpful, then submit from the main session. Run the discovered fast path, then the applicable full gate. For a working gate's product-code failure: Record the attribution; do not request changes. Treat a green gate only as absence of a counterexample.
 
 ## Criteria and verdicts
 
@@ -16,4 +16,8 @@ For every declared fact, command, marker, and script, use one stable `PR-###` it
 
 ## Decision artifact
 
-Read `.agent/artifact-formats/policy_remediation_analysis_decision.md` and its validator-backed example. Submit one markdown document with {{ submit_tool_names }}, using `artifact_type="{{ artifact_type }}"` and the complete document as `content`; validate first with {{ verify_tool_names }} when available. Include the evidence-citing summary and `## Criterion Verdicts`; omit `## How To Fix`. After a valid artifact submission receipt, call {{ declare_complete_tool_names }} as your final explicit action for Claude, Claude Interactive, Codex, Cursor, OpenCode, AGY, Pi, Nanocoder, or generic transports.
+Read `.agent/artifact-formats/policy_remediation_analysis_decision.md`. Include the evidence-citing summary and `## Criterion Verdicts`; omit `## How To Fix`.
+
+1. Validate the complete markdown with {{ verify_tool_names }} when available; repair every diagnostic.
+2. Submit with {{ submit_tool_names }}, using `artifact_type="{{ artifact_type }}"` and raw markdown `content`; wait for a valid receipt and repair/resubmit if rejected.
+3. The receipt alone is not phase completion. After a valid receipt, call {{ declare_complete_tool_names }} as your final explicit action.

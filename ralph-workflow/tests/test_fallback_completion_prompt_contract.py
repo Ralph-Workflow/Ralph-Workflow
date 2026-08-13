@@ -85,12 +85,12 @@ def test_developer_fallback_calls_completion_before_runtime_promotion(
 ) -> None:
     rendered = " ".join(_render_developer_fallback(str(tmp_path)).split())
 
-    write_index = rendered.index("write the same complete document")
-    completion_index = rendered.index("immediately after writing the complete fallback")
-    promotion_index = rendered.index("completion gate then validates and promotes")
+    write_index = rendered.index("write the same complete markdown document")
+    completion_index = rendered.index("MANDATORY FINAL ACTION")
+    promotion_index = rendered.index("runtime then validates and promotes")
 
     assert write_index < completion_index < promotion_index
-    assert "declare_complete" in rendered[completion_index:promotion_index]
+    assert "declare_complete" in rendered[completion_index:]
 
 
 @pytest.mark.parametrize(
@@ -105,6 +105,10 @@ def test_fallback_templates_state_completion_gate_promotes_after_final_call(
     template_name: str,
 ) -> None:
     source = " ".join(TemplateContext.default().registry.get_template(template_name).split())
+    if template_name == "developer_iteration_fallback.jinja":
+        source += " " + " ".join(
+            TemplateContext.default().registry.get_template("shared/_artifact_submission.j2").split()
+        )
 
     assert "completion gate" in source
     assert "promot" in source

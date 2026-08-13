@@ -53,9 +53,9 @@ def test_remediation_prompt_states_living_document_rules() -> None:
     )
     prompt = remediation._render_prompt([finding])
     lowered = prompt.lower()
-    assert "living document" in lowered
-    assert "favor of the existing project policy" in lowered
-    assert "intent" in lowered
+    assert "verified project reality" in lowered
+    assert "preserve established stricter rules" in lowered
+    assert "policy intent" in lowered
 
 
 def test_condensed_agents_block_mentions_policies_evolve() -> None:

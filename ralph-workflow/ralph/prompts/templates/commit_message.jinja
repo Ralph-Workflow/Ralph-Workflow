@@ -1,4 +1,4 @@
-Produce and submit one valid `commit_message` artifact for the pending diff.
+Task: Produce and submit one spec-compliant MCP commit_message artifact for the changes not yet committed—the current worktree vs the last commit.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -8,11 +8,9 @@ Produce and submit one valid `commit_message` artifact for the pending diff.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
-Read the diff, choose a commit or skip document, and submit it without commentary. Do not call bash; it is outside this phase's tool path.
+Read the diff, choose a commit or skip document, and submit it with the tool named below. Do not call bash or ask the user for confirmation, including “Would you like me to…?”.
 
 ## HOW TO WRITE THE SUBJECT
-
-Use this sequence once, then write the body.
 
 1. Choose the first matching kind:
 
@@ -30,20 +28,16 @@ Use this sequence once, then write the body.
 | changes code to make it faster | perf |
 
 2. Use the directory or subsystem that owns most of the diff as the scope. Otherwise omit the scope and the parentheses entirely.
-3. Write one lowercase imperative clause describing behavior. There is no length limit; stop at its end.
+3. Write the first valid lowercase imperative subject; do not generate alternatives. There is no length limit.
 4. Confirm `<kind>(<scope>)?!?: <description>`: a scope uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; the description starts with a lowercase letter or digit; and the frontmatter value is unquoted. Quotes become part of the subject and are rejected.
 
 ## HOW TO WRITE THE BODY
 
 For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item explaining why it was needed and what it affects. Use `## Body Summary`, `## Body Details`, and `## Body Footer` for migration steps, breaking changes, or issue references.
 
-## Submit the result
-
-The submission procedure below is the completion contract. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
-
 ## Document shape
 
-The artifact is markdown. Frontmatter carries the decision; optional `##` sections carry the body. Choose a commit document for pending work or a skip document when no commit is needed.
+Choose a commit document for pending work or a skip document when no commit is needed.
 
 - Commit document: frontmatter `type: commit` and `subject:`. Include `## Body` (one concise self-contained item) or the detailed `## Body Summary` / `## Body Details` / `## Body Footer` set, plus optional `## Files` and `## Excluded Files` (`path | reason`, where valid reasons are internal_ignore, not_task_related, sensitive, deferred).
 

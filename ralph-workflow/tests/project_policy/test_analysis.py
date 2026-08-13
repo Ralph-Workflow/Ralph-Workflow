@@ -71,7 +71,7 @@ def test_analysis_prompt_uses_subagents_for_independent_evidence() -> None:
     prompt = _prompt()
 
     assert "subagent" in prompt.lower()
-    assert "reconcile independent evidence with read-only subagents when helpful" in prompt
+    assert "reconcile independent evidence with read-only subagents when helpful" in prompt.lower()
     assert "main session" in prompt.lower()
 
 
@@ -85,8 +85,8 @@ def test_analysis_prompt_teaches_evidence_only_decision_invariants() -> None:
 
 def test_analysis_prompt_keeps_declare_complete_as_the_final_action() -> None:
     prompt = _prompt()
-    declaration_index = prompt.rindex("After a valid artifact submission receipt")
+    declaration_index = prompt.rindex("After a valid receipt")
 
     assert declaration_index > prompt.rindex("## Criterion Verdicts")
     assert "as your final explicit action" in prompt[declaration_index:]
-    assert prompt[declaration_index:].rstrip().endswith("generic transports.")
+    assert prompt[declaration_index:].rstrip().endswith("final explicit action.")

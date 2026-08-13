@@ -32,4 +32,4 @@ def test_analysis_owns_a_concise_substantive_review() -> None:
     source = _source("planning_analysis.jinja")
     assert "## Review contract" in source
     assert "## PLAN QUALITY RUBRIC" not in source
-    assert "do not grade document shape" in source
+    assert "criterion-level verdicts, not a holistic quality score" in source

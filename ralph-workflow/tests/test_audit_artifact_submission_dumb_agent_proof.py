@@ -106,7 +106,7 @@ def test_macro_requires_completion_after_submission() -> None:
     assert "DECLARE_COMPLETE_TOOL_REFERENCE" in content
     assert "DECLARE_COMPLETE_TOOL_NAME" in content
     assert "receipt is not phase completion" in lowered
-    assert "must call" in lowered
+    assert "mandatory final action" in lowered
     assert "receipt is not phase completion" in lowered
     receipt_index = lowered.index("wait for a valid durable receipt")
     completion_index = lowered.index("mandatory final action")
@@ -121,7 +121,7 @@ def test_rendered_completion_example_is_one_valid_callable_expression() -> None:
         "---\ntype: skip\nreason: No committable changes.\n---\n",
     )
 
-    assert ("call `mcp__ralph__declare_complete` as your explicit final action") in rendered
+    assert "MANDATORY FINAL ACTION" in rendered
     assert '`mcp__ralph__declare_complete(summary="commit_message")`' in rendered
     assert "bare `declare_complete`" not in rendered
     assert "``mcp__ralph__declare_complete`" not in rendered
@@ -134,7 +134,7 @@ def test_macro_lists_explicit_failure_preventions() -> None:
         "never json",
         "do not",
         "raw markdown text",
-        "explicit completion action",
+        "mandatory final action",
     ):
         assert phrase in content
 
