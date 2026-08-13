@@ -183,12 +183,14 @@ cycle. The bundled `development_analysis` phase ships one:
 [phases.development_analysis.invocation_gate]
 upstream_execution_phase = "development"
 minimum_elapsed_seconds = 900.0
+always_invoke_statuses = ["partial", "failed"]
 ```
 
 | Key | Description |
 |-----|-------------|
 | `upstream_execution_phase` | Name of the execution phase whose cumulative timing is measured. Must have `role = "execution"` and match the phase reached by following this analysis phase's success and loopback transitions. |
 | `minimum_elapsed_seconds` | Cumulative elapsed seconds at or above which analysis runs. Below it the committed result skips to the analysis phase's policy-declared success route without consuming an analysis cycle. |
+| `always_invoke_statuses` | Execution result statuses that bypass the time threshold and always enter analysis. Valid values are the closed vocabulary declared by the upstream execution artifact: `completed`, `partial`, `failed`. |
 
 The gate sums the **unrounded** `elapsed.total_seconds()` values from all
 `upstream_execution_phase` timing records in the current outer development
@@ -199,6 +201,12 @@ commit so a short later cycle cannot borrow time from an earlier one.
 
 Omitting `invocation_gate` preserves the existing behavior: every committed
 development result enters analysis immediately.
+
+With the bundled configuration, a `completed` result below 900 seconds skips
+analysis (the cycle closes immediately through the final commit), while
+`partial` and `failed` results always enter analysis and consume one analysis
+cycle, regardless of elapsed time. Every status at or above 900 seconds enters
+analysis.
 
 ### Analysis decision outcomes
 
@@ -216,7 +224,10 @@ through the phase's `decisions` table:
   development.
 - **`failed`** — the analyzer found an impossible, contradictory, or unsafe
   condition (including `not evaluable` verdicts); the result follows the
-  failure route.
+  failure route. A failed decision closes the current cycle through the final
+  commit; policy then starts a fresh planning and development cycle when outer
+  cycle budget remains, or routes to the terminal failure phase when it does
+  not.
 
 ### `[phases.<name>.commit_policy]`
 

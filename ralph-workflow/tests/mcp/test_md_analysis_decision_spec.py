@@ -135,6 +135,102 @@ def test_request_changes_with_plan_reference_accepted() -> None:
     assert diagnostics == []
 
 
+def test_request_changes_per_finding_criterion_required() -> None:
+    """S-4: every finding must independently carry Criterion: or Plan reference:."""
+    good_finding = (
+        "Criterion: tests pass. Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
+        "Remaining work: add the missing edge-case test."
+    )
+    bad_finding = (
+        "Expected observation: lint is clean. "
+        "Verdict: not met. Evidence: `ruff check` fails. Location: src/bar.py. "
+        "Remaining work: fix the lint error."
+    )
+    doc = (
+        "---\n"
+        "type: development_analysis_decision\n"
+        "status: request_changes\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] Two criteria are not met.\n\n"
+        "## What Came Up Short\n"
+        f"- [DA-001] {good_finding}\n"
+        f"- [DA-002] {bad_finding}\n\n"
+        "## Criterion Verdicts\n"
+        f"- [DA-001] {good_finding}\n"
+        f"- [DA-002] Criterion: lint is clean. Expected observation: lint is clean. "
+        "Verdict: not met. Evidence: `ruff check` fails. Location: src/bar.py.\n"
+    )
+    _content, diagnostics = parse_and_validate(
+        doc, get_spec("development_analysis_decision")
+    )
+    rule_ids = {d.rule_id for d in diagnostics}
+    assert "ANALYSIS017" in rule_ids
+
+
+def test_request_changes_missing_location_rejected() -> None:
+    """S-4: every finding must include a concrete Location:."""
+    finding_no_loc = (
+        "Criterion: tests pass. Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. "
+        "Remaining work: add the missing edge-case test."
+    )
+    finding_with_loc = (
+        "Criterion: tests pass. Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py."
+    )
+    doc = (
+        "---\n"
+        "type: development_analysis_decision\n"
+        "status: request_changes\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] One criterion is not met.\n\n"
+        "## What Came Up Short\n"
+        f"- [DA-001] {finding_no_loc}\n\n"
+        "## Criterion Verdicts\n"
+        f"- [DA-001] {finding_with_loc}\n"
+    )
+    _content, diagnostics = parse_and_validate(
+        doc, get_spec("development_analysis_decision")
+    )
+    rule_ids = {d.rule_id for d in diagnostics}
+    assert "ANALYSIS016" in rule_ids
+
+
+def test_request_changes_all_findings_complete_accepted() -> None:
+    """S-4: multi-finding request_changes passes when every finding is complete."""
+    finding_a = (
+        "Criterion: tests pass. Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_a.py. "
+        "Remaining work: add the missing edge-case test."
+    )
+    finding_b = (
+        "Criterion: lint is clean. Expected observation: ruff passes. "
+        "Verdict: not met. Evidence: `ruff check` fails. Location: src/b.py. "
+        "Remaining work: fix the lint error."
+    )
+    doc = (
+        "---\n"
+        "type: development_analysis_decision\n"
+        "status: request_changes\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] Two criteria are not met.\n\n"
+        "## What Came Up Short\n"
+        f"- [DA-001] {finding_a}\n"
+        f"- [DA-002] {finding_b}\n\n"
+        "## Criterion Verdicts\n"
+        f"- [DA-001] {finding_a}\n"
+        f"- [DA-002] {finding_b}\n"
+    )
+    _content, diagnostics = parse_and_validate(
+        doc, get_spec("development_analysis_decision")
+    )
+    assert diagnostics == []
+
+
 def test_request_changes_mismatched_mirrored_verdict_rejected() -> None:
     """DA-008: a What Came Up Short 'Verdict: met' must not mirror a 'not met' verdict."""
     criterion = (

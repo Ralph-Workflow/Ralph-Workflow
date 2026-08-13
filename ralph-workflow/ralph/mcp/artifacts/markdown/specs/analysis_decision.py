@@ -212,9 +212,14 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
 def _validate_request_changes_predicate(
     what_items: Sequence[ParsedItem],
 ) -> list[Diagnostic]:
-    """Validate that request_changes findings carry actionable remaining work."""
+    """Validate that every request_changes finding carries actionable remaining work.
+
+    Each localized shortfall must independently identify a criterion or plan
+    reference, a concrete repository location, and non-empty remaining work.
+    A single well-formed finding does not redeem a sibling that lacks any
+    of the three — every item is checked.
+    """
     diagnostics: list[Diagnostic] = []
-    has_criterion_or_plan_ref = False
     # Location in What Came Up Short may be followed by Remaining work:, so
     # stop the capture there rather than consuming the rest of the line.
     loc_re = re.compile(r"Location:\s*(.*?)(?=\s*Remaining work:|$)", re.IGNORECASE)
@@ -230,7 +235,16 @@ def _validate_request_changes_predicate(
                 )
             )
         loc_match = loc_re.search(item.text)
-        if loc_match is not None:
+        if loc_match is None:
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "What Came Up Short",
+                    "ANALYSIS016",
+                    "request_changes finding must include a concrete 'Location:' repository path",
+                )
+            )
+        else:
             location = str(loc_match.group(1)).strip().rstrip(".").casefold()
             if location in _PLACEHOLDER_LOCATIONS:
                 diagnostics.append(
@@ -241,17 +255,15 @@ def _validate_request_changes_predicate(
                         "request_changes finding Location: must be a concrete repository path, not a placeholder",
                     )
                 )
-        if "Criterion:" in item.text or _PLAN_REFERENCE_PATTERN.search(item.text):
-            has_criterion_or_plan_ref = True
-    if what_items and not has_criterion_or_plan_ref:
-        diagnostics.append(
-            _validation_diagnostic(
-                what_items[0].line,
-                "What Came Up Short",
-                "ANALYSIS017",
-                "request_changes requires at least one finding identifying 'Criterion:' or 'Plan reference: [S-n]'",
+        if "Criterion:" not in item.text and _PLAN_REFERENCE_PATTERN.search(item.text) is None:
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "What Came Up Short",
+                    "ANALYSIS017",
+                    "request_changes finding must identify 'Criterion:' or 'Plan reference: [S-n]'",
+                )
             )
-        )
     return diagnostics
 
 

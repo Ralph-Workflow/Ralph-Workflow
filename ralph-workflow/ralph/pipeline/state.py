@@ -152,6 +152,11 @@ class PipelineState(_FrozenPipelineStateModel):
     post_commit_phase_override: PipelinePhase | None = None
     pending_cycle_outcome: str | None = None
     execution_cycle_charged: bool = False
+    # Carries the upstream execution artifact's status (completed/partial/failed)
+    # from the execution-result event through the commit boundary so the
+    # post-commit invocation gate can route status-awarely without hardcoding
+    # phase names. Cleared after the gate decision is applied.
+    last_execution_result_status: str | None = None
     # Index into phase_timings marking the start of the current outer development
     # cycle. Timing records at or after this index are summed for the analysis
     # invocation gate. Reset when the lifecycle commit advances to a new cycle.

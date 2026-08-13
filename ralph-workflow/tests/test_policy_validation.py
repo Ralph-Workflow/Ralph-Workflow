@@ -3414,7 +3414,9 @@ class TestValidateWorkUnitsAgainstPolicy:
 class TestInvocationGateSuccessPath:
     """DA-006: invocation_gate must validate success-path reachability."""
 
-    def _bundle(self, *, builder_on_success: str) -> PolicyBundle:
+    def _bundle(
+        self, *, builder_on_success: str, always_invoke_statuses: list[str] | None = None
+    ) -> PolicyBundle:
         agents = AgentsPolicy(
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"drain": AgentDrainConfig(chain="chain")},
@@ -3448,6 +3450,7 @@ class TestInvocationGateSuccessPath:
                     invocation_gate=PhaseInvocationGate(
                         upstream_execution_phase="builder",
                         minimum_elapsed_seconds=900.0,
+                        always_invoke_statuses=always_invoke_statuses or [],
                     ),
                 ),
                 "done": PhaseDefinition(
@@ -3494,4 +3497,23 @@ class TestInvocationGateSuccessPath:
         """Builder's on_success goes to inspector — gate accepts."""
         bundle = self._bundle(builder_on_success="inspector")
         validate_policy_completeness(bundle)  # must not raise
+
+    def test_gate_accepts_valid_always_invoke_statuses(self) -> None:
+        """Valid execution result statuses in always_invoke_statuses pass."""
+        bundle = self._bundle(
+            builder_on_success="inspector",
+            always_invoke_statuses=["partial", "failed"],
+        )
+        validate_policy_completeness(bundle)  # must not raise
+
+    def test_gate_rejects_invalid_always_invoke_statuses(self) -> None:
+        """Unknown statuses in always_invoke_statuses are rejected."""
+        bundle = self._bundle(
+            builder_on_success="inspector",
+            always_invoke_statuses=["partial", "bogus"],
+        )
+        with pytest.raises(
+            PolicyValidationError, match="always_invoke_statuses.*not valid"
+        ):
+            validate_policy_completeness(bundle)
 

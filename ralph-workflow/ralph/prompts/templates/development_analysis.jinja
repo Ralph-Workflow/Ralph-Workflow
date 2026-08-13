@@ -16,7 +16,7 @@ Submit the required artifact on this attempt.
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
-Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs after every development result, regardless of its status. Use parallel or subagent evidence gathering when it improves the decision; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
+Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Use parallel or subagent evidence gathering when it improves the decision; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
 
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify each required plan reference as completed, adapted, not applicable, or blocked:
 
@@ -29,7 +29,7 @@ Do not reject a correct implementation only because an inaccurate plan step chan
 Choose the outcome from fresh evidence, not the developer's status:
 
 - `completed`: every unchanged request criterion is met and no necessary plan work remains.
-- `request_changes`: localized unmet work is actionable. Each finding must include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
+- `request_changes`: localized unmet work is actionable. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
 `failed` closes this cycle and is terminal instead of returning impossible work to development. Policy preserves and commits the cycle, then starts fresh planning when global cycle budget remains.

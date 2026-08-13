@@ -51,9 +51,11 @@ status: request_changes
   non-met verdict has a same-ID mirror in `## What Came Up Short`.
 - `## What Came Up Short` is required and non-empty for `request_changes` and
   `failed`; it mirrors localized non-met criterion verdicts and is omitted for
-  `completed`. For `request_changes`, each finding must include a non-empty
-  `Remaining work:` statement, a concrete repository `Location:` (not
-  `unknown`/`N/A`/`none`), and identify `Criterion:` or `Plan reference: [S-n]`.
+  `completed`. For `request_changes`, every finding must independently include
+  a non-empty `Remaining work:` statement naming concrete leftover development
+  work, a concrete repository `Location:` (not `unknown`/`N/A`/`none`), and
+  identify `Criterion:` or `Plan reference: [S-n]`. A single well-formed finding
+  does not excuse a sibling that lacks any of the three.
 - `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
   stable finding ID as its closure reference, not a remedy authored by the
   verifier.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ralph.policy.models._phase_definition import PhaseDefinition
+from ralph.policy.models._phase_invocation_gate import EXECUTION_RESULT_STATUSES
 from ralph.policy.models._pipeline_policy import PipelinePolicy
 from ralph.policy.models._policy_bundle import PolicyBundle
 
@@ -329,4 +330,13 @@ def _validate_invocation_gate(
             f"phases.{phase_name}.invocation_gate.upstream_execution_phase: "
             f"'{upstream}' must reach '{phase_name}' via on_success transitions "
             f"(the policy-defined success path), but no such path exists."
+        )
+    invalid_statuses = [
+        s for s in gate.always_invoke_statuses if s not in EXECUTION_RESULT_STATUSES
+    ]
+    if invalid_statuses:
+        errors.append(
+            f"phases.{phase_name}.invocation_gate.always_invoke_statuses: "
+            f"{invalid_statuses} are not valid execution result statuses. "
+            f"Valid values: {list(EXECUTION_RESULT_STATUSES)}."
         )

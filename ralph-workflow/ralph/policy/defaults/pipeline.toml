@@ -194,6 +194,7 @@ on_loopback = "development"
 [blocks.development_analysis.phase.invocation_gate]
 upstream_execution_phase = "development"
 minimum_elapsed_seconds = 900.0
+always_invoke_statuses = ["partial", "failed"]
 [blocks.development_analysis.phase.loop_policy]
 iteration_state_field = "development_analysis_iteration"
 [blocks.development_analysis.phase.decisions.completed]

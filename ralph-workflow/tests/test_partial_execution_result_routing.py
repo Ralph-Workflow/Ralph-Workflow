@@ -242,6 +242,38 @@ def test_failed_cycle_commits_then_replans_only_while_budget_remains(
     assert next_state.get_outer_progress("iteration") == completed_cycles + 1
 
 
+@pytest.mark.parametrize(
+    ("completed_cycles", "expected_phase"),
+    [(0, "planning"), (1, "failed_terminal")],
+)
+def test_failed_cycle_skipped_commit_replans_only_while_budget_remains(
+    completed_cycles: int,
+    expected_phase: str,
+) -> None:
+    """S-3: a durable no-diff failed cycle still consumes budget and respects the gate."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+    state = PipelineState(
+        phase="development_analysis",
+        budget_caps={"iteration": 2},
+        outer_progress={"iteration": completed_cycles},
+    )
+
+    cleanup_state, _ = reducer_reduce(
+        state,
+        AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
+        policy,
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SKIPPED, policy)
+
+    assert cleanup_state.phase == "development_final_commit_cleanup"
+    assert commit_state.phase == "development_final_commit"
+    assert next_state.phase == expected_phase
+    assert next_state.pending_cycle_outcome is None
+    assert next_state.get_outer_progress("iteration") == completed_cycles + 1
+
+
 @pytest.mark.parametrize("status", ["completed", "partial", "failed"])
 def test_development_result_regression_every_terminal_result_consumes_one_analysis_cycle(
     status: str,
@@ -346,8 +378,8 @@ def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
     assert next_state.pending_cycle_outcome == "completed"
 
 
-def test_session_ceiling_partial_result_commits_before_analysis() -> None:
-    """S-1: a session-ceiling partial result commits before any analysis route."""
+def test_session_ceiling_partial_result_enters_analysis_regardless_of_time() -> None:
+    """S-2: a session-ceiling partial result commits then enters analysis even below threshold."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
 
@@ -355,16 +387,16 @@ def test_session_ceiling_partial_result_commits_before_analysis() -> None:
     cleanup_state, _ = reducer_reduce(
         state, _execution_result_event("development", "partial"), policy
     )
-    # The partial result routes to commit cleanup, not analysis
+    # The partial result routes to commit cleanup first
     assert cleanup_state.phase == "development_commit_cleanup"
 
     commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
     assert commit_state.phase == "development_commit"
 
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
-    # Below the threshold, analysis is skipped and the cycle goes to final commit cleanup
-    assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.pending_cycle_outcome == "completed"
+    # Below the threshold, partial status still enters analysis (always_invoke_statuses)
+    assert next_state.phase == "development_analysis"
+    assert next_state.get_loop_iteration("development_analysis_iteration") == 1
 
 
 def test_failed_analysis_replans_while_budget_remains() -> None:
@@ -429,3 +461,59 @@ def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
     next_state, _ = reducer_reduce(commit_state2, PipelineEvent.COMMIT_SUCCESS, policy)
 
     assert next_state.phase == "development_final_commit_cleanup"
+
+
+@pytest.mark.parametrize("status", ["partial", "failed"])
+def test_always_invoke_statuses_enter_analysis_below_threshold(status: str) -> None:
+    """S-2: partial and failed results enter analysis even below the 900s threshold."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    state = _state_with_dev_time(10.0)
+    cleanup_state, _ = reducer_reduce(
+        state, _execution_result_event("development", status), policy
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert next_state.phase == "development_analysis"
+    assert next_state.get_loop_iteration("development_analysis_iteration") == 1
+
+
+def test_completed_below_threshold_skips_analysis_and_charges_no_cycle() -> None:
+    """S-2: completed results below 900s skip analysis per the retained time bypass."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    state = _state_with_dev_time(10.0)
+    cleanup_state, _ = reducer_reduce(
+        state, _execution_result_event("development", "completed"), policy
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.pending_cycle_outcome == "completed"
+    assert next_state.get_loop_iteration("development_analysis_iteration") == 0
+
+
+def test_result_status_does_not_leak_across_cycles() -> None:
+    """S-2: a partial result's status is cleared after the gate so it cannot force the next cycle."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy = load_policy(defaults_dir).pipeline
+
+    # Cycle 1: partial result below threshold enters analysis via always_invoke_statuses
+    state = _state_with_dev_time(10.0)
+    cleanup_state, _ = reducer_reduce(
+        state, _execution_result_event("development", "partial"), policy
+    )
+    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+    analysis_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+    assert analysis_state.phase == "development_analysis"
+    # The status must have been cleared at the post-commit seam
+    assert analysis_state.last_execution_result_status is None
+
+    # The analysis loopback returns to development for the next cycle
+    dev_state, _ = reducer_reduce(analysis_state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+    assert dev_state.phase == "development"
+    assert dev_state.last_execution_result_status is None

@@ -145,6 +145,7 @@ from ._activity_methods import (
 from ._activity_methods import (
     record_workspace_event as activity_record_workspace_event,
 )
+from ._circumstantial_evidence import CircumstantialEvidence
 from ._fire_evaluators import (
     evaluate_no_output_at_start,
     evaluate_no_progress_quiet,
