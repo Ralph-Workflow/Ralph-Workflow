@@ -473,14 +473,29 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
 
     _reserve_env(monkeypatch)
     published: list[str | None] = []
+    integration_saw: list[str | None] = []
 
-    def _fan_out(**_kwargs: object) -> PipelineState:
+    def _fan_out(**kwargs: object) -> PipelineState:
         # The raw value, not mere presence: the fixture seeds these names with
         # a placeholder, so presence alone is satisfied by publishing nothing.
         published.append(os.environ.get(CYCLE_DEADLINE_EPOCH_ENV))
+        # Run the completion callback the real fan-out runs. Auto-integration
+        # spawns a conflict-resolver agent that never joined the cycle, and
+        # stubbing this away left the coordinator's side of that rule untested
+        # while the worker's twin was pinned.
+        on_complete = kwargs["_on_successful_completion"]
+        on_complete(PipelineState(phase="development"))
         return PipelineState(phase="development")
 
     monkeypatch.setattr(runner_module, "execute_fan_out_sync", _fan_out)
+    monkeypatch.setattr(
+        runner_module,
+        "_integrate_after_fan_out",
+        lambda **kwargs: (
+            integration_saw.append(os.environ.get(CYCLE_DEADLINE_EPOCH_ENV))
+            or kwargs["state"]
+        ),
+    )
 
     runner_module._run_fan_out_phase(
         effect=FanOutEffect(phase="development", work_units=(), max_workers=1),
@@ -507,6 +522,9 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
 
     assert len(published) == 1
     assert published[0] is not None
+    # Hidden from the conflict resolver reconciliation spawns, which never
+    # joined this cycle.
+    assert integration_saw == [None]
     # A real epoch, which the placeholder is not.
     assert float(published[0]) > time.time()
     # And revoked afterwards, so nothing spawned later inherits it.

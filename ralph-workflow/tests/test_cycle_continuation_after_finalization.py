@@ -637,3 +637,40 @@ def test_commit_cleanup_loop_cap_still_counts_after_a_charged_analysis_cycle() -
     assert state.phase == "development_final_commit", (
         "the cleanup cap must still release the run after its declared maximum"
     )
+
+
+def test_a_redirect_reason_does_not_ride_into_the_next_cycle() -> None:
+    """The reason belongs to the cycle that earned it.
+
+    A redirected cycle is normally followed by another, and a reason carried
+    across would make the fresh cycle's report claim a deadline it never hit.
+    Driven end to end because a hand-built state cannot show the clearing.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="development_analysis",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=7200.0,
+    )
+
+    state, _ = reduce(
+        state,
+        AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
+        policy,
+        routing_timing=_rt(7200.0),
+    )
+    assert state.cycle_timebox_redirect_reason is not None
+    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+
+    # Plan the next cycle and enter development, starting a fresh timer.
+    assert state.phase == "planning"
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(0.0))
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(0.0))
+
+    assert state.phase == "development"
+    assert state.cycle_timebox_active is True
+    assert state.cycle_timebox_redirect_reason is None
+    # The running total still records that an earlier cycle was redirected.
+    assert state.cycle_timebox_redirects == 1
