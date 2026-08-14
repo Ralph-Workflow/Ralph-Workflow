@@ -54,7 +54,7 @@ def test_a_commit_failure_leaves_the_cycle_deadline_armed() -> None:
         _in_cycle("development_commit"),
         PipelineEvent.COMMIT_FAILURE,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=_CONSUMED),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_CONSUMED),
     )
 
     assert state.cycle_timebox_active is True
@@ -66,7 +66,7 @@ def test_the_deadline_still_redirects_after_a_commit_failure() -> None:
         _in_cycle("development_commit"),
         PipelineEvent.COMMIT_FAILURE,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=_CONSUMED),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_CONSUMED),
     )
     # The run resumes inside the cycle and burns past its budget.
     resumed = failed.copy_with(phase="development_analysis")
@@ -75,7 +75,7 @@ def test_the_deadline_still_redirects_after_a_commit_failure() -> None:
         resumed,
         PipelineEvent.ANALYSIS_LOOPBACK,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=16_000.0),
+        routing_timing=RoutingTiming(total_elapsed_seconds=16_000.0),
     )
 
     assert redirected.phase == "development_final_commit_cleanup"
@@ -121,7 +121,7 @@ def test_the_cycle_after_a_missing_plan_handoff_gets_a_fresh_budget(
         spent,
         PipelineEvent.AGENT_SUCCESS,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=0.0),
+        routing_timing=RoutingTiming(total_elapsed_seconds=0.0),
     )
 
     assert advanced.phase == "development"
@@ -146,7 +146,7 @@ def test_a_recovery_re_entry_is_still_bound_by_the_deadline() -> None:
         expired,
         "development",
         policy=_pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=14_400.0),
+        routing_timing=RoutingTiming(total_elapsed_seconds=14_400.0),
     )
 
     assert decision.target_phase == "development_final_commit_cleanup"
@@ -203,7 +203,7 @@ def test_a_deadline_redirect_is_announced_on_the_routing_log() -> None:
             PipelineEvent.ANALYSIS_LOOPBACK,
             _pipeline(),
             routing_timing=RoutingTiming(
-                monotonic_now=0.0, total_elapsed_seconds=14_400.0
+                total_elapsed_seconds=14_400.0
             ),
         )
     finally:
@@ -240,7 +240,7 @@ def test_routing_into_a_terminal_ends_the_cycle_timer() -> None:
         spent,
         PipelineEvent.COMMIT_SUCCESS,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=_CONSUMED),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_CONSUMED),
     )
 
     assert ended.phase in _pipeline().terminal_states()
@@ -260,7 +260,7 @@ def test_no_warning_is_issued_once_the_deadline_has_passed() -> None:
         "development",
         policy=_pipeline(),
         routing_timing=RoutingTiming(
-            monotonic_now=0.0, total_elapsed_seconds=14_400.0
+            total_elapsed_seconds=14_400.0
         ),
     )
 
@@ -339,7 +339,7 @@ def test_the_recovery_hop_judges_the_deadline_on_the_sampled_clock(
         pipeline_policy=bundle.pipeline,
         artifacts_policy=bundle.artifacts,
         workspace_scope=WorkspaceScope(tmp_path),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=7300.0),
+        routing_timing=RoutingTiming(total_elapsed_seconds=7300.0),
     )
 
     assert updated.phase == "development_final_commit_cleanup"

@@ -27,7 +27,7 @@ def _policy():
 
 def _rt(elapsed: float) -> RoutingTiming:
     """Build a RoutingTiming whose total elapsed equals ``elapsed``."""
-    return RoutingTiming(monotonic_now=elapsed, total_elapsed_seconds=elapsed)
+    return RoutingTiming(total_elapsed_seconds=elapsed)
 
 
 def _state(phase: str, **overrides: object) -> PipelineState:

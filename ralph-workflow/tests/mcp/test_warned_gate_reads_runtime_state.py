@@ -446,3 +446,78 @@ status: partial
     )
 
     assert diagnostics == []
+
+
+@pytest.mark.usefixtures("cycle_not_yet_warned")
+def test_a_section_of_only_unbracketed_bullets_is_not_discarded() -> None:
+    """Zero bracketed items is the worst case, not an exempt one.
+
+    The guard ran only when at least one item parsed, so a section made
+    entirely of plain bullets validated clean and every line was dropped.
+    """
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Three things remain.
+## Incomplete Work
+- Retry path unfinished.
+- Cache invalidation not started.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert any("stable-ID" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_bracketed_item_written_with_another_bullet_marker_is_named_correctly() -> None:
+    """The diagnostic must not tell an agent an ID is missing when it is there.
+
+    The parser builds items only from `-` bullets, so a `*` bullet is dropped —
+    but reporting it as "has none" when the bracket is plainly present left the
+    agent no way to fix it.
+    """
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Two things remain.
+## Incomplete Work
+- [S-1] Rename API endpoints: half-applied.
+  Reason: Only half were renamed.
+  Evidence: tests/test_api.py:42
+* [S-2] Cache invalidation not started.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+    assert all("has none" not in diagnostic.message for diagnostic in diagnostics)
+    assert any("'-'" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_nested_bracketed_bullet_is_not_swallowed_as_a_field() -> None:
+    """A nested entry containing a colon parsed as `Key: value` and vanished."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Two things remain.
+## Incomplete Work
+- [S-1] Rename API endpoints: half-applied.
+  Reason: Only half were renamed.
+  Evidence: tests/test_api.py:42
+  - [S-2] big thing: not done
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []

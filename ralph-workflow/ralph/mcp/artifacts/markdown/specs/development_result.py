@@ -146,13 +146,13 @@ def _free_form_content(document: ParsedDocument) -> Content:
             # was told it was missing while looking straight at it.
             present = document.section("Incomplete Work") is not None
             raise ValueError(
-                "Incomplete Work items must each start with a stable-ID bracket "
-                "such as '- [S-4] ...'; the section is present but no item "
-                "carries one"
+                "Incomplete Work items must each be a top-level '-' bullet "
+                "carrying a stable-ID bracket, written as '- [S-4] ...'; the "
+                "section is present but no entry is"
                 if present
                 else "Incomplete Work section with at least one stable-ID item "
-                "is required after the cycle timebox warning; each item "
-                "must include a 'Reason:' and 'Evidence:' field"
+                "is required after the cycle timebox warning; each item must "
+                "be a top-level '-' bullet with a 'Reason:' and 'Evidence:' field"
             )
         _validate_warned_incomplete_items(incomplete_items)
         _reject_unbracketed_incomplete_bullets(document)
@@ -161,12 +161,14 @@ def _free_form_content(document: ParsedDocument) -> Content:
         ]
     else:
         existing = _optional_items(document, "Incomplete Work")
+        # Checked before the emptiness test: a section made entirely of
+        # unbracketed bullets parses as zero items, which is the worst case
+        # rather than an exempt one.
+        _reject_unbracketed_incomplete_bullets(document)
         if existing:
-            # Guarded and shaped exactly like the warned branch. Silently
-            # dropping entries is wrong whether or not a deadline fired, and
-            # storing bare text here while every other branch stores the
-            # stable ID made one field mean two things.
-            _reject_unbracketed_incomplete_bullets(document)
+            # Shaped exactly like the warned branch: storing bare text here
+            # while every other branch stores the stable ID made one field
+            # mean two things.
             content["incomplete_work"] = [
                 f"[{item.identifier}] {item.text}" for item in existing
             ]
@@ -198,15 +200,27 @@ def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
         line
         for item in section.items
         for line in item.fields
-        if _looks_like_a_list_entry(line.text) and _field_key_and_value(line.text) is None
+        if _looks_like_a_list_entry(line.text) and not _reads_as_a_field(line.text)
     ]
     if stray_lines:
         first_line = min(line.line for line in stray_lines)
         raise ValueError(
-            f"Incomplete Work entries must each start with a stable-ID bracket "
-            f"such as '- [S-4] ...'; the entry on line {first_line} has none "
-            f"and would be dropped from the report"
+            f"Incomplete Work entries must each be a top-level '-' bullet "
+            f"carrying a stable-ID bracket, written as '- [S-4] ...'; the "
+            f"entry on line {first_line} is not, and would be dropped from "
+            f"the report"
         )
+
+
+def _reads_as_a_field(text: str) -> bool:
+    """Return whether a continuation line is a ``Key: value`` field.
+
+    A key opening with a stable-ID bracket is an incomplete-work entry that
+    merely contains a colon, not a field — treating it as one swallowed the
+    entry and dropped it from the report.
+    """
+    parsed = _field_key_and_value(text)
+    return parsed is not None and not parsed[0].startswith("[")
 
 
 def _looks_like_a_list_entry(text: str) -> bool:

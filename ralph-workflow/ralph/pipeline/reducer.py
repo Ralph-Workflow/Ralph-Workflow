@@ -196,7 +196,7 @@ def _reduce_phase_failure(
         # routing boundary, so the deadline would never be consulted -- and a
         # controller is always present in production, which left the guard on
         # the plain failure handler covering only a path tests take.
-        expired = _redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
+        expired = redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
         if expired is not None:
             return expired
         classified_failure = None
@@ -260,7 +260,7 @@ def _reduce_captured_agent_failure(
     intent = state.agent_retry_intent
     if recovery is None or intent.failed_agent_name is None:
         return None
-    expired = _redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
+    expired = redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
     if expired is not None:
         return expired
     if intent.failure_reason == "BrokenAgentExitError":
@@ -571,7 +571,7 @@ def _handle_agent_success(
     return _resolve_or_terminal(state, "success", policy, "agent success", routing_timing=routing_timing)
 
 
-def _redirect_expired_cycle_in_place(
+def redirect_expired_cycle_in_place(
     state: PipelineState,
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None,
@@ -643,7 +643,7 @@ def _handle_agent_failure(
     # of them on a budget that is already spent, while the prompt, the
     # tool-result banner and the policy documentation all say the redirect
     # happens INSTEAD of starting another development invocation.
-    expired = _redirect_expired_cycle_in_place(state, policy, routing_timing)
+    expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
     if expired is not None:
         return expired
 
@@ -720,7 +720,7 @@ def _handle_agent_retry(
     A continuation is another full-length invocation of the same phase, so it
     is bounded by the cycle deadline exactly like a failure retry.
     """
-    expired = _redirect_expired_cycle_in_place(state, policy, routing_timing)
+    expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
     if expired is not None:
         return expired
 

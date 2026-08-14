@@ -556,6 +556,15 @@ Unknown keys in `[cycle_timebox]` are rejected rather than ignored: a
 misspelled field would otherwise leave the default in force with no
 indication the setting had no effect.
 
+One case is disabled rather than rejected. If you customize the graph
+without declaring your own `[cycle_timebox]`, the inherited default may
+name phases or a start edge your graph does not have — it was written for
+the bundled graph. Rather than fail the load, the timebox is switched off
+and a warning is logged naming the field that did not fit. **That run has
+no cycle deadline**, and every surface that would show one is silent, so
+declare `[cycle_timebox]` explicitly whenever you rename or restructure
+the phases it references.
+
 #### Example: a shorter development cycle
 
 ```toml

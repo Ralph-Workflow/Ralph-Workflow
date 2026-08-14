@@ -333,7 +333,6 @@ def _worker_cycle_timebox_warning(
         target_phase,
         policy=pipeline_policy,
         routing_timing=RoutingTiming(
-            monotonic_now=0.0,
             total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
         ),
     )
@@ -399,7 +398,7 @@ def _publish_cycle_deadline_env(
     agent about a budget that no longer applies.
     """
     routing_timing = (
-        RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=cycle_total_elapsed)
+        RoutingTiming(total_elapsed_seconds=cycle_total_elapsed)
         if cycle_total_elapsed is not None
         else None
     )
@@ -491,7 +490,6 @@ def _materialize_agent_prompt_if_needed(
             effect.phase,
             policy=policy_bundle.pipeline,
             routing_timing=RoutingTiming(
-                monotonic_now=0.0,
                 total_elapsed_seconds=cycle_total_elapsed,
             ),
         )

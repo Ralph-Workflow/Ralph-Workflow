@@ -390,6 +390,14 @@ def _disable_incompatible_inherited_cycle_timebox(
     ):
         val = ct.get(key)
         if not isinstance(val, str) or val not in phase_names:
+            logger.warning(
+                "cycle_timebox disabled: the inherited default names "
+                "{key}={value!r}, which the active graph does not declare. "
+                "This run has no cycle deadline. Declare [cycle_timebox] "
+                "explicitly to bound cycles on a custom graph.",
+                key=key,
+                value=val,
+            )
             result = dict(normalized)
             result.pop("cycle_timebox", None)
             return result
@@ -400,6 +408,14 @@ def _disable_incompatible_inherited_cycle_timebox(
         start_source if isinstance(start_source, str) else "",
         start_entry if isinstance(start_entry, str) else "",
     ):
+        logger.warning(
+            "cycle_timebox disabled: the inherited default starts on "
+            "{source!r} -> {entry!r}, which the active graph does not declare "
+            "as an edge. This run has no cycle deadline. Declare "
+            "[cycle_timebox] explicitly to bound cycles on a custom graph.",
+            source=start_source,
+            entry=start_entry,
+        )
         result = dict(normalized)
         result.pop("cycle_timebox", None)
         return result

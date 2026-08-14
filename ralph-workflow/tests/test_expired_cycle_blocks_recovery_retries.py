@@ -53,7 +53,7 @@ def _fail_with_recovery(state: PipelineState, elapsed: float) -> PipelineState:
         recovery=RecoveryController(
             options=RecoveryControllerOptions(policy_bundle=_bundle())
         ),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=elapsed),
+        routing_timing=RoutingTiming(total_elapsed_seconds=elapsed),
     )
     return next_state
 
@@ -85,3 +85,46 @@ def test_repeated_failures_cannot_outlast_the_deadline() -> None:
             break
 
     assert state.phase == _TARGET
+
+
+def test_a_crash_in_a_spent_cycle_is_redirected_not_retried() -> None:
+    """The crash path bypasses the reducer, so it needs its own deadline check.
+
+    A step that raises hands the failure straight to the controller, skipping
+    `reduce` and therefore every guard inside it. With the budget gone that
+    still restarted development for each remaining retry and fallover, counted
+    no redirect, and set no reason — so the report said nothing.
+    """
+    from ralph.pipeline import runner as runner_module
+
+    recovered, _effects = runner_module._reduce_runtime_recovery(
+        _developing(_SPENT),
+        _bundle().pipeline,
+        reason="Pipeline step crashed: RuntimeError: transport died",
+        recovery=RecoveryController(
+            options=RecoveryControllerOptions(policy_bundle=_bundle())
+        ),
+        exc=RuntimeError("transport died"),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
+    )
+
+    assert recovered.phase == _TARGET
+    assert recovered.cycle_timebox_redirects == 1
+
+
+def test_a_crash_inside_the_budget_still_recovers_normally() -> None:
+    """With budget left the controller handles the crash as it always did."""
+    from ralph.pipeline import runner as runner_module
+
+    recovered, _effects = runner_module._reduce_runtime_recovery(
+        _developing(1000.0),
+        _bundle().pipeline,
+        reason="Pipeline step crashed: RuntimeError: transport died",
+        recovery=RecoveryController(
+            options=RecoveryControllerOptions(policy_bundle=_bundle())
+        ),
+        exc=RuntimeError("transport died"),
+        routing_timing=RoutingTiming(total_elapsed_seconds=1000.0),
+    )
+
+    assert recovered.phase == "development"

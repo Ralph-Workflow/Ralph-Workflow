@@ -45,7 +45,7 @@ def _fail(state: PipelineState, elapsed: float) -> PipelineState:
         state,
         PipelineEvent.AGENT_FAILURE,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=elapsed),
+        routing_timing=RoutingTiming(total_elapsed_seconds=elapsed),
     )
     return next_state
 
@@ -99,7 +99,7 @@ def test_a_continuation_inside_a_spent_cycle_is_redirected_too() -> None:
         _developing(_SPENT),
         PipelineEvent.AGENT_RETRY,
         _pipeline(),
-        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=_SPENT),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
     )
 
     assert redirected.phase == "development_final_commit_cleanup"

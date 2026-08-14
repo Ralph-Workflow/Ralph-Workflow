@@ -30,14 +30,15 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _RoutingTiming:
-    """Sampled monotonic time and computed cycle elapsed seconds for one reduce call.
+    """Cycle elapsed seconds for one reduce call.
 
-    ``monotonic_now`` is the runner's sampled clock value; ``total_elapsed_seconds``
-    is the cycle timebox's consumed seconds for the current cycle (folded by the
-    runner before the call). Pure routing code reads these instead of a clock.
+    ``total_elapsed_seconds`` is the cycle timebox's consumed seconds for the
+    current cycle, folded by the runner before the call and including the span
+    since its last sample. Pure routing code reads this instead of a clock. The
+    runner's raw clock reading is deliberately not carried here: it was written
+    at every construction site and read at none.
     """
 
-    monotonic_now: float
     total_elapsed_seconds: float
 
 

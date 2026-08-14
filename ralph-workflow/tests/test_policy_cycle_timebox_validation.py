@@ -375,3 +375,36 @@ def test_an_unrecorded_outcome_that_loops_forever_is_rejected() -> None:
 
     with _pytest.raises(PolicyValidationError, match="terminal"):
         validate_policy_completeness(looping)
+
+
+def test_disabling_an_inherited_timebox_is_announced() -> None:
+    """A custom graph that drops the deadline must not do so silently.
+
+    The inherited default cannot describe a graph it was not written for, so it
+    is disabled — and every surface that would show a deadline goes quiet with
+    it, leaving an operator no way to notice their run is unbounded.
+    """
+    from loguru import logger
+
+    from ralph.policy.loader import _disable_incompatible_inherited_cycle_timebox
+
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
+    normalized: dict[str, object] = {
+        "cycle_timebox": pipeline.cycle_timebox.model_dump(),
+        # The graph renames the guarded phase, as a custom workflow would.
+        "phases": {
+            name: phase
+            for name, phase in pipeline.phases.items()
+            if name != "development"
+        },
+    }
+
+    records: list[str] = []
+    sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
+    try:
+        result = _disable_incompatible_inherited_cycle_timebox(normalized)
+    finally:
+        logger.remove(sink_id)
+
+    assert "cycle_timebox" not in result
+    assert any("no cycle deadline" in record for record in records)

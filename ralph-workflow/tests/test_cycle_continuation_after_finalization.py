@@ -34,7 +34,7 @@ def _policy() -> PipelinePolicy:
 
 
 def _rt(elapsed: float) -> RoutingTiming:
-    return RoutingTiming(monotonic_now=elapsed, total_elapsed_seconds=elapsed)
+    return RoutingTiming(total_elapsed_seconds=elapsed)
 
 
 def _drive_to_next_cycle(

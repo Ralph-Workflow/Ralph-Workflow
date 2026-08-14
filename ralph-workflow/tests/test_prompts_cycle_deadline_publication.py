@@ -516,7 +516,7 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
         registry=MagicMock(),
         display_context=None,
         routing_timing=runner_module.RoutingTiming(
-            monotonic_now=0.0, total_elapsed_seconds=_ELAPSED_SECONDS
+            total_elapsed_seconds=_ELAPSED_SECONDS
         ),
     )
 

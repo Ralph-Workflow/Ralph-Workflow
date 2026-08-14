@@ -146,6 +146,7 @@ from ralph.pipeline.prompt_prep import (
     publish_cycle_deadline_env,
     withdraw_cycle_deadline_env,
 )
+from ralph.pipeline.reducer import redirect_expired_cycle_in_place
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.state_init import create_initial_state
@@ -670,7 +671,19 @@ def _reduce_runtime_recovery(
     reason: str,
     recovery: RecoveryController | None = None,
     exc: BaseException | None = None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
+    """Route a crashed step through recovery, bounded by the cycle deadline.
+
+    This path hands the failure straight to the controller, skipping ``reduce``
+    and therefore every guard inside it — so the deadline is asked here. With
+    the budget already spent the controller's retries would otherwise each be
+    another full-length invocation of the guarded phase, counted and reported
+    nowhere.
+    """
+    expired = redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
+    if expired is not None:
+        return expired
     if recovery is not None:
         raw_failure: BaseException | str = exc if exc is not None else reason
         new_state, effects, _ = recovery.handle(
@@ -686,7 +699,9 @@ def _reduce_runtime_recovery(
         reason=reason,
         recoverable=True,
     )
-    recovered_state, effects = reducer_reduce(state, failure_event, pipeline_policy, recovery=None)
+    recovered_state, effects = reducer_reduce(
+        state, failure_event, pipeline_policy, recovery=None, routing_timing=routing_timing
+    )
     return recovered_state, effects
 
 
@@ -1297,7 +1312,6 @@ def _sample_cycle_timing(
         else 0.0
     )
     routing_timing = RoutingTiming(
-        monotonic_now=cycle_now,
         total_elapsed_seconds=state.cycle_timebox_consumed_seconds + cycle_delta,
     )
     return routing_timing, cycle_now, cycle_delta, ct_policy
@@ -1695,6 +1709,7 @@ def _run_pipeline_step(
             reason=f"Pipeline step crashed: {type(exc).__name__}: {exc}",
             recovery=recovery_controller,
             exc=exc,
+            routing_timing=_routing_timing,
         )
         for _eff in _recv_effects:
             if isinstance(_eff, ExitFailureEffect):
@@ -1841,7 +1856,6 @@ def _handle_inline_effect(
                 policy=pipeline_policy,
                 routing_timing=routing_timing
                 or RoutingTiming(
-                    monotonic_now=0.0,
                     total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
                 ),
             )
