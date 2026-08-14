@@ -283,6 +283,7 @@ def _render_cycle_timebox_text(exp: object, lines: list[str]) -> None:
     lines.append(f"  Guarded entry       : {ct.guarded_entry}")
     lines.append(f"  End entry           : {ct.end_entry}")
     lines.append(f"  Finalization target : {ct.finalization_target}")
+    lines.append(f"  Finalization outcome: {ct.finalization_cycle_outcome}")
 
 
 def _render_phase_routing(phase: PhaseExplanation, lines: list[str]) -> None:

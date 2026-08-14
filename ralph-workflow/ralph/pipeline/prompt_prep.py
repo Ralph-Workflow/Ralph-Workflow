@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
-from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
+from ralph.mcp.protocol.env import (
+    CYCLE_DEADLINE_EPOCH_ENV,
+    CYCLE_FINALIZATION_TARGET_ENV,
+    CYCLE_WARN_EPOCH_ENV,
+    WORKER_NAMESPACE_ENV,
+)
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.cycle_timing import RoutingTiming, cycle_timebox_warning
+from ralph.pipeline.cycle_timing import (
+    RoutingTiming,
+    cycle_deadline_epochs,
+    cycle_timebox_warning,
+)
 from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.handoffs import resolve_phase_drain
@@ -295,6 +305,46 @@ def _materialize_prepared_prompt(
     )
 
 
+def _publish_cycle_deadline_env(
+    state: PipelineState,
+    target_phase: str,
+    policy_bundle: PolicyBundle,
+    cycle_total_elapsed: float | None,
+) -> None:
+    """Publish (or withdraw) the cycle deadline for the invocation about to start.
+
+    The MCP server is a separate process spawned per invocation, so it reads
+    the deadline from the environment it inherits rather than from pipeline
+    state. Withdrawing is as important as publishing: without it a later
+    invocation outside the cycle would inherit a stale deadline and nag the
+    agent about a budget that no longer applies.
+    """
+    routing_timing = (
+        RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=cycle_total_elapsed)
+        if cycle_total_elapsed is not None
+        else None
+    )
+    published = cycle_deadline_epochs(
+        state,
+        target_phase,
+        policy=policy_bundle.pipeline,
+        routing_timing=routing_timing,
+        now_epoch=time.time(),
+    )
+    if published is None:
+        for name in (
+            CYCLE_WARN_EPOCH_ENV,
+            CYCLE_DEADLINE_EPOCH_ENV,
+            CYCLE_FINALIZATION_TARGET_ENV,
+        ):
+            os.environ.pop(name, None)
+        return
+    warn_epoch, deadline_epoch, finalization_target = published
+    os.environ[CYCLE_WARN_EPOCH_ENV] = repr(warn_epoch)
+    os.environ[CYCLE_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
+    os.environ[CYCLE_FINALIZATION_TARGET_ENV] = finalization_target
+
+
 def _materialize_agent_prompt_if_needed(
     effect: Effect,
     state: PipelineState,
@@ -307,6 +357,8 @@ def _materialize_agent_prompt_if_needed(
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
+
+    _publish_cycle_deadline_env(state, effect.phase, policy_bundle, cycle_total_elapsed)
 
     agent = registry.get(effect.agent_name)
     agent_drain = effect.drain or resolve_phase_drain(effect.phase, policy_bundle.pipeline) or effect.phase

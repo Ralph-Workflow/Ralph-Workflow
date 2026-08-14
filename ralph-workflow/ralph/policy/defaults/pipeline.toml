@@ -64,6 +64,12 @@ start_entry = "development"
 guarded_entry = "development"
 end_entry = "development_final_commit_cleanup"
 finalization_target = "development_final_commit_cleanup"
+# A redirected cycle still finishes at the dev cycle's final commit, so it is
+# stamped with a normal cycle outcome and post_commit_routes decide what comes
+# next: another planning cycle while the iteration budget has room, or the
+# terminal phase once it is spent. Set this to "failed" instead if a timed-out
+# cycle should end an out-of-budget run in the failure terminal.
+finalization_cycle_outcome = "completed"
 
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing the workflow phases or their order.

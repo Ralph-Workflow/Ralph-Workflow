@@ -346,6 +346,19 @@ Typical budget states:
 - `exhausted`
 - `no_review`
 
+A route may also match on `cycle_outcome`, the verdict the cycle carried
+into its commit. Several routes into a final commit never record one —
+an agent-chain `workflow_fallback`, a `result_status_post_commit`
+override, a checkpoint written before cycle outcomes existed, or an
+analysis phase that succeeded without emitting a decision. A commit
+phase reached with no recorded verdict is routed as `completed` (with a
+warning naming the phase and the substituted outcome) rather than
+skipping the route table: falling through lands on the phase's
+`on_success` transition, which for a final commit is the terminal — it
+would end the whole run while the cycle budget still had room. A commit
+phase that declares no routes at all keeps its `on_success` transition
+unchanged.
+
 ### `[default_phase_retry_policy]`
 
 The default retry policy applies to every phase that does not declare its own override. It controls how many times a phase may be retried before the failure is escalated.
@@ -387,6 +400,14 @@ concludes with a real commit rather than looping indefinitely.
 | `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
 | `end_entry` | `development_final_commit_cleanup` | Phase whose entry clears timing. |
 | `finalization_target` | `development_final_commit_cleanup` | Redirect target when the deadline is reached. |
+| `finalization_cycle_outcome` | `completed` | Cycle outcome stamped on a redirect so `post_commit_routes` route the finished cycle normally. |
+
+A redirect ends the cycle at the dev cycle's final commit — not the run.
+The stamped `finalization_cycle_outcome` is what `post_commit_routes`
+match on, so a timed-out cycle is followed by another planning cycle
+while the `iteration` budget counter has room, and by the terminal phase
+only once that budget is spent. Set the field to `failed` if a timed-out
+cycle should instead end an out-of-budget run in the failure terminal.
 
 The 80% soft-warning threshold is derived automatically: at the default
 `7200`s duration the warning fires at `5760`s (96 min), giving the
@@ -395,6 +416,24 @@ injected into the development prompt and surfaces in the run-time
 report; it does not interrupt an already-running invocation. Each
 subsequent development invocation in the same cycle receives an updated
 warning with the current elapsed and remaining time.
+
+The warning does not rely on that prompt appendix alone, which an agent
+loses to context compaction and which never reaches an invocation that
+began before the warning point:
+
+- **On every MCP tool result.** The deadline instant is fixed for the
+  lifetime of an invocation, so the pipeline publishes it as wall-clock
+  epochs (`RALPH_CYCLE_WARN_EPOCH`, `RALPH_CYCLE_DEADLINE_EPOCH`,
+  `RALPH_CYCLE_FINALIZATION_TARGET`) in the environment inherited by the
+  MCP server subprocess, which appends a banner with the remaining
+  minutes to every tool result once the warning point passes. The
+  publication is withdrawn for any invocation outside a guarded cycle,
+  so a later phase never inherits a stale deadline.
+- **On the live phase banner.** Every phase change during an active
+  cycle carries a `[cycle timebox ...]` item with consumed/remaining
+  minutes, and a deadline-forced finalization is labelled as such, so an
+  operator can see the budget draining without waiting for the
+  end-of-run report.
 
 #### Relationship to other limits
 

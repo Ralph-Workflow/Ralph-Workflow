@@ -47,6 +47,7 @@ from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
+from ralph.mcp.server._cycle_deadline import CycleDeadlineNotifier
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
@@ -179,6 +180,7 @@ def build_standalone_http_server(
         workspace,
         registry,
         wrapup_provider=_session_wrapup_provider(),
+        cycle_deadline_provider=CycleDeadlineNotifier().notice,
     )
     return _StandaloneHttpServer(host, port, server)
 

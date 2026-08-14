@@ -18,6 +18,7 @@ from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExi
 from ralph.pipeline import progress
 from ralph.pipeline._phase_change_render_data import _PhaseChangeRenderData
 from ralph.pipeline._phase_transition_summary import emit_final_summary as _emit_final_summary
+from ralph.pipeline.cycle_timing import cycle_timebox_status_item
 from ralph.pipeline.events import AnalysisDecisionEvent, Event, PipelineEvent
 from ralph.pipeline.handoffs import (
     ExhaustedAnalysisBypassResult,
@@ -357,23 +358,43 @@ def _phase_transition_context(
     pipeline_policy: PipelinePolicy,
     metadata: _PendingPhaseTransitionMetadata | None = None,
 ) -> dict[str, object] | None:
+    """Build the context items rendered beside a phase-change banner.
+
+    The cycle-timebox item is merged onto whichever context the transition
+    itself produced, so the deadline stays visible on every phase change of an
+    active cycle rather than only on the transitions that happen to carry
+    routing metadata.
+    """
+    timebox_item = cycle_timebox_status_item(state, policy=pipeline_policy)
     if metadata is not None:
-        return metadata.transition_context
+        return _merged_context(metadata.transition_context, timebox_item)
 
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
     if previous_phase_def is None or previous_phase_def.role != "analysis":
-        return None
+        return _merged_context(None, timebox_item)
 
     loop_policy = previous_phase_def.loop_policy
     if loop_policy is None:
-        return None
+        return _merged_context(None, timebox_item)
 
     iteration_field = loop_policy.iteration_state_field
     analysis_cur = state.get_loop_iteration(iteration_field)
     max_iter = _resolve_analysis_cap(iteration_field, pipeline_policy)
     if progress.is_final_analysis_iteration(analysis_cur, max_iter):
-        return {"analysis_status": "final, skipping next"}
-    return None
+        return _merged_context({"analysis_status": "final, skipping next"}, timebox_item)
+    return _merged_context(None, timebox_item)
+
+
+def _merged_context(
+    context: dict[str, object] | None,
+    timebox_item: dict[str, object] | None,
+) -> dict[str, object] | None:
+    """Return the transition context with the timebox item appended, if any."""
+    if timebox_item is None:
+        return context
+    if context is None:
+        return dict(timebox_item)
+    return {**context, **timebox_item}
 
 
 def _skipped_exhausted_analysis_info(

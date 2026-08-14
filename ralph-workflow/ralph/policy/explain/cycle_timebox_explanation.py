@@ -22,3 +22,4 @@ class CycleTimeboxExplanation:
     guarded_entry: str
     end_entry: str
     finalization_target: str
+    finalization_cycle_outcome: str

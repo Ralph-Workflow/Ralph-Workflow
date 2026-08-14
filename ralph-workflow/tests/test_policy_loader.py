@@ -809,6 +809,25 @@ def test_default_cycle_timebox_values() -> None:
     assert ct.guarded_entry == "development"
     assert ct.end_entry == "development_final_commit_cleanup"
     assert ct.finalization_target == "development_final_commit_cleanup"
+    assert ct.finalization_cycle_outcome == "completed"
+
+
+def test_cycle_timebox_rejects_an_outcome_no_route_can_match() -> None:
+    """The finalization outcome is closed to the vocabulary routes match on."""
+    import pydantic
+    import pytest as _pytest
+
+    from ralph.policy.models import CycleTimeboxPolicy
+
+    with _pytest.raises(pydantic.ValidationError):
+        CycleTimeboxPolicy(
+            start_source="planning_analysis",
+            start_entry="development",
+            guarded_entry="development",
+            end_entry="development_final_commit_cleanup",
+            finalization_target="development_final_commit_cleanup",
+            finalization_cycle_outcome="timeboxed",
+        )
 
 
 def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path) -> None:

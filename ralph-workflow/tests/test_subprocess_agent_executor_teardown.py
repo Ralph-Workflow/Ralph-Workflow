@@ -35,6 +35,11 @@ from ralph.testing._fake_psutil import FakePsutil
 from ralph.testing._fake_psutil_process import FakePsutilProcess
 from ralph.testing.fake_process import FakeControllableAsyncProcess
 
+#: Event-loop yields allowed while waiting for the spawned fake's output to
+#: drain before cancelling. Yields cost no wall-clock time; the budget only
+#: bounds the loop if the drain never happens.
+_CANCELLATION_YIELD_BUDGET = 100
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -161,9 +166,10 @@ async def test_finally_block_terminates_non_terminal_handle() -> None:
 
     Configures a recording fake whose ``completion_event`` is NEVER set, so
     ``handle.wait()`` would hang forever absent the finally teardown.
-    Wraps ``executor.run()`` in ``asyncio.wait_for(...)`` with a short
-    timeout so the hanging gather is cancelled and the finally block is
-    forced to run.
+    Cancels ``executor.run()`` once the spawned fake's output has drained —
+    an event-loop condition rather than a wall-clock timeout — so the
+    hanging gather is cancelled and the finally block is forced to run
+    deterministically and without spending real time.
 
     Asserts the recording psutil root observed at least one ``terminate()``
     call — the teardown guarantee that backs the
@@ -196,15 +202,24 @@ async def test_finally_block_terminates_non_terminal_handle() -> None:
     executor = SubprocessAgentExecutor(["fake-cmd"], _pm=pm)
     unit = _make_unit("teardown-invariant-test")
 
-    with suppress(asyncio.TimeoutError, asyncio.CancelledError):
-        await asyncio.wait_for(
-            executor.run(
-                unit,
-                on_output=_ignore_output,
-                on_status=_ignore_status,
-            ),
-            timeout=0.5,
+    # Cancellation is driven by the event loop rather than by a wall-clock
+    # timeout: the run is cancelled once the fake has actually been spawned
+    # (so the hanging gather has been entered), which forces the finally
+    # block deterministically and costs no real time.
+    run_task = asyncio.ensure_future(
+        executor.run(
+            unit,
+            on_output=_ignore_output,
+            on_status=_ignore_status,
         )
+    )
+    for _ in range(_CANCELLATION_YIELD_BUDGET):
+        if fake.stdout.at_eof():
+            break
+        await asyncio.sleep(0)
+    run_task.cancel()
+    with suppress(asyncio.TimeoutError, asyncio.CancelledError):
+        await run_task
 
     assert recording_psutil.terminate_calls >= 1, (
         f"expected the teardown invariant to call terminate() on the fake "

@@ -62,6 +62,7 @@ def _concluded(
     state: PipelineState,
     *,
     redirect_reason: str | None = None,
+    cycle_outcome: str | None = None,
 ) -> PipelineState:
     """Return a copy with the cycle marked concluded.
 
@@ -70,11 +71,19 @@ def _concluded(
     next :func:`_started` resets it to zero for the fresh cycle. When
     ``redirect_reason`` is supplied (a deadline expiry redirect) it is
     recorded on the state so operator surfaces can distinguish a deadline
-    redirect from an ordinary completion.
+    redirect from an ordinary completion, and ``cycle_outcome`` is stamped
+    so post-commit routing sees a finished cycle: a redirected cycle ends at
+    the final commit and the next cycle starts while budget remains, exactly
+    as it would have without the deadline.
     """
     updates: dict[str, object] = {"cycle_timebox_active": False}
     if redirect_reason is not None:
         updates["cycle_timebox_redirect_reason"] = redirect_reason
+    # Never outrank a recorded verdict: running out of time is not a verdict,
+    # so a cycle that already reported `failed` must not be finalized as
+    # `completed` merely because the deadline expired on the way out.
+    if cycle_outcome is not None and state.pending_cycle_outcome is None:
+        updates["pending_cycle_outcome"] = cycle_outcome
     return state.copy_with(**updates)
 
 
@@ -133,8 +142,11 @@ def apply_cycle_timebox(
             timing_started=True,
         )
 
-    # Guard the configured development entry (active timer).
-    if target_phase == ct.guarded_entry:
+    # Guard the configured development entry. The active check is load-bearing:
+    # consumed seconds are deliberately preserved across a concluded cycle for
+    # the run-time report, so guarding an inactive timer would redirect the
+    # next entry on the previous cycle's spent budget.
+    if target_phase == ct.guarded_entry and state.cycle_timebox_active:
         if routing_timing.total_elapsed_seconds >= ct.duration_seconds:
             reason = (
                 f"cycle timebox reached {ct.duration_seconds:.0f}s "
@@ -142,7 +154,11 @@ def apply_cycle_timebox(
                 f"redirecting to {ct.finalization_target}"
             )
             return CycleTimeboxDecision(
-                state=_concluded(state, redirect_reason=reason),
+                state=_concluded(
+                    state,
+                    redirect_reason=reason,
+                    cycle_outcome=ct.finalization_cycle_outcome,
+                ),
                 target_phase=ct.finalization_target,
                 redirected=True,
                 redirect_reason=reason,
@@ -175,6 +191,75 @@ def initialize_legacy_cycle_on_resume(
     if state.phase in (ct.start_entry, ct.guarded_entry):
         return _started(state)
     return state
+
+
+#: Phase-banner key for the cycle-timebox item. The space makes the display
+#: layer render it as a bracketed ``[cycle timebox ...]`` item rather than a
+#: bare ``key=value`` pair.
+_STATUS_ITEM_KEY = "cycle timebox"
+
+_SECONDS_PER_MINUTE = 60.0
+
+
+def cycle_timebox_status_item(
+    state: PipelineState,
+    *,
+    policy: PipelinePolicy,
+) -> dict[str, object] | None:
+    """Return the live operator item describing the cycle deadline, if any.
+
+    The deadline was otherwise invisible until the end-of-run report, so an
+    operator could neither see the budget draining nor tell that a phase
+    change had been forced by it. Returns the sticky redirect notice while a
+    deadline-finalized cycle is winding down, the consumed/remaining budget
+    while a cycle is active, and ``None`` when no cycle is running.
+    """
+    ct = policy.cycle_timebox
+    if ct is None:
+        return None
+    if state.cycle_timebox_redirect_reason:
+        return {_STATUS_ITEM_KEY: "deadline reached, finalizing"}
+    if not state.cycle_timebox_active:
+        return None
+    consumed = state.cycle_timebox_consumed_seconds
+    remaining = max(0.0, ct.duration_seconds - consumed)
+    return {
+        _STATUS_ITEM_KEY: (
+            f"{consumed / _SECONDS_PER_MINUTE:.0f}m/"
+            f"{ct.duration_seconds / _SECONDS_PER_MINUTE:.0f}m, "
+            f"{remaining / _SECONDS_PER_MINUTE:.0f}m left"
+        )
+    }
+
+
+def cycle_deadline_epochs(
+    state: PipelineState,
+    target_phase: str,
+    *,
+    policy: PipelinePolicy,
+    routing_timing: RoutingTiming | None,
+    now_epoch: float,
+) -> tuple[float, float, str] | None:
+    """Return ``(warn_epoch, deadline_epoch, finalization_target)`` for an invocation.
+
+    The deadline does not move while an invocation runs, so it is published
+    once as wall-clock epochs the agent-facing MCP server process can compare
+    against its own clock — monotonic readings are not comparable across
+    processes. Returns ``None`` when no cycle is running or the phase being
+    invoked is not the guarded one, which the caller uses to withdraw any
+    previously published deadline.
+    """
+    ct = policy.cycle_timebox
+    if ct is None or routing_timing is None:
+        return None
+    if target_phase != ct.guarded_entry or not state.cycle_timebox_active:
+        return None
+    elapsed = routing_timing.total_elapsed_seconds
+    return (
+        now_epoch + max(0.0, ct.warning_threshold_seconds - elapsed),
+        now_epoch + max(0.0, ct.duration_seconds - elapsed),
+        ct.finalization_target,
+    )
 
 
 def cycle_timebox_warning(

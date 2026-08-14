@@ -220,6 +220,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             guarded_entry=ct.guarded_entry,
             end_entry=ct.end_entry,
             finalization_target=ct.finalization_target,
+            finalization_cycle_outcome=ct.finalization_cycle_outcome,
         )
 
     return explanation

@@ -63,6 +63,7 @@ from ralph.pipeline.events import (
     WorkerStartedEvent,
 )
 from ralph.pipeline.handoffs import (
+    declared_forward_cycle_outcome,
     resolve_exhausted_analysis_bypass,
     resolve_next_phase,
     resolve_post_commit_phase,
@@ -646,8 +647,11 @@ def _handle_analysis_success(
     """Handle successful analysis decision (continue/approve).
 
     Routing is driven exclusively through transitions.on_success via resolve_next_phase.
-    Decision keys in phase_def.decisions are for vocabulary validation only; the
-    reducer does not inspect them for routing.
+    Decision keys in phase_def.decisions are not consulted for routing — but the
+    forward decision's declared counter and cycle outcome ARE applied, because
+    leaving this phase forward concludes the cycle exactly as that decision
+    would. Without the outcome, post-commit routing at the eventual final
+    commit has no verdict to match on.
     """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for analysis success routing", policy)
@@ -667,6 +671,9 @@ def _handle_analysis_success(
             progress_state,
             completed_route.increments_counter if completed_route is not None else None,
         )
+        forward_outcome = declared_forward_cycle_outcome(state.phase, policy)
+        if forward_outcome is not None:
+            progress_state = progress_state.copy_with(pending_cycle_outcome=forward_outcome)
         return progress_state, effects
     except ValueError as exc:
         return _advance_to_failed(
@@ -967,7 +974,13 @@ def _handle_commit_success(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
-        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        # The verdict and the deadline-redirect notice both belong to the
+        # cycle that just committed; clearing them together keeps a
+        # redirected cycle's notice off the fresh cycle's surfaces.
+        progress_state = progress_state.copy_with(
+            pending_cycle_outcome=None,
+            cycle_timebox_redirect_reason=None,
+        )
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -996,7 +1009,13 @@ def _handle_commit_skipped(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
-        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        # The verdict and the deadline-redirect notice both belong to the
+        # cycle that just committed; clearing them together keeps a
+        # redirected cycle's notice off the fresh cycle's surfaces.
+        progress_state = progress_state.copy_with(
+            pending_cycle_outcome=None,
+            cycle_timebox_redirect_reason=None,
+        )
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1050,8 +1069,7 @@ def _apply_invocation_gate(
 
     # Gate denies entry: skip analysis and route to its success transition.
     bypass_target = phase_def.transitions.on_success
-    completed_route = phase_def.decisions.get("completed")
-    cycle_outcome = completed_route.cycle_outcome if completed_route is not None else None
+    cycle_outcome = declared_forward_cycle_outcome(next_phase, policy)
     if cycle_outcome is not None:
         state = state.copy_with(pending_cycle_outcome=cycle_outcome)
     return bypass_target, state

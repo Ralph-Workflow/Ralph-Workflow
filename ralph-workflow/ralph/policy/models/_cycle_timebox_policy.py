@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -15,6 +15,10 @@ DEFAULT_CYCLE_TIMEBOX_SECONDS: float = 7200.0
 # never stored as an independent second duration so a custom deadline keeps the
 # same warning ratio without runtime code changes.
 WARNING_THRESHOLD_RATIO: float = 0.8
+# A deadline redirect concludes the cycle the same way an approving analysis
+# decision does, so post-commit routing sees a finished cycle rather than an
+# unset outcome (which no bundled route matches).
+DEFAULT_FINALIZATION_CYCLE_OUTCOME: Literal["completed", "failed"] = "completed"
 
 
 class CycleTimeboxPolicy(_FrozenPolicyModel):
@@ -73,6 +77,17 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
         description=(
             "Phase selected when the deadline has expired, redirecting the guarded "
             "entry through normal finalization. Must reference a declared phase or terminal."
+        ),
+    )
+    finalization_cycle_outcome: Literal["completed", "failed"] = Field(
+        default=DEFAULT_FINALIZATION_CYCLE_OUTCOME,
+        description=(
+            "Cycle outcome stamped on a deadline redirect so post-commit routing "
+            "treats the timed-out cycle like any other finished cycle: the next "
+            "cycle starts while its budget counter has room. Closed to the same "
+            "vocabulary post_commit_routes match on, so a value that names no "
+            "route cannot silently end a run early. Never overrides an outcome "
+            "the cycle already recorded. The bundled default is 'completed'."
         ),
     )
 

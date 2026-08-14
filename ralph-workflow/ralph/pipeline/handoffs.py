@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.pipeline import progress
 from ralph.pipeline.exhausted_analysis_bypass_result import ExhaustedAnalysisBypassResult
 from ralph.pipeline.exhausted_analysis_skip import ExhaustedAnalysisSkip
@@ -22,6 +24,31 @@ if TYPE_CHECKING:
 
 
 Handoff = ExhaustedAnalysisBypassResult
+
+#: Decision name whose declared ``cycle_outcome`` describes a cycle that reached
+#: the finalization path. Every route that skips an analysis phase instead of
+#: invoking it concludes the cycle the same way that decision would, so the
+#: outcome is read from policy rather than hardcoded per call site.
+_FORWARD_DECISION = "completed"
+
+
+def declared_forward_cycle_outcome(
+    phase: PipelinePhase,
+    pipeline_policy: PipelinePolicy,
+) -> str | None:
+    """Return the cycle outcome an analysis phase declares for its forward exit.
+
+    Post-commit routing matches on the cycle outcome carried into the commit
+    phase, so any path that skips an analysis phase (an exhausted loop budget,
+    a denied invocation gate) must stamp the outcome that phase would have
+    stamped. Returns ``None`` when the phase declares no forward decision or
+    the decision declares no outcome.
+    """
+    phase_def = pipeline_policy.phases.get(phase)
+    if phase_def is None:
+        return None
+    route = phase_def.decisions.get(_FORWARD_DECISION)
+    return None if route is None else route.cycle_outcome
 
 
 def resolve_phase_drain(
@@ -89,9 +116,18 @@ def resolve_exhausted_analysis_bypass(
 
     The helper accepts an analysis phase candidate and follows that phase's
     declared success transition whenever its loop budget is already exhausted.
-    Each skipped analysis phase has its loop counter reset to 0 and its skip
-    metadata recorded so reducer and runner paths can reuse the exact same
-    bypass contract.
+    Each skipped analysis phase has its loop counter reset to 0, its declared
+    forward cycle outcome stamped onto the state, and its skip metadata
+    recorded so reducer and runner paths can reuse the exact same bypass
+    contract. Stamping the outcome keeps a skipped analysis phase routing
+    through post-commit exactly like an invoked one: the cycle finalizes and
+    the next cycle starts while its budget counter still has room.
+
+    Only the reducer's phase-advance path adopts the returned state; the
+    runner, effect router, and display callers consume the resolved target and
+    the skip metadata for logging and rendering, and discard it. Every runner
+    event is routed back through the reducer, so the state changes here are
+    applied exactly once.
     """
     current_state = state
     current_target = candidate_phase
@@ -126,6 +162,11 @@ def resolve_exhausted_analysis_bypass(
         current_state = current_state.with_loop_iteration(iteration_field, 0).copy_with(
             review_outcome=None
         )
+        forward_outcome = declared_forward_cycle_outcome(current_target, pipeline_policy)
+        # A verdict already recorded for this cycle (an analysis decision that
+        # routed here) outranks the forward outcome of a phase that never ran.
+        if forward_outcome is not None and current_state.pending_cycle_outcome is None:
+            current_state = current_state.copy_with(pending_cycle_outcome=forward_outcome)
         current_target = next_target
 
     return ExhaustedAnalysisBypassResult(
@@ -144,6 +185,16 @@ def resolve_post_commit_phase(
     Routing is driven by post_commit_routes in policy, matched by phase name
     and budget_state. This works for any commit-role phase, not just the
     canonical development_commit/review_commit names.
+
+    A commit phase whose routes all declare a cycle outcome, reached with no
+    outcome recorded on the state, resolves against the forward outcome rather
+    than falling through the table: many routes into a final commit never
+    record a verdict (an agent-chain workflow fallback, a result-status
+    override, a resumed pre-feature checkpoint, an analysis phase that
+    succeeded without emitting a decision), and falling through lands on the
+    phase's success transition — the terminal — ending the whole run while the
+    cycle budget still had room. Phases that declare no routes at all keep
+    their success transition unchanged.
     """
     if state.post_commit_phase_override is not None:
         target = state.post_commit_phase_override
@@ -157,19 +208,42 @@ def resolve_post_commit_phase(
     if is_commit_phase:
         budget_state = _compute_budget_state(state, pipeline_policy)
         if budget_state is not None:
-            for route in pipeline_policy.post_commit_routes:
-                outcome_matches = (
-                    route.when.cycle_outcome is None
-                    or route.when.cycle_outcome == state.pending_cycle_outcome
-                )
-                if (
-                    route.when.phase == state.phase
-                    and route.when.budget_state == budget_state
-                    and outcome_matches
-                ):
-                    return route.target
+            for effective_outcome in _candidate_cycle_outcomes(state):
+                for route in pipeline_policy.post_commit_routes:
+                    outcome_matches = (
+                        route.when.cycle_outcome is None
+                        or route.when.cycle_outcome == effective_outcome
+                    )
+                    if (
+                        route.when.phase == state.phase
+                        and route.when.budget_state == budget_state
+                        and outcome_matches
+                    ):
+                        if effective_outcome != state.pending_cycle_outcome:
+                            logger.bind(component="policy.routing").warning(
+                                "post-commit routing in phase '{}' found no recorded cycle "
+                                "outcome; routing as '{}' to '{}' instead of falling through "
+                                "to the success transition",
+                                state.phase,
+                                effective_outcome,
+                                route.target,
+                            )
+                        return route.target
 
     return resolve_next_phase(state.phase, "success", pipeline_policy)
+
+
+def _candidate_cycle_outcomes(state: PipelineState) -> tuple[str | None, ...]:
+    """Return the outcomes to match against, most authoritative first.
+
+    A recorded outcome is the only candidate. An unrecorded one is retried as
+    the forward decision's outcome — the same name an analysis phase stamps on
+    its forward exit — so a cycle that finished without a verdict is routed by
+    the budget rather than by the table's fallthrough.
+    """
+    if state.pending_cycle_outcome is not None:
+        return (state.pending_cycle_outcome,)
+    return (None, _FORWARD_DECISION)
 
 
 def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy) -> str | None:
@@ -220,6 +294,7 @@ __all__ = [
     "ExhaustedAnalysisBypassResult",
     "ExhaustedAnalysisSkip",
     "Handoff",
+    "declared_forward_cycle_outcome",
     "resolve_exhausted_analysis_bypass",
     "resolve_next_phase",
     "resolve_phase_drain",
