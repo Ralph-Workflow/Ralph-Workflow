@@ -647,3 +647,65 @@ captures above); the evidence lives in the (untracked, `/tmp`-scoped)
 scratch workspace's own `.agent/tmp/mcp-wire-ledger.jsonl` and
 `.agent/state.db`, reproduced verbatim in this entry's prose per the same
 convention the S-1/S-2 entry above uses for its ledger-shape findings.
+
+## 2026-08-14: AGY Transport Completion plan, S-8 -- v1.1.13 vocabulary re-measurement
+
+`agy --version` on this machine now prints **1.1.13** (up from the 1.1.10
+this file's earlier entries measured). Before running the live smoke
+profile, the three original probe prompts were re-run with the same PTY
+harness documented at the top of this file (scratch directories under
+`/tmp`, `--dangerously-skip-permissions --model gemini-3.6-flash-low
+--print`), and the observed frame vocabulary was compared against the
+vocabulary recorded above.
+
+**No drift in top-level events.** All three probes (text-only, tool-using,
+multi-subagent) emitted only `init`, `step_update`, and `result` — the
+same three top-level events every prior capture recorded.
+
+**New `step_type`: `system_message` (bodiless).** The multi-subagent probe
+emitted two `step_update` frames with `"step_type": "system_message"`
+(step_index 8 and 12, both `state: DONE`), each carrying only
+`conversation_id` / `step_index` / `state` / `step_type` — no `text_delta`,
+no `tool_info`, no `subagent_info`, no `usage`. The text-only and
+tool-using probes did not emit it; it appeared only around the subagent
+completion boundaries of the multi-subagent run.
+
+**Subagent identity now arrives at dispatch, plus `workspace_uris`.** In
+every v1.1.10 capture, a subagent entry's `conversation_id` and `log_uri`
+were present only on its DONE update. In the v1.1.13 multi-subagent
+capture both fields (plus a new `workspace_uris` list) are already present
+on the ACTIVE dispatch frame. This is additive: the parser's composite
+`step_index:position` correlation key pairs ACTIVE -> DONE unchanged, and
+the new field is preserved inside the event's `tool_info` metadata.
+
+**Other additive changes (no parser impact).** `usage` dicts now carry
+`thinking_tokens` and `cache_read_tokens` alongside the token counts, and
+bodiless `agent_response` / `checkpoint` DONE frames additionally carry
+`duration_seconds`. `init` (`model`, `cwd`, `tools`, `permission_mode`) and
+`result` (`status`, `response`, `duration_seconds`, `num_turns`, `usage`)
+shapes are unchanged.
+
+**Parser consequence (the S-2/S-3 feedback loop).** The pre-change parser
+silently dropped the new `system_message` frames: `_dispatch_bodiless_step`
+surfaced only an enumerated set of bodiless step_types
+(`user_input` / `unknown` / `checkpoint`) and dropped every other bodiless
+frame that carried no `usage`. Fixed by replacing the enumeration with the
+generic rule that ANY bodiless `step_update` whose `step_type` is not
+`agent_response` (the text step, governed by the B4 usage-carry contract)
+yields a non-empty `lifecycle` event, so step vocabulary added by a future
+AGY release degrades observably instead of disappearing. Regression
+coverage: `tests/test_agy_parser.py::test_v1_1_13_system_message_step_surfaces_as_lifecycle_event`
+(replays the captured fixture below),
+`test_future_unknown_bodiless_step_type_surfaces_as_lifecycle_event`
+(synthetic future step_type, labeled as such), and
+`test_v1_1_13_subagent_active_entries_carry_identity_and_workspace_uris`
+(pins the additive subagent-entry fields and the unchanged correlation).
+
+**Fixture.** `agy_wire_v1_1_13.jsonl` in this directory is the normalized
+multi-subagent v1.1.13 capture (18 frames, the full run including both
+`system_message` frames, the `workspace_uris`-carrying subagent
+ACTIVE/DONE pair, and the closing `result`). Volatile values are
+normalized exactly as the earlier fixtures: real conversation ids and the
+`~/.gemini/antigravity-cli/brain/...` log URIs to stable placeholders, the
+scratch `/tmp` workspace path to `/workspace`; durations and usage counts
+are kept exactly as measured.

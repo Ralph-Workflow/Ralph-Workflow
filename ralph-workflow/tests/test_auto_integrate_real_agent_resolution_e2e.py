@@ -8,6 +8,7 @@ Ralph's live MCP endpoint, and declares completion.
 
 from __future__ import annotations
 
+import json
 import shlex
 import sys
 from functools import lru_cache
@@ -65,6 +66,33 @@ print(\"resolution complete\")
     return script
 
 
+def _write_target_agent_config(root: Path, script: Path) -> None:
+    """Install the script as the TARGET workspace's ``claude`` agent.
+
+    ``build_agent_rebase_stop_resolver`` resolves every path-bound value
+    -- config, registry, policy -- from the TARGET worktree through
+    ``workspace_context(root)``, not from the injected ``config``/
+    ``registry`` arguments (those only gate the pre-session
+    chain-installed check). An override that lives only in the in-memory
+    config therefore never reaches the invocation: the target loads its
+    own ``.agent/ralph-workflow.toml``, finds the DEFAULT ``claude``
+    definition, and launches the real interactive CLI -- which can
+    neither finish inside the 30 s watchdog nor write the deterministic
+    marker the test asserts. Writing the override into the target's
+    project-local config layer is what makes this test's ``cmd`` the one
+    the production effect executor actually runs.
+    """
+    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
+    agent_dir = root / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "ralph-workflow.toml").write_text(
+        "[agents.claude]\n"
+        f"cmd = {json.dumps(cmd)}\n"
+        'transport = "agy"\n',
+        encoding="utf-8",
+    )
+
+
 @lru_cache(maxsize=1)
 def _policy_bundle():
     return load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
@@ -107,7 +135,9 @@ def test_auto_integrate_regression_live_agent_resolves_conflict_through_mcp(
         "<<<<<<< HEAD\ntarget\n=======\nfeature\n>>>>>>> feature\n",
         encoding="utf-8",
     )
-    config = _config(_write_mcp_agent(tmp_path))
+    script = _write_mcp_agent(tmp_path)
+    _write_target_agent_config(tmp_path, script)
+    config = _config(script)
     scope = WorkspaceScope(tmp_path)
     registry = AgentRegistry.from_config(config)
     display_context = make_display_context()

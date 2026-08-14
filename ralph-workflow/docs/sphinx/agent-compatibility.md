@@ -70,7 +70,7 @@ availability remains the CLI provider's responsibility.
 - **Transport**: `agy`
 - **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.10 publishes model IDs and `--effort low|medium|high`. Live probes accepted both `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`.
 - **Parser**: `agy` (`AgyParser`; maps `--output-format stream-json` events including `step_update` tool activity and multi-subagent updates, with plain-text fallback)
-- **Wire format (measured against the live v1.1.10 binary)**: the full
+- **Wire format (measured against the live v1.1.10 binary; vocabulary re-measured against v1.1.13)**: the full
   measured record, including the PTY capture method and the exact probe
   prompts, is tracked in `tests/display/_fixtures/agy_wire_provenance.md`.
   Summary:
@@ -79,10 +79,14 @@ availability remains the CLI provider's responsibility.
       PTY the same invocation produces empty stdout.
     - Observed events: `init` (`model`, `cwd`, `tools`, `permission_mode`),
       `step_update` (`step_type` values `user_input`, `unknown`,
-      `agent_response`, `tool`, `checkpoint`, `subagent`), `result`
+      `agent_response`, `tool`, `checkpoint`, `subagent`; v1.1.13 adds the
+      bodiless `system_message`), `result`
       (`status`, `response`, `duration_seconds`, `num_turns`, `usage`), and an
       `error` emitter that exists in the binary but whose exact live payload
-      shape was not captured.
+      shape was not captured. v1.1.13 also adds `workspace_uris` and emits
+      each subagent entry's `conversation_id` / `log_uri` already on its
+      ACTIVE dispatch frame; `AgyParser` surfaces any new bodiless
+      `step_type` as a lifecycle event rather than dropping it.
     - The real clean-exit-with-no-output failure prints on stderr:
       `jetski: no output produced` because a tool's permission request was
       auto-denied in headless mode, naming `--dangerously-skip-permissions` /

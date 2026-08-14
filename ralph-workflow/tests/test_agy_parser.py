@@ -38,6 +38,7 @@ _AGY_WIRE_TOOL_FIXTURE = _FIXTURES_DIR / "agy_wire_tool.jsonl"
 _AGY_WIRE_SUBAGENT_FIXTURE = _FIXTURES_DIR / "agy_wire_subagent.jsonl"
 _AGY_WIRE_TEXT_FIXTURE = _FIXTURES_DIR / "agy_wire_text.jsonl"
 _AGY_WIRE_B_SERIES_FIXTURE = _FIXTURES_DIR / "agy_wire_b_series.jsonl"
+_AGY_WIRE_V1_1_13_FIXTURE = _FIXTURES_DIR / "agy_wire_v1_1_13.jsonl"
 
 
 def _replay(fixture: Path) -> list:
@@ -291,12 +292,17 @@ def test_unrecognized_stream_json_frame_surfaces_in_harness_output() -> None:
 
 
 def test_subagent_update_with_multiple_entries() -> None:
-    """P-5 / DA-001: Subagent update with 2 entries emits correlated events for both, empty list emits none.
+    """P-5 / DA-001: Subagent update with 2 entries emits correlated events for both, empty list emits no tool events.
 
     DA-001: entries sharing one ``step_index`` still resolve to distinct
     ids and pair correctly across ACTIVE -> DONE, instead of the shared
     ``step_index`` collapsing every entry onto the same id and dropping
     all but the first ``tool_use`` at the dedup guard.
+
+    A ``subagent`` step whose ``subagents`` list is empty carries no
+    per-entry body, so it emits no tool events -- but the frame itself
+    still surfaces as a ``lifecycle`` event (the bodiless-step
+    never-silently-dropped contract; see ``_dispatch_bodiless_step``).
     """
     parser = AgyParser()
     lines = [
@@ -309,13 +315,16 @@ def test_subagent_update_with_multiple_entries() -> None:
     assert [(line.type, line.metadata.get("tool_use_id")) for line in parsed] == [
         ("tool_use", "3:0"),
         ("tool_use", "3:1"),
+        ("lifecycle", None),
         ("tool_use", "6:0"),
         ("tool_use", "6:1"),
         ("tool_result", "6:0"),
         ("tool_result", "6:1"),
     ]
+    empty_frame = parsed[2]
+    assert empty_frame.content == "agy step subagent"
     assert parsed[0].metadata.get("conversation_id") == "c1"
-    assert parsed[4].metadata.get("conversation_id") == "c3"
+    assert parsed[5].metadata.get("conversation_id") == "c3"
 
 
 def test_subagent_update_multiple_entries_without_ids_use_positional_fallback() -> None:
@@ -904,3 +913,79 @@ def test_b6_bracketed_markdown_link_survives_to_the_rendered_activity_line() -> 
         event.kind, event.content, metadata=event.metadata, agent_name="agy"
     )
     assert "[todo-list.js](file:///workspace/todo-list.js)" in rendered
+
+
+def test_v1_1_13_system_message_step_surfaces_as_lifecycle_event() -> None:
+    """v1.1.13 drift: the new bodiless ``system_message`` step_type is observable.
+
+    AGY v1.1.13 emits a ``step_update`` with ``step_type: "system_message"``
+    (bodiless: no ``text_delta``, no ``tool_info`` / ``subagent_info``, no
+    ``usage``) around subagent completion boundaries. The parser's contract
+    (see the module docstring and
+    ``tests/display/_fixtures/agy_wire_provenance.md``) is that no frame
+    disappears silently: unknown or new bodiless step vocabulary must
+    degrade observably, surfacing as a non-empty ``lifecycle`` event rather
+    than being dropped. Replays the captured v1.1.13 multi-subagent fixture
+    (``agy_wire_v1_1_13.jsonl``), which contains two such frames
+    (step_index 8 and 12).
+    """
+    parsed = _replay(_AGY_WIRE_V1_1_13_FIXTURE)
+    system_messages = [
+        line for line in parsed if line.metadata.get("step_type") == "system_message"
+    ]
+    assert len(system_messages) == 2
+    assert all(line.type == "lifecycle" for line in system_messages)
+    assert all(line.content == "agy step system_message" for line in system_messages)
+    assert all(line.raw.strip().startswith("{") for line in system_messages)
+
+
+def test_future_unknown_bodiless_step_type_surfaces_as_lifecycle_event() -> None:
+    """Future-proofing (synthetic): an arbitrary future bodiless step_type degrades observably.
+
+    The step_type below is synthetic -- no AGY version measured to date
+    emits it -- pinning the generic rule the v1.1.13 ``system_message``
+    capture motivates: ANY bodiless ``step_update`` whose step_type is not
+    ``agent_response`` (the text step governed by the B4 usage-carry
+    contract) must surface as a non-empty ``lifecycle`` event, so a future
+    AGY release adding vocabulary can never make frames silently disappear.
+    """
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"conversation_id":"c","step_index":9,"state":"DONE","step_type":"telemetry_notice"}}',
+    ]
+    parsed = list(parser.parse(iter(lines)))
+    assert [line.type for line in parsed] == ["lifecycle"]
+    assert parsed[0].content == "agy step telemetry_notice"
+    assert parsed[0].metadata.get("step_type") == "telemetry_notice"
+
+
+def test_v1_1_13_subagent_active_entries_carry_identity_and_workspace_uris() -> None:
+    """v1.1.13 drift: subagent ACTIVE entries now carry identity fields and ``workspace_uris``.
+
+    In v1.1.10 only the DONE update carried ``conversation_id`` /
+    ``log_uri``. v1.1.13 adds them (plus the new ``workspace_uris`` list)
+    already on the ACTIVE dispatch frame. This is additive: the composite
+    ``step_index:position`` correlation key still pairs ACTIVE -> DONE, and
+    the new fields are preserved observably in the event metadata (lifted
+    identity keys plus the raw entry under ``tool_info``).
+    """
+    parsed = _replay(_AGY_WIRE_V1_1_13_FIXTURE)
+    active = [
+        line
+        for line in parsed
+        if line.type == "tool_use" and line.metadata.get("tool") == "subagent"
+    ]
+    done = [
+        line
+        for line in parsed
+        if line.type == "tool_result" and line.metadata.get("tool") == "subagent"
+    ]
+    assert [line.content for line in active] == ["File Writer A", "File Writer B"]
+    # Identity now arrives already at dispatch in v1.1.13.
+    assert active[0].metadata.get("conversation_id") == "00000000-0000-0000-0000-000000000002"
+    assert active[1].metadata.get("conversation_id") == "00000000-0000-0000-0000-000000000003"
+    # The ACTIVE/DONE composite correlation key still pairs both entries.
+    assert [line.metadata.get("tool_use_id") for line in active] == ["6:0", "6:1"]
+    assert [line.metadata.get("tool_use_id") for line in done] == ["6:0", "6:1"]
+    # The new workspace_uris field is preserved observably, not dropped.
+    assert done[0].metadata["tool_info"]["workspace_uris"] == ["file:///workspace"]

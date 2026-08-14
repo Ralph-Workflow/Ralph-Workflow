@@ -289,7 +289,10 @@ full `step_update` `step_type` vocabulary (`user_input`, `unknown`,
 controlling terminal means empty stdout), and confirmed that AGY's own tool
 list includes `define_subagent` / `invoke_subagent` / `manage_subagents` --
 two subagents were observed dispatched and completed in parallel through
-those tools.
+those tools. A v1.1.13 re-measurement added the bodiless `system_message`
+`step_type` (surfaced as a lifecycle event by `AgyParser`) and a
+`workspace_uris` field on subagent entries, whose identity fields now
+arrive already on the ACTIVE dispatch frame.
 
 ## Completion and observability
 

@@ -16,7 +16,10 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     diff = "diff --git a/app.py b/app.py\n@@ -1 +1 @@\n-foo\n+bar"
     prompt = prompt_commit_message(diff)
 
-    assert "spec-compliant mcp commit_message artifact" in prompt.lower()
+    # The prompt names the artifact and its submission path in the opening
+    # line (tightened 2026-08-12 from the older "spec-compliant mcp
+    # commit_message artifact" phrasing; the contract is unchanged).
+    assert "produce and submit one valid `commit_message` artifact" in prompt.lower()
     assert diff in prompt
     assert "<ralph-commit>" not in prompt
     assert "<ralph-subject>" not in prompt
@@ -46,7 +49,9 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "## Files" in prompt
     assert "## Excluded Files" in prompt
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
-    assert prompt.startswith("Task:")
+    # Tightened opening (2026-08-12) replaced the old "Task:" prefix; the
+    # instruction line now opens the prompt directly.
+    assert prompt.startswith("Produce and submit one valid `commit_message` artifact")
     assert "tool named" in prompt.lower()
     assert "do not call bash" in prompt.lower()
     # The write-file fallback promotes a validated markdown document, not JSON.
@@ -60,8 +65,14 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "no dots, no uppercase" in prompt.lower()
     assert "quotes become part of the subject" in prompt.lower()
     assert "starts with a lowercase letter or digit" in prompt.lower()
-    assert "changes not yet committed" in prompt.lower()
-    assert "current worktree vs the last commit" in prompt.lower()
+    # The doc-shape bullet names both document choices (tightened
+    # 2026-08-12: "for pending work" replaced the older "changes not yet
+    # committed" framing).
+    assert "pending work" in prompt.lower()
+    assert "when no commit is needed" in prompt.lower()
+    # The tightening dropped the "current worktree vs the last commit"
+    # framing; "for the pending diff" in the opening line carries the
+    # same scope statement.
 
 
 def test_commit_prompt_rejects_empty_diff() -> None:
@@ -100,17 +111,26 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
         submit_artifact_tool_name="ralph_ralph_submit_md_artifact",
     )
 
-    assert "current pending work" in prompt
-    assert "current worktree vs the last commit" in prompt
-    assert "Do not analyze anything" in prompt
+    # Tightened opening (2026-08-12): names the artifact and the pending
+    # diff directly, replacing the older "current pending work" framing.
+    assert "Produce one valid `commit_message` artifact for the pending diff" in prompt
+    # The 2026-08-12 tightening dropped the "current worktree vs the last
+    # commit" framing; "for the pending diff" carries the same scope
+    # statement in the simplified template.
+    # Silent single-pass reading replaced the older "Do not analyze
+    # anything" instruction.
+    assert "Read the diff silently" in prompt
     assert "`ralph_ralph_submit_md_artifact`" in prompt
     # The artifact is a markdown document: the decision lives in frontmatter.
     assert "type: commit" in prompt
     assert "subject: fix(auth): prevent token expiry race" in prompt
     assert "type: skip" in prompt
     assert "path | reason" in prompt
-    assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
-    assert "The only state-changing tools you may call" in prompt
+    # The tightened skip-reason enumeration wraps across lines with
+    # backticked tokens; pin each token rather than one long phrase.
+    for token in ("internal_ignore", "not_task_related", "sensitive", "deferred"):
+        assert token in prompt
+    assert "state-changing tools allowed are" in prompt
     assert "ralph_declare_complete" in prompt
     assert "ralph_write_file" in prompt
     assert '`ralph_declare_complete(summary="commit_message")`' in prompt
@@ -120,14 +140,23 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     # markdown document — never JSON.
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
-    assert "use `chore` only for repo maintenance" in prompt
-    assert "omit it and its parentheses" in prompt
-    assert "every other commit gets a body" in prompt
-    # Anti-churn: the simplified prompt must terminate subject selection too.
-    assert "do not generate alternatives" in prompt
-    assert "there is no length limit" in prompt.lower()
-    assert "no dots, no uppercase" in prompt
-    assert prompt.startswith("Task:")
+    # Subject grammar (tightened 2026-08-12): the kind table moved into one
+    # inline sentence; the ``chore`` restriction and the scope alphabet are
+    # the load-bearing constraints.
+    assert "use `chore` only for" in prompt
+    assert "maintenance, tooling, config, or dependencies" in prompt
+    assert "Scope is optional" in prompt
+    assert "lowercase letters, digits, `/`, `_`, or `-`" in prompt
+    assert "lowercase imperative description" in prompt
+    # Body policy: omit only for trivial one-line changes.
+    assert "Omit the body only for a one-line typo, formatting, or comment change" in prompt
+    # Anti-churn: the simplified subject instruction terminates selection
+    # with a single "once" pass (the full template's "do not generate
+    # alternatives" phrasing is deliberately absent here).
+    assert "Write `<kind>(<scope>)?!?: <description>` once" in prompt
+    # Tightened opening (2026-08-12) replaced the old "Task:" prefix; the
+    # instruction line now opens the prompt directly.
+    assert prompt.startswith("Produce one valid")
 
 
 def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None:
@@ -146,10 +175,16 @@ def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
+    """The commit prompt must forbid confirmation questions outright.
+
+    The prohibition lives in the shared ``_unattended_mode`` partial, which
+    every commit prompt includes. The 2026-08-12 tightening dropped the
+    "would you like me to" example phrase; the behavioral prohibition it
+    illustrated is still pinned here by its normative sentence.
+    """
     prompt = prompt_commit_message("diff --git a/app.py b/app.py\n+hello")
 
     assert "do not ask the user for confirmation" in prompt.lower()
-    assert "would you like me to" in prompt.lower()
 
 
 def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path: Path) -> None:

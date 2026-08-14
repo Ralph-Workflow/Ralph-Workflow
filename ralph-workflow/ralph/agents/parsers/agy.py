@@ -1,4 +1,4 @@
-"""Parser for the AGY v1.1.10 ``--output-format stream-json`` wire format.
+"""Parser for the AGY ``--output-format stream-json`` wire format (v1.1.10 - v1.1.13).
 
 Source of truth: ``tests/display/_fixtures/agy_wire_provenance.md``. That file
 records the measured live-binary observations this parser is built against:
@@ -7,8 +7,9 @@ the PTY capture method, the exact probe prompts, the observed
 requirement (no controlling terminal -> empty stdout), and the real
 empty-output stderr message.
 
-The parser maps AGY v1.1.10 stream-json events (``init``, ``step_update``,
-``result``, ``error``) to normalized parser events (``text``, ``tool_use``,
+The parser maps AGY stream-json events (``init``, ``step_update``,
+``result``, ``error``; the measured binary range is v1.1.10 through
+v1.1.13) to normalized parser events (``text``, ``tool_use``,
 ``tool_result``, ``error``, ``lifecycle``, ``stop``). For plain-text fallback
 streams, the parser classifies plain-text lines as ``AgentOutputLine(type='text')``
 (NOT ``type='raw'``) so the smoke report and activity stream render model
@@ -45,10 +46,16 @@ Behaviour specifics (measured against the live v1.1.10 binary):
     field would not correlate the ACTIVE dispatch. That composite is a
     purpose-built correlation key rather than a raw field standing in for
     one, so it keeps using ``metadata["tool_use_id"]``.
-  * ``step_update`` frames whose ``step_type`` is ``user_input`` / ``unknown``
-    / ``checkpoint`` carry no ``text_delta`` and no ``tool_info`` /
-    ``subagent_info`` of their own. Rather than being silently dropped, each
-    yields a non-empty ``type='lifecycle'`` event summarizing the step_type.
+  * ``step_update`` frames whose ``step_type`` carries no body of its own
+    (no ``text_delta``, no ``tool_info`` / ``subagent_info``) are never
+    silently dropped. The v1.1.10-measured bodiless vocabulary is
+    ``user_input`` / ``unknown`` / ``checkpoint``; v1.1.13 added
+    ``system_message`` (see ``tests/display/_fixtures/
+    agy_wire_provenance.md``). Rather than enumerate, ANY bodiless
+    ``step_type`` other than ``agent_response`` yields a non-empty
+    ``type='lifecycle'`` event summarizing the step_type, so step
+    vocabulary added by a future AGY release degrades observably instead
+    of disappearing.
     A bodiless ``agent_response`` DONE frame's ``usage`` (no ``text_delta``,
     e.g. the measured one-shot ``OK`` capture) is likewise never discarded:
     it is carried forward to the next flushed ``text`` event when text is
@@ -130,12 +137,14 @@ __all__ = ["AgyParser"]
 _IDENTIFYING_PARAM_KEYS: tuple[str, ...] = ("TargetFile", "path", "file_path", "command", "query")
 _PARAM_SUMMARY_MAX_LEN = 60
 
-# B3/B4: the documented ``step_type`` vocabulary (see the module docstring
-# and tests/display/_fixtures/agy_wire_provenance.md) that carries no body
-# of its own -- no text_delta, no tool_info, no subagent_info. These are no
-# longer silently dropped by ``_dispatch_step_update``; each yields an
-# explicit non-empty ``lifecycle`` event instead.
-_LIFECYCLE_STEP_TYPES: frozenset[str] = frozenset({"user_input", "unknown", "checkpoint"})
+# B3/B4 + v1.1.13 drift: bodiless ``step_type`` frames (no text_delta, no
+# tool_info, no subagent_info) are never silently dropped by
+# ``_dispatch_step_update`` -- EVERY bodiless step_type other than
+# ``agent_response`` (the text step, governed by the B4 usage-carry
+# contract) yields an explicit non-empty ``lifecycle`` event, so new or
+# unknown vocabulary added by a future AGY release degrades observably.
+# See tests/display/_fixtures/agy_wire_provenance.md for the measured
+# v1.1.10 / v1.1.13 bodiless vocabulary.
 
 
 def _truncate(value: str) -> str:
@@ -562,11 +571,16 @@ class AgyParser(NdjsonParserBase):
     ) -> Iterator[AgentOutputLine]:
         """Handle a step_update with no ``text_delta`` and no tool/subagent update (B3/B4).
 
-        ``user_input`` / ``unknown`` / ``checkpoint`` are the documented
-        bodiless step_types (measured on the live capture -- see
-        ``tests/display/_fixtures/agy_wire_provenance.md``); each yields a
-        non-empty ``lifecycle`` event (mirroring :meth:`_dispatch_init_event`'s
-        pattern) so the frame is accounted for instead of silently discarded.
+        ``user_input`` / ``unknown`` / ``checkpoint`` are the v1.1.10-measured
+        bodiless step_types and ``system_message`` is the v1.1.13-measured
+        addition (see ``tests/display/_fixtures/agy_wire_provenance.md``);
+        each yields a non-empty ``lifecycle`` event (mirroring
+        :meth:`_dispatch_init_event`'s pattern) so the frame is accounted
+        for instead of silently discarded. The rule is deliberately not an
+        enumeration: ANY bodiless ``step_update`` whose ``step_type`` is not
+        ``agent_response`` surfaces as a lifecycle event, so a future AGY
+        release adding step vocabulary degrades observably rather than
+        disappearing (AGY Transport Completion plan assumption).
 
         A bodiless ``agent_response`` DONE frame's ``usage`` is never thrown
         away either: when text is already buffered, a later flush is
@@ -587,14 +601,19 @@ class AgyParser(NdjsonParserBase):
         step_type = step.get("step_type")
         usage = step.get("usage")
         has_usage = isinstance(usage, dict) and bool(usage)
-        if isinstance(step_type, str) and step_type in _LIFECYCLE_STEP_TYPES:
-            metadata: dict[str, object] = dict(step)
-            if has_usage:
-                metadata["usage"] = usage
+        metadata: dict[str, object] = dict(step)
+        if has_usage:
+            metadata["usage"] = usage
+        label = step_type if isinstance(step_type, str) and step_type else "update"
+        if step_type != "agent_response":
             yield AgentOutputLine(
-                type="lifecycle", content=f"agy step {step_type}", raw=raw, metadata=metadata
+                type="lifecycle", content=f"agy step {label}", raw=raw, metadata=metadata
             )
             return
+        # ``agent_response`` is the text step: its bodiless form is governed
+        # by the B4 usage-carry contract below, not the generic lifecycle
+        # rule above (a bodiless agent_response frame with no usage carries
+        # no observable content of its own).
         if not has_usage:
             return
         if self._text_accumulator is not None:
@@ -604,9 +623,6 @@ class AgyParser(NdjsonParserBase):
             else:
                 self._pending_text_usage = usage_dict
             return
-        label = step_type if isinstance(step_type, str) and step_type else "update"
-        metadata = dict(step)
-        metadata["usage"] = usage
         yield AgentOutputLine(
             type="lifecycle", content=f"agy step {label}", raw=raw, metadata=metadata
         )
