@@ -258,6 +258,9 @@ def test_the_step_hands_the_inline_effect_path_its_routing_timing(
     display_context = make_display_context()
     registry = MagicMock()
     registry.get.return_value = None
+    # Fold against the same deterministic clock as _drive_step; the sample
+    # box seed and the step's monotonic reads must agree.
+    monkeypatch.setattr(runner_module.time, "monotonic", lambda: _CLOCK_NOW)
     runner_module.run_pipeline_step(
         state=PipelineState(
             phase="development",
@@ -272,7 +275,7 @@ def test_the_step_hands_the_inline_effect_path_its_routing_timing(
         verbosity=Verbosity.QUIET,
         registry=registry,
         pipeline_subscriber=None,
-        _cycle_sample_box=[time.monotonic() - _STEP_SECONDS],
+        _cycle_sample_box=[_CLOCK_NOW - _STEP_SECONDS],
     )
 
     assert seen
