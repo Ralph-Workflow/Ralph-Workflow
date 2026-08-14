@@ -182,3 +182,31 @@ def test_the_runtime_re_entry_applies_that_decision(tmp_path: Path) -> None:
 
     assert updated.phase == "development_final_commit_cleanup"
     assert updated.cycle_timebox_active is False
+
+
+def test_a_deadline_redirect_is_announced_on_the_routing_log() -> None:
+    """The redirect reaches the operator through two surfaces; pin both.
+
+    ``cycle_timing`` documents the routing log line and the run-time report's
+    ``[CT-2]`` line as the two places a redirect surfaces. The report line is
+    covered; deleting the log call left no test failing, so an operator
+    watching a live run could lose the only real-time notice that a cycle was
+    cut short.
+    """
+    from loguru import logger
+
+    records: list[str] = []
+    sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
+    try:
+        reducer_reduce(
+            _in_cycle("development_analysis", consumed=14_400.0),
+            PipelineEvent.ANALYSIS_LOOPBACK,
+            _pipeline(),
+            routing_timing=RoutingTiming(
+                monotonic_now=0.0, total_elapsed_seconds=14_400.0
+            ),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert any("cycle timebox reached" in record for record in records)
