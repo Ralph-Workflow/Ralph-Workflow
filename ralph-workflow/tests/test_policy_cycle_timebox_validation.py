@@ -343,3 +343,35 @@ def test_a_misspelled_timebox_field_is_rejected_rather_than_ignored() -> None:
             finalization_target="development_final_commit_cleanup",
             finalisation_cycle_outcome="failed",
         )
+
+
+def test_an_unrecorded_outcome_that_loops_forever_is_rejected() -> None:
+    """A cycle that reaches its final commit with no verdict must still be able to end.
+
+    Post-commit routing matches an unrecorded outcome against the wildcard
+    routes first and only then retries it as the forward outcome, so a `failed`
+    route can never be the way an unrecorded cycle terminates. The validator
+    pooled every route for the phase instead, and accepted a table whose
+    unrecorded path routes back into the cycle on a spent budget — a run that
+    never ends — because a sibling `failed` route happened to reach a terminal.
+    """
+    import pytest as _pytest
+
+    from ralph.policy.models import PipelinePolicy
+    from ralph.policy.validation._api import validate_policy_completeness
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
+    bundle = load_policy(_DEFAULTS_DIR)
+    raw = bundle.pipeline.model_dump()
+    raw["post_commit_routes"] = [
+        {**route, "when": {**route["when"], "cycle_outcome": None}, "target": "planning"}
+        if route["when"]["phase"] == "development_final_commit"
+        and route["when"]["budget_state"] in ("exhausted", "no_review")
+        and route["when"]["cycle_outcome"] == "completed"
+        else route
+        for route in raw["post_commit_routes"]
+    ]
+    looping = bundle.model_copy(update={"pipeline": PipelinePolicy.model_validate(raw)})
+
+    with _pytest.raises(PolicyValidationError, match="terminal"):
+        validate_policy_completeness(looping)

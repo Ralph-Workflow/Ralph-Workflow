@@ -5,8 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.policy.models._phase_definition import PhaseDefinition
     from ralph.policy.models._pipeline_policy import PipelinePolicy
+    from ralph.policy.models._post_commit_route import PostCommitRoute
 
 
 def _validate_recovery_failed_route(
@@ -160,25 +163,40 @@ def _validate_spent_budget_can_end_the_run(
         # Every outcome must have its OWN way out: a failure route reaching the
         # failure terminal says nothing about where a completed cycle goes.
         for outcome in sorted({route.when.cycle_outcome for route in routes}, key=str):
-            targets = [
-                route.target
-                for route in routes
-                if outcome is None
-                or route.when.cycle_outcome is None
-                or route.when.cycle_outcome == outcome
-            ]
-            if any(
-                _terminal_is_reachable(policy, target, terminals, outcome=outcome)
-                for target in targets
+            target = _routed_target(routes, outcome)
+            if target is None or _terminal_is_reachable(
+                policy, target, terminals, outcome=outcome
             ):
                 continue
             errors.append(
                 f"phases.{phase_name}: with budget_state='{state_name}' and cycle outcome "
-                f"'{outcome}', no post_commit_route can reach a terminal without failing "
-                f"(targets: {sorted(set(targets))}). Once counter '{counter}' is spent the run "
+                f"'{outcome}', post-commit routing goes to '{target}', from which no terminal "
+                f"is reachable without failing. Once counter '{counter}' is spent the run "
                 "would re-enter the cycle forever. Route that combination to a terminal, or to "
                 "a phase from which one is reachable."
             )
+
+
+#: Outcome an unrecorded cycle is routed as once the wildcard routes fail to
+#: match, mirroring the reducer's post-commit fallback. Pooling every declared
+#: route instead let a ``failed`` route supply a terminal that an unrecorded
+#: cycle can never reach.
+_UNRECORDED_FALLBACK_OUTCOME = "completed"
+
+
+def _routed_target(routes: Sequence[PostCommitRoute], outcome: str | None) -> str | None:
+    """Return the target post-commit routing would take, or ``None`` for no match.
+
+    Models the live matcher exactly: the first route in table order whose
+    declared outcome is the wildcard or the outcome under test, with an
+    unrecorded outcome retried as the forward outcome when nothing matched.
+    """
+    candidates = (outcome,) if outcome is not None else (None, _UNRECORDED_FALLBACK_OUTCOME)
+    for candidate in candidates:
+        for route in routes:
+            if route.when.cycle_outcome is None or route.when.cycle_outcome == candidate:
+                return route.target
+    return None
 
 
 def _terminal_is_reachable(
@@ -211,18 +229,12 @@ def _terminal_is_reachable(
         # Follow only the routes THIS outcome can take: pooling every route for
         # the phase let a failure-outcome route supply a terminal the outcome
         # under test could never reach.
-        routed = [
-            route.target
-            for route in policy.post_commit_routes
-            if route.when.phase == phase
-            and (
-                outcome is None
-                or route.when.cycle_outcome is None
-                or route.when.cycle_outcome == outcome
-            )
+        phase_routes = [
+            route for route in policy.post_commit_routes if route.when.phase == phase
         ]
-        if routed:
-            frontier.extend(routed)
+        routed = _routed_target(phase_routes, outcome) if phase_routes else None
+        if routed is not None:
+            frontier.append(routed)
         elif phase_def.transitions.on_success is not None:
             frontier.append(phase_def.transitions.on_success)
         frontier.extend(route.target for route in phase_def.decisions.values())

@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 from contextlib import nullcontext, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
@@ -148,6 +148,12 @@ class _LoopContext:
     is_quiet: bool
     heartbeat_client: ProHeartbeatClient | None = None
     pro_watcher: ProMarkerWatcher | None = None
+    # Single-slot sink holding the most recent state the inner loop reached.
+    # An interrupt unwinds past every binding inside that loop, so without this
+    # the caller's ``state`` is still the one the run STARTED with, and the
+    # end-of-run report described a run that spent hours in development as
+    # having ended in planning with no phases and no cycle.
+    latest_state: list[PipelineState] = field(default_factory=list)
     # Background catch-up fast-forward worker (see
     # ``ralph.pipeline.auto_integrate_catchup``). Started at run start
     # when auto-integration is enabled; stopped in ``_cleanup_pipeline``
@@ -1180,7 +1186,12 @@ def _run_inner_loop(
     ctx: _LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
-    """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
+    """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted).
+
+    Publishes each state it reaches into ``ctx.latest_state`` so an interrupt,
+    which unwinds past every local binding here, still leaves the caller
+    holding the state the run actually reached.
+    """
     state = _apply_startup_rebase_outcomes(state, ctx)
     # State holder so the providers captured by run_pipeline_step can
     # read the LIVE PipelineState / ConnectivityMonitor on every agent
@@ -1214,6 +1225,7 @@ def _run_inner_loop(
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
+        ctx.latest_state[:] = [state]
         # Per-iteration pipeline_deps with the live providers so the
         # watchdog inside the agent invocation can consult the
         # classifier on every evaluate() call.
@@ -1789,12 +1801,17 @@ def _execute_with_cleanup(
                 last_sig=None,
             )
             _runner_module.notify_pipeline_subscriber(loop_ctx.effective_pipeline_subscriber, state)
+            loop_ctx.latest_state[:] = [state]
             try:
                 state, prev_phase, early_exit = _run_inner_loop(state, loop_ctx, prev_phase)
                 if early_exit is not None:
                     exit_code = early_exit
                     return exit_code
             except KeyboardInterrupt:
+                # Adopt the interrupted run's own state: the checkpoint, the
+                # report and the cleanup below all read this binding, and an
+                # interrupt unwinds past every state the loop had reached.
+                state = loop_ctx.latest_state[0]
                 exit_code = _handle_keyboard_interrupt(state, loop_ctx)
                 return exit_code
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
