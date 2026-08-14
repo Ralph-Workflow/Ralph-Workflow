@@ -210,3 +210,58 @@ def test_a_deadline_redirect_is_announced_on_the_routing_log() -> None:
         logger.remove(sink_id)
 
     assert any("cycle timebox reached" in record for record in records)
+
+
+def test_routing_into_a_terminal_ends_the_cycle_timer() -> None:
+    """A run that ends must leave no cycle running behind it.
+
+    The operator surfaces read the timer off the final state, so a terminal
+    reached with it still armed reports a live budget for a finished run. Every
+    other test of that wording hand-constructs the state; this one drives a
+    route into a terminal.
+
+    Note what this does NOT pin: under the bundled policy the success terminal
+    is already reachable from the finalization entry, so it is inside the
+    conclusion walk's reach and the explicit terminal clause in
+    ``conclude_cycle_on_route_out_of_cycle`` is redundant here. Removing that
+    clause keeps this green. It earns its place only for a custom policy whose
+    terminal is not reachable that way, which the bundled graph cannot express.
+    """
+    spent = PipelineState(
+        phase="development_final_commit",
+        budget_caps={"iteration": 1},
+        outer_progress={"iteration": 1},
+        pending_cycle_outcome="completed",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_CONSUMED,
+    )
+
+    ended, _effects = reducer_reduce(
+        spent,
+        PipelineEvent.COMMIT_SUCCESS,
+        _pipeline(),
+        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=_CONSUMED),
+    )
+
+    assert ended.phase in _pipeline().terminal_states()
+    assert ended.cycle_timebox_active is False
+
+
+def test_no_warning_is_issued_once_the_deadline_has_passed() -> None:
+    """Past the deadline the entry is redirected, not warned to hurry up.
+
+    Telling an agent to prioritize inside a budget that is already gone is
+    advice it cannot act on, and it contradicts the redirect that follows.
+    """
+    from ralph.pipeline.cycle_timing import cycle_timebox_warning
+
+    warning = cycle_timebox_warning(
+        _in_cycle("development", consumed=14_400.0),
+        "development",
+        policy=_pipeline(),
+        routing_timing=RoutingTiming(
+            monotonic_now=0.0, total_elapsed_seconds=14_400.0
+        ),
+    )
+
+    assert warning is None

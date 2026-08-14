@@ -21,6 +21,11 @@ from ralph.pipeline import run_loop
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import PipelineState
 
+#: The resume path arms the timer once, and the loop arms it again on entry.
+#: Both calls land on the same module-level name, so only the count tells them
+#: apart — and the mid-loop one is the site with no other coverage.
+_EXPECTED_ARMING_CALLS = 2
+
 if TYPE_CHECKING:
     import pytest
 
@@ -82,7 +87,10 @@ def test_the_loop_arms_a_legacy_checkpoint_resumed_mid_loop(
 
     _run_to_terminal(monkeypatch, PipelineState(phase="development"))
 
-    assert armed
+    # BOTH sites must fire: monkeypatching the module-level name cannot tell
+    # them apart, so counting is what distinguishes the mid-loop call from the
+    # resume-path one that a sibling test already covers.
+    assert len(armed) == _EXPECTED_ARMING_CALLS
     assert armed[-1].cycle_timebox_active is True
 
 

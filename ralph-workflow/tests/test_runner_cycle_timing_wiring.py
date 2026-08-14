@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 from functools import lru_cache
+from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -59,10 +60,21 @@ class _Captured:
         self.folded: list[float] = []
 
 
-def _drive_step(monkeypatch: MonkeyPatch, tmp_path: Path) -> _Captured:
-    """Run one real pipeline step inside a guarded cycle, observing the seams."""
+def _drive_step(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    *,
+    state: PipelineState | None = None,
+    sample_box: list[float | None] | None = None,
+) -> _Captured:
+    """Run one real pipeline step inside a guarded cycle, observing the seams.
+
+    Returns the captured seam arguments, or — when ``state`` is supplied — the
+    resulting state, so consecutive steps can be chained through one box.
+    """
     captured = _Captured()
-    state = PipelineState(
+    chaining = state is not None
+    state = state or PipelineState(
         phase="development",
         cycle_timebox_active=True,
         cycle_timebox_consumed_seconds=_CONSUMED,
@@ -90,6 +102,8 @@ def _drive_step(monkeypatch: MonkeyPatch, tmp_path: Path) -> _Captured:
     ) -> tuple[PipelineState, list[object]]:
         captured.reduce_kwargs.append(routing_timing)
         return current_state, []
+
+    box = sample_box if sample_box is not None else [time.monotonic() - _STEP_SECONDS]
 
     real_fold = runner_module.fold_cycle_elapsed
 
@@ -121,7 +135,7 @@ def _drive_step(monkeypatch: MonkeyPatch, tmp_path: Path) -> _Captured:
     display_context = make_display_context()
     registry = MagicMock()
     registry.get.return_value = None
-    runner_module.run_pipeline_step(
+    stepped = runner_module.run_pipeline_step(
         state=state,
         policy_bundle=_bundle(),
         workspace_scope=WorkspaceScope(tmp_path),
@@ -133,10 +147,9 @@ def _drive_step(monkeypatch: MonkeyPatch, tmp_path: Path) -> _Captured:
         pipeline_subscriber=None,
         # The run loop owns this sample box; without it the runner has no
         # monotonic anchor and every timing seam below goes silently null.
-        # Seeded in the past so the step folds a real, non-zero delta.
-        _cycle_sample_box=[time.monotonic() - _STEP_SECONDS],
+        _cycle_sample_box=box,
     )
-    return captured
+    return stepped if chaining else captured
 
 
 def test_the_step_hands_prompt_materialization_the_cycles_elapsed_total(
@@ -177,3 +190,35 @@ def test_the_step_folds_its_elapsed_time_into_the_cycle(
 
     assert captured.folded
     assert captured.folded[0] >= _STEP_SECONDS
+
+
+def test_consumed_time_accumulates_across_consecutive_steps(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Steps sharing one sample box must accumulate consumed time.
+
+    A single step seeded with an aged box never exercises the write-back that
+    stores this step's clock reading for the next one. Without that write-back
+    every step computes a zero delta, the consumed total stays at zero for the
+    life of the run and no deadline is ever reached — while a single-step test
+    and a helper that re-implements the step loop both stay green.
+    """
+    box: list[float | None] = [None]
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=0.0,
+    )
+    clock = count(100.0, 10.0)
+    monkeypatch.setattr(runner_module.time, "monotonic", lambda: next(clock))
+
+    consumed: list[float] = []
+    for _ in range(3):
+        state = _drive_step(monkeypatch, tmp_path, state=state, sample_box=box)
+        consumed.append(state.cycle_timebox_consumed_seconds)
+
+    # The first step has no earlier sample to measure against; every step after
+    # it charges the span since the previous step's write-back.
+    assert consumed[0] == 0.0
+    assert consumed[1] > consumed[0]
+    assert consumed[2] > consumed[1]

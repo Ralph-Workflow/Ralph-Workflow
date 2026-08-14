@@ -290,7 +290,7 @@ def _get_event_handlers() -> dict[
             {
                 PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
                 PipelineEvent.AGENT_FAILURE: _handle_agent_failure,
-                PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
+                PipelineEvent.AGENT_RETRY: _handle_agent_retry,
                 PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
                 PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
                 PipelineEvent.PHASE_LOOPBACK: _handle_phase_loopback,
@@ -552,6 +552,60 @@ def _handle_agent_success(
     return _resolve_or_terminal(state, "success", policy, "agent success", routing_timing=routing_timing)
 
 
+def _redirect_expired_cycle_in_place(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Return the finalization advance when re-running this phase is over budget.
+
+    Asks the deadline the same question a routing boundary would, for a
+    handler that is about to stay put. ``None`` when the cycle has room, is
+    not running, or this phase is not the guarded one — in which case the
+    caller proceeds unchanged.
+    """
+    if policy is None or routing_timing is None:
+        return None
+    decision = apply_cycle_timebox(
+        state, state.phase, policy=policy, routing_timing=routing_timing
+    )
+    if not decision.redirected:
+        return None
+    logger.bind(component="policy.routing").warning(decision.redirect_reason)
+    return _advance_phase(
+        decision.state, decision.target_phase, policy, routing_timing=routing_timing
+    )
+
+
+def _retry_or_fall_over(
+    state: PipelineState,
+    chain: AgentChainState,
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Retry the current agent, or fall over to the next one in the chain.
+
+    ``None`` once the agent has spent its retries and the chain has no further
+    agent, leaving the caller to route out of the phase.
+    """
+    max_retries = 3
+    if chain.retries < max_retries:
+        new_chain = chain.with_retry_increment()
+        new_metrics = state.metrics.with_retry_increment()
+        return state.with_phase_chain(state.phase, new_chain).copy_with(
+            metrics=new_metrics
+        ), []
+
+    if chain.current_index + 1 < len(chain.agents):
+        new_chain = chain.with_advance()
+        new_metrics = state.metrics.with_fallback_increment()
+        return state.with_phase_chain(state.phase, new_chain).copy_with(
+            metrics=new_metrics,
+            last_agent_session_id=None,
+            agent_retry_intent=cleared_agent_retry_intent(),
+        ), []
+
+    return None
+
+
 def _handle_agent_failure(
     state: PipelineState,
     policy: PipelinePolicy | None = None,
@@ -563,25 +617,23 @@ def _handle_agent_failure(
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         return _enter_failed_recovery(state, failure_reason, policy)
 
+    # A retry or a chain fallover keeps the run in the same phase, so no
+    # routing boundary is crossed and the deadline -- enforced only at
+    # boundaries -- would never be consulted. Each one is a fresh full-length
+    # invocation, and three retries per agent across the chain add up to many
+    # of them on a budget that is already spent, while the prompt, the
+    # tool-result banner and the policy documentation all say the redirect
+    # happens INSTEAD of starting another development invocation.
+    expired = _redirect_expired_cycle_in_place(state, policy, routing_timing)
+    if expired is not None:
+        return expired
+
     if state.agent_retry_intent.skip_same_agent_retries:
         return _handle_skip_same_agent_retries(state, chain, policy)
 
-    max_retries = 3
-    if chain.retries < max_retries:
-        new_chain = chain.with_retry_increment()
-        new_metrics = state.metrics.with_retry_increment()
-        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
-        return new_state, []
-
-    if chain.current_index + 1 < len(chain.agents):
-        new_chain = chain.with_advance()
-        new_metrics = state.metrics.with_fallback_increment()
-        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(
-            metrics=new_metrics,
-            last_agent_session_id=None,
-            agent_retry_intent=cleared_agent_retry_intent(),
-        )
-        return new_state, []
+    same_phase_attempt = _retry_or_fall_over(state, chain)
+    if same_phase_attempt is not None:
+        return same_phase_attempt
 
     # Chain exhausted: check for per-phase workflow_fallback before global failure route.
     if policy is not None:
@@ -639,8 +691,20 @@ def _handle_skip_same_agent_retries(
     return _enter_failed_recovery(state, failure_reason, policy)
 
 
-def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    """Handle agent retry request."""
+def _handle_agent_retry(
+    state: PipelineState,
+    policy: PipelinePolicy | None = None,
+    routing_timing: RoutingTiming | None = None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle agent retry request.
+
+    A continuation is another full-length invocation of the same phase, so it
+    is bounded by the cycle deadline exactly like a failure retry.
+    """
+    expired = _redirect_expired_cycle_in_place(state, policy, routing_timing)
+    if expired is not None:
+        return expired
+
     chain = state.chain_for_phase(state.phase)
     if chain is None:
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
