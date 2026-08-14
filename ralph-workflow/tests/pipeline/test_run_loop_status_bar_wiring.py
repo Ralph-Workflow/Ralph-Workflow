@@ -244,8 +244,10 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
       with ``iteration_state_field="development_analysis_iteration"``,
       so a state with
       ``loop_iterations={"development_analysis_iteration": 2}``
-      produces ``inner_analysis=3, inner_analysis_cap=3``
-      (AnalysisLoopCounter(2, 3).display_iteration).
+      produces ``inner_analysis=2`` — the phase is gated, so the stored
+      counter is charged on entry and already includes the pass now
+      running, which ``completed_analysis_passes`` takes back out before
+      the label is derived.
     """
     workspace_root = Path("/tmp/wt028-statusbar-e2e").resolve()
     policy_bundle = _load_default_policy()
@@ -343,7 +345,10 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert second_push.phase_label == "Development Analysis"
     assert second_push.outer_dev_iteration == 1
     assert second_push.outer_dev_cap == 5
-    assert second_push.inner_analysis == 3
+    # `development_analysis` is gated, so its counter is charged on ENTRY and
+    # includes the pass now running: a stored 2 means one pass finished and the
+    # second is under way, which is what the operator is shown.
+    assert second_push.inner_analysis == 2
     assert second_push.inner_analysis_cap == 5
 
     # AC-03 invariant: the StatusBar's observable ``last_model``
@@ -357,7 +362,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     last = pd.status_bar.last_model
     assert last.workspace_root == workspace_root_str
     assert last.phase_label == "Development Analysis"
-    assert last.inner_analysis == 3
+    assert last.inner_analysis == 2
     assert last.inner_analysis_cap == 5
 
 

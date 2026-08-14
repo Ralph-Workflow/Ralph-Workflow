@@ -104,6 +104,30 @@ def resolve_analysis_cap(
     raise ValueError(msg)
 
 
+def completed_analysis_passes(
+    state: PipelineState,
+    phase: str,
+    policy: PipelinePolicy,
+) -> int:
+    """Return how many analysis passes of ``phase`` have actually finished.
+
+    :class:`AnalysisLoopCounter` reads its input as completed passes, which is
+    what the stored counter means everywhere it is charged on loopback — after
+    the pass. A phase guarded by an ``invocation_gate`` is charged on ENTRY
+    instead, so its counter includes the pass currently running. Taking that
+    charge back out is what keeps the operator's label on the pass in front of
+    them: without it the first gated pass rendered as the second, the last two
+    shared a label, and the final-pass hint arrived an iteration early.
+    """
+    phase_def = policy.phases.get(phase)
+    if phase_def is None or phase_def.loop_policy is None:
+        return 0
+    stored = state.get_loop_iteration(phase_def.loop_policy.iteration_state_field)
+    if phase_def.invocation_gate is None:
+        return stored
+    return max(0, stored - 1)
+
+
 def is_final_analysis_iteration(current_iteration: int, max_iterations: int) -> bool:
     """Return True when the current analysis state should be treated as final.
 

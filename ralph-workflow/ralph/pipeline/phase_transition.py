@@ -136,7 +136,7 @@ def _build_phase_entry_model_from_state(
             inner_analysis_cap = _resolve_analysis_cap(field, pipeline_policy)
             if inner_analysis_cap > 0:
                 inner_analysis = progress.AnalysisLoopCounter(
-                    state.get_loop_iteration(field),
+                    progress.completed_analysis_passes(state, phase, pipeline_policy),
                     inner_analysis_cap,
                 ).display_iteration
             else:
@@ -273,7 +273,9 @@ def _analysis_decision_transition_context(
         route = phase_def.decisions.get(event.decision)
         if route is not None and not route.reset_loop:
             iteration_field = phase_def.loop_policy.iteration_state_field
-            analysis_cur = next_state.get_loop_iteration(iteration_field)
+            analysis_cur = progress.completed_analysis_passes(
+                next_state, event.phase, pipeline_policy
+            )
             max_iter = _resolve_analysis_cap(iteration_field, pipeline_policy)
             if progress.is_final_analysis_iteration(analysis_cur, max_iter):
                 context["analysis_status"] = "final, skipping next"
