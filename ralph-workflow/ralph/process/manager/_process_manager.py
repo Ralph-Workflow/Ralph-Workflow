@@ -417,10 +417,13 @@ class ProcessManager:
           no-psutil configuration. Windows has no ``os.kill``
           equivalent, so the no-psutil branch is a no-op there.
 
-        Every per-descendant step is wrapped in
+        Every per-descendant signalling step is wrapped in
         ``contextlib.suppress`` for ``OSError`` /
         ``ProcessLookupError`` so one unkilled descendant does not
-        strand the rest.
+        strand the rest, and both bounded waits route through
+        :meth:`_safe_wait_procs` so a pidfd_open ``OSError`` (EINVAL)
+        on an already-reaped PID is classified per-PID instead of
+        aborting the batched wait.
 
         Returns:
             The list of PIDs we attempted to terminate (for
@@ -444,12 +447,13 @@ class ProcessManager:
                 try:
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.terminate()
-                    with contextlib.suppress(Exception):
-                        psutil_mod.wait_procs([proc], timeout=grace_period_s)
+                    # _safe_wait_procs: psutil's wait_procs can raise OSError
+                    # (EINVAL) from os.pidfd_open on reaped PIDs; the helper
+                    # classifies per-PID liveness instead of aborting teardown.
+                    self._safe_wait_procs(psutil_mod, [proc], timeout=grace_period_s)
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.kill()
-                    with contextlib.suppress(Exception):
-                        psutil_mod.wait_procs([proc], timeout=kill_followup)
+                    self._safe_wait_procs(psutil_mod, [proc], timeout=kill_followup)
                     terminated.append(descendant_pid)
                 except (OSError, ProcessLookupError):
                     terminated.append(descendant_pid)

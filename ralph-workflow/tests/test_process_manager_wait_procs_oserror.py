@@ -13,6 +13,8 @@ from __future__ import annotations
 import errno
 import itertools
 import sys
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -24,6 +26,12 @@ from ralph.testing.fake_process import (
     make_async_process_factory,
     make_sync_process_factory,
 )
+
+if TYPE_CHECKING:
+    from ralph.process.manager._process_manager_types import (
+        _PsutilModuleLike,
+        _PsutilProcessLike,
+    )
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3,
@@ -103,6 +111,53 @@ def test_safe_wait_procs_fallback_keeps_unprovable_procs_alive() -> None:
 
     assert alive == [root]
     assert gone == [dead]
+
+
+def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Registered-descendant graceful/force waits must go through _safe_wait_procs.
+
+    Registers a descendant whose batched ``wait_procs`` calls raise the
+    pidfd_open ``OSError(EINVAL)`` and drives teardown through the public
+    handle. Instruments the manager's central ``_safe_wait_procs`` wrapper
+    and asserts every ``wait_procs`` call in that teardown path is observed
+    through it — the graceful and force descendant waits must not bypass
+    the liveness-aware fallback under blanket exception suppression.
+    """
+    pm, fake_psutil = _make_manager()
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+
+    descendant_pid = 4242
+    descendant = FakePsutilProcess(pid=descendant_pid)
+    fake_psutil._processes[descendant_pid] = descendant
+    pm.register_descendant(handle.pid, descendant_pid)
+
+    safe_wait_pids: list[list[int | None]] = []
+    original_safe_wait = pm._safe_wait_procs
+
+    def counting_safe_wait(
+        psutil_mod: _PsutilModuleLike,
+        procs: Sequence[_PsutilProcessLike],
+        *,
+        timeout: float | None,
+    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        safe_wait_pids.append([getattr(proc, "pid", None) for proc in procs])
+        return original_safe_wait(psutil_mod, procs, timeout=timeout)
+
+    monkeypatch.setattr(pm, "_safe_wait_procs", counting_safe_wait)
+
+    handle.terminate(grace_period_s=0.0)
+
+    assert handle.record.status == ProcessStatus.KILLED
+    assert pm.list_active() == []
+    # The descendant was signalled and the registry entry was consumed.
+    assert not descendant.is_running()
+    assert handle.pid not in pm._descendants
+    # Every wait in the teardown path delegated through the wrapper.
+    assert fake_psutil.wait_procs_calls == len(safe_wait_pids)
+    assert len(safe_wait_pids) >= 1
+    assert any(pids == [descendant_pid] for pids in safe_wait_pids)
 
 
 @pytest.mark.parametrize("grace", [0.0, 0.01], ids=["zero-grace", "short-grace"])
