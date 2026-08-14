@@ -343,3 +343,41 @@ def test_the_recovery_hop_judges_the_deadline_on_the_sampled_clock(
     )
 
     assert updated.phase == "development_final_commit_cleanup"
+
+
+def test_a_resumed_concluded_cycle_is_not_re_armed(tmp_path: Path) -> None:
+    """A checkpoint whose cycle already ended must not be given a fresh budget.
+
+    The initializer exists for checkpoints predating the feature, which carry
+    no cycle state at all. A concluded cycle carries consumed seconds, and
+    re-arming it hands the finished cycle a full budget over again.
+    """
+    from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+
+    concluded = PipelineState(
+        phase="development",
+        cycle_timebox_active=False,
+        cycle_timebox_consumed_seconds=7200.0,
+    )
+
+    resumed = initialize_legacy_cycle_on_resume(concluded, _pipeline())
+
+    assert resumed.cycle_timebox_active is False
+    assert resumed.cycle_timebox_consumed_seconds == 7200.0
+
+
+def test_the_banner_never_shows_negative_time_remaining() -> None:
+    """An over-budget cycle has zero left, not a negative amount.
+
+    The tool-result banner floors this; the operator's phase banner did not,
+    so a cycle past its deadline advertised "-5m left".
+    """
+    from ralph.pipeline.cycle_timing import cycle_timebox_status_item
+
+    item = cycle_timebox_status_item(
+        _in_cycle("development", consumed=9000.0),
+        policy=_pipeline(),
+    )
+
+    assert item is not None
+    assert "-" not in str(item)

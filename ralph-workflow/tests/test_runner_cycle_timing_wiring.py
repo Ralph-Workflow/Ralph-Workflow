@@ -222,3 +222,52 @@ def test_consumed_time_accumulates_across_consecutive_steps(
     assert consumed[0] == 0.0
     assert consumed[1] > consumed[0]
     assert consumed[2] > consumed[1]
+
+
+def test_the_step_hands_the_inline_effect_path_its_routing_timing(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The inline path falls back to the stored total, so the supply matters.
+
+    The recovery hop's deadline check is pinned by calling the handler with a
+    timing of the test's own making — which cannot see the runner failing to
+    supply one. Without it the hop silently reverts to the stale stored total.
+    """
+    seen: list[object] = []
+    monkeypatch.setattr(
+        runner_module,
+        "handle_inline_effect",
+        lambda **kwargs: seen.append(kwargs.get("routing_timing")) or kwargs["state"],
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "call_determine_effect_from_policy",
+        lambda *_a, **_k: runner_module.SaveCheckpointEffect(),
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda *_a, **_k: None)
+
+    display_context = make_display_context()
+    registry = MagicMock()
+    registry.get.return_value = None
+    runner_module.run_pipeline_step(
+        state=PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=_CONSUMED,
+        ),
+        policy_bundle=_bundle(),
+        workspace_scope=WorkspaceScope(tmp_path),
+        config=MagicMock(),
+        display=runner_module.ParallelDisplay(display_context),
+        display_context=display_context,
+        verbosity=Verbosity.QUIET,
+        registry=registry,
+        pipeline_subscriber=None,
+        _cycle_sample_box=[time.monotonic() - _STEP_SECONDS],
+    )
+
+    assert seen
+    assert seen[0] is not None
+    assert seen[0].total_elapsed_seconds == pytest.approx(
+        _CONSUMED + _STEP_SECONDS, abs=2.0
+    )

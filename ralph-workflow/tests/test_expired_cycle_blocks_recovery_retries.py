@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from ralph.pipeline.cycle_timing import RoutingTiming
-from ralph.pipeline.events import PhaseFailureEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -128,3 +128,35 @@ def test_a_crash_inside_the_budget_still_recovers_normally() -> None:
     )
 
     assert recovered.phase == "development"
+
+
+def test_a_typed_broken_agent_failure_in_a_spent_cycle_is_redirected() -> None:
+    """The typed broken-agent route needs its own guard, and had no test.
+
+    `BrokenAgentExitError` and its siblings reach the controller through a
+    different handler than an ordinary phase failure, and that handler's routes
+    also stay in the same phase — so a spent cycle started another full-length
+    development invocation through it.
+    """
+    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+
+    spent = _developing(_SPENT).copy_with(
+        agent_retry_intent=AgentRetryIntent(
+            failure_reason="BrokenAgentExitError",
+            failed_agent_name="claude",
+            broken_agent_reason="no_output",
+        )
+    )
+
+    redirected, _effects = reducer_reduce(
+        spent,
+        PipelineEvent.AGENT_FAILURE,
+        _bundle().pipeline,
+        recovery=RecoveryController(
+            options=RecoveryControllerOptions(policy_bundle=_bundle())
+        ),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
+    )
+
+    assert redirected.phase == _TARGET
+    assert redirected.cycle_timebox_redirects == 1
