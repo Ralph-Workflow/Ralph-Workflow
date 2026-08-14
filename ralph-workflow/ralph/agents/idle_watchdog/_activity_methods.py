@@ -203,6 +203,7 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._last_meaningful_output_at = now
     self._has_meaningful_output = False
     self._any_output_count = 0
+    self._observed_output_bytes = 0
     self._captured_session_id = None
     self._process_alive = True
     self._waiting_on_child_started_at = None

@@ -16108,8 +16108,8 @@ class _RecordingWatchdog:
     def record_activity(self) -> None:
         self.activity_records.append("activity")
 
-    def record_any_output(self) -> None:
-        return None
+    def record_any_output(self, byte_size: int = 0) -> None:
+        del byte_size
 
     def record_tool_use_activity(self) -> None:
         self.activity_records.append("tool_use")

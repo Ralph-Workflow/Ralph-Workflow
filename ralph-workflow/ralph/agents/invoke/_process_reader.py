@@ -136,6 +136,7 @@ def check_broken_agent_timer(
         and not evidence.process_alive
         and not evidence.has_meaningful_output
         and not evidence.has_session_id_captured
+        and watchdog.observed_output_is_structurally_small()
     ):
         raise BrokenAgentExitError(
             agent_name,
@@ -144,6 +145,14 @@ def check_broken_agent_timer(
             grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
         )
     if elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS or evidence.has_meaningful_output:
+        return
+    if not watchdog.observed_output_is_structurally_small():
+        # Substantial observed output without a meaningful-LLM classification
+        # is NOT provider silence: it is (at worst) a failure to submit the
+        # required artifact. Do not terminate the process and do not mark the
+        # provider broken here; let the run proceed so the completion gate
+        # raises the resumable / incomplete-artifact error with the agent's
+        # own exit evidence once the process exits.
         return
     handle.terminate(grace_period_s=0.5)
     pid = cast("int | None", getattr(handle, "pid", None))
@@ -851,7 +860,7 @@ class ProcessLineReader:
             activity_signal, queued_line, self._input_prompt
         )
         if activity_signal.kind != AgentActivityKind.LIFECYCLE and not activity_signal.is_harness_echo:
-            watchdog.record_any_output()
+            watchdog.record_any_output(byte_size=len(queued_line.encode("utf-8")))
         self._last_activity_kind = str(activity_signal.kind)
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS

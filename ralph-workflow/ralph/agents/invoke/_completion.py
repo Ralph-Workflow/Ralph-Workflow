@@ -21,6 +21,9 @@ from ralph.agents.execution_state import (
     is_prompt_echo_line,
 )
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
+from ralph.agents.idle_watchdog._circumstantial_evidence import (
+    is_structurally_small_bounded_output,
+)
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
@@ -83,24 +86,6 @@ CREDENTIALS_FAILURE_SUBSTRINGS = (
 def _looks_like_credentials_failure(text: str) -> bool:
     """Return whether text carries a known credential/authentication failure marker."""
     return contains_casefolded_marker([text], CREDENTIALS_FAILURE_SUBSTRINGS)
-
-
-_NO_LLM_ACTIVITY_MAX_NONBLANK_LINES: int = 2
-_NO_LLM_ACTIVITY_MAX_BYTES: int = 256
-
-
-def _is_structurally_small_no_llm_output(bounded_output: list[str]) -> bool:
-    """Gate no-LLM-activity classification to tiny bounded outputs.
-
-    This is intentionally small-structure only: up to 2 nonblank lines and
-    up to 256 bytes total. Substantial output should follow the
-    normal resumable/retry path even if watchdog marked it non-meaningful
-    for that invocation.
-    """
-    nonblank_lines = sum(1 for line in bounded_output if line.strip())
-    if nonblank_lines > _NO_LLM_ACTIVITY_MAX_NONBLANK_LINES:
-        return False
-    return sum(len(line.encode("utf-8")) for line in bounded_output) <= _NO_LLM_ACTIVITY_MAX_BYTES
 
 
 def _truncation_marker(capped_bytes: int) -> str:
@@ -567,7 +552,7 @@ def _raise_if_broken_agent_exit(
     if (
         bounded_output
         and opts.has_meaningful_output is False
-        and _is_structurally_small_no_llm_output(bounded_output)
+        and is_structurally_small_bounded_output(bounded_output)
     ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(

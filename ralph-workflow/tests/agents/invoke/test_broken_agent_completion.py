@@ -238,6 +238,47 @@ def test_completion_gate_substantial_output_marked_no_meaningful_still_resumable
     assert classified.unavailability_reason is None
 
 
+def test_completion_gate_missing_plan_receipt_with_substantial_output_is_not_provider_failure() -> None:
+    """Reported regression: artifact-submission failure is not provider silence.
+
+    Reproduces the reported pi planning run end to end at the completion
+    gate: the agent streamed a large transcript past the grace window, the
+    watchdog never saw meaningful LLM output, and neither the plan receipt
+    nor the completion sentinel exists. The gate must raise the resumable
+    completion-evidence error (same-session technical retry), never
+    ``BrokenAgentExitError`` (provider-unavailability fallover).
+    """
+    output_lines = [
+        '{"type":"grep_files","line":' + str(index) + "," + '"text":"' + "t" * 90 + '"}'
+        for index in range(20)
+    ]
+    assert len([line for line in output_lines if line.strip()]) > 2
+    assert sum(len(line.encode("utf-8")) for line in output_lines) > 256
+
+    with pytest.raises(OpenCodeResumableExitError) as excinfo:
+        check_process_result(
+            _Handle(),
+            "pi/minimax/MiniMax-3",
+            output_lines,
+            _options(
+                elapsed_seconds=40.0,
+                input_prompt="produce the plan",
+                has_meaningful_output=False,
+            ),
+            _clock=FakeClock(),
+        )
+
+    assert not isinstance(excinfo.value, BrokenAgentExitError)
+    classified = FailureClassifier().classify(
+        excinfo.value,
+        phase="planning",
+        agent="pi/minimax/MiniMax-3",
+        connectivity_state="online",
+    )
+    assert classified.is_unavailable is False
+    assert classified.unavailability_reason is None
+
+
 def test_completion_gate_keeps_mixed_output_resumable() -> None:
     prompt = "implement the change"
     with pytest.raises(Exception) as excinfo:

@@ -14,7 +14,6 @@ what a mutation to the call site changes.
 
 from __future__ import annotations
 
-import time
 from functools import lru_cache
 from itertools import count
 from pathlib import Path
@@ -40,6 +39,11 @@ if TYPE_CHECKING:
 _CONSUMED = 3600.0
 # Seeded age of the sample box, so the folded delta is a real duration.
 _STEP_SECONDS = 5.0
+# Deterministic "now" for the default single-step drives. The audit forbids
+# real wall-clock measurement in tests; a constant fake clock makes both of
+# the step's sample points read the same instant, so the seeded box age is
+# exactly ``_STEP_SECONDS`` at each seam.
+_CLOCK_NOW = 1000.0
 
 
 @lru_cache(maxsize=1)
@@ -103,7 +107,12 @@ def _drive_step(
         captured.reduce_kwargs.append(routing_timing)
         return current_state, []
 
-    box = sample_box if sample_box is not None else [time.monotonic() - _STEP_SECONDS]
+    if sample_box is not None:
+        box = sample_box
+    else:
+        # Inject a deterministic clock instead of measuring real wall time.
+        monkeypatch.setattr(runner_module.time, "monotonic", lambda: _CLOCK_NOW)
+        box = [_CLOCK_NOW - _STEP_SECONDS]
 
     real_fold = runner_module.fold_cycle_elapsed
 

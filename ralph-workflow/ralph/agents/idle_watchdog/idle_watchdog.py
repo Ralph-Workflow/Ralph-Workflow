@@ -145,7 +145,7 @@ from ._activity_methods import (
 from ._activity_methods import (
     record_workspace_event as activity_record_workspace_event,
 )
-from ._circumstantial_evidence import CircumstantialEvidence
+from ._circumstantial_evidence import CircumstantialEvidence, is_structurally_small_output
 from ._fire_evaluators import (
     evaluate_no_output_at_start,
     evaluate_no_progress_quiet,
@@ -284,6 +284,12 @@ class IdleWatchdog:
     _last_meaningful_output_at: float | None = field(default=None, init=False)
     _has_meaningful_output: bool = field(default=False, init=False)
     _any_output_count: int = field(default=0, init=False)
+    # Cumulative byte size of the observed output signals (the same lines
+    # ``_any_output_count`` counts). Feeds the shared bounded-output
+    # significance rule so the live broken-agent timer can distinguish a
+    # genuinely tiny harness-only stream from a large transcript that was
+    # merely never classified as meaningful LLM output.
+    _observed_output_bytes: int = field(default=0, init=False)
     _captured_session_id: str | None = field(default=None, init=False)
     _process_alive: bool = field(default=True, init=False)
     _invocation_started_at: float | None = field(default=None, init=False)
@@ -511,6 +517,7 @@ class IdleWatchdog:
         self._last_meaningful_output_at = None
         self._has_meaningful_output = False
         self._any_output_count = 0
+        self._observed_output_bytes = 0
         self._captured_session_id = None
         self._process_alive = True
         self._waiting_on_child_started_at = None
@@ -816,9 +823,16 @@ class IdleWatchdog:
         """Record the transport session id that proves a session was established."""
         self._captured_session_id = session_id
 
-    def record_any_output(self) -> None:
-        """Record one classified output signal without changing activity semantics."""
+    def record_any_output(self, byte_size: int = 0) -> None:
+        """Record one classified output signal without changing activity semantics.
+
+        ``byte_size`` is the UTF-8 size of the observed line (0 when the
+        caller has no text, e.g. cosmetic lifecycle frames recorded via
+        ``record_lifecycle_activity``). It only feeds the bounded-output
+        significance rule; it never changes activity or idle semantics.
+        """
         self._any_output_count += 1
+        self._observed_output_bytes += max(0, byte_size)
 
     def record_prompt_echo(self, line: str) -> None:
         """Record a deterministic harness echo of the input prompt.
@@ -838,6 +852,22 @@ class IdleWatchdog:
     def has_any_output(self) -> bool:
         """Return whether this invocation has emitted any classified output."""
         return self._any_output_count > 0
+
+    def observed_output_is_structurally_small(self) -> bool:
+        """Return whether observed output is tiny enough to support a broken-agent call.
+
+        Applies the shared bounded-output significance rule
+        (:func:`ralph.agents.idle_watchdog._circumstantial_evidence.is_structurally_small_output`)
+        to the watchdog's observed-output evidence: the count of classified
+        output signals and their cumulative byte size. Substantial observed
+        output must NOT be reclassified as provider silence by the live
+        broken-agent timer; the completion gate owns that classification
+        once the agent exits.
+        """
+        return is_structurally_small_output(
+            nonblank_line_count=self._any_output_count,
+            total_bytes=self._observed_output_bytes,
+        )
 
     def _is_no_progress_quiet(self, now: float, corroboration: CorroborationSnapshot) -> bool:
         return is_no_progress_quiet(self, now, corroboration)

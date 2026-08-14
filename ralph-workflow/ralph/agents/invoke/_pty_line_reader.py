@@ -1374,7 +1374,7 @@ class PtyLineReader:
                 activity_signal, queued_line, self._input_prompt
             )
             if activity_signal.kind != AgentActivityKind.LIFECYCLE and not activity_signal.is_harness_echo:
-                watchdog.record_any_output()
+                watchdog.record_any_output(byte_size=len(queued_line.encode("utf-8")))
             self._last_activity_kind = activity_signal.kind
             self._last_meaningful[0] = (
                 activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
