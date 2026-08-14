@@ -141,9 +141,17 @@ def _free_form_content(document: ParsedDocument) -> Content:
     if _cycle_timebox_warned(document):
         incomplete_items = _optional_items(document, "Incomplete Work")
         if not incomplete_items:
+            # A bracket-less bullet never becomes an item -- the parser reads it
+            # as prose -- so an agent that wrote the section without stable IDs
+            # was told it was missing while looking straight at it.
+            present = document.section("Incomplete Work") is not None
             raise ValueError(
-                "Incomplete Work section with at least one stable-ID item "
-                "is required when cycle_timebox_warned is set; each item "
+                "Incomplete Work items must each start with a stable-ID bracket "
+                "such as '- [S-4] ...'; the section is present but no item "
+                "carries one"
+                if present
+                else "Incomplete Work section with at least one stable-ID item "
+                "is required after the cycle timebox warning; each item "
                 "must include a 'Reason:' and 'Evidence:' field"
             )
         _validate_warned_incomplete_items(incomplete_items)
@@ -186,29 +194,50 @@ def _optional_items(document: ParsedDocument, name: str) -> tuple[ParsedItem, ..
 
 
 def _item_fields(item: ParsedItem) -> dict[str, str]:
-    """Extract ``Key: value`` pairs from an item's indented continuation lines."""
-    return {
-        line.text.split(": ", 1)[0]: line.text.split(": ", 1)[1]
-        for line in item.fields
-        if ": " in line.text
-    }
+    """Extract ``Key: value`` pairs from an item's indented continuation lines.
+
+    List markers and bold emphasis are stripped before the split. Nothing tells
+    an agent which of the equivalent markdown shapes the parser wants, and
+    accepting only the bare one rejected ``- Reason:`` and ``**Reason:**`` —
+    the two most natural ways to write it — so an honest report failed
+    validation on its styling.
+    """
+    fields: dict[str, str] = {}
+    for line in item.fields:
+        parsed = _field_key_and_value(line.text)
+        if parsed is not None:
+            fields[parsed[0]] = parsed[1]
+    return fields
+
+
+def _field_key_and_value(text: str) -> tuple[str, str] | None:
+    """Return the ``Key``/``value`` a continuation line carries, if it is one."""
+    normalized = text.strip()
+    for marker in ("- ", "* ", "+ "):
+        if normalized.startswith(marker):
+            normalized = normalized[len(marker) :]
+            break
+    normalized = normalized.replace("**", "").replace("__", "")
+    if ": " not in normalized:
+        return None
+    key, value = normalized.split(": ", 1)
+    return key.strip(), value.strip()
 
 
 def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
-    """Mechanically require a stable ID, evidence, and reason for warned items.
+    """Mechanically require evidence and a reason for each warned item.
 
     When the cycle timebox fired a soft warning, each ``## Incomplete Work``
-    item must carry a stable-ID bracket, a concise ``Reason:`` field, and a
-    supporting ``Evidence:`` field with a reproducible location — so the
-    operator and next iteration can triage what was interrupted without
-    re-reading the transcript or accepting fabricated completion.
+    item must carry a concise ``Reason:`` field and a supporting ``Evidence:``
+    field with a reproducible location — so the operator and next iteration can
+    triage what was interrupted without re-reading the transcript or accepting
+    fabricated completion. The stable-ID bracket is enforced by the parser,
+    which builds an item only from a bracketed bullet.
     """
     for item in items:
-        if not item.identifier:
-            raise ValueError(
-                f"Incomplete Work items must include a stable-ID bracket "
-                f"(line {item.line})"
-            )
+        # No identifier check here: the parser only builds an item from a
+        # bracketed bullet, so a bracket-less line never reaches this loop --
+        # it is caught where the section reads as empty.
         fields = _item_fields(item)
         reason = fields.get("Reason", "").strip()
         if not reason:

@@ -222,3 +222,54 @@ status: completed
     )
 
     assert diagnostics == []
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+@pytest.mark.parametrize(
+    "fields",
+    [
+        pytest.param("  - Reason: Tests not updated.\n  - Evidence: tests/test_api.py:42\n", id="nested-bullets"),
+        pytest.param("  **Reason:** Tests not updated.\n  **Evidence:** tests/test_api.py:42\n", id="bold-labels"),
+        pytest.param("  Reason: Tests not updated.\n  Evidence: tests/test_api.py:42\n", id="bare"),
+    ],
+)
+def test_incomplete_work_fields_are_read_in_the_shapes_agents_write(fields: str) -> None:
+    """An honest report must not be rejected for its markdown style.
+
+    Nothing tells the agent which of these shapes the parser wants, and the two
+    most natural ones were rejected — so the gate punished the honest report it
+    exists to collect.
+    """
+    _content, diagnostics = parse_and_validate(
+        "---\ntype: development_result\nstatus: partial\n---\n"
+        "## Summary\n- [SUM-1] S-4 incomplete.\n"
+        "## Incomplete Work\n- [S-4] Rename API endpoints: half-applied.\n" + fields,
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_bracketless_incomplete_item_is_told_what_is_wrong() -> None:
+    """A bullet without a stable ID is not an item, so say so.
+
+    The parser only builds an item from a bracketed bullet, so a bracket-less
+    line becomes prose and the section reads as empty — and the agent was told
+    the section was missing while looking straight at it.
+    """
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] S-4 incomplete.
+## Incomplete Work
+- Retry path unfinished.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert any("stable-ID" in diagnostic.message for diagnostic in diagnostics)
+    assert not any("is required" in diagnostic.message for diagnostic in diagnostics)

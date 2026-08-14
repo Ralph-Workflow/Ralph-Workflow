@@ -372,3 +372,50 @@ def _publish_a_guarded_deadline() -> None:
         _bundle(),
         _ELAPSED_SECONDS,
     )
+
+
+def test_the_warning_reaches_the_prompt_materializer(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Publishing the deadline is not the same as warning the agent.
+
+    The prompt's own warning is a separate argument handed to the materializer,
+    and every test here injected a materializer that discarded it — so the
+    argument could be replaced with None, silencing the development prompt,
+    with this whole file still green.
+    """
+    _reserve_env(monkeypatch)
+    captured: dict[str, object] = {}
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Do the work")
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    def _capture(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "fake-prompt.md"
+
+    # 80% of the bundled 7200s budget has elapsed: the warning point is now.
+    runner_module.materialize_agent_prompt_if_needed(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file="PROMPT.md",
+            drain="development",
+            chain_name="development",
+        ),
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=5760.0,
+        ),
+        workspace,
+        _bundle(),
+        registry,
+        materialize_fn=_capture,
+        cycle_total_elapsed=5760.0,
+    )
+
+    warning = captured["cycle_timebox_warning"]
+    assert warning is not None
+    assert warning["finalization_target"] == "development_final_commit_cleanup"
