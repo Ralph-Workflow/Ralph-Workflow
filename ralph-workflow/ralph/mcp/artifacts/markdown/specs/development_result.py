@@ -19,6 +19,7 @@ under items.
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.development_result import (
@@ -28,6 +29,7 @@ from ralph.mcp.artifacts.development_result import (
 from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import Content, MdArtifactSpec
+from ralph.mcp.protocol.cycle_deadline_env import cycle_warning_is_active
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
@@ -136,8 +138,7 @@ def _free_form_content(document: ParsedDocument) -> Content:
     }
     # When the cycle timebox fired a warning before the partial/failed
     # outcome, require an Incomplete Work section listing what remains.
-    warned = document.frontmatter.get("cycle_timebox_warned")
-    if warned is not None and str(warned).lower() in ("true", "1", "yes"):
+    if _cycle_timebox_warned(document):
         incomplete_items = _optional_items(document, "Incomplete Work")
         if not incomplete_items:
             raise ValueError(
@@ -160,6 +161,23 @@ def _free_form_content(document: ParsedDocument) -> Content:
     if prior_session_id:
         content["continuation"] = {"prior_session_id": prior_session_id}
     return content
+
+
+def _cycle_timebox_warned(document: ParsedDocument) -> bool:
+    """Return whether this result was produced after a cycle-timebox warning.
+
+    The runtime's published deadline is consulted first and is sufficient on
+    its own: keying the gate solely on the reporter's own frontmatter made it
+    self-defeating, since an agent tempted to hide unfinished work is exactly
+    the agent that would omit — or misspell, given unknown frontmatter keys are
+    tolerated — the flag that triggers the check. The declared flag is still
+    honoured so a result validated outside the warned invocation (a replay, a
+    hand-written report) keeps its stricter reading.
+    """
+    if cycle_warning_is_active(now_epoch=time.time()):
+        return True
+    declared = document.frontmatter.get("cycle_timebox_warned")
+    return declared is not None and declared.lower() in ("true", "1", "yes")
 
 
 def _optional_items(document: ParsedDocument, name: str) -> tuple[ParsedItem, ...]:

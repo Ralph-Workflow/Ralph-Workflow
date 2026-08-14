@@ -318,3 +318,28 @@ def test_an_end_entry_inside_the_cycle_is_rejected() -> None:
                 },
             }
         )
+
+
+def test_a_misspelled_timebox_field_is_rejected_rather_than_ignored() -> None:
+    """A typo must fail loudly instead of silently keeping the default.
+
+    Every field here changes how a cycle ends, so a silently dropped key is
+    the worst possible failure mode: an operator who writes
+    `finalisation_cycle_outcome = "failed"` to make a timed-out out-of-budget
+    run end in the failure terminal gets `completed` instead, and never learns
+    the setting did nothing.
+    """
+    import pydantic
+    import pytest as _pytest
+
+    from ralph.policy.models import CycleTimeboxPolicy
+
+    with _pytest.raises(pydantic.ValidationError, match="finalisation_cycle_outcome"):
+        CycleTimeboxPolicy(
+            start_source="planning_analysis",
+            start_entry="development",
+            guarded_entry="development",
+            end_entry="development_final_commit_cleanup",
+            finalization_target="development_final_commit_cleanup",
+            finalisation_cycle_outcome="failed",
+        )

@@ -18,11 +18,11 @@ durations because monotonic clocks are not comparable across processes.
 
 from __future__ import annotations
 
-import math
 import os
 import time
 from typing import TYPE_CHECKING, Protocol
 
+from ralph.mcp.protocol.cycle_deadline_env import read_published_epoch
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
     CYCLE_FINALIZATION_TARGET_ENV,
@@ -78,24 +78,6 @@ def cycle_deadline_notice(
     )
 
 
-def _env_float(name: str, env_getter: EnvGetter) -> float | None:
-    """Parse a published epoch, treating anything unusable as "not published".
-
-    Non-finite values are rejected alongside unparseable ones: the notice is
-    appended AFTER the tool has already run, so a ``nan`` reaching the minutes
-    arithmetic would turn every successful tool call into an internal error
-    with the tool's side effects already applied.
-    """
-    raw = env_getter(name)
-    if raw is None or not raw.strip():
-        return None
-    try:
-        value = float(raw)
-    except ValueError:
-        return None
-    return value if math.isfinite(value) else None
-
-
 class CycleDeadlineNotifier:
     """Produces the cycle-deadline nag from the published environment.
 
@@ -120,7 +102,7 @@ class CycleDeadlineNotifier:
         """Return the current nag, or ``None`` when none is due."""
         return cycle_deadline_notice(
             now_epoch=self._clock.time(),
-            warn_epoch=_env_float(CYCLE_WARN_EPOCH_ENV, self._env_getter),
-            deadline_epoch=_env_float(CYCLE_DEADLINE_EPOCH_ENV, self._env_getter),
+            warn_epoch=read_published_epoch(CYCLE_WARN_EPOCH_ENV, self._env_getter),
+            deadline_epoch=read_published_epoch(CYCLE_DEADLINE_EPOCH_ENV, self._env_getter),
             finalization_target=self._env_getter(CYCLE_FINALIZATION_TARGET_ENV) or None,
         )

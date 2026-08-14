@@ -412,10 +412,12 @@ cycle should instead end an out-of-budget run in the failure terminal.
 The 80% soft-warning threshold is derived automatically: at the default
 `7200`s duration the warning fires at `5760`s (96 min), giving the
 agent a 24-minute window to triage and finalize. The warning is
-injected into the development prompt and surfaces in the run-time
-report; it does not interrupt an already-running invocation. Each
-subsequent development invocation in the same cycle receives an updated
-warning with the current elapsed and remaining time.
+injected into the development prompt and does not interrupt an
+already-running invocation. Each subsequent development invocation in
+the same cycle receives an updated warning with the current elapsed and
+remaining time. The end-of-run report carries the cycle's budget,
+consumed time, and any redirect — not the warning itself, which is
+addressed to the agent rather than the operator.
 
 The warning does not rely on that prompt appendix alone, which an agent
 loses to context compaction and which never reaches an invocation that
@@ -505,14 +507,23 @@ instructs it to prioritize the highest-value remaining plan steps,
 reassess whether any step is infeasible within the remaining time
 (dependency, missing authority, excessive scope, technical blocker), and
 report incomplete or infeasible steps honestly. A warned `partial` or
-`failed` development result must set `cycle_timebox_warned: true` in the
-artifact frontmatter and include an `## Incomplete Work` section. Each
-incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
+`failed` development result must include an `## Incomplete Work` section.
+Each incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
 `Reason:` field explaining why the step is incomplete or infeasible, and
 an `Evidence:` field with a reproducible location (file, test, or
 command). Items missing any of these three are rejected by artifact
 validation — fabricated completion, weakened verification, and silent
 omission are not accepted.
+
+Whether the cycle warned is decided by the runtime, not by the reporting
+agent: artifact validation reads the same published deadline
+(`RALPH_CYCLE_WARN_EPOCH`) the tool-result banner reads. Keying the
+requirement on a self-declared `cycle_timebox_warned: true` frontmatter
+flag made it optional in practice, since the agent inclined to hide
+unfinished work is precisely the one that would omit the flag. The flag
+is still honoured when it is present, so a result validated outside its
+warned invocation — a replay, a hand-written report — keeps the stricter
+reading.
 
 The bundled workflow declares a sensible default; no customization is
 required.
@@ -530,6 +541,9 @@ phase transition, analysis decision target, bypass route,
 post-commit route, or result-status post-commit route. The 80%
 warning point is always derived from the configured duration, so a
 custom value retains the same 80% behavior without a second setting.
+Unknown keys in `[cycle_timebox]` are rejected rather than ignored: a
+misspelled field would otherwise leave the default in force with no
+indication the setting had no effect.
 
 #### Example: a shorter development cycle
 

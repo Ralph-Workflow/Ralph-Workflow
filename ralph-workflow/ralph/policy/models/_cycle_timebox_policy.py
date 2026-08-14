@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
@@ -36,7 +36,14 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
     warning point is derived as ``WARNING_THRESHOLD_RATIO`` of
     ``duration_seconds`` and is never stored as a second independent duration,
     so a custom deadline retains the same 80% behavior without code changes.
+
+    Unknown keys are rejected rather than ignored. Every field here decides how
+    a cycle ends, so a dropped key is silent misconfiguration: an operator who
+    misspells ``finalization_cycle_outcome`` gets the default outcome and no
+    indication their setting did nothing.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     duration_seconds: float = Field(
         default=DEFAULT_CYCLE_TIMEBOX_SECONDS,

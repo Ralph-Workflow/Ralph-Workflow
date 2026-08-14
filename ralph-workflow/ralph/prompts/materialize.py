@@ -182,12 +182,14 @@ def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
         "3. **Honest triage**: A `partial` or `failed` result with clear evidence "
         "and next steps is strictly better than a fabricated `completed` result.\n"
         "4. **Mandatory incomplete-work reporting**: If you submit `partial` or "
-        "`failed`, set `cycle_timebox_warned: true` in the artifact frontmatter "
-        "and include an `## Incomplete Work` section. Each item must use a "
+        "`failed`, include an `## Incomplete Work` section. Each item must use a "
         "stable-ID bracket (e.g., `[S-4]`), a `Reason:` field explaining why "
         "the step is incomplete or infeasible, and an `Evidence:` field with a "
         "reproducible location (file, test, or command). Items without all "
-        "three are rejected by artifact validation.\n"
+        "three are rejected by artifact validation. This requirement is "
+        "enforced from the run's own cycle clock, not from anything you "
+        "declare, so omitting the section is a validation failure rather than "
+        "a way past the check.\n"
     )
 
 
