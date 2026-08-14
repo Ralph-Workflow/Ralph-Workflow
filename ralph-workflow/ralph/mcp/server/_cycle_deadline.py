@@ -72,9 +72,11 @@ def cycle_deadline_notice(
     return (
         f"⚠️ Cycle timebox: ~{remaining_minutes} min of this development cycle's "
         f"budget remain. When it is spent, the next development entry is redirected "
-        f"to {target} and you get NO further development iteration. Land the "
-        f"highest-value work first, and report anything unfinished as partial or "
-        f"failed with a stable ID, a reason, and evidence — never as completed."
+        f"to {target}, ending this cycle — no further development iteration within "
+        f"it, and whether a fresh cycle follows depends on the run's remaining "
+        f"budget. Land the highest-value work first, and report anything unfinished "
+        f"as partial or failed with a stable ID, a reason, and evidence — never as "
+        f"completed."
     )
 
 

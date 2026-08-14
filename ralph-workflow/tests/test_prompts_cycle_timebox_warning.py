@@ -118,7 +118,12 @@ def test_format_warning_exact_threshold_24min_under_defaults() -> None:
     assert "120-minute" in text
     assert "24 minutes" in text
     assert "development_final_commit_cleanup" in text
-    assert "NOT get another development iteration" in text
+    # The redirect ends THIS cycle, not the run: under the bundled routes a
+    # timed-out cycle is followed by another planning cycle while the budget
+    # has room, so promising the agent it has no future iteration is false —
+    # and false scarcity is the pressure the honesty guidance is removing.
+    assert "ending THIS development cycle" in text
+    assert "remaining cycle budget" in text
 
 
 def test_format_warning_updates_for_later_elapsed() -> None:

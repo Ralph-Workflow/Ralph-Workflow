@@ -100,7 +100,7 @@ from ralph.pipeline.cycle_baseline import (
     read_cycle_baseline,
     write_cycle_baseline,
 )
-from ralph.pipeline.cycle_timing import RoutingTiming
+from ralph.pipeline.cycle_timing import RoutingTiming, apply_cycle_timebox
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
@@ -1819,6 +1819,7 @@ def _handle_inline_effect(
                 )
                 return recovered_state
         prepared_state = state
+        target_phase = effect.phase
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
             target_phase_def = pipeline_policy.phases.get(effect.phase)
@@ -1827,9 +1828,27 @@ def _handle_inline_effect(
             if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
                 write_start_commit_if_absent(workspace_scope.root)
+            # This hop re-enters the phase by writing state.phase directly
+            # rather than routing, so it is the one way into the guarded phase
+            # that is not a routing boundary -- and the deadline is enforced at
+            # boundaries. An expired cycle bought one unbudgeted invocation per
+            # hop, and because each hop also resets the retry chain, a
+            # persistently failing agent could ping-pong through it with the
+            # budget long gone.
+            timeboxed = apply_cycle_timebox(
+                prepared_state,
+                effect.phase,
+                policy=pipeline_policy,
+                routing_timing=RoutingTiming(
+                    monotonic_now=0.0,
+                    total_elapsed_seconds=prepared_state.cycle_timebox_consumed_seconds,
+                ),
+            )
+            prepared_state = timeboxed.state
+            target_phase = timeboxed.target_phase
         prepare_updates: dict[str, object] = {
-            "phase": effect.phase,
-            "current_drain": effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
+            "phase": target_phase,
+            "current_drain": effect.drain or resolve_phase_drain(target_phase, pipeline_policy),
         }
         # A change of phase here (skip-invocation success route, failed-route
         # re-entry) must clear the next-attempt session action exactly like
@@ -1837,7 +1856,7 @@ def _handle_inline_effect(
         # session id / retry intent into an unrelated phase's first attempt.
         # Same-phase re-prompts (the retry-in-session resume path) intentionally
         # keep the intent so the resume can take effect.
-        if effect.phase != prepared_state.phase:
+        if target_phase != prepared_state.phase:
             prepare_updates["last_agent_session_id"] = None
             prepare_updates["agent_retry_intent"] = cleared_agent_retry_intent()
         updated_state = prepared_state.copy_with(**prepare_updates)

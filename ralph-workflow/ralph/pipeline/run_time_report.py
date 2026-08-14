@@ -69,17 +69,24 @@ def _format_count(value: int) -> str:
     return f"{sign}~1e{int(value.bit_length() * 0.30103)}"
 
 
-def _slowest_phases(state: PipelineState) -> list[tuple[str, str]]:
+def _slowest_phases(state: PipelineState) -> tuple[list[tuple[str, str]], bool]:
+    """Return the slowest phases to report, and whether the cap dropped any.
+
+    The duration is a phase's slowest SINGLE execution, not its total across
+    the run — this is the "slowest steps" question. The caller announces the
+    cap: dropping phases silently reads as a complete list.
+    """
     elapsed_by_phase: dict[str, int] = {}
     for timing in state.phase_timings:
         phase = _safe_text(timing.phase)
         elapsed_by_phase[phase] = max(elapsed_by_phase.get(phase, 0), timing.elapsed_seconds)
     phase_durations = [(-duration, phase) for phase, duration in elapsed_by_phase.items()]
     phase_durations.sort()
-    return [
+    reported = [
         (phase, _format_count(-duration))
         for duration, phase in phase_durations[:_MAX_REPORTED_PHASES]
     ]
+    return reported, len(phase_durations) > _MAX_REPORTED_PHASES
 
 
 def _cycle_timebox_was_used(state: PipelineState) -> bool:
@@ -111,14 +118,21 @@ def _cycle_consumed_text(state: PipelineState) -> str:
 
 
 def _redirect_line(state: PipelineState) -> str:
-    """Render the deadline-redirect line, counting redirects across the run."""
-    if state.cycle_timebox_redirect_reason:
-        detail = _safe_reason(state.cycle_timebox_redirect_reason)
-    elif state.cycle_timebox_redirects:
-        detail = "an earlier cycle reached its deadline"
-    else:
+    """Render the deadline-redirect line, counting redirects across the run.
+
+    The count is printed as recorded rather than floored to one. Flooring it
+    made a never-incremented counter indistinguishable from a correct one, so
+    a report could claim a redirect total it had never actually counted. A
+    checkpoint written before the counter existed carries a reason with no
+    count, and is reported without one.
+    """
+    count = state.cycle_timebox_redirects
+    reason = state.cycle_timebox_redirect_reason
+    if reason and not count:
+        return f"- [CT-2] Redirected: {_safe_reason(reason)}.\n"
+    if not count:
         return ""
-    count = max(state.cycle_timebox_redirects, 1)
+    detail = _safe_reason(reason) if reason else "an earlier cycle reached its deadline"
     return f"- [CT-2] Redirected cycles: {count}; {detail}.\n"
 
 
@@ -134,7 +148,7 @@ def render_run_time_report(
     safe_phase = _safe_text(state.phase)
     elapsed = max(0.0, elapsed_seconds)
     elapsed_text = _format_elapsed(elapsed)
-    reported_phases = _slowest_phases(state)
+    reported_phases, dropped_for_cap = _slowest_phases(state)
     memory_findings = _memory_findings(getenv)
     truncated = False
     while True:
@@ -149,10 +163,21 @@ def render_run_time_report(
                 f"- [SS-{index}] {phase}: {duration}s."
                 for index, (phase, duration) in enumerate(reported_phases, start=1)
             )
-            if truncated:
-                phase_lines.append(
-                    "- [P-8] Phase timing list truncated to fit the reporting budget."
+            if truncated or dropped_for_cap:
+                # Announced in BOTH sections: Slowest Steps lost the same
+                # entries silently, which reads as a complete list.
+                notice = (
+                    "Phase timing list truncated to fit the reporting budget."
+                    if truncated
+                    else f"Only the {_MAX_REPORTED_PHASES} slowest phases are listed."
                 )
+                phase_lines.append(f"- [P-8] {notice}")
+                slowest_lines.append(f"- [SS-8] {notice}")
+        elif state.phase_timings:
+            # Recorded, then dropped to fit the budget. Saying none were
+            # recorded is a different — and false — statement.
+            phase_lines.append("- [P-2] All phase timings were dropped to fit the budget.")
+            slowest_lines.append("- [SS-1] All phase timings were dropped to fit the budget.")
         else:
             phase_lines.append("- [P-2] No completed phase timings were recorded.")
             slowest_lines.append("- [SS-1] No completed phase timings were recorded.")

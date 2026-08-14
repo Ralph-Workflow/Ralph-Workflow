@@ -14,10 +14,13 @@ what a mutation to the call site changes.
 
 from __future__ import annotations
 
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+import pytest
 
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
@@ -34,6 +37,8 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _CONSUMED = 3600.0
+# Seeded age of the sample box, so the folded delta is a real duration.
+_STEP_SECONDS = 5.0
 
 
 @lru_cache(maxsize=1)
@@ -128,7 +133,8 @@ def _drive_step(monkeypatch: MonkeyPatch, tmp_path: Path) -> _Captured:
         pipeline_subscriber=None,
         # The run loop owns this sample box; without it the runner has no
         # monotonic anchor and every timing seam below goes silently null.
-        _cycle_sample_box=[None],
+        # Seeded in the past so the step folds a real, non-zero delta.
+        _cycle_sample_box=[time.monotonic() - _STEP_SECONDS],
     )
     return captured
 
@@ -139,7 +145,10 @@ def test_the_step_hands_prompt_materialization_the_cycles_elapsed_total(
     """Without it nothing is published: no prompt warning, no nag, no gate."""
     captured = _drive_step(monkeypatch, tmp_path)
 
-    assert captured.materialize_kwargs["cycle_total_elapsed"] == _CONSUMED
+    # The elapsed total includes the step already in progress.
+    assert captured.materialize_kwargs["cycle_total_elapsed"] == pytest.approx(
+        _CONSUMED + _STEP_SECONDS, abs=2.0
+    )
 
 
 def test_the_step_hands_the_reducer_its_routing_timing(
@@ -150,14 +159,21 @@ def test_the_step_hands_the_reducer_its_routing_timing(
 
     assert captured.reduce_kwargs
     assert all(timing is not None for timing in captured.reduce_kwargs)
-    assert captured.reduce_kwargs[0].total_elapsed_seconds == _CONSUMED
+    assert captured.reduce_kwargs[0].total_elapsed_seconds == pytest.approx(
+        _CONSUMED + _STEP_SECONDS, abs=2.0
+    )
 
 
 def test_the_step_folds_its_elapsed_time_into_the_cycle(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The consumed total only advances because the step folds each step in."""
+    """The consumed total only advances because the step folds each step in.
+
+    Asserting merely that a fold happened with a non-negative delta is a
+    tautology a permanently-zero clock satisfies, so the sample box is seeded
+    in the past and the delta itself is checked.
+    """
     captured = _drive_step(monkeypatch, tmp_path)
 
     assert captured.folded
-    assert all(delta >= 0.0 for delta in captured.folded)
+    assert captured.folded[0] >= _STEP_SECONDS

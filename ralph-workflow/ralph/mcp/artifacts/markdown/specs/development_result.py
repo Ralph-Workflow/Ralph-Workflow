@@ -155,6 +155,7 @@ def _free_form_content(document: ParsedDocument) -> Content:
                 "must include a 'Reason:' and 'Evidence:' field"
             )
         _validate_warned_incomplete_items(incomplete_items)
+        _reject_unbracketed_incomplete_bullets(document)
         content["incomplete_work"] = [
             f"[{item.identifier}] {item.text}" for item in incomplete_items
         ]
@@ -169,6 +170,27 @@ def _free_form_content(document: ParsedDocument) -> Content:
     if prior_session_id:
         content["continuation"] = {"prior_session_id": prior_session_id}
     return content
+
+
+def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
+    """Reject bullets in ``## Incomplete Work`` that carry no stable-ID bracket.
+
+    The section allows prose, and a bullet without a bracket parses as prose —
+    so a report listing one bracketed item and three plain bullets validated
+    clean while the three were silently discarded. Silent omission is the one
+    thing this gate exists to prevent, so it cannot be how the gate behaves.
+    """
+    section = document.section("Incomplete Work")
+    if section is None:
+        return
+    for line in section.lines:
+        text = line.text.lstrip()
+        if text[:2] in ("- ", "* ", "+ "):
+            raise ValueError(
+                f"Incomplete Work bullets must each start with a stable-ID "
+                f"bracket such as '- [S-4] ...'; the bullet on line {line.line} "
+                f"has none and would be dropped from the report"
+            )
 
 
 def _cycle_timebox_warned(document: ParsedDocument) -> bool:
@@ -244,14 +266,17 @@ def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
             raise ValueError(
                 f"Incomplete Work item [{item.identifier}] must include a "
                 f"concise 'Reason:' field explaining why the step is "
-                f"incomplete or infeasible (line {item.line})"
+                f"incomplete or infeasible, written as an indented "
+                f"continuation line under the item and capitalized exactly as "
+                f"'Reason:' (line {item.line})"
             )
         evidence = fields.get("Evidence", "").strip()
         if not evidence:
             raise ValueError(
                 f"Incomplete Work item [{item.identifier}] must include a "
-                f"supporting 'Evidence:' field with a reproducible location "
-                f"(line {item.line})"
+                f"supporting 'Evidence:' field with a reproducible location, "
+                f"written as an indented continuation line under the item and "
+                f"capitalized exactly as 'Evidence:' (line {item.line})"
             )
 
 
@@ -279,6 +304,15 @@ def _to_content(document: ParsedDocument) -> Content:
             document, "Analysis Items Addressed", "how_to_fix_item"
         ),
     }
+    # A completion claim may still carry remaining work — a deferred step with
+    # a reason is honest reporting, and dropping the section deleted it.
+    completed_incomplete = _optional_items(document, "Incomplete Work")
+    if completed_incomplete:
+        _validate_warned_incomplete_items(completed_incomplete)
+        _reject_unbracketed_incomplete_bullets(document)
+        content["incomplete_work"] = [
+            f"[{item.identifier}] {item.text}" for item in completed_incomplete
+        ]
     next_steps = document.section("Next Steps")
     if next_steps is not None:
         if len(next_steps.items) != 1:

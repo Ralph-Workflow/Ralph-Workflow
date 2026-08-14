@@ -36,7 +36,7 @@ present and are the most useful things to include.
 |---|---|---|
 | `## Summary` | yes | exactly 1 |
 | `## Files Changed` | yes | 1+ (one file per item) |
-| `## Plan Items Proven` | no | one per plan step proven |
+| `## Plan Items Proven` | no (required once the cycle timebox has warned) | one per plan step proven, each with an indented `Disposition:` field |
 | `## Next Steps` | no | exactly 1 |
 | `## Continuation` | no | exactly 1: the prior session ID |
 | `## Analysis Items Addressed` | no | one per analysis fix addressed |
@@ -50,18 +50,19 @@ goes in the `[ID]` slot and the proof is the item text:
   (`S-1`, `S-2`, …) exactly as it appears in the plan's `## Steps`
   section. The text states the concrete evidence that the step is done.
 - `## Analysis Items Addressed`: the item ID is the stable ID of the
-  `## How To Fix` item in the analysis-decision artifact you are
-  answering. The text states the concrete evidence for that fix.
+  `## What Came Up Short` finding in the analysis-decision artifact you
+  are answering. The text states the concrete evidence for that fix.
 
 Copy the IDs from the source artifact — do not invent or renumber them.
 
 ## Core Flow
 
 1. Write the document. For `completed`, every section rule and every
-   plan/analysis proof above is enforced. For `partial`, nothing below
-   the frontmatter is enforced — still lead with what you did, what
-   remains (`## Next Steps`) and your session ID (`## Continuation`) so
-   the next iteration can resume.
+   plan/analysis proof above is enforced. For `partial`, `## Summary` is
+   required and — once the run's cycle timebox has warned — so is
+   `## Incomplete Work`; otherwise lead with what you did, what remains
+   (`## Next Steps`) and your session ID (`## Continuation`) so the next
+   iteration can resume.
 2. Optionally `ralph_verify_md_artifact`, then
    `ralph_submit_md_artifact({"artifact_type": "development_result", "content": ...})`.
 
@@ -85,11 +86,13 @@ status: completed
 ## Plan Items Proven
 
 - [S-1] tests/test_foo.py contains test_clamp_handles_out_of_range_index.
+  Disposition: completed
 - [S-2] src/foo.py clamps the index before lookup while preserving the public foo() signature.
+  Disposition: completed
 
 ## Analysis Items Addressed
 
-- [FIX-1] pytest tests/test_foo.py -q passes with the new regression test included.
+- [DA-001] pytest tests/test_foo.py -q passes with the new regression test included.
 ```
 
 ## Error Recovery

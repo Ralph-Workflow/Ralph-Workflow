@@ -126,3 +126,59 @@ def test_the_cycle_after_a_missing_plan_handoff_gets_a_fresh_budget(
 
     assert advanced.phase == "development"
     assert advanced.cycle_timebox_consumed_seconds == pytest.approx(0.0)
+
+
+def test_a_recovery_re_entry_is_still_bound_by_the_deadline() -> None:
+    """The hop back into the guarded phase must be checked like any other entry.
+
+    Keeping the timer armed across the hop is only half the contract: the
+    runtime re-enters the phase by writing ``state.phase`` directly, bypassing
+    the routing boundary where the deadline is enforced. An expired cycle
+    therefore bought one unbudgeted development invocation per hop — and since
+    each hop also resets the retry chain, a persistently failing agent could
+    ping-pong through it indefinitely with the budget long gone.
+    """
+    from ralph.pipeline.cycle_timing import apply_cycle_timebox
+
+    expired = _in_cycle("failed_terminal", consumed=14_400.0)
+
+    decision = apply_cycle_timebox(
+        expired,
+        "development",
+        policy=_pipeline(),
+        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=14_400.0),
+    )
+
+    assert decision.target_phase == "development_final_commit_cleanup"
+    assert decision.redirected is True
+
+
+def test_the_runtime_re_entry_applies_that_decision(tmp_path: Path) -> None:
+    """Pinning the helper is not enough — the re-entry path must consult it.
+
+    Driven through the real inline-effect handler, because the defect is that
+    this branch writes ``state.phase`` directly instead of routing.
+    """
+    from ralph.pipeline import runner as runner_module
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.workspace.scope import WorkspaceScope
+
+    # The handler materializes the target's prompt, which requires the plan
+    # handoff; without it the missing-handoff recovery fires first.
+    (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".agent" / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
+    (tmp_path / "PROMPT.md").write_text("Do the work\n", encoding="utf-8")
+    expired = _in_cycle("failed_terminal", consumed=14_400.0).copy_with(
+        previous_phase="development"
+    )
+
+    updated = runner_module._handle_inline_effect(
+        effect=PreparePromptEffect(phase="development", drain="development"),
+        state=expired,
+        pipeline_policy=_pipeline(),
+        artifacts_policy=load_policy(_DEFAULTS_DIR).artifacts,
+        workspace_scope=WorkspaceScope(tmp_path),
+    )
+
+    assert updated.phase == "development_final_commit_cleanup"
+    assert updated.cycle_timebox_active is False

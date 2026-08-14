@@ -55,7 +55,6 @@ class CycleTimeboxDecision:
     redirected: bool = False
     redirect_reason: str | None = None
     timing_started: bool = False
-    timing_ended: bool = False
 
 
 def _concluded(
@@ -131,9 +130,11 @@ def apply_cycle_timebox(
     """Apply the cycle timebox guard to a pending transition.
 
     Returns the effective ``(state, target_phase)`` plus flags describing
-    whether the timer started, ended, or the route was redirected. When the
-    policy declares no timebox, or no timing context was supplied, the decision
-    is a no-op pass-through.
+    whether the timer started or the route was redirected. Conclusion is
+    visible on the returned state rather than as a flag; a separate
+    ``timing_ended`` flag was set here and read nowhere. When the policy
+    declares no timebox, or no timing context was supplied, the decision is a
+    no-op pass-through.
     """
     ct = policy.cycle_timebox
     if ct is None or routing_timing is None:
@@ -148,7 +149,6 @@ def apply_cycle_timebox(
         return CycleTimeboxDecision(
             state=_concluded(state),
             target_phase=target_phase,
-            timing_ended=True,
         )
 
     # Start the timer ONLY on the declared start_source -> start_entry
@@ -187,7 +187,6 @@ def apply_cycle_timebox(
                 target_phase=ct.finalization_target,
                 redirected=True,
                 redirect_reason=reason,
-                timing_ended=True,
             )
         # Active and within budget: permit the entry.
         return CycleTimeboxDecision(state=state, target_phase=target_phase)

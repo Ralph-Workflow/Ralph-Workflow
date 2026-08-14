@@ -419,3 +419,95 @@ def test_the_warning_reaches_the_prompt_materializer(
     warning = captured["cycle_timebox_warning"]
     assert warning is not None
     assert warning["finalization_target"] == "development_final_commit_cleanup"
+
+
+def test_the_prepared_prompt_path_also_warns(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """The second prompt path must warn too, and only one of them was pinned.
+
+    A `PreparePromptEffect` re-prompt renders through a different call site
+    than an agent invocation. Its warning argument could be replaced with None
+    — silencing every re-prompted development agent inside a warned cycle —
+    with the invocation path's coverage still green.
+    """
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.pipeline.prompt_prep import _materialize_prepared_prompt
+    from ralph.workspace.scope import WorkspaceScope
+
+    _reserve_env(monkeypatch)
+    captured: dict[str, object] = {}
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Do the work")
+    bundle = _bundle()
+
+    _materialize_prepared_prompt(
+        PreparePromptEffect(phase="development", drain="development"),
+        bundle.pipeline,
+        bundle.artifacts,
+        WorkspaceScope(tmp_path),
+        agents_policy=bundle.agents,
+        # 80% of the bundled 7200s budget is spent: the warning point is now.
+        state=PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=5760.0,
+        ),
+        materialize_fn=lambda **kwargs: captured.update(kwargs) or "fake-prompt.md",
+    )
+
+    warning = captured["cycle_timebox_warning"]
+    assert warning is not None
+    assert warning["finalization_target"] == "development_final_commit_cleanup"
+
+
+def test_the_fan_out_phase_publishes_before_spawning_its_workers(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Workers inherit the deadline at spawn or never see it at all.
+
+    The publication helper was pinned by calling it directly, so the fan-out
+    call site itself could be deleted — leaving every worker in a warned cycle
+    unwarned — with that coverage still green.
+    """
+    from ralph.pipeline.effects import FanOutEffect
+    from ralph.workspace.scope import WorkspaceScope
+
+    _reserve_env(monkeypatch)
+    published: list[str | None] = []
+
+    def _fan_out(**_kwargs: object) -> PipelineState:
+        # The raw value, not mere presence: the fixture seeds these names with
+        # a placeholder, so presence alone is satisfied by publishing nothing.
+        published.append(os.environ.get(CYCLE_DEADLINE_EPOCH_ENV))
+        return PipelineState(phase="development")
+
+    monkeypatch.setattr(runner_module, "execute_fan_out_sync", _fan_out)
+
+    runner_module._run_fan_out_phase(
+        effect=FanOutEffect(phase="development", work_units=(), max_workers=1),
+        state=PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+        ),
+        display=None,
+        policy_bundle=_bundle(),
+        workspace_scope=WorkspaceScope(tmp_path),
+        pipeline_subscriber=None,
+        config=MagicMock(),
+        config_path=None,
+        cli_overrides=None,
+        monitor_stop_cb=None,
+        pipeline_deps=None,
+        registry=MagicMock(),
+        display_context=None,
+        routing_timing=runner_module.RoutingTiming(
+            monotonic_now=0.0, total_elapsed_seconds=_ELAPSED_SECONDS
+        ),
+    )
+
+    assert len(published) == 1
+    assert published[0] is not None
+    # A real epoch, which the placeholder is not.
+    assert float(published[0]) > time.time()
+    # And revoked afterwards, so nothing spawned later inherits it.
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ

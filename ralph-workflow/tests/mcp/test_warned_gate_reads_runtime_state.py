@@ -273,3 +273,60 @@ status: partial
 
     assert any("stable-ID" in diagnostic.message for diagnostic in diagnostics)
     assert not any("is required" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_unbracketed_incomplete_work_bullets_are_rejected_not_dropped() -> None:
+    """Silent omission is what the gate exists to prevent, so it cannot silently omit.
+
+    A bullet without a stable-ID bracket parses as prose, so a report listing
+    one bracketed item and three plain bullets validated clean while the three
+    were discarded — exactly the disappearance the documentation promises is
+    impossible.
+    """
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Three of four steps unfinished.
+## Incomplete Work
+- [S-1] Rename API endpoints: half-applied.
+  Reason: Only half the endpoints were renamed.
+  Evidence: tests/test_api.py:42 references the old names.
+- Retry path unfinished.
+- Cache invalidation not started.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert any("stable-ID" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_completed_result_keeps_the_incomplete_work_it_declares() -> None:
+    """Honest remaining work must not be deleted for being on a completed result."""
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Landed S-1; S-2 deferred with a note.
+## Files Changed
+- [F-1] src/feature.py
+## Plan Items Proven
+- [S-1] Added the endpoint rename and updated its callers.
+  Disposition: completed
+  Rationale: Renamed every call site the plan item listed.
+## Incomplete Work
+- [S-2] Cache invalidation deferred.
+  Reason: Out of scope for the deadline; no safe partial exists.
+  Evidence: src/cache.py:11 still uses the eager path.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    assert content["incomplete_work"] == ["[S-2] Cache invalidation deferred."]

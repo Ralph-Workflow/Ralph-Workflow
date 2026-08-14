@@ -444,8 +444,12 @@ began before the warning point:
   commit-cleanup and commit legs, nor on a `planning → development` entry
   made when planning analysis was skipped.
 - **When the deadline fires.** The redirect is logged by the routing
-  component and named on the end-of-run report's `[CT-2] Redirected:`
-  line. It is deliberately not put on the phase banner: the transitions a
+  component and named on the end-of-run report's
+  `[CT-2] Redirected cycles: N;` line. The reason itself belongs to one
+  cycle and is cleared when the next starts — the normal path after a
+  redirect — so the count is what survives to the end of a multi-cycle
+  run, and the reason shown is the most recent one.
+  It is deliberately not put on the phase banner: the transitions a
   redirected cycle makes on the way to its final commit are all minor,
   and the banner renders context only on major ones, so the notice would
   be dropped before an operator saw it.
@@ -511,8 +515,11 @@ report incomplete or infeasible steps honestly. A warned `partial` or
 Each incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
 `Reason:` field explaining why the step is incomplete or infeasible, and
 an `Evidence:` field with a reproducible location (file, test, or
-command). Items missing any of these three are rejected by artifact
-validation, so silent omission is not accepted. A warned `completed`
+command). Both fields go on **indented continuation lines** under the
+item, spelled with their leading capital. Items missing any of these
+three are rejected by artifact validation, and a bullet carrying no
+stable-ID bracket is rejected rather than silently dropped, so silent
+omission is not accepted. A warned `completed`
 result is checked too: it must carry a `## Plan Items Proven` section
 naming what was proved, so declaring completion is not a way around the
 requirement to show your work. Validation cannot detect a fabricated

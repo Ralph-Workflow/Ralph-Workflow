@@ -1814,6 +1814,15 @@ def _execute_with_cleanup(
                 state = loop_ctx.latest_state[0]
                 exit_code = _handle_keyboard_interrupt(state, loop_ctx)
                 return exit_code
+            except BaseException:
+                # Same correction for every other way out of the loop. Reaching
+                # the report with the exit code still 0 and the initial state
+                # still bound wrote a run that crashed hours into development
+                # up as `outcome: completed` in phase `planning` — a success
+                # report for a failure. The exception still propagates.
+                state = loop_ctx.latest_state[0]
+                exit_code = 1
+                raise
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
                 try:
                     state = _report_pending_remote_publication(state, loop_ctx)

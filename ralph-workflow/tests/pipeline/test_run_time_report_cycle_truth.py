@@ -116,3 +116,54 @@ def test_a_redirect_in_an_earlier_cycle_is_still_reported() -> None:
 
     assert "[CT-2]" in report
     assert "2" in report.split("[CT-2]", 1)[1].split("\n", 1)[0]
+
+
+def _timed(phase: str, seconds: int) -> object:
+    from datetime import timedelta
+
+    from ralph.phases.phase_timing_record import PhaseTimingRecord
+
+    return PhaseTimingRecord(
+        phase=phase,
+        iteration=1,
+        started_at=0.0,
+        elapsed=timedelta(seconds=seconds),
+        elapsed_seconds=seconds,
+    )
+
+
+def test_phases_dropped_by_the_cap_are_announced_in_both_sections() -> None:
+    """Silently listing six of eleven phases reads as the complete list."""
+    state = PipelineState(
+        phase="development",
+        phase_timings=tuple(_timed(f"phase_{index}", 100 + index) for index in range(11)),
+    )
+
+    report = render_run_time_report(
+        state=state, outcome="completed", elapsed_seconds=1200.0, getenv=lambda _n: None
+    )
+
+    assert "[P-8]" in report
+    assert "[SS-8]" in report
+
+
+def test_dropping_every_timing_is_not_reported_as_recording_none() -> None:
+    """"None were recorded" and "all were dropped" are different facts."""
+    state = PipelineState(
+        phase="development",
+        # Long phase names plus eight max-length findings crowd the phase
+        # list out of the 1600-character budget entirely.
+        phase_timings=tuple(
+            _timed(f"phase_{index}_" + "n" * 70, 100) for index in range(6)
+        ),
+    )
+
+    report = render_run_time_report(
+        state=state,
+        outcome="completed",
+        elapsed_seconds=1200.0,
+        getenv=lambda _n: "\n".join("f" * 80 for _ in range(8)),
+    )
+
+    assert "No completed phase timings were recorded" not in report
+    assert "dropped to fit the budget" in report
