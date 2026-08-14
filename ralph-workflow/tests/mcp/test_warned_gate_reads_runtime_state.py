@@ -498,7 +498,7 @@ status: partial
 
     assert diagnostics != []
     assert all("has none" not in diagnostic.message for diagnostic in diagnostics)
-    assert any("'-'" in diagnostic.message for diagnostic in diagnostics)
+    assert any("top-level" in diagnostic.message for diagnostic in diagnostics)
 
 
 @pytest.mark.usefixtures("cycle_already_warned")
@@ -517,6 +517,37 @@ status: partial
   Evidence: tests/test_api.py:42
   - [S-2] big thing: not done
 """,
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+@pytest.mark.parametrize(
+    "stray",
+    [
+        pytest.param("  - Step 4: rewrite the tokenizer was never started\n", id="nested-with-colon"),
+        pytest.param("  -\tStep 4 rewrite the tokenizer was never started\n", id="tab-after-marker"),
+        pytest.param("  Owner: someone else\n", id="unrecognized-field"),
+        pytest.param("Remaining scope, for reference:\n", id="section-prose"),
+    ],
+)
+def test_nothing_that_would_be_dropped_survives_validation(stray: str) -> None:
+    """The section is a closed grammar, not a blacklist of known bad shapes.
+
+    Each of these reached the report as nothing at all: a nested bullet with a
+    colon read as a field, a tab after the marker read as neither bullet nor
+    field, an unrecognized field read by no consumer, prose read by none. Every
+    heuristic that enumerated bad shapes leaked another one.
+    """
+    _content, diagnostics = parse_and_validate(
+        "---\ntype: development_result\nstatus: partial\n---\n"
+        "## Summary\n- [SUM-1] Work remains.\n"
+        "## Incomplete Work\n"
+        "- [S-1] Refactor the parser.\n"
+        "  Reason: ran out of cycle budget\n"
+        "  Evidence: src/parser.py:120\n" + stray,
         DEVELOPMENT_RESULT_SPEC,
     )
 

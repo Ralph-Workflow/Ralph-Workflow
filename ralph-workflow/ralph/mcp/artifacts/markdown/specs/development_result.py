@@ -181,55 +181,42 @@ def _free_form_content(document: ParsedDocument) -> Content:
     return content
 
 
-def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
-    """Reject bullets in ``## Incomplete Work`` that carry no stable-ID bracket.
+#: The only continuation fields an incomplete-work item may carry. The section
+#: is validated as a CLOSED grammar rather than by guessing which stray lines
+#: look like dropped work: every heuristic blacklist leaked (a nested bullet
+#: containing a colon read as a field, a tab after the marker read as neither),
+#: and each leak silently deleted exactly the unfinished work this gate exists
+#: to surface.
+_INCOMPLETE_WORK_FIELDS = ("Reason", "Evidence")
 
-    The section allows prose, and a bullet without a bracket parses as prose —
-    so a report listing one bracketed item and three plain bullets validated
-    clean while the three were silently discarded. Silent omission is the one
-    thing this gate exists to prevent, so it cannot be how the gate behaves.
+
+def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
+    """Reject anything in ``## Incomplete Work`` that would be silently dropped.
+
+    Only two shapes survive the parser into the report: a top-level ``- [ID]``
+    bullet, and an indented ``Reason:``/``Evidence:`` line beneath one. Anything
+    else -- prose, a differently-marked bullet, a nested entry, an unrecognized
+    field -- is read by nothing and vanishes. Rather than enumerate the ways
+    that can happen, this rejects everything that is not one of the two.
     """
     section = document.section("Incomplete Work")
     if section is None:
         return
-    stray_lines = [line for line in section.lines if _looks_like_a_list_entry(line.text)]
-    # Nested one level, a bullet lands among an item's continuation lines
-    # instead of the section body, where the fields reader ignores anything
-    # that is not `Key: value` -- another way to be silently dropped.
+    stray_lines = [line.line for line in section.lines]
     stray_lines += [
-        line
+        line.line
         for item in section.items
         for line in item.fields
-        if _looks_like_a_list_entry(line.text) and not _reads_as_a_field(line.text)
+        if (parsed := _field_key_and_value(line.text)) is None
+        or parsed[0] not in _INCOMPLETE_WORK_FIELDS
     ]
     if stray_lines:
-        first_line = min(line.line for line in stray_lines)
         raise ValueError(
-            f"Incomplete Work entries must each be a top-level '-' bullet "
-            f"carrying a stable-ID bracket, written as '- [S-4] ...'; the "
-            f"entry on line {first_line} is not, and would be dropped from "
-            f"the report"
+            f"Incomplete Work accepts only top-level '- [ID] ...' bullets and "
+            f"their indented 'Reason:' / 'Evidence:' lines; line "
+            f"{min(stray_lines)} is neither and would be dropped from the "
+            f"report. Give every remaining item its own stable-ID bullet."
         )
-
-
-def _reads_as_a_field(text: str) -> bool:
-    """Return whether a continuation line is a ``Key: value`` field.
-
-    A key opening with a stable-ID bracket is an incomplete-work entry that
-    merely contains a colon, not a field — treating it as one swallowed the
-    entry and dropped it from the report.
-    """
-    parsed = _field_key_and_value(text)
-    return parsed is not None and not parsed[0].startswith("[")
-
-
-def _looks_like_a_list_entry(text: str) -> bool:
-    """Return whether a line reads as a list entry rather than prose."""
-    stripped = text.lstrip()
-    if stripped[:2] in ("- ", "* ", "+ "):
-        return True
-    marker, _, rest = stripped.partition(" ")
-    return bool(rest) and marker[:-1].isdigit() and marker[-1:] in (".", ")")
 
 
 def _cycle_timebox_warned(document: ParsedDocument) -> bool:

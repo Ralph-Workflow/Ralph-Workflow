@@ -118,6 +118,7 @@ def _dispatch_worker_event(
     event: Event,
     recovery: RecoveryController | None = None,
     policy: PipelinePolicy | None = None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
     """Handle worker events, returning None if the event is not a worker event.
 
@@ -139,6 +140,12 @@ def _dispatch_worker_event(
     # Worker failure events route through RecoveryController when available
     # for proper attribution and recovery decision-making.
     if isinstance(event, WorkerFailedEvent):
+        # Bounded by the deadline like every other failure route into the
+        # controller: its retries stay in the same phase, so a spent cycle
+        # would otherwise buy another full-length invocation here too.
+        expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
+        if expired is not None:
+            return expired
         if recovery is not None:
             # Route through RecoveryController for classification and attribution.
             # The phase from state is used since worker failures are attributed
@@ -379,7 +386,9 @@ def reduce(
         )
         if recovered_agent_failure is not None:
             return recovered_agent_failure
-    worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
+    worker_result = _dispatch_worker_event(
+        state, event, recovery, policy=pipeline_policy, routing_timing=routing_timing
+    )
     if worker_result is not None:
         return worker_result
     handler = _get_event_handlers().get(

@@ -160,3 +160,26 @@ def test_a_typed_broken_agent_failure_in_a_spent_cycle_is_redirected() -> None:
 
     assert redirected.phase == _TARGET
     assert redirected.cycle_timebox_redirects == 1
+
+
+def test_a_worker_failure_in_a_spent_cycle_is_redirected() -> None:
+    """The worker-failure route into the controller needs the same bound.
+
+    Its retries also stay in the guarded phase, so a spent cycle bought another
+    full-length invocation through it — uncounted and unreported, exactly like
+    the phase-failure and typed-failure routes did.
+    """
+    from ralph.pipeline.events import WorkerFailedEvent
+
+    redirected, _effects = reducer_reduce(
+        _developing(_SPENT),
+        WorkerFailedEvent(unit_id="unit-a", exit_code=1, error="worker died"),
+        _bundle().pipeline,
+        recovery=RecoveryController(
+            options=RecoveryControllerOptions(policy_bundle=_bundle())
+        ),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
+    )
+
+    assert redirected.phase == _TARGET
+    assert redirected.cycle_timebox_redirects == 1
