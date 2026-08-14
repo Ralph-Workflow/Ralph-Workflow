@@ -308,3 +308,38 @@ def test_a_redirected_recovery_hop_prepares_the_phase_it_actually_enters(
     assert updated.phase == target
     assert updated.current_drain == bundle.pipeline.phases[target].drain
     assert any("cycle timebox reached" in record for record in records)
+
+
+def test_the_recovery_hop_judges_the_deadline_on_the_sampled_clock(
+    tmp_path: Path,
+) -> None:
+    """In-flight seconds count: the stored total is one sample behind.
+
+    The step samples the clock before the hop runs, so judging the deadline on
+    the stored consumed total discards everything elapsed since — and a cycle
+    that crossed its deadline during the step was waved through as still
+    having room.
+    """
+    from ralph.pipeline import runner as runner_module
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.workspace.scope import WorkspaceScope
+
+    (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".agent" / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
+    (tmp_path / "PROMPT.md").write_text("Do the work\n", encoding="utf-8")
+    bundle = load_policy(_DEFAULTS_DIR)
+    # Stored total is inside the 7200s budget; the in-flight sample is not.
+    nearly_spent = _in_cycle("failed_terminal", consumed=7100.0).copy_with(
+        previous_phase="development"
+    )
+
+    updated = runner_module._handle_inline_effect(
+        effect=PreparePromptEffect(phase="development", drain="development"),
+        state=nearly_spent,
+        pipeline_policy=bundle.pipeline,
+        artifacts_policy=bundle.artifacts,
+        workspace_scope=WorkspaceScope(tmp_path),
+        routing_timing=RoutingTiming(monotonic_now=0.0, total_elapsed_seconds=7300.0),
+    )
+
+    assert updated.phase == "development_final_commit_cleanup"

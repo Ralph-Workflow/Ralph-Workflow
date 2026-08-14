@@ -1490,6 +1490,7 @@ def _run_pipeline_step(
             pipeline_deps=pipeline_deps,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
+            routing_timing=_routing_timing,
         )
         if inline_result is not None:
             # Inline-effect early-return path: a phase transition realized
@@ -1766,6 +1767,7 @@ def _handle_inline_effect(
     pipeline_deps: PipelineDeps | None = None,
     display: ParallelDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
+    routing_timing: RoutingTiming | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
@@ -1829,11 +1831,16 @@ def _handle_inline_effect(
             # original target instead reset the cycle's git baseline to
             # redirect-time HEAD and persisted that phase's drain for a phase
             # that never runs.
+            # The step already sampled the clock; using the stored consumed
+            # total instead discards the seconds elapsed since that sample, so
+            # a cycle that crossed its deadline mid-step was judged as still
+            # having room.
             timeboxed = apply_cycle_timebox(
                 state,
                 effect.phase,
                 policy=pipeline_policy,
-                routing_timing=RoutingTiming(
+                routing_timing=routing_timing
+                or RoutingTiming(
                     monotonic_now=0.0,
                     total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
                 ),
