@@ -429,11 +429,18 @@ began before the warning point:
   minutes to every tool result once the warning point passes. The
   publication is withdrawn for any invocation outside a guarded cycle,
   so a later phase never inherits a stale deadline.
-- **On the live phase banner.** Every phase change during an active
-  cycle carries a `[cycle timebox ...]` item with consumed/remaining
-  minutes, and a deadline-forced finalization is labelled as such, so an
-  operator can see the budget draining without waiting for the
-  end-of-run report.
+- **On the live phase banner.** Major phase transitions during an active
+  cycle — in the bundled workflow, each entry into `development` — carry a
+  `[cycle timebox 96m/120m, 24m left]` item, so an operator sees the
+  budget draining without waiting for the end-of-run report. Minor
+  transitions (the commit-cleanup and commit legs) render no context, so
+  the item does not appear on those.
+- **When the deadline fires.** The redirect is logged by the routing
+  component and named on the end-of-run report's `[CT-2] Redirected:`
+  line. It is deliberately not put on the phase banner: the transitions a
+  redirected cycle makes on the way to its final commit are all minor,
+  and the banner renders context only on major ones, so the notice would
+  be dropped before an operator saw it.
 
 #### Relationship to other limits
 

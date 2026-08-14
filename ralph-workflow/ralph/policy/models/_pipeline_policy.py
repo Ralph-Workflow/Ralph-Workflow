@@ -287,8 +287,8 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def cycle_timebox_finalization_outcome_is_routable(self) -> Self:
-        """Reject a finalization outcome that no post-commit route can match.
+    def recordable_cycle_outcomes_are_routable(self) -> Self:
+        """Reject a cycle outcome this workflow can record but cannot route.
 
         The redirect stamps this outcome, and a stamped outcome suppresses the
         unrecorded-outcome fallback. If no route declares it, the timed-out
@@ -299,21 +299,51 @@ class PipelinePolicy(_FrozenPolicyModel):
         ct = self.cycle_timebox
         if ct is None or not self.post_commit_routes:
             return self
-        declared = {
-            route.when.cycle_outcome
-            for route in self.post_commit_routes
-            if route.when.cycle_outcome is not None
-        }
-        wildcard = any(route.when.cycle_outcome is None for route in self.post_commit_routes)
-        if not wildcard and declared and ct.finalization_cycle_outcome not in declared:
-            raise ValueError(
-                f"cycle_timebox.finalization_cycle_outcome "
-                f"'{ct.finalization_cycle_outcome}' is not matched by any post_commit_route; "
-                f"declared outcomes are {sorted(declared)}. A redirected cycle stamped with "
-                "an unroutable outcome would end the run instead of continuing it — declare a "
-                "route for this outcome or change the field to one that is routed."
-            )
+        terminals = self.terminal_states()
+        for phase_name in {route.when.phase for route in self.post_commit_routes}:
+            phase_def = self.phases.get(phase_name)
+            if phase_def is None:
+                continue
+            # Falling through is only harmful when it lands on a terminal: a
+            # phase whose success transition is another cycle continues fine
+            # without a matching route.
+            fallthrough = phase_def.transitions.on_success
+            if fallthrough is None or fallthrough not in terminals:
+                continue
+            routes = [route for route in self.post_commit_routes if route.when.phase == phase_name]
+            if any(route.when.cycle_outcome is None for route in routes):
+                continue
+            declared = {
+                route.when.cycle_outcome
+                for route in routes
+                if route.when.cycle_outcome is not None
+            }
+            for outcome in sorted(self._recordable_cycle_outcomes(ct)):
+                if outcome in declared:
+                    continue
+                raise ValueError(
+                    f"cycle outcome '{outcome}' can be recorded by this workflow but is not "
+                    f"matched by any post_commit_route for commit phase '{phase_name}'; "
+                    f"declared outcomes there are {sorted(declared)}. A cycle carrying it would "
+                    f"fall through to '{fallthrough}' and end the run instead of routing by "
+                    "budget — declare a route for that outcome."
+                )
         return self
+
+    def _recordable_cycle_outcomes(self, ct: CycleTimeboxPolicy) -> set[str]:
+        """Return every cycle outcome this workflow can stamp on a cycle.
+
+        Both sources count: the outcome a deadline redirect finalizes with,
+        and the outcomes the analysis decisions declare. A recorded verdict is
+        never re-routed as a different one at runtime, so the route table has
+        to cover all of them.
+        """
+        outcomes: set[str] = {ct.finalization_cycle_outcome}
+        for phase_def in self.phases.values():
+            for route in phase_def.decisions.values():
+                if route.cycle_outcome is not None:
+                    outcomes.add(route.cycle_outcome)
+        return outcomes
 
     @model_validator(mode="after")
     def cycle_timebox_start_edge_declared(self) -> Self:

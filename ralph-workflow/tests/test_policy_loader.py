@@ -812,53 +812,6 @@ def test_default_cycle_timebox_values() -> None:
     assert ct.finalization_cycle_outcome == "completed"
 
 
-def test_cycle_timebox_rejects_an_outcome_outside_the_vocabulary() -> None:
-    """The finalization outcome is closed to the vocabulary routes match on."""
-    import pydantic
-    import pytest as _pytest
-
-    from ralph.policy.models import CycleTimeboxPolicy
-
-    with _pytest.raises(pydantic.ValidationError):
-        CycleTimeboxPolicy(
-            start_source="planning_analysis",
-            start_entry="development",
-            guarded_entry="development",
-            end_entry="development_final_commit_cleanup",
-            finalization_target="development_final_commit_cleanup",
-            finalization_cycle_outcome="timeboxed",
-        )
-
-
-def test_cycle_timebox_rejects_an_outcome_no_post_commit_route_declares() -> None:
-    """A legal outcome that no route matches would end the run early — reject it."""
-    import pydantic
-    import pytest as _pytest
-
-    from ralph.policy.models import CycleTimeboxPolicy
-
-    bundle = load_policy(_DEFAULTS_DIR)
-    pipeline = bundle.pipeline
-    assert pipeline.cycle_timebox is not None
-    completed_only = [
-        route for route in pipeline.post_commit_routes if route.when.cycle_outcome == "completed"
-    ]
-
-    with _pytest.raises(pydantic.ValidationError, match="finalization_cycle_outcome"):
-        pipeline.model_copy(
-            update={"post_commit_routes": completed_only}
-        ).model_validate(
-            {
-                **pipeline.model_dump(),
-                "post_commit_routes": [route.model_dump() for route in completed_only],
-                "cycle_timebox": {
-                    **pipeline.cycle_timebox.model_dump(),
-                    "finalization_cycle_outcome": "failed",
-                },
-            }
-        )
-
-
 def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path) -> None:
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()

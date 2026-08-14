@@ -170,6 +170,30 @@ def apply_cycle_timebox(
     return CycleTimeboxDecision(state=state, target_phase=target_phase)
 
 
+def start_cycle_for_bypassed_start_source(
+    state: PipelineState,
+    target_phase: str,
+    skipped_phases: tuple[str, ...],
+    *,
+    policy: PipelinePolicy,
+) -> PipelineState:
+    """Start the cycle when the declared start transition was skipped over.
+
+    The timer is bound to the exact ``start_source`` -> ``start_entry`` edge so
+    an unrelated route into the same phase cannot start or reset a cycle. When
+    ``start_source`` is bypassed (its loop budget is spent) the run still
+    enters ``start_entry`` to begin a cycle, and that cycle must be on the
+    clock: without this it would run with no deadline, no warning, and nothing
+    published to the agent. Any other transition is left untouched.
+    """
+    ct = policy.cycle_timebox
+    if ct is None or state.cycle_timebox_active:
+        return state
+    if target_phase != ct.start_entry or ct.start_source not in skipped_phases:
+        return state
+    return _started(state)
+
+
 def initialize_legacy_cycle_on_resume(
     state: PipelineState,
     policy: PipelinePolicy,
@@ -177,11 +201,19 @@ def initialize_legacy_cycle_on_resume(
     """Initialize cycle timing for an older checkpoint resumed mid-cycle.
 
     A legacy checkpoint (written before this feature) has no cycle-timing
-    state. When such a checkpoint resumes directly inside the development
-    loop (at the start or guarded entry), start a fresh active timebox with
-    zero consumed seconds so the timer is tracked going forward without
-    charging pre-resume downtime. Checkpoints that already carry cycle
-    state (active or previously concluded) are left untouched.
+    state. When such a checkpoint resumes inside the development loop, start a
+    fresh active timebox with zero consumed seconds so the timer is tracked
+    going forward without charging pre-resume downtime. Checkpoints that
+    already carry cycle state (active or previously concluded) are left
+    untouched.
+
+    "Inside the loop" is every phase except the terminals and the phases that
+    run BEFORE the cycle starts — the entry phase and the declared
+    ``start_source``. Those precede the start edge, and time spent there is
+    deliberately not charged to a cycle; starting the timer at one of them
+    would bill planning to the deadline. Restricting this to the start and
+    guarded entries instead left a checkpoint resumed at analysis or at a
+    commit phase running the remainder of its cycle unguarded.
     """
     ct = policy.cycle_timebox
     if ct is None:
@@ -190,7 +222,12 @@ def initialize_legacy_cycle_on_resume(
         return state
     if state.phase in (ct.start_entry, ct.guarded_entry):
         return _started(state)
-    return state
+    pre_cycle = {ct.start_source, policy.entry_phase}
+    if state.phase in pre_cycle or state.phase in policy.terminal_states():
+        return state
+    if state.phase not in policy.phases:
+        return state
+    return _started(state)
 
 
 #: Phase-banner key for the cycle-timebox item. The space makes the display
@@ -208,20 +245,20 @@ def cycle_timebox_status_item(
 ) -> dict[str, object] | None:
     """Return the live operator item describing the cycle deadline, if any.
 
-    The deadline was otherwise invisible until the end-of-run report, so an
-    operator could neither see the budget draining nor tell that a phase
-    change had been forced by it. Returns the sticky redirect notice while a
-    deadline-finalized cycle is winding down, the consumed/remaining budget
+    The budget was otherwise invisible until the end-of-run report, so an
+    operator could not watch it drain. Returns the consumed/remaining budget
     while a cycle is active, and ``None`` when no cycle is running.
+
+    A deadline-forced finalization is deliberately NOT reported here: the
+    display renders transition context only on major transitions, and every
+    transition a redirected cycle makes on its way to the final commit is
+    minor, so such a notice could never reach an operator. The redirect
+    surfaces through the routing log line and the run-time report's ``[CT-2]``
+    line instead.
     """
     ct = policy.cycle_timebox
     if ct is None:
         return None
-    # The redirect reason outlives the cycle so the end-of-run report can name
-    # it, so the wind-down is bounded by the verdict instead: it is cleared at
-    # the final commit, which is exactly where the redirected cycle ends.
-    if state.cycle_timebox_redirect_reason and state.pending_cycle_outcome is not None:
-        return {_STATUS_ITEM_KEY: "deadline reached, finalizing"}
     if not state.cycle_timebox_active:
         return None
     consumed = state.cycle_timebox_consumed_seconds

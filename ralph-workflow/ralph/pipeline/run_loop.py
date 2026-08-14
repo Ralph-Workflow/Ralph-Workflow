@@ -815,6 +815,23 @@ def _resolve_registry(
     return _runner_module.AgentRegistry.from_config(config)
 
 
+def _with_counter_overrides(
+    state: PipelineState,
+    counter_overrides: dict[str, int] | None,
+) -> PipelineState:
+    """Return the state with any explicitly requested budget caps applied."""
+    if not counter_overrides:
+        return state
+    updated = {**state.budget_caps, **counter_overrides}
+    if updated == state.budget_caps:
+        return state
+    logger.info(
+        "resume: applying counter override(s) {} over the checkpoint budget caps",
+        counter_overrides,
+    )
+    return state.copy_with(budget_caps=updated)
+
+
 def _resolve_initial_state(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
@@ -828,9 +845,15 @@ def _resolve_initial_state(
     ]
     | None,
 ) -> PipelineState:
-    """Resolve the initial :class:`PipelineState` with the standard DI precedence."""
+    """Resolve the initial :class:`PipelineState` with the standard DI precedence.
+
+    A resumed run adopts the checkpoint's state, but explicit counter
+    overrides are the operator's newest instruction and outrank the caps
+    frozen into it — without this a resumed run silently ignored a raised
+    budget, reported it as spent, and terminated at the next final commit.
+    """
     if initial_state is not None:
-        return initial_state
+        return _with_counter_overrides(initial_state, counter_overrides)
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
         return pipeline_deps.state_factory(
             config,
@@ -2044,3 +2067,5 @@ def _start_pro_heartbeat_if_active(
     _watcher, client = _start_pro_marker_watcher(workspace_root)
     _ = _watcher
     return client
+
+resolve_initial_state = _resolve_initial_state

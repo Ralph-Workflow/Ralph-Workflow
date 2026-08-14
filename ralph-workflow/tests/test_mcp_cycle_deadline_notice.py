@@ -33,6 +33,8 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     import pathlib
 
+    from pytest import MonkeyPatch
+
 _WARN_EPOCH = 1_000_000.0
 _DEADLINE_EPOCH = 1_001_440.0  # 24 minutes after the warning point.
 _TARGET = "development_final_commit_cleanup"
@@ -98,12 +100,7 @@ def test_no_notice_without_a_published_deadline() -> None:
     )
 
 
-def test_notifier_reads_the_published_environment(
-    monkeypatch: object,
-) -> None:
-    from pytest import MonkeyPatch
-
-    assert isinstance(monkeypatch, MonkeyPatch)
+def test_notifier_reads_the_published_environment(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, str(_WARN_EPOCH))
     monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, str(_DEADLINE_EPOCH))
     monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
@@ -153,12 +150,9 @@ def _call_read_file(server: McpServer) -> str:
 
 
 def test_tool_result_carries_the_deadline_nag(
-    tmp_path: pathlib.Path, monkeypatch: object
+    tmp_path: pathlib.Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Every tool result nags once the warning point has passed."""
-    from pytest import MonkeyPatch
-
-    assert isinstance(monkeypatch, MonkeyPatch)
     monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, str(_WARN_EPOCH))
     monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, str(_DEADLINE_EPOCH))
     monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
@@ -170,11 +164,8 @@ def test_tool_result_carries_the_deadline_nag(
 
 
 def test_tool_result_is_clean_before_the_warning_point(
-    tmp_path: pathlib.Path, monkeypatch: object
+    tmp_path: pathlib.Path, monkeypatch: MonkeyPatch
 ) -> None:
-    from pytest import MonkeyPatch
-
-    assert isinstance(monkeypatch, MonkeyPatch)
     monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, str(_WARN_EPOCH))
     monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, str(_DEADLINE_EPOCH))
     monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
@@ -186,18 +177,15 @@ def test_tool_result_is_clean_before_the_warning_point(
 
 
 def test_standalone_server_wires_the_deadline_nag(
-    tmp_path: pathlib.Path, monkeypatch: object
+    tmp_path: pathlib.Path, monkeypatch: MonkeyPatch
 ) -> None:
     """The production composition root carries the nag, not just the tests.
 
     Without this the whole feature can be deleted from the standalone server
     with every other test still green.
     """
-    from pytest import MonkeyPatch
-
     from ralph.mcp.server.runtime import build_standalone_http_server
 
-    assert isinstance(monkeypatch, MonkeyPatch)
     monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "0")
     monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, "9999999999")
     monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)

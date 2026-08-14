@@ -11,6 +11,7 @@ final commit — the operator-visible behavior — never on internal routing sta
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 
+@lru_cache(maxsize=1)
 def _policy() -> PipelinePolicy:
     from ralph.policy.loader import load_policy
 
@@ -292,3 +294,114 @@ def test_exhausted_analysis_loop_completes_run_when_budget_is_spent() -> None:
     state = _drive_to_next_cycle(state, policy, elapsed=100.0)
 
     assert state.phase == "complete"
+
+
+def test_cycle_is_timed_even_when_planning_analysis_is_skipped() -> None:
+    """A skipped planning-analysis must not leave the whole cycle untimed.
+
+    The timer is bound to the declared `planning_analysis -> development`
+    edge so unrelated routes cannot restart it. When that phase is skipped
+    because its loop budget is spent, the run still enters development to
+    begin a cycle — and that cycle has to be on the clock like any other.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="planning",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        loop_iterations={"planning_analysis_iteration": 3},
+    )
+
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(0.0))
+
+    assert state.phase == "development"
+    assert state.cycle_timebox_active is True
+    assert state.cycle_timebox_consumed_seconds == 0.0
+
+
+def test_redirect_reason_survives_to_the_run_time_report() -> None:
+    """The operator must still be told a deadline forced the finalization.
+
+    The reason is the only record of WHY the cycle ended where it did, and the
+    report reads it off the final state — so clearing it at the commit that
+    concludes the redirected cycle would erase it one step before it is read.
+    """
+    from ralph.pipeline.run_time_report import render_run_time_report
+
+    policy = _policy()
+    state = PipelineState(
+        phase="development_analysis",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 5},
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=7200.0,
+    )
+
+    state, _ = reduce(
+        state,
+        AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
+        policy,
+        routing_timing=_rt(7200.0),
+    )
+    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+
+    report = render_run_time_report(
+        state=state,
+        outcome="completed",
+        elapsed_seconds=7200.0,
+        cycle_timebox=policy.cycle_timebox,
+    )
+
+    assert "[CT-2] Redirected:" in report
+    assert "cycle timebox reached" in report
+
+
+def test_bypassed_analysis_into_finalization_ends_the_cycle() -> None:
+    """Reaching the final-commit path via a bypass must end the cycle timer.
+
+    The timebox is applied to the pending target, which a bypass can then
+    rewrite to the finalization entry. Missing that rewrite left the timer
+    running, so the NEXT cycle inherited a spent clock and had its first
+    development entry redirected immediately — burning a dev cycle without
+    doing any development.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="development_commit",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        loop_iterations={"development_analysis_iteration": 5},
+        last_execution_result_status="partial",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=3600.0,
+    )
+
+    state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(3600.0))
+
+    assert state.phase == "development_final_commit_cleanup"
+    assert state.cycle_timebox_active is False
+
+
+def test_next_cycle_after_a_bypassed_finalization_reaches_development() -> None:
+    """The cycle that follows must get its own full budget, not the leftovers."""
+    policy = _policy()
+    state = PipelineState(
+        phase="development_commit",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        loop_iterations={"development_analysis_iteration": 5},
+        last_execution_result_status="partial",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=3600.0,
+    )
+
+    state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(3600.0))
+    state = _drive_to_next_cycle(state, policy, elapsed=3600.0)
+    assert state.phase == "planning"
+
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(3600.0))
+    assert state.phase == "planning_analysis"
+    state, _ = reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy, routing_timing=_rt(3600.0))
+
+    assert state.phase == "development"
+    assert state.cycle_timebox_consumed_seconds == 0.0

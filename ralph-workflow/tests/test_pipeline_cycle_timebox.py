@@ -671,3 +671,31 @@ def test_initialize_legacy_cycle_on_resume_noop_outside_cycle_phases() -> None:
     result = initialize_legacy_cycle_on_resume(legacy, policy)
     assert result.cycle_timebox_active is False
     assert result.cycle_timebox_consumed_seconds == 0.0
+
+
+def test_legacy_resume_times_a_cycle_resumed_mid_loop() -> None:
+    """A pre-feature checkpoint inside the dev loop is timed from the resume point.
+
+    Only the start and guarded entries were initialized, so a checkpoint
+    resumed at any other in-cycle phase ran the rest of that cycle with no
+    deadline, no warning, and nothing published to the agent.
+    """
+    from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+
+    policy = _policy()
+
+    for phase in ("development_analysis", "development_commit", "development_commit_cleanup"):
+        result = initialize_legacy_cycle_on_resume(_state(phase), policy)
+        assert result.cycle_timebox_active is True, phase
+        assert result.cycle_timebox_consumed_seconds == 0.0, phase
+
+
+def test_legacy_resume_leaves_pre_cycle_phases_untimed() -> None:
+    """Planning happens before the cycle starts and must not be charged to it."""
+    from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+
+    policy = _policy()
+
+    for phase in ("planning", "planning_analysis", "complete", "failed_terminal"):
+        result = initialize_legacy_cycle_on_resume(_state(phase), policy)
+        assert result.cycle_timebox_active is False, phase

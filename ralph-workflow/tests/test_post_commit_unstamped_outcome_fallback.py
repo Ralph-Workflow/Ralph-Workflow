@@ -11,6 +11,7 @@ skipping the table.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 
+@lru_cache(maxsize=1)
 def _policy() -> PipelinePolicy:
     return load_policy(_DEFAULTS_DIR).pipeline
 

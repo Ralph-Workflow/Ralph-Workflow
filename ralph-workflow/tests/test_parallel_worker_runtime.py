@@ -658,6 +658,21 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
     assert save_calls == []
 
 
+
+def _bundled_pipeline_policy() -> object:
+    """Return the real bundled pipeline policy.
+
+    A bare ``object()`` stub silently diverges from the ``PipelinePolicy``
+    contract these call sites declare: any field production starts reading —
+    ``cycle_timebox`` was the latest — turns into an AttributeError that says
+    nothing about the behavior under test.
+    """
+    from ralph.policy.loader import load_policy
+
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    return load_policy(defaults).pipeline
+
+
 def test_materialize_prepared_prompt_passes_worker_work_unit(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -690,7 +705,7 @@ def test_materialize_prepared_prompt_passes_worker_work_unit(
 
     prompt_prep_module.materialize_prepared_prompt(
         prompt_prep_module.PreparePromptEffect(phase="development"),
-        pipeline_policy=object(),
+        pipeline_policy=_bundled_pipeline_policy(),
         artifacts_policy=object(),
         workspace_scope=WorkspaceScope(tmp_path),
         state=state,
@@ -843,7 +858,7 @@ def test_materialize_prepared_prompt_preserves_transport_tool_prefix_from_agent_
 
     prompt_prep_module.materialize_prepared_prompt(
         prompt_prep_module.PreparePromptEffect(phase="development", drain="development"),
-        pipeline_policy=type("_PipelinePolicy", (), {"phases": {}})(),
+        pipeline_policy=_bundled_pipeline_policy(),
         artifacts_policy=object(),
         workspace_scope=WorkspaceScope(tmp_path),
         agents_policy=object(),

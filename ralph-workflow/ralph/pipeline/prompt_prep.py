@@ -302,6 +302,36 @@ def _materialize_prepared_prompt(
             )
         ),
         multimodal_entries=media_entries,
+        cycle_timebox_warning=_worker_cycle_timebox_warning(
+            state, effect.phase, pipeline_policy
+        ),
+    )
+
+
+def _worker_cycle_timebox_warning(
+    state: PipelineState | None,
+    target_phase: str,
+    pipeline_policy: PipelinePolicy,
+) -> dict[str, object] | None:
+    """Return the timebox warning for a worker prompt, if one is due.
+
+    A fan-out worker materializes its prompt in its own process, with no
+    routing timing to sample, so the cycle's consumed seconds carried on the
+    state stand in for elapsed time. That omits only the current step's
+    in-flight delta, which is what the serial path would add — close enough to
+    warn on, and far better than a worker spending the tail of the budget
+    unaware there is a deadline at all.
+    """
+    if state is None:
+        return None
+    return cycle_timebox_warning(
+        state,
+        target_phase,
+        policy=pipeline_policy,
+        routing_timing=RoutingTiming(
+            monotonic_now=0.0,
+            total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
+        ),
     )
 
 

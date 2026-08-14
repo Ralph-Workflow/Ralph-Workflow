@@ -361,9 +361,10 @@ def _phase_transition_context(
     """Build the context items rendered beside a phase-change banner.
 
     The cycle-timebox item is merged onto whichever context the transition
-    itself produced, so the deadline stays visible on every phase change of an
-    active cycle rather than only on the transitions that happen to carry
-    routing metadata.
+    itself produced, rather than only onto the transitions that happen to
+    carry routing metadata. Note the display renders context only on MAJOR
+    transitions, so in the bundled workflow the item reaches the operator on
+    entries into development — not on the commit legs.
     """
     timebox_item = cycle_timebox_status_item(state, policy=pipeline_policy)
     if metadata is not None:

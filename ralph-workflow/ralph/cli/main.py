@@ -962,6 +962,10 @@ def main(
         developer_iters=developer_iters,
     )
 
+    counter_overrides = _counter_overrides_with_developer_iters(
+        counter_overrides, effective_developer_iters
+    )
+
     # Load configuration
     cli_overrides = _build_cli_overrides(
         CLIOverrideInput(
@@ -1512,6 +1516,25 @@ def _resolve_policy_mode(
     return _POLICY_MODES[(redo_policy, policy_only)]
 
 
+def _counter_overrides_with_developer_iters(
+    counter_overrides: dict[str, int],
+    developer_iters: int | None,
+) -> dict[str, int]:
+    """Fold an explicit developer-iteration count into the counter overrides.
+
+    ``-D`` and the depth presets set the dev-cycle budget, which reaches a
+    FRESH run through the config. A RESUMED run adopts the checkpoint's caps,
+    so the instruction reaches it only as an explicit counter override; without
+    this the operator's request was silently dropped and the run ended at the
+    next final commit. ``None`` means the operator specified nothing. An
+    explicit ``--counter iteration=N`` is the more specific instruction and
+    wins.
+    """
+    if developer_iters is None:
+        return counter_overrides
+    return {"iteration": developer_iters, **counter_overrides}
+
+
 def _resolve_effective_developer_iters(
     *, quick: bool, long_run: bool, thorough: bool, developer_iters: int | None
 ) -> int | None:
@@ -1807,6 +1830,7 @@ handle_commit_plumbing = _handle_commit_plumbing
 handle_list_agents = _handle_list_agents
 handle_list_providers = _handle_list_providers
 parse_counter_overrides = _parse_counter_overrides
+counter_overrides_with_developer_iters = _counter_overrides_with_developer_iters
 prepare_init_args = _prepare_init_args
 build_cli_overrides = _build_cli_overrides
 RunPipelineOpts = _RunPipelineOpts

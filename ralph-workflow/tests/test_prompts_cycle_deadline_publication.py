@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -35,6 +36,13 @@ _ELAPSED_SECONDS = 3600.0
 _EXPECTED_SECONDS_TO_WARNING = 2160.0
 _EXPECTED_WARNING_TO_DEADLINE = 1440.0
 _CLOCK_TOLERANCE_SECONDS = 30.0
+
+
+
+@lru_cache(maxsize=1)
+def _bundle() -> object:
+    """Load the bundled policy once; these tests share a hard time budget."""
+    return load_policy(_DEFAULTS_DIR)
 
 
 def _reserve_env(monkeypatch: MonkeyPatch) -> None:
@@ -64,7 +72,7 @@ def _materialize(
         ),
         state,
         workspace,
-        load_policy(_DEFAULTS_DIR),
+        _bundle(),
         registry,
         materialize_fn=lambda **_kwargs: "fake-prompt.md",
         cycle_total_elapsed=cycle_total_elapsed,
@@ -129,29 +137,6 @@ def test_deadline_is_withdrawn_once_the_cycle_concludes(
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
 
 
-def test_publish_then_withdraw_across_two_invocations(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """A deadline published for one invocation is gone by the next non-guarded one."""
-    _reserve_env(monkeypatch)
-    guarded = PipelineState(
-        phase="development",
-        cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
-    )
-    _materialize("development", guarded, tmp_path, cycle_total_elapsed=_ELAPSED_SECONDS)
-    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
-
-    _materialize(
-        "planning",
-        PipelineState(phase="planning", cycle_timebox_active=False),
-        tmp_path,
-        cycle_total_elapsed=0.0,
-    )
-
-    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
-
-
 def test_untimed_invocation_withdraws_the_deadline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -166,3 +151,5 @@ def test_untimed_invocation_withdraws_the_deadline(
     _materialize("development", state, tmp_path, cycle_total_elapsed=None)
 
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ

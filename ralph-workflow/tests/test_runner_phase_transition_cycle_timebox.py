@@ -64,8 +64,15 @@ def test_inactive_cycle_shows_no_timebox_item() -> None:
     assert "cycle timebox" not in output
 
 
-def test_deadline_redirect_is_reported_on_the_phase_banner() -> None:
-    """A deadline-forced finalization says so where the operator can see it."""
+def test_redirect_leaves_no_banner_item_because_the_operator_never_sees_one() -> None:
+    """The wind-down legs are minor transitions, so no context is rendered there.
+
+    Pinning this keeps a "deadline reached" item from being reintroduced on a
+    surface that drops it: the redirect is reported by the routing log and the
+    run-time report instead.
+    """
+    from ralph.pipeline.cycle_timing import cycle_timebox_status_item
+
     state = PipelineState(
         phase="development_final_commit_cleanup",
         previous_phase="development_analysis",
@@ -78,38 +85,5 @@ def test_deadline_redirect_is_reported_on_the_phase_banner() -> None:
         ),
     )
 
-    output = _banner_output(state, "development_analysis")
-
-    assert "cycle timebox" in output
-    assert "deadline reached" in output
-
-
-def test_redirect_notice_stops_once_the_redirected_cycle_is_committed() -> None:
-    """The notice covers the wind-down, not the fresh cycle that follows it."""
-    from ralph.pipeline.cycle_timing import RoutingTiming
-    from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
-    from ralph.pipeline.reducer import reduce
-
-    policy = _DEFAULT_POLICY.pipeline
-    timing = RoutingTiming(monotonic_now=7200.0, total_elapsed_seconds=7200.0)
-    state = PipelineState(
-        phase="development_analysis",
-        budget_caps={"iteration": 5},
-        outer_progress={"iteration": 1},
-        cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
-    )
-
-    state, _ = reduce(
-        state,
-        AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
-        policy,
-        routing_timing=timing,
-    )
-    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=timing)
-    state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=timing)
-    assert state.phase == "planning"
-
-    output = _banner_output(state, "development_final_commit")
-
-    assert "cycle timebox" not in output
+    assert cycle_timebox_status_item(state, policy=_DEFAULT_POLICY.pipeline) is None
+    assert "cycle timebox" not in _banner_output(state, "development_analysis")

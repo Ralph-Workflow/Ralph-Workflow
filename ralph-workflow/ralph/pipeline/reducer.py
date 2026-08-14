@@ -49,7 +49,11 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
-from ralph.pipeline.cycle_timing import RoutingTiming, apply_cycle_timebox
+from ralph.pipeline.cycle_timing import (
+    RoutingTiming,
+    apply_cycle_timebox,
+    start_cycle_for_bypassed_start_source,
+)
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
@@ -79,6 +83,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.pipeline.agent_chain_state import AgentChainState
+    from ralph.pipeline.exhausted_analysis_bypass_result import ExhaustedAnalysisBypassResult
     from ralph.policy.models import PipelinePolicy
     from ralph.recovery.controller import RecoveryController
 
@@ -1153,10 +1158,48 @@ def _prepare_phase_advance(
         if success_target == target_phase:
             bypass = resolve_exhausted_analysis_bypass(state, state.phase, policy)
             if bypass.skipped:
-                return bypass.state, bypass.target_phase
+                return _with_bypassed_cycle_timing(bypass, policy, routing_timing)
 
     bypass = resolve_exhausted_analysis_bypass(state, target_phase, policy)
-    return bypass.state, bypass.target_phase
+    return _with_bypassed_cycle_timing(bypass, policy, routing_timing)
+
+
+def _with_bypassed_cycle_timing(
+    bypass: ExhaustedAnalysisBypassResult,
+    policy: PipelinePolicy,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, PipelinePhase]:
+    """Apply a bypass result with the cycle timer re-evaluated on its real target.
+
+    The timebox is applied to the PENDING target, which a bypass can then
+    rewrite — so both cycle boundaries have to be reconsidered against the
+    target routing actually took. Missing the end boundary left the timer
+    running into the next cycle, whose first development entry was then
+    redirected on the previous cycle's spent budget; missing the start
+    boundary left a cycle entirely untimed.
+    """
+    if not bypass.skipped:
+        # Nothing was rewritten, so the caller's application already saw the
+        # real target. Re-applying here would re-judge a cycle it may have just
+        # started, against elapsed seconds measured before that reset.
+        return bypass.state, bypass.target_phase
+    timebox = apply_cycle_timebox(
+        bypass.state,
+        bypass.target_phase,
+        policy=policy,
+        routing_timing=routing_timing,
+    )
+    if timebox.redirected and timebox.redirect_reason is not None:
+        logger.bind(component="policy.routing").warning(timebox.redirect_reason)
+    return (
+        start_cycle_for_bypassed_start_source(
+            timebox.state,
+            timebox.target_phase,
+            tuple(skip.phase for skip in bypass.skipped),
+            policy=policy,
+        ),
+        timebox.target_phase,
+    )
 
 
 def _advance_phase(

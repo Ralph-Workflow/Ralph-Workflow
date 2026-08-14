@@ -142,8 +142,8 @@ from ralph.pipeline.prompt_prep import (
 )
 from ralph.pipeline.prompt_prep import (
     materialize_agent_prompt_if_needed,
-    publish_cycle_deadline_env,
     prompt_session_drain_for_phase,
+    publish_cycle_deadline_env,
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import CommitState, PipelineState
