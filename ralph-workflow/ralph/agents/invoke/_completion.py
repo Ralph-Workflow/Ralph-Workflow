@@ -85,6 +85,24 @@ def _looks_like_credentials_failure(text: str) -> bool:
     return contains_casefolded_marker([text], CREDENTIALS_FAILURE_SUBSTRINGS)
 
 
+_NO_LLM_ACTIVITY_MAX_NONBLANK_LINES: int = 2
+_NO_LLM_ACTIVITY_MAX_BYTES: int = 256
+
+
+def _is_structurally_small_no_llm_output(bounded_output: list[str]) -> bool:
+    """Gate no-LLM-activity classification to tiny bounded outputs.
+
+    This is intentionally small-structure only: up to 2 nonblank lines and
+    up to 256 bytes total. Substantial output should follow the
+    normal resumable/retry path even if watchdog marked it non-meaningful
+    for that invocation.
+    """
+    nonblank_lines = sum(1 for line in bounded_output if line.strip())
+    if nonblank_lines > _NO_LLM_ACTIVITY_MAX_NONBLANK_LINES:
+        return False
+    return sum(len(line.encode("utf-8")) for line in bounded_output) <= _NO_LLM_ACTIVITY_MAX_BYTES
+
+
 def _truncation_marker(capped_bytes: int) -> str:
     """Return the canonical truncation marker used when the stderr pipe holds
     more bytes than the cap."""
@@ -546,7 +564,11 @@ def _raise_if_broken_agent_exit(
             elapsed_seconds=opts.elapsed_seconds,
             grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
         )
-    if bounded_output and opts.has_meaningful_output is False:
+    if (
+        bounded_output
+        and opts.has_meaningful_output is False
+        and _is_structurally_small_no_llm_output(bounded_output)
+    ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(
             agent_name,

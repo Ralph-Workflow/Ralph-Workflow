@@ -15,9 +15,11 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     BrokenAgentExitError,
     CompletionCheckOptions,
+    OpenCodeResumableExitError,
     check_process_result,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.recovery.failure_classifier import FailureClassifier
 
 if TYPE_CHECKING:
     from ralph.agents.execution_state import LiveDescendantHandle
@@ -197,6 +199,43 @@ def test_completion_gate_regression_classifies_fast_no_llm_activity_as_broken_ag
         )
 
     assert excinfo.value.reason == "no_llm_activity"
+
+
+def test_completion_gate_substantial_output_marked_no_meaningful_still_resumable() -> None:
+    """S-2: substantial no-LLM-activity output should fall through to resumable flow."""
+    output_lines = [
+        "event-0: " + ("x" * 70),
+        "event-1: " + ("y" * 70),
+        "event-2: " + ("z" * 70),
+        "event-3: " + ("a" * 70),
+    ]
+
+    assert len([line for line in output_lines if line.strip()]) > 2
+    assert sum(len(line.encode("utf-8")) for line in output_lines) > 256
+
+    with pytest.raises(Exception) as excinfo:
+        check_process_result(
+            _Handle(),
+            "opencode",
+            output_lines,
+            _options(
+                elapsed_seconds=2.0,
+                input_prompt="implement the change",
+                has_meaningful_output=False,
+            ),
+            _clock=FakeClock(),
+        )
+
+    classified = FailureClassifier().classify(
+        excinfo.value,
+        phase="development",
+        agent="opencode",
+        connectivity_state="online",
+    )
+
+    assert isinstance(excinfo.value, OpenCodeResumableExitError)
+    assert classified.is_unavailable is False
+    assert classified.unavailability_reason is None
 
 
 def test_completion_gate_keeps_mixed_output_resumable() -> None:

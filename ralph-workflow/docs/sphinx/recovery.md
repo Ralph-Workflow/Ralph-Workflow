@@ -226,8 +226,14 @@ recovery action mapping.
 A clean agent exit is not resumable when Ralph Workflow has conclusive evidence
 that the agent did no model work: no captured output, only harness/prompt-echo
 output confirmed by the watchdog, or a recognized authentication failure in
-captured output or stderr. These exits raise `BrokenAgentExitError`, so recovery
-skips same-agent retries and proceeds through the configured agent chain.
+captured output or stderr, or *small* no-LLM output confirmed by the watchdog.
+`no_llm_activity` applies only when bounded output is structurally small (≤2
+nonblank lines and ≤256 bytes total). Larger structurally-rich output with
+`has_meaningful_output=False` stays on the resumable/retry path instead, so the
+same session can continue when the watchdog classification misses model activity.
+These exits raise `BrokenAgentExitError` only in the small/no-output cases,
+so recovery skips same-agent retries and proceeds through the configured
+agent chain for the substantial no-LLM cases.
 
 For nonzero exits, this credential classification applies only during the
 startup grace period. A later nonzero credential error remains a normal
