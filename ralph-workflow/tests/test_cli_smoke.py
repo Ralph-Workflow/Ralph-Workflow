@@ -9,8 +9,10 @@ import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
+    from ralph.agents.support import AgentSupport
     from ralph.pipeline.factory import PipelineDeps
 
+from ralph.agents.builtin import builtin_supports
 from ralph.agents.invoke import InvokeOptions
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -729,6 +731,20 @@ def test_smoke_interactive_nanocoder_command_exits_when_transport_is_wrong(
     assert exit_code == 2
 
 
+def _nanocoder_support() -> AgentSupport:
+    """Return the real registered nanocoder ``AgentSupport`` (S-6 / G6 / DoD 20).
+
+    Mirrors ``tests/test_harness_run_diagnosis.py``'s helper of the same
+    name: passing the real registered support (rather than a hand-built
+    double) reproduces the ``support`` resolution ``_run_smoke_agent``
+    performs in production, so the test cannot drift from the real
+    registered ``session_identifier_observable`` value.
+    """
+    return next(
+        support for support in builtin_supports() if support.transport == AgentTransport.NANOCODER
+    )
+
+
 def test_nanocoder_smoke_errors_do_not_require_session_id(tmp_path: Path) -> None:
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -760,6 +776,7 @@ def test_nanocoder_smoke_errors_do_not_require_session_id(tmp_path: Path) -> Non
         final_exception=None,
         tool_activity_seen=True,
         artifact_submitted=True,
+        support=_nanocoder_support(),
     )
 
     assert "session ID was not observed" not in errors

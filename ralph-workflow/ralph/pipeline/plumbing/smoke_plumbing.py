@@ -110,6 +110,8 @@ _CODEX_SMOKE_RUN_ID = "interactive-codex-smoke"
 _PI_SMOKE_RELATIVE_DIR = Path("tmp/interactive-pi-smoke")
 _PI_SMOKE_OUTPUT_FILE = _PI_SMOKE_RELATIVE_DIR / "todo-list.js"
 _PI_SMOKE_RUN_ID = "interactive-pi-smoke"
+_CCS_SMOKE_RELATIVE_DIR = Path("tmp/interactive-ccs-smoke")
+_CCS_SMOKE_RUN_ID = "interactive-ccs-smoke"
 
 
 @dataclass(frozen=True)
@@ -284,6 +286,26 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             relative_dir=relative_dir,
             output_file=relative_dir / "todo-list.js",
             run_id=run_id,
+        )
+    if agent_name.startswith("ccs/"):
+        # ``ccs/<alias>`` (e.g. ``ccs/glm``) resolves dynamically to a
+        # headless-Claude command via ``_resolve_dynamic_ccs_agent`` even
+        # without a ``[ccs_aliases]`` config entry (see
+        # ``ralph.agents.registry``), so this branch must accept any
+        # non-empty alias. A sanitized, alias-scoped directory keeps two
+        # concurrent CCS alias smoke runs (``ccs/glm`` vs ``ccs/work``)
+        # from colliding on completion-sentinel / receipt paths, mirroring
+        # the ``codex/<model>`` and ``pi/<model>`` layout above.
+        suffix = agent_name.removeprefix("ccs/")
+        sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+        if not sanitized:
+            raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
+        relative_dir = _CCS_SMOKE_RELATIVE_DIR / sanitized
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=relative_dir,
+            output_file=relative_dir / "todo-list.js",
+            run_id=f"{_CCS_SMOKE_RUN_ID}-{sanitized}",
         )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 

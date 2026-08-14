@@ -15,6 +15,7 @@ from loguru import logger
 from rich.table import Table
 
 from ralph.agents.registry import AgentRegistry, agy_alias_help
+from ralph.cli.commands._smoke_ccs import smoke_interactive_ccs_command
 from ralph.cli.commands._smoke_opencode_override import (
     _apply_opencode_binary_override_to_config,
     _maybe_apply_opencode_binary_override,
@@ -217,6 +218,7 @@ __all__ = [
     "render_smoke_report",
     "smoke_headless_claude_command",
     "smoke_interactive_agy_command",
+    "smoke_interactive_ccs_command",
     "smoke_interactive_claude_command",
     "smoke_interactive_codex_command",
     "smoke_interactive_cursor_command",

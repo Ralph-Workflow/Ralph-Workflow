@@ -186,7 +186,7 @@ commit = "commit"
 # interactive Claude use the built-in "claude" or "claude/MODEL" agents instead.
 [ccs]
 # output_flag = "--output-format=stream-json"
-# yolo_flag = "--permission-mode auto"
+# yolo_flag = "--permission-mode bypassPermissions"
 # verbose_flag = "--verbose"
 # print_flag = "--print"
 # streaming_flag = "--include-partial-messages"

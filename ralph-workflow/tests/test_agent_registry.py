@@ -135,7 +135,7 @@ def test_ccs_alias_keeps_claude_transport() -> None:
     assert ccs_agent is not None
     assert ccs_agent.cmd == "ccs glm"
     assert ccs_agent.output_flag == config.ccs.output_flag
-    assert ccs_agent.yolo_flag == "--permission-mode auto"
+    assert ccs_agent.yolo_flag == "--permission-mode bypassPermissions"
     assert ccs_agent.print_flag == config.ccs.print_flag
     assert ccs_agent.streaming_flag == config.ccs.streaming_flag
     assert ccs_agent.transport == AgentTransport.CLAUDE
@@ -150,7 +150,7 @@ def test_agent_registry_resolves_string_ccs_alias_with_defaults() -> None:
     assert ccs_agent is not None
     assert ccs_agent.cmd == "ccs glm"
     assert ccs_agent.output_flag == config.ccs.output_flag
-    assert ccs_agent.yolo_flag == "--permission-mode auto"
+    assert ccs_agent.yolo_flag == "--permission-mode bypassPermissions"
     assert ccs_agent.print_flag == config.ccs.print_flag
     assert ccs_agent.streaming_flag == config.ccs.streaming_flag
     assert ccs_agent.transport == AgentTransport.CLAUDE
@@ -262,7 +262,7 @@ def test_agent_registry_resolves_direct_ccs_model_reference() -> None:
     assert agent is not None
     assert agent.cmd == "ccs mm"
     assert agent.output_flag == "--output-format=stream-json"
-    assert agent.yolo_flag == "--permission-mode auto"
+    assert agent.yolo_flag == "--permission-mode bypassPermissions"
     assert agent.verbose_flag == "--verbose"
     assert agent.json_parser == "claude"
     assert agent.transport == AgentTransport.CLAUDE

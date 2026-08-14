@@ -591,6 +591,16 @@ def _fail_for_missing_credentials(
     transport = _agent_transport(config)
     required_env_var: str | None = None
     if transport in {AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE}:
+        # A ``ccs/<alias>`` agent (``cmd`` starts with the ``ccs`` wrapper
+        # binary) resolves its own provider credential per-profile -- e.g.
+        # a GLM-backed profile injects ``ANTHROPIC_AUTH_TOKEN`` /
+        # ``ANTHROPIC_BASE_URL`` itself (verified via ``ccs env <alias>``),
+        # never ``ANTHROPIC_API_KEY``. Requiring ``ANTHROPIC_API_KEY`` here
+        # rejected every real ``ccs/<alias>`` invocation before it ever
+        # reached the ``ccs`` binary, regardless of whether the alias's
+        # underlying profile actually needed that variable.
+        if config.cmd.split()[:1] == ["ccs"]:
+            return
         required_env_var = "ANTHROPIC_API_KEY"
     elif transport == AgentTransport.OPENCODE:
         model_id = _normalized_opencode_model_id(options.model_flag or config.model_flag)

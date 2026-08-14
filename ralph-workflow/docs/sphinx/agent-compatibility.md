@@ -135,8 +135,47 @@ json_parser = "generic"
 
 - **CLI**: a configured `ccs/<alias>` command
 - **Transport**: `claude`
-- **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode auto`, `--verbose`, and `--resume {}`
-- **Constraint**: CCS aliases are explicitly headless Claude commands configured under `[ccs_aliases]`.
+- **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode bypassPermissions`, `--verbose`, and `--resume {}`
+- **Constraint**: CCS aliases are explicitly headless Claude commands configured under `[ccs_aliases]`. `ccs/<alias>` also resolves as a dynamic alias (like `claude/<model>`) even with no `[ccs_aliases]` entry at all.
+- **Smoke test**: `ralph smoke-interactive-ccs --agent ccs/<alias>` (defaults to `ccs/glm`).
+- **Caveats** (measured against the live CCS v8.9.0 CLI):
+    - `--permission-mode auto` is a valid `claude` flag value but is rejected by
+      `ccs`'s own pre-flight validator (`Invalid permission mode: "auto". Valid
+      modes: default, plan, acceptEdits, bypassPermissions`) before the command
+      ever reaches `claude` -- every `ccs/<alias>` invocation failed
+      immediately with exit code 1. `bypassPermissions` is accepted by both
+      the `ccs` wrapper and the underlying `claude` CLI and is the documented
+      default.
+    - Ralph Workflow never passes `ccs` its own `-p`/`--prompt` flag (only
+      the long `--print` boolean plus the prompt text as a trailing
+      `-- <text>` positional argument), so a `ccs/<alias>` invocation does
+      NOT route through CCS's separate "headless executor" delegation-report
+      feature (that feature is `-p "task"`-triggered only, a distinct
+      one-shot "delegate and summarize" UX). The invocation instead takes
+      CCS's raw pass-through path, which spawns `claude` and forwards its
+      raw `--output-format=stream-json` NDJSON stdout untouched. A live run
+      against `ccs/glm` confirmed parser events, tool activity, and artifact
+      submission are all observed at WIRE/TRANSCRIPT provenance -- the same
+      fidelity as the built-in `claude-headless` agent.
+    - `AgentTransport.CLAUDE` (shared by `claude-headless` and every
+      `ccs/<alias>`) previously raised `MissingCredentialsError:
+      ANTHROPIC_API_KEY not set` before ever spawning `ccs` -- CCS profiles
+      resolve their own provider credential per-profile (e.g. a GLM-backed
+      profile injects `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` itself,
+      confirmed via `ccs env <alias>`) and never need `ANTHROPIC_API_KEY` in
+      Ralph Workflow's own environment. `ccs/<alias>` commands are now
+      exempt from that preflight check.
+    - The session-resume flow (`--resume {}`) requires the transport's
+      `session_id` to survive the PTY line capture. A live `ccs/glm` run
+      that otherwise passed every WIRE-level evidence check (file created,
+      15 parsed events, tool activity, artifact submitted, completion
+      observed) still reported "session ID was not observed" -- the `claude`
+      transport's session-id extraction did not recover the id from CCS's
+      PTY-interleaved stdout/stderr in that run, even though the id is
+      present and independently extractable from the same raw `init` frame
+      captured outside the PTY. This narrows retries/resume for
+      `ccs/<alias>` without blocking a single-turn run; it is tracked as a
+      follow-up, not fixed by this change.
 
 ### Built-in configuration examples
 
@@ -207,7 +246,7 @@ json_parser = "generic"
 print_flag = "--print"
 output_flag = "--output-format=stream-json"
 streaming_flag = "--include-partial-messages"
-yolo_flag = "--permission-mode auto"
+yolo_flag = "--permission-mode bypassPermissions"
 verbose_flag = "--verbose"
 session_flag = "--resume {}"
 json_parser = "claude"

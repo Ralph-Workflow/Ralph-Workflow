@@ -34,6 +34,7 @@ from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import (
     smoke_headless_claude_command,
     smoke_interactive_agy_command,
+    smoke_interactive_ccs_command,
     smoke_interactive_claude_command,
     smoke_interactive_codex_command,
     smoke_interactive_cursor_command,
@@ -1451,6 +1452,51 @@ def smoke_interactive_pi(
 
 
 app.command(name="smoke-interactive-pi")(smoke_interactive_pi)
+
+
+def smoke_interactive_ccs(
+    agent: str = typer.Option(
+        "ccs/glm",
+        help="CCS alias to smoke (e.g. ccs/glm).",
+    ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual smoke test for a CCS (Claude Code Switch) alias."""
+    raise typer.Exit(
+        code=smoke_interactive_ccs_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
+        )
+    )
+
+
+app.command(name="smoke-interactive-ccs")(smoke_interactive_ccs)
 app.command()(star)
 
 

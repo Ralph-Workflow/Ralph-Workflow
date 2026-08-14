@@ -180,17 +180,36 @@ def test_canonical_tuple_matches_registered_smoke_commands() -> None:
     ``codex`` or ``pi`` (no smoke command, can never be populated by a
     real run) back into the canonical tuple, or drop ``nanocoder`` /
     ``opencode`` (have smoke commands and can).
+
+    ``ccs`` is a documented exception: ``smoke-interactive-ccs`` is a real,
+    separately registered command, but a ``ccs/<alias>`` agent shares
+    ``AgentTransport.CLAUDE`` with the built-in ``claude`` /
+    ``claude-headless`` agents (CCS is a wrapper around the same wire
+    transport, not a distinct one), so a ``ccs/<alias>`` smoke run's
+    ``SmokeRunResult.transport`` -- and therefore its conformance-matrix
+    row -- is ``"claude"``, never ``"ccs"``. ``_command_name_transport_aliases``
+    maps the command name onto the transport row it actually populates so
+    this regression keeps meaning "transports a real smoke run can
+    populate", not "one canonical row per registered CLI command name".
     """
     from ralph.cli.main import app  # local import: keeps the regression
     # focused on the matrix invariant and the CLI command registry.
 
+    # Command names whose smoke run populates a DIFFERENT transport's
+    # conformance row than their own name would suggest (see the
+    # docstring above for why ``ccs`` -> ``claude``).
+    _command_name_transport_aliases = {"ccs": "claude"}
+
     # Strip the ``smoke-interactive-`` prefix so we compare transport
     # names (``claude``) against the canonical tuple rather than
-    # full CLI command names (``smoke-interactive-claude``).
+    # full CLI command names (``smoke-interactive-claude``), then map
+    # any known command-name/transport alias onto the row it actually
+    # populates.
     registered_smoke_transports = {
-        cmd.name.removeprefix("smoke-interactive-")
+        _command_name_transport_aliases.get(name, name)
         for cmd in app.registered_commands
         if getattr(cmd, "name", None) and cmd.name.startswith("smoke-interactive-")
+        for name in (cmd.name.removeprefix("smoke-interactive-"),)
     }
 
     expected_canonical = {

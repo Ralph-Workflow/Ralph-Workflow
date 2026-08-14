@@ -121,6 +121,7 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
         model_identity: object,
         subagents: bool,
         subagent_prompt_file: object,
+        multimodal: bool,
     ) -> int:
         captured["agent_name"] = agent_name
         captured["display_context"] = display_context
@@ -128,6 +129,7 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
         captured["model_identity"] = model_identity
         captured["subagents"] = subagents
         captured["subagent_prompt_file"] = subagent_prompt_file
+        captured["multimodal"] = multimodal
         return 0
 
     monkeypatch.setattr(smoke_module, "smoke_harness_agent_command", fake_harness)
@@ -143,6 +145,7 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
         model_identity=sentinel_identity,
         subagents=True,
         subagent_prompt_file=sentinel_prompt,
+        multimodal=True,
     )
 
     assert exit_code == 0
@@ -152,6 +155,7 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
     assert captured["model_identity"] is sentinel_identity
     assert captured["subagents"] is True
     assert captured["subagent_prompt_file"] is sentinel_prompt
+    assert captured["multimodal"] is True
 
 
 def test_smoke_headless_claude_command_default_no_subagents(
@@ -176,9 +180,11 @@ def test_smoke_headless_claude_command_default_no_subagents(
         model_identity: object,
         subagents: bool,
         subagent_prompt_file: object,
+        multimodal: bool,
     ) -> int:
         captured["subagents"] = subagents
         captured["subagent_prompt_file"] = subagent_prompt_file
+        captured["multimodal"] = multimodal
         return 0
 
     monkeypatch.setattr(smoke_module, "smoke_harness_agent_command", fake_harness)
@@ -188,6 +194,7 @@ def test_smoke_headless_claude_command_default_no_subagents(
     assert exit_code == 0
     assert captured["subagents"] is False
     assert captured["subagent_prompt_file"] is None
+    assert captured["multimodal"] is False
 
 
 def test_cli_help_advertises_subagent_options() -> None:

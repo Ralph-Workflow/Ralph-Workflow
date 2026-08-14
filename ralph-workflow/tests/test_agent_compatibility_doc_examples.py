@@ -222,14 +222,22 @@ def test_ccs_block_matches_real_ccsconfig_schema() -> None:
     CcsConfig.model_validate(ccs_dict)
 
     # Spot-check the previously-wrong field: the doc used to claim
-    # yolo_flag = "--dangerously-skip-permissions", but CcsConfig's
-    # documented default is "--permission-mode auto" (it shares the
-    # headless Claude path). This would have silently passed in v1
-    # because Pydantic extra='ignore' drops unrecognised keys; the
-    # regression guard below makes the contract explicit.
+    # yolo_flag = "--dangerously-skip-permissions", then briefly
+    # "--permission-mode auto" (it shares the headless Claude path).
+    # "auto" turned out to be wrong too: it is a valid `claude` flag value,
+    # but the real `ccs` CLI (measured against v8.9.0) runs its own
+    # pre-flight validation ahead of delegating to `claude` and rejects
+    # "auto" outright (`Invalid permission mode: "auto". Valid modes:
+    # default, plan, acceptEdits, bypassPermissions`), so every
+    # `ccs/<alias>` invocation failed immediately. CcsConfig's documented
+    # default is now "--permission-mode bypassPermissions", which both the
+    # `ccs` wrapper's validator and the underlying `claude` CLI accept.
+    # This would have silently passed in v1 because Pydantic
+    # extra='ignore' drops unrecognised keys; the regression guard below
+    # makes the contract explicit.
     if "yolo_flag" in ccs_dict:
-        assert ccs_dict["yolo_flag"] == "--permission-mode auto", (
-            f"[ccs] yolo_flag must be '--permission-mode auto' (the headless "
+        assert ccs_dict["yolo_flag"] == "--permission-mode bypassPermissions", (
+            f"[ccs] yolo_flag must be '--permission-mode bypassPermissions' (the headless "
             f"Claude path), not {ccs_dict['yolo_flag']!r}."
         )
 

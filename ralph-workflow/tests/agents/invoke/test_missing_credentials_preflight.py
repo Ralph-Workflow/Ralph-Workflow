@@ -59,3 +59,19 @@ def test_claude_transport_requires_anthropic_key() -> None:
         _fail_for_missing_credentials(config, InvokeOptions(), env_getter=lambda _name: None)
 
     assert excinfo.value.env_var == "ANTHROPIC_API_KEY"
+
+
+def test_ccs_alias_is_exempt_from_anthropic_key_preflight() -> None:
+    """A ``ccs/<alias>`` agent resolves its own credential per-profile.
+
+    Before this exemption, every real ``ccs/<alias>`` invocation (e.g.
+    ``ccs/glm``, a GLM-backed profile that injects
+    ``ANTHROPIC_AUTH_TOKEN`` / ``ANTHROPIC_BASE_URL`` itself via the
+    ``ccs`` wrapper) was rejected here with
+    ``MissingCredentialsError: ANTHROPIC_API_KEY not set`` before the
+    ``ccs`` binary was ever spawned -- even though the CCS profile
+    needed no such variable in Ralph's own environment.
+    """
+    config = AgentConfig(cmd="ccs glm", transport=AgentTransport.CLAUDE)
+
+    _fail_for_missing_credentials(config, InvokeOptions(), env_getter=lambda _name: None)
