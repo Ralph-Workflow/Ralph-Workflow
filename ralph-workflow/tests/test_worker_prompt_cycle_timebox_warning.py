@@ -178,3 +178,17 @@ def _drive_worker(monkeypatch: MonkeyPatch, tmp_path: Path) -> _WorkerCapture:
         pipeline_deps=deps,
     )
     return captured
+
+
+def test_a_non_finite_warn_epoch_alone_suppresses_the_warning() -> None:
+    """The finiteness guard must decide the outcome on its own.
+
+    The existing unusable-values case makes every published value unparseable,
+    so the non-finite check never gets to be the reason. A lone `nan` warn
+    epoch compares false against every bound, which would carry it into the
+    worker's warning arithmetic.
+    """
+    published = _published(warn_in=-60.0, deadline_in=1380.0)
+    published[CYCLE_WARN_EPOCH_ENV] = "nan"
+
+    assert cycle_timebox_warning_from_env(published, now_epoch=_NOW) is None

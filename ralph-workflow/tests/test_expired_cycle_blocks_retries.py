@@ -103,3 +103,34 @@ def test_a_continuation_inside_a_spent_cycle_is_redirected_too() -> None:
     )
 
     assert redirected.phase == "development_final_commit_cleanup"
+
+
+def test_a_stale_active_cycle_redirects_the_start_edge_entry() -> None:
+    """Entering on the start edge with a cycle still armed and spent.
+
+    The start branch only fires when no cycle is running, so an entry made
+    while one is still armed falls through to the guarded-entry check and is
+    redirected rather than silently starting a second cycle on a spent clock.
+
+    What this does NOT pin: the signal resolver's forwarding of the routing
+    timing. Under the bundled graph every edge into the guarded phase is
+    reached through the analysis-success or loopback handlers, not the signal
+    resolver, so no bundled-policy test can distinguish that forwarding —
+    verified by mutating it and watching this stay green.
+    """
+    spent = PipelineState(
+        phase="planning_analysis",
+        budget_caps={"iteration": 5},
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_SPENT,
+    )
+
+    redirected, _effects = reducer_reduce(
+        spent,
+        PipelineEvent.AGENT_SUCCESS,
+        _pipeline(),
+        routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
+    )
+
+    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.cycle_timebox_redirect_reason is not None

@@ -408,3 +408,53 @@ def test_disabling_an_inherited_timebox_is_announced() -> None:
 
     assert "cycle_timebox" not in result
     assert any("no cycle deadline" in record for record in records)
+
+
+def test_the_model_defaults_are_the_documented_ones() -> None:
+    """A policy that omits these fields must get the documented values.
+
+    Every existing assertion reads them back from the bundled TOML, which
+    supplies both explicitly — so the model's own defaults could drift to any
+    value and nothing would notice. They decide how long a cycle runs and
+    whether a timed-out out-of-budget run ends in success or failure.
+    """
+    from ralph.policy.models import CycleTimeboxPolicy
+
+    minimal = CycleTimeboxPolicy(
+        start_source="planning_analysis",
+        start_entry="development",
+        guarded_entry="development",
+        end_entry="development_final_commit_cleanup",
+        finalization_target="development_final_commit_cleanup",
+    )
+
+    assert minimal.duration_seconds == 7200.0
+    assert minimal.finalization_cycle_outcome == "completed"
+
+
+def test_an_inherited_timebox_whose_start_edge_is_gone_is_disabled() -> None:
+    """The edge branch had no test: both existing cases removed a phase instead.
+
+    A graph can keep every referenced phase and still drop the transition the
+    timer starts on, which leaves the deadline unable to ever arm.
+    """
+    from ralph.policy.loader import _disable_incompatible_inherited_cycle_timebox
+
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
+    phases = dict(pipeline.phases)
+    # Keep every phase; sever only the declared start edge.
+    planning_analysis = phases["planning_analysis"]
+    phases["planning_analysis"] = planning_analysis.model_copy(
+        update={
+            "transitions": planning_analysis.transitions.model_copy(
+                update={"on_success": "development_final_commit_cleanup"}
+            ),
+            "decisions": {},
+        }
+    )
+
+    result = _disable_incompatible_inherited_cycle_timebox(
+        {"cycle_timebox": pipeline.cycle_timebox.model_dump(), "phases": phases}
+    )
+
+    assert "cycle_timebox" not in result
