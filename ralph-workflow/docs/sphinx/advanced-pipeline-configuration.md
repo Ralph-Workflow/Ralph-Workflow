@@ -398,7 +398,7 @@ concludes with a real commit rather than looping indefinitely.
 | `start_source` | `planning_analysis` | Source phase of the transition that starts the timer. |
 | `start_entry` | `development` | Target phase of the start transition (phase whose entry begins the cycle). |
 | `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
-| `end_entry` | `development_final_commit_cleanup` | Phase whose entry clears timing. |
+| `end_entry` | `development_final_commit_cleanup` | Phase whose entry clears timing. Routing out of the cycle by any other route clears it too. |
 | `finalization_target` | `development_final_commit_cleanup` | Redirect target when the deadline is reached. |
 | `finalization_cycle_outcome` | `completed` | Cycle outcome stamped on a redirect so `post_commit_routes` route the finished cycle normally. |
 
@@ -424,11 +424,15 @@ began before the warning point:
 - **On every MCP tool result.** The deadline instant is fixed for the
   lifetime of an invocation, so the pipeline publishes it as wall-clock
   epochs (`RALPH_CYCLE_WARN_EPOCH`, `RALPH_CYCLE_DEADLINE_EPOCH`,
-  `RALPH_CYCLE_FINALIZATION_TARGET`) in the environment inherited by the
+  `RALPH_CYCLE_DURATION_SECONDS`, `RALPH_CYCLE_FINALIZATION_TARGET`) in
+  the environment inherited by the
   MCP server subprocess, which appends a banner with the remaining
   minutes to every tool result once the warning point passes. The
-  publication is withdrawn for any invocation outside a guarded cycle,
-  so a later phase never inherits a stale deadline.
+  publication is withdrawn when the invocation ends, and for any
+  invocation outside a guarded cycle, so neither a later phase nor a
+  helper agent spawned afterwards inherits a stale deadline. A fan-out
+  worker runs in its own process from a manifest and rebuilds its prompt
+  warning from these same published values.
 - **On the live phase banner.** Major phase transitions during an active
   cycle carry a `[cycle timebox 96m/120m, 24m left]` item, so an operator
   sees the budget draining without waiting for the end-of-run report. In
@@ -478,8 +482,13 @@ and development-analysis phase in the same cycle and is **not** reset or
 extended when an agent emits output, a phase succeeds, development
 analysis requests changes, or an intermediate commit completes. Timing
 ends when routing enters the final-commit path (`end_entry`); final
-commit execution time is excluded. After final commit, no new timer
-starts until the next planner-to-development handoff.
+commit execution time is excluded. Timing also ends when routing leaves
+the cycle by any other route — a `result_status_post_commit` override or
+an agent-chain `workflow_fallback` can return to planning without
+passing through `end_entry`, and a timer left running there could never
+stop, since starting one requires an inactive cycle. After the cycle
+ends, no new timer starts until the next planner-to-development
+handoff.
 
 Consumed cycle time is persisted via a serialized consumed-seconds
 counter, so checkpoint/resume does not grant a fresh full budget to the

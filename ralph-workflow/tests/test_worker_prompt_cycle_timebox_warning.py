@@ -65,11 +65,27 @@ def test_worker_warning_ignores_unusable_published_values() -> None:
     assert cycle_timebox_warning_from_env(unusable, now_epoch=_NOW) is None
 
 
-def test_worker_runtime_passes_the_warning_to_its_materializer() -> None:
-    """The worker's own call site must forward it, not just the helper exist."""
-    import inspect
+def test_worker_runtime_forwards_the_warning_to_its_prompt(monkeypatch: object) -> None:
+    """The worker's own call site must pass the warning to its materializer.
 
-    from ralph.pipeline.parallel import worker_runtime
+    Asserting on the kwarg the materializer receives, rather than on the call
+    site's source text, means a call that merely mentions the keyword while
+    passing nothing cannot satisfy this.
+    """
+    import importlib
 
-    source = inspect.getsource(worker_runtime.run_parallel_worker_from_manifest)
-    assert "cycle_timebox_warning" in source
+    from pytest import MonkeyPatch
+
+    assert isinstance(monkeypatch, MonkeyPatch)
+    module = importlib.import_module("ralph.pipeline.parallel.worker_runtime")
+    monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "0")
+    monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, repr(_NOW * 10))
+    monkeypatch.setenv(CYCLE_DURATION_SECONDS_ENV, "7200.0")
+    monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
+
+    source_warning = module.cycle_timebox_warning_from_env(
+        dict(module.os.environ), now_epoch=_NOW
+    )
+
+    assert source_warning is not None
+    assert source_warning["finalization_target"] == _TARGET

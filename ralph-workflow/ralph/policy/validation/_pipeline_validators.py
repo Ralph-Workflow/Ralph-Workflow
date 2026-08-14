@@ -121,8 +121,12 @@ def _route_budget_counter(
     declaration wins, then the commit policy's route/increment counter.
     """
     lifecycle = policy.lifecycle_phases.get(phase_name)
-    if lifecycle is not None and lifecycle.increments_counter:
-        return str(lifecycle.increments_counter)
+    if lifecycle is not None:
+        # Presence is authoritative, exactly as the runtime treats it: a
+        # lifecycle entry that declares no counter means no budget routing,
+        # not "fall back to the commit policy".
+        counter = lifecycle.increments_counter
+        return str(counter) if counter else None
     commit_policy = phase_def.commit_policy
     if commit_policy is None:
         return None

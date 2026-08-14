@@ -1225,12 +1225,12 @@ def _finalize_agent_invocation(
     render split was added -- this is a pure extraction, not a behavior
     change.
     """
+    if not isinstance(effect, InvokeAgentEffect):
+        return state, event
     # Revoke the deadline published for this invocation: the environment is
     # process-global, so anything spawned later (auto-integrate, plumbing
     # agents) would otherwise inherit a nag about a cycle it is not part of.
     withdraw_cycle_deadline_env()
-    if not isinstance(effect, InvokeAgentEffect):
-        return state, event
     state = _apply_session_capture(state)
     if event == PipelineEvent.AGENT_SUCCESS:
         if recovery_controller is not None:
@@ -1299,6 +1299,65 @@ def _sample_cycle_timing(
     )
     return routing_timing, cycle_now, cycle_delta, ct_policy
 
+
+
+
+
+def _run_fan_out_phase(
+    *,
+    effect: FanOutEffect,
+    state: PipelineState,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+    pipeline_subscriber: object,
+    config: UnifiedConfig,
+    config_path: Path | None,
+    cli_overrides: Mapping[str, object] | None,
+    monitor_stop_cb: Callable[[], None] | None,
+    pipeline_deps: PipelineDeps | None,
+    registry: _RegistryLike,
+    display_context: DisplayContext,
+    routing_timing: RoutingTiming | None,
+) -> PipelineState:
+    """Publish the cycle deadline for the workers, fan out, then revoke it.
+
+    Publication and revocation belong together: the deadline lives in the
+    process-global environment, so leaving it set after the fan-out nags
+    whatever runs next — including the auto-integrate conflict resolver, which
+    this fan-out invokes as its own completion callback.
+    """
+    _publish_fan_out_cycle_deadline(state, effect.phase, policy_bundle, routing_timing)
+
+    def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
+        return _integrate_after_fan_out(
+            state=finished_state,
+            config=config,
+            workspace_scope=workspace_scope,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
+
+    try:
+        return execute_fan_out_sync(
+            effect=effect,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            workspace_scope=workspace_scope,
+            pipeline_subscriber=pipeline_subscriber,
+            config=config,
+            config_path=config_path,
+            cli_overrides=cli_overrides,
+            monitor_stop_cb=monitor_stop_cb,
+            pipeline_deps=pipeline_deps,
+            _on_successful_completion=integrate_after_successful_fan_out,
+        )
+    finally:
+        withdraw_cycle_deadline_env()
 
 
 def _publish_fan_out_cycle_deadline(
@@ -1426,37 +1485,24 @@ def _run_pipeline_step(
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
-            _publish_fan_out_cycle_deadline(
-                state, effect.phase, policy_bundle, _routing_timing
-            )
-
-            def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
-                return _integrate_after_fan_out(
-                    state=finished_state,
-                    config=config,
-                    workspace_scope=workspace_scope,
+            return _with_phase_timing(
+                _run_fan_out_phase(
+                    effect=effect,
+                    state=state,
                     display=display,
                     policy_bundle=policy_bundle,
-                    registry=registry,
+                    workspace_scope=workspace_scope,
+                    pipeline_subscriber=pipeline_subscriber,
+                    config=config,
+                    config_path=config_path,
+                    cli_overrides=cli_overrides,
+                    monitor_stop_cb=_monitor_stop_cb,
                     pipeline_deps=pipeline_deps,
+                    registry=registry,
                     display_context=display_context,
+                    routing_timing=_routing_timing,
                 )
-
-            fan_out_result = execute_fan_out_sync(
-                effect=effect,
-                state=state,
-                display=display,
-                policy_bundle=policy_bundle,
-                workspace_scope=workspace_scope,
-                pipeline_subscriber=pipeline_subscriber,
-                config=config,
-                config_path=config_path,
-                cli_overrides=cli_overrides,
-                monitor_stop_cb=_monitor_stop_cb,
-                pipeline_deps=pipeline_deps,
-                _on_successful_completion=integrate_after_successful_fan_out,
             )
-            return _with_phase_timing(fan_out_result)
 
         with process_phase_scope(state.phase):
             workspace = FsWorkspace(
@@ -1502,9 +1548,6 @@ def _run_pipeline_step(
             # the same run's evidence the agent invocation itself was
             # scoped under (S-2 run_id threading).
             run_id = str(uuid.uuid4())
-            # Scope the published deadline to this invocation: anything
-            # spawned after it (auto-integrate, plumbing agents) must not
-            # inherit a nag about a cycle it is not part of.
             event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,
@@ -1987,3 +2030,5 @@ run_pipeline_step = _run_pipeline_step
 save_checkpoint_or_log = _save_checkpoint_or_log
 notify_pipeline_subscriber = _notify_pipeline_subscriber
 handle_keyboard_interrupt = _handle_keyboard_interrupt
+finalize_agent_invocation = _finalize_agent_invocation
+

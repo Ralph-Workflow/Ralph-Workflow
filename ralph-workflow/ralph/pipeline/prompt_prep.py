@@ -315,14 +315,15 @@ def _worker_cycle_timebox_warning(
     target_phase: str,
     pipeline_policy: PipelinePolicy,
 ) -> dict[str, object] | None:
-    """Return the timebox warning for a worker prompt, if one is due.
+    """Return the timebox warning for a prepared prompt, if one is due.
 
-    A fan-out worker materializes its prompt in its own process, with no
-    routing timing to sample, so the cycle's consumed seconds carried on the
-    state stand in for elapsed time. That omits only the current step's
-    in-flight delta, which is what the serial path would add — close enough to
-    warn on, and far better than a worker spending the tail of the budget
-    unaware there is a deadline at all.
+    A prompt prepared ahead of its invocation has no routing timing to sample,
+    so the cycle's consumed seconds carried on the state stand in for elapsed
+    time. That omits only the current step's in-flight delta, which is what
+    the agent-invocation path adds. Fan-out workers do NOT come through here —
+    they run in their own process from a manifest and rebuild the warning from
+    the published environment instead (see
+    :func:`_cycle_timebox_warning_from_env`).
     """
     if state is None:
         return None

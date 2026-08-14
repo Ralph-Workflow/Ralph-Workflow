@@ -23,6 +23,8 @@ from ralph.mcp.protocol.env import (
 )
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.prompt_prep import cycle_timebox_warning_from_env
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
@@ -253,3 +255,79 @@ def test_fan_out_withdraws_a_stale_deadline_when_no_cycle_runs(
 
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
 
+
+
+def test_finalizing_an_agent_invocation_revokes_its_deadline(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The runner's invocation finalizer is what actually revokes the deadline.
+
+    Pinning the helper alone leaves the wiring free to be deleted, which would
+    silently restore the leak into every later subprocess.
+    """
+    _reserve_env(monkeypatch)
+    _materialize(
+        "development",
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+        ),
+        tmp_path,
+        cycle_total_elapsed=_ELAPSED_SECONDS,
+    )
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
+
+    state, event = runner_module.finalize_agent_invocation(
+        effect=InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file="PROMPT.md",
+            drain="development",
+            chain_name="development",
+        ),
+        event=PipelineEvent.AGENT_FAILURE,
+        state=PipelineState(phase="development"),
+        config=None,
+        policy_bundle=_bundle(),
+        workspace=FsWorkspace(tmp_path),
+        workspace_scope=None,
+        display=None,
+        display_context=None,
+        verbosity=None,
+        recovery_controller=None,
+        run_id=None,
+    )
+
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+    assert event == PipelineEvent.AGENT_FAILURE
+    assert state.phase == "development"
+
+
+def test_the_published_deadline_round_trips_into_a_worker_warning(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Producer and consumer must agree, not just each match a hand-built dict.
+
+    The worker rebuilds its warning from what the pipeline published, so a
+    missing or renamed published value silently leaves every fan-out worker
+    unwarned.
+    """
+    _reserve_env(monkeypatch)
+    # 80% of the bundled 7200s budget has elapsed: the warning point is now.
+    _materialize(
+        "development",
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=5760.0,
+        ),
+        tmp_path,
+        cycle_total_elapsed=5760.0,
+    )
+
+    warning = cycle_timebox_warning_from_env(os.environ, now_epoch=time.time())
+
+    assert warning is not None
+    assert warning["duration_seconds"] == 7200.0
+    assert 1380.0 <= float(str(warning["remaining_seconds"])) <= 1440.0
