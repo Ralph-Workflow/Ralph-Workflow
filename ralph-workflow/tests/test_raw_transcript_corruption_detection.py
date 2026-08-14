@@ -319,3 +319,51 @@ def test_detect_smoke_errors_is_clean_when_raw_transcript_has_no_breaks(
     )
 
     assert not [e for e in errors if e.startswith("raw transcript corrupted:")]
+
+
+def test_harness_input_echo_lines_are_not_breaks(isolated_workspace: Path) -> None:
+    """Ralph-authored harness input echoes are expected capture content.
+
+    Measured live shape (2026-08-14 AGY smoke): the PTY line reader
+    injects ``[claude turn boundary]`` into its own line queue at the
+    interactive exit boundary and types ``/exit`` into the agent's PTY
+    stdin, which the terminal line discipline echoes back. Both lines
+    land verbatim in the raw capture of EVERY interactive-transport
+    run; grading them ``NON_JSONL`` failed each live PTY smoke with
+    "raw transcript corrupted" while the wire frames were intact.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b'{"event":"init","tools":["call_mcp_tool"]}\n'
+        b'{"event":"step_update","step_update":{"step_index":0}}\n'
+        b"\n"
+        b"[claude turn boundary]\n"
+        b"/exit\r\n"
+        b"\n"
+        b'{"event":"result","result":{"status":"SUCCESS"}}\n'
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_line_embedding_marker_text_is_still_a_break(isolated_workspace: Path) -> None:
+    """The echo tolerance is exact-match only.
+
+    A non-JSON line that merely *contains* a harness marker must still
+    grade as ``NON_JSONL``: agent or display text embedding the marker
+    cannot smuggle a corrupted line past the detector.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b'{"event":"init","tools":["call_mcp_tool"]}\n'
+        b"agent said [claude turn boundary] and kept going\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path)
+    non_jsonl = [b for b in breaks if b.kind == "NON_JSONL"]
+    assert non_jsonl, (
+        "a non-JSON line that embeds (but is not exactly) a harness "
+        "marker must still be reported as NON_JSONL"
+    )

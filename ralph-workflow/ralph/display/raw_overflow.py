@@ -8,7 +8,7 @@ import json
 import threading
 import time
 import weakref
-from typing import TYPE_CHECKING, BinaryIO, cast
+from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
 from ralph.display._raw_log_break import RawLogBreak
 from ralph.display.record_writer import safe_id_for
@@ -52,6 +52,39 @@ _REGISTRY_LOCK = threading.Lock()
 _REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
     weakref.WeakValueDictionary()
 )  # bounded-accumulator-ok: weak-keyed by definition; entries auto-evict when no strong references remain
+
+
+#: Canonical harness-authored input lines that can appear verbatim in a
+#: PTY transport's raw capture (measured live 2026-08-14, AGY smoke).
+#: ``[claude turn boundary]`` is injected into the reader's line queue by
+#: ``_pty_line_reader._request_interactive_exit`` / ``_sentinel_thread``
+#: to delimit turns; ``/exit`` is typed into the agent's PTY stdin and
+#: echoed back by the terminal line discipline. Both are Ralph-authored
+#: harness input, not agent wire output — but they belong in the verbatim
+#: capture, so the corruption detector must recognize them instead of
+#: reporting a NON_JSONL break for every interactive-transport run.
+TURN_BOUNDARY_MARKER: Final = "[claude turn boundary]"
+
+#: The interactive-exit command the PTY line reader types into the agent
+#: stdin at completion/stop time (echoed back into the capture).
+PTY_EXIT_COMMAND: Final = "/exit"
+
+#: Exact-match vocabulary of harness input lines tolerated by
+#: :func:`detect_raw_log_breaks`. Exact match only: a line that merely
+#: *contains* a marker is still graded, so an agent wire frame embedding
+#: the marker text cannot smuggle a corrupted line past the detector.
+HARNESS_PTY_INPUT_ECHO_LINES: frozenset[str] = frozenset(
+    {TURN_BOUNDARY_MARKER, PTY_EXIT_COMMAND}
+)
+
+
+def is_harness_input_echo(line: str) -> bool:
+    """Return True when ``line`` is a Ralph-authored harness input line.
+
+    Exact (stripped) match against
+    :data:`HARNESS_PTY_INPUT_ECHO_LINES`; never a substring test.
+    """
+    return line.strip() in HARNESS_PTY_INPUT_ECHO_LINES
 
 
 def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = None) -> Path:
@@ -242,6 +275,11 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
             line_text = line_bytes.decode("utf-8", errors="replace").strip()
             if not line_text:
                 continue
+            if is_harness_input_echo(line_text):
+                # Ralph-authored harness input (see
+                # :data:`HARNESS_PTY_INPUT_ECHO_LINES`): expected verbatim
+                # capture content, not a corrupted or truncated frame.
+                continue
             try:
                 parsed: object = json.loads(line_text)
             except json.JSONDecodeError:
@@ -423,9 +461,13 @@ class RawOverflowLog:
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "DEFAULT_MAX_OVERFLOW_FILE_BYTES",
+    "HARNESS_PTY_INPUT_ECHO_LINES",
+    "PTY_EXIT_COMMAND",
+    "TURN_BOUNDARY_MARKER",
     "RawLogBreak",
     "RawOverflowLog",
     "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
+    "is_harness_input_echo",
     "raw_log_path_for",
 ]

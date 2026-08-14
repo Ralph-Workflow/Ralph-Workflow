@@ -709,3 +709,31 @@ normalized exactly as the earlier fixtures: real conversation ids and the
 `~/.gemini/antigravity-cli/brain/...` log URIs to stable placeholders, the
 scratch `/tmp` workspace path to `/workspace`; durations and usage counts
 are kept exactly as measured.
+
+## 2026-08-14 (later): live interactive smokes -- `error_message` step_type
+
+While grading the live smoke profile (same plan, S-8), both
+`ralph smoke-interactive-agy` runs (regular and `--subagents`, live
+v1.1.13, `--model gemini-3.6-flash-low`) emitted a `step_update` frame
+with `"step_type": "error_message"` that none of the earlier captures
+recorded. Retained verbatim in the run's raw stream
+(`.agent/raw/agy_gemini-3.6-flash-low.log`): one bodiless frame —
+`conversation_id` / `step_index` (8) / `state: DONE` / `step_type` only,
+no `text_delta`, no `tool_info`, no `subagent_info` — arriving
+mid-conversation between two `agent_response` steps, NOT adjacent to the
+run's closing frames. The run continued normally afterwards (further
+`tool` and `agent_response` steps, then a well-formed `result`), so the
+step does not mark a fatal turn: AGY emits it for a recoverable
+mid-conversation error (in both runs the display layer paired it with
+the parser's eventual `timeout waiting for response` classification
+after the harness's `/exit`).
+
+**No parser change required.** `_dispatch_bodiless_step`'s generic rule
+(any bodiless `step_type` other than `agent_response` yields a
+`lifecycle` event) already surfaces it — both live transcripts show
+`step error_message` as a lifecycle event, which is exactly the
+degrade-observably behavior the rule was written for. Recorded here so
+the observed-vocabulary list above stays complete: the measured
+`step_type` set for v1.1.13 live runs is `user_input`, `unknown`,
+`agent_response`, `tool`, `checkpoint`, `subagent`, `system_message`,
+and `error_message`.

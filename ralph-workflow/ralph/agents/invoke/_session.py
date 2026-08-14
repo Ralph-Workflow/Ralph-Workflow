@@ -7,9 +7,10 @@ import re
 from typing import cast
 
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
+from ralph.display.raw_overflow import TURN_BOUNDARY_MARKER
 
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
-_TURN_BOUNDARY_MARKER = "[claude turn boundary]"
+_TURN_BOUNDARY_MARKER = TURN_BOUNDARY_MARKER
 
 _COMPLETION_SESSION_ID_PATTERNS = (
     re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),

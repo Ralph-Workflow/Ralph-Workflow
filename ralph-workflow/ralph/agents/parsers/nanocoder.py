@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from ralph.display.raw_overflow import TURN_BOUNDARY_MARKER
 from ralph.display.vt_normalizer import normalize_vt_text
 
 from .agent_output_line import AgentOutputLine
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 
 _MAX_STATUS_EVENTS = 8
 _MAX_TEXT_EVENTS = 64
-_TURN_BOUNDARY_MARKER = "[claude turn boundary]"
+_TURN_BOUNDARY_MARKER = TURN_BOUNDARY_MARKER
 _CTX_PERCENT_RE = re.compile(r"\bctx:\s*\d+%")
 _WHITESPACE_RE = re.compile(r"\s+")
 _SPINNER_STATUS_RE = re.compile(r"^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+")

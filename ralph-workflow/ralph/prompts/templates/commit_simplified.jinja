@@ -1,14 +1,13 @@
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
-Task: Produce one valid `commit_message` artifact for the current pending work shown by the current worktree vs the last commit.
+Produce one valid `commit_message` artifact for the pending diff.
 
 Do not analyze anything outside that diff.
 
 {% include 'shared/_unattended_mode.j2' %}
 
-Read the diff silently and put reasoning only in the artifact body. The only state-changing tools you may call
-are `{{ SUBMIT_MD_ARTIFACT_TOOL_NAME }}`,
+Read the diff silently and put reasoning only in the artifact body. The only state-changing tools allowed are `{{ SUBMIT_MD_ARTIFACT_TOOL_NAME }}`,
 {{ DECLARE_COMPLETE_TOOL_REFERENCE }}, and the documented
 {{ WRITE_FILE_TOOL_REFERENCE }} fallback. Do not call bash.
 
@@ -17,8 +16,7 @@ are `{{ SUBMIT_MD_ARTIFACT_TOOL_NAME }}`,
 ## Subject
 
 Write `<kind>(<scope>)?!?: <description>` once. Kind is one of
-`feat|fix|docs|refactor|test|style|perf|build|ci|chore`; use `chore` only for repo maintenance,
-tooling, config, or dependencies. Scope is optional; when absent, omit it and its parentheses. A scope uses only
+`feat|fix|docs|refactor|test|style|perf|build|ci|chore`; use `chore` only for repo maintenance, tooling, config, or dependencies. Scope is optional; when absent, omit it and its parentheses. A scope uses only
 lowercase letters, digits, `/`, `_`, or `-`: no dots, no uppercase. Use one space after the colon and
 a lowercase imperative description. Keep the frontmatter value unquoted. Write the first valid subject;
 do not generate alternatives. There is no length limit.
