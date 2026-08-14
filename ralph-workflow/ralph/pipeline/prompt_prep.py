@@ -422,4 +422,5 @@ def _materialize_agent_prompt_if_needed(
 
 materialize_prepared_prompt = _materialize_prepared_prompt
 materialize_agent_prompt_if_needed = _materialize_agent_prompt_if_needed
+publish_cycle_deadline_env = _publish_cycle_deadline_env
 prompt_session_drain_for_phase = _prompt_session_drain_for_phase

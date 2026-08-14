@@ -75,17 +75,12 @@ def test_timing_safety_margin_is_positive() -> None:
 
 
 def test_env_var_member_added_to_mcp_env_var() -> None:
-    """REQUEST_TIMEOUT_MS is a registered member of the McpEnvVar registry.
-
-    The member count is pinned so adding an agent-visible environment
-    variable stays a deliberate act. Position within the enum carries no
-    meaning and is not asserted.
-    """
+    """REQUEST_TIMEOUT_MS is the last enum member of McpEnvVar."""
     assert hasattr(McpEnvVar, "REQUEST_TIMEOUT_MS")
     assert McpEnvVar.REQUEST_TIMEOUT_MS == "RALPH_MCP_REQUEST_TIMEOUT_MS"
     members = list(McpEnvVar)
     assert len(members) == 18, f"expected 18 members, got {len(members)}"
-    assert McpEnvVar.REQUEST_TIMEOUT_MS in members
+    assert members[-1] == McpEnvVar.REQUEST_TIMEOUT_MS
 
 
 def test_module_level_constant_added() -> None:

@@ -658,8 +658,16 @@ def _handle_analysis_success(
 
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
-        new_state, effects = _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
-        progress_state = progress.apply_analysis_success(state, new_state, policy=policy)
+        forward_outcome = declared_forward_cycle_outcome(state.phase, policy)
+        stamped = (
+            state.copy_with(pending_cycle_outcome=forward_outcome)
+            if forward_outcome is not None and state.pending_cycle_outcome is None
+            else state
+        )
+        new_state, effects = _advance_phase(
+            stamped, next_phase, policy, routing_timing=routing_timing
+        )
+        progress_state = progress.apply_analysis_success(stamped, new_state, policy=policy)
         phase_def = policy.phases.get(state.phase)
         completed_route = (
             phase_def.decisions.get("completed")
@@ -671,9 +679,6 @@ def _handle_analysis_success(
             progress_state,
             completed_route.increments_counter if completed_route is not None else None,
         )
-        forward_outcome = declared_forward_cycle_outcome(state.phase, policy)
-        if forward_outcome is not None:
-            progress_state = progress_state.copy_with(pending_cycle_outcome=forward_outcome)
         return progress_state, effects
     except ValueError as exc:
         return _advance_to_failed(
@@ -974,13 +979,7 @@ def _handle_commit_success(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
-        # The verdict and the deadline-redirect notice both belong to the
-        # cycle that just committed; clearing them together keeps a
-        # redirected cycle's notice off the fresh cycle's surfaces.
-        progress_state = progress_state.copy_with(
-            pending_cycle_outcome=None,
-            cycle_timebox_redirect_reason=None,
-        )
+        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1009,13 +1008,7 @@ def _handle_commit_skipped(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
-        # The verdict and the deadline-redirect notice both belong to the
-        # cycle that just committed; clearing them together keeps a
-        # redirected cycle's notice off the fresh cycle's surfaces.
-        progress_state = progress_state.copy_with(
-            pending_cycle_outcome=None,
-            cycle_timebox_redirect_reason=None,
-        )
+        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1147,7 +1140,7 @@ def _prepare_phase_advance(
         state, target_phase, policy=policy, routing_timing=routing_timing
     )
     if timebox.redirected and timebox.redirect_reason is not None:
-        logger.bind(component="policy.routing").info(timebox.redirect_reason)
+        logger.bind(component="policy.routing").warning(timebox.redirect_reason)
     state = timebox.state
     target_phase = timebox.target_phase
 

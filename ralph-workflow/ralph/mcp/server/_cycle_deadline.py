@@ -18,6 +18,7 @@ durations because monotonic clocks are not comparable across processes.
 
 from __future__ import annotations
 
+import math
 import os
 import time
 from typing import TYPE_CHECKING, Protocol
@@ -66,7 +67,7 @@ def cycle_deadline_notice(
         return None
     if now_epoch < warn_epoch:
         return None
-    remaining_minutes = max(0, int((deadline_epoch - now_epoch) // _SECONDS_PER_MINUTE))
+    remaining_minutes = max(0, round((deadline_epoch - now_epoch) / _SECONDS_PER_MINUTE))
     target = finalization_target or "the final commit"
     return (
         f"⚠️ Cycle timebox: ~{remaining_minutes} min of this development cycle's "
@@ -78,21 +79,33 @@ def cycle_deadline_notice(
 
 
 def _env_float(name: str, env_getter: EnvGetter) -> float | None:
+    """Parse a published epoch, treating anything unusable as "not published".
+
+    Non-finite values are rejected alongside unparseable ones: the notice is
+    appended AFTER the tool has already run, so a ``nan`` reaching the minutes
+    arithmetic would turn every successful tool call into an internal error
+    with the tool's side effects already applied.
+    """
     raw = env_getter(name)
     if raw is None or not raw.strip():
         return None
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError:
         return None
+    return value if math.isfinite(value) else None
 
 
 class CycleDeadlineNotifier:
     """Produces the cycle-deadline nag from the published environment.
 
     The environment is read on every call rather than cached at construction
-    so a server process that outlives a cycle boundary (the restart-aware
-    bridge respawns in place) reflects the current publication.
+    so the notice reflects the environment this process was given, however
+    late the first tool call arrives. Note the subprocess environment is a
+    snapshot taken at spawn: a later publication by the pipeline reaches this
+    process only when the restart-aware bridge respawns it. That is sound
+    because the bridge is per-invocation and the deadline is fixed for an
+    invocation's lifetime.
     """
 
     def __init__(

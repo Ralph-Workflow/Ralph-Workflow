@@ -183,3 +183,27 @@ def test_tool_result_is_clean_before_the_warning_point(
     payload = _call_read_file(_server_with_notifier(notifier, tmp_path=tmp_path))
 
     assert "cycle timebox" not in payload.lower()
+
+
+def test_standalone_server_wires_the_deadline_nag(
+    tmp_path: pathlib.Path, monkeypatch: object
+) -> None:
+    """The production composition root carries the nag, not just the tests.
+
+    Without this the whole feature can be deleted from the standalone server
+    with every other test still green.
+    """
+    from pytest import MonkeyPatch
+
+    from ralph.mcp.server.runtime import build_standalone_http_server
+
+    assert isinstance(monkeypatch, MonkeyPatch)
+    monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "0")
+    monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, "9999999999")
+    monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
+
+    http_server = build_standalone_http_server(tmp_path, port=0)
+
+    notice = http_server._mcp_server._cycle_deadline_provider()
+    assert notice is not None
+    assert "Cycle timebox" in notice

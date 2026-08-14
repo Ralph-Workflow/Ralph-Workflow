@@ -154,6 +154,9 @@ class TestRenderExplanationText:
         assert "5760s" in text
         assert "planning_analysis -> development" in text
         assert "development_final_commit_cleanup" in text
+        # The outcome a redirected cycle is finalized with decides whether the
+        # run continues, so the operator must be able to read it back.
+        assert "Finalization outcome: completed" in text
 
     def test_cycle_timebox_section_absent_when_policy_omits_it(self) -> None:
         bundle = load_policy(_DEFAULT_POLICY_DIR)

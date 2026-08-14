@@ -71,6 +71,7 @@ def test_deadline_redirect_is_reported_on_the_phase_banner() -> None:
         previous_phase="development_analysis",
         cycle_timebox_active=False,
         cycle_timebox_consumed_seconds=7200.0,
+        pending_cycle_outcome="completed",
         cycle_timebox_redirect_reason=(
             "cycle timebox reached 7200s (elapsed 7200s); "
             "redirecting to development_final_commit_cleanup"

@@ -680,16 +680,12 @@ class McpServer:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
-        self._maybe_append_wrapup_notice(payload)
+        self._maybe_append_notice(payload, self._wrapup_provider)
         self._maybe_append_notice(payload, self._cycle_deadline_provider)
         return (
             JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
             ServerState.RUNNING,
         )
-
-    def _maybe_append_wrapup_notice(self, payload: dict[str, object]) -> None:
-        """Append the graduated-session wrap-up banner to a tool result, if due."""
-        self._maybe_append_notice(payload, self._wrapup_provider)
 
     def _maybe_append_notice(
         self,

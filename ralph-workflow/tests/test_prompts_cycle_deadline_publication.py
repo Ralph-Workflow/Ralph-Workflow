@@ -127,3 +127,42 @@ def test_deadline_is_withdrawn_once_the_cycle_concludes(
     )
 
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+
+
+def test_publish_then_withdraw_across_two_invocations(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A deadline published for one invocation is gone by the next non-guarded one."""
+    _reserve_env(monkeypatch)
+    guarded = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+    )
+    _materialize("development", guarded, tmp_path, cycle_total_elapsed=_ELAPSED_SECONDS)
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
+
+    _materialize(
+        "planning",
+        PipelineState(phase="planning", cycle_timebox_active=False),
+        tmp_path,
+        cycle_total_elapsed=0.0,
+    )
+
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+
+
+def test_untimed_invocation_withdraws_the_deadline(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """With no timing context there is no deadline to advertise."""
+    _reserve_env(monkeypatch)
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+    )
+
+    _materialize("development", state, tmp_path, cycle_total_elapsed=None)
+
+    assert CYCLE_WARN_EPOCH_ENV not in os.environ

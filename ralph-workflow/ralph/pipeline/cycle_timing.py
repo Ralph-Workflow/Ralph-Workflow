@@ -217,7 +217,10 @@ def cycle_timebox_status_item(
     ct = policy.cycle_timebox
     if ct is None:
         return None
-    if state.cycle_timebox_redirect_reason:
+    # The redirect reason outlives the cycle so the end-of-run report can name
+    # it, so the wind-down is bounded by the verdict instead: it is cleared at
+    # the final commit, which is exactly where the redirected cycle ends.
+    if state.cycle_timebox_redirect_reason and state.pending_cycle_outcome is not None:
         return {_STATUS_ITEM_KEY: "deadline reached, finalizing"}
     if not state.cycle_timebox_active:
         return None

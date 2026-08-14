@@ -142,6 +142,7 @@ from ralph.pipeline.prompt_prep import (
 )
 from ralph.pipeline.prompt_prep import (
     materialize_agent_prompt_if_needed,
+    publish_cycle_deadline_env,
     prompt_session_drain_for_phase,
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -1398,6 +1399,16 @@ def _run_pipeline_step(
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
+            # Fan-out spawns its own worker bridges without going through
+            # prompt materialization, so publish the deadline here too: a
+            # fanned-out cycle would otherwise give its workers no nag, and
+            # would leak whatever a previous invocation last published.
+            publish_cycle_deadline_env(
+                state,
+                effect.phase,
+                policy_bundle,
+                _routing_timing.total_elapsed_seconds if _routing_timing is not None else None,
+            )
 
             def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
                 return _integrate_after_fan_out(
