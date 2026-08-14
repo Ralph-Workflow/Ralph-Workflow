@@ -414,7 +414,9 @@ class ManagedProcess:
         for proc in procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
-        _, alive = psutil_mod.wait_procs(procs, timeout=grace_period_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, alive = self._manager._safe_wait_procs(psutil_mod, procs, timeout=grace_period_s)
         return [proc for proc in alive if self._is_live_psutil_process(psutil_mod, proc)]
 
     def _kill_psutil_wave(
@@ -427,8 +429,10 @@ class ManagedProcess:
         for proc in procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.kill()
-        _, still_alive = psutil_mod.wait_procs(
-            procs, timeout=self._manager.policy.kill_followup_timeout_s
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, still_alive = self._manager._safe_wait_procs(
+            psutil_mod, procs, timeout=self._manager.policy.kill_followup_timeout_s
         )
         return [proc for proc in still_alive if self._is_live_psutil_process(psutil_mod, proc)]
 

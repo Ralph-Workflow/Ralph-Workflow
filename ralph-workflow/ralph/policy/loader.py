@@ -422,6 +422,12 @@ def _disable_incompatible_inherited_cycle_timebox(
     return normalized
 
 
+#: Public alias for :func:`_disable_incompatible_inherited_cycle_timebox`.
+#: Tests pin this helper's behavior through the public name; the private
+#: name remains the internal call target inside ``_validate_pipeline``.
+disable_incompatible_inherited_cycle_timebox = _disable_incompatible_inherited_cycle_timebox
+
+
 def _validate_pipeline(
     data: dict[str, object], *, cycle_timebox_explicit: bool = True
 ) -> PipelinePolicy:

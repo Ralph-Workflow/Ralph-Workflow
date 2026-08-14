@@ -1164,6 +1164,45 @@ class ProcessManager:
                 ) from None
         self._mark_killed(record, rc)
 
+    def _safe_wait_procs(
+        self,
+        psutil_mod: _PsutilModuleLike,
+        procs: Sequence[_PsutilProcessLike],
+        *,
+        timeout: float | None,
+    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        """``psutil_mod.wait_procs`` wrapper that cannot abort termination.
+
+        ``psutil.wait_procs`` internally calls ``os.pidfd_open(pid, 0)`` per
+        process and raises ``OSError`` (EINVAL) when the PID was already
+        terminated/reaped mid-wait — that failure used to propagate out of
+        the termination paths and abort the whole teardown. On
+        ``OSError`` / ``ProcessLookupError`` / ``ChildProcessError``, each
+        proc is classified independently by its own PID via
+        :func:`verify_process_liveness` instead of re-raising: ``GONE`` /
+        ``ZOMBIE`` procs are returned as dead, while ``ALIVE`` / ``UNKNOWN``
+        procs (and procs without a usable ``pid``) are returned as alive so
+        the caller retries them — a batched-wait failure can never make a
+        live descendant look dead.
+        """
+        try:
+            return psutil_mod.wait_procs(procs, timeout=timeout)
+        except (OSError, ProcessLookupError, ChildProcessError):
+            dead: list[_PsutilProcessLike] = []
+            alive: list[_PsutilProcessLike] = []
+            for proc in procs:
+                raw_pid: object = getattr(proc, "pid", None)
+                if not isinstance(raw_pid, int):
+                    # Cannot prove death — conservatively keep it retryable.
+                    alive.append(proc)
+                    continue
+                liveness = verify_process_liveness(raw_pid, psutil_mod=psutil_mod)
+                if liveness in (LivenessResult.GONE, LivenessResult.ZOMBIE):
+                    dead.append(proc)
+                else:
+                    alive.append(proc)
+            return dead, alive
+
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
         psutil_mod = self._psutil
         if psutil_mod is None:
@@ -1194,7 +1233,9 @@ class ProcessManager:
             f"waiting {grace_period_s}s"
         )
 
-        _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1203,7 +1244,11 @@ class ProcessManager:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.kill()
 
-        _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, still_alive = self._safe_wait_procs(
+            psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
+        )
         if still_alive:
             # Post-kill zombie/liveness check on survivors
             for p in still_alive:
@@ -1285,7 +1330,9 @@ class ProcessManager:
             f"waiting {grace_period_s}s"
         )
 
-        _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1295,7 +1342,11 @@ class ProcessManager:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.kill()
 
-        _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, still_alive = self._safe_wait_procs(
+            psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
+        )
         rc = proc.poll()
         if still_alive:
             # Post-kill zombie/liveness check on survivors
@@ -1377,11 +1428,15 @@ class ProcessManager:
             for p in all_procs:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.terminate()
-            _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+            # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL)
+            # from os.pidfd_open on an already-reaped PID; the helper classifies
+            # per-PID, so this executor path cannot abort the teardown.
+            _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
             for p in alive:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
-            _, still_alive = psutil_mod.wait_procs(alive, timeout=policy_kill)
+            # _safe_wait_procs: OSError (EINVAL) from os.pidfd_open on reaped PIDs.
+            _, still_alive = self._safe_wait_procs(psutil_mod, alive, timeout=policy_kill)
             return bool(still_alive)
 
         loop = asyncio.get_running_loop()
@@ -1442,7 +1497,9 @@ class ProcessManager:
             f"Process {record.pid} graceful terminate sent to {len(all_procs)} procs, "
             f"waiting {grace_period_s}s"
         )
-        _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1450,7 +1507,11 @@ class ProcessManager:
         for p in alive:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.kill()
-        _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
+        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
+        _, still_alive = self._safe_wait_procs(
+            psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
+        )
         if still_alive:
             for p in still_alive:
                 post_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)

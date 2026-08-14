@@ -386,7 +386,7 @@ def test_disabling_an_inherited_timebox_is_announced() -> None:
     """
     from loguru import logger
 
-    from ralph.policy.loader import _disable_incompatible_inherited_cycle_timebox
+    from ralph.policy.loader import disable_incompatible_inherited_cycle_timebox
 
     pipeline = load_policy(_DEFAULTS_DIR).pipeline
     normalized: dict[str, object] = {
@@ -402,7 +402,7 @@ def test_disabling_an_inherited_timebox_is_announced() -> None:
     records: list[str] = []
     sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
     try:
-        result = _disable_incompatible_inherited_cycle_timebox(normalized)
+        result = disable_incompatible_inherited_cycle_timebox(normalized)
     finally:
         logger.remove(sink_id)
 
@@ -438,7 +438,7 @@ def test_an_inherited_timebox_whose_start_edge_is_gone_is_disabled() -> None:
     A graph can keep every referenced phase and still drop the transition the
     timer starts on, which leaves the deadline unable to ever arm.
     """
-    from ralph.policy.loader import _disable_incompatible_inherited_cycle_timebox
+    from ralph.policy.loader import disable_incompatible_inherited_cycle_timebox
 
     pipeline = load_policy(_DEFAULTS_DIR).pipeline
     phases = dict(pipeline.phases)
@@ -453,7 +453,7 @@ def test_an_inherited_timebox_whose_start_edge_is_gone_is_disabled() -> None:
         }
     )
 
-    result = _disable_incompatible_inherited_cycle_timebox(
+    result = disable_incompatible_inherited_cycle_timebox(
         {"cycle_timebox": pipeline.cycle_timebox.model_dump(), "phases": phases}
     )
 

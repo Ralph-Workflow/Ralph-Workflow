@@ -430,7 +430,7 @@ def test_the_prepared_prompt_path_also_warns(tmp_path: Path, monkeypatch: Monkey
     with the invocation path's coverage still green.
     """
     from ralph.pipeline.effects import PreparePromptEffect
-    from ralph.pipeline.prompt_prep import _materialize_prepared_prompt
+    from ralph.pipeline.prompt_prep import materialize_prepared_prompt
     from ralph.workspace.scope import WorkspaceScope
 
     _reserve_env(monkeypatch)
@@ -439,7 +439,7 @@ def test_the_prepared_prompt_path_also_warns(tmp_path: Path, monkeypatch: Monkey
     workspace.write("PROMPT.md", "Do the work")
     bundle = _bundle()
 
-    _materialize_prepared_prompt(
+    materialize_prepared_prompt(
         PreparePromptEffect(phase="development", drain="development"),
         bundle.pipeline,
         bundle.artifacts,
