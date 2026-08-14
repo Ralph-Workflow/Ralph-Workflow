@@ -382,3 +382,4 @@ ralph-workflow/.opencode/
 
 .pi-subagents/*
 .agent/ralph-explore/
+ralph-workflow/pytest-of-*/

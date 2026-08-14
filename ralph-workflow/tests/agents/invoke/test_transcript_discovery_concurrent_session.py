@@ -30,6 +30,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def _project_dir_name(workspace_root: Path) -> str:
+    """Derive the ``~/.claude/projects`` key exactly as the implementation does.
+
+    ``_project_transcript_root`` resolves the path and replaces both
+    slashes and spaces; a test-side derivation that skipped either step
+    would silently mismatch on machines whose TMPDIR contains a space
+    (e.g. ``/Volumes/Crucial X9/...``) and fail with an empty snapshot.
+    """
+    return str(workspace_root.resolve()).replace("/", "-").replace(" ", "-")
+
+
 def test_pty_line_reader_snapshots_pre_existing_transcript_names(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -37,7 +48,7 @@ def test_pty_line_reader_snapshots_pre_existing_transcript_names(
     """The constructor records the pre-existing ``*.jsonl`` names, publicly."""
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
-    project_dir_name = str(workspace_root).replace("/", "-")
+    project_dir_name = _project_dir_name(workspace_root)
     project_root = tmp_path / ".claude" / "projects" / project_dir_name
     project_root.mkdir(parents=True)
     (project_root / "orchestrator-session.jsonl").write_text("{}\n", encoding="utf-8")
@@ -95,7 +106,7 @@ def test_transcript_discovery_end_to_end_prefers_the_new_child_over_a_live_sibli
     """
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
-    project_dir_name = str(workspace_root).replace("/", "-")
+    project_dir_name = _project_dir_name(workspace_root)
     project_root = tmp_path / ".claude" / "projects" / project_dir_name
     project_root.mkdir(parents=True)
     sibling = project_root / "sibling-session.jsonl"
@@ -150,7 +161,7 @@ def test_pty_line_reader_prefers_extras_snapshot_over_live_snapshot(
 
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
-    project_dir_name = str(workspace_root).replace("/", "-")
+    project_dir_name = _project_dir_name(workspace_root)
     project_root = tmp_path / ".claude" / "projects" / project_dir_name
     project_root.mkdir(parents=True)
     # A file that exists by the time PtyLineReader.__init__ runs (as if

@@ -539,8 +539,11 @@ def _raise_if_broken_agent_exit(
     *,
     stderr_text: str = "",
 ) -> None:
-    if _looks_like_credentials_failure(stderr_text) or any(
+    credentials_marker_seen = _looks_like_credentials_failure(stderr_text) or any(
         _looks_like_credentials_failure(line) for line in bounded_output
+    )
+    if credentials_marker_seen and (
+        not bounded_output or is_structurally_small_bounded_output(bounded_output)
     ):
         _teardown_subtree_if_pid_available(handle)
         raise BrokenAgentExitError(
@@ -549,6 +552,10 @@ def _raise_if_broken_agent_exit(
             elapsed_seconds=opts.elapsed_seconds,
             grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
         )
+    # A substantial transcript that merely mentions credentials (e.g. an
+    # echoed retry prompt, a test file about credential handling, or the
+    # master prompt itself) is NOT provider silence. Fall through to the
+    # resumable/artifact-failure path below.
     if (
         bounded_output
         and opts.has_meaningful_output is False

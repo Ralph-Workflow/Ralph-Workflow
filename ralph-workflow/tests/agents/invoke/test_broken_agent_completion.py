@@ -238,7 +238,9 @@ def test_completion_gate_substantial_output_marked_no_meaningful_still_resumable
     assert classified.unavailability_reason is None
 
 
-def test_completion_gate_missing_plan_receipt_with_substantial_output_is_not_provider_failure() -> None:
+def test_completion_gate_missing_plan_receipt_with_substantial_output_is_not_provider_failure() -> (
+    None
+):
     """Reported regression: artifact-submission failure is not provider silence.
 
     Reproduces the reported pi planning run end to end at the completion
@@ -291,3 +293,62 @@ def test_completion_gate_keeps_mixed_output_resumable() -> None:
         )
 
     assert not isinstance(excinfo.value, BrokenAgentExitError)
+
+
+def test_completion_gate_substantial_output_mentioning_credentials_is_not_broken_agent() -> None:
+    """Reported regression: a large transcript that mentions credentials is not provider silence.
+
+    Reproduces the false positive where an agent streamed a real working
+    transcript (tool calls, grep results) whose lines happened to contain a
+    credentials-flavoured substring -- the echoed master prompt, the prior
+    retry error block (``check credentials or provider availability``), or
+    source code under discussion -- and the completion gate misclassified
+    the run as ``BrokenAgentExitError: no meaningful LLM output`` solely
+    because the required plan artifact was never submitted. A substantial
+    transcript must follow the resumable missing-artifact path instead.
+    """
+    output_lines = [
+        '{"type":"grep_files","line":' + str(index) + "," + '"text":"' + "t" * 90 + '"}'
+        for index in range(20)
+    ] + [
+        "BrokenAgentExitError: agent appears broken: no meaningful LLM output; "
+        "check credentials or provider availability",
+    ]
+    assert sum(len(line.encode("utf-8")) for line in output_lines) > 256
+
+    with pytest.raises(OpenCodeResumableExitError) as excinfo:
+        check_process_result(
+            _Handle(),
+            "pi/minimax/MiniMax-3",
+            output_lines,
+            _options(
+                elapsed_seconds=40.0,
+                input_prompt="produce the plan",
+                has_meaningful_output=False,
+            ),
+            _clock=FakeClock(),
+        )
+
+    assert not isinstance(excinfo.value, BrokenAgentExitError)
+    classified = FailureClassifier().classify(
+        excinfo.value,
+        phase="planning",
+        agent="pi/minimax/MiniMax-3",
+        connectivity_state="online",
+    )
+    assert classified.is_unavailable is False
+    assert classified.unavailability_reason is None
+
+
+def test_completion_gate_fast_credentials_with_small_output_still_broken() -> None:
+    """A structurally small credential failure keeps the fast broken-agent fallover."""
+    with pytest.raises(BrokenAgentExitError) as excinfo:
+        check_process_result(
+            _Handle(),
+            "opencode",
+            ["error: authentication failed: invalid key"],
+            _options(elapsed_seconds=2.0, input_prompt="implement the change"),
+            _clock=FakeClock(),
+        )
+
+    assert excinfo.value.reason == "no_output"
