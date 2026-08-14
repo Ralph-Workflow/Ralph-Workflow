@@ -79,12 +79,37 @@ def _concluded(
     updates: dict[str, object] = {"cycle_timebox_active": False}
     if redirect_reason is not None:
         updates["cycle_timebox_redirect_reason"] = redirect_reason
+        # Counted as well as described. The reason belongs to one cycle and is
+        # cleared when the next one starts, which under the bundled defaults is
+        # the normal path after a redirect — so without a running total, an
+        # operator whose run blew four deadlines in five cycles was told about
+        # none of them.
+        updates["cycle_timebox_redirects"] = state.cycle_timebox_redirects + 1
     # Never outrank a recorded verdict: running out of time is not a verdict,
     # so a cycle that already reported `failed` must not be finalized as
     # `completed` merely because the deadline expired on the way out.
     if cycle_outcome is not None and state.pending_cycle_outcome is None:
         updates["pending_cycle_outcome"] = cycle_outcome
     return state.copy_with(**updates)
+
+
+def cycle_timebox_redirect_reason(
+    *,
+    limit_seconds: float,
+    elapsed_seconds: float,
+    target: str,
+) -> str:
+    """Return the operator-facing reason recorded when a deadline redirects.
+
+    Built here rather than inline so the surfaces that render it can be tested
+    against the real text instead of a hand-copied approximation that would
+    stay green while the real reason changed shape.
+    """
+    return (
+        f"cycle timebox reached {limit_seconds:.0f}s "
+        f"(elapsed {elapsed_seconds:.0f}s); "
+        f"redirecting to {target}"
+    )
 
 
 def _started(state: PipelineState) -> PipelineState:
@@ -148,10 +173,10 @@ def apply_cycle_timebox(
     # next entry on the previous cycle's spent budget.
     if target_phase == ct.guarded_entry and state.cycle_timebox_active:
         if routing_timing.total_elapsed_seconds >= ct.duration_seconds:
-            reason = (
-                f"cycle timebox reached {ct.duration_seconds:.0f}s "
-                f"(elapsed {routing_timing.total_elapsed_seconds:.0f}s); "
-                f"redirecting to {ct.finalization_target}"
+            reason = cycle_timebox_redirect_reason(
+                limit_seconds=ct.duration_seconds,
+                elapsed_seconds=routing_timing.total_elapsed_seconds,
+                target=ct.finalization_target,
             )
             return CycleTimeboxDecision(
                 state=_concluded(

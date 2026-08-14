@@ -23,12 +23,23 @@ _REPORTING_BUDGET_CHARACTERS = 1_600
 _MAX_REPORTED_PHASES = 6
 _MAX_MEMORY_FINDINGS = 8
 _MAX_PHASE_NAME_CHARACTERS = 80
+_MAX_REDIRECT_REASON_CHARACTERS = 200
 _MAX_FIXED_POINT_ELAPSED_CHARACTERS = 24
 _MAX_DIRECT_COUNT_BITS = 64
 
 
 def _safe_text(value: str) -> str:
     return value.replace("\n", " ")[:_MAX_PHASE_NAME_CHARACTERS]
+
+
+def _safe_reason(value: str) -> str:
+    """Cap a redirect reason without cutting the phase name it ends with.
+
+    The phase-name cap is far too short for a sentence: the bundled reason runs
+    to 92 characters and ends with the finalization target, so trimming at 80
+    handed the operator a truncated phase name that does not exist.
+    """
+    return value.replace("\n", " ")[:_MAX_REDIRECT_REASON_CHARACTERS]
 
 
 def _safe_item_text(value: str) -> str:
@@ -69,6 +80,46 @@ def _slowest_phases(state: PipelineState) -> list[tuple[str, str]]:
         (phase, _format_count(-duration))
         for duration, phase in phase_durations[:_MAX_REPORTED_PHASES]
     ]
+
+
+def _cycle_timebox_was_used(state: PipelineState) -> bool:
+    """Return whether this run ever had a cycle timer worth reporting.
+
+    Consumed seconds alone are not the test: they are exactly zero for the
+    whole first step of every cycle, so a run ending there dropped the section
+    entirely while the live phase banner was concurrently showing its budget.
+    """
+    return bool(
+        state.cycle_timebox_active
+        or state.cycle_timebox_consumed_seconds > 0
+        or state.cycle_timebox_redirects
+        or state.cycle_timebox_redirect_reason
+    )
+
+
+def _cycle_consumed_text(state: PipelineState) -> str:
+    """Render the consumed figure and how the cycle it belongs to ended.
+
+    "active" is never right here: the report is written after the run is over.
+    A run that exits from inside its cycle -- an exhausted recovery, an
+    interrupt -- never routes out of it, so the flag is still set and the
+    report described a finished run as still running.
+    """
+    consumed = _format_elapsed(state.cycle_timebox_consumed_seconds)
+    ending = " open at exit." if state.cycle_timebox_active else " concluded."
+    return f"{consumed}s;{ending}"
+
+
+def _redirect_line(state: PipelineState) -> str:
+    """Render the deadline-redirect line, counting redirects across the run."""
+    if state.cycle_timebox_redirect_reason:
+        detail = _safe_reason(state.cycle_timebox_redirect_reason)
+    elif state.cycle_timebox_redirects:
+        detail = "an earlier cycle reached its deadline"
+    else:
+        return ""
+    count = max(state.cycle_timebox_redirects, 1)
+    return f"- [CT-2] Redirected cycles: {count}; {detail}.\n"
 
 
 def render_run_time_report(
@@ -147,21 +198,15 @@ def render_run_time_report(
                     "\n## Cycle Timebox\n"
                     + (
                         f"- [CT-1] Limit: {_format_elapsed(cycle_timebox.duration_seconds)}s;"
-                        + f" consumed: {_format_elapsed(state.cycle_timebox_consumed_seconds)}s;"
-                        + (" active." if state.cycle_timebox_active else " concluded.")
+                        + f" last cycle consumed: {_cycle_consumed_text(state)}"
                         + f" Finalization: {_safe_text(cycle_timebox.finalization_target)}.\n"
                         if cycle_timebox is not None
-                        else f"- [CT-1] Consumed: {_format_elapsed(state.cycle_timebox_consumed_seconds)}s;"
-                        + (" active." if state.cycle_timebox_active else " concluded.")
-                        + "\n"
+                        else "- [CT-1] Last cycle consumed: "
+                        + f"{_cycle_consumed_text(state)}\n"
                     )
-                    + (
-                        f"- [CT-2] Redirected: {_safe_text(state.cycle_timebox_redirect_reason)}.\n"
-                        if state.cycle_timebox_redirect_reason
-                        else ""
-                    )
+                    + _redirect_line(state)
                 )
-                if state.cycle_timebox_consumed_seconds > 0
+                if _cycle_timebox_was_used(state)
                 else ""
             )
         )

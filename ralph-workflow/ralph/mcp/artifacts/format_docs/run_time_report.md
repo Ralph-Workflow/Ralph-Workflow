@@ -6,7 +6,8 @@ A runtime-generated summary of one pipeline run. It is written to
 
 The report has frontmatter `type: run_time_report`, `outcome:`,
 `elapsed_seconds:`, and `final_phase:`, plus these sections: `Summary`,
-`Timing`, `Phases`, `Slowest Steps`, `Signals`, and optional `Memory Findings`.
+`Timing`, `Phases`, `Slowest Steps`, `Signals`, and the optional
+`Memory Findings` and `Cycle Timebox` sections.
 Each section has stable-ID list items. Its fixed shape makes runs comparable
 without reading logs.
 

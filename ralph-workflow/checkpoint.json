@@ -62,6 +62,7 @@
   "cycle_timebox_active": false,
   "cycle_timebox_consumed_seconds": 0.0,
   "cycle_timebox_redirect_reason": null,
+  "cycle_timebox_redirects": 0,
   "work_units": [],
   "worker_states": {},
   "phase_timings": [],

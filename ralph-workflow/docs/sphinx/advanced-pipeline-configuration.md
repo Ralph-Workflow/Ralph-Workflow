@@ -512,8 +512,12 @@ Each incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
 `Reason:` field explaining why the step is incomplete or infeasible, and
 an `Evidence:` field with a reproducible location (file, test, or
 command). Items missing any of these three are rejected by artifact
-validation — fabricated completion, weakened verification, and silent
-omission are not accepted.
+validation, so silent omission is not accepted. A warned `completed`
+result is checked too: it must carry a `## Plan Items Proven` section
+naming what was proved, so declaring completion is not a way around the
+requirement to show your work. Validation cannot detect a fabricated
+proof — what it enforces is that a claim made under warning is
+accompanied by one.
 
 Whether the cycle warned is decided by the runtime, not by the reporting
 agent: artifact validation reads the same published deadline

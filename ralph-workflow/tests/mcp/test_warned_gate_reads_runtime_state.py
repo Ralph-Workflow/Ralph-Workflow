@@ -151,3 +151,74 @@ cycle_timebox_warned: true
     )
 
     assert any("Incomplete Work" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_warned_completion_claim_must_carry_its_proof() -> None:
+    """The one word the agent controls must not be the way past the gate.
+
+    Gating only ``partial``/``failed`` meant the honest report was the one that
+    got rejected while a fabricated ``completed`` — two one-character items and
+    no proof at all — sailed through, which is the exact outcome the gate was
+    written to prevent.
+    """
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Everything is done.
+## Files Changed
+- [F-1] src/feature.py
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert any("Plan Items Proven" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_warned_completion_with_proof_is_accepted() -> None:
+    """A completion claim backed by per-item proof is exactly what is wanted."""
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Landed S-1 and S-2 with tests.
+## Files Changed
+- [F-1] src/feature.py
+## Plan Items Proven
+- [S-1] Added the endpoint rename and updated its callers.
+  Disposition: completed
+  Rationale: Renamed every call site the plan item listed.
+- [S-2] Covered the rename with tests/test_api.py::test_renamed_endpoint.
+  Disposition: completed
+  Rationale: The new test fails against the old endpoint names.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    assert len(content["plan_items_proven"]) == 2
+
+
+@pytest.mark.usefixtures("cycle_not_yet_warned")
+def test_an_unwarned_completion_is_not_asked_for_proof() -> None:
+    """Outside a warned cycle the proof section stays optional, as declared."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Everything is done.
+## Files Changed
+- [F-1] src/feature.py
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []

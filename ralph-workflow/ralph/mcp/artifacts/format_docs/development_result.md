@@ -75,10 +75,16 @@ that a step is unnecessary are invalid rationales for `not_applicable`.
 
 ## Sections
 
-Every section rule below applies to `status: completed` only — a
-completion claim is the one thing this artifact can check. With
-`status: partial` or `status: failed` the document is free-form below the frontmatter: no
-section is required or shaped and no proof is demanded. Still lead with
+Most section rules below apply to `status: completed` only — a
+completion claim is the one thing this artifact can fully check. With
+`status: partial` or `status: failed` the document is otherwise free-form below
+the frontmatter, with two exceptions that are always enforced: `## Summary`
+with at least one item is required, so the reason for the outcome is never
+silently omitted; and once the run's cycle timebox has warned, `## Incomplete
+Work` is required, with a stable-ID bracket, a `Reason:` field, and an
+`Evidence:` field on every item. Under that same warning a `completed` result
+must carry `## Plan Items Proven` — the status you choose does not decide
+whether you are asked to show your work. Still lead with
 what you did and what remains. For `partial`, include `## Next Steps` and your
 session id in `## Continuation` so a safe concrete continuation can resume. Use
 `failed` when no safe developer continuation exists under current evidence or
@@ -106,11 +112,17 @@ status decides whether the run ends.
 
 ## Hard errors vs warnings
 
-Hard errors, all of them for `status: completed` only: missing Summary
+Hard errors at any status: an unrecognized `status`; a missing `## Summary`;
+and, once the cycle timebox has warned, a missing or malformed `## Incomplete
+Work` on a `partial`/`failed` result or a missing `## Plan Items Proven` on a
+`completed` one. Whether the cycle warned is read from the run's own clock, not
+from anything the document declares.
+
+Hard errors for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation
 item; duplicate item IDs; a missing or unknown `Disposition`; a missing
 `Rationale` for `adapted`, `not_applicable`, or `blocked`; `blocked` in a
 completed result; and (at proof validation) plan-item IDs that
 do not exactly match a plan step ID or work-unit id, missing proofs, or
-duplicates. An unrecognized `status` is a hard error at any status and
-reports the valid `completed` / `partial` / `failed` vocabulary.
+duplicates. The unrecognized-`status` error reports the valid
+`completed` / `partial` / `failed` vocabulary.

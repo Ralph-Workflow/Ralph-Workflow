@@ -175,6 +175,11 @@ class PipelineState(_FrozenPipelineStateModel):
     # ordinary completion. Cleared when the next cycle starts. Defaults so
     # legacy checkpoints load cleanly.
     cycle_timebox_redirect_reason: str | None = None
+    # Running count of cycles this run finalized by deadline redirect. The
+    # reason above describes one cycle and is cleared when the next starts,
+    # which is the normal path after a redirect, so the count is what survives
+    # to the end-of-run report. Defaults so legacy checkpoints load cleanly.
+    cycle_timebox_redirects: int = 0
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)

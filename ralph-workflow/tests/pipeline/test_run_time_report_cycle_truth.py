@@ -1,0 +1,118 @@
+"""The cycle-timebox section must not tell the operator something untrue.
+
+Three ways it did. It reported a run that died inside its cycle as "active",
+describing a finished run as still running. It truncated the redirect reason at
+the phase-name cap, and because the reason ends with the finalization target,
+the operator was handed a phase name that does not exist. And it dropped the
+entire section whenever consumed time was exactly zero — which is the state of
+every cycle's first development step, so a run ending there reported no budget
+at all while the live banner was showing one.
+"""
+
+from __future__ import annotations
+
+from ralph.pipeline.cycle_timing import cycle_timebox_redirect_reason
+from ralph.pipeline.run_time_report import render_run_time_report
+from ralph.pipeline.state import PipelineState
+from ralph.policy.models import CycleTimeboxPolicy
+
+_TARGET = "development_final_commit_cleanup"
+
+
+def _timebox() -> CycleTimeboxPolicy:
+    return CycleTimeboxPolicy(
+        duration_seconds=7200.0,
+        start_source="planning_analysis",
+        start_entry="development",
+        guarded_entry="development",
+        end_entry=_TARGET,
+        finalization_target=_TARGET,
+    )
+
+
+def _report(state: PipelineState) -> str:
+    return render_run_time_report(
+        state=state,
+        outcome="failed",
+        elapsed_seconds=4321.0,
+        getenv=lambda _name: None,
+        cycle_timebox=_timebox(),
+    )
+
+
+def test_a_run_that_ended_inside_its_cycle_is_not_called_active() -> None:
+    """The report is rendered after the run is over; nothing is still running.
+
+    A run that exits from inside the cycle never reduces a route out of it, so
+    the timer flag stays set — which the report printed verbatim as "active".
+    """
+    report = _report(
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=4321.0,
+        )
+    )
+
+    assert "[CT-1]" in report
+    assert " active." not in report
+
+
+def test_the_redirect_reason_is_not_truncated_mid_token() -> None:
+    """The reason names the phase the cycle was redirected to; a cut name lies."""
+    reason = cycle_timebox_redirect_reason(
+        limit_seconds=7200.0, elapsed_seconds=7205.0, target=_TARGET
+    )
+    report = _report(
+        PipelineState(
+            phase=_TARGET,
+            cycle_timebox_active=False,
+            cycle_timebox_consumed_seconds=7205.0,
+            cycle_timebox_redirect_reason=reason,
+        )
+    )
+
+    assert "[CT-2]" in report
+    assert _TARGET in report.split("[CT-2]", 1)[1]
+
+
+def test_a_cycle_that_has_consumed_no_time_yet_still_reports_its_budget() -> None:
+    """Consumed is exactly zero for the whole first step of every cycle."""
+    report = _report(
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=0.0,
+        )
+    )
+
+    assert "## Cycle Timebox" in report
+    assert "[CT-1]" in report
+
+
+def test_a_run_that_never_entered_a_cycle_reports_no_section() -> None:
+    """The section must not appear where no cycle ever ran."""
+    report = _report(PipelineState(phase="planning"))
+
+    assert "## Cycle Timebox" not in report
+
+
+def test_a_redirect_in_an_earlier_cycle_is_still_reported() -> None:
+    """A redirected cycle is normally followed by another, which resets the reason.
+
+    Under the bundled defaults a timed-out cycle is finalized and the next
+    planning cycle starts, so the reason survives only until the next cycle
+    begins — the operator of a five-cycle run was never told that any of the
+    first four blew their deadline.
+    """
+    report = _report(
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=1200.0,
+            cycle_timebox_redirects=2,
+        )
+    )
+
+    assert "[CT-2]" in report
+    assert "2" in report.split("[CT-2]", 1)[1].split("\n", 1)[0]

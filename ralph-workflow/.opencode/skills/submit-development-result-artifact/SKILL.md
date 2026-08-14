@@ -19,12 +19,15 @@ Submit with `ralph_submit_md_artifact`; pre-check with
 ## Document Shape
 
 Frontmatter: `type: development_result` and exactly one closed-vocabulary
-status: `completed` or `partial`. Any other status is invalid and must be
-repaired before submission.
+status: `completed`, `partial`, or `failed`. Any other status is invalid and
+must be repaired before submission.
 
-The section rules below apply to `status: completed` only. A
-`status: partial` document is free-form below the frontmatter: no
-section is required or shaped, and no proof is demanded. Write whatever
+Most section rules below apply to `status: completed` only. A
+`status: partial` or `status: failed` document is otherwise free-form below the
+frontmatter, except that `## Summary` is always required and — once the run's
+cycle timebox has warned — `## Incomplete Work` is too, every item carrying a
+stable-ID bracket, a `Reason:`, and an `Evidence:`. Under that same warning a
+`completed` result must carry `## Plan Items Proven`. Write whatever
 best hands your unfinished work to the next iteration — `## Summary`,
 `## Next Steps` and `## Continuation` (your session ID) are read when
 present and are the most useful things to include.

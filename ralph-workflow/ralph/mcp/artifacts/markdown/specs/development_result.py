@@ -229,6 +229,18 @@ def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
 def _to_content(document: ParsedDocument) -> Content:
     if not _is_completed(document):
         return _free_form_content(document)
+    if _cycle_timebox_warned(document) and not _optional_items(document, "Plan Items Proven"):
+        # Gating only the partial/failed branch left the honesty requirement
+        # keyed on the single word the reporting agent chooses: under a live
+        # deadline warning the honest partial was rejected while a bare
+        # `completed` — no proof section at all — was accepted. A completion
+        # claim made under warning has to name what it proved.
+        raise ValueError(
+            "Plan Items Proven with at least one item is required for a "
+            "'completed' development result submitted after the cycle timebox "
+            "warning; report unfinished work as 'partial' or 'failed' with an "
+            "Incomplete Work section instead of claiming completion"
+        )
     content: Content = {
         "status": document.frontmatter["status"],
         "summary": _one_item(document, "Summary"),

@@ -137,7 +137,12 @@ def test_run_time_report_regression_preserves_negative_extreme_signal_counts() -
 
 
 def test_run_time_report_includes_cycle_timebox_when_consumed() -> None:
-    """The report shows cycle timebox diagnostics when budget was consumed."""
+    """The report shows cycle timebox diagnostics when budget was consumed.
+
+    A still-running timer at report time means the run exited from inside its
+    cycle, which is reported as such — the report is written after the run is
+    over, so nothing it describes is "active".
+    """
     report = render_run_time_report(
         state=PipelineState(
             phase="development",
@@ -150,7 +155,7 @@ def test_run_time_report_includes_cycle_timebox_when_consumed() -> None:
     assert "## Cycle Timebox" in report
     assert "[CT-1]" in report
     assert "3600" in report
-    assert "active" in report
+    assert "open at exit" in report
     assert len(report) <= 1_600
 
 

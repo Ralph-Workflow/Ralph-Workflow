@@ -360,8 +360,11 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
         encoding="utf-8"
     )
 
-    assert "[CT-2] Redirected:" in report
+    assert "[CT-2] Redirected cycles: 1;" in report
     assert "cycle timebox reached" in report
+    # The reason ends with the phase the cycle was redirected to, so a report
+    # that truncates it names a phase that does not exist.
+    assert "redirecting to development_final_commit_cleanup" in report
 
 
 def test_bypassed_analysis_into_finalization_ends_the_cycle() -> None:

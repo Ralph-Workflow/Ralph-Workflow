@@ -189,7 +189,9 @@ def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
         "three are rejected by artifact validation. This requirement is "
         "enforced from the run's own cycle clock, not from anything you "
         "declare, so omitting the section is a validation failure rather than "
-        "a way past the check.\n"
+        "a way past the check. Reporting `completed` is not a way past it "
+        "either: a completion claim made after this warning must carry "
+        "`## Plan Items Proven` naming what you proved.\n"
     )
 
 
