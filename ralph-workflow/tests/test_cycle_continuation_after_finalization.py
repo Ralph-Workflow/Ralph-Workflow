@@ -506,11 +506,15 @@ def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
     assert state.phase == "failed_terminal"
 
 
-def test_a_terminal_ends_the_cycle_timer() -> None:
-    """A run that ends mid-cycle leaves no cycle running behind it.
+def test_the_recovery_failed_route_keeps_the_cycle_timer_armed() -> None:
+    """The recovery failed route is a terminal here but does not end the run.
 
-    The operator surfaces read the timer off the final state, so a timer left
-    active at a terminal reports a live budget for a run that is over.
+    The effect router turns it back into the phase the run was in, so the run
+    re-enters the same cycle. Disarming the timer on the way through left the
+    rest of that cycle unbounded, with no way to re-arm — starting a timer
+    requires an inactive one. A run that really does die inside its cycle is
+    handled by the report, which describes the cycle as open at exit rather
+    than as still running.
     """
     policy = _policy()
     state = PipelineState(
@@ -524,8 +528,7 @@ def test_a_terminal_ends_the_cycle_timer() -> None:
     state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy, routing_timing=_rt(1200.0))
 
     assert state.phase in {"failed_terminal", "development_commit_cleanup"}
-    if state.phase == "failed_terminal":
-        assert state.cycle_timebox_active is False
+    assert state.cycle_timebox_active is True
 
 
 def test_a_decision_out_of_the_cycle_ends_the_timer() -> None:

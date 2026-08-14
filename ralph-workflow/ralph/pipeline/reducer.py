@@ -437,7 +437,13 @@ def _enter_failed_recovery(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
     )
-    new_state = conclude_cycle_on_route_out_of_cycle(new_state, target, policy=policy)
+    # The cycle timer is deliberately NOT concluded here. The recovery failed
+    # route is a terminal to this reducer but does not end the run: the effect
+    # router turns it back into the phase the run was in, so the run re-enters
+    # the same cycle. Concluding switched the deadline off for the rest of a
+    # cycle that kept going -- and it could never re-arm, because starting a
+    # timer requires an inactive one. The cycle concludes when it routes out
+    # for real, or is reported as open at exit if the run dies inside it.
     return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
 

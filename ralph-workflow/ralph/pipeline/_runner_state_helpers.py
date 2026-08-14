@@ -8,6 +8,7 @@ from loguru import logger
 
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
+from ralph.pipeline.cycle_timing import conclude_cycle_on_route_out_of_cycle
 from ralph.pipeline.state import AgentChainState
 
 if TYPE_CHECKING:
@@ -131,6 +132,15 @@ def recover_missing_plan_handoff(
         state,
         target_phase,
         policy=pipeline_policy,
+    )
+    # This recovery leaves the cycle behind -- it routes back to the entry
+    # phase to re-plan. A timer left running charges the re-plan to the cycle
+    # that just ended, and if planning analysis is then bypassed the next cycle
+    # cannot start (starting requires an inactive timer) and is judged on the
+    # previous cycle's spent clock: redirected to its final commit before
+    # development ever runs.
+    advanced_state = conclude_cycle_on_route_out_of_cycle(
+        advanced_state, target_phase, policy=pipeline_policy
     )
 
     if not bound_exceeded:
