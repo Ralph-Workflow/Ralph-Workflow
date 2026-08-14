@@ -1821,34 +1821,40 @@ def _handle_inline_effect(
         prepared_state = state
         target_phase = effect.phase
         if state.phase == pipeline_policy.recovery.failed_route:
-            prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
-            target_phase_def = pipeline_policy.phases.get(effect.phase)
+            # Resolve the deadline FIRST. This hop re-enters the phase by
+            # writing state.phase directly rather than routing, so it is the
+            # one way into the guarded phase that is not a routing boundary --
+            # and the deadline is enforced at boundaries. Everything below then
+            # prepares the phase the run actually enters: preparing the
+            # original target instead reset the cycle's git baseline to
+            # redirect-time HEAD and persisted that phase's drain for a phase
+            # that never runs.
+            timeboxed = apply_cycle_timebox(
+                state,
+                effect.phase,
+                policy=pipeline_policy,
+                routing_timing=RoutingTiming(
+                    monotonic_now=0.0,
+                    total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
+                ),
+            )
+            target_phase = timeboxed.target_phase
+            if timeboxed.redirected:
+                logger.bind(component="policy.routing").warning(timeboxed.redirect_reason)
+            prepared_state = _reset_phase_chain_for_recovery(timeboxed.state, target_phase)
+            target_phase_def = pipeline_policy.phases.get(target_phase)
             if target_phase_def is not None and target_phase_def.role == "commit":
                 prepared_state = prepared_state.copy_with(commit=CommitState())
             if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
                 write_start_commit_if_absent(workspace_scope.root)
-            # This hop re-enters the phase by writing state.phase directly
-            # rather than routing, so it is the one way into the guarded phase
-            # that is not a routing boundary -- and the deadline is enforced at
-            # boundaries. An expired cycle bought one unbudgeted invocation per
-            # hop, and because each hop also resets the retry chain, a
-            # persistently failing agent could ping-pong through it with the
-            # budget long gone.
-            timeboxed = apply_cycle_timebox(
-                prepared_state,
-                effect.phase,
-                policy=pipeline_policy,
-                routing_timing=RoutingTiming(
-                    monotonic_now=0.0,
-                    total_elapsed_seconds=prepared_state.cycle_timebox_consumed_seconds,
-                ),
-            )
-            prepared_state = timeboxed.state
-            target_phase = timeboxed.target_phase
+        # The effect's drain describes the phase it named; once a redirect has
+        # changed the target, only the policy knows the right one.
+        requested_drain = effect.drain if target_phase == effect.phase else None
         prepare_updates: dict[str, object] = {
             "phase": target_phase,
-            "current_drain": effect.drain or resolve_phase_drain(target_phase, pipeline_policy),
+            "current_drain": requested_drain
+            or resolve_phase_drain(target_phase, pipeline_policy),
         }
         # A change of phase here (skip-invocation success route, failed-route
         # re-entry) must clear the next-attempt session action exactly like

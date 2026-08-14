@@ -46,11 +46,13 @@ def _safe_item_text(value: str) -> str:
     return _safe_text(value).rstrip()
 
 
-def _memory_findings(getenv: Callable[[str], str | None]) -> list[str]:
+def _memory_findings(getenv: Callable[[str], str | None]) -> tuple[list[str], bool]:
+    """Return the findings to report, and whether the cap dropped any."""
     findings = getenv("RALPH_RUN_TIME_REPORT_MEMORY_FINDINGS") or ""
-    return [
+    parsed = [
         _safe_item_text(finding) for finding in findings.splitlines() if _safe_item_text(finding)
-    ][:_MAX_MEMORY_FINDINGS]
+    ]
+    return parsed[:_MAX_MEMORY_FINDINGS], len(parsed) > _MAX_MEMORY_FINDINGS
 
 
 def _format_elapsed(elapsed_seconds: float) -> str:
@@ -149,8 +151,9 @@ def render_run_time_report(
     elapsed = max(0.0, elapsed_seconds)
     elapsed_text = _format_elapsed(elapsed)
     reported_phases, dropped_for_cap = _slowest_phases(state)
-    memory_findings = _memory_findings(getenv)
+    memory_findings, memory_findings_capped = _memory_findings(getenv)
     truncated = False
+    memory_findings_truncated = False
     while True:
         phase_lines = [f"- [P-1] Final phase: {safe_phase}."]
         slowest_lines: list[str] = []
@@ -205,6 +208,12 @@ def render_run_time_report(
                     f"- [MF-{index}] {finding}"
                     for index, finding in enumerate(memory_findings, start=1)
                 )
+                + (
+                    f"\n- [MF-{len(memory_findings) + 1}] Memory findings list "
+                    "truncated."
+                    if (memory_findings_capped or memory_findings_truncated)
+                    else ""
+                )
                 if memory_findings
                 else ""
             )
@@ -242,7 +251,10 @@ def render_run_time_report(
             truncated = True
             continue
         if memory_findings:
+            # Announced like the phase list is: a findings list that quietly
+            # loses entries reads as the complete set.
             memory_findings.pop()
+            memory_findings_truncated = True
             continue
         raise RuntimeError("run_time_report fixed content exceeds its reporting budget")
 

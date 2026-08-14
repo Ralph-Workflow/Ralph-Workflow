@@ -265,3 +265,46 @@ def test_no_warning_is_issued_once_the_deadline_has_passed() -> None:
     )
 
     assert warning is None
+
+
+def test_a_redirected_recovery_hop_prepares_the_phase_it_actually_enters(
+    tmp_path: Path,
+) -> None:
+    """Side effects and drain must follow the redirect, not the original target.
+
+    The hop ran the guarded phase's entry side effects — resetting the cycle's
+    git baseline to redirect-time HEAD — and persisted that phase's drain,
+    for a phase the run never enters. The redirect also went unannounced, so
+    the operator saw an unexplained jump to the final-commit path.
+    """
+    from loguru import logger
+
+    from ralph.pipeline import runner as runner_module
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.workspace.scope import WorkspaceScope
+
+    (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".agent" / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
+    (tmp_path / "PROMPT.md").write_text("Do the work\n", encoding="utf-8")
+    bundle = load_policy(_DEFAULTS_DIR)
+    expired = _in_cycle("failed_terminal", consumed=14_400.0).copy_with(
+        previous_phase="development"
+    )
+
+    records: list[str] = []
+    sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
+    try:
+        updated = runner_module._handle_inline_effect(
+            effect=PreparePromptEffect(phase="development", drain="development"),
+            state=expired,
+            pipeline_policy=bundle.pipeline,
+            artifacts_policy=bundle.artifacts,
+            workspace_scope=WorkspaceScope(tmp_path),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    target = "development_final_commit_cleanup"
+    assert updated.phase == target
+    assert updated.current_drain == bundle.pipeline.phases[target].drain
+    assert any("cycle timebox reached" in record for record in records)

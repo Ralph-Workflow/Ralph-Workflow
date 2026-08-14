@@ -183,14 +183,32 @@ def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
     section = document.section("Incomplete Work")
     if section is None:
         return
-    for line in section.lines:
-        text = line.text.lstrip()
-        if text[:2] in ("- ", "* ", "+ "):
-            raise ValueError(
-                f"Incomplete Work bullets must each start with a stable-ID "
-                f"bracket such as '- [S-4] ...'; the bullet on line {line.line} "
-                f"has none and would be dropped from the report"
-            )
+    stray_lines = [line for line in section.lines if _looks_like_a_list_entry(line.text)]
+    # Nested one level, a bullet lands among an item's continuation lines
+    # instead of the section body, where the fields reader ignores anything
+    # that is not `Key: value` -- another way to be silently dropped.
+    stray_lines += [
+        line
+        for item in section.items
+        for line in item.fields
+        if _looks_like_a_list_entry(line.text) and _field_key_and_value(line.text) is None
+    ]
+    if stray_lines:
+        first_line = min(line.line for line in stray_lines)
+        raise ValueError(
+            f"Incomplete Work entries must each start with a stable-ID bracket "
+            f"such as '- [S-4] ...'; the entry on line {first_line} has none "
+            f"and would be dropped from the report"
+        )
+
+
+def _looks_like_a_list_entry(text: str) -> bool:
+    """Return whether a line reads as a list entry rather than prose."""
+    stripped = text.lstrip()
+    if stripped[:2] in ("- ", "* ", "+ "):
+        return True
+    marker, _, rest = stripped.partition(" ")
+    return bool(rest) and marker[:-1].isdigit() and marker[-1:] in (".", ")")
 
 
 def _cycle_timebox_warned(document: ParsedDocument) -> bool:
@@ -308,7 +326,13 @@ def _to_content(document: ParsedDocument) -> Content:
     # a reason is honest reporting, and dropping the section deleted it.
     completed_incomplete = _optional_items(document, "Incomplete Work")
     if completed_incomplete:
-        _validate_warned_incomplete_items(completed_incomplete)
+        # Reason/Evidence are required only under a warning, exactly as on the
+        # partial/failed branch. Demanding them here regardless rejected a
+        # `completed` result carrying a byte-identical section that `partial`
+        # accepted, for a rule the format documentation scopes to warned
+        # results — leaving no way to reconcile the diagnostic.
+        if _cycle_timebox_warned(document):
+            _validate_warned_incomplete_items(completed_incomplete)
         _reject_unbracketed_incomplete_bullets(document)
         content["incomplete_work"] = [
             f"[{item.identifier}] {item.text}" for item in completed_incomplete

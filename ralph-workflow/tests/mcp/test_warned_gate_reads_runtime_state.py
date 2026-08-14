@@ -330,3 +330,59 @@ status: completed
 
     assert diagnostics == []
     assert content["incomplete_work"] == ["[S-2] Cache invalidation deferred."]
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param("  - Also the docs update was not done.\n", id="nested-under-item"),
+        pytest.param("1. The docs update was not done.\n", id="numbered-list"),
+        pytest.param("### [X-1] More\n- [X-2] Docs update not done.\n", id="sub-block"),
+    ],
+)
+def test_extra_unfinished_work_cannot_be_smuggled_past_the_gate(extra: str) -> None:
+    """Rejecting only column-zero dashes left three ways to be silently dropped.
+
+    Nesting one level, numbering the list, or opening a sub-block all land the
+    text somewhere the guard never looked, so it validated clean and the work
+    was erased — the exact silent omission the gate exists to prevent.
+    """
+    _content, diagnostics = parse_and_validate(
+        "---\ntype: development_result\nstatus: partial\n---\n"
+        "## Summary\n- [SUM-1] Work remains.\n"
+        "## Incomplete Work\n"
+        "- [S-3] Rename API endpoints: half-applied.\n"
+        "  Reason: Only half the endpoints were renamed.\n"
+        "  Evidence: tests/test_api.py:42 references the old names.\n" + extra,
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+
+
+@pytest.mark.usefixtures("cycle_not_yet_warned")
+def test_an_unwarned_completed_result_may_note_deferred_work_plainly() -> None:
+    """Outside a warning the two statuses must not be held to different bars.
+
+    A byte-identical section was accepted under `partial` and rejected under
+    `completed`, for a rule the format documentation scopes to warned results
+    only — leaving the agent no way to reconcile the diagnostic.
+    """
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Landed S-1; noted a deferral.
+## Files Changed
+- [F-1] src/feature.py
+## Incomplete Work
+- [S-9] Deferred the docs polish to the next cycle.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    assert content["incomplete_work"] == ["[S-9] Deferred the docs polish to the next cycle."]

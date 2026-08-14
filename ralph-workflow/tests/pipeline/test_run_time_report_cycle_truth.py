@@ -167,3 +167,16 @@ def test_dropping_every_timing_is_not_reported_as_recording_none() -> None:
 
     assert "No completed phase timings were recorded" not in report
     assert "dropped to fit the budget" in report
+
+
+def test_dropped_memory_findings_are_announced() -> None:
+    """A findings list that quietly loses entries reads as the complete set."""
+    report = render_run_time_report(
+        state=PipelineState(phase="development"),
+        outcome="completed",
+        elapsed_seconds=1200.0,
+        # More findings than the cap allows.
+        getenv=lambda _n: "\n".join(f"finding {index}" for index in range(12)),
+    )
+
+    assert "Memory findings list truncated" in report
