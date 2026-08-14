@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
+    CYCLE_DURATION_SECONDS_ENV,
     CYCLE_FINALIZATION_TARGET_ENV,
     CYCLE_WARN_EPOCH_ENV,
 )
@@ -257,13 +258,17 @@ def test_fan_out_withdraws_a_stale_deadline_when_no_cycle_runs(
 
 
 
-def test_finalizing_an_agent_invocation_revokes_its_deadline(
+def test_finalizing_an_agent_invocation_keeps_the_deadline_readable(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The runner's invocation finalizer is what actually revokes the deadline.
+    """The finalizer grades the agent's result, so it must NOT revoke first.
 
-    Pinning the helper alone leaves the wiring free to be deleted, which would
-    silently restore the leak into every later subprocess.
+    Grading promotes and validates the result artifact, and the warned
+    incomplete-work gate in that validation asks the runtime — not the agent —
+    whether this cycle had warned. Revoking here answered "no" for every
+    promoted artifact, disabling the gate on the path it exists for. The
+    step's ``finally`` revokes instead; see
+    ``tests/test_runner_cycle_deadline_revocation.py``.
     """
     _reserve_env(monkeypatch)
     _materialize(
@@ -299,7 +304,7 @@ def test_finalizing_an_agent_invocation_revokes_its_deadline(
         run_id=None,
     )
 
-    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
     assert event == PipelineEvent.AGENT_FAILURE
     assert state.phase == "development"
 
@@ -333,27 +338,37 @@ def test_the_published_deadline_round_trips_into_a_worker_warning(
     assert 1380.0 <= float(str(warning["remaining_seconds"])) <= 1440.0
 
 
-def test_a_failed_materialization_does_not_leave_the_deadline_published(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """Publication happens before materialization can fail, so failure must revoke.
+def test_withdrawing_clears_every_published_name(monkeypatch: MonkeyPatch) -> None:
+    """A partial withdrawal is worse than none: consumers read a mixed deadline.
 
-    The finalizer that normally revokes never runs when the step returns early
-    or raises, and the environment is process-global — so the deadline would
-    outlive its invocation and nag everything spawned afterwards.
+    The duration and finalization target are published alongside the epochs and
+    are just as inheritable, so leaving either behind describes one cycle with
+    another's numbers. Whether the runner actually calls this on each exit path
+    is pinned separately in ``tests/test_runner_cycle_deadline_revocation.py``.
     """
     _reserve_env(monkeypatch)
-    state = PipelineState(
-        phase="development",
-        cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
-    )
-    _materialize("development", state, tmp_path, cycle_total_elapsed=_ELAPSED_SECONDS)
+    _publish_a_guarded_deadline()
     assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
 
-    # The runner revokes on both early-return and raise paths; the helper it
-    # uses is the same one the finalizer calls.
     runner_module.withdraw_cycle_deadline_env()
 
-    assert CYCLE_WARN_EPOCH_ENV not in os.environ
-    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+    for name in (
+        CYCLE_WARN_EPOCH_ENV,
+        CYCLE_DEADLINE_EPOCH_ENV,
+        CYCLE_FINALIZATION_TARGET_ENV,
+        CYCLE_DURATION_SECONDS_ENV,
+    ):
+        assert name not in os.environ
+
+
+def _publish_a_guarded_deadline() -> None:
+    runner_module.publish_cycle_deadline_env(
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+        ),
+        "development",
+        _bundle(),
+        _ELAPSED_SECONDS,
+    )

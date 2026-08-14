@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,7 +39,7 @@ from ralph.prompts.types import SessionCapabilities
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -339,6 +340,17 @@ def _worker_cycle_timebox_warning(
 
 
 
+#: Every name a cycle deadline publication occupies. Withdrawal and suspension
+#: both cover the whole set: a partially cleared publication leaves consumers
+#: reading a deadline whose duration or target belongs to a different cycle.
+_CYCLE_DEADLINE_ENV_NAMES = (
+    CYCLE_WARN_EPOCH_ENV,
+    CYCLE_DEADLINE_EPOCH_ENV,
+    CYCLE_DURATION_SECONDS_ENV,
+    CYCLE_FINALIZATION_TARGET_ENV,
+)
+
+
 def _withdraw_cycle_deadline_env() -> None:
     """Remove any published cycle deadline from the environment.
 
@@ -348,13 +360,28 @@ def _withdraw_cycle_deadline_env() -> None:
     as the auto-integrate conflict resolver, which would be nagged to wrap up
     work it never started.
     """
-    for name in (
-        CYCLE_WARN_EPOCH_ENV,
-        CYCLE_DEADLINE_EPOCH_ENV,
-        CYCLE_DURATION_SECONDS_ENV,
-        CYCLE_FINALIZATION_TARGET_ENV,
-    ):
+    for name in _CYCLE_DEADLINE_ENV_NAMES:
         os.environ.pop(name, None)
+
+
+@contextmanager
+def cycle_deadline_suspended() -> Iterator[None]:
+    """Hide the published deadline from agents spawned inside this block.
+
+    Withdrawing outright is wrong where the invocation still needs its own
+    deadline afterwards — a fan-out worker rebuilds its prompt warning from
+    these values, but reconciles its siblings' work first, and the
+    conflict-resolver agent that reconciliation spawns never joined the cycle
+    and must not be nagged about it.
+    """
+    saved = {
+        str(name): os.environ[name] for name in _CYCLE_DEADLINE_ENV_NAMES if name in os.environ
+    }
+    _withdraw_cycle_deadline_env()
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
 
 
 def _publish_cycle_deadline_env(

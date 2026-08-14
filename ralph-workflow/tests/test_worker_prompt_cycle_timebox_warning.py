@@ -9,6 +9,11 @@ serial development agent doing the same work was warned.
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass, field
+from types import SimpleNamespace
+from typing import TYPE_CHECKING
+
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
     CYCLE_DURATION_SECONDS_ENV,
@@ -16,6 +21,11 @@ from ralph.mcp.protocol.env import (
     CYCLE_WARN_EPOCH_ENV,
 )
 from ralph.pipeline.prompt_prep import cycle_timebox_warning_from_env
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pytest import MonkeyPatch
 
 _NOW = 1_000_000.0
 _TARGET = "development_final_commit_cleanup"
@@ -66,32 +76,105 @@ def test_worker_warning_ignores_unusable_published_values() -> None:
 
 
 def test_worker_runtime_forwards_the_warning_to_its_materializer(
-    monkeypatch: object, tmp_path: object
+    monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The worker's call site must hand the warning to its materializer.
+    """The worker's call site must hand its materializer the live warning.
 
-    Asserted on the kwarg the materializer actually receives: a call that
-    merely mentions the keyword while passing nothing, or one deleted
-    outright, cannot satisfy this.
+    Asserted on the kwarg the materializer actually receives, having driven the
+    real worker entry point: reading the call site's source text instead let
+    the environment read be replaced by an empty mapping — silencing every
+    fan-out worker — while the source, and the assertion, stayed identical.
     """
-    import inspect
+    captured = _drive_worker(monkeypatch, tmp_path)
 
-    from pytest import MonkeyPatch
+    warning = captured.materializer_kwargs["cycle_timebox_warning"]
+    assert warning is not None
+    assert warning["finalization_target"] == _TARGET
+    assert warning["duration_seconds"] == 7200.0
 
+
+def test_worker_hides_the_cycle_deadline_from_its_catch_up_integration(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reconciliation spawns a conflict resolver that never joined the cycle.
+
+    It must not be nagged to wrap up work it has no part in — and the worker
+    must still hold its own deadline afterwards, which withdrawing outright
+    would have cost it.
+    """
+    captured = _drive_worker(monkeypatch, tmp_path)
+
+    # A worker reconciles twice — catching up at startup and publishing what it
+    # landed — and neither resolver may see the cycle deadline.
+    assert captured.deadline_visible_during_integration
+    assert not any(captured.deadline_visible_during_integration)
+    assert captured.materializer_kwargs["cycle_timebox_warning"] is not None
+
+
+@dataclass
+class _WorkerCapture:
+    materializer_kwargs: dict[str, object] = field(default_factory=dict)
+    deadline_visible_during_integration: list[bool] = field(default_factory=list)
+
+
+def _drive_worker(monkeypatch: MonkeyPatch, tmp_path: Path) -> _WorkerCapture:
+    """Run the real manifest worker with its collaborators observed."""
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.events import PipelineEvent
     from ralph.pipeline.parallel import worker_runtime
+    from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 
-    assert isinstance(monkeypatch, MonkeyPatch)
-    monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "0")
-    monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, "99999999999")
-    monkeypatch.setenv(CYCLE_DURATION_SECONDS_ENV, "7200.0")
-    monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "PROMPT.md").write_text("Implement the modules.", encoding="utf-8")
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+    worker_namespace.mkdir(parents=True, exist_ok=True)
+    for name, value in _published(warn_in=-60.0, deadline_in=1380.0).items():
+        monkeypatch.setenv(name, value)
 
-    # The call site is inside a long orchestration function; bind its
-    # materializer argument and read back what it was given.
-    source = inspect.getsource(worker_runtime.run_parallel_worker_from_manifest)
-    call = source[source.index("phase_prompt_materializer(") :]
-    forwarded = call[: call.index("\n    )")]
+    manifest = ParallelWorkerManifest(
+        unit_id="unit-a",
+        description="Module A",
+        allowed_directories=["src/a"],
+        phase="development",
+        drain="development",
+        config_path=None,
+        cli_overrides={},
+        worker_namespace=str(worker_namespace),
+        worker_artifact_dir=str(worker_namespace / "artifacts"),
+        prompt_file=str(worker_namespace / "prompt.md"),
+        workspace_root=str(tmp_path),
+    )
+    manifest_path = worker_namespace / "worker-manifest.json"
+    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
 
-    assert "cycle_timebox_warning=cycle_timebox_warning_from_env(" in forwarded.replace(
-        "\n", ""
-    ).replace(" ", "")
+    captured = _WorkerCapture()
+
+    def _materialize(**kwargs: object) -> str:
+        captured.materializer_kwargs.update(kwargs)
+        (tmp_path / "rendered.md").write_text("worker prompt", encoding="utf-8")
+        return "rendered.md"
+
+    def _integrate(**_kwargs: object) -> None:
+        captured.deadline_visible_during_integration.append(
+            CYCLE_DEADLINE_EPOCH_ENV in os.environ
+        )
+
+    monkeypatch.setattr(worker_runtime, "run_worker_auto_integration", _integrate)
+    monkeypatch.setattr(
+        worker_runtime,
+        "execute_agent_effect",
+        lambda *_args, **_kwargs: PipelineEvent.AGENT_SUCCESS,
+    )
+    monkeypatch.setattr(
+        worker_runtime,
+        "phase_event_after_agent_run",
+        lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
+    )
+
+    deps = SimpleNamespace(phase_prompt_materializer=_materialize, agy_agents_probe=None)
+    worker_runtime.run_parallel_worker_from_manifest(
+        manifest_path=manifest_path,
+        display_context=make_display_context(),
+        pipeline_deps=deps,
+    )
+    return captured

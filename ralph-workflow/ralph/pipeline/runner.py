@@ -1227,10 +1227,13 @@ def _finalize_agent_invocation(
     """
     if not isinstance(effect, InvokeAgentEffect):
         return state, event
-    # Revoke the deadline published for this invocation: the environment is
-    # process-global, so anything spawned later (auto-integrate, plumbing
-    # agents) would otherwise inherit a nag about a cycle it is not part of.
-    withdraw_cycle_deadline_env()
+    # The deadline published for this invocation is deliberately still in the
+    # environment here. Both branches below grade the agent's result, and
+    # grading promotes and validates the result artifact, whose warned
+    # incomplete-work gate asks the runtime -- not the agent -- whether this
+    # cycle had warned. Revoking before that point answered "no" for every
+    # promoted artifact, which is exactly the invocation the gate exists for.
+    # The step's ``finally`` revokes instead, covering every exit path.
     state = _apply_session_capture(state)
     if event == PipelineEvent.AGENT_SUCCESS:
         if recovery_controller is not None:
@@ -1569,7 +1572,6 @@ def _run_pipeline_step(
                 )
             except MissingPlanHandoffError as exc:
                 _phase_outcome = "skipped"
-                withdraw_cycle_deadline_env()
                 return _with_phase_timing(
                     _recover_missing_plan_handoff(
                         state=state,
@@ -1707,6 +1709,12 @@ def _run_pipeline_step(
         )
         return _with_phase_timing(recovered_state)
     finally:
+        # Revoke the deadline published for this step's invocation. The
+        # environment is process-global, so anything spawned later
+        # (auto-integrate, plumbing agents) would otherwise inherit a nag
+        # about a cycle it is not part of -- and revoking anywhere inside the
+        # body leaks it on every path that raises, including Ctrl-C.
+        withdraw_cycle_deadline_env()
         # SINGLE recording site for all exit paths (inline/FanOut/
         # MissingPlanHandoff/success/KeyboardInterrupt/BaseException).
         # Fail-soft: telemetry must never break the pipeline.

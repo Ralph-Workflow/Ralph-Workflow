@@ -66,6 +66,7 @@ from ralph.pipeline.phase_agent_handler import (
     render_phase_failure_report,
 )
 from ralph.pipeline.prompt_prep import (
+    cycle_deadline_suspended,
     cycle_timebox_warning_from_env,
     session_capabilities_for_agent_phase,
 )
@@ -401,15 +402,21 @@ def run_parallel_worker_from_manifest(
     # scheduled, BEFORE the prompt is materialized -- otherwise the
     # worker plans and develops against code the fleet has already moved
     # past.
-    run_worker_auto_integration(
-        config=config,
-        workspace_scope=workspace_scope,
-        policy_bundle=policy_bundle,
-        registry=registry,
-        pipeline_deps=effective_pipeline_deps,
-        display_context=display_context,
-        recover_first=True,
-    )
+    #
+    # Suspended, not withdrawn: this worker inherited the coordinator's cycle
+    # deadline and rebuilds its own prompt warning from it further down, but
+    # the conflict-resolver agent reconciliation spawns never joined the cycle
+    # and must not be nagged to wrap up work it has no part in.
+    with cycle_deadline_suspended():
+        run_worker_auto_integration(
+            config=config,
+            workspace_scope=workspace_scope,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=effective_pipeline_deps,
+            display_context=display_context,
+            recover_first=True,
+        )
     prompt_path = effective_pipeline_deps.phase_prompt_materializer(
         phase=manifest.phase,
         workspace=workspace,
@@ -499,15 +506,16 @@ def run_parallel_worker_from_manifest(
         # This is the manifest-worker equivalent of the run loop's
         # phase-transition hook, and the only place a worker's work
         # reaches its siblings without waiting for the coordinator.
-        run_worker_auto_integration(
-            config=config,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            registry=registry,
-            pipeline_deps=effective_pipeline_deps,
-            display_context=display_context,
-            recover_first=False,
-        )
+        with cycle_deadline_suspended():
+            run_worker_auto_integration(
+                config=config,
+                workspace_scope=workspace_scope,
+                policy_bundle=policy_bundle,
+                registry=registry,
+                pipeline_deps=effective_pipeline_deps,
+                display_context=display_context,
+                recover_first=False,
+            )
     return 0 if event == PipelineEvent.AGENT_SUCCESS else 1
 
 
