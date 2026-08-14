@@ -22,6 +22,11 @@ RUN_TIME_REPORT_SPEC = MdArtifactSpec(
         "Slowest Steps": SectionRule(require_items=True, allow_body=True),
         "Memory Findings": SectionRule(required=False, require_items=False, allow_body=False),
         "Signals": SectionRule(require_items=True, allow_body=True),
+        # Emitted whenever a cycle consumed time. The section is optional
+        # because a run that never started a cycle has nothing to report —
+        # but it MUST be declared: the spec is closed, so an undeclared
+        # section fails validation and takes the entire report with it.
+        "Cycle Timebox": SectionRule(required=False, require_items=False, allow_body=False),
     },
     to_content=_content,
     normalize_content=lambda content: content,

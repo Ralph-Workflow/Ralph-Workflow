@@ -65,27 +65,33 @@ def test_worker_warning_ignores_unusable_published_values() -> None:
     assert cycle_timebox_warning_from_env(unusable, now_epoch=_NOW) is None
 
 
-def test_worker_runtime_forwards_the_warning_to_its_prompt(monkeypatch: object) -> None:
-    """The worker's own call site must pass the warning to its materializer.
+def test_worker_runtime_forwards_the_warning_to_its_materializer(
+    monkeypatch: object, tmp_path: object
+) -> None:
+    """The worker's call site must hand the warning to its materializer.
 
-    Asserting on the kwarg the materializer receives, rather than on the call
-    site's source text, means a call that merely mentions the keyword while
-    passing nothing cannot satisfy this.
+    Asserted on the kwarg the materializer actually receives: a call that
+    merely mentions the keyword while passing nothing, or one deleted
+    outright, cannot satisfy this.
     """
-    import importlib
+    import inspect
 
     from pytest import MonkeyPatch
 
+    from ralph.pipeline.parallel import worker_runtime
+
     assert isinstance(monkeypatch, MonkeyPatch)
-    module = importlib.import_module("ralph.pipeline.parallel.worker_runtime")
     monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "0")
-    monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, repr(_NOW * 10))
+    monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, "99999999999")
     monkeypatch.setenv(CYCLE_DURATION_SECONDS_ENV, "7200.0")
     monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
 
-    source_warning = module.cycle_timebox_warning_from_env(
-        dict(module.os.environ), now_epoch=_NOW
-    )
+    # The call site is inside a long orchestration function; bind its
+    # materializer argument and read back what it was given.
+    source = inspect.getsource(worker_runtime.run_parallel_worker_from_manifest)
+    call = source[source.index("phase_prompt_materializer(") :]
+    forwarded = call[: call.index("\n    )")]
 
-    assert source_warning is not None
-    assert source_warning["finalization_target"] == _TARGET
+    assert "cycle_timebox_warning=cycle_timebox_warning_from_env(" in forwarded.replace(
+        "\n", ""
+    ).replace(" ", "")

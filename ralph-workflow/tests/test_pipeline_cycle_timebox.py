@@ -715,3 +715,43 @@ def test_legacy_resume_leaves_the_finalization_path_untimed() -> None:
     for phase in ("development_final_commit_cleanup", "development_final_commit"):
         result = initialize_legacy_cycle_on_resume(_state(phase), policy)
         assert result.cycle_timebox_active is False, phase
+
+
+def test_pre_cycle_phase_reached_by_a_decision_is_outside_the_cycle() -> None:
+    """Planning-side phases are outside the cycle however routing reaches them.
+
+    A walk that follows only success transitions cannot see a planning phase
+    reached by an analysis decision or a loopback, so a legacy checkpoint
+    resumed there started a cycle timer in planning — billing planning time to
+    the deadline and redirecting the next cycle on its first entry.
+    """
+    from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+    from ralph.policy.models import PhaseDecisionRoute
+
+    base = _policy()
+    planning_analysis = base.phases["planning_analysis"]
+    policy = base.model_copy(
+        update={
+            "phases": {
+                **base.phases,
+                # A second planning-side phase, reachable only by a decision.
+                "planning_refine": base.phases["planning"].model_copy(
+                    update={"transitions": base.phases["planning"].transitions}
+                ),
+                "planning_analysis": planning_analysis.model_copy(
+                    update={
+                        "decisions": {
+                            **planning_analysis.decisions,
+                            "request_changes": PhaseDecisionRoute(
+                                target="planning_refine", reset_loop=False
+                            ),
+                        }
+                    }
+                ),
+            }
+        }
+    )
+
+    resumed = initialize_legacy_cycle_on_resume(_state("planning_refine"), policy)
+
+    assert resumed.cycle_timebox_active is False

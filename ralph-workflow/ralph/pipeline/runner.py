@@ -1330,6 +1330,11 @@ def _run_fan_out_phase(
     _publish_fan_out_cycle_deadline(state, effect.phase, policy_bundle, routing_timing)
 
     def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
+        # This callback runs INSIDE the fan-out, so the outer revoke has not
+        # happened yet. Auto-integration spawns its own conflict-resolver
+        # agent, which never joined the cycle and must not be nagged to wrap
+        # up work it has no part in.
+        withdraw_cycle_deadline_env()
         return _integrate_after_fan_out(
             state=finished_state,
             config=config,

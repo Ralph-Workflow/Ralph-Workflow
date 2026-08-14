@@ -437,6 +437,7 @@ def _enter_failed_recovery(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
     )
+    new_state = conclude_cycle_on_route_out_of_cycle(new_state, target, policy=policy)
     return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
 
@@ -506,12 +507,6 @@ def _handle_phase_failure(
             # (FR-4), not only the analysis request_changes loopback.
             advanced_state, advanced_target = _prepare_phase_advance(
                 state, fallback_target, policy, routing_timing=routing_timing
-            )
-            # A fallback can route straight out of the cycle, past the
-            # finalization path. The timer has to end there too, or it runs on
-            # into the next cycle — which can then never start its own.
-            advanced_state = conclude_cycle_on_route_out_of_cycle(
-                advanced_state, advanced_target, policy=policy
             )
             new_state = progress.advance_phase(
                 advanced_state, advanced_target, policy=policy
@@ -600,12 +595,6 @@ def _handle_agent_failure(
             # (FR-4), not only the analysis request_changes loopback.
             advanced_state, advanced_target = _prepare_phase_advance(
                 state, fallback_target, policy, routing_timing=routing_timing
-            )
-            # A fallback can route straight out of the cycle, past the
-            # finalization path. The timer has to end there too, or it runs on
-            # into the next cycle — which can then never start its own.
-            advanced_state = conclude_cycle_on_route_out_of_cycle(
-                advanced_state, advanced_target, policy=policy
             )
             new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
             return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
@@ -1000,9 +989,6 @@ def _handle_commit_success(
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
-        progress_state = conclude_cycle_on_route_out_of_cycle(
-            progress_state, next_phase, policy=policy
-        )
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1033,9 +1019,6 @@ def _handle_commit_skipped(
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
-        progress_state = conclude_cycle_on_route_out_of_cycle(
-            progress_state, next_phase, policy=policy
-        )
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1181,14 +1164,39 @@ def _prepare_phase_advance(
         if success_target == target_phase:
             bypass = resolve_exhausted_analysis_bypass(state, state.phase, policy)
             if bypass.skipped:
-                return _with_bypassed_cycle_timing(
-                    bypass, policy, routing_timing, timer_just_started=timebox.timing_started
+                return _concluded_if_leaving_cycle(
+                    _with_bypassed_cycle_timing(
+                        bypass,
+                        policy,
+                        routing_timing,
+                        timer_just_started=timebox.timing_started,
+                    ),
+                    policy,
                 )
 
     bypass = resolve_exhausted_analysis_bypass(state, target_phase, policy)
-    return _with_bypassed_cycle_timing(
-        bypass, policy, routing_timing, timer_just_started=timebox.timing_started
+    return _concluded_if_leaving_cycle(
+        _with_bypassed_cycle_timing(
+            bypass, policy, routing_timing, timer_just_started=timebox.timing_started
+        ),
+        policy,
     )
+
+
+def _concluded_if_leaving_cycle(
+    resolved: tuple[PipelineState, PipelinePhase],
+    policy: PipelinePolicy,
+) -> tuple[PipelineState, PipelinePhase]:
+    """End cycle timing whenever the resolved target lies outside the cycle.
+
+    Applied in the shared resolution seam rather than at individual call
+    sites: every route out of a cycle — a decision, a bypass, a loopback, a
+    plain success transition, a fallback, a post-commit route — funnels
+    through here, and one missed site leaves a timer running that can never
+    stop, since starting one requires an inactive cycle.
+    """
+    state, target_phase = resolved
+    return conclude_cycle_on_route_out_of_cycle(state, target_phase, policy=policy), target_phase
 
 
 def _with_bypassed_cycle_timing(

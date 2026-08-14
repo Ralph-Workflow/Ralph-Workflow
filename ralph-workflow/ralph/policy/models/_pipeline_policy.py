@@ -302,28 +302,32 @@ class PipelinePolicy(_FrozenPolicyModel):
             phase_def = self.phases.get(phase_name)
             if phase_def is None:
                 continue
-            # Falling through is harmful either way: onto a terminal it ends
-            # the run with budget left, and back into the cycle it re-enters
-            # regardless of budget so the run never terminates.
-            fallthrough = phase_def.transitions.on_success
             routes = [route for route in self.post_commit_routes if route.when.phase == phase_name]
-            if any(route.when.cycle_outcome is None for route in routes):
-                continue
-            declared = {
-                route.when.cycle_outcome
-                for route in routes
-                if route.when.cycle_outcome is not None
-            }
+            declared_states = {route.when.budget_state for route in routes}
             for outcome in sorted(self._recordable_cycle_outcomes()):
-                if outcome in declared:
-                    continue
-                raise ValueError(
-                    f"cycle outcome '{outcome}' can be recorded by this workflow but is not "
-                    f"matched by any post_commit_route for commit phase '{phase_name}'; "
-                    f"declared outcomes there are {sorted(declared)}. A cycle carrying it would "
-                    f"fall through to '{fallthrough}' and end the run instead of routing by "
-                    "budget — declare a route for that outcome."
-                )
+                for budget_state in sorted(declared_states):
+                    if any(
+                        route.when.budget_state == budget_state
+                        and (
+                            route.when.cycle_outcome is None
+                            or route.when.cycle_outcome == outcome
+                        )
+                        for route in routes
+                    ):
+                        continue
+                    # Routing matches on the PAIR, so a table that covers every
+                    # budget state and every outcome separately can still leave
+                    # a pair uncovered. That pair falls through to the phase's
+                    # success transition: onto a terminal it ends the run with
+                    # budget left, back into the cycle it never terminates.
+                    raise ValueError(
+                        f"post_commit_routes for commit phase '{phase_name}' do not cover "
+                        f"budget_state='{budget_state}' with cycle outcome '{outcome}', which "
+                        f"this workflow can record. That combination would fall through to "
+                        f"'{phase_def.transitions.on_success}' instead of routing by budget. "
+                        "Add a [[post_commit_routes]] entry for it, or omit when.cycle_outcome "
+                        "on an existing entry so it matches every outcome."
+                    )
         return self
 
     def _recordable_cycle_outcomes(self) -> set[str]:
@@ -346,6 +350,83 @@ class PipelinePolicy(_FrozenPolicyModel):
                 if route.cycle_outcome is not None and route.target not in terminals:
                     outcomes.add(route.cycle_outcome)
         return outcomes
+
+    @model_validator(mode="after")
+    def cycle_timebox_ends_outside_the_cycle(self) -> Self:
+        """Reject a cycle end that sits inside the cycle it is meant to end.
+
+        Entry to ``end_entry`` or ``finalization_target`` stops the clock. If
+        either names a phase the cycle routes through normally — say the
+        intermediate commit cleanup rather than the final one, a one-word
+        difference between two real phase names — then the first ordinary
+        re-entry disarms the deadline, and it can never re-arm, because
+        starting a cycle requires the declared start transition. The rest of
+        that cycle then runs with no deadline, no warning, and nothing
+        published to the agent.
+        """
+        ct = self.cycle_timebox
+        if ct is None:
+            return self
+        inside = self._phases_inside_cycle(ct)
+        for label, target in (
+            ("end_entry", ct.end_entry),
+            ("finalization_target", ct.finalization_target),
+        ):
+            if target in inside:
+                raise ValueError(
+                    f"cycle_timebox.{label} '{target}' is a phase the cycle routes through, so "
+                    "entering it would stop the clock mid-cycle and the deadline could never "
+                    "re-arm. Name a phase on the finalization path instead."
+                )
+        return self
+
+    def _phases_inside_cycle(self, ct: CycleTimeboxPolicy) -> set[str]:
+        """Return the phases a cycle routes through on its way round again.
+
+        A phase is inside the cycle when it is reachable from the guarded
+        entry AND can route back to it, without passing through the phases
+        that precede the cycle. Defining it by the loop rather than by the
+        declared ends keeps the check honest: the ends are exactly what is
+        being validated, so excluding them up front would make any value
+        pass.
+        """
+        pre_cycle = {self.entry_phase, ct.start_source}
+        forward = self._reachable_avoiding(
+            [ct.start_entry, ct.guarded_entry], avoid=pre_cycle
+        )
+        return {
+            phase
+            for phase in forward
+            if ct.guarded_entry
+            in self._reachable_avoiding([phase], avoid=pre_cycle, exclude_start=True)
+        }
+
+    def _reachable_avoiding(
+        self,
+        starts: list[str],
+        *,
+        avoid: set[str],
+        exclude_start: bool = False,
+    ) -> set[str]:
+        """Return phases reachable by forward edges, never entering ``avoid``."""
+        seen: set[str] = set()
+        frontier = list(starts)
+        first = True
+        while frontier:
+            phase = frontier.pop()
+            if phase in avoid or phase not in self.phases:
+                first = False
+                continue
+            if phase in seen:
+                continue
+            if not (first and exclude_start):
+                seen.add(phase)
+            first = False
+            phase_def = self.phases[phase]
+            if phase_def.transitions.on_success is not None:
+                frontier.append(phase_def.transitions.on_success)
+            frontier.extend(route.target for route in phase_def.decisions.values())
+        return seen
 
     @model_validator(mode="after")
     def cycle_timebox_start_edge_declared(self) -> Self:

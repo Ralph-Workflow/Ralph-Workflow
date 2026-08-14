@@ -134,6 +134,75 @@ def _route_budget_counter(
     return str(counter) if counter else None
 
 
+
+def _validate_spent_budget_can_end_the_run(
+    policy: PipelinePolicy,
+    phase_name: str,
+    counter: str,
+    errors: list[str],
+) -> None:
+    """Require a spent budget to lead somewhere the run can actually finish.
+
+    Covering every budget state says nothing about where those routes GO. A
+    table whose spent-budget routes re-enter the cycle keeps incrementing a
+    counter that is already exhausted and never terminates — the mirror image
+    of ending early, and just as broken.
+    """
+    terminals = policy.terminal_states()
+    for state_name in ("exhausted", "no_review"):
+        targets = [
+            route.target
+            for route in policy.post_commit_routes
+            if route.when.phase == phase_name and route.when.budget_state == state_name
+        ]
+        if targets and not any(
+            _terminal_is_reachable(policy, target, terminals) for target in targets
+        ):
+            errors.append(
+                f"phases.{phase_name}: no post_commit_route for budget_state='{state_name}' "
+                f"can reach a terminal without failing (targets: {sorted(set(targets))}). "
+                f"Once counter '{counter}' is spent the run would re-enter the cycle forever. "
+                "Route that budget state to a terminal, or to a phase from which one is "
+                "reachable."
+            )
+
+
+def _terminal_is_reachable(
+    policy: PipelinePolicy,
+    start: str,
+    terminals: set[str],
+) -> bool:
+    """Return whether a terminal is reachable from a phase WITHOUT failing.
+
+    Only forward edges count — success transitions, analysis decisions, and
+    post-commit routes. Failure and loopback edges are excluded deliberately:
+    a workflow that can only stop by failing has no way to finish a run whose
+    budget is spent, which is what this is asked about. Post-commit routing
+    REPLACES the success transition for a phase it governs, so following
+    on_success there would let a table whose own routes all loop claim a
+    terminal it can never take.
+    """
+    seen: set[str] = set()
+    frontier = [start]
+    while frontier:
+        phase = frontier.pop()
+        if phase in terminals:
+            return True
+        if phase in seen or phase not in policy.phases:
+            continue
+        seen.add(phase)
+        phase_def = policy.phases[phase]
+        routed = [
+            route.target for route in policy.post_commit_routes if route.when.phase == phase
+        ]
+        if routed:
+            frontier.extend(routed)
+        elif phase_def.transitions.on_success is not None:
+            frontier.append(phase_def.transitions.on_success)
+        frontier.extend(route.target for route in phase_def.decisions.values())
+    return False
+
+
 def _validate_post_commit_routes_complete(
     policy: PipelinePolicy,
     errors: list[str],
@@ -168,6 +237,7 @@ def _validate_post_commit_routes_complete(
                 f"for each missing budget_state. "
                 f"See docs/sphinx/policy-driven-overhaul-migration.md."
             )
+        _validate_spent_budget_can_end_the_run(policy, phase_name, counter, errors)
 
 
 def _validate_tracked_counters_have_positive_max(

@@ -156,7 +156,7 @@ def render_run_time_report(
                         + "\n"
                     )
                     + (
-                        f"- [CT-2] Redirected: {state.cycle_timebox_redirect_reason}.\n"
+                        f"- [CT-2] Redirected: {_safe_text(state.cycle_timebox_redirect_reason)}.\n"
                         if state.cycle_timebox_redirect_reason
                         else ""
                     )

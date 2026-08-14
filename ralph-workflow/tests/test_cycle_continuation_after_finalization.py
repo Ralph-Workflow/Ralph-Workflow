@@ -319,14 +319,14 @@ def test_cycle_is_timed_even_when_planning_analysis_is_skipped() -> None:
     assert state.cycle_timebox_consumed_seconds == 0.0
 
 
-def test_redirect_reason_survives_to_the_run_time_report() -> None:
+def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None:
     """The operator must still be told a deadline forced the finalization.
 
     The reason is the only record of WHY the cycle ended where it did, and the
     report reads it off the final state — so clearing it at the commit that
     concludes the redirected cycle would erase it one step before it is read.
     """
-    from ralph.pipeline.run_time_report import render_run_time_report
+    from ralph.pipeline.run_time_report import emit_run_time_report
 
     policy = _policy()
     state = PipelineState(
@@ -345,11 +345,19 @@ def test_redirect_reason_survives_to_the_run_time_report() -> None:
     )
     state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
 
-    report = render_run_time_report(
+    # Emitted, not merely rendered: the report is validated against a CLOSED
+    # markdown spec on the way out, and an undeclared section fails that
+    # validation and discards the whole report — so a renderer-only assertion
+    # passes while the operator receives nothing.
+    emit_run_time_report(
+        tmp_path,
         state=state,
         outcome="completed",
         elapsed_seconds=7200.0,
         cycle_timebox=policy.cycle_timebox,
+    )
+    report = (tmp_path / ".agent" / "artifacts" / "run_time_report.md").read_text(
+        encoding="utf-8"
     )
 
     assert "[CT-2] Redirected:" in report
@@ -493,3 +501,105 @@ def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
     state = _drive_to_next_cycle(state, policy, elapsed=100.0)
 
     assert state.phase == "failed_terminal"
+
+
+def test_a_terminal_ends_the_cycle_timer() -> None:
+    """A run that ends mid-cycle leaves no cycle running behind it.
+
+    The operator surfaces read the timer off the final state, so a timer left
+    active at a terminal reports a live budget for a run that is over.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="development_commit_cleanup",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=1200.0,
+    )
+
+    state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy, routing_timing=_rt(1200.0))
+
+    assert state.phase in {"failed_terminal", "development_commit_cleanup"}
+    if state.phase == "failed_terminal":
+        assert state.cycle_timebox_active is False
+
+
+def test_a_decision_out_of_the_cycle_ends_the_timer() -> None:
+    """Any route out of the cycle ends its clock, including an analysis decision.
+
+    Wiring the conclusion at individual call sites leaves whichever paths
+    nobody thought of still leaking: a decision that abandons the cycle back
+    to planning kept the timer running, so the next cycle was redirected on
+    the previous one's clock and burned a budget cycle doing nothing.
+    """
+    from ralph.policy.models import PhaseDecisionRoute
+
+    base = _policy()
+    analysis = base.phases["development_analysis"]
+    policy = base.model_copy(
+        update={
+            "phases": {
+                **base.phases,
+                "development_analysis": analysis.model_copy(
+                    update={
+                        "decisions": {
+                            **analysis.decisions,
+                            "request_changes": PhaseDecisionRoute(
+                                target="planning", reset_loop=True
+                            ),
+                        }
+                    }
+                ),
+            }
+        }
+    )
+    state = PipelineState(
+        phase="development_analysis",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=3000.0,
+    )
+
+    state, _ = reduce(
+        state,
+        AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
+        policy,
+        routing_timing=_rt(3000.0),
+    )
+
+    assert state.phase == "planning"
+    assert state.cycle_timebox_active is False
+
+
+def test_a_loopback_out_of_the_cycle_ends_the_timer() -> None:
+    """The same holds for a plain transition that leaves the cycle."""
+    base = _policy()
+    development = base.phases["development"]
+    policy = base.model_copy(
+        update={
+            "phases": {
+                **base.phases,
+                "development": development.model_copy(
+                    update={
+                        "transitions": development.transitions.model_copy(
+                            update={"on_loopback": "planning"}
+                        )
+                    }
+                ),
+            }
+        }
+    )
+    state = PipelineState(
+        phase="development",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=3000.0,
+    )
+
+    state, _ = reduce(state, PipelineEvent.PHASE_LOOPBACK, policy, routing_timing=_rt(3000.0))
+
+    assert state.phase == "planning"
+    assert state.cycle_timebox_active is False

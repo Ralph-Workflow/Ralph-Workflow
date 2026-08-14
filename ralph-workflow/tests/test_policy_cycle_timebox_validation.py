@@ -196,3 +196,125 @@ def test_decision_routed_straight_to_a_terminal_needs_no_post_commit_route() -> 
     )
 
     assert revalidated.cycle_timebox is None
+
+
+def test_a_single_uncovered_pair_is_rejected() -> None:
+    """Routing matches on (budget_state, outcome), so the table must cover pairs.
+
+    A table can name every budget state and every outcome and still leave one
+    combination uncovered — which falls through to the success transition and,
+    for a final commit, ends the run with cycles unspent on a failed verdict.
+    """
+    import pydantic
+    import pytest as _pytest
+
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
+    kept = [
+        route.model_dump()
+        for route in pipeline.post_commit_routes
+        if not (route.when.budget_state == "remaining" and route.when.cycle_outcome == "failed")
+    ]
+
+    with _pytest.raises(pydantic.ValidationError, match="budget_state='remaining'"):
+        type(pipeline).model_validate({**pipeline.model_dump(), "post_commit_routes": kept})
+
+
+def test_a_wildcard_route_covers_every_outcome_for_its_budget_state() -> None:
+    """Omitting `when.cycle_outcome` is how a policy says "any outcome".
+
+    It must cover its own budget state only — a wildcard for one state used to
+    switch the whole check off, so unrelated uncovered pairs loaded silently.
+    """
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
+    routes: list[dict[str, object]] = []
+    for route in pipeline.post_commit_routes:
+        entry = route.model_dump()
+        if route.when.budget_state == "remaining":
+            if route.when.cycle_outcome == "failed":
+                continue
+            entry["when"]["cycle_outcome"] = None
+        routes.append(entry)
+
+    revalidated = type(pipeline).model_validate(
+        {**pipeline.model_dump(), "post_commit_routes": routes}
+    )
+
+    assert any(route.when.cycle_outcome is None for route in revalidated.post_commit_routes)
+
+
+def test_spent_budget_routes_that_re_enter_the_cycle_are_rejected() -> None:
+    """A run whose budget is spent has to be able to finish.
+
+    Covering every budget state says nothing about where those routes lead.
+    Routes that send a spent budget back into the cycle keep incrementing a
+    counter that is already exhausted, so the run never terminates.
+    """
+    import pytest as _pytest
+
+    from ralph.policy.validation import PolicyValidationError, validate_policy_completeness
+
+    bundle = load_policy(_DEFAULTS_DIR)
+    routes: list[dict[str, object]] = []
+    for route in bundle.pipeline.post_commit_routes:
+        entry = route.model_dump()
+        if route.when.phase == "development_final_commit":
+            entry["target"] = "planning"
+        routes.append(entry)
+    looping = type(bundle.pipeline).model_validate(
+        {**bundle.pipeline.model_dump(), "post_commit_routes": routes}
+    )
+
+    with _pytest.raises(PolicyValidationError, match="re-enter the cycle forever"):
+        validate_policy_completeness(bundle.model_copy(update={"pipeline": looping}))
+
+
+def test_the_bundled_policy_can_finish_once_its_budget_is_spent() -> None:
+    """The guard must not reject the workflow it ships with."""
+    from ralph.policy.validation import validate_policy_completeness
+
+    validate_policy_completeness(load_policy(_DEFAULTS_DIR))
+
+
+def test_a_finalization_target_inside_the_cycle_is_rejected() -> None:
+    """The typo this catches is one word apart from the correct phase name.
+
+    `development_commit_cleanup` and `development_final_commit_cleanup` both
+    exist in the bundled graph. Naming the intermediate one stops the clock on
+    the first ordinary re-entry, and it can never re-arm — the cycle then runs
+    with no deadline at all.
+    """
+    import pydantic
+    import pytest as _pytest
+
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
+    assert pipeline.cycle_timebox is not None
+
+    with _pytest.raises(pydantic.ValidationError, match="finalization_target"):
+        type(pipeline).model_validate(
+            {
+                **pipeline.model_dump(),
+                "cycle_timebox": {
+                    **pipeline.cycle_timebox.model_dump(),
+                    "finalization_target": "development_commit_cleanup",
+                },
+            }
+        )
+
+
+def test_an_end_entry_inside_the_cycle_is_rejected() -> None:
+    import pydantic
+    import pytest as _pytest
+
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
+    assert pipeline.cycle_timebox is not None
+
+    with _pytest.raises(pydantic.ValidationError, match="end_entry"):
+        type(pipeline).model_validate(
+            {
+                **pipeline.model_dump(),
+                "cycle_timebox": {
+                    **pipeline.cycle_timebox.model_dump(),
+                    "end_entry": "development_commit_cleanup",
+                },
+            }
+        )

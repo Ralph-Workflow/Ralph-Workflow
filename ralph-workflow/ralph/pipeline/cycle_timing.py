@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import CycleTimeboxPolicy, PipelinePolicy
+    from ralph.policy.models import CycleTimeboxPolicy, PhaseDefinition, PipelinePolicy
 
 
 @dataclass(frozen=True)
@@ -195,7 +195,10 @@ def conclude_cycle_on_route_out_of_cycle(
     ct = policy.cycle_timebox
     if ct is None or not state.cycle_timebox_active:
         return state
-    if next_phase not in _outside_cycle_phases(policy, ct):
+    # A terminal ends the run, so it ends the cycle too — otherwise the
+    # operator surfaces, which read the timer off the final state, report a
+    # live budget for a run that is already over.
+    if next_phase not in _outside_cycle_phases(policy, ct) | policy.terminal_states():
         return state
     return _concluded(state)
 
@@ -263,27 +266,42 @@ def _outside_cycle_phases(policy: PipelinePolicy, ct: CycleTimeboxPolicy) -> set
     """Return the phases that are not inside a cycle.
 
     Two groups. BEFORE the cycle: the entry phase, the declared
-    ``start_source``, and every phase between them, whose time is deliberately
-    never charged to a deadline.
+    ``start_source``, and everything reachable between them, whose time is
+    deliberately never charged to a deadline — starting a timer there would
+    bill planning to the deadline.
     AT OR AFTER its end: ``end_entry`` and the finalization path reachable from
-    it, walked along success transitions until the walk leaves the cycle. A
-    timer started there could never be concluded — the conclusion fires on
-    ENTRY to ``end_entry``, which has already happened — so it would run on
+    it. A timer started there could never be concluded — the conclusion fires
+    on ENTRY to ``end_entry``, which has already happened — so it would run on
     into the next cycle and redirect that cycle's first development entry.
+
+    Both walks follow EVERY declared edge, not just success transitions: a
+    planning-side phase reached by an analysis decision or a loopback is just
+    as much outside the cycle as one reached by ``on_success``.
     """
-    outside = {policy.entry_phase, ct.start_source}
-    for start in (ct.end_entry, policy.entry_phase):
-        phase: str | None = start
-        while phase is not None and phase in policy.phases:
-            # The pre-cycle walk stops at the start edge; the finalization walk
-            # stops when it re-enters the cycle or leaves the graph.
-            if phase in (ct.start_entry, ct.guarded_entry):
-                break
-            if phase in outside and phase != start:
-                break
-            outside.add(phase)
-            phase = policy.phases[phase].transitions.on_success
+    outside: set[str] = set()
+    frontier = [policy.entry_phase, ct.start_source, ct.end_entry]
+    while frontier:
+        phase = frontier.pop()
+        if phase in outside or phase not in policy.phases:
+            continue
+        # The cycle itself is the boundary in both directions.
+        if phase in (ct.start_entry, ct.guarded_entry):
+            continue
+        outside.add(phase)
+        frontier.extend(_declared_targets(policy.phases[phase]))
     return outside
+
+
+def _declared_targets(phase_def: PhaseDefinition) -> list[str]:
+    """Return every phase a phase can route to by any declared edge."""
+    transitions = phase_def.transitions
+    targets = [
+        transitions.on_success,
+        transitions.on_failure,
+        transitions.on_loopback,
+    ]
+    targets.extend(route.target for route in phase_def.decisions.values())
+    return [target for target in targets if target is not None]
 
 
 #: Phase-banner key for the cycle-timebox item. The space makes the display
