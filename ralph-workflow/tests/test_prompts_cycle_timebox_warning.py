@@ -118,11 +118,19 @@ def test_format_warning_exact_threshold_24min_under_defaults() -> None:
     assert "120-minute" in text
     assert "24 minutes" in text
     assert "development_final_commit_cleanup" in text
+    # The cycle deadline is enforced at routing boundaries, so a running
+    # session is never interrupted by it. The wording must say so outright:
+    # read as a countdown on the agent's own session it causes exactly the
+    # early exit this warning is not asking for. The session wrap-up nag
+    # (`_session_wrapup.wrapup_notice`) is the only stop signal.
+    assert "does not cut your session short" in text
+    assert "session wrap-up notice" in text
+    assert "declare_complete" in text
     # The redirect ends THIS cycle, not the run: under the bundled routes a
     # timed-out cycle is followed by another planning cycle while the budget
     # has room, so promising the agent it has no future iteration is false —
     # and false scarcity is the pressure the honesty guidance is removing.
-    assert "ending THIS development cycle" in text
+    assert "LAST development session of this cycle" in text
     assert "remaining cycle budget" in text
 
 

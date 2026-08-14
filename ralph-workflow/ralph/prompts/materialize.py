@@ -156,6 +156,13 @@ def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
 
     Appended only to the guarded development entry's prompt when elapsed
     time has reached or passed the 80% soft-warning threshold.
+
+    The cycle deadline is enforced at routing boundaries, so it never
+    interrupts a running session. The wording says that outright: read as a
+    countdown on the agent's own clock it provokes exactly the early exit this
+    warning is not asking for. The session wrap-up nag
+    (:func:`ralph.mcp.server._session_wrapup.wrapup_notice`) remains the only
+    stop signal.
     """
     elapsed = float(cast("float", warning.get("elapsed_seconds", 0)))
     remaining = float(cast("float", warning.get("remaining_seconds", 0)))
@@ -170,15 +177,24 @@ def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
         f"The plan-to-final-commit cycle has consumed **{elapsed_min:.0f} minutes** "
         f"of its **{duration_min:.0f}-minute** budget; "
         f"**{remaining_min:.0f} minutes** remain.\n\n"
-        f"When the budget is exhausted, development entries are automatically "
-        f"redirected to **{target}**, ending THIS development cycle — no "
-        "further development iteration within it. Whether a fresh cycle "
-        "follows depends on the run's remaining cycle budget and is not "
-        "yours to assume. Prioritize accordingly:\n\n"
+        "**This does not cut your session short.** The cycle budget is checked "
+        "only at routing boundaries — between sessions, never during one — so "
+        "nothing here interrupts the work you are doing now. Keep working. The "
+        "only signal to wind down and call `declare_complete` is your own "
+        "session wrap-up notice (`~N min of your time budget remain …`), which "
+        "arrives on tool results when your session nears its cap. Until you see "
+        "that notice, do not finish early, do not drop scope, and do not treat "
+        "the minutes above as your own clock.\n\n"
+        f"What it does mean: when the cycle budget is spent, development entries "
+        f"are redirected to **{target}**, so with this little left this is very "
+        "likely the LAST development session of this cycle. Work you leave for "
+        "a later development pass within this cycle will not get one. Whether a "
+        "fresh cycle follows depends on the run's remaining cycle budget and is "
+        "not yours to assume. So use the whole session, but order it well:\n\n"
         "1. **Highest-value-first**: Focus on the plan items with the greatest "
         "user impact. Defer polish, refactoring, and nice-to-haves.\n"
         "2. **Feasibility reassessment**: If any remaining plan item cannot be "
-        "completed, tested, and verified within the remaining time, report it as "
+        "completed, tested, and verified within this session, report it as "
         "partial or failed with a stable ID, supporting evidence, and a concise "
         "reason — do NOT fabricate completion or weaken verification.\n"
         "3. **Honest triage**: A `partial` or `failed` result with clear evidence "
