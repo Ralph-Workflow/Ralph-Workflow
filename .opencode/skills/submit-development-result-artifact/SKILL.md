@@ -22,10 +22,17 @@ Frontmatter: `type: development_result` and exactly one closed-vocabulary
 status: `completed`, `partial`, or `failed`. Any other status is invalid and must be
 repaired before submission.
 
-The section rules below apply to `status: completed` only. A
-`status: partial` or `status: failed` document is free-form below the frontmatter: no
-section is required or shaped, and no proof is demanded. Write whatever
-best records the attempt. Use `partial` when a safe concrete continuation
+Most section rules below apply to `status: completed` only. A
+`status: partial` or `status: failed` document is otherwise free-form below the
+frontmatter, with two always-enforced exceptions: `## Summary` with at least
+one item, and — once the run's cycle timebox has warned — `## Incomplete Work`,
+every item carrying a stable-ID bracket, a `Reason:`, and an `Evidence:`. Under
+that same warning a `completed` result must carry `## Plan Items Proven`.
+
+The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet.
+Whether the cycle warned is read from the run's own clock, not from anything
+you declare, so the status you pick does not decide whether you are asked to
+show your work. Write whatever best records the attempt. Use `partial` when a safe concrete continuation
 exists, with `## Next Steps` and `## Continuation` (your session ID). Use
 `failed` when no safe developer continuation exists under current evidence or
 authority, and report the blocker without promising another iteration. Neither
@@ -35,7 +42,7 @@ status decides whether the run ends.
 |---|---|---|
 | `## Summary` | yes | exactly 1 |
 | `## Files Changed` | yes | 1+ (one file per item) |
-| `## Plan Items Proven` | no | one per plan step proven |
+| `## Plan Items Proven` | no (required once the cycle timebox has warned) | one per plan step proven |
 | `## Next Steps` | no | exactly 1 |
 | `## Continuation` | no | exactly 1: the prior session ID |
 | `## Analysis Items Addressed` | no | one per analysis finding addressed |
@@ -60,10 +67,10 @@ Copy the IDs from the source artifact — do not invent or renumber them.
 ## Core Flow
 
 1. Write the document. For `completed`, every section rule and every
-   plan/analysis proof above is enforced. For `partial`, nothing below
-   the frontmatter is enforced — still lead with what you did, what
-   remains (`## Next Steps`) and your session ID (`## Continuation`) so
-   the next iteration can resume.
+   plan/analysis proof above is enforced. For `partial`, `## Summary` is
+   required and — under a cycle-timebox warning — so is `## Incomplete Work`;
+   otherwise lead with what you did, what remains (`## Next Steps`) and your
+   session ID (`## Continuation`) so the next iteration can resume.
 2. Optionally `ralph_verify_md_artifact`, then
    `ralph_submit_md_artifact({"artifact_type": "development_result", "content": ...})`.
 
