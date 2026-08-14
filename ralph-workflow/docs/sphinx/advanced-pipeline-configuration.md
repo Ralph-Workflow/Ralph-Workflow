@@ -545,8 +545,8 @@ required.
 non-finite values, or unknown phase/transition targets fail policy
 validation with a message that identifies the offending field.
 `start_source`, `start_entry`, `guarded_entry`, `end_entry`, and
-`finalization_target` must each reference a declared phase (or terminal
-for `finalization_target`). The `start_source` → `start_entry` edge
+`finalization_target` must each reference a declared phase or a declared
+terminal. The `start_source` → `start_entry` edge
 must be a declared transition in the active graph — it can appear as a
 phase transition, analysis decision target, bypass route,
 post-commit route, or result-status post-commit route. The 80%

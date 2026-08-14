@@ -803,7 +803,6 @@ def test_default_cycle_timebox_values() -> None:
     assert ct is not None
     assert ct.duration_seconds == 7200.0
     assert ct.warning_threshold_seconds == 5760.0
-    assert ct.remaining_at_warning_seconds == 1440.0
     assert ct.start_source == "planning_analysis"
     assert ct.start_entry == "development"
     assert ct.guarded_entry == "development"
@@ -823,7 +822,6 @@ def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path
     assert ct.duration_seconds == 3600.0
     # 80% of 3600 -> 2880 elapsed; 720 remaining (12 minutes).
     assert ct.warning_threshold_seconds == 2880.0
-    assert ct.remaining_at_warning_seconds == 720.0
 
 
 def test_cycle_timebox_accepts_non_canonical_valid_phase_references(

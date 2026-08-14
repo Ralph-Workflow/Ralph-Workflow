@@ -40,7 +40,7 @@ status decides whether the run ends.
 |---|---|---|
 | `## Summary` | yes | exactly 1 |
 | `## Files Changed` | yes | 1+ (one file per item) |
-| `## Plan Items Proven` | no | one per plan step proven |
+| `## Plan Items Proven` | no (required once the cycle timebox has warned) | one per plan step proven |
 | `## Next Steps` | no | exactly 1 |
 | `## Continuation` | no | exactly 1: the prior session ID |
 | `## Analysis Items Addressed` | no | one per analysis finding addressed |

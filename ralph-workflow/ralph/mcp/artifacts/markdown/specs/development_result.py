@@ -162,7 +162,14 @@ def _free_form_content(document: ParsedDocument) -> Content:
     else:
         existing = _optional_items(document, "Incomplete Work")
         if existing:
-            content["incomplete_work"] = [item.text for item in existing]
+            # Guarded and shaped exactly like the warned branch. Silently
+            # dropping entries is wrong whether or not a deadline fired, and
+            # storing bare text here while every other branch stores the
+            # stable ID made one field mean two things.
+            _reject_unbracketed_incomplete_bullets(document)
+            content["incomplete_work"] = [
+                f"[{item.identifier}] {item.text}" for item in existing
+            ]
     next_steps = _first_item(document, "Next Steps")
     if next_steps:
         content["next_steps"] = next_steps
@@ -258,9 +265,10 @@ def _field_key_and_value(text: str) -> tuple[str, str] | None:
             normalized = normalized[len(marker) :]
             break
     normalized = normalized.replace("**", "").replace("__", "")
-    if ": " not in normalized:
+    # A missing space after the colon is a typo, not a different field.
+    key, separator, value = normalized.partition(":")
+    if not separator or not value.strip():
         return None
-    key, value = normalized.split(": ", 1)
     return key.strip(), value.strip()
 
 

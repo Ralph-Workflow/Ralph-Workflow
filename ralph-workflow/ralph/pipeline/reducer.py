@@ -191,6 +191,14 @@ def _reduce_phase_failure(
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if recovery is not None:
+        # Ask the deadline BEFORE the controller does anything. Its retry and
+        # progression routes keep the run in the same phase, crossing no
+        # routing boundary, so the deadline would never be consulted -- and a
+        # controller is always present in production, which left the guard on
+        # the plain failure handler covering only a path tests take.
+        expired = _redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
+        if expired is not None:
+            return expired
         classified_failure = None
         if event.failure_category is not None:
             raw_message = event.reason or f"(no reason reported for phase={event.phase})"
@@ -241,11 +249,20 @@ def _reduce_captured_agent_failure(
     state: PipelineState,
     pipeline_policy: PipelinePolicy | None,
     recovery: RecoveryController | None,
+    routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Delegate typed broken-agent failures to the recovery controller."""
+    """Delegate typed broken-agent failures to the recovery controller.
+
+    A spent cycle short-circuits to finalization first: the controller's
+    routes stay in the same phase, so nothing downstream would consult the
+    deadline before starting another full-length invocation.
+    """
     intent = state.agent_retry_intent
     if recovery is None or intent.failed_agent_name is None:
         return None
+    expired = _redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
+    if expired is not None:
+        return expired
     if intent.failure_reason == "BrokenAgentExitError":
         if intent.broken_agent_reason is None:
             return None
@@ -357,7 +374,9 @@ def reduce(
     if reduced_event is not None:
         return reduced_event
     if event == PipelineEvent.AGENT_FAILURE:
-        recovered_agent_failure = _reduce_captured_agent_failure(state, pipeline_policy, recovery)
+        recovered_agent_failure = _reduce_captured_agent_failure(
+            state, pipeline_policy, recovery, routing_timing
+        )
         if recovered_agent_failure is not None:
             return recovered_agent_failure
     worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)

@@ -386,3 +386,63 @@ status: completed
 
     assert diagnostics == []
     assert content["incomplete_work"] == ["[S-9] Deferred the docs polish to the next cycle."]
+
+
+@pytest.mark.usefixtures("no_deadline_published")
+def test_unbracketed_bullets_are_rejected_without_a_deadline_too() -> None:
+    """Silently deleting declared work is wrong whether or not a cycle warned."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Work remains.
+## Incomplete Work
+- [S-1] Rename API endpoints: half-applied.
+- Retry path unfinished.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert any("stable-ID" in diagnostic.message for diagnostic in diagnostics)
+
+
+@pytest.mark.usefixtures("no_deadline_published")
+def test_unwarned_incomplete_work_keeps_its_stable_ids() -> None:
+    """One field must not mean two things depending on whether a cycle warned."""
+    content, _diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Work remains.
+## Incomplete Work
+- [S-1] Rename API endpoints: half-applied.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert content["incomplete_work"] == ["[S-1] Rename API endpoints: half-applied."]
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_field_written_without_a_space_after_the_colon_is_accepted() -> None:
+    """A missing space is a typo, not a different field — and nothing says so."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] S-4 incomplete.
+## Incomplete Work
+- [S-4] Rename API endpoints: half-applied.
+  Reason:ran out of time
+  Evidence:tests/test_api.py:42
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []

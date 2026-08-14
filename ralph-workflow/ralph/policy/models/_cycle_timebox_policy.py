@@ -56,8 +56,9 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
         description=(
             "Source phase of the transition that starts the timer. The timer "
             "starts only when routing advances from start_source to start_entry "
-            "while the cycle is inactive. Must reference a declared phase, and "
-            "the start_source -> start_entry edge must be declared in the graph."
+            "while the cycle is inactive. Must reference a declared phase or "
+            "terminal, and the start_source -> start_entry edge must be "
+            "declared in the graph."
         ),
     )
     start_entry: str = Field(
@@ -71,7 +72,7 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
         description=(
             "Phase whose entries are guarded by the deadline. Every entry to this "
             "phase while the cycle is active is checked against the deadline. "
-            "Must reference a declared phase."
+            "Must reference a declared phase or terminal."
         ),
     )
     end_entry: str = Field(
@@ -111,8 +112,3 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
     def warning_threshold_seconds(self) -> float:
         """Return the elapsed-seconds point at which the soft warning begins."""
         return self.duration_seconds * WARNING_THRESHOLD_RATIO
-
-    @property
-    def remaining_at_warning_seconds(self) -> float:
-        """Return the seconds remaining once the warning begins."""
-        return self.duration_seconds - self.warning_threshold_seconds
