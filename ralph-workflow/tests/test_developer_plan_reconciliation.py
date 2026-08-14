@@ -49,11 +49,30 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     assert "status: partial" in prompt
 
 
+@pytest.mark.parametrize(
+    "template_name",
+    ("developer_iteration.jinja", "developer_iteration_continuation.jinja"),
+)
+def test_developer_prompts_default_to_completion_over_early_stopping(
+    tmp_path: Path, template_name: str
+) -> None:
+    prompt = _render_developer(tmp_path, template_name)
+
+    assert "## Completion is the default outcome" in prompt
+    assert "Do not stop and hand back while ready work remains" in prompt
+    assert "`status:\ncompleted`" in prompt or "`status: completed`" in prompt
+    assert "last resort" in prompt
+    assert "run budget that is\ngenuinely exhausted" in prompt or "genuinely exhausted" in prompt
+    # The general persistence directive precedes the detailed disposition rules.
+    assert prompt.index("Completion is the default outcome") < prompt.index("Plan fidelity")
+
+
 def test_continuation_preserves_verified_delivery_and_run_budget(tmp_path: Path) -> None:
     prompt = _render_developer(tmp_path, "developer_iteration_continuation.jinja")
 
     assert "## Verification" in prompt
     assert "bounded" in prompt
+    assert "Use the full run budget to advance the plan" in prompt
 
 
 def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> None:
@@ -103,6 +122,12 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
         assert "bounded" in prompt
         assert "when coordination costs less than sequential execution" in prompt
         assert "MUST use at least one sub-agent as a hard gate" not in prompt
+        assert "## Completion is the default outcome" in prompt
+        assert "last resort" in prompt
+        expected_scope = (
+            "the assigned unit is proven" if is_worker else "every required plan reference is proven"
+        )
+        assert expected_scope in prompt
 
 
 def test_development_analyzer_separates_request_criteria_from_plan_routes() -> None:

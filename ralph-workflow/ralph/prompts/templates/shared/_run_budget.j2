@@ -1,2 +1,4 @@
-Keep each wait bounded. When the configured limit is spent, report a truthful
-partial result unless other plan work is ready.
+Use the full run budget to advance the plan; keep each wait bounded rather
+than idling. Only report a truthful partial result once that budget is
+genuinely spent and no other ready plan work remains — not at the first sign
+of difficulty.

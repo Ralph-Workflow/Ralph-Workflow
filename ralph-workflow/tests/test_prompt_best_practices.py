@@ -60,3 +60,17 @@ def test_verification_guidance_is_single_sourced() -> None:
     assert "Discover the project's narrowest relevant check and full gate" in commitments
     assert "fast path" not in guidance.lower()
     assert "full gate" not in guidance.lower()
+
+
+def test_developer_iteration_guidance_defaults_to_completion() -> None:
+    """All four dev-iteration templates share this partial, so this single
+    check covers developer_iteration.jinja, developer_iteration_continuation.jinja,
+    developer_iteration_fallback.jinja, and worker_developer.jinja."""
+    templates = _templates()
+    guidance = templates["shared/_developer_iteration_guidance"]
+
+    assert guidance.index("Completion is the default outcome") < guidance.index("Plan fidelity")
+    assert "`status:\ncompleted`" in guidance
+    assert "last resort" in guidance
+    assert "genuinely exhausted" in guidance
+    assert "never\nbecause progress feels slow" in guidance or "never because progress feels slow" in guidance

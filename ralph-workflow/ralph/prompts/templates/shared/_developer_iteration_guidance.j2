@@ -1,3 +1,15 @@
+## Completion is the default outcome
+
+Work this iteration as a loop: pick the next ready plan reference, implement
+it, verify it, record its disposition, then continue to the next ready
+reference. Do not stop and hand back while ready work remains. `status:
+completed` is the expected outcome whenever {% if IS_WORKER %}the assigned unit is proven{% else %}every required plan reference is proven{% endif %}; treat `partial`,
+`blocked`, or `failed` as a last resort you must justify with a concrete,
+evidence-backed blocker or a run budget that is genuinely exhausted — never
+because progress feels slow, the next step looks hard, or you are merely
+uncertain. When you do stop short, say exactly what remains and why, so the
+next iteration can pick up without re-deriving your context.
+
 ## Plan fidelity
 
 Treat the request and its acceptance criteria as authoritative. Follow the
