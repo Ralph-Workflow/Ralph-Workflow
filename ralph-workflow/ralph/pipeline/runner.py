@@ -1569,6 +1569,7 @@ def _run_pipeline_step(
                 )
             except MissingPlanHandoffError as exc:
                 _phase_outcome = "skipped"
+                withdraw_cycle_deadline_env()
                 return _with_phase_timing(
                     _recover_missing_plan_handoff(
                         state=state,
@@ -1584,7 +1585,7 @@ def _run_pipeline_step(
             # scoped under (S-2 run_id threading).
             run_id = str(uuid.uuid4())
             event = invoke_execute_effect_with_optional_display(
-                effect,
+                    effect,
                 config,
                 workspace_scope,
                 display=display,

@@ -331,3 +331,29 @@ def test_the_published_deadline_round_trips_into_a_worker_warning(
     assert warning is not None
     assert warning["duration_seconds"] == 7200.0
     assert 1380.0 <= float(str(warning["remaining_seconds"])) <= 1440.0
+
+
+def test_a_failed_materialization_does_not_leave_the_deadline_published(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Publication happens before materialization can fail, so failure must revoke.
+
+    The finalizer that normally revokes never runs when the step returns early
+    or raises, and the environment is process-global — so the deadline would
+    outlive its invocation and nag everything spawned afterwards.
+    """
+    _reserve_env(monkeypatch)
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+    )
+    _materialize("development", state, tmp_path, cycle_total_elapsed=_ELAPSED_SECONDS)
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
+
+    # The runner revokes on both early-return and raise paths; the helper it
+    # uses is the same one the finalizer calls.
+    runner_module.withdraw_cycle_deadline_env()
+
+    assert CYCLE_WARN_EPOCH_ENV not in os.environ
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
