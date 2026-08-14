@@ -27,7 +27,9 @@ Most section rules below apply to `status: completed` only. A
 frontmatter, except that `## Summary` is always required and — once the run's
 cycle timebox has warned — `## Incomplete Work` is too, every item carrying a
 stable-ID bracket, a `Reason:`, and an `Evidence:`. Under that same warning a
-`completed` result must carry `## Plan Items Proven`. Write whatever
+`completed` result must carry `## Plan Items Proven`.
+
+The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet. Write whatever
 best hands your unfinished work to the next iteration — `## Summary`,
 `## Next Steps` and `## Continuation` (your session ID) are read when
 present and are the most useful things to include.

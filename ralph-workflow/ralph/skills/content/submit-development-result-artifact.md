@@ -28,6 +28,8 @@ frontmatter, with two always-enforced exceptions: `## Summary` with at least
 one item, and — once the run's cycle timebox has warned — `## Incomplete Work`,
 every item carrying a stable-ID bracket, a `Reason:`, and an `Evidence:`. Under
 that same warning a `completed` result must carry `## Plan Items Proven`.
+
+The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet.
 Whether the cycle warned is read from the run's own clock, not from anything
 you declare, so the status you pick does not decide whether you are asked to
 show your work. Write whatever best records the attempt. Use `partial` when a safe concrete continuation

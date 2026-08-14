@@ -196,26 +196,40 @@ def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
     Only two shapes survive the parser into the report: a top-level ``- [ID]``
     bullet, and an indented ``Reason:``/``Evidence:`` line beneath one. Anything
     else -- prose, a differently-marked bullet, a nested entry, an unrecognized
-    field -- is read by nothing and vanishes. Rather than enumerate the ways
-    that can happen, this rejects everything that is not one of the two.
+    field, a ``### [ID]`` sub-block, or a second copy of the section -- is read
+    by nothing and vanishes. Rather than enumerate the ways that can happen,
+    this rejects everything that is not one of the two.
+
+    Every section with the name is inspected, not just the first: a
+    non-``completed`` document skips the shared structure validation that would
+    otherwise reject a duplicate, so a second copy carrying the remaining work
+    was accepted and discarded.
     """
-    section = document.section("Incomplete Work")
-    if section is None:
+    sections = document.sections_named("Incomplete Work")
+    if not sections:
         return
-    stray_lines = [line.line for line in section.lines]
-    stray_lines += [
-        line.line
-        for item in section.items
-        for line in item.fields
-        if (parsed := _field_key_and_value(line.text)) is None
-        or parsed[0] not in _INCOMPLETE_WORK_FIELDS
-    ]
+    stray_lines: list[int] = []
+    for index, section in enumerate(sections):
+        if index > 0:
+            # A repeated section: everything in it is dropped, so point at it.
+            stray_lines.append(section.line)
+        stray_lines += [line.line for line in section.lines]
+        # Sub-blocks are a third container the report never reads.
+        stray_lines += [block.line for block in section.blocks]
+        stray_lines += [
+            line.line
+            for item in section.items
+            for line in item.fields
+            if (parsed := _field_key_and_value(line.text)) is None
+            or parsed[0] not in _INCOMPLETE_WORK_FIELDS
+        ]
     if stray_lines:
         raise ValueError(
             f"Incomplete Work accepts only top-level '- [ID] ...' bullets and "
-            f"their indented 'Reason:' / 'Evidence:' lines; line "
-            f"{min(stray_lines)} is neither and would be dropped from the "
-            f"report. Give every remaining item its own stable-ID bullet."
+            f"their indented 'Reason:' / 'Evidence:' lines, in a single "
+            f"section; line {min(stray_lines)} is outside that shape and would "
+            f"be dropped from the report. Give every remaining item its own "
+            f"stable-ID bullet."
         )
 
 

@@ -552,3 +552,55 @@ def test_nothing_that_would_be_dropped_survives_validation(stray: str) -> None:
     )
 
     assert diagnostics != []
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_sub_block_cannot_hide_unfinished_work() -> None:
+    """A `### [ID]` heading is a third container the report never reads.
+
+    A non-completed document skips the shared structure validation that would
+    reject a sub-block, so the heading and its prose landed somewhere nothing
+    reads and the work vanished with zero diagnostics.
+    """
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Work remains.
+## Incomplete Work
+- [S-1] Retry backoff tuning
+  Reason: cycle deadline reached
+  Evidence: tests/test_retry.py::test_backoff xfails
+### [S-2] Auth module rewrite never started
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []
+
+
+@pytest.mark.usefixtures("cycle_already_warned")
+def test_a_second_incomplete_work_section_cannot_hide_work() -> None:
+    """Only the first section is read, so a second copy is discarded whole."""
+    _content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Work remains.
+## Incomplete Work
+- [S-1] Retry backoff tuning
+  Reason: cycle deadline reached
+  Evidence: tests/test_retry.py::test_backoff xfails
+## Incomplete Work
+- [S-9] Entire auth rewrite not started
+  Reason: no time
+  Evidence: src/auth.py untouched
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics != []

@@ -82,7 +82,9 @@ the frontmatter, with two exceptions that are always enforced: `## Summary`
 with at least one item is required, so the reason for the outcome is never
 silently omitted; and once the run's cycle timebox has warned, `## Incomplete
 Work` is required, with a stable-ID bracket, a `Reason:` field, and an
-`Evidence:` field on every item. Under that same warning a `completed` result
+`Evidence:` field on every item. The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet.
+
+Under that same warning a `completed` result
 must carry `## Plan Items Proven` — the status you choose does not decide
 whether you are asked to show your work. Still lead with
 what you did and what remains. For `partial`, include `## Next Steps` and your
