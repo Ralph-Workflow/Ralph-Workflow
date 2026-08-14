@@ -79,7 +79,7 @@ def test_env_var_member_added_to_mcp_env_var() -> None:
     assert hasattr(McpEnvVar, "REQUEST_TIMEOUT_MS")
     assert McpEnvVar.REQUEST_TIMEOUT_MS == "RALPH_MCP_REQUEST_TIMEOUT_MS"
     members = list(McpEnvVar)
-    assert len(members) == 18, f"expected 18 members, got {len(members)}"
+    assert len(members) == 19, f"expected 19 members, got {len(members)}"
     assert members[-1] == McpEnvVar.REQUEST_TIMEOUT_MS
 
 

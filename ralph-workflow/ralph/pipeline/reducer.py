@@ -52,6 +52,7 @@ from ralph.pipeline.agent_retry_intent import (
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_cycle_timebox,
+    conclude_cycle_on_route_out_of_cycle,
     start_cycle_for_bypassed_start_source,
 )
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
@@ -985,6 +986,9 @@ def _handle_commit_success(
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        progress_state = conclude_cycle_on_route_out_of_cycle(
+            progress_state, next_phase, policy=policy
+        )
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1014,6 +1018,9 @@ def _handle_commit_skipped(
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        progress_state = conclude_cycle_on_route_out_of_cycle(
+            progress_state, next_phase, policy=policy
+        )
         next_phase, progress_state = _apply_invocation_gate(progress_state, next_phase, policy)
         progress_state = progress_state.copy_with(last_execution_result_status=None)
         new_state, effects = _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
@@ -1068,7 +1075,8 @@ def _apply_invocation_gate(
     # Gate denies entry: skip analysis and route to its success transition.
     bypass_target = phase_def.transitions.on_success
     cycle_outcome = declared_forward_cycle_outcome(next_phase, policy)
-    if cycle_outcome is not None:
+    # Never outrank a recorded verdict, matching the other stamp sites.
+    if cycle_outcome is not None and state.pending_cycle_outcome is None:
         state = state.copy_with(pending_cycle_outcome=cycle_outcome)
     return bypass_target, state
 
@@ -1158,16 +1166,22 @@ def _prepare_phase_advance(
         if success_target == target_phase:
             bypass = resolve_exhausted_analysis_bypass(state, state.phase, policy)
             if bypass.skipped:
-                return _with_bypassed_cycle_timing(bypass, policy, routing_timing)
+                return _with_bypassed_cycle_timing(
+                    bypass, policy, routing_timing, timer_just_started=timebox.timing_started
+                )
 
     bypass = resolve_exhausted_analysis_bypass(state, target_phase, policy)
-    return _with_bypassed_cycle_timing(bypass, policy, routing_timing)
+    return _with_bypassed_cycle_timing(
+        bypass, policy, routing_timing, timer_just_started=timebox.timing_started
+    )
 
 
 def _with_bypassed_cycle_timing(
     bypass: ExhaustedAnalysisBypassResult,
     policy: PipelinePolicy,
     routing_timing: RoutingTiming | None,
+    *,
+    timer_just_started: bool = False,
 ) -> tuple[PipelineState, PipelinePhase]:
     """Apply a bypass result with the cycle timer re-evaluated on its real target.
 
@@ -1178,10 +1192,11 @@ def _with_bypassed_cycle_timing(
     redirected on the previous cycle's spent budget; missing the start
     boundary left a cycle entirely untimed.
     """
-    if not bypass.skipped:
-        # Nothing was rewritten, so the caller's application already saw the
-        # real target. Re-applying here would re-judge a cycle it may have just
-        # started, against elapsed seconds measured before that reset.
+    if not bypass.skipped or timer_just_started:
+        # Nothing was rewritten (the caller's application already saw the real
+        # target), or the cycle was just started by that application — whose
+        # elapsed seconds still describe the PREVIOUS cycle, so re-judging the
+        # fresh one against them would redirect it before it ran at all.
         return bypass.state, bypass.target_phase
     timebox = apply_cycle_timebox(
         bypass.state,

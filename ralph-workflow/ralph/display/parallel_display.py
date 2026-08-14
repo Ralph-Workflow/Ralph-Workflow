@@ -418,6 +418,11 @@ def _resolve_transition_meta(
     return (from_role, to_role) in _MAJOR_ROLE_PAIRS
 
 
+#: Public alias: the transition banner renders context only on MAJOR
+#: transitions, and test doubles for the display must apply the same gate or
+#: they green-light a surface production drops.
+resolve_transition_meta = _resolve_transition_meta
+
 def _build_outer_iteration_suffix(
     iteration: int | None,
     cap: int | None = None,

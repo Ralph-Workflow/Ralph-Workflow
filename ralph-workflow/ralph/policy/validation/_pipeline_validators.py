@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.policy.models._phase_definition import PhaseDefinition
     from ralph.policy.models._pipeline_policy import PipelinePolicy
 
 
@@ -108,6 +109,27 @@ def _validate_shared_drain_history_consistency(
             drain_enabled[drain] = enabled
 
 
+
+def _route_budget_counter(
+    policy: PipelinePolicy,
+    phase_name: str,
+    phase_def: PhaseDefinition,
+) -> str | None:
+    """Return the budget counter post-commit routing will use for a phase.
+
+    Mirrors ``ralph.pipeline.handoffs._compute_budget_state``: a lifecycle
+    declaration wins, then the commit policy's route/increment counter.
+    """
+    lifecycle = policy.lifecycle_phases.get(phase_name)
+    if lifecycle is not None and lifecycle.increments_counter:
+        return str(lifecycle.increments_counter)
+    commit_policy = phase_def.commit_policy
+    if commit_policy is None:
+        return None
+    counter = commit_policy.route_counter or commit_policy.increments_counter
+    return str(counter) if counter else None
+
+
 def _validate_post_commit_routes_complete(
     policy: PipelinePolicy,
     errors: list[str],
@@ -115,11 +137,14 @@ def _validate_post_commit_routes_complete(
     required_states = {"remaining", "exhausted", "no_review"}
 
     for phase_name, phase_def in policy.phases.items():
-        if phase_def.role != "commit" or phase_def.commit_policy is None:
+        if phase_def.role != "commit":
             continue
-        counter = (
-            phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
-        )
+        # Resolve the counter exactly as the runtime does (lifecycle first,
+        # then commit policy). Reading only commit_policy let a phase whose
+        # counter lives in [lifecycle_phases.<name>] skip this check while the
+        # router still computed a budget state for it — so it fell through the
+        # route table to the success terminal with cycles unspent.
+        counter = _route_budget_counter(policy, phase_name, phase_def)
         if not counter or counter == "none":
             continue
         counter_cfg = policy.budget_counters.get(counter)

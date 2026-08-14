@@ -153,3 +153,103 @@ def test_untimed_invocation_withdraws_the_deadline(
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
     assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
+
+
+def test_publication_is_withdrawn_once_the_invocation_returns(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The deadline belongs to one invocation, not to everything spawned after it.
+
+    The environment is process-global, so a deadline left published after the
+    development invocation is inherited by every later subprocess — including
+    agents with nothing to do with the cycle, such as the auto-integrate
+    conflict resolver, which would be told to wrap up work it never started.
+    """
+    _reserve_env(monkeypatch)
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+    )
+    _materialize("development", state, tmp_path, cycle_total_elapsed=_ELAPSED_SECONDS)
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
+
+    runner_module.withdraw_cycle_deadline_env()
+
+    assert CYCLE_WARN_EPOCH_ENV not in os.environ
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
+
+
+def test_publish_then_withdraw_across_two_invocations(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Sequencing, not just the endpoints: a real publish must be revoked later.
+
+    The two tests above seed the environment by hand; this one publishes for a
+    guarded invocation and then runs a later, unguarded one, which is the shape
+    a stale deadline would actually leak through.
+    """
+    _reserve_env(monkeypatch)
+    _materialize(
+        "development",
+        PipelineState(
+            phase="development",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+        ),
+        tmp_path,
+        cycle_total_elapsed=_ELAPSED_SECONDS,
+    )
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
+
+    _materialize(
+        "planning",
+        PipelineState(phase="planning", cycle_timebox_active=False),
+        tmp_path,
+        cycle_total_elapsed=0.0,
+    )
+
+    assert CYCLE_WARN_EPOCH_ENV not in os.environ
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
+
+
+def test_fan_out_publishes_the_deadline_for_its_workers(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Fan-out spawns worker bridges without materializing a phase prompt.
+
+    Without publishing on that path a fanned-out cycle gives its workers no
+    deadline at all, while still leaking whatever the previous invocation left
+    behind.
+    """
+    _reserve_env(monkeypatch)
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+    )
+
+    runner_module.publish_cycle_deadline_env(
+        state, "development", _bundle(), _ELAPSED_SECONDS
+    )
+
+    assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
+    assert os.environ[CYCLE_FINALIZATION_TARGET_ENV] == "development_final_commit_cleanup"
+
+
+def test_fan_out_withdraws_a_stale_deadline_when_no_cycle_runs(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _reserve_env(monkeypatch)
+
+    runner_module.publish_cycle_deadline_env(
+        PipelineState(phase="development", cycle_timebox_active=False),
+        "development",
+        _bundle(),
+        0.0,
+    )
+
+    assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+

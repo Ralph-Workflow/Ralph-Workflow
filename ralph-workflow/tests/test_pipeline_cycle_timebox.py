@@ -699,3 +699,19 @@ def test_legacy_resume_leaves_pre_cycle_phases_untimed() -> None:
     for phase in ("planning", "planning_analysis", "complete", "failed_terminal"):
         result = initialize_legacy_cycle_on_resume(_state(phase), policy)
         assert result.cycle_timebox_active is False, phase
+
+
+def test_legacy_resume_leaves_the_finalization_path_untimed() -> None:
+    """The cycle ends on ENTRY to the finalization path, so starting there is a trap.
+
+    A timer started at or after `end_entry` can never be concluded — the
+    conclusion fires on entry, which already happened — so it would run on
+    into the next cycle and redirect that cycle's first development entry.
+    """
+    from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+
+    policy = _policy()
+
+    for phase in ("development_final_commit_cleanup", "development_final_commit"):
+        result = initialize_legacy_cycle_on_resume(_state(phase), policy)
+        assert result.cycle_timebox_active is False, phase

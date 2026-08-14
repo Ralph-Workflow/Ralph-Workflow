@@ -148,6 +148,28 @@ def test_load_policy_compiles_group_and_individual_blocks_into_runtime_phases(
             requires_artifact = true
             skipped_advances_progress = false
 
+            # The group block makes this phase increment the budget-tracked
+            # `iteration` counter, so post-commit routing governs what follows
+            # it. Without these routes the run falls through to `complete`
+            # even while cycles remain.
+            [[post_commit_routes]]
+            target = "planning"
+            [post_commit_routes.when]
+            phase = "development_final_commit"
+            budget_state = "remaining"
+
+            [[post_commit_routes]]
+            target = "complete"
+            [post_commit_routes.when]
+            phase = "development_final_commit"
+            budget_state = "exhausted"
+
+            [[post_commit_routes]]
+            target = "complete"
+            [post_commit_routes.when]
+            phase = "development_final_commit"
+            budget_state = "no_review"
+
             [blocks.complete]
             kind = "individual"
             phase_name = "complete"

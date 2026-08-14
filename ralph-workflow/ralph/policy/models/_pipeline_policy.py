@@ -296,11 +296,10 @@ class PipelinePolicy(_FrozenPolicyModel):
         transition — ending the run while its budget still had room, which is
         the exact failure the timebox is supposed to avoid.
         """
-        ct = self.cycle_timebox
-        if ct is None or not self.post_commit_routes:
+        if not self.post_commit_routes:
             return self
         terminals = self.terminal_states()
-        for phase_name in {route.when.phase for route in self.post_commit_routes}:
+        for phase_name in sorted({route.when.phase for route in self.post_commit_routes}):
             phase_def = self.phases.get(phase_name)
             if phase_def is None:
                 continue
@@ -318,7 +317,7 @@ class PipelinePolicy(_FrozenPolicyModel):
                 for route in routes
                 if route.when.cycle_outcome is not None
             }
-            for outcome in sorted(self._recordable_cycle_outcomes(ct)):
+            for outcome in sorted(self._recordable_cycle_outcomes()):
                 if outcome in declared:
                     continue
                 raise ValueError(
@@ -330,18 +329,24 @@ class PipelinePolicy(_FrozenPolicyModel):
                 )
         return self
 
-    def _recordable_cycle_outcomes(self, ct: CycleTimeboxPolicy) -> set[str]:
+    def _recordable_cycle_outcomes(self) -> set[str]:
         """Return every cycle outcome this workflow can stamp on a cycle.
 
-        Both sources count: the outcome a deadline redirect finalizes with,
-        and the outcomes the analysis decisions declare. A recorded verdict is
-        never re-routed as a different one at runtime, so the route table has
-        to cover all of them.
+        Both sources count: the outcome a deadline redirect finalizes with
+        (when a timebox is declared), and the outcomes analysis decisions
+        declare on routes that can actually reach a commit phase. A recorded
+        verdict is never re-routed as a different one at runtime, so the route
+        table has to cover all of them.
         """
-        outcomes: set[str] = {ct.finalization_cycle_outcome}
+        outcomes: set[str] = set()
+        if self.cycle_timebox is not None:
+            outcomes.add(self.cycle_timebox.finalization_cycle_outcome)
+        terminals = self.terminal_states()
         for phase_def in self.phases.values():
             for route in phase_def.decisions.values():
-                if route.cycle_outcome is not None:
+                # A decision that routes straight to a terminal never reaches a
+                # commit phase, so its outcome needs no post-commit route.
+                if route.cycle_outcome is not None and route.target not in terminals:
                     outcomes.add(route.cycle_outcome)
         return outcomes
 

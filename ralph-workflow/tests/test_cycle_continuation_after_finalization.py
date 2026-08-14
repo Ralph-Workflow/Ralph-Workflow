@@ -405,3 +405,65 @@ def test_next_cycle_after_a_bypassed_finalization_reaches_development() -> None:
 
     assert state.phase == "development"
     assert state.cycle_timebox_consumed_seconds == 0.0
+
+
+def test_bypassed_start_edge_does_not_redirect_the_cycle_it_just_started() -> None:
+    """A cycle that starts on this very transition must not be judged as expired.
+
+    When the start source is itself skipped for a spent loop budget, the timer
+    starts and its consumed count resets to zero — but the elapsed seconds
+    sampled for this step still describe the PREVIOUS cycle. Judging the new
+    cycle against them redirects it instantly, burning a dev cycle that never
+    ran any development.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="planning_analysis",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        loop_iterations={"planning_analysis_iteration": 3},
+        cycle_timebox_active=False,
+        cycle_timebox_consumed_seconds=7200.0,
+    )
+
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(7200.0))
+
+    assert state.phase == "development"
+    assert state.cycle_timebox_active is True
+    assert state.cycle_timebox_consumed_seconds == 0.0
+
+
+def test_a_completed_cycle_ends_its_timer_even_when_finalization_is_skipped() -> None:
+    """Completing a cycle ends its clock, however the run got there.
+
+    The timer's only end used to be ENTRY to the finalization path, but a
+    result-status override or an agent-chain fallback can route straight past
+    it into the next cycle. The timer then never restarted (a start requires
+    an inactive cycle), so the next cycle inherited a spent clock and was
+    redirected before doing any development.
+    """
+    base = _policy()
+    development = base.phases["development"]
+    policy = base.model_copy(
+        update={
+            "phases": {
+                **base.phases,
+                "development": development.model_copy(
+                    update={"result_status_post_commit": {"partial": "planning"}}
+                ),
+            }
+        }
+    )
+    state = PipelineState(
+        phase="development_commit",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        post_commit_phase_override="planning",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=6000.0,
+    )
+
+    state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(6000.0))
+
+    assert state.phase == "planning"
+    assert state.cycle_timebox_active is False

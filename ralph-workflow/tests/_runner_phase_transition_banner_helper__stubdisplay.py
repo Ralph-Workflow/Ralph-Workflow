@@ -68,7 +68,14 @@ class _StubDisplay:
         pipeline_policy: object = None,
     ) -> None:
         self.transition_called += 1
-        ctx_obj = dict(context) if isinstance(context, dict) else {}
+        # Mirror production's gate: ParallelDisplay renders transition context
+        # ONLY on major transitions. A stub that renders it everywhere greens
+        # assertions for a surface production drops — that already happened
+        # once here, with a "deadline reached" notice no operator could see.
+        from ralph.display.parallel_display import resolve_transition_meta
+
+        is_major = resolve_transition_meta(previous_phase, current_phase, pipeline_policy)
+        ctx_obj = dict(context) if isinstance(context, dict) and is_major else {}
         note_parts: list[str] = []
         for key, value in ctx_obj.items():
             if key == "decision":

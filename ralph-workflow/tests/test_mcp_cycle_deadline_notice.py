@@ -195,3 +195,41 @@ def test_standalone_server_wires_the_deadline_nag(
     notice = http_server._mcp_server._cycle_deadline_provider()
     assert notice is not None
     assert "Cycle timebox" in notice
+
+
+def test_non_finite_published_epoch_leaves_a_successful_call_intact(
+    tmp_path: pathlib.Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A junk epoch must not turn every successful tool call into an error.
+
+    The notice is appended AFTER the tool has run, so an exception here would
+    return an internal error for work whose side effects already happened.
+    `nan` parses as a float, so only an explicit finiteness check stops it
+    reaching the minutes arithmetic.
+    """
+    monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "nan")
+    monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, "inf")
+    monkeypatch.setenv(CYCLE_FINALIZATION_TARGET_ENV, _TARGET)
+    notifier = CycleDeadlineNotifier(_FakeEpochClock(_WARN_EPOCH))
+
+    payload = _call_read_file(_server_with_notifier(notifier, tmp_path=tmp_path))
+
+    assert "ok" in payload
+    assert "cycle timebox" not in payload.lower()
+
+
+def test_remaining_minutes_are_rounded_not_truncated() -> None:
+    """The nag and the prompt appendix must not disagree by a minute.
+
+    The appendix formats with `:.0f` (round); truncating here would report 23
+    where the prompt said 24 for the very same instant.
+    """
+    notice = cycle_deadline_notice(
+        now_epoch=_WARN_EPOCH,
+        warn_epoch=_WARN_EPOCH,
+        deadline_epoch=_WARN_EPOCH + 1439.0,
+        finalization_target=_TARGET,
+    )
+
+    assert notice is not None
+    assert "24 min" in notice

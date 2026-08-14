@@ -430,11 +430,13 @@ began before the warning point:
   publication is withdrawn for any invocation outside a guarded cycle,
   so a later phase never inherits a stale deadline.
 - **On the live phase banner.** Major phase transitions during an active
-  cycle — in the bundled workflow, each entry into `development` — carry a
-  `[cycle timebox 96m/120m, 24m left]` item, so an operator sees the
-  budget draining without waiting for the end-of-run report. Minor
-  transitions (the commit-cleanup and commit legs) render no context, so
-  the item does not appear on those.
+  cycle carry a `[cycle timebox 96m/120m, 24m left]` item, so an operator
+  sees the budget draining without waiting for the end-of-run report. In
+  the bundled workflow that means the `planning_analysis → development`
+  and `development_analysis → development` entries. Minor transitions
+  render no context at all, so the item does not appear on the
+  commit-cleanup and commit legs, nor on a `planning → development` entry
+  made when planning analysis was skipped.
 - **When the deadline fires.** The redirect is logged by the routing
   component and named on the end-of-run report's `[CT-2] Redirected:`
   line. It is deliberately not put on the phase banner: the transitions a
@@ -455,12 +457,22 @@ other; both are enforced independently.
 
 #### Timer reset and checkpoint behavior
 
-The timer starts only when routing advances from `start_source` to
+The timer starts when routing advances from `start_source` to
 `start_entry` — by default, the `planning_analysis` → `development`
 transition. Time spent in planning or planning analysis before that
 handoff does not count. An unrelated route into the same phase (for
 example, a loopback from development analysis) does not start or reset
-the cycle.
+the cycle, and is therefore left untimed.
+
+Two routes start a cycle without traversing that edge literally. When
+`start_source` is skipped because its own loop budget is spent, the
+cycle still starts on entry to `start_entry` — otherwise that whole
+cycle would run with no deadline. And a checkpoint written before this
+feature existed, resumed anywhere inside the loop, starts a fresh timer
+from the resume point; the phases before the cycle (the entry phase and
+`start_source`) and the finalization path from `end_entry` onward are
+excluded, so planning time is never charged and no timer is started
+where it could never be concluded.
 The deadline is preserved across every development, intermediate-commit,
 and development-analysis phase in the same cycle and is **not** reset or
 extended when an agent emits output, a phase succeeds, development

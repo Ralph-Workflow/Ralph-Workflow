@@ -144,6 +144,7 @@ from ralph.pipeline.prompt_prep import (
     materialize_agent_prompt_if_needed,
     prompt_session_drain_for_phase,
     publish_cycle_deadline_env,
+    withdraw_cycle_deadline_env,
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import CommitState, PipelineState
@@ -1224,6 +1225,10 @@ def _finalize_agent_invocation(
     render split was added -- this is a pure extraction, not a behavior
     change.
     """
+    # Revoke the deadline published for this invocation: the environment is
+    # process-global, so anything spawned later (auto-integrate, plumbing
+    # agents) would otherwise inherit a nag about a cycle it is not part of.
+    withdraw_cycle_deadline_env()
     if not isinstance(effect, InvokeAgentEffect):
         return state, event
     state = _apply_session_capture(state)
@@ -1293,6 +1298,28 @@ def _sample_cycle_timing(
         total_elapsed_seconds=state.cycle_timebox_consumed_seconds + cycle_delta,
     )
     return routing_timing, cycle_now, cycle_delta, ct_policy
+
+
+
+def _publish_fan_out_cycle_deadline(
+    state: PipelineState,
+    phase: str,
+    policy_bundle: PolicyBundle,
+    routing_timing: RoutingTiming | None,
+) -> None:
+    """Publish the cycle deadline for a fan-out's worker processes.
+
+    Fan-out spawns its own worker bridges without going through prompt
+    materialization, so without this a fanned-out cycle gives its workers no
+    deadline at all while still leaking whatever a previous invocation left
+    published.
+    """
+    publish_cycle_deadline_env(
+        state,
+        phase,
+        policy_bundle,
+        routing_timing.total_elapsed_seconds if routing_timing is not None else None,
+    )
 
 
 def _run_pipeline_step(
@@ -1399,15 +1426,8 @@ def _run_pipeline_step(
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
-            # Fan-out spawns its own worker bridges without going through
-            # prompt materialization, so publish the deadline here too: a
-            # fanned-out cycle would otherwise give its workers no nag, and
-            # would leak whatever a previous invocation last published.
-            publish_cycle_deadline_env(
-                state,
-                effect.phase,
-                policy_bundle,
-                _routing_timing.total_elapsed_seconds if _routing_timing is not None else None,
+            _publish_fan_out_cycle_deadline(
+                state, effect.phase, policy_bundle, _routing_timing
             )
 
             def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
@@ -1482,6 +1502,9 @@ def _run_pipeline_step(
             # the same run's evidence the agent invocation itself was
             # scoped under (S-2 run_id threading).
             run_id = str(uuid.uuid4())
+            # Scope the published deadline to this invocation: anything
+            # spawned after it (auto-integrate, plumbing agents) must not
+            # inherit a nag about a cycle it is not part of.
             event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,

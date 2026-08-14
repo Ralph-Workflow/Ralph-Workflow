@@ -26,6 +26,8 @@ value, and records a conflict rather than resolving one.
 
 from __future__ import annotations
 
+import os
+import time
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
@@ -63,7 +65,10 @@ from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
     render_phase_failure_report,
 )
-from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
+from ralph.pipeline.prompt_prep import (
+    cycle_timebox_warning_from_env,
+    session_capabilities_for_agent_phase,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import load_policy_for_workspace_scope
@@ -418,6 +423,12 @@ def run_parallel_worker_from_manifest(
         artifacts_policy=policy_bundle.artifacts,
         worker_namespace=worker_namespace,
         work_unit=manifest.to_work_unit(),
+        # The worker's state carries no cycle timing (it is built from the
+        # manifest), so the deadline reaches it only through the environment
+        # its parent published before spawning the fan-out.
+        cycle_timebox_warning=cycle_timebox_warning_from_env(
+            os.environ, now_epoch=time.time()
+        ),
     )
     rendered_prompt = workspace.read(prompt_path)
     resolved_prompt_path = Path(manifest.prompt_file)

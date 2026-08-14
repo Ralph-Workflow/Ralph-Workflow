@@ -3,8 +3,10 @@
 The cycle deadline was previously invisible while a run was in flight: the
 elapsed/remaining numbers appeared only in the end-of-run report, so an
 operator watching the run could not tell how much of the cycle budget was
-left, nor that a phase change had been forced by the deadline. These tests
-pin the timebox status onto the live phase-transition banner.
+left. These tests pin the timebox status onto the live phase-transition
+banner, which renders context only on MAJOR transitions. A deadline-forced
+finalization is deliberately NOT reported there — every transition it makes
+is minor, so the notice would be dropped before an operator saw it.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ def _banner_output(state: PipelineState, previous_phase: str) -> str:
 
 
 def test_active_cycle_shows_elapsed_and_remaining_on_phase_banner() -> None:
-    """An active cycle puts its consumed/remaining budget on every phase change."""
+    """An active cycle puts its consumed/remaining budget on a major phase change."""
     state = PipelineState(
         phase="development",
         previous_phase="development_commit",

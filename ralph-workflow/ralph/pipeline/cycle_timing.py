@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PipelinePolicy
+    from ralph.policy.models import CycleTimeboxPolicy, PipelinePolicy
 
 
 @dataclass(frozen=True)
@@ -170,6 +170,35 @@ def apply_cycle_timebox(
     return CycleTimeboxDecision(state=state, target_phase=target_phase)
 
 
+
+def conclude_cycle_on_route_out_of_cycle(
+    state: PipelineState,
+    next_phase: str,
+    *,
+    policy: PipelinePolicy,
+) -> PipelineState:
+    """End cycle timing when routing leaves the cycle by any route.
+
+    Entering ``end_entry`` is the ordinary end, but it is not the only way a
+    run reaches its next cycle: a ``result_status_post_commit`` override or an
+    agent-chain ``workflow_fallback`` can route straight past the finalization
+    path and back to planning. The timer would then never stop — and could
+    never restart, since a start requires an inactive cycle — so the next
+    cycle would run on the previous one's clock and be redirected before doing
+    any development.
+
+    Landing on a phase that precedes the cycle (the entry phase or the
+    declared ``start_source``) means this cycle is over, whichever route got
+    us there.
+    """
+    ct = policy.cycle_timebox
+    if ct is None or not state.cycle_timebox_active:
+        return state
+    if next_phase not in {policy.entry_phase, ct.start_source}:
+        return state
+    return _concluded(state)
+
+
 def start_cycle_for_bypassed_start_source(
     state: PipelineState,
     target_phase: str,
@@ -222,12 +251,30 @@ def initialize_legacy_cycle_on_resume(
         return state
     if state.phase in (ct.start_entry, ct.guarded_entry):
         return _started(state)
-    pre_cycle = {ct.start_source, policy.entry_phase}
-    if state.phase in pre_cycle or state.phase in policy.terminal_states():
+    if state.phase not in policy.phases or state.phase in policy.terminal_states():
         return state
-    if state.phase not in policy.phases:
+    if state.phase in _outside_cycle_phases(policy, ct):
         return state
     return _started(state)
+
+
+def _outside_cycle_phases(policy: PipelinePolicy, ct: CycleTimeboxPolicy) -> set[str]:
+    """Return the phases that are not inside a cycle.
+
+    Two groups. BEFORE the cycle: the entry phase and the declared
+    ``start_source``, whose time is deliberately never charged to a deadline.
+    AT OR AFTER its end: ``end_entry`` and the finalization path reachable from
+    it, walked along success transitions until the walk leaves the cycle. A
+    timer started there could never be concluded — the conclusion fires on
+    ENTRY to ``end_entry``, which has already happened — so it would run on
+    into the next cycle and redirect that cycle's first development entry.
+    """
+    outside = {policy.entry_phase, ct.start_source}
+    phase: str | None = ct.end_entry
+    while phase is not None and phase not in outside and phase in policy.phases:
+        outside.add(phase)
+        phase = policy.phases[phase].transitions.on_success
+    return outside
 
 
 #: Phase-banner key for the cycle-timebox item. The space makes the display

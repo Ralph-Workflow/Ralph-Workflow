@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import time
 from pathlib import Path
@@ -12,6 +13,7 @@ from loguru import logger
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
+    CYCLE_DURATION_SECONDS_ENV,
     CYCLE_FINALIZATION_TARGET_ENV,
     CYCLE_WARN_EPOCH_ENV,
     WORKER_NAMESPACE_ENV,
@@ -335,6 +337,25 @@ def _worker_cycle_timebox_warning(
     )
 
 
+
+def _withdraw_cycle_deadline_env() -> None:
+    """Remove any published cycle deadline from the environment.
+
+    The environment is process-global, so a deadline left published outlives
+    the invocation it describes and is inherited by every subprocess spawned
+    afterwards — including agents that have nothing to do with the cycle, such
+    as the auto-integrate conflict resolver, which would be nagged to wrap up
+    work it never started.
+    """
+    for name in (
+        CYCLE_WARN_EPOCH_ENV,
+        CYCLE_DEADLINE_EPOCH_ENV,
+        CYCLE_DURATION_SECONDS_ENV,
+        CYCLE_FINALIZATION_TARGET_ENV,
+    ):
+        os.environ.pop(name, None)
+
+
 def _publish_cycle_deadline_env(
     state: PipelineState,
     target_phase: str,
@@ -362,17 +383,57 @@ def _publish_cycle_deadline_env(
         now_epoch=time.time(),
     )
     if published is None:
-        for name in (
-            CYCLE_WARN_EPOCH_ENV,
-            CYCLE_DEADLINE_EPOCH_ENV,
-            CYCLE_FINALIZATION_TARGET_ENV,
-        ):
-            os.environ.pop(name, None)
+        _withdraw_cycle_deadline_env()
         return
     warn_epoch, deadline_epoch, finalization_target = published
     os.environ[CYCLE_WARN_EPOCH_ENV] = repr(warn_epoch)
     os.environ[CYCLE_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
     os.environ[CYCLE_FINALIZATION_TARGET_ENV] = finalization_target
+    duration = policy_bundle.pipeline.cycle_timebox
+    if duration is not None:
+        os.environ[CYCLE_DURATION_SECONDS_ENV] = repr(duration.duration_seconds)
+
+
+
+def _env_seconds(env: Mapping[str, str], name: str) -> float | None:
+    raw = env.get(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _cycle_timebox_warning_from_env(
+    env: Mapping[str, str],
+    *,
+    now_epoch: float,
+) -> dict[str, object] | None:
+    """Rebuild the timebox warning from the deadline the parent published.
+
+    A fan-out worker runs in its own process from a manifest and its pipeline
+    state carries no cycle timing, so the state-based warning the serial path
+    uses is always empty for it. The published epochs it inherits are the only
+    thing that crosses that boundary, so the worker's prompt appendix is
+    derived from them. Returns ``None`` when nothing was published, when the
+    warning point is still ahead, or when any published value is unusable.
+    """
+    warn_epoch = _env_seconds(env, CYCLE_WARN_EPOCH_ENV)
+    deadline_epoch = _env_seconds(env, CYCLE_DEADLINE_EPOCH_ENV)
+    duration = _env_seconds(env, CYCLE_DURATION_SECONDS_ENV)
+    if warn_epoch is None or deadline_epoch is None or duration is None:
+        return None
+    if now_epoch < warn_epoch:
+        return None
+    remaining = max(0.0, deadline_epoch - now_epoch)
+    return {
+        "elapsed_seconds": max(0.0, duration - remaining),
+        "remaining_seconds": remaining,
+        "duration_seconds": duration,
+        "finalization_target": env.get(CYCLE_FINALIZATION_TARGET_ENV) or "the final commit",
+    }
 
 
 def _materialize_agent_prompt_if_needed(
@@ -453,4 +514,6 @@ def _materialize_agent_prompt_if_needed(
 materialize_prepared_prompt = _materialize_prepared_prompt
 materialize_agent_prompt_if_needed = _materialize_agent_prompt_if_needed
 publish_cycle_deadline_env = _publish_cycle_deadline_env
+cycle_timebox_warning_from_env = _cycle_timebox_warning_from_env
+withdraw_cycle_deadline_env = _withdraw_cycle_deadline_env
 prompt_session_drain_for_phase = _prompt_session_drain_for_phase

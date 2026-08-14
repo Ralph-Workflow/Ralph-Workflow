@@ -188,7 +188,7 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
             return "worker prompt body"
 
     class _PolicyBundle:
-        pipeline = object()
+        pipeline = _bundled_pipeline_policy()
         artifacts = object()
         agents = object()
 
@@ -365,7 +365,7 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
             return "worker prompt body"
 
     class _PolicyBundle:
-        pipeline = object()
+        pipeline = _bundled_pipeline_policy()
         artifacts = object()
         agents = object()
 
@@ -468,7 +468,7 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
             return "worker prompt body"
 
     class _PolicyBundle:
-        pipeline = object()
+        pipeline = _bundled_pipeline_policy()
         artifacts = object()
         agents = object()
 
@@ -583,7 +583,7 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
             return "worker prompt body"
 
     class _PolicyBundle:
-        pipeline = object()
+        pipeline = _bundled_pipeline_policy()
         artifacts = object()
         agents = object()
 
@@ -753,7 +753,7 @@ def test_run_parallel_worker_from_manifest_preserves_injected_model_identity_and
             return "worker prompt body"
 
     class _PolicyBundle:
-        pipeline = object()
+        pipeline = _bundled_pipeline_policy()
         artifacts = object()
         agents = object()
 

@@ -84,3 +84,30 @@ def test_resume_override_leaves_untargeted_counters_alone() -> None:
 
     assert state.get_loop_iteration("development_analysis_iteration") == 3
     assert state.phase == "development"
+
+
+def test_developer_iters_flag_raises_a_resumed_runs_budget() -> None:
+    """The premise end to end: `-D 12` on a resumed run gives 12 dev cycles.
+
+    The two halves are pinned separately — the CLI folds the flag into the
+    counter overrides, and resume applies counter overrides — but the point of
+    both is this composition, which is what an operator actually asks for when
+    they resume a spent run with a bigger budget.
+    """
+    from ralph.cli.main import counter_overrides_with_developer_iters
+
+    bundle = load_policy(_DEFAULTS_DIR)
+    overrides = counter_overrides_with_developer_iters({}, _REQUESTED_CAP)
+
+    state = resolve_initial_state(
+        config=None,
+        policy_bundle=bundle,
+        initial_state=_resumed(),
+        counter_overrides=overrides,
+        pipeline_deps=None,
+        pro_hooks=None,
+        state_factory=None,
+    )
+
+    assert state.budget_caps["iteration"] == _REQUESTED_CAP
+    assert state.get_budget_remaining("iteration") == _REQUESTED_CAP - _RESUMED_CAP
