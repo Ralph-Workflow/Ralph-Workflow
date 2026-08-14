@@ -1,4 +1,4 @@
-Produce and submit one valid `commit_message` artifact for the pending diff.
+Task: Produce and submit one spec-compliant MCP commit_message artifact for the changes not yet committed—the current worktree vs the last commit.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -8,7 +8,7 @@ Produce and submit one valid `commit_message` artifact for the pending diff.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
-Read the diff, choose a commit or skip document, and submit it without commentary. Do not call bash; it is outside this phase's tool path.
+Read the diff, choose a commit or skip document, and submit it with the tool named below. Do not call bash or ask the user for confirmation, including “Would you like me to…”.
 
 ## HOW TO WRITE THE SUBJECT
 
