@@ -467,3 +467,29 @@ def test_a_completed_cycle_ends_its_timer_even_when_finalization_is_skipped() ->
 
     assert state.phase == "planning"
     assert state.cycle_timebox_active is False
+
+
+def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
+    """Only the commit that closes a cycle consumes that cycle's verdict.
+
+    A graph that reviews before committing records `failed` and then passes
+    through an intermediate commit on its way to the final one. Clearing the
+    verdict at every commit-role phase threw it away, and the outcome-less
+    cycle was then routed as `completed` — a failed run reporting success.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="development_commit",
+        budget_caps={"iteration": 1},
+        outer_progress={"iteration": 0},
+        pending_cycle_outcome="failed",
+        last_execution_result_status="failed",
+        loop_iterations={"development_analysis_iteration": 5},
+    )
+
+    state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(100.0))
+    assert state.phase == "development_final_commit_cleanup"
+
+    state = _drive_to_next_cycle(state, policy, elapsed=100.0)
+
+    assert state.phase == "failed_terminal"

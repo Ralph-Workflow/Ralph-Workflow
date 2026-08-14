@@ -176,6 +176,44 @@ def resolve_exhausted_analysis_bypass(
     )
 
 
+
+def commit_closes_a_cycle(
+    phase: PipelinePhase,
+    pipeline_policy: PipelinePolicy,
+) -> bool:
+    """Return whether a commit phase is the one that closes a cycle.
+
+    A cycle's verdict belongs to the cycle, so only the commit that ends it
+    may consume it. Clearing at every commit-role phase destroyed a verdict
+    recorded before an intermediate commit, and the outcome-less cycle was
+    then routed as the forward outcome — a failed run reporting success.
+    The closing commit is the one whose budget counter post-commit routing
+    reads, resolved exactly as :func:`_compute_budget_state` resolves it.
+    """
+    return _budget_counter_for_phase(phase, pipeline_policy) is not None
+
+
+def _budget_counter_for_phase(
+    phase: PipelinePhase,
+    pipeline_policy: PipelinePolicy,
+) -> str | None:
+    """Return the tracked budget counter governing a commit phase, if any."""
+    lifecycle = pipeline_policy.lifecycle_phases.get(phase)
+    if lifecycle is not None:
+        counter = lifecycle.increments_counter
+    else:
+        phase_def = pipeline_policy.phases.get(phase)
+        if phase_def is None or phase_def.commit_policy is None:
+            return None
+        counter = (
+            phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
+        )
+    if not counter or counter == "none":
+        return None
+    tracked = pipeline_policy.budget_counters.get(counter)
+    return counter if tracked is not None and tracked.tracks_budget else None
+
+
 def resolve_post_commit_phase(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
@@ -259,21 +297,8 @@ def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy)
         'no_review'  — this counter is at 0 and no other tracked counter has budget
         None         — no tracked budget counter governs this phase
     """
-    lifecycle = pipeline_policy.lifecycle_phases.get(state.phase)
-    if lifecycle is not None:
-        counter = lifecycle.increments_counter
-    else:
-        phase_def = pipeline_policy.phases.get(state.phase)
-        if phase_def is None or phase_def.commit_policy is None:
-            return None
-        counter = (
-            phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
-        )
-    if not counter or counter == "none":
-        return None
-
-    tracked_cfg = pipeline_policy.budget_counters.get(counter)
-    if tracked_cfg is None or not tracked_cfg.tracks_budget:
+    counter = _budget_counter_for_phase(state.phase, pipeline_policy)
+    if counter is None:
         return None
 
     if state.get_budget_remaining(counter) > 0:
@@ -294,6 +319,7 @@ __all__ = [
     "ExhaustedAnalysisBypassResult",
     "ExhaustedAnalysisSkip",
     "Handoff",
+    "commit_closes_a_cycle",
     "declared_forward_cycle_outcome",
     "resolve_exhausted_analysis_bypass",
     "resolve_next_phase",

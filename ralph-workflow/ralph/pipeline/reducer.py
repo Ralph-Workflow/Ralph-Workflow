@@ -68,6 +68,7 @@ from ralph.pipeline.events import (
     WorkerStartedEvent,
 )
 from ralph.pipeline.handoffs import (
+    commit_closes_a_cycle,
     declared_forward_cycle_outcome,
     resolve_exhausted_analysis_bypass,
     resolve_next_phase,
@@ -506,6 +507,12 @@ def _handle_phase_failure(
             advanced_state, advanced_target = _prepare_phase_advance(
                 state, fallback_target, policy, routing_timing=routing_timing
             )
+            # A fallback can route straight out of the cycle, past the
+            # finalization path. The timer has to end there too, or it runs on
+            # into the next cycle — which can then never start its own.
+            advanced_state = conclude_cycle_on_route_out_of_cycle(
+                advanced_state, advanced_target, policy=policy
+            )
             new_state = progress.advance_phase(
                 advanced_state, advanced_target, policy=policy
             ).copy_with(
@@ -593,6 +600,12 @@ def _handle_agent_failure(
             # (FR-4), not only the analysis request_changes loopback.
             advanced_state, advanced_target = _prepare_phase_advance(
                 state, fallback_target, policy, routing_timing=routing_timing
+            )
+            # A fallback can route straight out of the cycle, past the
+            # finalization path. The timer has to end there too, or it runs on
+            # into the next cycle — which can then never start its own.
+            advanced_state = conclude_cycle_on_route_out_of_cycle(
+                advanced_state, advanced_target, policy=policy
             )
             new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
             return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
@@ -985,7 +998,8 @@ def _handle_commit_success(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
-        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        if commit_closes_a_cycle(state.phase, policy):
+            progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         progress_state = conclude_cycle_on_route_out_of_cycle(
             progress_state, next_phase, policy=policy
         )
@@ -1017,7 +1031,8 @@ def _handle_commit_skipped(
         next_phase = resolve_post_commit_phase(progress_state, policy)
         if progress_state.post_commit_phase_override is not None:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
-        progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        if commit_closes_a_cycle(state.phase, policy):
+            progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         progress_state = conclude_cycle_on_route_out_of_cycle(
             progress_state, next_phase, policy=policy
         )

@@ -490,21 +490,47 @@ def _merge_pipeline_defaults(
     omitted entirely.
     """
     merged = _merge_mapping_defaults(defaults, overrides)
-    override_phases = overrides.get("phases")
-    default_phases = defaults.get("phases")
-    if not isinstance(override_phases, Mapping) or not isinstance(default_phases, Mapping):
-        return merged
-
-    merged_phases: dict[str, object] = {}
-    for phase_name, override_phase in override_phases.items():
-        default_phase = default_phases.get(phase_name)
-        if isinstance(default_phase, Mapping) and isinstance(override_phase, Mapping):
-            merged_phases[phase_name] = _merge_mapping_defaults(default_phase, override_phase)
-        else:
-            merged_phases[phase_name] = override_phase
-    merged["phases"] = merged_phases
+    for section in ("phases", "blocks"):
+        merged_section = _merge_declared_entries(defaults, overrides, section)
+        if merged_section is not None:
+            merged[section] = merged_section
     return merged
 
+
+def _merge_declared_entries(
+    defaults: Mapping[str, object],
+    overrides: Mapping[str, object],
+    section: str,
+) -> dict[str, object] | None:
+    """Merge one graph section, treating entries the override omits as removed.
+
+    Returns ``None`` when either side does not declare the section, leaving the
+    plain union in place. ``blocks`` needs the same treatment as ``phases``:
+    without it a block-authored file that renames or drops a block still
+    inherits every bundled block, which compiles into the graph as unreachable
+    phases and fails validation on the runtime load path — while the
+    ``--check-config`` path, which does not merge, reports the file as fine.
+    """
+    override_entries = overrides.get(section)
+    default_entries = defaults.get(section)
+    if not isinstance(override_entries, Mapping) or not isinstance(default_entries, Mapping):
+        return None
+
+    merged_entries: dict[str, object] = {}
+    for name, override_entry in override_entries.items():
+        default_entry = default_entries.get(name)
+        if isinstance(default_entry, Mapping) and isinstance(override_entry, Mapping):
+            merged_entries[name] = _merge_mapping_defaults(default_entry, override_entry)
+        else:
+            merged_entries[name] = override_entry
+    return merged_entries
+
+
+
+#: Public alias: overlay merge semantics decide whether a workspace file can
+#: rename or delete parts of the bundled graph, so they are worth pinning
+#: directly rather than only through a full policy load.
+merge_pipeline_defaults = _merge_pipeline_defaults
 
 def _is_phase_authored_pipeline_data(data: Mapping[str, object]) -> bool:
     """Return whether a pipeline TOML uses the legacy phase-authored schema."""

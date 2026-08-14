@@ -89,35 +89,33 @@ def test_commit_phase_with_no_declared_routes_is_not_checked() -> None:
     assert revalidated.post_commit_routes == []
 
 
-def test_finalization_outcome_accepted_when_the_fallthrough_is_not_terminal() -> None:
-    """Declaring routes for only one outcome is legal when falling through continues.
+def test_incomplete_routes_are_rejected_even_when_the_fallthrough_loops() -> None:
+    """A non-terminal fallthrough is not a licence to leave the table incomplete.
 
-    `resolve_post_commit_phase` deliberately lets a commit phase with no
-    matching route follow its `on_success` transition. When that transition is
-    another cycle rather than a terminal, an outcome no route names costs
-    nothing — rejecting it would forbid a working configuration.
+    Falling back into the cycle re-enters it regardless of remaining budget,
+    so such a run never terminates at all — the mirror image of ending early,
+    and just as much a defect.
     """
-    bundle = load_policy(_DEFAULTS_DIR)
-    pipeline = bundle.pipeline
-    assert pipeline.cycle_timebox is not None
-    failed_only = [
-        route.model_dump()
-        for route in pipeline.post_commit_routes
-        if route.when.cycle_outcome == "failed"
-    ]
+    import pydantic
+    import pytest as _pytest
+
+    pipeline = load_policy(_DEFAULTS_DIR).pipeline
     phases = {name: phase.model_dump() for name, phase in pipeline.phases.items()}
     phases["development_final_commit"]["transitions"]["on_success"] = "planning"
+    completed_routes = [
+        route.model_dump()
+        for route in pipeline.post_commit_routes
+        if route.when.cycle_outcome != "failed"
+    ]
 
-    revalidated = type(pipeline).model_validate(
-        {
-            **pipeline.model_dump(),
-            "phases": phases,
-            "post_commit_routes": failed_only,
-        }
-    )
-
-    assert revalidated.cycle_timebox is not None
-    assert revalidated.cycle_timebox.finalization_cycle_outcome == "completed"
+    with _pytest.raises(pydantic.ValidationError, match="cycle outcome 'failed'"):
+        type(pipeline).model_validate(
+            {
+                **pipeline.model_dump(),
+                "phases": phases,
+                "post_commit_routes": completed_routes,
+            }
+        )
 
 
 def test_route_table_must_cover_every_outcome_a_decision_can_record() -> None:

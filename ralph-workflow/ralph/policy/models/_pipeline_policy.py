@@ -298,17 +298,14 @@ class PipelinePolicy(_FrozenPolicyModel):
         """
         if not self.post_commit_routes:
             return self
-        terminals = self.terminal_states()
         for phase_name in sorted({route.when.phase for route in self.post_commit_routes}):
             phase_def = self.phases.get(phase_name)
             if phase_def is None:
                 continue
-            # Falling through is only harmful when it lands on a terminal: a
-            # phase whose success transition is another cycle continues fine
-            # without a matching route.
+            # Falling through is harmful either way: onto a terminal it ends
+            # the run with budget left, and back into the cycle it re-enters
+            # regardless of budget so the run never terminates.
             fallthrough = phase_def.transitions.on_success
-            if fallthrough is None or fallthrough not in terminals:
-                continue
             routes = [route for route in self.post_commit_routes if route.when.phase == phase_name]
             if any(route.when.cycle_outcome is None for route in routes):
                 continue

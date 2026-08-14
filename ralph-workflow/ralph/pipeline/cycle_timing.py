@@ -187,14 +187,15 @@ def conclude_cycle_on_route_out_of_cycle(
     cycle would run on the previous one's clock and be redirected before doing
     any development.
 
-    Landing on a phase that precedes the cycle (the entry phase or the
-    declared ``start_source``) means this cycle is over, whichever route got
-    us there.
+    Landing on any phase outside the cycle means this cycle is over,
+    whichever route got us there. "Outside" is the same set the legacy-resume
+    initializer uses, so a graph with several phases before the cycle is
+    handled — not just the entry phase and the declared ``start_source``.
     """
     ct = policy.cycle_timebox
     if ct is None or not state.cycle_timebox_active:
         return state
-    if next_phase not in {policy.entry_phase, ct.start_source}:
+    if next_phase not in _outside_cycle_phases(policy, ct):
         return state
     return _concluded(state)
 
@@ -261,8 +262,9 @@ def initialize_legacy_cycle_on_resume(
 def _outside_cycle_phases(policy: PipelinePolicy, ct: CycleTimeboxPolicy) -> set[str]:
     """Return the phases that are not inside a cycle.
 
-    Two groups. BEFORE the cycle: the entry phase and the declared
-    ``start_source``, whose time is deliberately never charged to a deadline.
+    Two groups. BEFORE the cycle: the entry phase, the declared
+    ``start_source``, and every phase between them, whose time is deliberately
+    never charged to a deadline.
     AT OR AFTER its end: ``end_entry`` and the finalization path reachable from
     it, walked along success transitions until the walk leaves the cycle. A
     timer started there could never be concluded — the conclusion fires on
@@ -270,10 +272,17 @@ def _outside_cycle_phases(policy: PipelinePolicy, ct: CycleTimeboxPolicy) -> set
     into the next cycle and redirect that cycle's first development entry.
     """
     outside = {policy.entry_phase, ct.start_source}
-    phase: str | None = ct.end_entry
-    while phase is not None and phase not in outside and phase in policy.phases:
-        outside.add(phase)
-        phase = policy.phases[phase].transitions.on_success
+    for start in (ct.end_entry, policy.entry_phase):
+        phase: str | None = start
+        while phase is not None and phase in policy.phases:
+            # The pre-cycle walk stops at the start edge; the finalization walk
+            # stops when it re-enters the cycle or leaves the graph.
+            if phase in (ct.start_entry, ct.guarded_entry):
+                break
+            if phase in outside and phase != start:
+                break
+            outside.add(phase)
+            phase = policy.phases[phase].transitions.on_success
     return outside
 
 
