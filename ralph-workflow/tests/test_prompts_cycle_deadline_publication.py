@@ -511,3 +511,33 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
     assert float(published[0]) > time.time()
     # And revoked afterwards, so nothing spawned later inherits it.
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
+
+
+def test_the_warning_point_is_announced_to_the_operator(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The operator learns a cycle passed 80% from this line and nowhere else.
+
+    Demoting it to debug removes it from normal output entirely, which no test
+    noticed — so the run would look unremarkable right up to the redirect.
+    """
+    from loguru import logger
+
+    _reserve_env(monkeypatch)
+    records: list[str] = []
+    sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
+    try:
+        _materialize(
+            "development",
+            PipelineState(
+                phase="development",
+                cycle_timebox_active=True,
+                cycle_timebox_consumed_seconds=5760.0,
+            ),
+            tmp_path,
+            cycle_total_elapsed=5760.0,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert any("cycle-timebox warning" in record for record in records)
