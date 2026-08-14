@@ -300,9 +300,20 @@ def analysis_loopback_is_already_charged(
     state: PipelineState,
     policy: PipelinePolicy,
 ) -> bool:
-    """Return whether this analysis loop was entered by an execution-charged cycle."""
+    """Return whether this ANALYSIS loop was entered by an execution-charged cycle.
+
+    Restricted to analysis phases on purpose. The charged flag is set when the
+    invocation gate admits an analysis cycle and is cleared only on entry to an
+    execution phase, so it is still set when the run reaches a commit-cleanup
+    phase later in the same cycle. Suppressing the charge there stopped that
+    phase's own loop counter from ever advancing, so its cap never fired and a
+    cleanup that kept asking to loop looped forever — with no timebox left to
+    bound it, since the cycle has already concluded by then.
+    """
     phase_def = policy.phases.get(phase)
-    return state.execution_cycle_charged and phase_def is not None and phase_def.loop_policy is not None
+    if phase_def is None or phase_def.loop_policy is None or phase_def.role != "analysis":
+        return False
+    return state.execution_cycle_charged
 
 
 def apply_commit_outcome(

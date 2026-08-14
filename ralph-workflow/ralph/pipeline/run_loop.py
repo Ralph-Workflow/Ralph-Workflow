@@ -853,7 +853,15 @@ def _resolve_initial_state(
     budget, reported it as spent, and terminated at the next final commit.
     """
     if initial_state is not None:
-        return _with_counter_overrides(initial_state, counter_overrides)
+        # Legacy checkpoints carry no cycle timing; initialize it HERE, in the
+        # one seam every resumed run passes through, so the wiring cannot be
+        # deleted while the tests that cover resuming stay green. Guarded: this
+        # seam is also reached with stub policy bundles that carry no phase
+        # graph, and a resumed run must never fail to start over timing setup.
+        resumed = initial_state
+        with suppress(AttributeError, TypeError):
+            resumed = initialize_legacy_cycle_on_resume(initial_state, policy_bundle.pipeline)
+        return _with_counter_overrides(resumed, counter_overrides)
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
         return pipeline_deps.state_factory(
             config,

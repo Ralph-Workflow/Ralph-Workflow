@@ -603,3 +603,31 @@ def test_a_loopback_out_of_the_cycle_ends_the_timer() -> None:
 
     assert state.phase == "planning"
     assert state.cycle_timebox_active is False
+
+
+def test_commit_cleanup_loop_cap_still_counts_after_a_charged_analysis_cycle() -> None:
+    """A cleanup loop must remain bounded however the cycle got there.
+
+    The charged-cycle flag is set when the invocation gate admits analysis and
+    cleared only on entry to an execution phase, so it is still set at the
+    cleanup phase later in the same cycle. Suppressing the charge there froze
+    that phase's own counter, its cap never fired, and a cleanup that kept
+    asking to loop looped forever — with the cycle timer already concluded, so
+    nothing could bound it.
+    """
+    policy = _policy()
+    state = PipelineState(
+        phase="development_final_commit_cleanup",
+        budget_caps={"iteration": 5},
+        outer_progress={"iteration": 1},
+        execution_cycle_charged=True,
+    )
+
+    for _ in range(4):
+        state, _ = reduce(state, PipelineEvent.PHASE_LOOPBACK, policy, routing_timing=_rt(10.0))
+        if state.phase != "development_final_commit_cleanup":
+            break
+
+    assert state.phase == "development_final_commit", (
+        "the cleanup cap must still release the run after its declared maximum"
+    )

@@ -1303,6 +1303,36 @@ def _sample_cycle_timing(
 
 
 
+
+def _fold_cycle_elapsed(
+    before: PipelineState,
+    after: PipelineState,
+    *,
+    delta_seconds: float,
+    timing_enabled: bool,
+) -> PipelineState:
+    """Add a step's wall-clock delta to the cycle's serialized consumed time.
+
+    This is the only thing that makes the deadline advance: without it the
+    cycle timer reads zero forever, so it never warns, never redirects, and
+    publishes a deadline that never arrives.
+
+    The delta is folded whenever the cycle was active coming INTO the step —
+    whether or not the step concluded it — so a concluded cycle carries its
+    true elapsed duration for the operator surfaces, and so the budget
+    survives a crash-resume.
+    """
+    if not timing_enabled or not before.cycle_timebox_active or delta_seconds <= 0.0:
+        return after
+    return after.model_copy(
+        update={
+            "cycle_timebox_consumed_seconds": (
+                after.cycle_timebox_consumed_seconds + delta_seconds
+            ),
+        }
+    )
+
+
 def _run_fan_out_phase(
     *,
     effect: FanOutEffect,
@@ -1613,24 +1643,12 @@ def _run_pipeline_step(
             recovery=recovery_controller,
             routing_timing=_reduce_routing_timing,
         )
-        # Fold the post-invocation wall-clock delta into serialized consumed
-        # so the budget survives a crash-resume. Fold whenever the cycle was
-        # active coming into this step (whether or not it just concluded via a
-        # deadline redirect) so the concluded state carries the accurate
-        # elapsed duration for operator surfaces.
-        if (
-            _cycle_sample_box is not None
-            and ct_policy is not None
-            and state.cycle_timebox_active
-            and _reduce_delta > 0.0
-        ):
-            next_state = next_state.model_copy(
-                update={
-                    "cycle_timebox_consumed_seconds": (
-                        next_state.cycle_timebox_consumed_seconds + _reduce_delta
-                    ),
-                }
-            )
+        next_state = fold_cycle_elapsed(
+            state,
+            next_state,
+            delta_seconds=_reduce_delta,
+            timing_enabled=_cycle_sample_box is not None and ct_policy is not None,
+        )
         if _cycle_sample_box is not None and ct_policy is not None and _reduce_now is not None:
             _cycle_sample_box[0] = _reduce_now
         # Thread the integration outcome into the persisted checkpoint.
@@ -2036,4 +2054,5 @@ save_checkpoint_or_log = _save_checkpoint_or_log
 notify_pipeline_subscriber = _notify_pipeline_subscriber
 handle_keyboard_interrupt = _handle_keyboard_interrupt
 finalize_agent_invocation = _finalize_agent_invocation
-
+fold_cycle_elapsed = _fold_cycle_elapsed
+sample_cycle_timing = _sample_cycle_timing

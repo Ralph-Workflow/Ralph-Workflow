@@ -150,20 +150,34 @@ def _validate_spent_budget_can_end_the_run(
     """
     terminals = policy.terminal_states()
     for state_name in ("exhausted", "no_review"):
-        targets = [
-            route.target
+        routes = [
+            route
             for route in policy.post_commit_routes
             if route.when.phase == phase_name and route.when.budget_state == state_name
         ]
-        if targets and not any(
-            _terminal_is_reachable(policy, target, terminals) for target in targets
-        ):
+        if not routes:
+            continue
+        # Every outcome must have its OWN way out: a failure route reaching the
+        # failure terminal says nothing about where a completed cycle goes.
+        for outcome in sorted({route.when.cycle_outcome for route in routes}, key=str):
+            targets = [
+                route.target
+                for route in routes
+                if outcome is None
+                or route.when.cycle_outcome is None
+                or route.when.cycle_outcome == outcome
+            ]
+            if any(
+                _terminal_is_reachable(policy, target, terminals, outcome=outcome)
+                for target in targets
+            ):
+                continue
             errors.append(
-                f"phases.{phase_name}: no post_commit_route for budget_state='{state_name}' "
-                f"can reach a terminal without failing (targets: {sorted(set(targets))}). "
-                f"Once counter '{counter}' is spent the run would re-enter the cycle forever. "
-                "Route that budget state to a terminal, or to a phase from which one is "
-                "reachable."
+                f"phases.{phase_name}: with budget_state='{state_name}' and cycle outcome "
+                f"'{outcome}', no post_commit_route can reach a terminal without failing "
+                f"(targets: {sorted(set(targets))}). Once counter '{counter}' is spent the run "
+                "would re-enter the cycle forever. Route that combination to a terminal, or to "
+                "a phase from which one is reachable."
             )
 
 
@@ -171,6 +185,8 @@ def _terminal_is_reachable(
     policy: PipelinePolicy,
     start: str,
     terminals: set[str],
+    *,
+    outcome: str | None = None,
 ) -> bool:
     """Return whether a terminal is reachable from a phase WITHOUT failing.
 
@@ -192,8 +208,18 @@ def _terminal_is_reachable(
             continue
         seen.add(phase)
         phase_def = policy.phases[phase]
+        # Follow only the routes THIS outcome can take: pooling every route for
+        # the phase let a failure-outcome route supply a terminal the outcome
+        # under test could never reach.
         routed = [
-            route.target for route in policy.post_commit_routes if route.when.phase == phase
+            route.target
+            for route in policy.post_commit_routes
+            if route.when.phase == phase
+            and (
+                outcome is None
+                or route.when.cycle_outcome is None
+                or route.when.cycle_outcome == outcome
+            )
         ]
         if routed:
             frontier.extend(routed)

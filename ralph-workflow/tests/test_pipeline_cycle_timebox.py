@@ -407,36 +407,32 @@ def _runner_sim_step(
     box: list[float | None],
     fake_clock: list[float],
 ) -> PipelineState:
-    """Mirror the timing logic the runner applies around each ``reduce`` call.
+    """Drive one step through the runner's OWN timing functions.
 
-    This replicates the sample → reduce → fold → update-sample sequence from
-    ``_run_pipeline_step`` so tests can verify the per-step accumulation and
-    crash-resume behavior without the full runner/display/registry stack.
+    Sampling and folding are production code (`sample_cycle_timing` and
+    `fold_cycle_elapsed`), not re-implemented here: a hand-written copy of the
+    runner's arithmetic would keep passing while the real runner was severed
+    from its clock, leaving the deadline permanently at zero.
     """
-    now = fake_clock[0]
-    last = box[0]
-    delta = (
-        max(0.0, now - last)
-        if (state.cycle_timebox_active and last is not None)
-        else 0.0
+    from dataclasses import dataclass
+
+    from ralph.pipeline.runner import fold_cycle_elapsed, sample_cycle_timing
+
+    @dataclass
+    class _ClockDeps:
+        monotonic: object
+
+    deps = _ClockDeps(monotonic=lambda: fake_clock[0])
+    routing_timing, now, delta, ct_policy = sample_cycle_timing(state, policy, deps, box)
+    next_state, _ = reduce(state, event, policy, routing_timing=routing_timing)
+    next_state = fold_cycle_elapsed(
+        state,
+        next_state,
+        delta_seconds=delta,
+        timing_enabled=box is not None and ct_policy is not None,
     )
-    rt = RoutingTiming(
-        monotonic_now=now,
-        total_elapsed_seconds=state.cycle_timebox_consumed_seconds + delta,
-    )
-    next_state, _ = reduce(state, event, policy, routing_timing=rt)
-    if (
-        state.cycle_timebox_active
-        and delta > 0.0
-    ):
-        next_state = next_state.model_copy(
-            update={
-                "cycle_timebox_consumed_seconds": (
-                    next_state.cycle_timebox_consumed_seconds + delta
-                ),
-            }
-        )
-    box[0] = now
+    if now is not None:
+        box[0] = now
     return next_state
 
 

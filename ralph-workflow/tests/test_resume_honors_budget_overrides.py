@@ -64,7 +64,10 @@ def test_resume_without_overrides_keeps_the_checkpoint_budget() -> None:
     )
 
     assert state.budget_caps["iteration"] == _RESUMED_CAP
-    assert state == resumed
+    # Resuming also arms cycle timing for a legacy checkpoint, so the state is
+    # not returned untouched — the budget is what must be preserved.
+    assert state.outer_progress == resumed.outer_progress
+    assert state.phase == resumed.phase
 
 
 def test_resume_override_leaves_untargeted_counters_alone() -> None:
@@ -111,3 +114,45 @@ def test_developer_iters_flag_raises_a_resumed_runs_budget() -> None:
 
     assert state.budget_caps["iteration"] == _REQUESTED_CAP
     assert state.get_budget_remaining("iteration") == _REQUESTED_CAP - _RESUMED_CAP
+
+
+def test_resume_initializes_cycle_timing_for_a_legacy_checkpoint() -> None:
+    """Resuming must arm the cycle timer, not merely be able to.
+
+    The initializer had exactly one call site and no test reached it, so the
+    wiring could be deleted with the whole suite green — and every resumed run
+    would then execute its cycle with no deadline at all.
+    """
+    bundle = load_policy(_DEFAULTS_DIR)
+    legacy = PipelineState(phase="development", budget_caps={"iteration": _RESUMED_CAP})
+    assert legacy.cycle_timebox_active is False
+
+    state = resolve_initial_state(
+        config=None,
+        policy_bundle=bundle,
+        initial_state=legacy,
+        counter_overrides=None,
+        pipeline_deps=None,
+        pro_hooks=None,
+        state_factory=None,
+    )
+
+    assert state.cycle_timebox_active is True
+    assert state.cycle_timebox_consumed_seconds == 0.0
+
+
+def test_resume_does_not_arm_a_timer_before_the_cycle_starts() -> None:
+    """Planning time is never charged to a cycle deadline."""
+    bundle = load_policy(_DEFAULTS_DIR)
+
+    state = resolve_initial_state(
+        config=None,
+        policy_bundle=bundle,
+        initial_state=PipelineState(phase="planning"),
+        counter_overrides=None,
+        pipeline_deps=None,
+        pro_hooks=None,
+        state_factory=None,
+    )
+
+    assert state.cycle_timebox_active is False
