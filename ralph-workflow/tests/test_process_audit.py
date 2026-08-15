@@ -82,6 +82,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_e2e_activity_aware.py",  # e2e watchdog coverage needs real subprocesses
     "test_agy_live_regression.py",  # live AGY binary black-box coverage via subprocess
     "test_smoke_agy_end_to_end.py",  # drives ralph smoke-interactive-agy as a bounded subprocess
+    "test_smoke_agy_full_lifecycle_e2e.py",  # drives ralph smoke-interactive-agy --subagents as a bounded subprocess (v1.1.13 full-lifecycle proof)
     "test_audit_artifact_submission_canonical_path.py",
     # spawns python -O to verify import-time invariants survive -O
     "test_single_mode_anti_drift.py",

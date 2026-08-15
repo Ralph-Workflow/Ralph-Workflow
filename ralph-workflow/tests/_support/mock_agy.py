@@ -13,6 +13,17 @@ Controlled by environment variables:
   ``.agent/artifacts/``, the completion sentinel, and ``tmp/`` are written.
   Defaults to the current working directory.
 * ``MOCK_AGY_SUBAGENT`` - when ``1``, emit one subagent tool dispatch/result.
+* ``MOCK_AGY_V1_1_13`` - when ``1``, emit the measured AGY v1.1.13 wire
+  vocabulary (``system_message`` bodiless steps, ``invoke_subagent``
+  step-level ``tool_name``, ``call_mcp_tool`` frames) and drive the real
+  Ralph MCP endpoint named by ``RALPH_MCP_ENDPOINT`` with stdlib-only
+  JSON-RPC round trips (``initialize`` + ``tools/call``
+  ``ralph_submit_md_artifact`` + ``tools/call`` ``declare_complete``) so
+  the smoke harness grades artifact submission, the completion sentinel,
+  and the wire ledger through the same server path the live binary uses.
+  The mock never imports Ralph helpers: the receipt, sentinel, and wire
+  records are produced solely by the server's handlers. Unset (or ``0``)
+  keeps the default v1.1.10-style output byte-compatible.
 
 The simulator honors the flag set measured from the real binary:
 ``--print``/``-p``, ``--dangerously-skip-permissions``, ``--model``,
@@ -106,10 +117,9 @@ def _write_prompt_received(artifact_dir: Path, prompt: str | None) -> None:
     prompt_path.write_text(prompt or "", encoding="utf-8")
 
 
-def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
-    artifact_path = artifact_dir / ARTIFACT_RELPATH
-    artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(
+def _smoke_test_result_markdown() -> str:
+    """Return the fallback smoke_test_result markdown the mock authors."""
+    return (
         "---\n"
         "type: smoke_test_result\n"
         "status: passed\n"
@@ -129,9 +139,14 @@ def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
         "\n"
         "- [HG-1] tool activity\n"
         "- [HG-2] parser events\n"
-        "- [HG-3] tmp artifact creation\n",
-        encoding="utf-8",
+        "- [HG-3] tmp artifact creation\n"
     )
+
+
+def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
+    artifact_path = artifact_dir / ARTIFACT_RELPATH
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(_smoke_test_result_markdown(), encoding="utf-8")
     return artifact_path
 
 
@@ -496,7 +511,10 @@ def degraded_baseline_stream_json_lines(model: str = "gemini-3.6-flash-low") -> 
                 "state": "ACTIVE",
                 "step_type": "tool",
                 "tool_name": "write_to_file",
-                "tool_info": {"name": "write_to_file", "parameters": {"TargetFile": "todo-list.js"}},
+                "tool_info": {
+                    "name": "write_to_file",
+                    "parameters": {"TargetFile": "todo-list.js"},
+                },
             },
         },
         {
@@ -510,7 +528,10 @@ def degraded_baseline_stream_json_lines(model: str = "gemini-3.6-flash-low") -> 
                 "duration_seconds": 0.076075017,
                 # No `output` key: the measured live capture showed
                 # write_to_file produces no output on DONE.
-                "tool_info": {"name": "write_to_file", "parameters": {"TargetFile": "todo-list.js"}},
+                "tool_info": {
+                    "name": "write_to_file",
+                    "parameters": {"TargetFile": "todo-list.js"},
+                },
             },
         },
         {
@@ -670,6 +691,33 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.model is not None and args.model not in CANONICAL_MODELS:
+        return 0
+
+    if os.environ.get("MOCK_AGY_V1_1_13") == "1":
+        # Measured v1.1.13 vocabulary path: the mock still writes the todo
+        # list it is asked to create, but the smoke_test_result artifact and
+        # the completion sentinel are produced ONLY by the real MCP server
+        # handlers via ``drive_real_mcp_round_trips`` -- no direct fallback
+        # file or sentinel write happens in this mode, so the harness's
+        # WORKSPACE_EFFECT fallback cannot mask a failed round trip.
+        # Lazy import keeps the default (flag-unset) subprocess path free
+        # of the v1.1.13 module and its urllib transport; see
+        # tests/_support/mock_agy_v1_1_13.py.
+        from tests._support.mock_agy_v1_1_13 import (
+            _emit_v1_1_13_stdout,
+            drive_real_mcp_round_trips,
+        )
+
+        _write_todo_list(artifact_dir)
+        _write_prompt_received(artifact_dir, args.prompt)
+        submit_output, complete_output = drive_real_mcp_round_trips()
+        _emit_v1_1_13_stdout(
+            args.model,
+            args.output_format,
+            artifact_dir,
+            submit_output,
+            complete_output,
+        )
         return 0
 
     _write_todo_list(artifact_dir)

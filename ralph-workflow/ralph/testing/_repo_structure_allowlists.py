@@ -1012,6 +1012,21 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.completion_signals",
             ("_check_completion_sentinel",),
         ),
+        # wt-015-agy-support S-5/S-6: the AGY v1.1.13 full-lifecycle proofs
+        # verify the durable, HMAC-verified completion sentinel directly via
+        # the same private helper the harness's completion evaluation uses,
+        # mirroring the tests/test_submit_artifact_writes_receipt.py grant
+        # above (the sentinel IS the subject under test).
+        (
+            "tests/test_agy_harness_with_mock.py",
+            "ralph.agents.completion_signals",
+            ("_check_completion_sentinel",),
+        ),
+        (
+            "tests/test_smoke_agy_full_lifecycle_e2e.py",
+            "ralph.agents.completion_signals",
+            ("_check_completion_sentinel",),
+        ),
         (
             "tests/test_subprocess_env_secret_isolation.py",
             "ralph.agents.invoke._process_reader",

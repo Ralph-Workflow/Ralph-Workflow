@@ -689,6 +689,20 @@ class AgyParser(NdjsonParserBase):
         ``call_id=N``, falsely implying an upstream-issued identifier.
         """
         metadata: dict[str, object] = {"tool": tool_name, "tool_info": info}
+        parameters = info.get("parameters")
+        if isinstance(parameters, dict):
+            # Surface the tool's arguments under the canonical ``input``
+            # key every other transport uses. The pipeline's tool-result
+            # correlator (``activity_stream._retain_tool_result_target``)
+            # and the display's preview payload builder read
+            # ``metadata["input"]``; without it a recognized read/write
+            # tool's result never renders through the shared preview choke
+            # point, so the SUPPORTED display-capability stances declared
+            # for agy (``builtin.py``: "read/write tool names normalized
+            # by parser match payload_from_tool_event") could never be
+            # observed. Subagent entries carry no ``parameters`` mapping,
+            # so the envelope stays tool-only.
+            metadata["input"] = parameters
         if call_id:
             if id_is_synthesized:
                 metadata["step_ordinal"] = call_id

@@ -182,6 +182,15 @@ _IO_ALLOWLIST: set[str] = {
     # traceability doc. The assertion is the contract under test;
     # mocking the file read would test nothing.
     "test_watchdog_spec_docs_pin_parity",
+    # Subprocess-launched AGY mock agent stub
+    # (tests/_support/mock_agy_v1_1_13.py, the v1.1.13 emitter split out of
+    # mock_agy.py). The stub performs REAL loopback JSON-RPC round trips
+    # (urllib.request.urlopen) against the harness's MCP fallback server at
+    # RALPH_MCP_ENDPOINT -- the real HTTP transport is the system under test
+    # (wire-ledger evidence is only produced by an actual tools/call), so
+    # mocking the boundary would defeat the purpose. Mirrors
+    # mock_multimodal_agent.py's real-wire dispatch.
+    "mock_agy_v1_1_13",
 }
 
 # Files that legitimately use time.monotonic()/time.perf_counter() for

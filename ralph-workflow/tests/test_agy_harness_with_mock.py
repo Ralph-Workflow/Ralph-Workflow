@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
+import unittest.mock
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from ralph.agents.completion_signals import _check_completion_sentinel
+from ralph.agents.display_capabilities import DisplayCapability
+from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.loader import load_config
@@ -15,6 +22,7 @@ from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.smoke_test_result import SmokeTestResult
+from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunResult,
@@ -327,4 +335,234 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
         f"stamp the receipt. Under RFC-013 P3 this lands as a row in "
         f"{tmp_path}/.agent/state.db (with the legacy file path preserved "
         f"as a durable fallback when DB persistence is unavailable)."
+    )
+
+
+# --- v1.1.13 measured-vocabulary mode (wt-015-agy-support S-5) ---
+
+#: Distinct broker secret so wire-ledger / sentinel HMAC verification in
+#: these tests never depends on (or mutates) any ambient developer secret.
+_V1_1_13_BROKER_SECRET = "test-mock-agy-v1-1-13-broker-secret"
+
+#: Vocabulary that ONLY the ``MOCK_AGY_V1_1_13=1`` emitter produces. The
+#: default (flag-unset) output must not contain any of it. (``invoke_subagent``
+#: and ``view_file`` are NOT here: both already appear in the default output
+#: via the init tool list / default tool steps.)
+_V1_1_13_ONLY_VOCABULARY: tuple[str, ...] = (
+    "call_mcp_tool",
+    "system_message",
+    "ralph_submit_md_artifact",
+    "declare_complete",
+)
+
+
+def _capture_mock_stdout(
+    artifact_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    v1_1_13: str | None,
+) -> str:
+    """Run the mock AGY in-process and return its raw stream-json stdout.
+
+    The mock's ``main()`` is a plain ``argv -> int`` entry point, so it is
+    invoked directly (no subprocess) under a fully rebuilt environment: every
+    mode-selecting ``MOCK_AGY_*`` / ``RALPH_MCP_*`` variable is normalized so
+    an ambient ``MOCK_AGY_V1_1_13=1`` (the plan's second verify command
+    exports it for the whole pytest run) can never leak into the
+    byte-comparison baseline.
+    """
+    from tests._support import mock_agy
+
+    env = os.environ.copy()
+    env["MOCK_AGY_ARTIFACT_DIR"] = str(artifact_dir)
+    env.pop("MOCK_AGY_SUBAGENT", None)
+    env.pop("MOCK_AGY_ARTIFACT_DIR_OVERRIDE", None)
+    env.pop("RALPH_MCP_ENDPOINT", None)
+    env.pop("RALPH_MCP_RUN_ID", None)
+    if v1_1_13 is None:
+        env.pop("MOCK_AGY_V1_1_13", None)
+    else:
+        env["MOCK_AGY_V1_1_13"] = v1_1_13
+    with unittest.mock.patch.dict(os.environ, env, clear=True):
+        exit_code = mock_agy.main(
+            [
+                "--print",
+                "--output-format",
+                "stream-json",
+                "--model",
+                "gemini-3.6-flash-low",
+            ]
+        )
+    assert exit_code == 0, f"mock AGY exited {exit_code}"
+    return capsys.readouterr().out
+
+
+def test_mock_v1_1_13_default_byte_compatible(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Flag unset or ``0``: the mock's stdout is byte-identical default output.
+
+    Pins the default-mock contract the existing harness tests rely on: no
+    v1.1.13 vocabulary (``call_mcp_tool``, ``system_message``,
+    ``invoke_subagent``, ``ralph_*``, ``view_file``) may leak when the flag
+    is off, and explicitly setting ``MOCK_AGY_V1_1_13=0`` must reproduce
+    the flag-unset bytes exactly.
+    """
+    stdout_unset = _capture_mock_stdout(tmp_path / "unset", capsys, v1_1_13=None)
+    stdout_zero = _capture_mock_stdout(tmp_path / "zero", capsys, v1_1_13="0")
+
+    assert stdout_unset == stdout_zero, (
+        "MOCK_AGY_V1_1_13=0 must be byte-compatible with the flag-unset default output"
+    )
+    for token in _V1_1_13_ONLY_VOCABULARY:
+        assert token not in stdout_unset, (
+            f"v1.1.13-only vocabulary {token!r} leaked into the default (flag-unset) mock output"
+        )
+    assert stdout_unset.strip(), "default mock output must not be empty"
+
+
+def test_mock_v1_1_13_vocabulary_when_flag_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``MOCK_AGY_V1_1_13=1``: measured vocabulary + real MCP / completion / preview.
+
+    Drives the full in-process smoke harness with the v1.1.13 mock and a
+    real broker secret, then asserts the plan's six signals:
+
+    (a) the subagent ACTIVE/DONE pair (step-level ``tool_name``
+        ``invoke_subagent``, role "Todo Edge Case Researcher") parses to a
+        correlated tool_use/tool_result pair;
+    (b) the bodiless ``system_message`` frame surfaces as a lifecycle event;
+    (c) the ``call_mcp_tool`` -> ``ralph_submit_md_artifact`` ACTIVE/DONE
+        pair parses with the measured ``ServerName``/``ToolName`` envelope
+        and precedes the ``declare_complete`` pair;
+    (d) a verified wire-ledger record for ``ralph_submit_md_artifact`` on
+        this run exists (``wire_evidence_for`` with the broker secret);
+    (e) the durable completion sentinel validates via the public
+        ``_check_completion_sentinel`` helper for the run id;
+    (f) the display's capability recorder observed SYNTAX_HIGHLIGHTING
+        (via the ``write_to_file`` pair's correlated result) and
+        FILE_PREVIEW (via the ``read_file`` pair).
+    """
+    monkeypatch.setenv("MOCK_AGY_V1_1_13", "1")
+    monkeypatch.setenv("RALPH_BROKER_SECRET", _V1_1_13_BROKER_SECRET)
+    monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("MOCK_AGY_SUBAGENT", raising=False)
+
+    result = _run_agy_smoke_plumbing(tmp_path, monkeypatch)
+
+    # --- transcript-level parser assertions (a), (b), (c) ---
+    stdout = _capture_mock_stdout(tmp_path / "transcript", capsys, v1_1_13="1")
+    parser = AgyParser()
+    events = list(parser.parse(iter(stdout.splitlines())))
+
+    subagent_uses = [
+        event
+        for event in events
+        if event.type == "tool_use" and event.content == "Todo Edge Case Researcher"
+    ]
+    subagent_results = [
+        event
+        for event in events
+        if event.type == "tool_result" and event.content.startswith("Todo Edge Case Researcher")
+    ]
+    assert subagent_uses, "expected the invoke_subagent dispatch to parse as a tool_use"
+    assert subagent_results, (
+        "expected the invoke_subagent DONE frame to parse as a correlated tool_result"
+    )
+
+    system_message_events = [
+        event for event in events if event.content == "agy step system_message"
+    ]
+    assert system_message_events, (
+        "expected the bodiless system_message frame to surface as a lifecycle event"
+    )
+
+    def _event_pos(predicate: Callable[[Any], bool]) -> int:
+        for index, event in enumerate(events):
+            if predicate(event):
+                return index
+        return -1
+
+    subagent_result_pos = _event_pos(
+        lambda event: (
+            event.type == "tool_result" and event.content.startswith("Todo Edge Case Researcher")
+        )
+    )
+    system_message_pos = _event_pos(lambda event: event.content == "agy step system_message")
+    submit_use_pos = _event_pos(
+        lambda event: (
+            event.type == "tool_use"
+            and (event.metadata or {}).get("tool") == "call_mcp_tool"
+            and (event.metadata or {}).get("tool_info", {}).get("parameters", {}).get("ToolName")
+            == "ralph_submit_md_artifact"
+        )
+    )
+    declare_pos = _event_pos(
+        lambda event: (
+            event.type == "tool_use"
+            and (event.metadata or {}).get("tool") == "call_mcp_tool"
+            and (event.metadata or {}).get("tool_info", {}).get("parameters", {}).get("ToolName")
+            == "declare_complete"
+        )
+    )
+    submit_result_pos = _event_pos(
+        lambda event: (
+            event.type == "tool_result"
+            and (event.metadata or {}).get("tool") == "call_mcp_tool"
+            and (event.metadata or {}).get("tool_info", {}).get("parameters", {}).get("ToolName")
+            == "ralph_submit_md_artifact"
+        )
+    )
+    assert -1 not in {subagent_result_pos, system_message_pos, submit_use_pos, declare_pos}, (
+        "expected subagent result, system_message lifecycle, and both call_mcp_tool uses"
+    )
+    assert subagent_result_pos < system_message_pos < submit_use_pos < declare_pos, (
+        "v1.1.13 frames must arrive in the measured order: subagent pair, "
+        "system_message, ralph_submit_md_artifact pair, declare_complete pair"
+    )
+    assert submit_result_pos > submit_use_pos, "submit tool_result must follow its tool_use"
+
+    # --- harness-level assertions (d), (e), (f) ---
+    run_id = resolve_smoke_harness_spec("agy/gemini-3.6-flash-low").run_id
+
+    assert result.parsed_event_count >= 8, (
+        f"expected at least 8 parser events, got {result.parsed_event_count}"
+    )
+    assert result.subagent_dispatch_seen is True
+    assert result.subagent_result_seen is True
+    assert result.subagent_dispatch_count >= 1
+    assert result.artifact_submitted.holds is True
+    assert result.explicit_completion_seen.holds is True
+
+    assert (
+        wire_evidence_for(
+            tmp_path,
+            run_id,
+            tool_name="ralph_submit_md_artifact",
+            secret=_V1_1_13_BROKER_SECRET,
+        )
+        is True
+    ), "expected a verified wire-ledger tools/call record for ralph_submit_md_artifact"
+
+    assert (
+        _check_completion_sentinel(
+            tmp_path,
+            run_id,
+            sentinel_secret=_V1_1_13_BROKER_SECRET,
+        )
+        is True
+    ), "expected the durable, HMAC-verified completion sentinel for the run"
+
+    assert DisplayCapability.SYNTAX_HIGHLIGHTING in result.observed_capabilities, (
+        f"expected SYNTAX_HIGHLIGHTING to be observed, got {result.observed_capabilities}"
+    )
+    assert DisplayCapability.FILE_PREVIEW in result.observed_capabilities, (
+        f"expected FILE_PREVIEW to be observed, got {result.observed_capabilities}"
+    )
+    assert not any("capability" in error.lower() for error in result.errors), (
+        f"unexpected capability breaks: {result.errors}"
     )
