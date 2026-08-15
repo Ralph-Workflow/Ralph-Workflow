@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_auto_integrate_end_to_end.py",
     "tests/test_tool_git_read_path_validation.py",
+    "tests/test_smoke_agy_full_lifecycle_e2e.py",
 )
 
 

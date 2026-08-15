@@ -107,6 +107,10 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.
     "tests/test_tool_git_read_path_validation.py",
+    # Full-lifecycle AGY smoke (parser -> harness -> MCP wire -> artifact
+    # submission -> completion sentinel) must run under the default
+    # ``make test`` profile so the AGY transport contract cannot rot silently.
+    "tests/test_smoke_agy_full_lifecycle_e2e.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

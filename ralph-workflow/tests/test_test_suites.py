@@ -16,7 +16,26 @@ import pytest
 
 import ralph.test_suites as test_suites_module
 
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
+    "tests/test_auto_integrate_end_to_end.py",
+    "tests/test_tool_git_read_path_validation.py",
+    "tests/test_smoke_agy_full_lifecycle_e2e.py",
+)
+
+
+def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:
+    """The discovery suite enforces the required auto-integrate registry.
+
+    Mirrors the orchestration-side contract test so both test modules
+    independently fail when the production registry drifts.
+    """
+    assert (
+        test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
+        == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    )
+    assert len(set(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)) == len(
+        EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    )
 
 
 def test_partition_selected_files_assigns_every_file_once_deterministically() -> None:
