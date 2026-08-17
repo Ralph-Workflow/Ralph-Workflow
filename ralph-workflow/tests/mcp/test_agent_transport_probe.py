@@ -68,6 +68,21 @@ def _stub_server_handshake_pass(monkeypatch: pytest.MonkeyPatch) -> list[Upstrea
     return captured
 
 
+def _stub_kimi_tool_listing(
+    monkeypatch: pytest.MonkeyPatch,
+    tools: tuple[object, ...] = (),
+) -> None:
+    """Stub the Kimi relay-schema probe's upstream ``tools/list``.
+
+    The probe's schema walk is the observable behavior under test; the
+    transport client itself is faked so no network is touched.
+    """
+    monkeypatch.setattr(
+        "ralph.mcp.upstream.agent_probe._list_upstream_tools_for_probe",
+        lambda server: tools,
+    )
+
+
 def test_probe_emits_claude_http_config_and_reaches_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -338,6 +353,7 @@ def test_probe_emits_kimi_config_with_url_key(
         spy_kimi_mcp_config,
     )
     captured = _stub_http_handshake_pass(monkeypatch)
+    _stub_kimi_tool_listing(monkeypatch)
 
     reports = probe_agent_transports(
         [server], transports=(AgentTransport.KIMI,), workspace_path=None
@@ -375,3 +391,79 @@ def test_probe_skips_stdio_for_kimi(monkeypatch: pytest.MonkeyPatch) -> None:
             note="skipped (stdio proxied by Kimi CLI)",
         ),
     )
+
+
+def test_probe_kimi_rejects_moonshot_unrelayable_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Kimi probe fails preflight when a relayed tool's schema would 400.
+
+    Regression for the live failure (2026-08-17): Kimi relays upstream
+    ``tools/list`` entries verbatim to Moonshot, which rejects ``type``
+    mixed with composition keywords at any level. The preflight probe is
+    the only gate that can reject that schema before a paid call.
+    """
+    from ralph.mcp.upstream.upstream_tool import UpstreamTool
+
+    server = _http_server()
+    _stub_http_handshake_pass(monkeypatch)
+    _stub_kimi_tool_listing(
+        monkeypatch,
+        tools=(
+            UpstreamTool(
+                name="bad_tool",
+                description="composed root",
+                input_schema={
+                    "type": "object",
+                    "oneOf": [{"required": ["path"]}],
+                    "properties": {"path": {"type": "string"}},
+                },
+            ),
+        ),
+    )
+
+    reports = probe_agent_transports(
+        [server], transports=(AgentTransport.KIMI,), workspace_path=None
+    )
+
+    assert len(reports) == 1
+    assert reports[0].ok is False
+    assert reports[0].error is not None
+    assert "bad_tool" in reports[0].error
+    assert "Moonshot" in reports[0].error
+
+
+def test_probe_kimi_accepts_flattenable_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A schema Moonshot accepts verbatim (plain property vocabulary)."""
+    from ralph.mcp.upstream.upstream_tool import UpstreamTool
+
+    server = _http_server()
+    _stub_http_handshake_pass(monkeypatch)
+    _stub_kimi_tool_listing(
+        monkeypatch,
+        tools=(
+            UpstreamTool(
+                name="exec_like",
+                description="plain union",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "description": "x",
+                            "type": ["array", "string"],
+                            "items": {"type": "string"},
+                        }
+                    },
+                },
+            ),
+        ),
+    )
+
+    reports = probe_agent_transports(
+        [server], transports=(AgentTransport.KIMI,), workspace_path=None
+    )
+
+    assert len(reports) == 1
+    assert reports[0].ok is True

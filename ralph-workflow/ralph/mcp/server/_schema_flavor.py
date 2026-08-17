@@ -25,16 +25,29 @@ needing the OpenAI function flavor.
 Flattening keeps the plain-object root vocabulary (``type``,
 ``properties``, ``required``, ``additionalProperties``, ``description``,
 ``title``), drops the composition keywords, and defaults ``type`` to
-``"object"``. Direct ``properties`` sub-schemas are additionally
-repaired in one narrow way: Moonshot rejects an enum whose parent has
-no ``type`` (``At path 'properties.mode': type is not defined``), so a
-direct property declaring ``enum`` without ``type`` gains
-``"type": "string"`` when every enum member is a string (the observed
+``"object"``. The flattening then recurses one deliberate level into
+direct ``properties`` sub-schemas: Moonshot's flavor check is not
+root-only (re-measured live on 2026-08-17 — after root-only flattening
+shipped, Moonshot still rejected the advertisement with the same
+``At path 'root': when using anyOf...`` 400 because
+``exec.properties.command/argv/args`` keep ``oneOf`` with no sibling
+``type``). For each direct property the same rule is applied: a
+composition keyword mixed with a sibling ``type`` is flattened to the
+plain vocabulary, and a composition-only property (``exec``'s
+``command``/``argv``/``args``, which accept ``string | list[string]``)
+is rewritten to ``{"type": ["string", "array"], "items": {...}}`` —
+JSON Schema type unions — because Moonshot accepts a bare ``type``
+array but never an ``oneOf`` branch list. Direct ``properties``
+sub-schemas are additionally repaired in one narrow way: Moonshot
+rejects an enum whose parent has no ``type`` (``At path
+'properties.mode': type is not defined``), so a direct property
+declaring ``enum`` without ``type`` gains ``"type": "string"`` when
+every enum member is a string (the observed
 ``ralph_stage_md_artifact.mode`` case, re-measured against the live
-Moonshot API on 2026-08-17). Deeper nesting (property-level ``oneOf``
-etc.) is left untouched: the live 42-tool advertisement passes
-Moonshot's validator once the composed roots are flattened and the
-untyped-enum repair is applied.
+Moonshot API on 2026-08-17). Anything deeper is left untouched: the
+live 42-tool advertisement passes Moonshot's validator once the
+composed roots, the ``exec`` property unions, and the untyped-enum
+repair are applied.
 
 The registered :class:`~ralph.mcp.tools.bridge._tool_definition.ToolDefinition`
 ``input_schema`` is never mutated: dispatch-time validation and every
@@ -85,6 +98,61 @@ def schema_flavor_for_client_name(client_name: str | None) -> str | None:
     return None
 
 
+def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
+    """Flatten one direct ``properties`` sub-schema for Moonshot.
+
+    Same root rule applied one level down: a composition keyword mixed
+    with a sibling ``type`` keeps only the plain vocabulary; a
+    composition-only sub-schema whose ``oneOf``/``anyOf`` branches all
+    declare a plain ``type`` (the ``exec`` ``command``/``argv``/``args``
+    ``string | array`` union) is rewritten to a JSON Schema type union
+    ``{"type": ["array", "string"]}`` plus the single array branch's
+    ``items`` — Moonshot accepts a ``type`` array but never a branch
+    list. Any other composition shape (a branch without ``type``, a
+    bare ``not``, ...) is returned untouched (never observed from this
+    server's registry).
+    """
+    branches = subschema.get("oneOf") or subschema.get("anyOf")
+    if isinstance(branches, list) and "type" not in subschema:
+        branch_types = sorted(
+            t
+            for t in (
+                branch.get("type")
+                for branch in branches
+                if isinstance(branch, dict)
+            )
+            if isinstance(t, str)
+        )
+        if branch_types and len(branch_types) == len(branches):
+            # Composition-only property whose every branch declares a
+            # plain ``type`` (e.g. ``exec``'s ``command``/``argv``/``args``
+            # ``string | array`` union): Moonshot accepts a bare ``type``
+            # array but never a branch list, so collapse the branches into
+            # one JSON Schema type union and lift the array branch's
+            # ``items`` when exactly one array branch exists.
+            flattened_prop: JsonObject = {
+                key: subschema[key]
+                for key in _ROOT_KEYS_PRESERVED
+                if key in subschema
+            }
+            flattened_prop["type"] = branch_types
+            array_items = [
+                branch.get("items")
+                for branch in branches
+                if isinstance(branch, dict) and branch.get("type") == "array"
+            ]
+            if len(array_items) == 1 and isinstance(array_items[0], dict):
+                flattened_prop["items"] = array_items[0]
+            return flattened_prop
+    if "type" in subschema and any(
+        key in subschema for key in ("oneOf", "anyOf", "allOf", "not")
+    ):
+        return {
+            key: subschema[key] for key in _ROOT_KEYS_PRESERVED if key in subschema
+        }
+    return subschema
+
+
 def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
     """Give untyped ``enum`` properties a ``type`` Moonshot accepts.
 
@@ -105,6 +173,8 @@ def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
             and all(isinstance(member, str) for member in subschema["enum"])
         ):
             repaired[name] = {**subschema, "type": "string"}
+        elif isinstance(subschema, dict):
+            repaired[name] = _flatten_property_subschema(subschema)
         else:
             repaired[name] = subschema
     return repaired
@@ -117,8 +187,11 @@ def flatten_root_schema_for_openai_function(schema: JsonObject) -> JsonObject:
     ``required``, ``additionalProperties``, ``description``, ``title``),
     loses every composition keyword (``oneOf`` / ``anyOf`` / ``allOf`` /
     ``not`` and anything else outside the preserved set), and gains
-    ``"type": "object"`` when no root type was declared. Nested property
-    sub-schemas are returned by reference, untouched.
+    ``"type": "object"`` when no root type was declared. Direct
+    ``properties`` sub-schemas are flattened one deliberate level down
+    via :func:`_flatten_property_subschema` (composition-only string/array
+    unions become a ``type`` array); anything deeper is returned by
+    reference, untouched.
 
     The input is never mutated; a new root dict is always returned.
     """

@@ -26,6 +26,7 @@ import ralph.mcp.transport.claude as _claude_transport
 import ralph.mcp.transport.codex as _codex_transport
 import ralph.mcp.transport.kimi as _kimi_transport
 import ralph.mcp.transport.opencode as _opencode_transport
+from ralph.mcp.server._schema_flavor import flatten_root_schema_for_openai_function
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -41,7 +42,7 @@ from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream._agent_transport_probe_error import AgentTransportProbeError
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.models import UpstreamCallError
+from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
     from datetime import timedelta
@@ -326,7 +327,101 @@ def _probe_kimi(server: UpstreamMcpServer, workspace_path: Path | None) -> Agent
         "Kimi MCP config",
         ralph_url_key="url",
     )
+    # The Kimi Code CLI is a pure relay: it forwards every ``tools/list``
+    # entry it harvests from ITS upstreams verbatim as OpenAI-style
+    # ``tools[].function.parameters`` to Moonshot, and Moonshot rejects
+    # any schema that mixes ``type`` with composition keywords at any
+    # level (the measured 400). Kimi never re-handshakes Ralph's own MCP
+    # server when it proxies that server's tools through the operator's
+    # OWN Kimi config, so Ralph's server-side initialize-time flavor
+    # negotiation never fires for the relayed copy — the ONLY gate that
+    # can reject a relayed composed root before it costs a paid token
+    # call is this preflight probe. Walk every tool the server advertises
+    # and require the flattened form to be composition-free; anything
+    # deeper than the flatten repairs surfaces here, in preflight, with
+    # the tool name and offending path.
+    if server.url is not None:
+        for tool in _list_upstream_tools_for_probe(server):
+            _assert_kimi_relayable_schema(server.name, tool)
     return AgentProbeReport(transport=AgentTransport.KIMI, server_name=server.name, ok=True)
+
+
+def _list_upstream_tools_for_probe(server: UpstreamMcpServer) -> tuple[UpstreamTool, ...]:
+    """Best-effort tools/list against one upstream server for the probe.
+
+    A server that cannot be listed here is already surfaced as a probe
+    failure by the handshake above; this helper only runs when the
+    handshake succeeded, so a listing failure is a genuine relay risk
+    and is raised as a probe error rather than swallowed.
+    """
+    client = make_upstream_client(server)
+    return tuple(client.list_tools())
+
+
+_KIMI_COMPOSITION_KEYWORDS: frozenset[str] = frozenset({"oneOf", "anyOf", "allOf", "not"})
+
+
+def _kimi_schema_violations(schema: object, path: str) -> list[str]:
+    """Faithful model of Moonshot's flavor validator for relayed schemas.
+
+    Mirrors the rejection strings measured on the wire (2026-08-17):
+    ``type`` mixed with a composition keyword at the same level, an
+    ``enum`` without a sibling ``type``, ``required`` without ``type``,
+    and a composition branch list with no sibling ``type``.
+    """
+    if not isinstance(schema, dict):
+        return []
+    violations: list[str] = []
+    has_type = "type" in schema
+    if has_type and any(k in schema for k in _KIMI_COMPOSITION_KEYWORDS):
+        violations.append(f"{path}: 'type' mixed with a composition keyword")
+    if "enum" in schema and not has_type:
+        violations.append(f"{path}: 'enum' without 'type'")
+    if "required" in schema and not has_type:
+        violations.append(f"{path}: 'required' without 'type'")
+    if ("oneOf" in schema or "anyOf" in schema) and not has_type:
+        violations.append(f"{path}: composition branch list without 'type'")
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        for name, sub in properties.items():
+            violations.extend(_kimi_schema_violations(sub, f"{path}.properties.{name}"))
+    for key in _KIMI_COMPOSITION_KEYWORDS:
+        seq = schema.get(key)
+        if isinstance(seq, list):
+            for index, sub in enumerate(seq):
+                violations.extend(_kimi_schema_violations(sub, f"{path}.{key}[{index}]"))
+        elif isinstance(seq, dict):
+            violations.extend(_kimi_schema_violations(seq, f"{path}.{key}"))
+    items = schema.get("items")
+    if isinstance(items, dict):
+        violations.extend(_kimi_schema_violations(items, f"{path}.items"))
+    return violations
+
+
+def _assert_kimi_relayable_schema(server_name: str, tool: UpstreamTool) -> None:
+    """Reject an upstream tool whose schema Moonshot would refuse via Kimi.
+
+    The server-side flavor negotiation repairs only what a flavored
+    ``initialize`` handshake sees; a schema Kimi harvests WITHOUT that
+    handshake (the operator's own config pointing straight at an
+    upstream, or the serialized catalog env relay) must already be
+    relayable. The check applies the same flattening the server would
+    have applied and then runs the faithful Moonshot model: a clean
+    result proves the flattened advertisement passes, anything else
+    fails preflight with the exact offending path.
+    """
+    flattened = flatten_root_schema_for_openai_function(tool.input_schema)
+    violations = _kimi_schema_violations(tool.input_schema, "root")
+    if violations:
+        repair_note = (
+            " (repairable by the server-side flavor flatten)"
+            if not _kimi_schema_violations(flattened, "root")
+            else " (NOT repairable by the server-side flavor flatten)"
+        )
+        raise AgentTransportProbeError(
+            f"Kimi relay would be rejected by Moonshot for server "
+            f"'{server_name}' tool '{tool.name}': " + "; ".join(violations) + repair_note
+        )
 
 
 def _validate_mcp_json_and_handshake(

@@ -132,12 +132,20 @@ def test_flatten_root_schema_drops_composition_and_keeps_plain_vocabulary() -> N
         "description",
     }
     assert flattened["type"] == "object"
-    assert flattened["properties"] == _COMPOSED_ROOT_SCHEMA["properties"]
     assert flattened["required"] == ["path"]
-    # Nested property sub-schemas keep their own vocabulary (property-level
-    # ``oneOf`` passed Moonshot's validator in the live 43-tool run).
+    # Direct property sub-schemas are flattened one deliberate level down:
+    # Moonshot's check is NOT root-only (re-measured 2026-08-17 — the
+    # composition-only ``command``/``argv``/``args`` union on ``exec`` kept
+    # rejecting after root-only flattening shipped), so the string/array
+    # union becomes a JSON Schema ``type`` array.
     command = dict(must_mapping(flattened["properties"]["command"]))
-    assert "oneOf" in command
+    assert "oneOf" not in command
+    assert command["type"] == ["array", "string"]
+    assert command["items"] == {"type": "string"}
+    # Untouched properties keep their identity.
+    assert (
+        flattened["properties"]["path"] is _COMPOSED_ROOT_SCHEMA["properties"]["path"]
+    )
 
 
 def test_flatten_root_schema_defaults_type_and_is_idempotent() -> None:
