@@ -250,6 +250,40 @@ def test_claude_haiku_alias_builds_interactive_argv_end_to_end() -> None:
     assert argv[model_index + 1] == "haiku"
 
 
+@pytest.mark.parametrize("alias", ["opus", "sonnet"])
+def test_claude_opus_or_sonnet_argv_end_to_end(alias: str) -> None:
+    """``claude/opus`` and ``claude/sonnet`` build correct argv end to end.
+
+    Mirrors ``test_claude_haiku_alias_builds_interactive_argv_end_to_end``
+    for the remaining Anthropic short aliases: the dynamic-alias resolver
+    must synthesize ``model_flag == "--model <alias>"`` on the interactive
+    transport with the yolo flag in the built PTY argv, and the headless
+    transport must agree -- ``--model`` followed by the bare alias as two
+    consecutive argv tokens. A regression that flips an alias's transport
+    or strips the yolo flag surfaces here instead of as a silent CLI
+    failure.
+    """
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get(f"claude/{alias}")
+
+    assert agent is not None
+    assert agent.model_flag == f"--model {alias}"
+    assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
+    argv = ClaudeInteractiveCommandBuilder().build(
+        agent, "PROMPT.md", options=BuildCommandOptions()
+    )
+    assert "--dangerously-skip-permissions" in argv
+
+    headless = registry.get(f"claude-headless/{alias}")
+
+    assert headless is not None
+    headless_argv = DefaultCommandBuilder().build(
+        headless, "PROMPT.md", options=BuildCommandOptions()
+    )
+    assert headless_argv[headless_argv.index("--model") + 1] == alias
+
+
 def test_claude_whitespace_model_id_survives_as_single_argv_token() -> None:
     """A model id containing whitespace stays one argv token on both transports.
 
@@ -291,12 +325,30 @@ def test_claude_whitespace_model_id_survives_as_single_argv_token() -> None:
             "claude-haiku-4-5[effort=high]",
             "--model 'claude-haiku-4-5[effort=high]'",
         ),
+        ("claude-opus-4-6", "--model claude-opus-4-6"),
+        ("claude-opus-4-6-20250909", "--model claude-opus-4-6-20250909"),
+        (
+            "claude-opus-4-6[effort=high]",
+            "--model 'claude-opus-4-6[effort=high]'",
+        ),
+        ("claude-sonnet-4-6", "--model claude-sonnet-4-6"),
+        ("claude-sonnet-4-6-20250909", "--model claude-sonnet-4-6-20250909"),
+        (
+            "claude-sonnet-4-6[effort=high]",
+            "--model 'claude-sonnet-4-6[effort=high]'",
+        ),
     ],
 )
 def test_claude_versioned_model_ids_stay_single_argv_tokens(
     model_id: str, expected_model_flag: str
 ) -> None:
     """Anthropic full-id and bracketed-effort forms resolve to one argv token.
+
+    Every documented Anthropic model family (Haiku, Sonnet, Opus) is
+    pinned with three id-form variants: a short version-segment alias
+    (``claude-opus-4-6``), a dating-suffix full id
+    (``claude-sonnet-4-6-20250909``), and a bracketed-effort form
+    (``claude-opus-4-6[effort=high]``).
 
     ``claude/<model>`` and ``claude-headless/<model>`` accept versioned
     full ids (``claude-haiku-4-5-20251001``) and bracketed effort

@@ -1014,6 +1014,15 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.invoke._idle_stream_timeout_error",
             ("_IdleStreamTimeoutError",),
         ),
+        # wt-065: the interactive completion-gate regression derives the
+        # runtime agent name through the same private helper the PTY
+        # runner passes to check_process_result (shlex.split(cmd)[0]),
+        # pinning the claude/<alias>-to-runtime-name seam end to end.
+        (
+            "tests/test_claude_interactive_session_resume.py",
+            "ralph.agents.invoke._process_reader",
+            ("_agent_command_name",),
+        ),
         (
             "tests/test_cli_commands_run_skill_sync.py",
             "ralph.cli.commands._load_result",
