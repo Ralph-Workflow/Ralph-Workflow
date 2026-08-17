@@ -1946,7 +1946,14 @@ def _call_determine_effect_from_policy(
             if pipeline_deps is not None and pipeline_deps.has_uncommitted_changes is not None
             else None
         )
-        agy_probe = pipeline_deps.agy_agents_probe if pipeline_deps is not None else None
+        agy_probe = (
+            cast(
+                "Callable[[], bool] | None",
+                getattr(pipeline_deps, "agy_agents_probe", None),
+            )
+            if pipeline_deps is not None
+            else None
+        )
         if "agy_agents_probe" in params and agy_probe is not None:
             if "has_uncommitted_changes_fn" in params and has_changes is not None:
                 return fn(

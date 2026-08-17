@@ -171,7 +171,7 @@ def _drive_worker(monkeypatch: MonkeyPatch, tmp_path: Path) -> _WorkerCapture:
         lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
-    deps = SimpleNamespace(phase_prompt_materializer=_materialize, agy_agents_probe=None)
+    deps = SimpleNamespace(phase_prompt_materializer=_materialize)
     worker_runtime.run_parallel_worker_from_manifest(
         manifest_path=manifest_path,
         display_context=make_display_context(),

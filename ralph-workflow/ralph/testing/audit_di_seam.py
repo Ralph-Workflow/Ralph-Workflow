@@ -150,6 +150,11 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY in
     # _agy_binary_override_env; justified by di-seam-allowlist comment.
     "pipeline/plumbing/smoke_plumbing.py:516",
+    # pipeline/plumbing/smoke_plumbing.py - MOCK_AGY_BEHAVIOR is the
+    # composition-root mock test infrastructure; no production code path
+    # reads it (guarded by is_mock_agy_override()).
+    "pipeline/plumbing/smoke_plumbing.py:1523",
+    "pipeline/plumbing/smoke_plumbing.py:1742",
 )
 
 # Top-level entry points and the config package — the composition root for

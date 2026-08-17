@@ -33,7 +33,10 @@ from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from loguru import logger
 
@@ -380,7 +383,10 @@ def run_parallel_worker_from_manifest(
         policy_bundle,
         workspace_scope,
         config=config,
-        agy_agents_probe=effective_pipeline_deps.agy_agents_probe,
+        agy_agents_probe=cast(
+            "Callable[[], bool] | None",
+            getattr(effective_pipeline_deps, "agy_agents_probe", None),
+        ),
     )
     if not isinstance(effect, InvokeAgentEffect):
         logger.error(

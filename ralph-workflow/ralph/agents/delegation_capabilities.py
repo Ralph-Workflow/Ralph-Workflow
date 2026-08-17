@@ -149,15 +149,16 @@ def _build_agy() -> DelegationCapability:
     """AGY (Google Antigravity) delegation declaration."""
     return DelegationCapability(
         transport=AgentTransport.AGY,
-        stance=DelegationStance.EXPLICIT_UNSUPPORTED,
+        stance=DelegationStance.SUPPORTED,
         mechanism=(
-            "Interactive /agents panel only; headless invocation requires "
-            "user-configured sub-agents and is unverified on stock installs "
-            "(effect_router gates dispatch on 'agy agents' availability)"
+            "Native stream-json subagent dispatch measured on v1.1.10-v1.1.13: "
+            "define_subagent / invoke_subagent / manage_subagents tool calls "
+            "emit step_update subagent frames carrying role, initial_prompt, "
+            "conversation_id, and log_uri"
         ),
         citation=(
-            "ralph-workflow/ralph/process/monitor/documentation-sources.md:56-63; "
-            "ralph-workflow/ralph/pipeline/effect_router.py:135-143"
+            "ralph-workflow/tests/display/_fixtures/agy_wire_provenance.md:60-73; "
+            "ralph-workflow/tests/display/_fixtures/agy_wire_subagent.jsonl"
         ),
     )
 

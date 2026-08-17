@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.git.operations import has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -65,7 +64,7 @@ def determine_effect_from_policy(
     *,
     config: UnifiedConfig | None = None,
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
-    agy_agents_probe: Callable[[], str] | None = None,
+    agy_agents_probe: Callable[[], bool] | None = None,  # ponytail: retained DI seam, unused
 ) -> Effect:
     """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
@@ -121,7 +120,7 @@ def _parallel_or_agent_effect(
     config: UnifiedConfig | None,
     workspace_scope: WorkspaceScope | None = None,
     *,
-    agy_agents_probe: Callable[[], str] | None = None,
+    agy_agents_probe: Callable[[], bool] | None = None,  # ponytail: retained DI seam, unused
 ) -> Effect:
     work_units = state.work_units
     if not work_units and phase_def.parallelization is not None:
@@ -130,16 +129,6 @@ def _parallel_or_agent_effect(
     if len(work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
         phase_para = phase_def.parallelization
         if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
-            agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
-            if agent_name == "agy" or (agent_name is not None and agent_name.startswith("agy/")):
-                available_agents = _agy_available_agents(agy_agents_probe)
-                if not available_agents:
-                    return ExitFailureEffect(
-                        reason=(
-                            "AGY dispatch unavailable: `agy agents` reported no sub-agents on this "
-                            "install; configure an AGY sub-agent and retry."
-                        )
-                    )
             logger.warning(
                 "Ralph-managed fan-out is dormant in this build; the executing AI agent is "
                 "expected to dispatch its own sub-agents per the plan. The declared "
@@ -162,49 +151,6 @@ def _parallel_or_agent_effect(
         phase=state.phase,
         prompt_file=prompt_file_for_phase(state.phase),
         drain=phase_def.drain,
-    )
-
-
-def _make_default_agy_agents_probe() -> Callable[[], str]:
-    """Build the per-process cached, bounded AGY sub-agent probe."""
-    cached_output: str | None = None
-
-    def probe() -> str:
-        """Read AGY's configured sub-agents, failing closed on process failure."""
-        nonlocal cached_output
-        if cached_output is None:
-            try:
-                result = run_process(
-                    "agy",
-                    ("agents",),
-                    options=ProcessRunOptions(
-                        capture_output=True,
-                        timeout=5.0,
-                        label="pipeline:agy-agents",
-                    ),
-                )
-            except OSError:
-                cached_output = ""
-            else:
-                cached_output = result.stdout if result.returncode == 0 else ""
-        return cached_output
-
-    return probe
-
-
-_default_agy_agents_probe = _make_default_agy_agents_probe()
-
-
-def _agy_available_agents(probe: Callable[[], str] | None) -> tuple[str, ...]:
-    """Return AGY's current configured sub-agent names, failing closed on probe failure."""
-    try:
-        output = (probe or _default_agy_agents_probe)()
-    except (OSError, ProcessExecutionError):
-        return ()
-    return tuple(
-        line.strip().lstrip("- ")
-        for line in output.splitlines()
-        if line.strip() and ":" not in line
     )
 
 

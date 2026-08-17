@@ -64,9 +64,13 @@ incidental helper) has two independent mechanisms:
   (accessed 2026-06-14).
 
 AGY's published documentation describes asynchronous subagents and background
-tasks through an interactive ``/agents`` panel and a ``/tasks`` command. On the
-measured stock v1.1.8 installation, ``agy agents`` reported no available
-sub-agents, so delegation is unverified here. The official documentation does not describe a stable
+tasks through an interactive ``/agents`` panel and a ``/tasks`` command. Headless
+subagent dispatch is measured on the v1.1.10-v1.1.13 stream-json transport:
+the live ``init`` frame advertises ``define_subagent`` / ``invoke_subagent`` /
+``manage_subagents``, and captured wire fixtures show correlated subagent
+ACTIVE/DONE frames (see
+``ralph-workflow/tests/display/_fixtures/agy_wire_provenance.md``). The
+official documentation does not describe a stable
 command-line token, process-name prefix, or environment variable that
 an external observer can use to identify spawned subagent processes on
 the OS process tree. The command-line role classifier therefore

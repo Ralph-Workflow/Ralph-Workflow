@@ -151,6 +151,69 @@ def drive_real_mcp_round_trips() -> tuple[str | None, str | None]:
     return _mcp_result_text(submit_response), _mcp_result_text(complete_response)
 
 
+# ---------------------------------------------------------------------------
+# MOCK_AGY_BEHAVIOR selectors (wt-015-agy-support S-5 negative-contract
+# selectors). Each selector alters ONLY its named contract signal so a
+# superficial green smoke cannot mask a broken one:
+#
+#   ``no_output``          -> empty stdout (parser receives nothing)
+#   ``malformed_stream``   -> plain-text, non-JSON output (no parser events)
+#   ``failed_result``      -> closing ``result`` frame with status FAILED
+#   ``missing_dispatch``   -> no subagent dispatch frame
+#   ``missing_result``     -> subagent ACTIVE frames but no DONE result
+#   ``missing_artifact``   -> no ralph_submit_md_artifact MCP round trip
+#   ``missing_completion`` -> no declare_complete MCP round trip
+# ---------------------------------------------------------------------------
+_MOCK_BEHAVIOR = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")
+
+#: Plain-text bytes for ``malformed_stream``: definitively NOT stream-json.
+_MOCK_MALFORMED_LINES: tuple[str, ...] = (
+    "I will create the todo list implementation.",
+    "Here is some ordinary model prose without any JSON frames.",
+    "The task appears complete.",
+)
+
+
+def _v1_1_13_submit_parameters() -> dict[str, object]:
+    """Measured ``call_mcp_tool`` parameters for ralph_submit_md_artifact."""
+    return {
+        "Arguments": {
+            "artifact_type": "smoke_test_result",
+            "content": _smoke_test_result_markdown(),
+        },
+        "ServerName": "ralph",
+        "ToolName": "ralph_submit_md_artifact",
+    }
+
+
+def _v1_1_13_declare_parameters() -> dict[str, object]:
+    """Measured ``call_mcp_tool`` parameters for declare_complete."""
+    return {
+        "Arguments": {},
+        "ServerName": "ralph",
+        "ToolName": "declare_complete",
+    }
+
+
+def _v1_1_13_subagent_entry() -> dict[str, object]:
+    """Measured subagent entry carrying role/prompt/workspace metadata."""
+    return {
+        "type_name": "research",
+        "role": V1_1_13_SUBAGENT_ROLE,
+        "initial_prompt": (
+            "Inspect the requested todo-list API and return two concise edge "
+            "cases the main agent should account for. Do not modify files."
+        ),
+        "conversation_id": "00000000-0000-0000-0000-0000000000aa",
+        "log_uri": (
+            "file:///mock/antigravity-cli/brain/"
+            "00000000-0000-0000-0000-0000000000aa/"
+            ".system_generated/logs/transcript.jsonl"
+        ),
+        "workspace_uris": ["file:///workspace"],
+    }
+
+
 def _emit_v1_1_13_stdout(
     model: str | None,
     output_format: str,
@@ -170,6 +233,9 @@ def _emit_v1_1_13_stdout(
     correlated result renders through the display's syntax preview). Non
     stream-json formats fall back to the default emitter; the v1.1.13
     vocabulary is stream-json only.
+
+    The ``_MOCK_BEHAVIOR`` negative selectors prune exactly one contract
+    signal each from the event stream below.
     """
     if output_format != "stream-json":
         _emit_normal_stdout(model, output_format)
@@ -177,34 +243,10 @@ def _emit_v1_1_13_stdout(
 
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
-    submit_parameters = {
-        "Arguments": {
-            "artifact_type": "smoke_test_result",
-            "content": _smoke_test_result_markdown(),
-        },
-        "ServerName": "ralph",
-        "ToolName": "ralph_submit_md_artifact",
-    }
-    declare_parameters = {
-        "Arguments": {},
-        "ServerName": "ralph",
-        "ToolName": "declare_complete",
-    }
-    subagent_entry = {
-        "type_name": "research",
-        "role": V1_1_13_SUBAGENT_ROLE,
-        "initial_prompt": (
-            "Inspect the requested todo-list API and return two concise edge "
-            "cases the main agent should account for. Do not modify files."
-        ),
-        "conversation_id": "00000000-0000-0000-0000-0000000000aa",
-        "log_uri": (
-            "file:///mock/antigravity-cli/brain/"
-            "00000000-0000-0000-0000-0000000000aa/"
-            ".system_generated/logs/transcript.jsonl"
-        ),
-        "workspace_uris": ["file:///workspace"],
-    }
+    submit_parameters = _v1_1_13_submit_parameters()
+    declare_parameters = _v1_1_13_declare_parameters()
+    subagent_entry = _v1_1_13_subagent_entry()
+
     events: list[dict[str, object]] = [
         {
             "event": "init",
@@ -225,29 +267,39 @@ def _emit_v1_1_13_stdout(
                 "step_type": "user_input",
             },
         },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 1,
-                "state": "ACTIVE",
-                "step_type": "subagent",
-                "tool_name": "invoke_subagent",
-                "subagent_info": {"subagents": [dict(subagent_entry)]},
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 1,
-                "state": "DONE",
-                "step_type": "subagent",
-                "tool_name": "invoke_subagent",
-                "duration_seconds": 0.4,
-                "subagent_info": {"subagents": [dict(subagent_entry)]},
-            },
-        },
+    ]
+
+    if _MOCK_BEHAVIOR != "missing_dispatch":
+        events.append(
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 1,
+                    "state": "ACTIVE",
+                    "step_type": "subagent",
+                    "tool_name": "invoke_subagent",
+                    "subagent_info": {"subagents": [dict(subagent_entry)]},
+                },
+            }
+        )
+    if _MOCK_BEHAVIOR not in {"missing_dispatch", "missing_result"}:
+        events.append(
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 1,
+                    "state": "DONE",
+                    "step_type": "subagent",
+                    "tool_name": "invoke_subagent",
+                    "duration_seconds": 0.4,
+                    "subagent_info": {"subagents": [dict(subagent_entry)]},
+                },
+            }
+        )
+
+    events.append(
         {
             "event": "step_update",
             "step_update": {
@@ -256,190 +308,213 @@ def _emit_v1_1_13_stdout(
                 "state": "DONE",
                 "step_type": "system_message",
             },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 3,
-                "state": "ACTIVE",
-                "step_type": "tool",
-                "tool_name": "call_mcp_tool",
-                "tool_info": {"name": "call_mcp_tool", "parameters": dict(submit_parameters)},
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 3,
-                "state": "DONE",
-                "step_type": "tool",
-                "tool_name": "call_mcp_tool",
-                "duration_seconds": 0.3,
-                "tool_info": {
-                    "name": "call_mcp_tool",
-                    "parameters": dict(submit_parameters),
-                    "output": submit_output or _V1_1_13_FALLBACK_SUBMIT_OUTPUT,
+        }
+    )
+
+    if _MOCK_BEHAVIOR != "missing_artifact":
+        events.extend(
+            [
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "conversation_id": session_id,
+                        "step_index": 3,
+                        "state": "ACTIVE",
+                        "step_type": "tool",
+                        "tool_name": "call_mcp_tool",
+                        "tool_info": {
+                            "name": "call_mcp_tool",
+                            "parameters": dict(submit_parameters),
+                        },
+                    },
+                },
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "conversation_id": session_id,
+                        "step_index": 3,
+                        "state": "DONE",
+                        "step_type": "tool",
+                        "tool_name": "call_mcp_tool",
+                        "duration_seconds": 0.3,
+                        "tool_info": {
+                            "name": "call_mcp_tool",
+                            "parameters": dict(submit_parameters),
+                            "output": submit_output or _V1_1_13_FALLBACK_SUBMIT_OUTPUT,
+                        },
+                    },
+                },
+            ]
+        )
+
+    if _MOCK_BEHAVIOR != "missing_completion":
+        events.extend(
+            [
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "conversation_id": session_id,
+                        "step_index": 4,
+                        "state": "ACTIVE",
+                        "step_type": "tool",
+                        "tool_name": "call_mcp_tool",
+                        "tool_info": {
+                            "name": "call_mcp_tool",
+                            "parameters": dict(declare_parameters),
+                        },
+                    },
+                },
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "conversation_id": session_id,
+                        "step_index": 4,
+                        "state": "DONE",
+                        "step_type": "tool",
+                        "tool_name": "call_mcp_tool",
+                        "duration_seconds": 0.1,
+                        "tool_info": {
+                            "name": "call_mcp_tool",
+                            "parameters": dict(declare_parameters),
+                            "output": complete_output
+                            or (
+                                "Task declared complete: session_id=smoke-mock, "
+                                "summary='No summary provided', timestamp=0"
+                            ),
+                        },
+                    },
+                },
+            ]
+        )
+
+    events.extend(
+        [
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 5,
+                    "state": "ACTIVE",
+                    "step_type": "tool",
+                    "tool_name": "read_file",
+                    "tool_info": {
+                        "name": "read_file",
+                        "parameters": {"path": OUTPUT_FILE_RELPATH},
+                    },
                 },
             },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 4,
-                "state": "ACTIVE",
-                "step_type": "tool",
-                "tool_name": "call_mcp_tool",
-                "tool_info": {"name": "call_mcp_tool", "parameters": dict(declare_parameters)},
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 5,
+                    "state": "DONE",
+                    "step_type": "tool",
+                    "tool_name": "read_file",
+                    "duration_seconds": 0.02,
+                    "tool_info": {
+                        "name": "read_file",
+                        "parameters": {"path": OUTPUT_FILE_RELPATH},
+                        "output": "13 lines, 438 bytes",
+                    },
+                },
             },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 4,
-                "state": "DONE",
-                "step_type": "tool",
-                "tool_name": "call_mcp_tool",
-                "duration_seconds": 0.1,
-                "tool_info": {
-                    "name": "call_mcp_tool",
-                    "parameters": dict(declare_parameters),
-                    "output": complete_output
-                    or (
-                        "Task declared complete: session_id=smoke-mock, "
-                        "summary='No summary provided', timestamp=0"
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 6,
+                    "state": "ACTIVE",
+                    "step_type": "tool",
+                    "tool_name": "view_file",
+                    "tool_info": {
+                        "name": "view_file",
+                        "parameters": {"AbsolutePath": str(artifact_dir / OUTPUT_FILE_RELPATH)},
+                    },
+                },
+            },
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 6,
+                    "state": "DONE",
+                    "step_type": "tool",
+                    "tool_name": "view_file",
+                    "duration_seconds": 0.02,
+                    "tool_info": {
+                        "name": "view_file",
+                        "parameters": {"AbsolutePath": str(artifact_dir / OUTPUT_FILE_RELPATH)},
+                        "output": "13 lines, 438 bytes",
+                    },
+                },
+            },
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 7,
+                    "state": "ACTIVE",
+                    "step_type": "tool",
+                    "tool_name": "write_to_file",
+                    "tool_info": {
+                        "name": "write_to_file",
+                        "parameters": {"TargetFile": OUTPUT_FILE_RELPATH},
+                    },
+                },
+            },
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 7,
+                    "state": "DONE",
+                    "step_type": "tool",
+                    "tool_name": "write_to_file",
+                    "duration_seconds": 0.08,
+                    # No ``output`` key: the measured capture shows write_to_file
+                    # produces no output on DONE.
+                    "tool_info": {
+                        "name": "write_to_file",
+                        "parameters": {"TargetFile": OUTPUT_FILE_RELPATH},
+                    },
+                },
+            },
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 8,
+                    "state": "ACTIVE",
+                    "step_type": "agent_response",
+                    "text_delta": "Submitted smoke_test_result and declared ",
+                },
+            },
+            {
+                "event": "step_update",
+                "step_update": {
+                    "conversation_id": session_id,
+                    "step_index": 8,
+                    "state": "DONE",
+                    "step_type": "agent_response",
+                    "text_delta": "completion via ralph MCP.\n",
+                    "usage": {"input_tokens": 4096, "output_tokens": 64, "total_tokens": 4160},
+                },
+            },
+            {
+                "event": "result",
+                "result": {
+                    "conversation_id": session_id,
+                    "status": "FAILED" if _MOCK_BEHAVIOR == "failed_result" else "SUCCESS",
+                    "response": (
+                        "Submitted smoke_test_result and declared completion via ralph MCP.\n"
                     ),
+                    "duration_seconds": 0.9,
+                    "num_turns": 1,
+                    "usage": {"input_tokens": 4096, "output_tokens": 64, "total_tokens": 4160},
                 },
             },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 5,
-                "state": "ACTIVE",
-                "step_type": "tool",
-                "tool_name": "read_file",
-                "tool_info": {
-                    "name": "read_file",
-                    "parameters": {"path": OUTPUT_FILE_RELPATH},
-                },
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 5,
-                "state": "DONE",
-                "step_type": "tool",
-                "tool_name": "read_file",
-                "duration_seconds": 0.02,
-                "tool_info": {
-                    "name": "read_file",
-                    "parameters": {"path": OUTPUT_FILE_RELPATH},
-                    "output": "13 lines, 438 bytes",
-                },
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 6,
-                "state": "ACTIVE",
-                "step_type": "tool",
-                "tool_name": "view_file",
-                "tool_info": {
-                    "name": "view_file",
-                    "parameters": {"AbsolutePath": str(artifact_dir / OUTPUT_FILE_RELPATH)},
-                },
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 6,
-                "state": "DONE",
-                "step_type": "tool",
-                "tool_name": "view_file",
-                "duration_seconds": 0.02,
-                "tool_info": {
-                    "name": "view_file",
-                    "parameters": {"AbsolutePath": str(artifact_dir / OUTPUT_FILE_RELPATH)},
-                    "output": "13 lines, 438 bytes",
-                },
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 7,
-                "state": "ACTIVE",
-                "step_type": "tool",
-                "tool_name": "write_to_file",
-                "tool_info": {
-                    "name": "write_to_file",
-                    "parameters": {"TargetFile": OUTPUT_FILE_RELPATH},
-                },
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 7,
-                "state": "DONE",
-                "step_type": "tool",
-                "tool_name": "write_to_file",
-                "duration_seconds": 0.08,
-                # No ``output`` key: the measured capture shows write_to_file
-                # produces no output on DONE.
-                "tool_info": {
-                    "name": "write_to_file",
-                    "parameters": {"TargetFile": OUTPUT_FILE_RELPATH},
-                },
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 8,
-                "state": "ACTIVE",
-                "step_type": "agent_response",
-                "text_delta": "Submitted smoke_test_result and declared ",
-            },
-        },
-        {
-            "event": "step_update",
-            "step_update": {
-                "conversation_id": session_id,
-                "step_index": 8,
-                "state": "DONE",
-                "step_type": "agent_response",
-                "text_delta": "completion via ralph MCP.\n",
-                "usage": {"input_tokens": 4096, "output_tokens": 64, "total_tokens": 4160},
-            },
-        },
-        {
-            "event": "result",
-            "result": {
-                "conversation_id": session_id,
-                "status": "SUCCESS",
-                "response": (
-                    "Submitted smoke_test_result and declared completion via ralph MCP.\n"
-                ),
-                "duration_seconds": 0.9,
-                "num_turns": 1,
-                "usage": {"input_tokens": 4096, "output_tokens": 64, "total_tokens": 4160},
-            },
-        },
-    ]
+        ]
+    )
     for event in events:
         print(json.dumps(event, separators=(",", ":")))

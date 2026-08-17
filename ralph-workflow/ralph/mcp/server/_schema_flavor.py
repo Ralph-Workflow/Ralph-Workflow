@@ -38,7 +38,10 @@ non-flavored client keep the full JSON Schema contract.
 
 from __future__ import annotations
 
-from ralph.mcp.tools.bridge._types import JsonObject
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph.mcp.tools.bridge._types import JsonObject
 
 #: Client ``clientInfo.name`` values (from the MCP ``initialize`` request)
 #: whose backing API accepts only the OpenAI function-calling schema
