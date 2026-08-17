@@ -158,6 +158,33 @@ def test_flatten_root_schema_does_not_mutate_input() -> None:
     assert original == _COMPOSED_ROOT_SCHEMA
 
 
+def test_flatten_root_schema_repairs_untyped_string_enum_property() -> None:
+    """Moonshot rejects ``{"enum": [...]}`` without a sibling ``type``
+    (measured live 2026-08-17: ``At path 'properties.mode': type is not
+    defined`` for ``ralph_stage_md_artifact``). The flattening repairs an
+    all-string enum by adding ``"type": "string"`` and leaves every other
+    property shape untouched."""
+    schema: dict[str, object] = {
+        "type": "object",
+        "properties": {
+            "mode": {"enum": ["append", "replace_all"]},
+            "typed": {"type": "integer", "enum": [1, 2]},
+            "mixed": {"enum": ["a", 1]},
+            "plain": {"type": "string"},
+        },
+        "required": ["mode"],
+    }
+    flattened = flatten_root_schema_for_openai_function(schema)
+    properties = dict(must_mapping(flattened["properties"]))
+    assert properties["mode"] == {"enum": ["append", "replace_all"], "type": "string"}
+    # Already-typed or non-string enums are not rewritten.
+    assert properties["typed"] == {"type": "integer", "enum": [1, 2]}
+    assert properties["mixed"] == {"enum": ["a", 1]}
+    assert properties["plain"] == {"type": "string"}
+    # The input is never mutated.
+    assert schema["properties"]["mode"] == {"enum": ["append", "replace_all"]}
+
+
 def test_kimi_code_handshake_flattens_raw_and_alias_advertisement() -> None:
     server = _build_server_with_composed_tool()
     _initialize(server, "kimi-code")
@@ -185,13 +212,27 @@ def test_unknown_client_handshake_keeps_full_json_schema() -> None:
     assert _schema_of(raw) == _COMPOSED_ROOT_SCHEMA
 
 
-def test_re_handshake_without_client_info_resets_flavor() -> None:
-    """A later handshake from a client that does not identify itself (e.g.
-    Ralph's own preflight probe against a restarted server) must restore the
-    default full-schema advertisement rather than sticking on the earlier
-    client's flavor."""
+def test_re_handshake_without_client_info_keeps_sticky_flavor() -> None:
+    """The flavor is sticky once negotiated: a later handshake that does
+    not identify a flavor (Ralph's own preflight probe, or a kimi-code
+    reconnect that arrives between turns) must NOT reset the flattened
+    advertisement — measured on the wire (kimi-code 0.36.1, 2026-08-17),
+    a nameless re-handshake between initialize and tools/list made the
+    server re-advertise the composed roots and Moonshot rejected them
+    with the exact 400 the flavor exists to prevent."""
     server = _build_server_with_composed_tool()
     _initialize(server, "kimi-code")
+    _initialize(server, None)
+    tools = _tools_list(server)
+    raw = next(tool for tool in tools if tool["name"] == "read_file")
+    assert "oneOf" not in _schema_of(raw)
+    assert _schema_of(raw)["type"] == "object"
+
+
+def test_nameless_handshake_before_any_flavor_keeps_full_schema() -> None:
+    """A server that has only ever seen nameless handshakes still
+    advertises the full JSON Schema contract."""
+    server = _build_server_with_composed_tool()
     _initialize(server, None)
     tools = _tools_list(server)
     raw = next(tool for tool in tools if tool["name"] == "read_file")

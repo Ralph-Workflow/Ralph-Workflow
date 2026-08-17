@@ -342,12 +342,25 @@ class McpServer:
         # self-reported ``clientInfo.name``. This is the protocol's own
         # capability-negotiation point: only clients that identify here
         # as needing the OpenAI function flavor (``kimi-code``) get the
-        # flattened root schema in ``tools/list``. A missing or unknown
-        # name (including Ralph's own preflight handshake) resets the
-        # flavor to the default full-JSON-Schema advertisement.
-        self._schema_flavor = schema_flavor_for_client_name(
+        # flattened root schema in ``tools/list``.
+        #
+        # The flavor is STICKY: once a flavored client has negotiated, a
+        # later nameless handshake does NOT reset it. Measured on the
+        # wire (kimi-code 0.36.1, 2026-08-17): the CLI reconnects to the
+        # long-lived standalone MCP subprocess between turns and Ralph's
+        # own preflight/probe handshakes also arrive without a flavor
+        # name; a nameless re-handshake that reset the flavor would make
+        # the NEXT ``tools/list`` re-advertise the composed roots
+        # (``read_file`` et al.) and Moonshot rejects those with the
+        # exact 400 this flavor exists to prevent. Sticky-but-never-set
+        # stays safe because an unnamed client's tools/list still gets
+        # the full JSON Schema advertisement until a flavored handshake
+        # arrives.
+        negotiated = schema_flavor_for_client_name(
             _client_name_from_initialize_params(request.params)
         )
+        if negotiated is not None:
+            self._schema_flavor = negotiated
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": {

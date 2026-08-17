@@ -25,11 +25,16 @@ needing the OpenAI function flavor.
 Flattening keeps the plain-object root vocabulary (``type``,
 ``properties``, ``required``, ``additionalProperties``, ``description``,
 ``title``), drops the composition keywords, and defaults ``type`` to
-``"object"``. Nested property sub-schemas are left untouched: the live
-43-tool advertisement (which contains property-level ``oneOf``,
-``format``, and ``pattern`` keywords) passes Moonshot's validator once
-only the three composed roots are flattened (verified against the live
-``kimi-code`` 0.36.1 binary and Moonshot API on 2026-08-16).
+``"object"``. Direct ``properties`` sub-schemas are additionally
+repaired in one narrow way: Moonshot rejects an enum whose parent has
+no ``type`` (``At path 'properties.mode': type is not defined``), so a
+direct property declaring ``enum`` without ``type`` gains
+``"type": "string"`` when every enum member is a string (the observed
+``ralph_stage_md_artifact.mode`` case, re-measured against the live
+Moonshot API on 2026-08-17). Deeper nesting (property-level ``oneOf``
+etc.) is left untouched: the live 42-tool advertisement passes
+Moonshot's validator once the composed roots are flattened and the
+untyped-enum repair is applied.
 
 The registered :class:`~ralph.mcp.tools.bridge._tool_definition.ToolDefinition`
 ``input_schema`` is never mutated: dispatch-time validation and every
@@ -80,6 +85,31 @@ def schema_flavor_for_client_name(client_name: str | None) -> str | None:
     return None
 
 
+def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
+    """Give untyped ``enum`` properties a ``type`` Moonshot accepts.
+
+    Moonshot's validator rejects ``{"enum": [...]}`` with no sibling
+    ``type`` (``At path 'properties.mode': type is not defined``). The
+    repair adds ``"type": "string"`` when every enum member is a string;
+    anything else is returned untouched (never observed from this
+    server's registry). Property sub-schemas are copied only when
+    repaired; untouched entries keep their identity.
+    """
+    repaired: JsonObject = {}
+    for name, subschema in properties.items():
+        if (
+            isinstance(subschema, dict)
+            and "enum" in subschema
+            and "type" not in subschema
+            and isinstance(subschema["enum"], list)
+            and all(isinstance(member, str) for member in subschema["enum"])
+        ):
+            repaired[name] = {**subschema, "type": "string"}
+        else:
+            repaired[name] = subschema
+    return repaired
+
+
 def flatten_root_schema_for_openai_function(schema: JsonObject) -> JsonObject:
     """Return ``schema`` with an OpenAI-function-flavored root.
 
@@ -96,6 +126,9 @@ def flatten_root_schema_for_openai_function(schema: JsonObject) -> JsonObject:
         key: schema[key] for key in _ROOT_KEYS_PRESERVED if key in schema
     }
     flattened.setdefault("type", "object")
+    properties = flattened.get("properties")
+    if isinstance(properties, dict):
+        flattened["properties"] = _repair_property_enum_without_type(properties)
     return flattened
 
 
