@@ -1775,3 +1775,36 @@ def test_detect_smoke_errors_agy_no_diagnostic_when_artifact_present(
     )
 
     assert not any("AGY --print returned empty stdout" in err for err in errors)
+
+
+def test_clear_smoke_artifact_also_clears_stale_wire_ledger(tmp_path: Path) -> None:
+    """The smoke harness MUST NOT inherit a wire ledger from a prior run.
+
+    ``mcp-wire-ledger.jsonl`` is an append-only HMAC chain keyed by the
+    run-scoped broker secret. A ledger written under a previous run's
+    secret (or with no secret at all) cannot verify under the current
+    run's secret, so ``verify_chain`` fails closed and every fact grades
+    below WIRE forever (measured 2026-08-17 live AGY smoke: all facts
+    demoted to TRANSCRIPT/WORKSPACE_EFFECT with ``DEGRADED`` verdict and
+    EXIT_CODE=1 even with ``RALPH_BROKER_SECRET`` set). The artifact
+    clear at smoke setup MUST drop the stale ledger alongside the
+    stale artifact so each run's chain starts at genesis.
+    """
+    from ralph.mcp.server._wire_ledger import WIRE_LEDGER_RELPATH
+
+    artifact = (
+        tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
+    )
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("stale artifact", encoding="utf-8")
+    ledger = tmp_path / WIRE_LEDGER_RELPATH
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text('{"hmac": "stale"}\n', encoding="utf-8")
+
+    smoke_plumbing_module._clear_smoke_artifact(tmp_path)
+
+    assert not artifact.exists()
+    assert not ledger.exists(), (
+        "stale wire ledger MUST be cleared with the smoke artifact; a "
+        "ledger from a prior secret poisons every future WIRE grade"
+    )

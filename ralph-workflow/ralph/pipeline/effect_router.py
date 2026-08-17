@@ -64,7 +64,6 @@ def determine_effect_from_policy(
     *,
     config: UnifiedConfig | None = None,
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
-    agy_agents_probe: Callable[[], bool] | None = None,  # ponytail: retained DI seam, unused
 ) -> Effect:
     """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
@@ -94,7 +93,7 @@ def determine_effect_from_policy(
         )
 
     return _parallel_or_agent_effect(
-        state, phase_def, policy_bundle, config, workspace_scope, agy_agents_probe=agy_agents_probe
+        state, phase_def, policy_bundle, config, workspace_scope
     )
 
 
@@ -119,8 +118,6 @@ def _parallel_or_agent_effect(
     policy_bundle: PolicyBundle,
     config: UnifiedConfig | None,
     workspace_scope: WorkspaceScope | None = None,
-    *,
-    agy_agents_probe: Callable[[], bool] | None = None,  # ponytail: retained DI seam, unused
 ) -> Effect:
     work_units = state.work_units
     if not work_units and phase_def.parallelization is not None:

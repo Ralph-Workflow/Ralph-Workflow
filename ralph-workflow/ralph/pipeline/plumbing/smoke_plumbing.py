@@ -1509,6 +1509,18 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
         workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     )
     artifact_path.unlink(missing_ok=True)
+    # The wire ledger is an append-only HMAC chain keyed by the run-scoped
+    # broker secret. A ledger left over from a previous run (signed with a
+    # different secret, or unsigned) makes ``verify_chain`` fail closed, so
+    # every fact in THIS run grades below WIRE forever (measured 2026-08-17
+    # live AGY smoke: all facts demoted to TRANSCRIPT/WORKSPACE_EFFECT with
+    # a DEGRADED verdict and EXIT_CODE=1 even with RALPH_BROKER_SECRET set).
+    # The harness runs the same public smoke run_id repeatedly in one
+    # workspace, so the ledger must restart at genesis with the artifact.
+    from ralph.mcp.server._wire_ledger import WIRE_LEDGER_RELPATH
+
+    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path.unlink(missing_ok=True)
 
 
 def _mock_negative_selector() -> str | None:

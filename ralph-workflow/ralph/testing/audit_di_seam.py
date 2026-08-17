@@ -153,8 +153,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # pipeline/plumbing/smoke_plumbing.py - MOCK_AGY_BEHAVIOR is the
     # composition-root mock test infrastructure; no production code path
     # reads it (guarded by is_mock_agy_override()).
-    "pipeline/plumbing/smoke_plumbing.py:1523",
-    "pipeline/plumbing/smoke_plumbing.py:1742",
+    "pipeline/plumbing/smoke_plumbing.py:1535",
+    "pipeline/plumbing/smoke_plumbing.py:1754",
 )
 
 # Top-level entry points and the config package — the composition root for
