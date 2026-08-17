@@ -768,11 +768,39 @@ def _reserve_port() -> int:
 def _subprocess_env(session_file: Path) -> dict[str, str]:
     env = dict(os.environ)
     env[SESSION_FILE_ENV] = str(session_file)
-    pythonpath = env.get("PYTHONPATH")
     package_root = str(_PACKAGE_ROOT)
-    env["PYTHONPATH"] = (
-        package_root if not pythonpath else os.pathsep.join([package_root, pythonpath])
-    )
+    # The MCP server subprocess runs ``sys.executable -m ralph.mcp.server``
+    # and MUST resolve the SAME package tree the parent imported
+    # (``_PACKAGE_ROOT``). An ambient PYTHONPATH exported by an outer
+    # launcher (e.g. a pipx-installed copy of this same package's
+    # site-packages, observed live when an outer Ralph orchestrates a
+    # development cycle inside a worktree) sorts AHEAD of the cwd on a
+    # plain ``python -m`` invocation, so merely prepending the package
+    # root is not sufficient for every entry: the outer launcher can
+    # inject the same path first. Replace every inherited entry that
+    # already provides the ``ralph`` package with the package root, and
+    # drop duplicates, so the spawned server deterministically imports
+    # the worktree's code (measured regression: the spawned server served
+    # the stale pipx tree, which predates the Kimi schema-flavor
+    # negotiation, and Moonshot rejected the composed root schemas with
+    # HTTP 400 on every live smoke).
+    seen: set[str] = set()
+    entries: list[str] = []
+    for raw in env.get("PYTHONPATH", "").split(os.pathsep):
+        entry = raw.strip()
+        if not entry:
+            continue
+        candidate = (
+            package_root
+            if (Path(entry) / "ralph" / "__init__.py").is_file()
+            else entry
+        )
+        if candidate not in seen:
+            seen.add(candidate)
+            entries.append(candidate)
+    if package_root not in seen:
+        entries.insert(0, package_root)
+    env["PYTHONPATH"] = os.pathsep.join(entries)
     return env
 
 

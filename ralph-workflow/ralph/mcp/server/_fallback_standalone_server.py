@@ -46,6 +46,13 @@ class _FallbackStandaloneServer:
         httpd.mcp_server = self._mcp_server
         httpd.state = ServerState.UNINITIALIZED
         httpd.shutdown_event = Event()
+        # Class-annotated optional attributes (``_fallback_http_server.py``)
+        # that the handler reads on the /health path. Annotations alone do
+        # not create instance attributes, so without these assignments a
+        # bare GET /health raised AttributeError and the liveness route
+        # served by the production standalone runtime was unreachable.
+        httpd.health_probe_fn = None
+        httpd.metrics = None
         self._httpd = httpd
         if ready_event is not None:
             ready_event.set()

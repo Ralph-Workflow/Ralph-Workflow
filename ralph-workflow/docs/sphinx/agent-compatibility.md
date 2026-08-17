@@ -143,6 +143,17 @@ json_parser = "generic"
 - **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; default `kimi-code/k3-256k`). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
 - **Multimodal**: image input is covered by the measured `image_in` capability on the authenticated models.
 - **Sub-agents**: no sub-agent dispatch surface; delegation is declared `EXPLICIT_UNSUPPORTED`.
+- **Smoke**: `ralph smoke-interactive-kimi --agent kimi/kimi-code/kimi-for-coding` (the default alias).
+- **Model cost comparison** (re-measured 2026-08-17 against the official model table at <https://www.kimi.com/code/docs/en/kimi-code/models>; availability and quota notes as stated there):
+
+  | Model ID | Availability | Context | Stated quota note |
+  | --- | --- | --- | --- |
+  | `kimi-code/kimi-for-coding` | All members | 256k | none (baseline) |
+  | `kimi-code/kimi-for-coding-highspeed` | Allegretto and above | 256k | 3x quota usage |
+  | `kimi-code/k3` | Moderato and above (1M context needs Allegretto) | up to 1M | about 2x `k3-256k` consumption |
+  | `kimi-code/k3-256k` | Moderato and above | 256k | none stated |
+
+  The table does not publish a direct `kimi-for-coding` vs `k3-256k` price, so the smoke default stays on the configured standard model `kimi-code/kimi-for-coding`: it is available to every member tier and carries no documented quota multiplier, which makes it the auditable least-cost choice. Selection rule if the table or configured aliases change: pick the accessible model with the lowest explicitly documented multiplier and break missing-price ties in favor of the configured default, never a guess from the name.
 
 <a id="ccs_aliases"></a>
 
