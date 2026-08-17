@@ -162,7 +162,7 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
         ("Terminal", str(ctx.console.is_terminal), "", "", ""),
         ("Background is light", str(ctx.terminal_background_is_light), "", "", ""),
         ("Build flavor", _build_meta.BUILD_FLAVOR or "(none)", "", "", ""),
-        ("Built from commit", _build_meta.BUILD_SOURCE_COMMIT or "(unknown)", "", "", ""),
+        ("Built from", _build_meta.build_provenance_line() or "(unknown)", "", "", ""),
         ("Installed at", _build_meta.BUILD_INSTALLED_AT or "(unknown)", "", "", ""),
     ]
     rows.extend(

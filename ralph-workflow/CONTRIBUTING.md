@@ -89,14 +89,34 @@ side. They never collide because the dev build registers no global `ralph` comma
   `~/.local/share/ralph-workflow-dev/current`, syncs that copy, and writes an
   `rdev` launcher to `~/.local/bin/rdev`. Its `--version` ends in `-build`.
   If all output is uncoloured (often white on black), run `rdev diagnose`:
-  compare `Loaded package` and `Built from commit`, then rerun `make install`
-  when the snapshot predates the checkout. A `PYTHONPATH` or `VIRTUAL_ENV`
-  pointing at that snapshot makes it win over the editable install, even from
-  inside the repository.
-- **Dev build** — `make dev` refreshes the same self-contained snapshot and
-  `rdev` launcher, but its `--version` ends in `-dev`. From inside the repo you
-  can still use `uv run ralph`. Neither source-checkout build writes a global
-  `ralph`; the distinct `rdev` name keeps it from shadowing the stable one.
+  compare `Loaded package` and `Built from`, then rerun `make install` when the
+  snapshot predates the checkout. A `PYTHONPATH` or `VIRTUAL_ENV` pointing at
+  that snapshot makes it win over the editable install, even from inside the
+  repository.
+- **Dev build** — `make dev` (also spelled `make install-dev` or `make rdev`)
+  refreshes the same self-contained snapshot and `rdev` launcher, but its
+  `--version` ends in `-dev`. From inside the repo you can still use
+  `uv run ralph`. Neither source-checkout build writes a global `ralph`; the
+  distinct `rdev` name keeps it from shadowing the stable one.
+- **One `rdev` per machine** — the snapshot directory and the `rdev` launcher
+  are machine-wide, so every checkout and every worktree installs over the
+  same pair. Installing from a worktree takes `rdev` over from whatever
+  installed before it, and the launcher script is byte-identical each time, so
+  its timestamp never moves and the filesystem shows no sign of the handover.
+  Each install therefore prints what it did and what it replaced:
+
+  ```text
+  Ralph Workflow dev build installed as 'rdev'.
+    source:   /checkouts/main/ralph-workflow
+    commit:   483cd5cc
+    version:  0.9.20-dev
+    snapshot: ~/.local/share/ralph-workflow-dev/current
+    launcher: ~/.local/bin/rdev
+    replaced: 0.9.19 from /checkouts/wt-063/ralph-workflow @ 205114bf  <- taken over from a different checkout
+  ```
+
+  `rdev --version` prints the same source checkout under the banner, so you can
+  always tell which sources the command in front of you is running.
 - **Stable build** — `make stable` runs `uv tool install --force --upgrade
   ralph-workflow`, putting an isolated `ralph` on your `PATH`
   (`~/.local/bin/ralph`), independent of the working tree. Re-running `make
@@ -109,7 +129,7 @@ side. They never collide because the dev build registers no global `ralph` comma
   python -m ralph.install --version 0.8.18   # or: uv tool install ralph-workflow==0.8.18
   ```
 
-- **Existing global installs** — Ralph Workflow resolves any global `ralph` executable to its owning package before installing. `make install` and `make dev` install `rdev`, never `ralph`, so a detected `ralph` is only reported: it stays exactly as it is and `rdev` is used instead. The `rdev` launcher belongs to the dev build and is overwritten on every refresh. `make stable` does own the global `ralph`, so it still prompts — continue, remove a pipx/uv-tool install with its package-manager uninstall command, or abort; non-interactive and source-owned conflicts abort without changing the install.
+- **Existing global installs** — Ralph Workflow resolves any global `ralph` executable to its owning package before installing. `make install` and `make dev` install `rdev`, never `ralph`, so a detected `ralph` is only reported: it stays exactly as it is and `rdev` is used instead. The `rdev` launcher belongs to the dev build, and every refresh repoints it at the snapshot it just wrote. `make stable` does own the global `ralph`, so it still prompts — continue, remove a pipx/uv-tool install with its package-manager uninstall command, or abort; non-interactive and source-owned conflicts abort without changing the install.
 
 - **Switching** — type `rdev` for the dev build and `ralph` for the stable
   build; nothing to toggle. Verify which is which with:

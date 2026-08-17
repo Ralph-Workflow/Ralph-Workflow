@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from ralph import _BASE_VERSION
 from ralph._install_conflicts import (
     ConflictResolution,
     detect_existing_ralph,
@@ -27,7 +28,11 @@ from ralph._install_conflicts import (
     real_environment,
     resolve_package_file,
 )
-from ralph._install_copy_tree import copy_install_tree
+from ralph._install_copy_tree import (
+    SnapshotIdentity,
+    copy_install_tree,
+    read_snapshot_identity,
+)
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -40,6 +45,7 @@ if TYPE_CHECKING:
 
 STABLE_PACKAGE_NAME = "ralph-workflow"
 DEV_LAUNCHER_NAME = "rdev"
+_SHORT_COMMIT_LENGTH = 8
 
 
 class RunCommand(Protocol):
@@ -63,6 +69,7 @@ class BuildMetaWriter(Protocol):
         flavor: str,
         *,
         source_commit: str = "",
+        source_path: str = "",
         installed_at: str = "",
     ) -> None: ...
 
@@ -141,6 +148,7 @@ def _write_build_flavor(
     flavor: str,
     *,
     source_commit: str = "",
+    source_path: str = "",
     installed_at: str = "",
 ) -> None:
     build_meta = package_dir / "ralph" / "_build_meta.py"
@@ -150,9 +158,55 @@ def _write_build_flavor(
         'BUILD_SOURCE_COMMIT: str = ""', f'BUILD_SOURCE_COMMIT: str = "{source_commit}"'
     )
     updated_content = updated_content.replace(
+        'BUILD_SOURCE_PATH: str = ""', f'BUILD_SOURCE_PATH: str = "{source_path}"'
+    )
+    updated_content = updated_content.replace(
         'BUILD_INSTALLED_AT: str = ""', f'BUILD_INSTALLED_AT: str = "{installed_at}"'
     )
     write_text_if_changed(DEFAULT_FILE_BACKEND, build_meta, updated_content, encoding="utf-8")
+
+
+def _short_commit(commit: str) -> str:
+    """Return an abbreviated commit for display, or a placeholder when unknown."""
+    return commit[:_SHORT_COMMIT_LENGTH] or "(unknown)"
+
+
+def render_install_summary(
+    *,
+    source: Path,
+    commit: str,
+    version: str,
+    snapshot: Path,
+    launcher: Path,
+    replaced: SnapshotIdentity | None,
+) -> str:
+    """Return the report printed after a dev install.
+
+    ``rdev`` is a single machine-wide launcher pointed at a single snapshot
+    directory, so an install from any checkout or worktree takes it over from
+    the previous one.  The launcher script itself is byte-identical every time
+    and is therefore never rewritten, leaving no filesystem signal that anything
+    changed.  This summary is that signal: it names the checkout that now owns
+    ``rdev`` and, when the previous owner was a different checkout, says so
+    outright.
+    """
+    lines = [
+        "Ralph Workflow dev build installed as 'rdev'.",
+        f"  source:   {source}",
+        f"  commit:   {_short_commit(commit)}",
+        f"  version:  {version}",
+        f"  snapshot: {snapshot}",
+        f"  launcher: {launcher}",
+    ]
+    if replaced is not None:
+        took_over = replaced.source_path != "" and replaced.source_path != str(source)
+        marker = "  <- taken over from a different checkout" if took_over else ""
+        previous_source = replaced.source_path or "(unknown source)"
+        lines.append(
+            f"  replaced: {replaced.version or '(unknown version)'} from {previous_source} "
+            f"@ {_short_commit(replaced.source_commit)}{marker}"
+        )
+    return "\n".join(lines)
 
 
 def install_dev_checkout(
@@ -167,6 +221,8 @@ def install_dev_checkout(
     resolve_commit: Callable[[Path], str] = _resolve_source_commit,
     installed_at: Callable[[], str] = _utc_now_iso8601,
     write_launcher: LauncherWriter = write_dev_launcher,
+    read_identity: Callable[[Path], SnapshotIdentity | None] = read_snapshot_identity,
+    emit: Callable[[str], None] = print,
     flavor: str = "-dev",
 ) -> None:
     """Set up the current checkout as a dev build via ``uv sync``.
@@ -175,6 +231,12 @@ def install_dev_checkout(
     environment, and writes an ``rdev`` launcher aimed at the copy.  The copy
     retains package data such as templates and policy defaults after the source
     checkout is deleted.
+
+    The snapshot directory and the ``rdev`` launcher are machine-wide, so this
+    replaces whatever build was installed before -- including one installed from
+    a different checkout or git worktree.  The previous snapshot's identity is
+    read before the copy overwrites it and reported through ``emit``, because
+    nothing else on disk records the handover.
     """
     if uv_executable is None:
         raise RuntimeError(
@@ -184,15 +246,29 @@ def install_dev_checkout(
     destination = (
         install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev"
     ) / "current"
+    replaced = read_identity(destination)
     copied_dir = copy_tree(cwd, destination)
+    source_commit = resolve_commit(cwd)
     write_flavor(
         copied_dir,
         flavor,
-        source_commit=resolve_commit(cwd),
+        source_commit=source_commit,
+        source_path=str(cwd),
         installed_at=installed_at(),
     )
     run((uv_executable, "sync", "--extra", "dev"), cwd=copied_dir)
-    write_launcher(launcher_dir / DEV_LAUNCHER_NAME, render_dev_launcher(copied_dir))
+    launcher_path = launcher_dir / DEV_LAUNCHER_NAME
+    write_launcher(launcher_path, render_dev_launcher(copied_dir))
+    emit(
+        render_install_summary(
+            source=cwd,
+            commit=source_commit,
+            version=_BASE_VERSION + flavor,
+            snapshot=copied_dir,
+            launcher=launcher_path,
+            replaced=replaced,
+        )
+    )
 
 
 def install_stable_release(

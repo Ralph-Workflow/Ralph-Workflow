@@ -19,7 +19,7 @@ import typer
 import typer.testing
 from loguru import logger
 
-from ralph._build_meta import flavored_version
+from ralph._build_meta import build_provenance_line, flavored_version
 from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli._capability_summary import print_capability_summary
 from ralph.cli._cli_override_input import CLIOverrideInput
@@ -224,13 +224,21 @@ _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
 def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
-    """Route ``--version`` through the shared display welcome banner."""
+    """Route ``--version`` through the shared display welcome banner.
+
+    A dev build adds the checkout it was installed from. ``rdev`` is a single
+    machine-wide launcher that any checkout or worktree can take over, so the
+    version alone does not identify which sources are actually running.
+    """
     if version:
         from ralph.display.parallel_display import resolve_active_display
 
         resolved_ctx = ctx if ctx is not None else _get_cli_context()
         display = resolve_active_display(None, resolved_ctx)
         display.emit_welcome_banner(version=flavored_version())
+        provenance = build_provenance_line()
+        if provenance:
+            display.emit_status(provenance)
         raise typer.Exit()
 
 

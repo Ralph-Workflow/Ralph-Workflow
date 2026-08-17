@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install stable dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs packaging-smoke setup-hooks
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install stable dev install-dev rdev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs packaging-smoke setup-hooks
 
 all: verify
 
@@ -79,6 +79,9 @@ dev:
 install-dev:
 	$(MAKE) -C $(PY_DIR) install-dev
 
+rdev:
+	$(MAKE) -C $(PY_DIR) dev
+
 docs:
 	$(MAKE) -C $(PY_DIR) docs
 
@@ -105,5 +108,6 @@ help:
 	@echo "  make stable      - install/upgrade the pinned stable 'ralph' via uv tool"
 	@echo "  make dev         - sync the dev environment only (no 'rdev' launcher)"
 	@echo "  make install-dev - alias for make dev"
+	@echo "  make rdev        - alias for make dev, named after the launcher it installs"
 	@echo "  make docs        - build Sphinx HTML documentation"
 	@echo "  make serve-docs  - build and serve docs at http://localhost:8080"

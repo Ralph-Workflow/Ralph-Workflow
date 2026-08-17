@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev rdev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -86,6 +86,7 @@ help:
 	@echo "  stable          Install the latest stable build as global 'ralph' via uv tool"
 	@echo "  dev             Refresh the self-contained -dev snapshot and 'rdev' launcher"
 	@echo "  install-dev     Alias for dev"
+	@echo "  rdev            Alias for dev, named after the launcher it installs"
 	@echo "  test           Run the full pytest suite without coverage (excludes subprocess_e2e)"
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
@@ -137,6 +138,9 @@ stable:
 	$(RUN_PYTHON) -m ralph.install --stable
 
 install-dev: dev
+
+# `rdev` is the launcher these targets install; accept it as the target name too.
+rdev: dev
 
 # Testing
 test:

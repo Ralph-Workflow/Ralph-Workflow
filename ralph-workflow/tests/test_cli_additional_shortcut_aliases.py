@@ -80,12 +80,17 @@ def test_version_callback_displays_flavored_runtime_version(
     cli_main = import_module("ralph.cli.main")
 
     displayed: list[str] = []
+    statuses: list[str] = []
 
     class FakeDisplay:
         def emit_welcome_banner(self, *, version: str) -> None:
             displayed.append(version)
 
+        def emit_status(self, message: str) -> None:
+            statuses.append(message)
+
     monkeypatch.setattr(cli_main, "flavored_version", lambda: "0.9.8-dev")
+    monkeypatch.setattr(cli_main, "build_provenance_line", lambda: "")
     monkeypatch.setattr(
         "ralph.display.parallel_display.resolve_active_display",
         lambda _display, _ctx: FakeDisplay(),
@@ -95,3 +100,38 @@ def test_version_callback_displays_flavored_runtime_version(
         cli_main.version_callback(True, ctx=object())
 
     assert displayed == ["0.9.8-dev"]
+    assert statuses == []
+
+
+def test_version_callback_names_the_checkout_a_dev_build_came_from(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`rdev --version` must reveal which checkout owns the installed snapshot."""
+    cli_main = import_module("ralph.cli.main")
+
+    statuses: list[str] = []
+
+    class FakeDisplay:
+        def emit_welcome_banner(self, *, version: str) -> None:
+            del version
+
+        def emit_status(self, message: str) -> None:
+            statuses.append(message)
+
+    monkeypatch.setattr(cli_main, "flavored_version", lambda: "0.9.19-dev")
+    monkeypatch.setattr(
+        cli_main,
+        "build_provenance_line",
+        lambda: "built from /checkouts/wt-063-kimi-support/ralph-workflow @ 205114bf",
+    )
+    monkeypatch.setattr(
+        "ralph.display.parallel_display.resolve_active_display",
+        lambda _display, _ctx: FakeDisplay(),
+    )
+
+    with pytest.raises(Exit):
+        cli_main.version_callback(True, ctx=object())
+
+    assert statuses == [
+        "built from /checkouts/wt-063-kimi-support/ralph-workflow @ 205114bf",
+    ]

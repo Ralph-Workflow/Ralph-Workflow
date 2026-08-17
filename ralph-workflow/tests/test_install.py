@@ -90,9 +90,10 @@ def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
         flavor: str,
         *,
         source_commit: str = "",
+        source_path: str = "",
         installed_at: str = "",
     ) -> None:
-        del source_commit, installed_at
+        del source_commit, source_path, installed_at
         flavors.append((path, flavor))
 
     install_module.install_dev_checkout(
@@ -406,8 +407,10 @@ def test_install_dev_checkout_stamps_snapshot_provenance() -> None:
         _flavor: str,
         *,
         source_commit: str = "",
+        source_path: str = "",
         installed_at: str = "",
     ) -> None:
+        del source_path
         written["source_commit"] = source_commit
         written["installed_at"] = installed_at
 
@@ -437,6 +440,7 @@ def test_write_build_flavor_stamps_runtime_provenance(tmp_path: Path) -> None:
     build_meta.write_text(
         'BUILD_FLAVOR: str = ""\n'
         'BUILD_SOURCE_COMMIT: str = ""\n'
+        'BUILD_SOURCE_PATH: str = ""\n'
         'BUILD_INSTALLED_AT: str = ""\n',
         encoding="utf-8",
     )
@@ -445,12 +449,14 @@ def test_write_build_flavor_stamps_runtime_provenance(tmp_path: Path) -> None:
         package_dir,
         "-dev",
         source_commit="abc123",
+        source_path="/checkouts/main/ralph-workflow",
         installed_at="2026-08-02T12:00:00+00:00",
     )
 
     assert build_meta.read_text(encoding="utf-8") == (
         'BUILD_FLAVOR: str = "-dev"\n'
         'BUILD_SOURCE_COMMIT: str = "abc123"\n'
+        'BUILD_SOURCE_PATH: str = "/checkouts/main/ralph-workflow"\n'
         'BUILD_INSTALLED_AT: str = "2026-08-02T12:00:00+00:00"\n'
     )
 
