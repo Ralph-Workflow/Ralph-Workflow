@@ -9,7 +9,6 @@ fixture pattern.
 
 from __future__ import annotations
 
-import dataclasses
 import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -200,12 +199,11 @@ def test_run_parallel_worker_from_manifest_reports_failed_no_artifact_on_agent_f
     monkeypatch.setattr(module, "AgentInvocationError", Exception, raising=False)
     monkeypatch.setattr(module, "AgentRegistry", _no_agent_registry_class(), raising=False)
 
-    pipeline_deps = dataclasses.replace(
-        _FakePipelineFactory(phase_prompt_materializer=_fake_materialize_prompt_for_phase).build(
-            object(),
-            object(),
-        ),
-        agy_agents_probe=lambda: "Available agents:\n- reviewer",
+    pipeline_deps = _FakePipelineFactory(
+        phase_prompt_materializer=_fake_materialize_prompt_for_phase
+    ).build(
+        object(),
+        object(),
     )
     exit_code = module.run_parallel_worker_from_manifest(
         manifest_path=manifest_path,

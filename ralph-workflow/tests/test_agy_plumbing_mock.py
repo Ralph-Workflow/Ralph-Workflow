@@ -121,10 +121,14 @@ def test_agy_mock_empty_stdout_diagnostic_is_informational(
     mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.sh")
     monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
     assert is_mock_agy_override() is True
+    # The informational note exists for the selectors whose mock contract IS
+    # empty stdout (``quota_exhausted``/``invalid_model`` exit silently by
+    # design in tests/_support/mock_agy.py).
+    monkeypatch.setenv("MOCK_AGY_BEHAVIOR", "quota_exhausted")
     diagnostic = _agy_upstream_diagnostic([], tmp_path)
     assert diagnostic is not None
     assert "mock AGY produced empty stdout by design" in diagnostic
-    assert "MOCK_AGY_BEHAVIOR=quota_exhausted or invalid_model" in diagnostic
+    assert "MOCK_AGY_BEHAVIOR=quota_exhausted" in diagnostic
     assert "harness captured this correctly" in diagnostic
     assert "individual API quota exhausted" not in diagnostic
     assert "RESOURCE_EXHAUSTED" not in diagnostic

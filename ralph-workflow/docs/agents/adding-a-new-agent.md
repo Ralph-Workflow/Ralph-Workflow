@@ -129,6 +129,8 @@ caller can never accidentally register an interactive agent with
 | `CODEX`                  | `GenericExecutionStrategy`                      |
 | `NANOCODER`              | `GenericExecutionStrategy`                      |
 | `PI`                     | `_make_pi_strategy` (Pi session strategy)       |
+| `CURSOR`                 | `_make_cursor_strategy` (completion-enforcing)  |
+| `KIMI`                   | `_make_kimi_strategy` (completion-enforcing)    |
 | `GENERIC`                | `GenericExecutionStrategy`                      |
 
 For interactive agents (`interactive=True`) the helper also auto-applies
@@ -385,10 +387,13 @@ python -m ralph smoke-interactive-agy
 To exercise the shared subagent lifecycle contract, add `--subagents` only to
 an interactive smoke command whose transport has native sub-agent support. A
 transport without native sub-agent support fails the subagent check explicitly;
-it does not fall back to direct execution. On the measured AGY v1.1.8
-installation, `agy agents` reported no sub-agents; the routed AGY fan-out path
-therefore fails explicitly with that cause rather than falling back to direct
-execution. A passing supported-transport run shows exactly one native subagent
+it does not fall back to direct execution. AGY supports native subagent
+dispatch on the measured v1.1.10-v1.1.13 stream-json transport
+(`define_subagent` / `invoke_subagent` / `manage_subagents`; see
+`tests/display/_fixtures/agy_wire_provenance.md`), so `smoke-interactive-agy
+--subagents` exercises the same lifecycle contract and no longer depends on
+an `agy agents` listing. A passing supported-transport run shows exactly one
+native subagent
 dispatch, its correlated result, later main-agent activity, and normal smoke
 completion. Use a non-empty UTF-8 task file inside the current workspace when
 the default read-only child task does not cover the edge case under investigation:
@@ -593,7 +598,7 @@ register_agent_support(
 ```
 
 > [!NOTE]
-> The eight built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`) come from `ralph/agents/builtin.py` via `builtin_supports()`. `AgentRegistry.from_config()` and `AgentRegistry(catalog=...)` both call `_seed_catalog_with_builtins` so the registry and the catalog stay in lockstep. The `default_catalog()` global is seeded only when `AgentRegistry.from_config()` runs; it is not auto-seeded at module import.
+> The nine built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`, `kimi`) come from `ralph/agents/builtin.py` via `builtin_supports()`. `AgentRegistry.from_config()` and `AgentRegistry(catalog=...)` both call `_seed_catalog_with_builtins` so the registry and the catalog stay in lockstep. The `default_catalog()` global is seeded only when `AgentRegistry.from_config()` runs; it is not auto-seeded at module import.
 
 ---
 
@@ -645,7 +650,7 @@ del registry.agents["my-agent"]
 ```
 
 > [!WARNING]
-> The eight built-in agents cannot be permanently removed from the caller's `AgentRegistry` because they are re-registered by `AgentRegistry.from_config` on every load.
+> The nine built-in agents cannot be permanently removed from the caller's `AgentRegistry` because they are re-registered by `AgentRegistry.from_config` on every load.
 
 ---
 
@@ -668,6 +673,24 @@ del registry.agents["my-agent"]
 * **Trusting model-authored self-reporting**: Tool activity must come from
   parser/runtime evidence, and completion must come from the durable sentinel
   plus any required receipt—not from transcript or artifact claims.
+* **Reviving a stale CLI contract**: Re-measure the installed binary instead
+  of copying older documentation. Kimi Code is the worked example: the stale
+  `kimi-cli` `--print`/`--afk` flags are rejected by the current binary
+  (`error: unknown option`), and `--yolo`/`--auto`/`--plan` conflict with
+  `-p`; the maintained contract is headless `kimi -p <prompt>
+  --output-format stream-json`, where prompt mode auto-approves its tool
+  calls so no autonomy flag is emitted.
+* **Creating a project-level MCP config the CLI then ignores**: Kimi Code
+  headless `-p` silently drops the workspace `.kimi-code/mcp.json` in an
+  untrusted folder (no error; the tools simply never register). The
+  user-global `$KIMI_CODE_HOME/mcp.json` has no trust gate, so Ralph always
+  writes the run-scoped entry to the global path and touches the workspace
+  path only when that file already exists (see
+  `ralph/mcp/transport/kimi.py`).
+* **Assuming bare model IDs are portable**: Kimi Code rejects a bare
+  `-m kimi-for-coding` ("Model ... is not configured in config.toml"); the
+  `kimi/<model>` alias must carry the full configured ID such as
+  `kimi/kimi-code/k3-256k`, with slashes preserved argv-safely.
 * **Adding live smoke tests to `make verify`**: Manual smoke commands consume
   tokens/quota and stay outside the always-on verification path.
 * **Not unregistering before re-registering**: Calling `register_agent_support()` with a name that is already registered in the catalog will raise a `ValueError`. Always call `registry.unregister(name)` first.

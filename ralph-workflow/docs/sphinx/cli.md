@@ -8,7 +8,7 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--list-agents` | | `False` | List configured agents and their status (includes the 8 built-ins: `claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`) |
+| `--list-agents` | | `False` | List configured agents and their status (includes the 9 built-ins: `claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`, `kimi`) |
 | `--list-providers` | | `False` | List available AI providers (OpenCode API) |
 | `--diagnose` | `-d` | `False` | Run pre-flight diagnostics and print a status table |
 | `--check-config` | `-C` | `False` | Load and validate configuration, then exit |
@@ -297,6 +297,30 @@ python -m ralph smoke-interactive-cursor --agent 'cursor/gpt-5.3-codex-high'   #
 This command is **not** part of `make verify` (per the cursor non-goal of
 no live-token-consuming smoke tests in verify). The harness only runs
 when an operator explicitly invokes it.
+
+Set `RALPH_CURSOR_BINARY` to use a custom `agent` executable (a real
+wrapper, alternate live binary, or an operator-wired test stub). There
+is no bundled mock for Cursor (unlike AGY); non-executable paths are
+ignored with a WARNING.
+
+### `ralph smoke-interactive-kimi`
+
+Run the manual end-to-end smoke test for the Kimi Code CLI. This drives
+the live `kimi` binary through the headless `-p <prompt-file>
+--output-format stream-json` contract, asks it to create
+`tmp/interactive-kimi-smoke/todo-list.js`, and reports the same parity
+table as the other smoke commands. The default alias is
+`kimi/kimi-code/kimi-for-coding`; override it with `--agent kimi/<model>`
+carrying a full configured ID. Set `RALPH_KIMI_BINARY` to point at a
+non-PATH `kimi` binary.
+
+```bash
+python -m ralph smoke-interactive-kimi                                        # default alias
+python -m ralph smoke-interactive-kimi --agent 'kimi/kimi-code/k3-256k'      # explicit override
+```
+
+This command is **not** part of `make verify`; the harness only runs when
+an operator explicitly invokes it (live tokens).
 
 Set `RALPH_CURSOR_BINARY` to use a custom `agent` executable (a real
 wrapper, alternate live binary, or an operator-wired test stub). There

@@ -7,8 +7,13 @@ that pin the simulated contract.
 
 Controlled by environment variables:
 
-* ``MOCK_AGY_BEHAVIOR`` - ``normal`` (default), ``quota_exhausted``, or
-  ``invalid_model``.
+* ``MOCK_AGY_BEHAVIOR`` - ``normal`` (default), ``quota_exhausted``,
+  ``invalid_model``, plus the v1.1.13 negative-contract selectors
+  ``no_output``, ``malformed_stream``, ``failed_result``,
+  ``missing_dispatch``, ``missing_result``, ``missing_artifact``, and
+  ``missing_completion``. Each selector alters only its named contract
+  signal while preserving the remaining lifecycle evidence, so a regular
+  smoke cannot pass on superficial text alone.
 * ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/tmp/``,
   ``.agent/artifacts/``, the completion sentinel, and ``tmp/`` are written.
   Defaults to the current working directory.
@@ -672,37 +677,62 @@ def degraded_baseline_artifact_markdown() -> str:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = _build_argument_parser()
-    args = parser.parse_args(argv)
-
+def _validate_mock_agy_args(args: argparse.Namespace, behavior: str) -> int | None:
     if not args.print_mode:
         print("mock AGY: --print is required", file=sys.stderr)
         return 2
 
-    behavior = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")
-    artifact_dir = Path(os.environ.get("MOCK_AGY_ARTIFACT_DIR", Path.cwd()))
-
-    if behavior in {"quota_exhausted", "invalid_model"}:
+    if behavior in {"quota_exhausted", "invalid_model", "no_output"}:
         return 0
-
-    if behavior != "normal":
-        print(f"mock AGY: unknown MOCK_AGY_BEHAVIOR={behavior}", file=sys.stderr)
-        return 2
 
     if args.model is not None and args.model not in CANONICAL_MODELS:
         return 0
 
+    v1_1_13_selectors = {
+        "failed_result",
+        "missing_dispatch",
+        "missing_result",
+        "missing_artifact",
+        "missing_completion",
+    }
+    is_v1_1_13_selector = behavior in v1_1_13_selectors
+    is_v1_1_13_env = os.environ.get("MOCK_AGY_V1_1_13") == "1"
+
+    rc: int | None = None
+    if behavior == "malformed_stream":
+        if is_v1_1_13_env:
+            from tests._support.mock_agy_v1_1_13 import _MOCK_MALFORMED_LINES
+
+            for line in _MOCK_MALFORMED_LINES:
+                print(line)
+            rc = 0
+        else:
+            print(f"mock AGY: unknown MOCK_AGY_BEHAVIOR={behavior}", file=sys.stderr)
+            rc = 2
+    elif is_v1_1_13_selector and not is_v1_1_13_env:
+        print(
+            f"mock AGY: MOCK_AGY_BEHAVIOR={behavior} requires MOCK_AGY_V1_1_13=1",
+            file=sys.stderr,
+        )
+        rc = 2
+    elif behavior != "normal" and not is_v1_1_13_selector:
+        print(f"mock AGY: unknown MOCK_AGY_BEHAVIOR={behavior}", file=sys.stderr)
+        rc = 2
+
+    return rc
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_argument_parser()
+    args = parser.parse_args(argv)
+
+    behavior = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")
+    validation_rc = _validate_mock_agy_args(args, behavior)
+    if validation_rc is not None:
+        return validation_rc
+
+    artifact_dir = Path(os.environ.get("MOCK_AGY_ARTIFACT_DIR", Path.cwd()))
     if os.environ.get("MOCK_AGY_V1_1_13") == "1":
-        # Measured v1.1.13 vocabulary path: the mock still writes the todo
-        # list it is asked to create, but the smoke_test_result artifact and
-        # the completion sentinel are produced ONLY by the real MCP server
-        # handlers via ``drive_real_mcp_round_trips`` -- no direct fallback
-        # file or sentinel write happens in this mode, so the harness's
-        # WORKSPACE_EFFECT fallback cannot mask a failed round trip.
-        # Lazy import keeps the default (flag-unset) subprocess path free
-        # of the v1.1.13 module and its urllib transport; see
-        # tests/_support/mock_agy_v1_1_13.py.
         from tests._support.mock_agy_v1_1_13 import (
             _emit_v1_1_13_stdout,
             drive_real_mcp_round_trips,
@@ -718,13 +748,12 @@ def main(argv: list[str] | None = None) -> int:
             submit_output,
             complete_output,
         )
-        return 0
-
-    _write_todo_list(artifact_dir)
-    _write_prompt_received(artifact_dir, args.prompt)
-    _write_smoke_test_result_artifact(artifact_dir)
-    _write_completion_sentinel(artifact_dir)
-    _emit_normal_stdout(args.model, args.output_format)
+    else:
+        _write_todo_list(artifact_dir)
+        _write_prompt_received(artifact_dir, args.prompt)
+        _write_smoke_test_result_artifact(artifact_dir)
+        _write_completion_sentinel(artifact_dir)
+        _emit_normal_stdout(args.model, args.output_format)
     return 0
 
 

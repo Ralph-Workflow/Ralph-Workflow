@@ -9,6 +9,7 @@ dispatch its own sub-agents.
 
 from __future__ import annotations
 
+import dataclasses
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,11 +18,10 @@ from unittest.mock import MagicMock
 import pytest
 from loguru import logger as loguru_logger
 
-from ralph.executor.process import ProcessResult
 from ralph.pipeline import effect_router as effect_router_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effect_router import determine_effect_from_policy
-from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -128,11 +128,19 @@ def _two_disjoint_units() -> list[dict[str, object]]:
 
 
 @pytest.mark.parametrize("agent_name", ["agy", "agy/gemini-3.6-flash-low"])
-def test_effect_router_regression_agy_agent_subagents_without_available_agents_fails_explicitly(
+def test_effect_router_regression_agy_agent_subagents_no_longer_gated_on_agy_agents_listing(
     tmp_path: Path,
     agent_name: str,
 ) -> None:
-    """Plan S-7: AGY must not silently fall back after its stock v1.1.8 probe found no agents."""
+    """AGY parallel plans route through the supported agent_subagents path.
+
+    The measured v1.1.10-v1.1.13 stream-json fixtures prove AGY dispatches
+    subagents natively (define_subagent / invoke_subagent), so an empty
+    ``agy agents`` listing must NOT veto the dormant agent_subagents
+    fall-through to ``InvokeAgentEffect``. The probe seam that used to
+    carry that listing is removed; this call would raise ``TypeError``
+    if it still existed.
+    """
     _write_plan_artifact(tmp_path, _two_disjoint_units())
     state = PipelineState(phase="development")
 
@@ -154,47 +162,41 @@ def test_effect_router_regression_agy_agent_subagents_without_available_agents_f
         _default_policy_bundle(),
         WorkspaceScope(tmp_path),
         config=_config_with_development_agent(),
-        agy_agents_probe=lambda: "Available agents:\n",
     )
 
-    assert isinstance(effect, ExitFailureEffect)
-    assert effect.reason == (
-        "AGY dispatch unavailable: `agy agents` reported no sub-agents on this install; "
-        "configure an AGY sub-agent and retry."
-    )
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.agent_name == agent_name
 
 
-def test_agy_agents_probe_regression_is_bounded_and_cached(monkeypatch: pytest.MonkeyPatch) -> None:
-    """DA-002: default AGY discovery must be bounded and reuse the first result."""
-    calls: list[tuple[str, tuple[str, ...], effect_router_module.ProcessRunOptions]] = []
+def test_agy_agents_probe_seam_is_gone_from_the_pipeline() -> None:
+    """The stale ``agy agents`` availability veto and its probe plumbing are removed.
 
-    def _run_process(
-        command: str,
-        args: tuple[str, ...],
-        *,
-        options: effect_router_module.ProcessRunOptions,
-    ) -> ProcessResult:
-        calls.append((command, args, options))
-        return ProcessResult((command, *args), 0, "Available agents:\n- reviewer", "")
+    The measured v1.1.10-v1.1.13 stream-json fixtures prove AGY dispatches
+    subagents natively without any user-configured ``agy agents`` listing, so
+    the probe parameter, its ExitFailureEffect veto, and the ``agy agents``
+    subprocess call are dead policy drift and must stay removed -- from the
+    router, the runner forwarding branch, the ``PipelineDeps`` dataclass,
+    and the worker-runtime forwarding call.
+    """
+    import inspect
 
-    monkeypatch.setattr(effect_router_module, "run_process", _run_process)
-    probe = effect_router_module._make_default_agy_agents_probe()
+    from ralph.pipeline.factory import PipelineDeps as _PipelineDeps
 
-    assert probe() == "Available agents:\n- reviewer"
-    assert probe() == "Available agents:\n- reviewer"
-    assert calls == [("agy", ("agents",), calls[0][2])]
-    options = calls[0][2]
-    assert options.timeout == 5.0
+    assert not hasattr(effect_router_module, "_make_default_agy_agents_probe")
+    assert not hasattr(effect_router_module, "_agy_available_agents")
+    assert "agy_agents_probe" not in inspect.signature(
+        effect_router_module.determine_effect_from_policy
+    ).parameters
+    assert "agy_agents_probe" not in {
+        field.name for field in dataclasses.fields(_PipelineDeps)
+    }
 
 
-def test_runner_regression_forwards_agy_agents_probe_to_effect_router(
+def test_runner_forwards_only_config_and_commit_seams_to_effect_router(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DA-002: the production runner must preserve the per-install AGY probe seam."""
-
-    def expected_probe() -> str:
-        return "Available agents:\n- reviewer"
+    """The runner forwarding branch passes config/commit seams, never the removed probe."""
 
     observed: dict[str, object] = {}
 
@@ -204,15 +206,18 @@ def test_runner_regression_forwards_agy_agents_probe_to_effect_router(
         workspace_scope: WorkspaceScope,
         *,
         config: UnifiedConfig,
-        agy_agents_probe: object | None = None,
+        has_uncommitted_changes_fn: object | None = None,
     ) -> InvokeAgentEffect:
         del state, policy_bundle, workspace_scope, config
-        observed["probe"] = agy_agents_probe
+        observed["has_uncommitted_changes_fn"] = has_uncommitted_changes_fn
         return InvokeAgentEffect(
             agent_name="agy/gemini-3.6-flash-low",
             phase="development",
             prompt_file="PROMPT.md",
         )
+
+    def _expected_has_changes(_root: object) -> bool:
+        return True
 
     monkeypatch.setattr(runner_module, "determine_effect_from_policy", _router)
     effect = runner_module.call_determine_effect_from_policy(
@@ -222,12 +227,12 @@ def test_runner_regression_forwards_agy_agents_probe_to_effect_router(
         _config_with_development_agent(),
         pipeline_deps=PipelineDeps(
             display_context=MagicMock(),
-            agy_agents_probe=expected_probe,
+            has_uncommitted_changes=_expected_has_changes,
         ),
     )
 
     assert isinstance(effect, InvokeAgentEffect)
-    assert observed["probe"] is expected_probe
+    assert observed["has_uncommitted_changes_fn"] is _expected_has_changes
 
 
 def test_dormant_default_falls_through_to_invoke_agent_effect(tmp_path: Path) -> None:

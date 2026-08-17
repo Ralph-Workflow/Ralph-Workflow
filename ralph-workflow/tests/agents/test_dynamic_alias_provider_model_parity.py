@@ -35,6 +35,10 @@ from ralph.config.models import UnifiedConfig
             "cursor/provider/model/family:latest",
             "--model provider/model/family:latest",
         ),
+        (
+            "kimi/kimi-code/k3-256k",
+            "-m kimi-code/k3-256k",
+        ),
     ],
 )
 def test_provider_model_aliases_preserve_nested_model_paths(
@@ -62,6 +66,7 @@ def test_provider_model_aliases_preserve_nested_model_paths(
         "nanocoder/provider//model",
         "pi/provider//model",
         "cursor/provider//model",
+        "kimi/provider//model",
     ],
 )
 def test_provider_model_aliases_reject_empty_path_segments(alias: str) -> None:

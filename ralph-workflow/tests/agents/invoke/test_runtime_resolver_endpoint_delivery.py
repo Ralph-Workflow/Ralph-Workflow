@@ -181,6 +181,11 @@ _DELIVERY_CHANNELS: tuple[
         ("RALPH_PI_MCP_EXTENSION",),
         lambda ws: ws / ".agent" / "tmp" / "ralph_pi_mcp_extension.ts",
     ),
+    # kimi: env deliberately does NOT carry the endpoint -- instead the
+    # resolver writes the merged Ralph entry to BOTH the workspace-local
+    # ``.kimi-code/mcp.json`` and the user-global
+    # ``$KIMI_CODE_HOME/mcp.json`` config files the Kimi CLI reads.
+    (AgentTransport.KIMI, (), lambda ws: ws / ".kimi-code" / "mcp.json"),
 )
 
 

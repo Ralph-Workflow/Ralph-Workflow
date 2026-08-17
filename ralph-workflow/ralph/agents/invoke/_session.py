@@ -39,6 +39,22 @@ def _is_cursor_system_init_event(parsed: dict[str, object]) -> bool:
     return parsed.get("type") == "system" and parsed.get("subtype") == "init"
 
 
+def _is_kimi_meta_session_frame(parsed: dict[str, object]) -> bool:
+    """Match Kimi Code's role-keyed ``session.resume_hint`` meta frame.
+
+    Kimi Code's NDJSON frames are keyed by ``role`` rather than ``type``;
+    the session-bearing frame observed on the live v0.36.x wire is
+    ``{"role": "meta", "type": "session.resume_hint", "session_id": ...}``
+    (emitted right after session start, alongside a ``system.version``
+    meta frame that carries no session id).  Requiring BOTH the ``meta``
+    role and the ``session.resume_hint`` type keeps assistant/tool
+    frames (whose free-text content could otherwise collide with the
+    generic ``session_id`` keys) from masquerading as transport
+    session metadata.
+    """
+    return parsed.get("role") == "meta" and parsed.get("type") == "session.resume_hint"
+
+
 def _match_transport_text_session_id(stripped: str) -> str | None:
     if _EXPLICIT_COMPLETION_MARKER in stripped:
         for pattern in _COMPLETION_SESSION_ID_PATTERNS:
@@ -59,6 +75,7 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
         (isinstance(event_type, str) and event_type in _TRANSPORT_JSON_TYPES)
         or _is_cursor_system_init_event(parsed)
         or is_agy_init
+        or _is_kimi_meta_session_frame(parsed)
     ):
         for key in ("session_id", "sessionId", "conversation_id", "id"):
             session_id = parsed.get(key)
@@ -74,6 +91,11 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
     opencode_session_id = parsed.get("sessionID")
     if isinstance(opencode_session_id, str) and opencode_session_id:
         return opencode_session_id
+    return _session_id_from_nested_meta(parsed)
+
+
+def _session_id_from_nested_meta(parsed: dict[str, object]) -> str | None:
+    """Pull a session id out of a nested ``meta`` object."""
     meta = parsed.get("meta")
     if not isinstance(meta, dict):
         return None

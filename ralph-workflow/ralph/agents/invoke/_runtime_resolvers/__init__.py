@@ -31,6 +31,7 @@ from ralph.mcp.protocol.startup import (
 from ralph.mcp.tool_contract import canonicalize_tool_names
 from ralph.mcp.transport.codex import release_codex_home
 from ralph.mcp.transport.cursor import cursor_workspace_mcp_endpoint
+from ralph.mcp.transport.kimi import kimi_workspace_mcp_endpoint
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, write_pi_mcp_extension
 
 if TYPE_CHECKING:
@@ -95,6 +96,10 @@ class _InvokeCompatibilitySeam(Protocol):
         self, workspace_path: Path | None = None
     ) -> tuple[UpstreamMcpServer, ...]: ...
 
+    def load_existing_kimi_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[UpstreamMcpServer, ...]: ...
+
 
 @runtime_checkable
 class _InvokeModule(Protocol):
@@ -149,6 +154,10 @@ class _InvokeModule(Protocol):
     ) -> tuple[object, ...]: ...
 
     def load_existing_cursor_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[object, ...]: ...
+
+    def load_existing_kimi_upstream_servers(
         self, workspace_path: Path | None = None
     ) -> tuple[object, ...]: ...
 
@@ -652,6 +661,78 @@ class CursorRuntimeResolver:
         )
 
 
+class KimiRuntimeResolver:
+    """RuntimeResolver for AgentTransport.KIMI.
+
+    Kimi Code reads its MCP server configuration from the documented
+    ``.kimi-code/mcp.json`` (workspace-local) and ``$KIMI_CODE_HOME/mcp.json``
+    (user-global, defaulting to ``~/.kimi-code/mcp.json``) JSON files.  This
+    resolver writes a run-scoped Ralph entry to BOTH paths (project-level
+    config takes precedence over user-level in Kimi Code, so covering both
+    wires MCP regardless of the cwd the agent was launched from) and restores
+    the original bytes on exit so operator-managed MCP servers are preserved
+    across Ralph runs.
+
+    The MCP_ENDPOINT_ENV is consumed (and dropped) from the
+    ``runtime_env`` implicitly: the endpoint itself is only written into
+    the JSON config files, never exported as a literal variable.
+    """
+
+    def resolve(
+        self,
+        config: AgentConfig,
+        extra_env: dict[str, str] | None,
+        workspace_path: Path | None,
+        *,
+        base_env: Mapping[str, str] | None = None,
+        master_prompt_file: str | None = None,
+        unsafe_mode: bool = False,
+    ) -> ResolvedInvocationRuntime:
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        runtime_env = dict(extra_env or {})
+        server_env: dict[str, str] = {}
+        endpoint = _get_endpoint(runtime_env, _env)
+
+        if not endpoint:
+            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+
+        # Write the merged Ralph entry to BOTH the workspace-local
+        # ``.kimi-code/mcp.json`` and the user-global
+        # ``$KIMI_CODE_HOME/mcp.json`` so the agent picks up the MCP
+        # endpoint regardless of the cwd it was launched from.  The
+        # runtime context manager snapshots the original bytes INSIDE
+        # the critical section so a parallel sibling cannot interleave
+        # its own write/restore between our read and our restore.
+        resolved_workspace = workspace_path or Path.cwd()
+        write_ctx = kimi_workspace_mcp_endpoint(
+            resolved_workspace, endpoint, unsafe_mode=unsafe_mode
+        )
+        write_ctx.__enter__()
+        try:
+            _apply_upstream_env(
+                _invoke_module().load_existing_kimi_upstream_servers(resolved_workspace),
+                resolved_workspace,
+                runtime_env,
+                server_env,
+            )
+        finally:
+            # Defer the restore until the invoke_agent ``finally`` block
+            # so a long-running Kimi run keeps the merged config
+            # available for the lifetime of the agent subprocess.  Wrap
+            # the contextmanager in a closure that exits it.
+            def _release() -> None:
+                write_ctx.__exit__(None, None, None)
+
+        return ResolvedInvocationRuntime(
+            agent_env=runtime_env or None,
+            server_env=server_env or None,
+            mcp_endpoint=endpoint,
+            cleanup=_release,
+        )
+
+
 RUNTIME_RESOLVERS: dict[AgentTransport, type[RuntimeResolver]] = {
     AgentTransport.OPENCODE: OpencodeRuntimeResolver,
     AgentTransport.NANOCODER: NanocoderRuntimeResolver,
@@ -661,6 +742,7 @@ RUNTIME_RESOLVERS: dict[AgentTransport, type[RuntimeResolver]] = {
     AgentTransport.AGY: AgyRuntimeResolver,
     AgentTransport.PI: PiRuntimeResolver,
     AgentTransport.CURSOR: CursorRuntimeResolver,
+    AgentTransport.KIMI: KimiRuntimeResolver,
     AgentTransport.GENERIC: DefaultRuntimeResolver,
 }
 
@@ -671,6 +753,7 @@ __all__ = [
     "CodexRuntimeResolver",
     "CursorRuntimeResolver",
     "DefaultRuntimeResolver",
+    "KimiRuntimeResolver",
     "NanocoderRuntimeResolver",
     "OpencodeRuntimeResolver",
     "PiRuntimeResolver",

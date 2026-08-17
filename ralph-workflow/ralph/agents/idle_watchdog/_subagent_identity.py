@@ -63,6 +63,7 @@ _SUBAGENT_SOURCES: frozenset[str] = frozenset(
         "nanocoder",
         "gemini",
         "cursor",
+        "kimi",
     }
 )
 
@@ -94,8 +95,8 @@ class SubagentIdentity:
         source: The transport that registered the subagent (one of
             ``opencode``, ``claude``, ``pi``, ``agy``, ``generic``,
             ``claude_interactive``, ``codex``, ``nanocoder``,
-            ``gemini`` -- the nine canonical ``AgentTransport``
-            parser source labels).
+            ``gemini``, ``cursor``, ``kimi`` -- the canonical
+            ``AgentTransport`` parser source labels).
         registered_at_monotonic: Monotonic timestamp captured when the
             subagent was first registered. On a duplicate ``register`` call
             the original timestamp is preserved (idempotent).
@@ -117,6 +118,7 @@ class SubagentIdentity:
         "nanocoder",
         "gemini",
         "cursor",
+        "kimi",
     ]
     registered_at_monotonic: float
     label_prefix: str | None = None
@@ -194,6 +196,7 @@ class SubagentPidRegistry:
             "nanocoder",
             "gemini",
             "cursor",
+            "kimi",
         ],
         label_prefix: str | None = None,
         *,

@@ -347,6 +347,37 @@ def test_harness_input_echo_lines_are_not_breaks(isolated_workspace: Path) -> No
     assert detect_raw_log_breaks(raw_path) == []
 
 
+def test_agy_print_tool_result_status_line_is_not_a_break(
+    isolated_workspace: Path,
+) -> None:
+    """AGY's print-mode tool-result status line is measured vendor wire output.
+
+    Measured live shape (2026-08-17, AGY v1.1.13 ``gemini-3.6-flash-low``):
+    ``agy --print --output-format stream-json`` emits one human-rendered
+    ``\u2713 PASS \u21b3 <tool> (<param summary>) <JSON result>`` status
+    line per completed tool call onto the same stdout/PTY the stream-json
+    frames arrive on (e.g. after the ``call_mcp_tool`` step-8 DONE frame
+    in the live smoke raw capture). Grading it ``NON_JSONL`` failed the
+    live AGY smoke with ``raw transcript corrupted`` while the wire
+    frames, artifact receipt, and completion sentinel were all intact.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        (
+            '{"event":"init","tools":["call_mcp_tool"]}\n'
+            '{"event":"step_update","step_update":{"step_index":8,"state":"DONE",'
+            '"step_type":"tool","tool_name":"call_mcp_tool"}}\n'
+            "\u2713 PASS \u21b3 call_mcp_tool (Arguments={'artifact_type': "
+            "'smoke_test_result'}) {\"artifact_type\": \"smoke_test_result\", "
+            '\"valid\": true}\n'
+            '{"event":"result","result":{"status":"SUCCESS"}}\n'
+        ).encode("utf-8")
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
 def test_line_embedding_marker_text_is_still_a_break(isolated_workspace: Path) -> None:
     """The echo tolerance is exact-match only.
 

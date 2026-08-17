@@ -17,6 +17,11 @@ from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
+from ralph.mcp.server._schema_flavor import (
+    OPENAI_FUNCTION_FLAVOR,
+    flatten_root_schema_for_openai_function,
+    schema_flavor_for_client_name,
+)
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import SessionWrapupBudget
 from ralph.mcp.server._wire_ledger import append_wire_record
@@ -38,6 +43,7 @@ if TYPE_CHECKING:
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.tools._exec_resource_protocol import ExecResourceResolverLike
     from ralph.mcp.tools.bridge import ToolBridge
+    from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
     from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -62,6 +68,23 @@ for _member in RalphToolName:
             f"claude_tool_name({_member!r}) degenerated to its raw name; "
             "alias emission in _handle_tools_list would be a no-op"
         )
+
+
+def _client_name_from_initialize_params(params: dict[str, object] | None) -> str | None:
+    """Extract ``clientInfo.name`` from an ``initialize`` request's params.
+
+    Purely structural: an absent params dict, a non-dict ``clientInfo``,
+    or a non-string name all return ``None`` so a malformed handshake
+    degrades to the default full-JSON-Schema advertisement instead of
+    failing the handshake.
+    """
+    if not isinstance(params, dict):
+        return None
+    client_info = params.get("clientInfo")
+    if not isinstance(client_info, dict):
+        return None
+    name = client_info.get("name")
+    return name if isinstance(name, str) else None
 
 
 def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
@@ -152,6 +175,15 @@ class McpServer:
         self._workspace = workspace
         self._registry = registry
         self._expose_mcp_aliases = expose_mcp_aliases
+        # Schema flavor negotiated at the MCP ``initialize`` handshake:
+        # clients whose backing API cannot consume full JSON Schema at
+        # the tool-schema ROOT (``kimi-code`` -> Moonshot's OpenAI-style
+        # function parameters) receive a flattened root advertisement.
+        # ``None`` (the default, before any handshake and for every other
+        # client) keeps the full JSON Schema contract. One McpServer
+        # serves exactly one agent client per subprocess, so per-instance
+        # state is the correct scope.
+        self._schema_flavor: str | None = None
         # Optional graduated-session nag: returns a wrap-up banner once the
         # invocation passes the soft threshold, else None. Appended to every
         # tool result so the agent winds down before the hard force-cut.
@@ -306,6 +338,29 @@ class McpServer:
             )
 
     def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        # Negotiate the advertised tool-schema flavor from the client's
+        # self-reported ``clientInfo.name``. This is the protocol's own
+        # capability-negotiation point: only clients that identify here
+        # as needing the OpenAI function flavor (``kimi-code``) get the
+        # flattened root schema in ``tools/list``.
+        #
+        # The flavor is STICKY: once a flavored client has negotiated, a
+        # later nameless handshake does NOT reset it. Measured on the
+        # wire (kimi-code 0.36.1, 2026-08-17): the CLI reconnects to the
+        # long-lived standalone MCP subprocess between turns and Ralph's
+        # own preflight/probe handshakes also arrive without a flavor
+        # name; a nameless re-handshake that reset the flavor would make
+        # the NEXT ``tools/list`` re-advertise the composed roots
+        # (``read_file`` et al.) and Moonshot rejects those with the
+        # exact 400 this flavor exists to prevent. Sticky-but-never-set
+        # stays safe because an unnamed client's tools/list still gets
+        # the full JSON Schema advertisement until a flavored handshake
+        # arrives.
+        negotiated = schema_flavor_for_client_name(
+            _client_name_from_initialize_params(request.params)
+        )
+        if negotiated is not None:
+            self._schema_flavor = negotiated
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": {
@@ -320,14 +375,28 @@ class McpServer:
             ServerState.RUNNING,
         )
 
+    def _advertised_input_schema(self, definition: ToolDefinition) -> dict[str, object]:
+        """Return the ``inputSchema`` to advertise for ``definition``.
+
+        Full JSON Schema by default; the OpenAI-function-flavored root
+        (composition keywords dropped, plain-object vocabulary kept) when
+        the connecting client negotiated that flavor at ``initialize``.
+        The registered ``definition.input_schema`` itself is never
+        mutated — only the advertisement changes.
+        """
+        if self._schema_flavor == OPENAI_FUNCTION_FLAVOR:
+            return flatten_root_schema_for_openai_function(definition.input_schema)
+        return definition.input_schema
+
     def _handle_tools_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         tools: list[dict[str, object]] = []
         seen_names: set[str] = set()
         for definition in self._registry.list_definitions():
+            advertised_schema = self._advertised_input_schema(definition)
             raw_entry: dict[str, object] = {
                 "name": definition.name,
                 "description": definition.description,
-                "inputSchema": definition.input_schema,
+                "inputSchema": advertised_schema,
             }
             tools.append(raw_entry)
             seen_names.add(definition.name)
@@ -338,7 +407,7 @@ class McpServer:
                         {
                             "name": alias,
                             "description": definition.description,
-                            "inputSchema": definition.input_schema,
+                            "inputSchema": advertised_schema,
                         }
                     )
                     seen_names.add(alias)

@@ -30,6 +30,7 @@ AGENT_FAMILY_BY_TRANSPORT: dict[str, str] = {
     AgentTransport.AGY.value: "agy",
     AgentTransport.PI.value: "pi",
     AgentTransport.CURSOR.value: "cursor",
+    AgentTransport.KIMI.value: "kimi",
     AgentTransport.GENERIC.value: "custom",
 }
 
@@ -37,7 +38,7 @@ AGENT_FAMILY_BY_TRANSPORT: dict[str, str] = {
 # wrapper script, an absolute path, a user-authored launcher — collapses to
 # ``custom`` so no filesystem or tooling identity leaves the process.
 _KNOWN_AGENT_BINARIES: frozenset[str] = frozenset(
-    {"claude", "codex", "opencode", "nanocoder", "agy", "pi", "cursor"}
+    {"claude", "codex", "opencode", "nanocoder", "agy", "pi", "cursor", "kimi"}
 )
 
 # Caps the forwarded entry count so a pathological config cannot inflate the

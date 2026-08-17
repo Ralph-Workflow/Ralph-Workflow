@@ -10,13 +10,17 @@ major coding harness against Ralph's multimodal MCP endpoints:
   positive case, fires a named break on the no-call and
   ignored-response cases.
 
-- **S-12** -- parameterises the same harness across all six
+- **S-12** -- parameterises the same harness across all eight
   transports (``smoke-interactive-claude``,
   ``smoke-headless-claude``, ``smoke-interactive-agy``,
   ``smoke-interactive-nanocoder``, ``smoke-interactive-cursor``,
-  ``smoke-interactive-opencode``), each with its redirect seam
-  recorded in S-13. The same two-case (positive / ignore-response)
-  shape applies on every transport.
+  ``smoke-interactive-opencode``, ``smoke-interactive-codex``,
+  ``smoke-interactive-pi``), each with its redirect seam
+  recorded in S-13. The positive case runs on every transport; the
+  ignore-response case runs on one transport per redirect method
+  (see ``_IGNORE_RESPONSE_TRANSPORTS`` -- S-7 consolidation), with
+  the grader-level causality pinned by
+  ``tests/test_multimodal_evidence.py`` in the default profile.
 
 Every test in this file is marked ``smoke`` AND ``subprocess_e2e``
 so the production test suites (``make verify``, ``make test``, ...)
@@ -89,6 +93,19 @@ _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
 )
 
 _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
+
+#: Transports that keep the end-to-end ignore-response (poisoned-receipt)
+#: case after the S-7 consolidation. The causal-use break is graded
+#: **server-side** from the wire ledger and the media registry, so its
+#: mechanics are transport-independent; the transport-specific surface
+#: (redirect seam + frame vocabulary) is exercised by the positive case
+#: on *every* transport above. ``tests/test_multimodal_evidence.py``
+#: pins the forged-receipt -> ``WORKSPACE_EFFECT`` causality at the
+#: grader unit level in the default profile, so the poisoned e2e keeps
+#: exactly one transport per redirect method (``agy_env`` / ``cmd_override``
+#: / ``cursor_env``) -- every seam stays covered without paying the
+#: full-harness spawn cost on all eight transports.
+_IGNORE_RESPONSE_TRANSPORTS: tuple[str, ...] = ("agy", "claude", "cursor")
 
 
 def test_smoke_transport_table_covers_every_non_generic_transport() -> None:
@@ -220,6 +237,28 @@ def _end_to_end_test_for_harness(
 
     workspace_scope = WorkspaceScope(workspace)
     config = load_config(None, {}, workspace_scope=workspace_scope)
+    # S-7 (test-only latency tightening): every knob below governs a
+    # *post-completion* wait -- the drain window the read loop sits out
+    # after the terminal completion sentinel, the descendant-wait poll
+    # quantum, and the parent-exit grace. The stub has no descendants and
+    # emits everything before its completion sentinel, so shortening these
+    # waits removes ~0.8s of pure sleeping per run without weakening any
+    # gate: the smoke run's own ``_SMOKE_IDLE_TIMEOUT_SECONDS`` (30s) and
+    # session ceiling are untouched, and the graded contract below (WIRE
+    # provenance, multimodal breaks) is asserted exactly as before.
+    config = config.model_copy(
+        update={
+            "general": config.general.model_copy(
+                update={
+                    "agent_idle_drain_window_seconds": 0.05,
+                    "agent_parent_exit_grace_seconds": 0.2,
+                    "agent_descendant_wait_timeout_seconds": 1.0,
+                    "agent_descendant_wait_poll_seconds": 0.01,
+                    "agent_process_exit_wait_seconds": 2.0,
+                }
+            )
+        }
+    )
 
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)
@@ -293,7 +332,7 @@ def test_positive_multimodal_run_grades_wire(
 
 @pytest.mark.parametrize(
     "transport",
-    _TRANSPORT_IDS,
+    _IGNORE_RESPONSE_TRANSPORTS,
 )
 def test_ignore_response_multimodal_run_exits_nonzero(
     transport: str,

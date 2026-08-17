@@ -7,7 +7,7 @@
 
 This policy governs every AI agent working in this project. It applies
 to every change made through Claude Code, OpenCode, Codex, Gemini,
-Cursor, Nanocoder, AGY (Google Anti Gravity), Pi, or any other agent
+Cursor, Nanocoder, AGY (Google Anti Gravity), Pi, Kimi, or any other agent
 shell that delegates to the Ralph Workflow runtime. It defines the
 project instruction surface, the gate obligations, the truthfulness
 obligations, and the documentation update obligations.
@@ -52,7 +52,7 @@ The `RALPH-FACT:` lines below record verified project facts. Agents
 rely on them when enforcing this policy and MUST keep them current as
 the project evolves.
 
-RALPH-FACT: supported_agents: Claude Code (interactive + headless), Codex, OpenCode, Nanocoder, AGY (Google Anti Gravity), Pi, Cursor, Gemini — 8 built-in agents wired through `ralph/agents/` and surfaced in `ralph-workflow/docs/sphinx/agents.md` and `agent-compatibility.md`. New agents register via `register_agent_support` (advanced) or `register_my_agent` (the 90% recipe) per `ralph-workflow/docs/agents/adding-a-new-agent.md`.
+RALPH-FACT: supported_agents: Claude Code (interactive + headless), Codex, OpenCode, Nanocoder, AGY (Google Anti Gravity), Pi, Cursor, Kimi (Kimi Code) — 9 built-in agents wired through `ralph/agents/` and surfaced in `ralph-workflow/docs/sphinx/agents.md` and `agent-compatibility.md`. New agents register via `register_agent_support` (advanced) or `register_my_agent` (the 90% recipe) per `ralph-workflow/docs/agents/adding-a-new-agent.md`.
 RALPH-FACT: agent_dispatch_command: `python -m ralph` (the runtime CLI; the `rdev` launcher for the dev build, the `ralph` launcher for the pinned stable build per `ralph-workflow/CONTRIBUTING.md`). All agent shells resolve to this CLI; there is no per-agent bespoke dispatcher.
 RALPH-FACT: agent_review_process: development and fix phases MUST submit `development_result` with proof entries covering every plan step (and every prior `how_to_fix` item when `development_analysis` feedback exists). Review depends on a fresh per-phase artifact created during the current invocation; a clean subprocess exit is not enough evidence of useful work for `review`. The proof policy is enforced by `[phases.development.artifact_proof_policy]` in `ralph/policy/defaults/pipeline.toml`. The watchdog contract (`ralph/agents/idle_watchdog/` — `IdleWatchdog` + `PostExitWatchdog`, both via `Clock` injection for deterministic testing) owns in-stream and post-exit wall-clock ceilings; ad-hoc `time.sleep()` loops in `ralph/agents/invoke.py` are forbidden.
 RALPH-FACT: failure_reporting_contract: failures are classified by `ralph/recovery/classifier.py` (single owner); technical retries share one cap (`general.max_same_agent_retries`), one formatter (`ralph/recovery/retry_prompt.py`), and one error-format contract (failure/error block first, prompt/context references secondary). Loopbacks (analysis / validation) are not technical retries and do not reuse the technical retry counter. The agent MUST surface the classified `FailureCategory` and the cap state in every reported failure, never collapse distinct recoverable categories into "agent error".

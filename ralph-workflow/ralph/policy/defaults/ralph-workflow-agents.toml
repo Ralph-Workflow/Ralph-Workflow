@@ -136,3 +136,15 @@ subagent_capability = true
 # display_name = "Cursor"
 # @AGENT-BLOCK-END
 
+# @AGENT-BLOCK-START: kimi
+# [agents.kimi]
+# cmd = "kimi"
+# transport = "kimi"
+# output_flag = "--output-format=stream-json"
+# print_flag = "-p"
+# json_parser = "generic"
+# session_flag = "-r {}"
+# can_commit = true
+# display_name = "Kimi"
+# @AGENT-BLOCK-END
+

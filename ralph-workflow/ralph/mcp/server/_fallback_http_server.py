@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -19,8 +19,20 @@ class _FallbackHttpServer(ThreadingHTTPServer):
     mcp_server: McpServer
     state: ServerState
     shutdown_event: Event
-    health_probe_fn: Callable[[], _ProbeResult] | None
-    metrics: McpMetrics | None
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler_class: type[BaseHTTPRequestHandler],
+    ) -> None:
+        super().__init__(server_address, request_handler_class)
+        # Class-level annotations alone do NOT create instance attributes;
+        # the /health handler reads both of these, and a missing attribute
+        # raised AttributeError on the production standalone runtime (the
+        # Kimi live smoke surfaced it). Constructor-owned defaults keep the
+        # contract true no matter which caller wires the server up.
+        self.health_probe_fn: Callable[[], _ProbeResult] | None = None
+        self.metrics: McpMetrics | None = None
 
     def shutdown(self) -> None:
         self.shutdown_event.set()

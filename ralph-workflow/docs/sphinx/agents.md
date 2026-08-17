@@ -27,10 +27,10 @@ It does not read, store, or proxy credentials.
 > This is a deliberate trust boundary: **you** own your agent credentials.
 > Ralph Workflow's job is to orchestrate work, not to handle secrets.
 
-## Selection — the eight built-in agents
+## Selection — the nine built-in agents
 
 The canonical registry is `ralph/agents/builtin.py`. Ralph Workflow ships
-with eight built-in agent specs that the bundled default policy can route
+with nine built-in agent specs that the bundled default policy can route
 phases to:
 
 | Built-in name     | CLI          | Transport            | Headless? | Use case                                              |
@@ -43,6 +43,7 @@ phases to:
 | `agy`             | `agy`        | Interactive (PTY)    | Manual paid diagnostic | Google's Antigravity CLI (v1.1.8 observed `gemini-3.6-flash-low`, high effort, stream-json `init`/`step_update`/`result`, and exit-0 fallback-artifact smoke path; re-measure after updates) |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
+| `kimi`            | `kimi`       | Headless subprocess  | Yes       | Kimi Code CLI; `kimi/<model>` dynamic aliases (full configured `kimi-code/...` IDs) |
 
 The registry resolves dynamic aliases. AGY v1.1.8 probes accepted `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`; aliases validate published IDs and the `low`, `medium`, or `high` effort suffix before invocation. Re-measure published IDs after AGY updates. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)

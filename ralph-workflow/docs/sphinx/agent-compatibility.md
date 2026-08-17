@@ -19,6 +19,7 @@ availability remains the CLI provider's responsibility.
 | `agy/<published-id>[:effort]` | `--model <published-id>` and optional `--effort <effort>` | Example: `agy/gemini-3.6-flash-high:high`. The v1.1.8 probe accepted `gemini-3.6-flash-high --effort high`; aliases validate `low`, `medium`, and `high` before invocation. |
 | `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
 | `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
+| `kimi/<model>` | `-m <model>` | The model must be a full configured ID from `~/.kimi-code/config.toml` (for example `kimi/kimi-code/kimi-for-coding`); bare unprefixed IDs are rejected by the CLI. |
 | `ccs/<alias>` | The configured CCS alias command | Define the alias under `[ccs_aliases]`. |
 
 ## Supported agents
@@ -101,7 +102,7 @@ availability remains the CLI provider's responsibility.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
     - Session continuation remains unavailable in Ralph Workflow. The v1.1.10 continuation and conversation-id probes accepted one-word `--print` prompts, but neither exposed the resumed-session identity; the integration therefore does not claim or reuse AGY sessions.
-    - `agy agents` reported no available agents on the measured stock v1.1.10 CLI installation. This is a *subcommand listing* observation, not proof AGY lacks subagent capability: the live `init` frame's `tools` list includes `define_subagent`, `invoke_subagent`, and `manage_subagents`, and a live capture confirmed two subagents actually dispatched and completed in parallel through those tools. Ralph Workflow's own routing policy is unchanged by this correction: with `agent_subagents` and two or more work units, routing still fails explicitly rather than falling back to sequential dispatch.
+    - `agy agents` reported no available agents on the measured stock v1.1.10 CLI installation. This is a *subcommand listing* observation, not proof AGY lacks subagent capability: the live `init` frame's `tools` list includes `define_subagent`, `invoke_subagent`, and `manage_subagents`, and a live capture confirmed two subagents actually dispatched and completed in parallel through those tools. Ralph Workflow's routing policy matches the measured transport: with `agent_subagents` and two or more work units, AGY parallel plans route through the same supported agent_subagents path as other native-subagent transports, and the stale `agy agents` availability veto has been removed.
     - The measured v1.1.10 mock live smoke exited 0 after creating its requested file, showing parser/tool activity without a permission prompt, and producing a valid fallback `smoke_test_result`. Ralph Workflow validated and canonically promoted it, recorded the receipt and host completion sentinel. `AgyParser` maps stream-json `init`, `step_update`, and `result` events.
     - AGY is a supported integration, not a replacement for Ralph Workflow.
 
@@ -132,6 +133,27 @@ json_parser = "generic"
 - **Transport**: `cursor`
 - **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
 - **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.
+
+### Kimi (Kimi Code)
+
+- **CLI**: `kimi` (v0.36.1 observed)
+- **Install / auth**: <https://platform.kimi.ai> — OAuth login (`kimi` interactive) wires the `managed:kimi-code` subscription provider
+- **Transport**: `kimi`
+- **Flags**: `-p <prompt-file>`, `--output-format stream-json`, and `-m <model>` via the `kimi/<model>` alias
+- **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; default `kimi-code/k3-256k`). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
+- **Multimodal**: image input is covered by the measured `image_in` capability on the authenticated models.
+- **Sub-agents**: no sub-agent dispatch surface; delegation is declared `EXPLICIT_UNSUPPORTED`.
+- **Smoke**: `ralph smoke-interactive-kimi --agent kimi/kimi-code/kimi-for-coding` (the default alias).
+- **Model cost comparison** (re-measured 2026-08-17 against the official model table at <https://www.kimi.com/code/docs/en/kimi-code/models>; availability and quota notes as stated there):
+
+  | Model ID | Availability | Context | Stated quota note |
+  | --- | --- | --- | --- |
+  | `kimi-code/kimi-for-coding` | All members | 256k | none (baseline) |
+  | `kimi-code/kimi-for-coding-highspeed` | Allegretto and above | 256k | 3x quota usage |
+  | `kimi-code/k3` | Moderato and above (1M context needs Allegretto) | up to 1M | about 2x `k3-256k` consumption |
+  | `kimi-code/k3-256k` | Moderato and above | 256k | none stated |
+
+  The table does not publish a direct `kimi-for-coding` vs `k3-256k` price, so the smoke default stays on the configured standard model `kimi-code/kimi-for-coding`: it is available to every member tier and carries no documented quota multiplier, which makes it the auditable least-cost choice. Selection rule if the table or configured aliases change: pick the accessible model with the lowest explicitly documented multiplier and break missing-price ties in favor of the configured default, never a guess from the name.
 
 <a id="ccs_aliases"></a>
 

@@ -106,14 +106,20 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live
     # configuration. The banner is part of the composition root.
-    "mcp/server/_fallback_standalone_server.py:58",
-    "mcp/server/_fallback_standalone_server.py:72",
+    "mcp/server/_fallback_standalone_server.py:65",
+    "mcp/server/_fallback_standalone_server.py:79",
     # mcp/transport/nanocoder.py — reads platform env vars (``APPDATA``,
     # ``XDG_CONFIG_HOME``) to resolve the user-level nanocoder config dir.
     # These are platform-path conventions, not config; injecting them
     # would add noise without changing testable behavior.
     "mcp/transport/nanocoder.py:64",
     "mcp/transport/nanocoder.py:69",
+    # mcp/transport/kimi.py — reads ``KIMI_CODE_HOME`` to resolve the
+    # user-global Kimi Code mcp.json dir, defaulting to ``~/.kimi-code``.
+    # Same platform-path convention shape as nanocoder above; the
+    # workspace-local config path is fully injected, so the seam would
+    # add noise without changing testable behavior.
+    "mcp/transport/kimi.py:92",
     # mcp/websearch/secrets.py:17 — ``getenv`` is a callable parameter
     # of type ``EnvGetter``, NOT an ambient read.
     "mcp/websearch/secrets.py:17",
@@ -144,6 +150,11 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY in
     # _agy_binary_override_env; justified by di-seam-allowlist comment.
     "pipeline/plumbing/smoke_plumbing.py:516",
+    # pipeline/plumbing/smoke_plumbing.py - MOCK_AGY_BEHAVIOR is the
+    # composition-root mock test infrastructure; no production code path
+    # reads it (guarded by is_mock_agy_override()).
+    "pipeline/plumbing/smoke_plumbing.py:1542",
+    "pipeline/plumbing/smoke_plumbing.py:1761",
 )
 
 # Top-level entry points and the config package — the composition root for

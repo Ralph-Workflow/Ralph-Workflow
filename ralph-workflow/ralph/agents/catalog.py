@@ -27,6 +27,7 @@ from ralph.agents._contracts import StrategyFactory
 from ralph.agents.execution_state._factory import (
     _make_agy_strategy,
     _make_cursor_strategy,
+    _make_kimi_strategy,
     _make_pi_strategy,
 )
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
@@ -42,6 +43,7 @@ from ralph.agents.parsers.codex import CodexParser
 from ralph.agents.parsers.cursor import CursorParser
 from ralph.agents.parsers.gemini import GeminiParser
 from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
@@ -196,6 +198,7 @@ _DEFAULT_BUILTIN_PARSER_TYPES: dict[
     "codex": (CodexParser, AgentTransport.CODEX, GenericExecutionStrategy),
     "cursor": (CursorParser, AgentTransport.CURSOR, GenericExecutionStrategy),
     "gemini": (GeminiParser, AgentTransport.GENERIC, GenericExecutionStrategy),
+    "kimi": (KimiParser, AgentTransport.KIMI, _make_kimi_strategy),
     "nanocoder": (NanocoderParser, AgentTransport.NANOCODER, GenericExecutionStrategy),
     "opencode": (OpenCodeParser, AgentTransport.OPENCODE, GenericExecutionStrategy),
     "pi": (PiParser, AgentTransport.PI, _make_pi_strategy),
@@ -237,6 +240,7 @@ def _default_strategy_factories() -> dict[AgentTransport, StrategyFactory]:
         AgentTransport.NANOCODER: GenericExecutionStrategy,
         AgentTransport.PI: _make_pi_strategy,
         AgentTransport.CURSOR: _make_cursor_strategy,
+        AgentTransport.KIMI: _make_kimi_strategy,
         AgentTransport.GENERIC: GenericExecutionStrategy,
     }
 
@@ -497,7 +501,7 @@ class AgentCatalog:
 
 
 def _seed_default_catalog(catalog: AgentCatalog) -> None:
-    """Populate the default catalog with the 7 built-in supports and 8 default strategies.
+    """Populate the default catalog with the 9 built-in supports and default strategies.
 
     Idempotent: calling on a catalog that is already seeded is a no-op.
 

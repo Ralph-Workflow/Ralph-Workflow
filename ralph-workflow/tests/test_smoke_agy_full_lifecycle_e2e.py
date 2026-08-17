@@ -156,3 +156,73 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
         f"Expected the durable, HMAC-verified completion sentinel for "
         f"run_id={run_id!r} under {tmp_path}"
     )
+
+
+# --- MOCK_AGY_BEHAVIOR negative-contract selectors (wt-015-agy-support S-5) ---
+#
+# Each selector alters exactly one contract signal while preserving the rest
+# of the lifecycle. The CLI must exit non-zero and surface the selector's
+# documented diagnostic so a superficial green smoke can never mask a broken
+# signal.
+
+_NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("no_output", ("AGY --print returned empty stdout",)),
+    ("malformed_stream", ("raw transcript corrupted", "no tool activity was observed")),
+    ("failed_result", ("result frame reported status=FAILED",)),
+    ("missing_dispatch", ("subagent dispatch was not observed",)),
+    ("missing_result", ("subagent result was not observed",)),
+    ("missing_artifact", ("smoke_test_result artifact was not submitted",)),
+    ("missing_completion", ("completion sentinel was not observed",)),
+)
+
+
+def _run_negative_smoke(tmp_path: Path, behavior: str) -> tuple[int, str]:
+    """Run the lifecycle smoke with one MOCK_AGY_BEHAVIOR selector forced."""
+    env = os.environ.copy()
+    env["RALPH_AGY_BINARY"] = str(_mock_agy_path())
+    env["MOCK_AGY_BEHAVIOR"] = behavior
+    env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)
+    env["MOCK_AGY_V1_1_13"] = "1"
+    env["RALPH_BROKER_SECRET"] = _E2E_BROKER_SECRET
+    env.pop("MCP_AUTH_TOKEN", None)
+    env.pop("MOCK_AGY_SUBAGENT", None)
+    env.pop("AGY_BINARY", None)
+    env.pop("MOCK_AGY_ARTIFACT_DIR_OVERRIDE", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ralph",
+            "smoke-interactive-agy",
+            "--agent",
+            _AGENT,
+            "--subagents",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=25,
+        check=False,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(("behavior", "diagnostics"), _NEGATIVE_SELECTORS)
+def test_agy_full_lifecycle_e2e_negative_selector_fails_loudly(
+    tmp_path: Path,
+    behavior: str,
+    diagnostics: tuple[str, ...],
+) -> None:
+    """Each selector must make the CLI exit non-zero with its own diagnostic."""
+    returncode, output = _run_negative_smoke(tmp_path, behavior)
+
+    assert returncode != 0, (
+        f"smoke-interactive-agy with MOCK_AGY_BEHAVIOR={behavior} exited 0 "
+        f"(a non-zero exit is required so a superficial green cannot mask the "
+        f"broken signal). Output:\n{output}"
+    )
+    for diagnostic in diagnostics:
+        assert diagnostic in output, (
+            f"MOCK_AGY_BEHAVIOR={behavior} must surface {diagnostic!r}.\n{output}"
+        )

@@ -23,6 +23,15 @@ class AgentTransport(StrEnum):
             headless BuiltinAgentSpec uses ``agent --print --output-format
             stream-json`` and Ralph wires MCP through ``.cursor/mcp.json`` /
             ``~/.cursor/mcp.json`` (the documented Cursor config surface).
+        KIMI: Moonshot AI's Kimi Code CLI compatible invocation/MCP
+            transport. The headless BuiltinAgentSpec uses
+            ``kimi -p <prompt> --output-format stream-json`` (the
+            documented non-interactive prompt mode; the live v0.36.1
+            binary rejects the legacy kimi-cli ``--print`` / ``--afk``
+            tokens and documents ``--yolo`` / ``--auto`` as conflicting
+            with ``--prompt``). Ralph wires MCP through
+            ``.kimi-code/mcp.json`` / ``~/.kimi-code/mcp.json`` (the
+            documented Kimi Code config surface).
     """
 
     CLAUDE = "claude"
@@ -34,3 +43,4 @@ class AgentTransport(StrEnum):
     AGY = "agy"
     PI = "pi"
     CURSOR = "cursor"
+    KIMI = "kimi"

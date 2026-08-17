@@ -697,12 +697,15 @@ def _worker_description(unit: WorkUnit) -> str:
 # follows the documented MCP server-naming convention and exposes remote
 # MCP tools with the same ``mcp__<server>__<tool>`` prefix Claude and
 # Codex use, so Cursor prompts must also use that prefix or the model
-# calls a non-existent tool name.
+# calls a non-existent tool name.  Kimi Code's ``kimi`` binary follows the
+# same convention on its measured ``stream-json`` wire (tool names arrive
+# as ``mcp__<server>__<tool>``), so kimi prompts use that prefix too.
 _CLAUDE_STYLE_TRANSPORTS = (
     AgentTransport.CLAUDE,
     AgentTransport.CLAUDE_INTERACTIVE,
     AgentTransport.CODEX,
     AgentTransport.CURSOR,
+    AgentTransport.KIMI,
 )
 
 

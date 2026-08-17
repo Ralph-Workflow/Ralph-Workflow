@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -236,11 +235,8 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         raising=False,
     )
 
-    def expected_agy_agents_probe() -> str:
-        return "Available agents:\n- reviewer"
-
     def _router(*_args: object, **kwargs: object) -> InvokeAgentEffect:
-        captured["agy_agents_probe"] = kwargs.get("agy_agents_probe")
+        captured["router_kwargs"] = dict(kwargs)
         return InvokeAgentEffect(
             agent_name="developer",
             phase="development",
@@ -302,12 +298,11 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         raising=False,
     )
 
-    pipeline_deps = dataclasses.replace(
-        _FakePipelineFactory(phase_prompt_materializer=_fake_materialize_prompt_for_phase).build(
-            object(),
-            object(),
-        ),
-        agy_agents_probe=expected_agy_agents_probe,
+    pipeline_deps = _FakePipelineFactory(
+        phase_prompt_materializer=_fake_materialize_prompt_for_phase
+    ).build(
+        object(),
+        object(),
     )
     exit_code = module.run_parallel_worker_from_manifest(
         manifest_path=manifest_path,
@@ -316,7 +311,9 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     )
 
     assert exit_code == 0
-    assert captured["agy_agents_probe"] is expected_agy_agents_probe
+    assert "agy_agents_probe" not in captured["router_kwargs"], (
+        "the removed probe seam must not be forwarded to the effect router"
+    )
     assert captured["read_path"] == shared_prompt
     assert manifest.config_path is not None
     assert captured["config_path"] == Path(manifest.config_path)

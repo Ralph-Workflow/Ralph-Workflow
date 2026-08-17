@@ -215,8 +215,9 @@ def merge_existing_upstreams(
 ) -> dict[str, object]:
     """Merge existing upstream servers into current_config based on agent and unsafe_mode.
 
-    This helper consolidates the unsafe_mode merge logic across the 4 JSON-based
-    transport files (claude, agy, nanocoder, opencode) into one dispatcher.
+    This helper consolidates the unsafe_mode merge logic across the JSON-based
+    transport files (claude, agy, nanocoder, opencode, codex, cursor, kimi)
+    into one dispatcher.
 
     When unsafe_mode=False: returns only the ralph entry (existing upstreams dropped).
     When unsafe_mode=True: merges existing agent-native servers with the ralph entry.
@@ -225,7 +226,8 @@ def merge_existing_upstreams(
     the native TOML structure and all per-entry fields.
 
     Args:
-        agent_name: One of "claude", "agy", "nanocoder", "opencode", "codex".
+        agent_name: One of "claude", "agy", "nanocoder", "opencode", "codex",
+            "cursor", "kimi".
         current_config: Agent-native config dict.
             - claude/agy/nanocoder: {"mcpServers": {"<name>": {...}}}
             - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
@@ -269,7 +271,7 @@ def _load_upstreams_for_agent(
         workspace_path if workspace_path is not None else current_config.get("workspace_path")
     )
     existing_mcp_servers = current_config.get("mcpServers")
-    if agent_name in ("claude", "agy", "nanocoder", "cursor"):
+    if agent_name in ("claude", "agy", "nanocoder", "cursor", "kimi"):
         servers: dict[str, object] = {}
         if isinstance(existing_mcp_servers, dict) and len(existing_mcp_servers) > 1:
             servers = cast("dict[str, object]", existing_mcp_servers)
@@ -300,6 +302,19 @@ def _load_upstreams_for_agent(
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_cursor_server_entry,
+            )
+            servers = cast(
+                "dict[str, object]",
+                mod._load_mcpservers_from_paths(paths, normalizer),
+            )
+        elif agent_name == "kimi":
+            mod = importlib.import_module("ralph.mcp.transport.kimi")
+            paths = cast(
+                "tuple[Path, ...]", mod._kimi_paths_to_consider(_workspace_path)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            normalizer = cast(
+                "Callable[[str, object], tuple[str, object] | None]",
+                mod._normalize_kimi_server_entry,
             )
             servers = cast(
                 "dict[str, object]",

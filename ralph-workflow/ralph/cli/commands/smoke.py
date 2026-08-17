@@ -48,6 +48,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _build_smoke_prompt,
     _cursor_binary_override_env,
     _execute_smoke_turns,
+    _kimi_binary_override_env,
     is_mock_agy_override,
     record_conformance_matrix,
     resolve_smoke_harness_spec,
@@ -73,6 +74,11 @@ def get_agy_binary_override() -> str:
 def get_cursor_binary_override() -> str:
     """Return the Cursor binary path, honoring ``RALPH_CURSOR_BINARY``."""
     return _cursor_binary_override_env() or "agent"
+
+
+def get_kimi_binary_override() -> str:
+    """Return the Kimi binary path, honoring ``RALPH_KIMI_BINARY``."""
+    return _kimi_binary_override_env() or "kimi"
 
 
 def get_opencode_binary_override() -> str:
@@ -159,6 +165,43 @@ def _maybe_apply_cursor_binary_override(agent_config: AgentConfig) -> AgentConfi
     return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
 
 
+def _resolve_kimi_binary_override() -> str | None:
+    """Return the validated absolute ``RALPH_KIMI_BINARY`` override or ``None``."""
+    override = _kimi_binary_override_env()
+    if not override:
+        return None
+    resolved = Path(override).expanduser()
+    if not resolved.is_absolute():
+        resolved = resolved.resolve()
+        logger.info(
+            "Resolved relative RALPH_KIMI_BINARY '{}' to absolute path '{}'",
+            override,
+            resolved,
+        )
+    # filesystem-read-ok: explicit binary override validation needs executable-file metadata
+    if shutil.which(str(resolved)) is None and not (
+        # filesystem-read-ok: explicit binary override validation needs executable-file metadata
+        resolved.is_file() and os.access(resolved, os.X_OK)
+    ):
+        logger.warning(
+            "RALPH_KIMI_BINARY points to '{}', which is not executable; ignoring override",
+            override,
+        )
+        return None
+    return str(resolved)
+
+
+def _maybe_apply_kimi_binary_override(agent_config: AgentConfig) -> AgentConfig:
+    """Return a copy of ``agent_config`` using ``RALPH_KIMI_BINARY`` when valid."""
+    if agent_config.transport is not AgentTransport.KIMI:
+        return agent_config
+    resolved = _resolve_kimi_binary_override()
+    if resolved is None:
+        return agent_config
+    logger.info("Using RALPH_KIMI_BINARY override: {}", resolved)
+    return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
+
+
 def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
     """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
     resolved = _resolve_agy_binary_override()
@@ -222,6 +265,7 @@ __all__ = [
     "smoke_interactive_claude_command",
     "smoke_interactive_codex_command",
     "smoke_interactive_cursor_command",
+    "smoke_interactive_kimi_command",
     "smoke_interactive_nanocoder_command",
     "smoke_interactive_pi_command",
 ]
@@ -912,6 +956,72 @@ def smoke_interactive_cursor_command(
         logger.error(
             "Agent '{}' resolves to transport '{}', not CURSOR. "
             "Use --agent with a cursor/<model> alias.",
+            agent_name,
+            agent_config.transport.value if agent_config.transport else "None",
+        )
+        return 2
+
+    return smoke_harness_agent_command(
+        agent_name,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
+        multimodal=multimodal,
+    )
+
+
+def smoke_interactive_kimi_command(
+    agent_name: str = "kimi/kimi-code/kimi-for-coding",
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
+    multimodal: bool = False,
+) -> int:
+    """Run the manual end-to-end smoke harness via the Kimi headless contract.
+
+    This drives the live ``kimi`` binary (or the ``RALPH_KIMI_BINARY``
+    override when set).  The default alias is
+    ``kimi/kimi-code/kimi-for-coding``: the authenticated Kimi Code
+    subscription platform configures its models under the
+    ``kimi-code/`` prefix (``~/.kimi-code/config.toml``), and the CLI
+    rejects a bare ``-m kimi-for-coding`` ("Model ... is not configured
+    in config.toml"), so the alias carries the full configured id.  The command
+    is OUTSIDE ``make verify`` -- it consumes live tokens and only runs
+    when an operator explicitly invokes it.
+    """
+    kimi_binary = get_kimi_binary_override()
+    # filesystem-read-ok: external binary existence check via PATH
+    # override (RALPH_KIMI_BINARY); operator-controlled system path,
+    # not project-filesystem state.
+    if shutil.which(kimi_binary) is None and not os.access(kimi_binary, os.X_OK):
+        logger.error(
+            "kimi binary not found at '{}'. Install Kimi Code and "
+            "ensure `kimi` is on PATH, or set RALPH_KIMI_BINARY to a "
+            "valid wrapper for testing.",
+            kimi_binary,
+        )
+        return 2
+
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        logger.error(
+            "Agent '{}' is not available. Use --agent with a kimi/<model> alias, "
+            "e.g. --agent 'kimi/kimi-for-coding'.",
+            agent_name,
+        )
+        return 2
+    if agent_config.transport is None or agent_config.transport != AgentTransport.KIMI:
+        logger.error(
+            "Agent '{}' resolves to transport '{}', not KIMI. "
+            "Use --agent with a kimi/<model> alias.",
             agent_name,
             agent_config.transport.value if agent_config.transport else "None",
         )

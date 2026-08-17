@@ -114,9 +114,13 @@ Behaviour specifics (measured against the live v1.1.10 binary):
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
+from pygments.lexers import get_lexer_by_name
+
+from ralph.display.language_inference import lexer_for_path
 from ralph.display.vt_normalizer import normalize_vt_text
 
 from ._ndjson_base import NdjsonParserBase
@@ -145,6 +149,46 @@ _PARAM_SUMMARY_MAX_LEN = 60
 # unknown vocabulary added by a future AGY release degrades observably.
 # See tests/display/_fixtures/agy_wire_provenance.md for the measured
 # v1.1.10 / v1.1.13 bodiless vocabulary.
+
+
+# Markdown fenced code blocks carried inside a text payload (S-8): the
+# opening fence's info string (```python, ```ts, ...) names the language.
+# The fence may be indented; only the info string's leading word is used.
+_FENCE_RE = re.compile(r"^[ \t]*```([\w.+-]*)[^\n]*\n", re.MULTILINE)
+
+
+def _fence_language(content: str) -> str | None:
+    """Return the detected language of ``content``'s first markdown code fence.
+
+    Runs the payload through the project's syntax-highlighter language
+    resolution (:func:`ralph.display.language_inference.lexer_for_path` and
+    Pygments' alias lookup) so the emitted text event can carry
+    ``syntax_highlight: True`` plus the canonical lexer alias. Returns
+    ``None`` when the payload carries no fenced code block at all. A fence
+    whose info string Pygments does not know keeps the raw lowercased info
+    string (it is still the language the agent declared); a fence with no
+    info string is guessed from the fenced code's content, degrading to
+    ``"text"`` exactly like every other inference call site.
+    """
+    match = _FENCE_RE.search(content)
+    if match is None:
+        return None
+    info = str(match.group(1))
+    if info:
+        try:
+            lexer = get_lexer_by_name(info)
+        except Exception:
+            return info.lower()
+        return lexer.aliases[0] if lexer.aliases else info.lower()
+    return lexer_for_path(None, content)
+
+
+def _annotate_syntax_highlight(metadata: dict[str, object], content: str) -> None:
+    """Mark ``metadata`` with the fence language when ``content`` carries code."""
+    language = _fence_language(content)
+    if language is not None:
+        metadata["syntax_highlight"] = True
+        metadata["language"] = language
 
 
 def _truncate(value: str) -> str:
@@ -314,6 +358,21 @@ def _tool_updates(
     return [(tool_name, info, tool_cid, id_is_synthesized)]
 
 
+def _system_message_payload(frame: dict[str, object]) -> str | None:
+    """Return the text payload a ``system_message`` frame carries, if any.
+
+    The measured v1.1.13 ``system_message`` frames are bodiless, so the
+    candidate keys are ordered by how the wire format names operator-visible
+    text elsewhere (``text_delta`` on ``agent_response``, ``response`` on
+    ``result``); a whitespace-only value is treated as absent.
+    """
+    for key in ("text", "message", "content", "text_delta", "response"):
+        value = frame.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
     """Extract a compact human-readable text payload from an unrecognized JSON frame."""
     if not obj:
@@ -415,12 +474,15 @@ class AgyParser(NdjsonParserBase):
             stripped_content = line.content.strip()
             if not stripped_content:
                 continue
+            metadata = dict(line.metadata) if line.metadata else {}
             if pending_usage is not None:
-                metadata = dict(line.metadata) if line.metadata else {}
                 metadata["usage"] = pending_usage
-                yield replace(line, content=stripped_content, metadata=metadata)
-            else:
-                yield replace(line, content=stripped_content)
+            # S-8: every flushed text payload (agent_response text_delta
+            # accumulation and the plain-text fallback alike) is run through
+            # the syntax-highlighter pass so fenced code the agent emitted
+            # reaches the rendering pipeline tagged with its language.
+            _annotate_syntax_highlight(metadata, stripped_content)
+            yield replace(line, content=stripped_content, metadata=metadata)
 
     def _dispatch_json_object(
         self,
@@ -446,6 +508,18 @@ class AgyParser(NdjsonParserBase):
             # synthetic-only today).
             payload = _extract_fallback_payload(obj)
             yield AgentOutputLine(type="error", content=payload or "", raw=raw, metadata=obj)
+        elif event == "system_message":
+            # S-8: a top-level ``system_message`` frame (not observed on the
+            # measured v1.1.10-v1.1.13 wire, but the symmetric top-level
+            # spelling of the v1.1.13 ``step_type``) is operator-visible
+            # system text, so it is surfaced as a ``text`` event with the
+            # syntax-highlighter pass applied instead of the generic fallback
+            # payload projection.
+            payload = _system_message_payload(obj) or _extract_fallback_payload(obj)
+            if payload is not None:
+                metadata: dict[str, object] = dict(obj)
+                _annotate_syntax_highlight(metadata, payload)
+                yield AgentOutputLine(type="text", content=payload, raw=raw, metadata=metadata)
         elif obj.get("type") == "tool_use":
             yield from self._dispatch_legacy_tool_use(obj, raw)
         else:
@@ -606,6 +680,19 @@ class AgyParser(NdjsonParserBase):
             metadata["usage"] = usage
         label = step_type if isinstance(step_type, str) and step_type else "update"
         if step_type != "agent_response":
+            # S-8: a ``system_message`` that DOES carry a text payload (the
+            # measured v1.1.13 frames are bodiless, but the step_type exists
+            # to carry operator-visible system text) is surfaced as a
+            # ``text`` event with the syntax-highlighter pass applied, not
+            # as the bodiless lifecycle summary below.
+            if step_type == "system_message":
+                payload = _system_message_payload(step)
+                if payload is not None:
+                    _annotate_syntax_highlight(metadata, payload)
+                    yield AgentOutputLine(
+                        type="text", content=payload, raw=raw, metadata=metadata
+                    )
+                    return
             yield AgentOutputLine(
                 type="lifecycle", content=f"agy step {label}", raw=raw, metadata=metadata
             )

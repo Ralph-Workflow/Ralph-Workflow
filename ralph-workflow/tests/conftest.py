@@ -262,6 +262,17 @@ def _isolate_process_home(
     # ``os.environ`` defaults.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-dummy-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-dummy-key")
+    # Cycle-deadline epochs are published per-invocation by the pipeline
+    # runner and withdrawn when the invocation ends. A leaked value (a
+    # crashed harness, an outer live run driving this test suite as its
+    # verification step) would silently turn every artifact-validation
+    # test into a warned-cycle test, rejecting honest partial results
+    # with a deadline requirement the test never configured. Strip both
+    # names so each test starts with "no deadline published" and only
+    # fixtures that deliberately publish one (e.g.
+    # tests/mcp/test_warned_gate_reads_runtime_state.py) see a cycle.
+    monkeypatch.delenv("RALPH_CYCLE_WARN_EPOCH", raising=False)
+    monkeypatch.delenv("RALPH_CYCLE_DEADLINE_EPOCH", raising=False)
 
 
 #: Per-worker base temp dir cache. ``tmp_path_factory`` is session-scoped

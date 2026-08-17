@@ -133,3 +133,34 @@ def test_all_delegation_capabilities_returns_a_tuple() -> None:
     result = all_delegation_capabilities()
     assert isinstance(result, tuple)
     assert all(isinstance(entry, DelegationCapability) for entry in result)
+
+
+def test_agy_delegation_entry_is_declared_supported_from_measured_wire_evidence() -> None:
+    """AGY carries an evidence-grounded SUPPORTED delegation entry.
+
+    The measured v1.1.10-v1.1.13 stream-json captures prove native
+    subagent dispatch (define_subagent / invoke_subagent / manage_subagents
+    with correlated step_update subagent frames), so the declaration is
+    SUPPORTED rather than the stale interactive-panel-only stance.
+    """
+    entry = delegation_for(AgentTransport.AGY)
+    assert entry.transport is AgentTransport.AGY
+    assert entry.stance is DelegationStance.SUPPORTED
+    assert "define_subagent" in entry.mechanism
+    assert "invoke_subagent" in entry.mechanism
+    assert "agy_wire_provenance" in entry.citation
+
+
+def test_kimi_delegation_entry_is_declared_unsupported() -> None:
+    """Kimi carries an evidence-grounded EXPLICIT_UNSUPPORTED delegation entry.
+
+    The measured kimi-code model capabilities (thinking, always_thinking,
+    image_in, tool_use) expose no sub-agent tool, so the headless transport
+    declares delegation explicitly unsupported rather than silently
+    defaulting to the generic stance.
+    """
+    entry = delegation_for(AgentTransport.KIMI)
+    assert entry.transport is AgentTransport.KIMI
+    assert entry.stance is DelegationStance.EXPLICIT_UNSUPPORTED
+    assert entry.mechanism.strip()
+    assert entry.citation.strip()

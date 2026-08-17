@@ -7,11 +7,13 @@ parsing, report rendering, exit codes only).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import secrets
 import shlex
+import sqlite3
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -45,12 +47,14 @@ from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.raw_overflow import detect_raw_log_breaks, raw_log_path_for
 from ralph.display.vt_normalizer import normalize_vt_text
+from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
 )
+from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -110,6 +114,9 @@ _CODEX_SMOKE_RUN_ID = "interactive-codex-smoke"
 _PI_SMOKE_RELATIVE_DIR = Path("tmp/interactive-pi-smoke")
 _PI_SMOKE_OUTPUT_FILE = _PI_SMOKE_RELATIVE_DIR / "todo-list.js"
 _PI_SMOKE_RUN_ID = "interactive-pi-smoke"
+_KIMI_SMOKE_RELATIVE_DIR = Path("tmp/interactive-kimi-smoke")
+_KIMI_SMOKE_OUTPUT_FILE = _KIMI_SMOKE_RELATIVE_DIR / "todo-list.js"
+_KIMI_SMOKE_RUN_ID = "interactive-kimi-smoke"
 _CCS_SMOKE_RELATIVE_DIR = Path("tmp/interactive-ccs-smoke")
 _CCS_SMOKE_RUN_ID = "interactive-ccs-smoke"
 
@@ -287,6 +294,26 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             output_file=relative_dir / "todo-list.js",
             run_id=run_id,
         )
+    if agent_name == "kimi" or agent_name.startswith("kimi/"):
+        # ``kimi`` (bare) uses the base kimi harness layout; ``kimi/<model>``
+        # (e.g. ``kimi/kimi-code/k3-256k``) branches off a sanitized
+        # run_id AND a sanitized sub-directory so two concurrent model
+        # smoke runs do not collide on completion-sentinel / receipt /
+        # output-file paths. Mirrors the ``pi`` layout.
+        suffix = agent_name.removeprefix("kimi").lstrip("/")
+        if not suffix:
+            run_id = _KIMI_SMOKE_RUN_ID
+            relative_dir = _KIMI_SMOKE_RELATIVE_DIR
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"{_KIMI_SMOKE_RUN_ID}-{sanitized}"
+            relative_dir = _KIMI_SMOKE_RELATIVE_DIR / sanitized
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=relative_dir,
+            output_file=relative_dir / "todo-list.js",
+            run_id=run_id,
+        )
     if agent_name.startswith("ccs/"):
         # ``ccs/<alias>`` (e.g. ``ccs/glm``) resolves dynamically to a
         # headless-Claude command via ``_resolve_dynamic_ccs_agent`` even
@@ -319,6 +346,13 @@ _AGENT_SESSION_CEILINGS = {  # bounded-accumulator-ok: static per-agent ceiling 
     "claude": 120.0,
     "agy": 360.0,
     "opencode": 360.0,
+    # Kimi Code's K2.7-standard model idles far past the 120s legacy
+    # default before its first tool call on this hardware (measured
+    # 2026-08-17: the live smoke prompt ran several minutes of Bash
+    # exploration before producing output); without the override the
+    # smoke watchdog kills the session at 120s with only the version
+    # banner parsed.
+    "kimi": 360.0,
 }
 _SMOKE_MAX_TURNS = 5
 _SMOKE_TRANSCRIPT_MAX_LINES = 400
@@ -469,6 +503,7 @@ CONFORMANCE_MATRIX_TRANSPORT_ORDER: Final[tuple[str, ...]] = (
     "nanocoder",
     "cursor",
     "opencode",
+    "kimi",
 )
 
 #: The three required contract facts F1's verdict is graded from (mirrors
@@ -485,9 +520,10 @@ CONFORMANCE_MATRIX_FACTS: Final[tuple[str, ...]] = (
 #: capability matrix is keyed by *agent identity*, not by transport
 #: enum, so that ``claude`` and ``claude-headless`` -- which share the
 #: same binary but exercise different transports -- appear as
-#: distinguishable rows. The full set of eight built-ins appears here
+#: distinguishable rows. The full set of nine built-ins appears here
 #: so an operator can read which agent implements what at a glance,
-#: matching the plan's AC-6.
+#: matching the plan's AC-6. Kimi sits after ``cursor`` to mirror the
+#: ``AgentTransport`` enum-declaration order (PI, CURSOR, KIMI).
 CANONICAL_CAPABILITY_AGENT_ORDER: Final[tuple[str, ...]] = (
     "claude",
     "claude-headless",
@@ -497,6 +533,7 @@ CANONICAL_CAPABILITY_AGENT_ORDER: Final[tuple[str, ...]] = (
     "agy",
     "pi",
     "cursor",
+    "kimi",
 )
 
 #: Durable JSON store (source of truth) and its rendered markdown sibling.
@@ -1479,6 +1516,71 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
         workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     )
     artifact_path.unlink(missing_ok=True)
+    # The wire ledger is an append-only HMAC chain keyed by the run-scoped
+    # broker secret. A ledger left over from a previous run (signed with a
+    # different secret, or unsigned) makes ``verify_chain`` fail closed, so
+    # every fact in THIS run grades below WIRE forever (measured 2026-08-17
+    # live AGY smoke: all facts demoted to TRANSCRIPT/WORKSPACE_EFFECT with
+    # a DEGRADED verdict and EXIT_CODE=1 even with RALPH_BROKER_SECRET set).
+    # The harness runs the same public smoke run_id repeatedly in one
+    # workspace, so the ledger must restart at genesis with the artifact.
+    from ralph.mcp.server._wire_ledger import WIRE_LEDGER_RELPATH
+
+    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path.unlink(missing_ok=True)
+
+
+def _mock_negative_selector() -> str | None:
+    """Return the v1.1.13 negative selector active for this mock run, if any.
+
+    Composition-root env read: the smoke harness IS the composition root for
+    mock-backed runs, and the selector names the single contract signal the
+    mock deliberately broke so the harness must not re-promote it.
+    """
+    if not is_mock_agy_override():
+        return None
+    selector = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")  # di-seam-allowlist: composition-root test infrastructure
+    if selector in {"missing_artifact", "missing_completion"}:
+        return selector
+    return None
+
+
+def _clear_mock_broken_signals(workspace_root: Path, run_id: str) -> None:
+    """Remove receipt/sentinel evidence the mock's negative selector broke.
+
+    ``_clear_session_completion_sentinel`` runs before the mock binary, but a
+    real fallback server writes receipts and sentinels for OTHER MCP calls
+    the same mock still makes (e.g. ``missing_completion`` only skips
+    ``declare_complete``; ``missing_artifact`` only skips the submit). Those
+    leftover rows would make the selector's own diagnostic green, so the
+    harness re-clears exactly the broken signal after the run. Only mock
+    overrides take this branch; a live AGY run never re-clears.
+    """
+    selector = _mock_negative_selector()
+    if selector is None:
+        return
+    try:
+        db = RunStateDB(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            if selector == "missing_artifact":
+                db.clear_run_receipts(run_id)
+            else:
+                db.delete_completion_sentinel(run_id)
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            db.close()
+    clear_run_receipts(workspace_root, run_id)
+    if selector == "missing_artifact":
+        fallback = (
+            workspace_root / ".agent" / "tmp" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
+        )
+        fallback.unlink(missing_ok=True)
+        _clear_smoke_artifact(workspace_root)
+    else:
+        sentinel_path = workspace_root / f".agent/completion_seen_{run_id}.json"
+        sentinel_path.unlink(missing_ok=True)
 
 
 def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_ID) -> bool:
@@ -1579,6 +1681,20 @@ def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | No
     return getter("RALPH_CURSOR_BINARY")
 
 
+def _kimi_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
+    """Return the raw ``RALPH_KIMI_BINARY`` env value, if set.
+
+    Callers may inject ``env_getter`` for tests and composed runtimes; the
+    production default is centralized here so smoke plumbing callers do not
+    read ambient environment directly.  Like cursor there is no bundled
+    mock for kimi, so a non-empty override points at a real wrapper,
+    alternate live binary, or a test-only stub the operator wires
+    themselves.
+    """
+    getter = env_getter if env_getter is not None else os.environ.get
+    return getter("RALPH_KIMI_BINARY")
+
+
 def _opencode_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
     """Return the raw ``RALPH_OPENCODE_BINARY`` env value, if set.
 
@@ -1642,11 +1758,29 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
     if read_smoke_test_result_artifact(workspace_root) is not None:
         return None
     if is_mock_agy_override():
-        return (
-            "mock AGY produced empty stdout by design "
-            "(MOCK_AGY_BEHAVIOR=quota_exhausted or invalid_model) "
-            "— harness captured this correctly"
-        )
+        behavior = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")  # di-seam-allowlist: composition-root test infrastructure
+        if behavior in {"no_output", "malformed_stream"}:
+            return (
+                "AGY --print returned empty stdout; "
+                "the mock produced no usable stream output "
+                f"(MOCK_AGY_BEHAVIOR={behavior})"
+            )
+        # When the selector pruned the artifact round trip, the generic
+        # empty-stdout diagnostic is the honest mock signal. The
+        # ``read_smoke_test_result_artifact`` guard above exists so a
+        # selector that PRESERVED the artifact (e.g. a real upstream hang
+        # after submission) is not mislabeled as empty-stdout — but it
+        # also lets unrelated live cli.log content reach
+        # ``agy_empty_output_reason`` below whenever the artifact survived.
+        # A mock run's diagnostic must never be decided by the operator's
+        # real AGY log, so non-empty-stdout selectors return None here and
+        # keep their own signal-specific errors.
+        if not lines:
+            return (
+                "mock AGY produced empty stdout by design "
+                f"(MOCK_AGY_BEHAVIOR={behavior}) — harness captured this correctly"
+            )
+        return None
     reason = agy_empty_output_reason(lines, cli_log_path=_AGY_CLI_LOG_PATH)
     if reason is not None:
         return reason
@@ -1656,11 +1790,47 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
     )
 
 
+def _failed_result_frame_error(lines: list[str]) -> str | None:
+    """Surface a stream-json ``result`` frame that reports a failure status.
+
+    A run whose closing ``result`` frame carries ``status=FAILED`` (or any
+    non-success status) produced failed lifecycle evidence; the smoke must
+    name that instead of grading the run on the frames that did parse.
+    """
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            raw_frame: object = json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(raw_frame, dict):
+            continue
+        frame = cast("dict[str, object]", raw_frame)
+        result = frame.get("result")
+        if not isinstance(result, dict):
+            continue
+        status = result.get("status")
+        if isinstance(status, str) and status.upper() not in {"SUCCESS", "SUCCEEDED", "OK"}:
+            error_text = result.get("error")
+            if isinstance(error_text, str) and error_text.strip() == "timeout waiting for response":
+                # Documented live artifact (agy_wire_provenance.md 2026-08-06):
+                # the sandbox-side FAIL/timeout tail after a completed turn is
+                # not a failed result; the run still grades on its receipt,
+                # sentinel, and tool-activity evidence.
+                continue
+            return f"result frame reported status={status.upper()}"
+    return None
+
+
 def _parser_diagnostics(config: AgentConfig, lines: list[str]) -> list[str]:
     """Return parser and empty-transcript failures from the transport boundary."""
     diagnostics: list[str] = []
     if parser_error := _parser_event_error(config, lines):
         diagnostics.append(parser_error)
+    if failed_result_error := _failed_result_frame_error(lines):
+        diagnostics.append(failed_result_error)
     if empty_opencode_error := _opencode_empty_transcript_error(config, lines):
         diagnostics.append(empty_opencode_error)
     return diagnostics
@@ -2172,6 +2342,10 @@ def _run_smoke_agent(
 
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
+    # wt-015 S-5: after the mock run, re-clear exactly the contract signal
+    # its negative selector broke so a leftover receipt/sentinel from the
+    # remaining (still-called) MCP round trips cannot make the run green.
+    _clear_mock_broken_signals(params.workspace_root, run_id)
     secret = _parent_broker_secret()
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
     # Authoritative completion is the durable sentinel for every transport.
@@ -2427,6 +2601,15 @@ def run_smoke_plumbing(
             update={
                 "agent_idle_timeout_seconds": _SMOKE_IDLE_TIMEOUT_SECONDS,
                 "agent_max_session_seconds": session_ceiling,
+                # Kimi Code's stream-json banner is a LIFECYCLE frame
+                # (classified non-meaningful), so a slow-thinking Kimi
+                # session has zero meaningful output until its first tool
+                # call -- past the 15s ``NO_OUTPUT_AT_START`` / 12s
+                # broken-agent defaults that kill the run before the model
+                # ever speaks.  Give every smoke transport a startup grace
+                # equal to its session ceiling; genuine broken starts still
+                # fail at that ceiling with the same diagnostics.
+                "agent_no_output_at_start_seconds": session_ceiling,
             }
         )
         smoke_config = config.model_copy(update={"general": smoke_general})

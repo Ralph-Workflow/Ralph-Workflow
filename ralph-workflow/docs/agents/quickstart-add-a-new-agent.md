@@ -13,8 +13,8 @@ execution strategy from the transport and applies the default
 
 - A dev snapshot is installed (`make dev` from `ralph-workflow/`; use `make install` for a manual `-build` snapshot).
 - The agent name is unique in your `AgentCatalog` (custom agents cannot
-  reuse the eight built-in parser keys: `claude`, `claude-headless`,
-  `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`).
+  reuse the nine built-in parser keys: `claude`, `claude-headless`,
+  `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`, `kimi`).
 
 ## Steps
 
@@ -62,6 +62,16 @@ register_my_agent(
 
 `interactive=True` auto-applies the `--resume {}` session template. Pass
 `no_default_session_flag=True` to opt out (used by `agy`).
+
+Headless transports that do not fit `GENERIC` need their own measured
+contract. Kimi Code is the current example: its headless surface is
+`kimi -p <prompt> --output-format stream-json` (the current binary rejects
+the stale `--print`/`--afk` flags and forbids `--yolo`/`--auto`/`--plan` in
+prompt mode), its `kimi/<model>` alias must carry the full configured ID
+(e.g. `kimi/kimi-code/k3-256k`, not a bare model name), and its headless
+MCP wiring must target the user-global `$KIMI_CODE_HOME/mcp.json` because
+the workspace `.kimi-code/mcp.json` is silently ignored in untrusted
+folders.
 
 Before choosing an interactive transport, check whether the upstream CLI has a
 documented non-interactive `run`, `--print`, or JSON mode. For unattended Ralph

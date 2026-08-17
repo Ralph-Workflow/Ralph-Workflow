@@ -78,6 +78,31 @@ HARNESS_PTY_INPUT_ECHO_LINES: frozenset[str] = frozenset(
 )
 
 
+#: Measured AGY ``--print --output-format stream-json`` vendor status
+#: vocabulary (live capture 2026-08-17, AGY v1.1.13
+#: ``gemini-3.6-flash-low``). AGY's print mode emits one human-rendered
+#: status line per completed tool call onto the same stdout/PTY the
+#: stream-json frames arrive on, shaped
+#: ``\u2713 PASS \u21b3 <tool_name> (<param summary>) <JSON tool result>``.
+#: It is genuine vendor wire output -- the rendered sibling of the
+#: stream-json ``tool`` DONE frame, not a corrupted or harness-authored
+#: line -- so the corruption detector must recognize the prefix rather
+#: than fail every live AGY smoke with ``raw transcript corrupted``
+#: while the surrounding frames are intact. Prefix match only: a line
+#: that does not START with the marker is still graded, so a corrupted
+#: line merely *containing* the text cannot slip past.
+AGY_PRINT_TOOL_RESULT_STATUS_PREFIX: Final = "\u2713 PASS \u21b3 "
+
+
+def is_agy_print_tool_result_status_line(line: str) -> bool:
+    """Return True when ``line`` is AGY's print-mode tool-result status line.
+
+    Prefix match against
+    :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`; never a substring test.
+    """
+    return line.lstrip().startswith(AGY_PRINT_TOOL_RESULT_STATUS_PREFIX)
+
+
 def is_harness_input_echo(line: str) -> bool:
     """Return True when ``line`` is a Ralph-authored harness input line.
 
@@ -280,6 +305,11 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
                 # :data:`HARNESS_PTY_INPUT_ECHO_LINES`): expected verbatim
                 # capture content, not a corrupted or truncated frame.
                 continue
+            if is_agy_print_tool_result_status_line(line_text):
+                # AGY vendor print-mode tool-result status line (see
+                # :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`): measured
+                # wire output, not a corrupted frame.
+                continue
             try:
                 parsed: object = json.loads(line_text)
             except json.JSONDecodeError:
@@ -468,6 +498,7 @@ __all__ = [
     "RawOverflowLog",
     "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
+    "is_agy_print_tool_result_status_line",
     "is_harness_input_echo",
     "raw_log_path_for",
 ]

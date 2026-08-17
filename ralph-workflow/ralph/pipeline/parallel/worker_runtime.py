@@ -380,7 +380,6 @@ def run_parallel_worker_from_manifest(
         policy_bundle,
         workspace_scope,
         config=config,
-        agy_agents_probe=effective_pipeline_deps.agy_agents_probe,
     )
     if not isinstance(effect, InvokeAgentEffect):
         logger.error(

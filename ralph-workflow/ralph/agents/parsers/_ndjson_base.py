@@ -63,6 +63,7 @@ if TYPE_CHECKING:
         "nanocoder",
         "gemini",
         "cursor",
+        "kimi",
     ]
 
 

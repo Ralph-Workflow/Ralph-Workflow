@@ -16,6 +16,7 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
     {
         "ralph/agents/idle_watchdog/idle_watchdog.py",
         "ralph/agents/invoke/_pty_line_reader.py",
+        "ralph/cli/commands/smoke.py",
         "ralph/cli/main.py",
         "ralph/display/agent_event_renderer.py",
         "ralph/display/parallel_display.py",
@@ -188,6 +189,11 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/testing/audit_resource_lifecycle.py",
         "tests/agents/parsers/test_cursor_parser.py",
         "tests/agents/test_register_cursor.py",
+        # wt-063 kimi support: per-surface kimi suites colocated under one
+        # file (builder + resolver, parser wire behaviors, registration).
+        "tests/agents/invoke/test_kimi_command_builder_and_runtime_resolver.py",
+        "tests/agents/parsers/test_kimi_parser.py",
+        "tests/agents/test_register_kimi.py",
         "tests/test_explore_legacy_shape_regressions.py",
         "tests/test_tool_media_format_metadata.py",
         # wt-045 typechecking migration: existing test suites with multiple
@@ -919,6 +925,22 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.execution_state._factory",
             ("_STRATEGY_DISPATCH",),
         ),
+        # wt-063 kimi support: same dispatch-table golden pin as cursor/pi.
+        (
+            "tests/agents/test_register_kimi.py",
+            "ralph.agents.execution_state._factory",
+            ("_STRATEGY_DISPATCH",),
+        ),
+        (
+            "tests/agents/test_kimi_dynamic_alias.py",
+            "ralph.agents.registry",
+            ("_is_valid_kimi_model_id",),
+        ),
+        (
+            "tests/agents/invoke/test_kimi_command_for_log.py",
+            "ralph.agents.invoke._commands",
+            ("_build_command", "_command_for_log"),
+        ),
         (
             "tests/display/test_parallel_display_streaming_bound.py",
             "ralph.display._streaming_ctx",
@@ -1248,14 +1270,14 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/testing/audit_typecheck_bypass.py", 286),
         ("ralph/testing/audit_typecheck_bypass.py", 301),
         # wt-034 (mcp optimization) extracted carrier files; grandfathered.
-        ("ralph/agents/catalog.py", 271),
-        ("ralph/agents/catalog.py", 312),
-        ("ralph/agents/catalog.py", 527),
-        ("ralph/agents/catalog.py", 594),
-        ("ralph/agents/catalog.py", 597),
-        ("ralph/agents/execution_state/_factory.py", 256),
-        ("ralph/agents/execution_state/_factory.py", 319),
-        ("ralph/agents/execution_state/_factory.py", 322),
+        ("ralph/agents/catalog.py", 275),
+        ("ralph/agents/catalog.py", 316),
+        ("ralph/agents/catalog.py", 531),
+        ("ralph/agents/catalog.py", 598),
+        ("ralph/agents/catalog.py", 601),
+        ("ralph/agents/execution_state/_factory.py", 315),
+        ("ralph/agents/execution_state/_factory.py", 378),
+        ("ralph/agents/execution_state/_factory.py", 381),
         ("ralph/agents/idle_watchdog/_active_branch.py", 226),
         ("ralph/agents/invoke/_command_builders/__init__.py", 226),
         ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 82),
