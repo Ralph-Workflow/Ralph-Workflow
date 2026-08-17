@@ -16,6 +16,18 @@ Research-confirmed facts (Kimi Code CLI ``kimi``, v0.36.x):
   leaves that file alone because it is a cross-tool convention (other
   agents use it too) and the two ``.kimi-code`` paths are sufficient to
   wire MCP for any invocation pattern.
+* Project-level trust gate (measured on v0.36.1, not guessable): headless
+  ``kimi -p`` silently IGNORES the workspace ``.kimi-code/mcp.json`` when
+  the folder is not in the user's trusted-workspace store -- no error, no
+  warning, the MCP tools simply never register (the TUI shows a
+  trust prompt instead; headless drops the server).  The user-global
+  ``$KIMI_CODE_HOME/mcp.json`` has NO trust gate and works in every
+  headless session, so the run-scoped write MUST target the global path
+  even when the workspace path is deliberately left alone.
+  Ralph therefore writes the merged run-scoped config to the global path
+  ALWAYS and to the workspace path ONLY when that file already exists
+  (a pre-existing workspace config implies the operator has already
+  trusted the folder and manages their own project-level MCP surface).
 * HTTP JSON key: ``url`` (Kimi Code's documented MCP server shape)
 * Output format: NDJSON ``stream-json`` Message frames keyed by
   ``role`` (parsed by ``KimiParser``)
@@ -34,8 +46,8 @@ Ralph reads existing Kimi upstream servers from the workspace-local
 ``.kimi-code/mcp.json`` and the user-global ``~/.kimi-code/mcp.json``
 files, merges the run-scoped ``ralph`` entry through the existing
 upstream merge flow (``merge_existing_upstreams``), and writes the
-merged config to BOTH paths so the agent picks up MCP regardless of
-the cwd it was launched from.
+merged config to the user-global path always (no trust gate) plus the
+workspace path only when it already exists.
 
 The write/restore protocol mirrors the Cursor pattern in
 ``ralph/mcp/transport/cursor.py``: a process-local ``threading.Lock``
@@ -140,6 +152,26 @@ def _kimi_paths_to_consider(
     )
 
 
+def _kimi_write_target_paths(workspace_path: Path | None) -> tuple[Path, ...]:
+    """Return the paths the run-scoped merged config is written to.
+
+    The user-global ``$KIMI_CODE_HOME/mcp.json`` is ALWAYS a write target:
+    it carries no workspace-trust gate, so a headless ``kimi -p`` session
+    registers its MCP tools in every workspace.  The workspace-local
+    ``.kimi-code/mcp.json`` is a write target ONLY when it already exists:
+    measured on v0.36.1, headless mode silently drops project-level MCP
+    servers from untrusted folders, so creating the file for a workspace
+    the operator has not trusted would write config the CLI then ignores
+    (and would fabricate a project-level surface the operator never made).
+    """
+    targets: list[Path] = [_kimi_global_config_path()]
+    if workspace_path is not None:
+        workspace_config = _kimi_workspace_config_path(workspace_path)
+        if workspace_config.is_file():
+            targets.append(workspace_config)
+    return tuple(targets)
+
+
 @contextmanager
 def kimi_workspace_mcp_endpoint(
     workspace_path: Path, endpoint: str, *, unsafe_mode: bool = False
@@ -147,11 +179,13 @@ def kimi_workspace_mcp_endpoint(
     """Write a run-scoped Ralph MCP config to Kimi Code's paths and restore them on exit.
 
     Writes the merged config (Ralph entry + merged upstream servers in
-    ``unsafe_mode``) to BOTH the workspace-local ``.kimi-code/mcp.json``
-    and the user-global ``$KIMI_CODE_HOME/mcp.json`` so a Kimi invocation
-    launched from inside or outside the workspace picks up the run-scoped
-    Ralph MCP endpoint.  On exit the original bytes are restored on each
-    path that was modified.
+    ``unsafe_mode``) to the user-global ``$KIMI_CODE_HOME/mcp.json``
+    ALWAYS (no trust gate) and to the workspace-local
+    ``.kimi-code/mcp.json`` ONLY when that file already exists -- headless
+    ``kimi -p`` silently ignores project-level MCP config in untrusted
+    folders, so a newly created workspace file would never be honored.
+    On exit the original bytes are restored on each path that was
+    modified.
 
     Concurrency safety: this context manager serialises concurrent callers
     with a single :class:`threading.Lock` (process-local) and writes the
@@ -166,8 +200,9 @@ def kimi_workspace_mcp_endpoint(
         # Snapshot the original bytes BEFORE we write so the restore step
         # can put each path back exactly as we found it (including the
         # missing-file case for paths that did not exist).
+        write_targets = _kimi_write_target_paths(workspace_path)
         original_by_path: dict[Path, bytes | None] = {}
-        for config_path in _kimi_paths_to_consider(workspace_path):
+        for config_path in write_targets:
             original_by_path[config_path] = (
                 config_path.read_bytes() if config_path.is_file() else None
             )
@@ -182,7 +217,7 @@ def kimi_workspace_mcp_endpoint(
 
         try:
             config_payload = json.dumps(merged_config, indent=2).encode("utf-8")
-            for config_path in _kimi_paths_to_consider(workspace_path):
+            for config_path in write_targets:
                 # Atomically publish only changed bytes. The primitive avoids
                 # staging/replacing an unchanged effective config and defers
                 # parent creation until a changed publish requires it.
@@ -195,7 +230,7 @@ def kimi_workspace_mcp_endpoint(
                 )
             yield
         finally:
-            for config_path in _kimi_paths_to_consider(workspace_path):
+            for config_path in write_targets:
                 original_bytes = original_by_path.get(config_path)
                 if original_bytes is None:
                     if config_path.is_file():

@@ -73,7 +73,7 @@ all six settings.
 
 ## Supported agents
 
-Eight built-in agents ship with Ralph Workflow:
+Nine built-in agents ship with Ralph Workflow:
 
 | Agent | Notes |
 |---|---|
@@ -85,6 +85,7 @@ Eight built-in agents ship with Ralph Workflow:
 | **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`). Re-check after AGY updates. |
 | **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>`. |
 | **Cursor** | Cursor Agent CLI (`agent`), headless `--print` mode. |
+| **Kimi** | Kimi Code CLI (`kimi`), headless `-p <prompt>` + `--output-format stream-json`; `kimi/<model>` aliases use full configured IDs. |
 
 Pick one, authenticate it on your machine once, and Ralph Workflow uses
 it. Selection and trust-boundary details are in

@@ -256,6 +256,13 @@ class TestKimiRuntimeResolverMcpWiring:
     ) -> None:
         kimi_home = tmp_path / "kimi-home"
         monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
+        # Pre-existing workspace config implies an operator-trusted
+        # folder, so it is a write target (see _kimi_write_target_paths).
+        preexisting_workspace_config = tmp_path / ".kimi-code" / "mcp.json"
+        preexisting_workspace_config.parent.mkdir()
+        preexisting_workspace_config.write_text(
+            json.dumps({"mcpServers": {}}), encoding="utf-8"
+        )
 
         runtime = KimiRuntimeResolver().resolve(
             _kimi_config(),
@@ -270,7 +277,7 @@ class TestKimiRuntimeResolverMcpWiring:
             # Capture the on-disk state BEFORE cleanup (the restore only
             # happens via runtime.cleanup(); the finally guarantees a
             # failed assertion cannot strand the held kimi MCP lock).
-            workspace_config = tmp_path / ".kimi-code" / "mcp.json"
+            workspace_config = preexisting_workspace_config
             global_config = kimi_home / "mcp.json"
             captured = {
                 config_path: (
@@ -286,12 +293,50 @@ class TestKimiRuntimeResolverMcpWiring:
             payload = json.loads(payload_bytes)
             assert payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {"url": self.ENDPOINT}
 
-        # Cleanup restores both paths (they did not exist before).
-        assert not workspace_config.exists()
+        # Cleanup restores both paths to their pre-run state (the
+        # workspace file returns to its original empty-servers bytes;
+        # the global file did not exist before and is removed).
+        assert json.loads(workspace_config.read_text(encoding="utf-8")) == {
+            "mcpServers": {}
+        }
         assert not global_config.exists()
-        # The .kimi-code directory itself may remain; only the file is
-        # removed (mirroring the cursor contract).
-        assert not kimi_home.joinpath("mcp.json").exists()
+
+    def test_resolve_skips_untrusted_workspace_config_write(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """Absent workspace config is not a write target (trust gate).
+
+        Measured on v0.36.1: headless ``kimi -p`` silently ignores a
+        project-level ``.kimi-code/mcp.json`` when the folder is not in
+        the operator's trusted-workspace store, so the resolver must NOT
+        create that file -- it would be ignored by the CLI and would
+        fabricate a project-level surface the operator never made.  The
+        user-global path carries no trust gate and is always written.
+        """
+        kimi_home = tmp_path / "kimi-home"
+        monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
+
+        runtime = KimiRuntimeResolver().resolve(
+            _kimi_config(),
+            extra_env={str(MCP_ENDPOINT_ENV): self.ENDPOINT},
+            workspace_path=tmp_path,
+            base_env={},
+        )
+
+        try:
+            assert runtime.mcp_endpoint == self.ENDPOINT
+            assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
+            global_payload = json.loads(
+                (kimi_home / "mcp.json").read_text(encoding="utf-8")
+            )
+            assert global_payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {
+                "url": self.ENDPOINT
+            }
+        finally:
+            runtime.cleanup()
+
+        assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
+        assert not (kimi_home / "mcp.json").exists()
 
     def test_cleanup_restores_pre_existing_global_bytes(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -396,7 +441,11 @@ class TestKimiRuntimeResolverMcpWiring:
         )
 
         assert runtime.mcp_endpoint == self.ENDPOINT
-        assert (tmp_path / ".kimi-code" / "mcp.json").is_file()
+        # No pre-existing workspace config: the trust gate keeps the
+        # workspace path out of the write targets; only the user-global
+        # config carries the run-scoped entry.
+        assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
+        assert (kimi_home / "mcp.json").is_file()
         runtime.cleanup()
 
 

@@ -42,9 +42,9 @@ for stable installs and switching builds.
 
 ## Supported agents
 
-Ralph Workflow ships eight built-in agent backends: Claude Code,
+Ralph Workflow ships nine built-in agent backends: Claude Code,
 Claude Code headless, Codex, OpenCode, Nanocoder, AGY (Google Anti
-Gravity), Pi, and Cursor. Pick one, authenticate it once on your
+Gravity), Pi, Cursor, and Kimi (Kimi Code). Pick one, authenticate it once on your
 machine, and Ralph Workflow uses it. Selection and trust-boundary
 details are in [`agents`](ralph-workflow/docs/sphinx/agents.md) and
 [`agent-compatibility`](ralph-workflow/docs/sphinx/agent-compatibility.md).

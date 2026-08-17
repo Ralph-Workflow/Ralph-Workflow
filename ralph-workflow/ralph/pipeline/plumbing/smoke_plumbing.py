@@ -346,6 +346,13 @@ _AGENT_SESSION_CEILINGS = {  # bounded-accumulator-ok: static per-agent ceiling 
     "claude": 120.0,
     "agy": 360.0,
     "opencode": 360.0,
+    # Kimi Code's K2.7-standard model idles far past the 120s legacy
+    # default before its first tool call on this hardware (measured
+    # 2026-08-17: the live smoke prompt ran several minutes of Bash
+    # exploration before producing output); without the override the
+    # smoke watchdog kills the session at 120s with only the version
+    # banner parsed.
+    "kimi": 360.0,
 }
 _SMOKE_MAX_TURNS = 5
 _SMOKE_TRANSCRIPT_MAX_LINES = 400
@@ -2583,6 +2590,15 @@ def run_smoke_plumbing(
             update={
                 "agent_idle_timeout_seconds": _SMOKE_IDLE_TIMEOUT_SECONDS,
                 "agent_max_session_seconds": session_ceiling,
+                # Kimi Code's stream-json banner is a LIFECYCLE frame
+                # (classified non-meaningful), so a slow-thinking Kimi
+                # session has zero meaningful output until its first tool
+                # call -- past the 15s ``NO_OUTPUT_AT_START`` / 12s
+                # broken-agent defaults that kill the run before the model
+                # ever speaks.  Give every smoke transport a startup grace
+                # equal to its session ceiling; genuine broken starts still
+                # fail at that ceiling with the same diagnostics.
+                "agent_no_output_at_start_seconds": session_ceiling,
             }
         )
         smoke_config = config.model_copy(update={"general": smoke_general})

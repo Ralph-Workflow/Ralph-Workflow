@@ -129,6 +129,8 @@ caller can never accidentally register an interactive agent with
 | `CODEX`                  | `GenericExecutionStrategy`                      |
 | `NANOCODER`              | `GenericExecutionStrategy`                      |
 | `PI`                     | `_make_pi_strategy` (Pi session strategy)       |
+| `CURSOR`                 | `_make_cursor_strategy` (completion-enforcing)  |
+| `KIMI`                   | `_make_kimi_strategy` (completion-enforcing)    |
 | `GENERIC`                | `GenericExecutionStrategy`                      |
 
 For interactive agents (`interactive=True`) the helper also auto-applies
