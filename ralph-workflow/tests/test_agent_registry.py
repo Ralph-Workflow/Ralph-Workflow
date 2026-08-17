@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import pytest
 
+from ralph.agents.invoke import BuildCommandOptions
+from ralph.agents.invoke._command_builders import (
+    ClaudeInteractiveCommandBuilder,
+    DefaultCommandBuilder,
+)
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, CcsAliasConfig, UnifiedConfig
@@ -220,6 +225,107 @@ def test_agent_registry_resolves_direct_claude_model_reference() -> None:
     assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
     assert agent.model_flag == "--model opus"
     assert agent.can_commit is True
+
+
+def test_claude_haiku_alias_builds_interactive_argv_end_to_end() -> None:
+    """``claude/haiku`` flows from the registry to a correct PTY argv.
+
+    Regression pin for the dynamic-alias → command-builder pipeline on
+    the interactive transport: the built argv must contain the claude
+    PTY binary, the yolo flag, and ``--model haiku`` as two clean
+    consecutive argv tokens.
+    """
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("claude/haiku")
+
+    assert agent is not None
+    assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
+    argv = ClaudeInteractiveCommandBuilder().build(
+        agent, "PROMPT.md", options=BuildCommandOptions()
+    )
+    assert argv[0] == "claude"
+    assert "--dangerously-skip-permissions" in argv
+    model_index = argv.index("--model")
+    assert argv[model_index + 1] == "haiku"
+
+
+def test_claude_whitespace_model_id_survives_as_single_argv_token() -> None:
+    """A model id containing whitespace stays one argv token on both transports.
+
+    Future-proofing pin: the dynamic Claude family resolver shell-quotes
+    the model segment and both Claude command builders tokenize with
+    ``shlex.split``, so ``claude/<model with space>`` and
+    ``claude-headless/<model with space>`` each emit ``--model`` and the
+    full id as exactly two consecutive argv tokens instead of splitting
+    the id across multiple argv elements.
+    """
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("claude/model with space")
+
+    assert agent is not None
+    assert agent.model_flag == "--model 'model with space'"
+    argv = ClaudeInteractiveCommandBuilder().build(
+        agent, "PROMPT.md", options=BuildCommandOptions()
+    )
+    model_index = argv.index("--model")
+    assert argv[model_index + 1] == "model with space"
+
+    headless = registry.get("claude-headless/model with space")
+
+    assert headless is not None
+    headless_argv = DefaultCommandBuilder().build(
+        headless, "PROMPT.md", options=BuildCommandOptions()
+    )
+    headless_model_index = headless_argv.index("--model")
+    assert headless_argv[headless_model_index + 1] == "model with space"
+
+
+@pytest.mark.parametrize(
+    ("model_id", "expected_model_flag"),
+    [
+        ("claude-haiku-4-5", "--model claude-haiku-4-5"),
+        ("claude-haiku-4-5-20251001", "--model claude-haiku-4-5-20251001"),
+        (
+            "claude-haiku-4-5[effort=high]",
+            "--model 'claude-haiku-4-5[effort=high]'",
+        ),
+    ],
+)
+def test_claude_versioned_model_ids_stay_single_argv_tokens(
+    model_id: str, expected_model_flag: str
+) -> None:
+    """Anthropic full-id and bracketed-effort forms resolve to one argv token.
+
+    ``claude/<model>`` and ``claude-headless/<model>`` accept versioned
+    full ids (``claude-haiku-4-5-20251001``) and bracketed effort
+    parameters (``[effort=high]``); the registry shell-quotes the value
+    when it contains shell-special characters and both Claude command
+    builders emit ``--model`` and the full id as exactly two consecutive
+    argv tokens.
+    """
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    interactive = registry.get(f"claude/{model_id}")
+    headless = registry.get(f"claude-headless/{model_id}")
+
+    assert interactive is not None
+    assert headless is not None
+    assert interactive.model_flag == expected_model_flag
+    assert headless.model_flag == expected_model_flag
+
+    interactive_argv = ClaudeInteractiveCommandBuilder().build(
+        interactive, "PROMPT.md", options=BuildCommandOptions()
+    )
+    interactive_index = interactive_argv.index("--model")
+    assert interactive_argv[interactive_index + 1] == model_id
+
+    headless_argv = DefaultCommandBuilder().build(
+        headless, "PROMPT.md", options=BuildCommandOptions()
+    )
+    headless_index = headless_argv.index("--model")
+    assert headless_argv[headless_index + 1] == model_id
 
 
 def test_agent_config_claude_cmd_infers_claude_interactive() -> None:

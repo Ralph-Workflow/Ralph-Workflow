@@ -561,7 +561,11 @@ class ClaudeInteractiveCommandBuilder:
             cmd.extend(["--append-system-prompt-file", options.master_prompt_file])
         effective_model = options.model_flag or config.model_flag
         if effective_model:
-            cmd.extend(effective_model.split())
+            # shlex.split (not str.split) so a shell-quoted model value
+            # (e.g. a bracket-parameterized or whitespace-bearing id from
+            # the dynamic Claude family resolver) survives as one argv
+            # token instead of splitting across argv elements.
+            cmd.extend(shlex.split(effective_model))
         _append_transport_prompt_arg(cmd, AgentTransport.CLAUDE_INTERACTIVE, prompt_file, options)
         return cmd
 
@@ -762,7 +766,11 @@ class DefaultCommandBuilder:
 
         effective_model = options.model_flag or config.model_flag
         if effective_model:
-            cmd.extend(effective_model.split())
+            # shlex.split (not str.split) so a shell-quoted model value
+            # (e.g. a bracket-parameterized or whitespace-bearing id from
+            # the dynamic Claude family resolver) survives as one argv
+            # token instead of splitting across argv elements.
+            cmd.extend(shlex.split(effective_model))
 
         _append_transport_prompt_arg(cmd, transport, prompt_file, options)
         return cmd

@@ -270,6 +270,18 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.registry",
             ("_resolve_dynamic_agent",),
         ),
+        # wt-065-claude-support: the interactive-startup suite pins the
+        # exact ``--settings`` JSON envelope (skip-permission flag, Stop
+        # sentinel hook, PermissionRequest auto-allow) that the invoke
+        # pipeline embeds in the claude argv. The only public seam,
+        # ``invoke_agent``, needs the full subprocess e2e lane that
+        # ``make test`` excludes, so importing the private settings
+        # builder is the honest fast-suite regression seam.
+        (
+            "tests/agents/invoke/test_interactive_startup_errors.py",
+            "ralph.agents.invoke._commands",
+            ("_interactive_stop_hook_settings",),
+        ),
         (
             "tests/test_claude_interactive_timeout_reason.py",
             "ralph.agents.invoke._errors",

@@ -809,7 +809,15 @@ def _resolve_dynamic_claude_family(
         return None
     if base_config is None:
         return None
-    return base_config.model_copy(update={"model_flag": f"--model {segments[1]}"})
+    # ``--model <value>`` is a single argv pair; ``shlex.quote`` keeps a
+    # model id containing shell-special characters (whitespace, brackets,
+    # quotes) in one argv token, matching the cursor / codex / pi
+    # dynamic-alias quoting contract. Both Claude command builders
+    # tokenize the flag with ``shlex.split``, so quoting here is what
+    # preserves the single-token guarantee end to end.
+    return base_config.model_copy(
+        update={"model_flag": f"--model {shlex.quote(segments[1])}"}
+    )
 
 
 def _normalize_opencode_model_id(name: str) -> str:

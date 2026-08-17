@@ -12,7 +12,7 @@ availability remains the CLI provider's responsibility.
 
 | Alias family | Ralph Workflow emits | Constraint and example |
 | --- | --- | --- |
-| `claude/<model>` and `claude-headless/<model>` | `--model <model>` | A non-empty single model segment is required. |
+| `claude/<model>` and `claude-headless/<model>` | `--model <model>` | A non-empty single model segment is required. Anthropic full model IDs (for example `claude-haiku-4-5-20251001`) and bracketed effort parameters (for example `claude/claude-haiku-4-5[effort=high]`) are accepted and tokenized as a single argv element. |
 | `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
 | `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
 | `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
