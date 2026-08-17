@@ -104,6 +104,15 @@ def drive_real_mcp_round_trips() -> tuple[str | None, str | None]:
     endpoint = os.environ.get("RALPH_MCP_ENDPOINT")
     if not endpoint:
         return None, None
+    if _MOCK_BEHAVIOR in {"missing_artifact", "missing_completion"}:
+        # The selector prunes the round trip itself, not only the frame
+        # that reports it: a run that STILL submits the artifact (or
+        # declares completion) over the real wire leaves a valid
+        # HMAC-bound receipt/sentinel behind, so the harness has no
+        # observable break to grade and exits 0 -- defeating the
+        # negative contract. Skipping the call here makes the wire
+        # record genuinely absent.
+        return None, None
     try:
         _mcp_post(
             endpoint,
@@ -163,6 +172,11 @@ def drive_real_mcp_round_trips() -> tuple[str | None, str | None]:
 #   ``missing_result``     -> subagent ACTIVE frames but no DONE result
 #   ``missing_artifact``   -> no ralph_submit_md_artifact MCP round trip
 #   ``missing_completion`` -> no declare_complete MCP round trip
+#
+# ``drive_real_mcp_round_trips`` consults the same constant and skips the
+# real round trip for both selectors; pruning only the FRAMES while still
+# performing the call would leave a valid broker receipt/sentinel on disk
+# and the harness would PASS the run it was asked to break.
 # ---------------------------------------------------------------------------
 _MOCK_BEHAVIOR = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")
 

@@ -119,7 +119,7 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # Same platform-path convention shape as nanocoder above; the
     # workspace-local config path is fully injected, so the seam would
     # add noise without changing testable behavior.
-    "mcp/transport/kimi.py:80",
+    "mcp/transport/kimi.py:92",
     # mcp/websearch/secrets.py:17 — ``getenv`` is a callable parameter
     # of type ``EnvGetter``, NOT an ambient read.
     "mcp/websearch/secrets.py:17",
@@ -153,8 +153,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # pipeline/plumbing/smoke_plumbing.py - MOCK_AGY_BEHAVIOR is the
     # composition-root mock test infrastructure; no production code path
     # reads it (guarded by is_mock_agy_override()).
-    "pipeline/plumbing/smoke_plumbing.py:1535",
-    "pipeline/plumbing/smoke_plumbing.py:1754",
+    "pipeline/plumbing/smoke_plumbing.py:1542",
+    "pipeline/plumbing/smoke_plumbing.py:1761",
 )
 
 # Top-level entry points and the config package — the composition root for

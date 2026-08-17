@@ -673,6 +673,24 @@ del registry.agents["my-agent"]
 * **Trusting model-authored self-reporting**: Tool activity must come from
   parser/runtime evidence, and completion must come from the durable sentinel
   plus any required receipt—not from transcript or artifact claims.
+* **Reviving a stale CLI contract**: Re-measure the installed binary instead
+  of copying older documentation. Kimi Code is the worked example: the stale
+  `kimi-cli` `--print`/`--afk` flags are rejected by the current binary
+  (`error: unknown option`), and `--yolo`/`--auto`/`--plan` conflict with
+  `-p`; the maintained contract is headless `kimi -p <prompt>
+  --output-format stream-json`, where prompt mode auto-approves its tool
+  calls so no autonomy flag is emitted.
+* **Creating a project-level MCP config the CLI then ignores**: Kimi Code
+  headless `-p` silently drops the workspace `.kimi-code/mcp.json` in an
+  untrusted folder (no error; the tools simply never register). The
+  user-global `$KIMI_CODE_HOME/mcp.json` has no trust gate, so Ralph always
+  writes the run-scoped entry to the global path and touches the workspace
+  path only when that file already exists (see
+  `ralph/mcp/transport/kimi.py`).
+* **Assuming bare model IDs are portable**: Kimi Code rejects a bare
+  `-m kimi-for-coding` ("Model ... is not configured in config.toml"); the
+  `kimi/<model>` alias must carry the full configured ID such as
+  `kimi/kimi-code/k3-256k`, with slashes preserved argv-safely.
 * **Adding live smoke tests to `make verify`**: Manual smoke commands consume
   tokens/quota and stay outside the always-on verification path.
 * **Not unregistering before re-registering**: Calling `register_agent_support()` with a name that is already registered in the catalog will raise a `ValueError`. Always call `registry.unregister(name)` first.

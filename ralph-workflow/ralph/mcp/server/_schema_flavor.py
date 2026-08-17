@@ -56,7 +56,7 @@ non-flavored client keep the full JSON Schema contract.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._types import JsonObject
@@ -114,15 +114,13 @@ def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
     """
     branches = subschema.get("oneOf") or subschema.get("anyOf")
     if isinstance(branches, list) and "type" not in subschema:
-        branch_types = sorted(
-            t
-            for t in (
-                branch.get("type")
-                for branch in branches
-                if isinstance(branch, dict)
-            )
-            if isinstance(t, str)
-        )
+        branch_dicts = [
+            cast("dict[str, object]", b)
+            for b in cast("list[object]", branches)
+            if isinstance(b, dict)
+        ]
+        branch_type_of = [b.get("type") for b in branch_dicts]
+        branch_types = sorted(t for t in branch_type_of if isinstance(t, str))
         if branch_types and len(branch_types) == len(branches):
             # Composition-only property whose every branch declares a
             # plain ``type`` (e.g. ``exec``'s ``command``/``argv``/``args``
@@ -137,9 +135,9 @@ def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
             }
             flattened_prop["type"] = branch_types
             array_items = [
-                branch.get("items")
-                for branch in branches
-                if isinstance(branch, dict) and branch.get("type") == "array"
+                b.get("items")
+                for b in branch_dicts
+                if b.get("type") == "array"
             ]
             if len(array_items) == 1 and isinstance(array_items[0], dict):
                 flattened_prop["items"] = array_items[0]
@@ -165,16 +163,20 @@ def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
     """
     repaired: JsonObject = {}
     for name, subschema in properties.items():
-        if (
-            isinstance(subschema, dict)
-            and "enum" in subschema
-            and "type" not in subschema
-            and isinstance(subschema["enum"], list)
-            and all(isinstance(member, str) for member in subschema["enum"])
-        ):
-            repaired[name] = {**subschema, "type": "string"}
-        elif isinstance(subschema, dict):
-            repaired[name] = _flatten_property_subschema(subschema)
+        if isinstance(subschema, dict):
+            schema_dict = cast("dict[str, object]", subschema)
+            enum_members = schema_dict.get("enum")
+            if (
+                "type" not in schema_dict
+                and isinstance(enum_members, list)
+                and all(
+                    isinstance(member, str)
+                    for member in cast("list[object]", enum_members)
+                )
+            ):
+                repaired[name] = {**schema_dict, "type": "string"}
+            else:
+                repaired[name] = _flatten_property_subschema(schema_dict)
         else:
             repaired[name] = subschema
     return repaired

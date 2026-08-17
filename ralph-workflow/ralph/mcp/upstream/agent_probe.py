@@ -26,7 +26,6 @@ import ralph.mcp.transport.claude as _claude_transport
 import ralph.mcp.transport.codex as _codex_transport
 import ralph.mcp.transport.kimi as _kimi_transport
 import ralph.mcp.transport.opencode as _opencode_transport
-from ralph.mcp.server._schema_flavor import flatten_root_schema_for_openai_function
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -38,6 +37,7 @@ from ralph.mcp.protocol.startup import (
     post_http_jsonrpc_with_session,
     tools_list_request,
 )
+from ralph.mcp.server._schema_flavor import flatten_root_schema_for_openai_function
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream._agent_transport_probe_error import AgentTransportProbeError
 from ralph.mcp.upstream.client import make_upstream_client
@@ -383,12 +383,12 @@ def _kimi_schema_violations(schema: object, path: str) -> list[str]:
         violations.append(f"{path}: composition branch list without 'type'")
     properties = schema.get("properties")
     if isinstance(properties, dict):
-        for name, sub in properties.items():
+        for name, sub in cast("dict[str, object]", properties).items():
             violations.extend(_kimi_schema_violations(sub, f"{path}.properties.{name}"))
     for key in _KIMI_COMPOSITION_KEYWORDS:
         seq = schema.get(key)
         if isinstance(seq, list):
-            for index, sub in enumerate(seq):
+            for index, sub in enumerate(cast("list[object]", seq)):
                 violations.extend(_kimi_schema_violations(sub, f"{path}.{key}[{index}]"))
         elif isinstance(seq, dict):
             violations.extend(_kimi_schema_violations(seq, f"{path}.{key}"))

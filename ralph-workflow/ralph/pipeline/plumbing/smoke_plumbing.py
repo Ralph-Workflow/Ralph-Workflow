@@ -1765,11 +1765,22 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
                 "the mock produced no usable stream output "
                 f"(MOCK_AGY_BEHAVIOR={behavior})"
             )
-        return (
-            "mock AGY produced empty stdout by design "
-            "(MOCK_AGY_BEHAVIOR=quota_exhausted or invalid_model) "
-            "— harness captured this correctly"
-        )
+        # When the selector pruned the artifact round trip, the generic
+        # empty-stdout diagnostic is the honest mock signal. The
+        # ``read_smoke_test_result_artifact`` guard above exists so a
+        # selector that PRESERVED the artifact (e.g. a real upstream hang
+        # after submission) is not mislabeled as empty-stdout — but it
+        # also lets unrelated live cli.log content reach
+        # ``agy_empty_output_reason`` below whenever the artifact survived.
+        # A mock run's diagnostic must never be decided by the operator's
+        # real AGY log, so non-empty-stdout selectors return None here and
+        # keep their own signal-specific errors.
+        if not lines:
+            return (
+                "mock AGY produced empty stdout by design "
+                f"(MOCK_AGY_BEHAVIOR={behavior}) — harness captured this correctly"
+            )
+        return None
     reason = agy_empty_output_reason(lines, cli_log_path=_AGY_CLI_LOG_PATH)
     if reason is not None:
         return reason
