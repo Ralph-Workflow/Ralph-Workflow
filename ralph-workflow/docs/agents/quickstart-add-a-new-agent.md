@@ -67,10 +67,11 @@ Headless transports that do not fit `GENERIC` need their own measured
 contract. Kimi Code is the current example: its headless surface is
 `kimi -p <prompt> --output-format stream-json` (the current binary rejects
 the stale `--print`/`--afk` flags and forbids `--yolo`/`--auto`/`--plan` in
-prompt mode), its `kimi/<model>` alias must carry the full configured ID
-(e.g. `kimi/kimi-code/k3-256k`, not a bare model name), and its headless
-MCP wiring must target the user-global `$KIMI_CODE_HOME/mcp.json` because
-the workspace `.kimi-code/mcp.json` is silently ignored in untrusted
+prompt mode), its session resume flag is the measured `-S <session-id>`
+(never the legacy `-r`), its `kimi/<model>` alias must carry the full
+configured ID (e.g. `kimi/kimi-code/k3-256k`, not a bare model name), and
+its headless MCP wiring must target the user-global `$KIMI_CODE_HOME/mcp.json`
+because the workspace `.kimi-code/mcp.json` is silently ignored in untrusted
 folders.
 
 Before choosing an interactive transport, check whether the upstream CLI has a

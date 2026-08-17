@@ -59,10 +59,17 @@ def test_run_python_uses_uv_managed_interpreter() -> None:
 
 
 def test_default_worker_count_preserves_verify_budget_headroom() -> None:
-    """The maintained worker baseline leaves room for both smoke gates."""
+    """The maintained worker baseline leaves room for both smoke gates.
+
+    Pinned to ``auto`` in wt-063: the suite grew past the point where the
+    fixed ``8`` shard count fits the 60s per-suite deadline on the 12-core
+    host, so ``auto`` (one shard per core minus the runner) is the
+    measured baseline — see the dated measurements in the Makefile
+    comment above ``PYTEST_WORKERS``.
+    """
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
-    assert "PYTEST_WORKERS ?= 8" in makefile_text
+    assert "PYTEST_WORKERS ?= auto" in makefile_text
 
 
 def test_install_targets_delegate_to_the_installer() -> None:

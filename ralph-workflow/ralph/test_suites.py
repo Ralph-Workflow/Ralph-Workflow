@@ -136,6 +136,18 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
+# wt-063: the AGY full-lifecycle E2E file spawns a real headless-agent
+# subprocess chain per test (~18 s measured wall on the maintained
+# 12-core host) while its static collection count is 2 items, so LPT
+# cannot see the cost and packs ~30 s of neighbouring files beside it
+# -- the ~50 s straggler that repeatedly blew the 60 s per-suite
+# deadline (measured wt-063: deadline kill at 8/9/10/11 shards). The
+# floor re-expresses its wall clock in corpus weight units (~26 ms per
+# unit at 11 shards); ``max()`` keeps it a FLOOR so a grown static
+# estimate takes over again. Re-measure when the file's subprocess
+# chain changes.
+_AGY_LIFECYCLE_E2E_FILE = "tests/test_smoke_agy_full_lifecycle_e2e.py"
+_AGY_LIFECYCLE_E2E_WEIGHT_FLOOR = 1000
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
@@ -650,6 +662,8 @@ def _test_file_weight(cwd: Path, relative_path: str) -> int:
     if weight is None:
         source = (cwd / relative_path).read_text(encoding="utf-8")
         weight = estimate_test_file_weight(source)
+    if relative_path == _AGY_LIFECYCLE_E2E_FILE:
+        return max(weight, _AGY_LIFECYCLE_E2E_WEIGHT_FLOOR)
     if relative_path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
         return weight * _REQUIRED_E2E_WEIGHT_MULTIPLIER
     return weight

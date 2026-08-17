@@ -450,7 +450,7 @@ class TestKimiMetaFrames:
                             "role": "meta",
                             "type": "session.resume_hint",
                             "session_id": "sess-abc-1",
-                            "command": "kimi -r sess-abc-1",
+                            "command": "kimi -S sess-abc-1",
                         }
                     )
                 )
@@ -593,7 +593,7 @@ class TestKimiFullExchange:
                             "role": "meta",
                             "type": "session.resume_hint",
                             "session_id": "sess-full-1",
-                            "command": "kimi -r sess-full-1",
+                            "command": "kimi -S sess-full-1",
                         }
                     ),
                     _line({"role": "assistant", "content": "I will check the file."}),

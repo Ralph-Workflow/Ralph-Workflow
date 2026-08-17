@@ -134,7 +134,7 @@ class TestBuiltinSupportsFrozen:
             KimiParser,
             _make_kimi_strategy,
             "kimi",
-            "-r {}",
+            "-S {}",
             JsonParserType.GENERIC,
         ),
     )

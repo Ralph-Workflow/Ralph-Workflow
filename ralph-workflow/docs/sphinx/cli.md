@@ -322,9 +322,9 @@ python -m ralph smoke-interactive-kimi --agent 'kimi/kimi-code/k3-256k'      # e
 This command is **not** part of `make verify`; the harness only runs when
 an operator explicitly invokes it (live tokens).
 
-Set `RALPH_CURSOR_BINARY` to use a custom `agent` executable (a real
+Set `RALPH_KIMI_BINARY` to use a custom `kimi` executable (a real
 wrapper, alternate live binary, or an operator-wired test stub). There
-is no bundled mock for Cursor (unlike AGY); non-executable paths are
+is no bundled mock for Kimi (unlike AGY); non-executable paths are
 ignored with a WARNING.
 
 ## Related pages

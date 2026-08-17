@@ -106,6 +106,15 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_pipeline_runner_pipeline_runner_loop_1.py",
         "tests/test_mcp_server_multimodal_tool_visibility_1.py",
         "tests/test_parsers_1.py",
+        # wt-063 (kimi support): the multimodal smoke stub gained the
+        # kimi emitter vocabulary (S-2), pushing the nine-transport
+        # stub past the 1000-line cap. The stub is ONE deliberately
+        # co-located subprocess script (S-9 / S-12): each transport's
+        # emitters + the shared dispatch tables must stay in one file
+        # because the harness execs the script by path with no package
+        # context, so a split would need import scaffolding the
+        # deterministic-stub contract explicitly avoids.
+        "tests/_support/mock_multimodal_agent.py",
     }
 )
 
@@ -736,6 +745,22 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.cli.commands.smoke",
             ("_required_evidence",),
         ),
+        # wt-063 (kimi support): the kimi wire-provenance test imports
+        # the same two private helpers as the lattice precedent above
+        # -- ``_required_evidence`` (the F1 verdict facts) and
+        # ``_run_smoke_agent`` (the real harness runner) -- to pin that
+        # a kimi-transport smoke run grades its multimodal fact from
+        # the wire ledger, not from smoke-only shortcuts.
+        (
+            "tests/test_kimi_wire_provenance.py",
+            "ralph.pipeline.plumbing.smoke_plumbing",
+            ("_run_smoke_agent",),
+        ),
+        (
+            "tests/test_kimi_wire_provenance.py",
+            "ralph.cli.commands.smoke",
+            ("_required_evidence",),
+        ),
         # S-3 Part B (Evidence Provenance closeout plan, PA-001): the narrow
         # grading-correlation test calls the private sentinel-check helper
         # directly to pin the completion-evidence arithmetic in isolation
@@ -767,6 +792,17 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/agents/idle_watchdog/test_tool_result_routing.py",
             "ralph.agents.invoke._process_reader",
             ("ProcessLineReader",),
+        ),
+        (
+            # DA-001: pins that a smoke-minted RALPH_BROKER_SECRET never
+            # leaks into the agent subprocess env. ``_subprocess_env`` is
+            # deliberately NOT re-exported from ``ralph.agents.invoke`` --
+            # it is a private env-hygiene boundary, and only this test
+            # (plus the sibling test_subprocess_env_secret_isolation.py
+            # allowlist entries) may reach it directly.
+            "tests/test_cli_smoke.py",
+            "ralph.agents.invoke._process_reader",
+            ("_subprocess_env",),
         ),
         (
             "tests/agents/idle_watchdog/test_opencode_step_frames.py",

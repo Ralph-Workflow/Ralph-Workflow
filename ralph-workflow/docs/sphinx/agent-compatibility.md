@@ -139,8 +139,8 @@ json_parser = "generic"
 - **CLI**: `kimi` (v0.36.1 observed)
 - **Install / auth**: <https://platform.kimi.ai> — OAuth login (`kimi` interactive) wires the `managed:kimi-code` subscription provider
 - **Transport**: `kimi`
-- **Flags**: `-p <prompt-file>`, `--output-format stream-json`, and `-m <model>` via the `kimi/<model>` alias
-- **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; default `kimi-code/k3-256k`). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
+- **Flags**: `-p <prompt-file>`, `--output-format stream-json`, `-m <model>` via the `kimi/<model>` alias, and `-S <session-id>` for session resume (fresh v0.36.1 probe: `-S, --session [id] Resume a session`; the legacy `-r` spelling from stale kimi-cli docs is not a v0.36.1 option and is never emitted)
+- **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; config default `kimi-code/kimi-for-coding`, set in wt-063 — it was `kimi-code/k3-256k` before). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
 - **Multimodal**: image input is covered by the measured `image_in` capability on the authenticated models.
 - **Sub-agents**: no sub-agent dispatch surface; delegation is declared `EXPLICIT_UNSUPPORTED`.
 - **Smoke**: `ralph smoke-interactive-kimi --agent kimi/kimi-code/kimi-for-coding` (the default alias).

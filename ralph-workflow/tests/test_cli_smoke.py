@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from io import StringIO
 from pathlib import Path
@@ -201,6 +202,14 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     tmp_path: Path,
 ) -> None:
     stream = _attach_console(monkeypatch)
+    # DA-001: the smoke composition root now mints a run-scoped broker
+    # secret when the operator exported none. This scenario hand-writes an
+    # UNSIGNED sentinel (no HMAC binding to the minted secret), so the
+    # sentinel check correctly rejects it and the report renders the
+    # completion fact as absent -- the transcript substring stays a
+    # spoofable signal, never a completion witness. Keep the environment
+    # unsigned so the test pins exactly that boundary.
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
     scope = WorkspaceScope(tmp_path)
 
     def _resolve_workspace_scope() -> WorkspaceScope:
@@ -362,7 +371,11 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "claude/haiku" in output
     assert "Headless semantic guide" in output
     assert "smoke_test_result artifact submitted" in output
-    assert "completion sentinel observed" in output
+    # The hand-written sentinel is unsigned (see the delenv note above), so
+    # the completion fact renders absent rather than observed; the
+    # transcript's "Task declared complete:" substring never substitutes
+    # for the HMAC-bound durable sentinel.
+    assert "completion sentinel observed" not in output
     assert "Observed output" in output
     assert "I am creating the todo list now." in output
     # Agent name surfaces in the parity-table title; tool activity surfaces in
@@ -376,8 +389,9 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     # S-6 (PA-001): this scenario's evidence never reaches WIRE (see the
     # exit_code assertion above), so "No breaks observed" is not the
     # correct/honest text -- the DEGRADED branch of _render_smoke_report
-    # names the demotion instead, exactly like PA-001 says it must.
-    assert "DEGRADED (workspace-effect)" in output
+    # names the demotion instead. With the completion sentinel absent the
+    # weakest provenance is ABSENT.
+    assert "DEGRADED (absent)" in output
 
 
 def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
@@ -1374,3 +1388,149 @@ def test_no_subagent_errors_with_pass_verdict_yields_zero_exit() -> None:
     assert verdict_label == PASS
     exit_code = 0 if not result.errors and verdict_label == PASS else 1
     assert exit_code == 0
+
+
+@pytest.mark.timeout_seconds(10)
+def test_smoke_harness_agent_command_mints_run_scoped_broker_secret_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """DA-001: the smoke CLI composition root signs the wire ledger itself.
+
+    The measured 2026-08-17 live Kimi smoke created the file, submitted the
+    artifact, and declared completion, yet all three required facts graded
+    below WIRE and the run exited 1: ``python -m ralph smoke-interactive-kimi``
+    starts a fresh process whose environment carries no
+    ``RALPH_BROKER_SECRET``, so ``build_session_bridge`` read ``None`` and
+    every wire-ledger append was a documented no-op. The shared smoke
+    composition root (``smoke_harness_agent_command``) MUST mint a random,
+    run-scoped broker secret when the operator exported none -- the
+    anti-forgery boundary is preserved because ``_subprocess_env`` strips
+    the variable from the agent's environment, so the minted secret never
+    reaches the model.
+    """
+    stream = _attach_console(monkeypatch)
+    del stream
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "kimi/kimi-code/kimi-for-coding":
+                return AgentConfig(cmd="kimi", transport=AgentTransport.KIMI)
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        # The secret must exist by the time plumbing builds the session
+        # bridge (which reads it via _parent_broker_secret()).
+        assert os.environ.get("RALPH_BROKER_SECRET"), (
+            "smoke composition root must mint RALPH_BROKER_SECRET before plumbing runs"
+        )
+        return smoke_module.SmokeRunResult(
+            agent_name="kimi/kimi-code/kimi-for-coding",
+            transport="kimi",
+            output_file=tmp_path / "tmp" / "interactive-kimi-smoke" / "todo-list.js",
+            file_created=True,
+            session_id="kimi-sess-1",
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    exit_code = smoke_module.smoke_harness_agent_command(
+        "kimi/kimi-code/kimi-for-coding",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+
+
+@pytest.mark.timeout_seconds(10)
+def test_smoke_harness_agent_command_preserves_operator_broker_secret(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An operator-exported ``RALPH_BROKER_SECRET`` is never overwritten."""
+    stream = _attach_console(monkeypatch)
+    del stream
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+    monkeypatch.setenv("RALPH_BROKER_SECRET", "operator-secret")
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "kimi/kimi-code/kimi-for-coding":
+                return AgentConfig(cmd="kimi", transport=AgentTransport.KIMI)
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        del kwargs
+        assert os.environ.get("RALPH_BROKER_SECRET") == "operator-secret"
+        return smoke_module.SmokeRunResult(
+            agent_name="kimi/kimi-code/kimi-for-coding",
+            transport="kimi",
+            output_file=tmp_path / "tmp" / "interactive-kimi-smoke" / "todo-list.js",
+            file_created=True,
+            session_id="kimi-sess-1",
+            explicit_completion_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=Evidence(True, Provenance.WIRE, "test fixture"),
+            artifact_submitted=Evidence(True, Provenance.WIRE, "test fixture"),
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    exit_code = smoke_module.smoke_harness_agent_command(
+        "kimi/kimi-code/kimi-for-coding",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+
+
+@pytest.mark.timeout_seconds(10)
+def test_smoke_minted_broker_secret_never_reaches_agent_subprocess_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A minted run-scoped secret must not leak into the spawned agent's env.
+
+    ``_subprocess_env`` strips ``RALPH_BROKER_SECRET`` from both the
+    inherited environment and any caller-supplied ``extra_env``; this pins
+    that guarantee against a smoke-minted value so the composition-root
+    mint cannot become a model-readable credential. The exhaustive
+    inherited-env / extra-env matrix lives in
+    ``tests/test_subprocess_env_secret_isolation.py``.
+    """
+    from ralph.agents.invoke._process_reader import _subprocess_env
+
+    monkeypatch.setenv("RALPH_BROKER_SECRET", "smoke-minted-secret")
+
+    env = _subprocess_env(None)
+
+    assert "RALPH_BROKER_SECRET" not in env
+    assert os.environ.get("RALPH_BROKER_SECRET") == "smoke-minted-secret"

@@ -117,8 +117,8 @@ class TestKimiCatalogSeeding:
         assert kimi_support.config.output_flag == "--output-format=stream-json"
         # The print flag is the documented short prompt-mode flag.
         assert kimi_support.config.print_flag == "-p"
-        # The session flag is the documented resume template.
-        assert kimi_support.config.session_flag == "-r {}"
+        # The session flag is the measured v0.36.1 resume template.
+        assert kimi_support.config.session_flag == "-S {}"
         # can_commit is True (prompt mode auto-approves its tool calls,
         # giving the headless transport write + shell access).
         assert kimi_support.config.can_commit is True

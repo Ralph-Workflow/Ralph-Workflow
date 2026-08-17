@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import secrets
 import shlex
 import shutil
 import sys
@@ -14,6 +15,9 @@ import click
 from loguru import logger
 from rich.table import Table
 
+from ralph.agents.invoke import (
+    _parent_broker_secret,
+)
 from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.cli.commands._smoke_ccs import smoke_interactive_ccs_command
 from ralph.cli.commands._smoke_opencode_override import (
@@ -228,6 +232,21 @@ def _apply_cursor_binary_override_to_config(config: UnifiedConfig) -> UnifiedCon
     new_agents: dict[str, AgentConfig] = {}
     for name, agent_config in config.agents.items():
         if agent_config.transport is AgentTransport.CURSOR:
+            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
+        else:
+            new_agents[name] = agent_config
+    return config.model_copy(update={"agents": new_agents})
+
+
+def _apply_kimi_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
+    """Return a config copy with Kimi agents using ``RALPH_KIMI_BINARY`` when set."""
+    resolved = _resolve_kimi_binary_override()
+    if resolved is None:
+        return config
+    quoted = shlex.quote(resolved)
+    new_agents: dict[str, AgentConfig] = {}
+    for name, agent_config in config.agents.items():
+        if agent_config.transport is AgentTransport.KIMI:
             new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
         else:
             new_agents[name] = agent_config
@@ -484,6 +503,31 @@ def _render_smoke_table(
 render_smoke_report = _render_smoke_report
 
 
+def _ensure_smoke_broker_secret() -> None:
+    """Mint a run-scoped ``RALPH_BROKER_SECRET`` when the operator exported none.
+
+    The smoke CLI runs as a fresh ``python -m ralph smoke-interactive-*``
+    process. When the operator's environment carries no broker secret,
+    ``build_session_bridge`` reads ``None`` and every wire-ledger append is
+    a documented no-op -- so a live run that genuinely dialled Ralph's MCP
+    tools (the measured 2026-08-17 Kimi smoke: file created, artifact
+    submitted, completion declared) still graded every required fact below
+    WIRE and exited 1. Minting a random, process-local secret here lets the
+    run's receipts, sentinel, and ledger rows HMAC-bind to this run so the
+    shared gate can grade them WIRE. The anti-forgery boundary is
+    preserved: ``_subprocess_env`` strips the variable from the agent's
+    environment, so the secret never reaches the model. An
+    operator-exported value is always honored unchanged.
+
+    Reads the secret through the sanctioned composition-root accessor
+    ``_parent_broker_secret`` (the ``audit_di_seam`` allowlist entry for
+    ``agents/invoke/_process_reader.py``) so the drift gate's
+    ``RALPH_*`` env-var boundary keeps exactly one canonical reader.
+    """
+    if not _parent_broker_secret():
+        os.environ["RALPH_BROKER_SECRET"] = secrets.token_hex(32)
+
+
 def smoke_harness_agent_command(
     agent_name: str,
     *,
@@ -500,6 +544,7 @@ def smoke_harness_agent_command(
     """
     workspace_scope = resolve_workspace_scope()
     workspace_root = workspace_scope.root
+    _ensure_smoke_broker_secret()
     if subagent_prompt_file is not None and not subagents:
         raise click.UsageError("--subagent-prompt-file requires --subagents")
     subagent_prompt: str | None = None

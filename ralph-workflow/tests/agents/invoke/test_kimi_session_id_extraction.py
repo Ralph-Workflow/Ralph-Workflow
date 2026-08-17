@@ -2,7 +2,7 @@
 
 Kimi Code's measured v0.36.1 wire emits the resumable session id on a
 role-keyed meta frame: ``{"role": "meta", "type": "session.resume_hint",
-"session_id": ..., "command": "kimi -r <id>"}``.  These tests pin the
+"session_id": ..., "command": "kimi -S <id>"}``.  These tests pin the
 extraction predicate (both keys required) and the surrounding guards.
 """
 
@@ -23,7 +23,7 @@ def test_kimi_resume_hint_session_id_is_transport_session_id() -> None:
             "role": "meta",
             "type": "session.resume_hint",
             "session_id": "kimi-session-123",
-            "command": "kimi -r kimi-session-123",
+            "command": "kimi -S kimi-session-123",
         }
     )
 

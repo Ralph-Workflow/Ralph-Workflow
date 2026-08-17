@@ -679,7 +679,9 @@ del registry.agents["my-agent"]
   (`error: unknown option`), and `--yolo`/`--auto`/`--plan` conflict with
   `-p`; the maintained contract is headless `kimi -p <prompt>
   --output-format stream-json`, where prompt mode auto-approves its tool
-  calls so no autonomy flag is emitted.
+  calls so no autonomy flag is emitted. Session resume likewise follows the
+  measured spelling: `-S <session-id>` (`-S, --session [id] Resume a
+  session` in `kimi --help`), never the legacy `-r` form.
 * **Creating a project-level MCP config the CLI then ignores**: Kimi Code
   headless `-p` silently drops the workspace `.kimi-code/mcp.json` in an
   untrusted folder (no error; the tools simply never register). The

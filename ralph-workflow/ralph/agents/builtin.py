@@ -316,7 +316,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         output_flag="--output-format=stream-json",
         yolo_flag=None,
         print_flag="-p",
-        session_flag="-r {}",
+        session_flag="-S {}",
         can_commit=True,
         display_name="Kimi",
         display_capabilities=_KIMI_CAPABILITIES,

@@ -2,24 +2,32 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 8 on the maintained 12-core (6P+6E) host. 8 shards give
-# each shard ~172 files; with macOS's ASYM_PACKING scheduler 6 shards
-# land on P cores and 2 on efficiency cores. The slowest E-core shard
-# wall clock varies 31-50 s depending on system load. 9 shards puts 3
-# on efficiency cores, increasing per-shard contention and pushing the
-# slowest shard to ~60 s. 10 deterministically oversubscribes a 12-core
-# host (10 shards + the runner + the harness = 12 Python processes on 12
-# cores with zero headroom for OS / I/O). Operators may override after
-# measuring their own host.
+# Default: ``auto`` — one shard per available core minus the runner (11
+# shards on the maintained 12-core (6P+6E) host, 31 on the 32-core CI
+# profile). Re-measured wt-063 after the suite grew to 1416 files /
+# ~15k tests: the former fixed default of 8 no longer fits the 60s
+# per-suite deadline on the 12-core host. 8/9/10 shards concentrate the
+# same work into fewer serial shards (measured wt-063: deadline kill at
+# each); 11 shards fit only after the AGY full-lifecycle E2E file got a
+# measured weight floor (see ``_AGY_LIFECYCLE_E2E_WEIGHT_FLOOR`` in
+# ralph/test_suites.py) — its ~18 s subprocess chain was invisible to
+# the static item-count estimator and produced a ~50 s straggler shard.
+# With both in place the quiet-host ``make verify`` gate reports ~51 s
+# cumulative test elapsed of the 60 s combined budget. In-shard xdist
+# is NOT the escape hatch — 6 shards * 2 workers measured ~149 s
+# slowest shard (see PYTEST_XDIST_WORKERS_PER_SHARD below). ``auto``
+# is also what ralph.test_suites resolves when the variable is unset,
+# so the exported default now matches the runner's own resolution.
+# Operators may override after measuring their own host:
+#   PYTEST_WORKERS=8 make test   # 12-core host: may exceed the suite budget
+#   PYTEST_WORKERS=2 make test    # may exceed the suite budget
+#   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
 # literally, so this exported default governs both ralph.test_suites and
 # the raw-target paths. Keep conditional assignment so operators can
-# override:
-#   PYTEST_WORKERS=8 make test   # maintained baseline
-#   PYTEST_WORKERS=2 make test    # may exceed the suite budget
-#   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
+# override (examples above).
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
@@ -27,7 +35,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 8
+PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
@@ -170,9 +178,9 @@ test-subprocess-e2e:
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
 
-# Multimodal smoke suite (criterion 5). Drives all eight non-GENERIC harness
+# Multimodal smoke suite (criterion 5). Drives all nine non-GENERIC harness
 # identities (claude / claude-headless / agy / nanocoder / cursor / opencode /
-# codex / pi)
+# codex / pi / kimi)
 # through the deterministic multimodal stub agent, asserting the
 # multimodal fact grades WIRE on every harness. Excluded from the
 # default pytest profile by the `smoke` marker (kept in `pytestmark`
@@ -188,12 +196,13 @@ test-live-agy:
 # `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
 # file the regular profile deliberately skips.
 #
-# wt-056: the 19 smoke tests are I/O-bound (each spawns a stub
+# wt-056: the smoke tests are I/O-bound (each spawns a stub
 # subprocess), so fewer xdist workers reduce startup overhead and CPU
 # contention without sacrificing throughput. Benchmarked on the
 # maintained 12-core host: -n 4 completes in ~13 s wall vs ~19 s for
 # -n 8, saving ~4 s of combined-budget headroom for the trailing
-# visual-smoke step.
+# visual-smoke step. Re-measured wt-063 after adding the kimi row:
+# 15 tests complete in ~5 s wall at -n 4.
 #
 # wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
 # here -- its ~1 s of Python import / arg-parse startup is pure overhead

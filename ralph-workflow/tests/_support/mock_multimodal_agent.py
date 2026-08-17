@@ -40,8 +40,9 @@ def _canonical_run_id_for_transport(transport: str, run_id: str) -> str:
     ``system: init`` frames, ``sessionID`` (capital) on every OpenCode
     event, and ``session_id`` / ``sessionId`` on JSON ``session`` /
     ``session_ready`` / ``session_start`` / ``session_resume`` events
-    (Claude). Plain-text Claude sessions emit ``Claude session ready.
-    Session ID: <id>``.
+    (Claude). Plain-text Claude sessions emit
+    ``Claude session ready. Session ID: <id>``. Kimi Code emits
+    ``session_id`` on ``role:"meta"`` ``session.resume_hint`` frames.
 
     For each transport we emit the canonical shape so the harness's
     :func:`extract_transport_session_id` returns the same value the
@@ -369,6 +370,67 @@ def _emit_nanocoder_session_id_line(session_id: str) -> None:
     _emit_text_line(f"Claude session ready. Session ID: {session_id}")
 
 
+def _emit_kimi_init(session_id: str) -> None:
+    """Emit a Kimi ``meta`` banner + ``session.resume_hint`` to seed the parser.
+
+    Mirrors the measured v0.36.1 wire: the version banner and the
+    resumable session id both ride ``role:"meta"`` frames; the
+    harness's session extractor reads ``session_id`` from the raw
+    ``session.resume_hint`` line (see
+    ``tests/agents/invoke/test_kimi_session_id_extraction.py``).
+    """
+    _emit_json({"role": "meta", "type": "system.version", "version": "0.36.1"})
+    _emit_json(
+        {
+            "role": "meta",
+            "type": "session.resume_hint",
+            "session_id": session_id,
+            "command": f"kimi -S {session_id}",
+        }
+    )
+
+
+def _emit_kimi_assistant_text(text: str) -> None:
+    _emit_json({"role": "assistant", "content": text})
+
+
+def _emit_kimi_tool_call(name: str, arguments: dict[str, Any], call_id: str) -> None:
+    """Emit one assistant ``tool_calls`` entry in the documented shape.
+
+    ``arguments`` is a JSON-encoded STRING on the measured wire (the
+    parser decodes it into ``metadata["input"]``), so the stub dumps
+    the dict back to its string form.
+    """
+    _emit_json(
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": call_id,
+                    "function": {"name": name, "arguments": json.dumps(arguments)},
+                }
+            ],
+        }
+    )
+
+
+def _emit_kimi_tool_result(call_id: str, content: str) -> None:
+    _emit_json({"role": "tool", "tool_call_id": call_id, "content": content})
+
+
+def _emit_kimi_stop() -> None:
+    """Emit the ``[DONE]`` sentinel the NDJSON base short-circuits on.
+
+    The documented kimi envelope has NO terminal frame (termination is
+    process exit), so the stub does not fabricate one; the base
+    parser's preserved ``[DONE]`` short-circuit gives the stop emitter
+    a deterministic sentinel without inventing a fake kimi frame.
+    """
+    _emit_text_line("[DONE]")
+
+
 # ---------------------------------------------------------------------------
 # Transport dispatch tables.
 # ---------------------------------------------------------------------------
@@ -432,6 +494,14 @@ def _make_emit_functions(transport: str) -> dict[str, Any]:
             _emit_nanocoder_tool_call,
             _emit_nanocoder_tool,
             _emit_nanocoder_text,
+        ),
+        "kimi": (
+            None,
+            _emit_kimi_init,
+            _emit_kimi_assistant_text,
+            _emit_kimi_tool_call,
+            _emit_kimi_tool_result,
+            _emit_kimi_stop,
         ),
     }
     resolved = emitters.get("claude" if transport == "claude-headless" else transport)
@@ -568,6 +638,7 @@ def _resolve_transport() -> str:
         "nanocoder",
         "codex",
         "pi",
+        "kimi",
     ):
         transport = "claude"
     return transport
@@ -843,7 +914,7 @@ def _emit_post_dispatch_frames(
                 session_id,
                 0,
             )
-        elif transport in {"cursor", "opencode", "nanocoder", "codex", "pi"}:
+        elif transport in {"cursor", "opencode", "nanocoder", "codex", "pi", "kimi"}:
             text_emitter("Reading multimodal fixture and writing receipts.")
     if tool_emitter is not None and not skip_media:
         if transport in ("claude", "claude-headless"):
@@ -887,6 +958,20 @@ def _emit_post_dispatch_frames(
             )
             tool_emitter(
                 "declare_complete",
+                {"summary": "multimodal smoke stub complete"},
+                "toolu_done",
+            )
+        elif transport == "kimi":
+            # The kimi parser preserves upstream tool names verbatim, so
+            # the frames carry the same fully-qualified names the stub
+            # POSTs to the endpoint.
+            tool_emitter(
+                "mcp__ralph__read_media",
+                {"path": "smoke-fixture.png", "format": "inline"},
+                "toolu_media_1",
+            )
+            tool_emitter(
+                "mcp__ralph__declare_complete",
                 {"summary": "multimodal smoke stub complete"},
                 "toolu_done",
             )
@@ -942,7 +1027,7 @@ def main() -> int:
             init_emitter(session_id, run_id)
         elif transport == "agy":
             init_emitter("mock-multimodal-stub", session_id)
-        elif transport in {"cursor", "opencode", "codex", "pi"}:
+        elif transport in {"cursor", "opencode", "codex", "pi", "kimi"}:
             init_emitter(session_id)
     session_id_line = emitters.get("session_id_line")
     if session_id_line is not None:

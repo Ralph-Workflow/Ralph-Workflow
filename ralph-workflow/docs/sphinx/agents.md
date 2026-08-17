@@ -235,6 +235,11 @@ Each agent has a documented verification path that targets its own contract:
   (live binary required; see
   [the OpenCode section in Agent Compatibility](agent-compatibility.md#opencode)
   for the model/provider syntax reference and the live capture command)
+- **Kimi (headless)**: `ralph smoke-interactive-kimi --agent kimi/kimi-code/kimi-for-coding`
+  (live binary required; manual paid diagnostic outside `make verify`, like
+  AGY. `kimi-code/kimi-for-coding` is the configured default standard model
+  and the auditable least-cost choice per the dated cost table in
+  [the Kimi section in Agent Compatibility](agent-compatibility.md#kimi-kimi-code).)
 
 The Codex and Pi transports are exercised through the public-surface
 black-box pytest suite (`uv run pytest tests/agents/parsers/ tests/test_opencode_display_fidelity.py -q`)

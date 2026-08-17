@@ -10,12 +10,13 @@ major coding harness against Ralph's multimodal MCP endpoints:
   positive case, fires a named break on the no-call and
   ignored-response cases.
 
-- **S-12** -- parameterises the same harness across all eight
+- **S-12** -- parameterises the same harness across all nine
   transports (``smoke-interactive-claude``,
   ``smoke-headless-claude``, ``smoke-interactive-agy``,
   ``smoke-interactive-nanocoder``, ``smoke-interactive-cursor``,
   ``smoke-interactive-opencode``, ``smoke-interactive-codex``,
-  ``smoke-interactive-pi``), each with its redirect seam
+  ``smoke-interactive-pi``, ``smoke-interactive-kimi``), each with
+  its redirect seam
   recorded in S-13. The positive case runs on every transport; the
   ignore-response case runs on one transport per redirect method
   (see ``_IGNORE_RESPONSE_TRANSPORTS`` -- S-7 consolidation), with
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
 #   ``"agy_env"``   - via ``RALPH_AGY_BINARY`` env override
 #   ``"cursor_env"`` - via ``RALPH_CURSOR_BINARY`` env override
 #   ``"opencode_env"`` - via ``RALPH_OPENCODE_BINARY`` env override
+#   ``"kimi_env"`` - via ``RALPH_KIMI_BINARY`` env override
 #   ``"cmd_override"`` - via in-place ``AgentConfig.cmd`` rewrite to the
 #     stub (the production harness's command builders let
 #     ``agents.<name>.cmd`` override the resolved argv, so a rewrite
@@ -90,6 +92,7 @@ _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("opencode", "smoke-interactive-opencode", "opencode/minimax/MiniMax-M3", "opencode_env"),
     ("codex", "smoke-interactive-codex", "codex/gpt-5-flash", "cmd_override"),
     ("pi", "smoke-interactive-pi", "pi", "cmd_override"),
+    ("kimi", "smoke-interactive-kimi", "kimi/kimi-code/kimi-for-coding", "kimi_env"),
 )
 
 _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
@@ -104,7 +107,7 @@ _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
 #: grader unit level in the default profile, so the poisoned e2e keeps
 #: exactly one transport per redirect method (``agy_env`` / ``cmd_override``
 #: / ``cursor_env``) -- every seam stays covered without paying the
-#: full-harness spawn cost on all eight transports.
+#: full-harness spawn cost on all nine transports.
 _IGNORE_RESPONSE_TRANSPORTS: tuple[str, ...] = ("agy", "claude", "cursor")
 
 
@@ -119,6 +122,7 @@ def test_smoke_transport_table_covers_every_non_generic_transport() -> None:
         "opencode",
         "codex",
         "pi",
+        "kimi",
     }
 
 
@@ -179,6 +183,10 @@ def _apply_redirect(
         os.environ["RALPH_OPENCODE_BINARY"] = str(stub_path)
         agent_config = smoke_module._maybe_apply_opencode_binary_override(agent_config)
         config = smoke_module._apply_opencode_binary_override_to_config(config)
+    elif redirect_method == "kimi_env":
+        os.environ["RALPH_KIMI_BINARY"] = str(stub_path)
+        agent_config = smoke_module._maybe_apply_kimi_binary_override(agent_config)
+        config = smoke_module._apply_kimi_binary_override_to_config(config)
     elif redirect_method == "cmd_override":
         quoted = shlex.quote(str(stub_path))
         new_cmd = f"{quoted} {agent_config.cmd or ''}".strip()
@@ -202,8 +210,9 @@ def _end_to_end_test_for_harness(
     """Drive the multimodal stub through ``run_smoke_plumbing`` for one transport.
 
     Configures the harness's ``AgentConfig.cmd`` (or ``RALPH_AGY_BINARY`` /
-    ``RALPH_CURSOR_BINARY`` / ``RALPH_OPENCODE_BINARY`` env overrides for
-    those three transports) so the harness spawns the multimodal stub as the
+    ``RALPH_CURSOR_BINARY`` / ``RALPH_OPENCODE_BINARY`` / ``RALPH_KIMI_BINARY``
+    env overrides for those four transports) so the harness spawns the
+    multimodal stub as the
     agent. The ``positive=False`` path sets ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1``
     so the stub dials the endpoint once and then forges the receipt. The
     ``MOCK_MULTIMODAL_SKIP_MEDIA=1`` path is exercised by the dedicated

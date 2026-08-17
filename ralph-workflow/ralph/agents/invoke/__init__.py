@@ -62,6 +62,7 @@ from ralph.agents.invoke._options import (
 )
 from ralph.agents.invoke._process_reader import (
     ProcessLineReader,
+    _parent_broker_secret,
     _read_lines_from_process,
     _run_subprocess_and_read_lines,
     check_broken_agent_timer,
@@ -786,6 +787,7 @@ __all__ = [
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
     "WorkspaceMonitor",
+    "_parent_broker_secret",
     "agy_workspace_mcp_endpoint",
     "bounded_output_lines",
     "build_command",

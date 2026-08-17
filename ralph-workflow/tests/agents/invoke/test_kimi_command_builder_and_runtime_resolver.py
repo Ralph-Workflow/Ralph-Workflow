@@ -13,7 +13,7 @@ kimi-code v0.36.1 binary (the plan's original ``kimi --print -p ...
 --afk`` shape came from the stale kimi-cli documentation and is
 rejected by the live binary):
 
-    kimi --output-format=stream-json [-r <session>] [-m <model>] -p <prompt>
+    kimi --output-format=stream-json [-S <session>] [-m <model>] -p <prompt>
 
 with the prompt text as exactly one argv value.
 
@@ -67,7 +67,7 @@ def _kimi_config(**overrides: object) -> AgentConfig:
         "output_flag": "--output-format=stream-json",
         "yolo_flag": None,
         "print_flag": "-p",
-        "session_flag": "-r {}",
+        "session_flag": "-S {}",
         "transport": AgentTransport.KIMI,
     }
     config.update(overrides)
@@ -99,8 +99,15 @@ class TestKimiCommandBuilder:
         assert "--auto" not in cmd
         assert "--plan" not in cmd
 
-    def test_session_flag_is_dash_r_with_value(self, tmp_path: Path) -> None:
-        """The documented resume flag ``-r <id>`` lands before the model flag."""
+    def test_session_flag_is_dash_S_with_value(self, tmp_path: Path) -> None:
+        """The measured resume flag ``-S <id>`` lands before the model flag.
+
+        Fresh v0.36.1 probe (``kimi --help``): ``-S, --session [id]
+        Resume a session`` is the only advertised resume spelling; the
+        stale ``-r`` form came from legacy kimi-cli docs and is not a
+        v0.36.1 option, so generated resume argv must carry ``-S``
+        and never ``-r``.
+        """
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
@@ -111,11 +118,12 @@ class TestKimiCommandBuilder:
         assert cmd == [
             "kimi",
             "--output-format=stream-json",
-            "-r",
+            "-S",
             "sess-1",
             "-p",
             "hello world",
         ]
+        assert "-r" not in cmd
 
     def test_session_id_with_spaces_stays_one_argv_element(self, tmp_path: Path) -> None:
         """A session id containing spaces must stay as a single argv value."""
@@ -126,10 +134,10 @@ class TestKimiCommandBuilder:
             options=BuildCommandOptions(session_id="abc def", workspace_path=tmp_path),
         )
 
-        r_index = cmd.index("-r")
-        assert cmd[r_index + 1] == "abc def"
+        s_index = cmd.index("-S")
+        assert cmd[s_index + 1] == "abc def"
         # The session id must not be tokenized into separate elements.
-        assert "abc" not in cmd[:r_index] + cmd[r_index + 2 :]
+        assert "abc" not in cmd[:s_index] + cmd[s_index + 2 :]
 
     def test_model_flag_is_dash_m_with_value(self, tmp_path: Path) -> None:
         """The model template wraps a bare id into ``-m <model>``."""
@@ -152,7 +160,7 @@ class TestKimiCommandBuilder:
         ]
 
     def test_full_argv_layout(self, tmp_path: Path) -> None:
-        """Documented ``kimi --output-format=stream-json -r ID -m M -p P`` layout."""
+        """Measured ``kimi --output-format=stream-json -S ID -m M -p P`` layout."""
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
@@ -167,7 +175,7 @@ class TestKimiCommandBuilder:
         assert cmd == [
             "kimi",
             "--output-format=stream-json",
-            "-r",
+            "-S",
             "sess-1",
             "-m",
             "kimi/kimi-for-coding",
@@ -571,8 +579,8 @@ class TestKimiCompletionEnforcement:
 @pytest.mark.parametrize(
     ("session_id", "expected_argv_tail"),
     [
-        ("sess-abc-1", ["-r", "sess-abc-1"]),
-        ("with spaces", ["-r", "with spaces"]),
+        ("sess-abc-1", ["-S", "sess-abc-1"]),
+        ("with spaces", ["-S", "with spaces"]),
     ],
 )
 def test_session_flag_formatting_matrix(
