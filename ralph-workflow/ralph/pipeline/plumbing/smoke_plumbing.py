@@ -110,6 +110,9 @@ _CODEX_SMOKE_RUN_ID = "interactive-codex-smoke"
 _PI_SMOKE_RELATIVE_DIR = Path("tmp/interactive-pi-smoke")
 _PI_SMOKE_OUTPUT_FILE = _PI_SMOKE_RELATIVE_DIR / "todo-list.js"
 _PI_SMOKE_RUN_ID = "interactive-pi-smoke"
+_KIMI_SMOKE_RELATIVE_DIR = Path("tmp/interactive-kimi-smoke")
+_KIMI_SMOKE_OUTPUT_FILE = _KIMI_SMOKE_RELATIVE_DIR / "todo-list.js"
+_KIMI_SMOKE_RUN_ID = "interactive-kimi-smoke"
 _CCS_SMOKE_RELATIVE_DIR = Path("tmp/interactive-ccs-smoke")
 _CCS_SMOKE_RUN_ID = "interactive-ccs-smoke"
 
@@ -281,6 +284,26 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
             run_id = f"{_PI_SMOKE_RUN_ID}-{sanitized}"
             relative_dir = _PI_SMOKE_RELATIVE_DIR / sanitized
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=relative_dir,
+            output_file=relative_dir / "todo-list.js",
+            run_id=run_id,
+        )
+    if agent_name == "kimi" or agent_name.startswith("kimi/"):
+        # ``kimi`` (bare) uses the base kimi harness layout; ``kimi/<model>``
+        # (e.g. ``kimi/kimi-code/k3-256k``) branches off a sanitized
+        # run_id AND a sanitized sub-directory so two concurrent model
+        # smoke runs do not collide on completion-sentinel / receipt /
+        # output-file paths. Mirrors the ``pi`` layout.
+        suffix = agent_name.removeprefix("kimi").lstrip("/")
+        if not suffix:
+            run_id = _KIMI_SMOKE_RUN_ID
+            relative_dir = _KIMI_SMOKE_RELATIVE_DIR
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"{_KIMI_SMOKE_RUN_ID}-{sanitized}"
+            relative_dir = _KIMI_SMOKE_RELATIVE_DIR / sanitized
         return SmokeHarnessSpec(
             agent_name=agent_name,
             relative_dir=relative_dir,
@@ -469,6 +492,7 @@ CONFORMANCE_MATRIX_TRANSPORT_ORDER: Final[tuple[str, ...]] = (
     "nanocoder",
     "cursor",
     "opencode",
+    "kimi",
 )
 
 #: The three required contract facts F1's verdict is graded from (mirrors
@@ -485,9 +509,10 @@ CONFORMANCE_MATRIX_FACTS: Final[tuple[str, ...]] = (
 #: capability matrix is keyed by *agent identity*, not by transport
 #: enum, so that ``claude`` and ``claude-headless`` -- which share the
 #: same binary but exercise different transports -- appear as
-#: distinguishable rows. The full set of eight built-ins appears here
+#: distinguishable rows. The full set of nine built-ins appears here
 #: so an operator can read which agent implements what at a glance,
-#: matching the plan's AC-6.
+#: matching the plan's AC-6. Kimi sits after ``cursor`` to mirror the
+#: ``AgentTransport`` enum-declaration order (PI, CURSOR, KIMI).
 CANONICAL_CAPABILITY_AGENT_ORDER: Final[tuple[str, ...]] = (
     "claude",
     "claude-headless",
@@ -497,6 +522,7 @@ CANONICAL_CAPABILITY_AGENT_ORDER: Final[tuple[str, ...]] = (
     "agy",
     "pi",
     "cursor",
+    "kimi",
 )
 
 #: Durable JSON store (source of truth) and its rendered markdown sibling.
@@ -1577,6 +1603,20 @@ def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | No
     """
     getter = env_getter if env_getter is not None else os.environ.get
     return getter("RALPH_CURSOR_BINARY")
+
+
+def _kimi_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
+    """Return the raw ``RALPH_KIMI_BINARY`` env value, if set.
+
+    Callers may inject ``env_getter`` for tests and composed runtimes; the
+    production default is centralized here so smoke plumbing callers do not
+    read ambient environment directly.  Like cursor there is no bundled
+    mock for kimi, so a non-empty override points at a real wrapper,
+    alternate live binary, or a test-only stub the operator wires
+    themselves.
+    """
+    getter = env_getter if env_getter is not None else os.environ.get
+    return getter("RALPH_KIMI_BINARY")
 
 
 def _opencode_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:

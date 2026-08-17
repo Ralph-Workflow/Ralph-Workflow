@@ -191,6 +191,24 @@ def _build_cursor() -> DelegationCapability:
     )
 
 
+def _build_kimi() -> DelegationCapability:
+    """Kimi Code CLI delegation declaration."""
+    return DelegationCapability(
+        transport=AgentTransport.KIMI,
+        stance=DelegationStance.EXPLICIT_UNSUPPORTED,
+        mechanism=(
+            "No documented sub-agent dispatch surface; the measured "
+            "kimi-code model capabilities (thinking, always_thinking, "
+            "image_in, tool_use) expose no sub-agent tool and the "
+            "headless transport wires MCP through the config surface only"
+        ),
+        citation=(
+            "ralph-workflow/ralph/config/agent_transport.py "
+            "(KIMI docstring); ralph-workflow/ralph/mcp/transport/kimi.py"
+        ),
+    )
+
+
 def _build_generic() -> DelegationCapability:
     """Generic (fallback) transport delegation declaration."""
     return DelegationCapability(
@@ -216,6 +234,7 @@ _DELEGATION_CAPABILITIES: tuple[DelegationCapability, ...] = (
     _build_agy(),
     _build_pi(),
     _build_cursor(),
+    _build_kimi(),
     _build_generic(),
 )
 

@@ -156,6 +156,20 @@ def make_cursor_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPi
     return _RegistryBackedSubagentPidSource(registry, "cursor")
 
 
+def make_kimi_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPidSource:
+    """Build a registry-backed ``SubagentPidSource`` for the Kimi transport.
+
+    Binds the canonical ``"kimi"`` source label so any PID registered
+    by :class:`KimiParser` is isolated from PIDs registered by other
+    transports' parsers in the shared :class:`SubagentPidRegistry`
+    (the R1 isolation invariant).  Kimi Code's measured
+    ``stream-json`` Message envelope does not currently include a
+    ``pid`` field; the registry-backed source is forward-compat for
+    frames that carry one.
+    """
+    return _RegistryBackedSubagentPidSource(registry, "kimi")
+
+
 __all__ = [
     "make_agy_subagent_pid_source",
     "make_claude_interactive_subagent_pid_source",
@@ -163,6 +177,7 @@ __all__ = [
     "make_codex_subagent_pid_source",
     "make_cursor_subagent_pid_source",
     "make_generic_subagent_pid_source",
+    "make_kimi_subagent_pid_source",
     "make_nanocoder_subagent_pid_source",
     "make_opencode_subagent_pid_source",
     "make_pi_subagent_pid_source",

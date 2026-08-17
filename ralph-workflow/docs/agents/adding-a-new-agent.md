@@ -593,7 +593,7 @@ register_agent_support(
 ```
 
 > [!NOTE]
-> The eight built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`) come from `ralph/agents/builtin.py` via `builtin_supports()`. `AgentRegistry.from_config()` and `AgentRegistry(catalog=...)` both call `_seed_catalog_with_builtins` so the registry and the catalog stay in lockstep. The `default_catalog()` global is seeded only when `AgentRegistry.from_config()` runs; it is not auto-seeded at module import.
+> The nine built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`, `kimi`) come from `ralph/agents/builtin.py` via `builtin_supports()`. `AgentRegistry.from_config()` and `AgentRegistry(catalog=...)` both call `_seed_catalog_with_builtins` so the registry and the catalog stay in lockstep. The `default_catalog()` global is seeded only when `AgentRegistry.from_config()` runs; it is not auto-seeded at module import.
 
 ---
 
@@ -645,7 +645,7 @@ del registry.agents["my-agent"]
 ```
 
 > [!WARNING]
-> The eight built-in agents cannot be permanently removed from the caller's `AgentRegistry` because they are re-registered by `AgentRegistry.from_config` on every load.
+> The nine built-in agents cannot be permanently removed from the caller's `AgentRegistry` because they are re-registered by `AgentRegistry.from_config` on every load.
 
 ---
 

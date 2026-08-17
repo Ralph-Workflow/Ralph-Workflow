@@ -91,6 +91,7 @@ from ralph.process.monitor import (
     make_codex_subagent_pid_source,
     make_cursor_subagent_pid_source,
     make_generic_subagent_pid_source,
+    make_kimi_subagent_pid_source,
     make_nanocoder_subagent_pid_source,
     make_opencode_subagent_pid_source,
     make_pi_subagent_pid_source,
@@ -373,6 +374,7 @@ class AgentRegistry:
             # factory that binds the ``"nanocoder"`` source label.
             "nanocoder": make_nanocoder_subagent_pid_source,
             "cursor": make_cursor_subagent_pid_source,
+            "kimi": make_kimi_subagent_pid_source,
         }
         factory = factory_map.get(transport_name)
         if factory is None:
@@ -600,7 +602,8 @@ def _resolve_dynamic_agent(
     Args:
         name: Dynamic alias (e.g. ``pi/<model>``, ``opencode/<model>``,
             ``nanocoder/<provider>/<model>``, ``agy/<model>``,
-            ``claude-headless/<model>``, ``claude/<model>``, ``ccs/<alias>``).
+            ``claude-headless/<model>``, ``claude/<model>``,
+            ``kimi/<model>``, ``ccs/<alias>``).
         ccs_defaults: Default CCS configuration for ``ccs/<alias>`` resolution.
         base_lookup: Optional callable taking a base agent name (e.g.
             ``"pi"``) and returning the effective :class:`AgentConfig`
@@ -683,12 +686,43 @@ def _resolve_dynamic_agent(
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=cursor_overrides)
+    elif name.startswith("kimi/"):
+        resolved = _resolve_dynamic_kimi_agent(name, _base)
     elif name.startswith(("opencode/", "nanocoder/", "agy/")):
         resolved = _resolve_dynamic_simple_prefixed_agent(name, segments, _base)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
         resolved = _resolve_dynamic_claude_family(name, ccs_defaults, _base)
 
     return resolved
+
+
+def _resolve_dynamic_kimi_agent(
+    name: str,
+    base_lookup: Callable[[str], AgentConfig | None],
+) -> AgentConfig | None:
+    """Resolve a ``kimi/<model>`` dynamic alias to a synthesized config."""
+    # Kimi's documented model ids are slash-delimited alias paths
+    # (e.g. ``kimi-code/k3-256k``).  The full suffix after ``kimi/``
+    # MUST be preserved verbatim, so we use
+    # ``name.removeprefix('kimi/')`` (NOT ``segments[1]``) which
+    # would drop everything after the first ``/`` inside the model
+    # id.  ``kimi`` alone resolves to the built-in entry.
+    model_id = name.removeprefix("kimi/")
+    if not _is_valid_kimi_model_id(model_id):
+        return None
+
+    base_config = base_lookup("kimi")
+    if base_config is None:
+        return None
+    # ``-m <value>`` is kimi's documented short model flag
+    # (``-m, --model <model>``), emitted as a single argv pair;
+    # ``shlex.quote`` keeps the slash-delimited alias path in one
+    # argv token through the KimiCommandBuilder template split.
+    kimi_overrides: dict[str, object] = {
+        "model_flag": f"-m {shlex.quote(model_id)}",
+        "can_commit": True,
+    }
+    return base_config.model_copy(update=kimi_overrides)
 
 
 def _resolve_dynamic_simple_prefixed_agent(
@@ -906,5 +940,40 @@ def _is_valid_cursor_model_id(model_id: str) -> bool:
     defaults to the built-in's Auto routing.
     """
     if not model_id or any(ch.isspace() for ch in model_id):
+        return False
+    return all(segment for segment in model_id.split("/"))
+
+
+def _is_valid_kimi_model_id(model_id: str) -> bool:
+    """Validate a ``kimi/<model>`` model id for argv-safe preservation.
+
+    Kimi Code's documented model listing addresses models with plain
+    ids and slash-delimited alias paths (e.g. ``kimi-for-coding``,
+    ``kimi-code/k3-256k``).  The full id after ``kimi/`` MUST be
+    preserved verbatim in the ``-m <value>`` argv pair, so the
+    resolver rejects shapes that would create empty or ambiguous
+    argv values (and would silently route a wrong model):
+
+      * empty model id (e.g. ``kimi/``, ``kimi//``)
+      * whitespace, newline, or carriage return anywhere in the id
+        (the ``KimiCommandBuilder`` template split relies on this
+        invariant to emit a clean ``-m <value>`` argv pair instead of
+        a shlex-rejoined garbage token like ``['-m', "'foo", "bar'"]``)
+      * a leading dash (e.g. ``-flag``), which the CLI would parse as
+        an option instead of the ``-m`` value
+      * any ``:`` separator (kimi's documented model ids carry no
+        colon syntax; multi-colon shapes like ``foo:bar:baz`` fall
+        outside the documented ``-m`` value grammar)
+      * empty alias-path segments when ``/`` is present (e.g.
+        ``kimi//x``, ``kimi/kimi-code/``, ``kimi/kimi-code//k3``)
+
+    A bare single-segment name with no ``/`` is accepted as a plain
+    model id (e.g. ``kimi/kimi-for-coding``).
+    """
+    if not model_id or any(ch.isspace() for ch in model_id):
+        return False
+    if model_id.startswith("-"):
+        return False
+    if ":" in model_id:
         return False
     return all(segment for segment in model_id.split("/"))

@@ -13,7 +13,7 @@ The contract is closed — three values:
 
 A future AgentTransport addition must declare one of these or
 registration closes. The test enumerates ``AgentTransport`` and
-fails when a member has no declared status, so a tenth transport
+fails when a member has no declared status, so a new transport
 cannot silently inherit "unaccounted".
 """
 
@@ -51,6 +51,7 @@ _TRANSPORT_STATUS: dict[AgentTransport, MultimodalStatus] = {
     AgentTransport.AGY: MultimodalStatus.COVERED,
     AgentTransport.PI: MultimodalStatus.COVERED,
     AgentTransport.CURSOR: MultimodalStatus.COVERED,
+    AgentTransport.KIMI: MultimodalStatus.COVERED,
     AgentTransport.GENERIC: MultimodalStatus.NO_MCP,
 }
 

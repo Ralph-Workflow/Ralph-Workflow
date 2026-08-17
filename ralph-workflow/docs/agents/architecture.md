@@ -100,8 +100,8 @@ preservation.
 
 ## Built-in declaration (`BuiltinAgentSpec`)
 
-The 7 built-in agents (`claude`, `claude-headless`, `codex`, `opencode`,
-`nanocoder`, `agy`, `pi`) are declared in `ralph/agents/builtin.py` as
+The 9 built-in agents (`claude`, `claude-headless`, `codex`, `opencode`,
+`nanocoder`, `agy`, `pi`, `cursor`, `kimi`) are declared in `ralph/agents/builtin.py` as
 `BuiltinAgentSpec` dataclass rows. Each row is materialized into an
 `AgentSupport` via `BuiltinAgentSpec.to_support(name)`, collapsing the
 14-kwarg `AgentSupport.from_registration_kwargs` call into a single

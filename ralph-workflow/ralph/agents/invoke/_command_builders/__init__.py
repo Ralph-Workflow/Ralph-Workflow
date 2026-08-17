@@ -387,6 +387,11 @@ class ConfigurableCommandBuilder:
             # shlex.split preserves the wrapper path AND its trailing flags as
             # separate argv tokens, matching the AGY override contract.
             return shlex.split(config.cmd)
+        if "kimi" in cmd[0]:
+            # Kimi (binary ``kimi``) honors the same multi-token cmd override
+            # contract as Cursor / AGY: ``RALPH_KIMI_BINARY`` or an
+            # ``[agents.kimi].cmd`` override may point at a wrapper script.
+            return shlex.split(config.cmd)
         return [_agent_command_name(config), *cmd[1:]]
 
     def _build_yolo_session_flags(
@@ -678,6 +683,41 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
         return cmd
 
 
+class KimiCommandBuilder(ConfigurableCommandBuilder):
+    """CommandBuilder for AgentTransport.KIMI.
+
+    The headless invocation is ``kimi --output-format=stream-json -m <model>
+    -p <prompt>`` per the documented Kimi Code CLI non-interactive prompt
+    mode (``-p, --prompt <prompt>`` runs one prompt without opening the
+    TUI; ``--output-format <format>`` selects ``text`` or ``stream-json``).
+
+    The legacy kimi-cli tokens ``--print`` and ``--afk`` are NOT used: the
+    live kimi-code v0.36.1 binary rejects both (``error: unknown option
+    '--print'`` / ``'--afk'``), and the command reference documents
+    ``--yolo`` / ``--auto`` / ``--plan`` as mutually exclusive with
+    ``--prompt`` — prompt mode auto-approves its tool calls, so no autonomy
+    flag is emitted.
+
+    ``-p`` is modeled via :attr:`print_flag` (emitted immediately before
+    the positional prompt) so the prompt text lands as exactly one argv
+    value.  ``-m`` / ``-r`` come from the model / session flag templates.
+    """
+
+    SPEC = CommandBuilderSpec(
+        base_argv=("kimi",),
+        format_flag=None,
+        output_flag="--output-format=stream-json",
+        yolo_flag=None,
+        model_flag_template="-m {}",
+        positional_prompt=True,
+        print_flag="-p",
+        extra_flags_before_prompt=(),
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
+
+
 class DefaultCommandBuilder:
     """Default CommandBuilder for AgentTransport.CLAUDE and AgentTransport.GENERIC.
 
@@ -736,6 +776,7 @@ COMMAND_BUILDERS: dict[AgentTransport, type[CommandBuilder]] = {
     AgentTransport.AGY: AgyCommandBuilder,
     AgentTransport.PI: PiCommandBuilder,
     AgentTransport.CURSOR: CursorCommandBuilder,
+    AgentTransport.KIMI: KimiCommandBuilder,
     AgentTransport.CLAUDE: DefaultCommandBuilder,
     AgentTransport.GENERIC: DefaultCommandBuilder,
 }
@@ -748,6 +789,7 @@ __all__ = [
     "CommandBuilder",
     "CursorCommandBuilder",
     "DefaultCommandBuilder",
+    "KimiCommandBuilder",
     "NanocoderCommandBuilder",
     "OpencodeCommandBuilder",
     "PiCommandBuilder",

@@ -1,10 +1,10 @@
-"""Single declarative source for the 7 built-in agent declarations.
+"""Single declarative source for the 9 built-in agent declarations.
 
 The :class:`BuiltinAgentSpec` dataclass mirrors the kwargs accepted by
 :func:`ralph.agents.registration.register_agent_support` and the legacy
-:class:`AgentSupport.from_registration_kwargs` so the 7 built-in entries
+:class:`AgentSupport.from_registration_kwargs` so the 9 built-in entries
 in :mod:`ralph.agents.builtin` can be expressed as a single declarative
-row per agent, instead of repeating the kwargs across seven function calls.
+row per agent, instead of repeating the kwargs across nine function calls.
 
 Use :meth:`BuiltinAgentSpec.to_support` to materialize the dataclass into
 an :class:`AgentSupport` instance.  The resulting ``is_builtin`` flag is
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 # via **kwargs because they are passed as positional / named arguments by
 # :meth:`BuiltinAgentSpec.to_support`.  Kept as a frozenset so the surface
 # is explicit and future built-in agent additions do not silently break
-# the 7-entry frozen contract pinned by
+# the 9-entry frozen contract pinned by
 # ``test_agents/test_builtin_spec_consolidation.py``.
 _BUILTIN_SPEC_POSITIONAL_FIELDS: frozenset[str] = frozenset(
     {"transport", "parser_factory", "strategy_factory"}

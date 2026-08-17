@@ -38,6 +38,7 @@ from ralph.cli.commands.smoke import (
     smoke_interactive_claude_command,
     smoke_interactive_codex_command,
     smoke_interactive_cursor_command,
+    smoke_interactive_kimi_command,
     smoke_interactive_nanocoder_command,
     smoke_interactive_opencode_command,
     smoke_interactive_pi_command,
@@ -1300,6 +1301,55 @@ def smoke_interactive_cursor(
 
 
 app.command(name="smoke-interactive-cursor")(smoke_interactive_cursor)
+
+
+def smoke_interactive_kimi(
+    agent: str = typer.Option(
+        "kimi/kimi-code/kimi-for-coding",
+        help=(
+            "Kimi model alias to smoke, as kimi/<model> with the full "
+            "configured id (e.g. kimi/kimi-code/kimi-for-coding, "
+            "kimi/kimi-code/k3-256k)."
+        ),
+    ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    multimodal: bool = typer.Option(
+        False,
+        "--multimodal",
+        help=(
+            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+            "read_image endpoints. The run is graded WIRE only when the agent issues the "
+            "verified media tool calls (criterion 5)."
+        ),
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual end-to-end smoke test for the Kimi Code CLI."""
+    raise typer.Exit(
+        code=smoke_interactive_kimi_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+            multimodal=multimodal,
+        )
+    )
+
+
+app.command(name="smoke-interactive-kimi")(smoke_interactive_kimi)
 
 
 def smoke_interactive_opencode(

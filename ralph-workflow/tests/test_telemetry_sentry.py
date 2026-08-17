@@ -2508,6 +2508,12 @@ def test_agent_family_table_covers_every_transport() -> None:
     )
 
 
+def test_agent_family_table_maps_kimi_family_and_binary() -> None:
+    """Kimi reports the 'kimi' family and survives the cmd reduction."""
+    assert _sentry_payload.AGENT_FAMILY_BY_TRANSPORT["kimi"] == "kimi"
+    assert "kimi" in _sentry_payload._KNOWN_AGENT_BINARIES
+
+
 @pytest.mark.parametrize("state", sorted(POLICY_SCHEMA_STATES))
 def test_every_vocabulary_state_survives_the_sink(
     monkeypatch: pytest.MonkeyPatch,

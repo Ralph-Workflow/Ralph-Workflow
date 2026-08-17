@@ -74,6 +74,7 @@ class AgentConfig(RalphBaseModel):
             "nanocoder": AgentTransport.NANOCODER,
             "agy": AgentTransport.AGY,
             "pi": AgentTransport.PI,
+            "kimi": AgentTransport.KIMI,
         }
         command_name = self.cmd.split()[0] if self.cmd else ""
         inferred_transport = parser_to_transport.get(

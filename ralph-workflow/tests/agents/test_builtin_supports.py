@@ -7,15 +7,15 @@ from ralph.agents.registry import builtin_agents
 
 
 def test_builtin_supports_properties() -> None:
-    # (a) builtin_supports() returns 8 entries
+    # (a) builtin_supports() returns 9 entries
     supports = builtin_supports()
-    assert len(supports) == 8
+    assert len(supports) == 9
 
     # (b) every name and every cmd is unique
     names = [s.name for s in supports]
     cmds = [s.cmd for s in supports]
-    assert len(set(names)) == 8, f"Duplicate names found: {names}"
-    assert len(set(cmds)) == 8, f"Duplicate cmds found: {cmds}"
+    assert len(set(names)) == 9, f"Duplicate names found: {names}"
+    assert len(set(cmds)) == 9, f"Duplicate cmds found: {cmds}"
 
     # (c) every entry has a non-None parser_factory, strategy_factory, and spec
     for s in supports:
@@ -30,7 +30,7 @@ def test_builtin_supports_properties() -> None:
         else:
             assert s.spec.requires_pty is False, f"{s.name} should not require PTY"
 
-    # (e) the 8 names are exactly the 8 documented built-ins
+    # (e) the 9 names are exactly the 9 documented built-ins
     expected_names = {
         "claude",
         "claude-headless",
@@ -40,10 +40,11 @@ def test_builtin_supports_properties() -> None:
         "agy",
         "pi",
         "cursor",
+        "kimi",
     }
     assert set(names) == expected_names
 
-    # (f) the 8 cmd values match the current builtin_agents() dict exactly
+    # (f) the 9 cmd values match the current builtin_agents() dict exactly
     legacy_agents = builtin_agents()
     for s in supports:
         assert s.name in legacy_agents

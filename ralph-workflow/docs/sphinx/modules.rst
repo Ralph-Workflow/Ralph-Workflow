@@ -1808,6 +1808,13 @@ ralph.agents.parsers.generic
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.kimi
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.kimi
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.nanocoder
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2461,6 +2468,13 @@ ralph.mcp.transport.agy
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.transport.agy
+   :members:
+   :show-inheritance:
+
+ralph.mcp.transport.kimi
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.kimi
    :members:
    :show-inheritance:
 

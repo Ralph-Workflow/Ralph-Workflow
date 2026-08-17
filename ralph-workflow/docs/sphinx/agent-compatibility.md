@@ -19,6 +19,7 @@ availability remains the CLI provider's responsibility.
 | `agy/<published-id>[:effort]` | `--model <published-id>` and optional `--effort <effort>` | Example: `agy/gemini-3.6-flash-high:high`. The v1.1.8 probe accepted `gemini-3.6-flash-high --effort high`; aliases validate `low`, `medium`, and `high` before invocation. |
 | `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
 | `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
+| `kimi/<model>` | `-m <model>` | The model must be a full configured ID from `~/.kimi-code/config.toml` (for example `kimi/kimi-code/kimi-for-coding`); bare unprefixed IDs are rejected by the CLI. |
 | `ccs/<alias>` | The configured CCS alias command | Define the alias under `[ccs_aliases]`. |
 
 ## Supported agents
@@ -132,6 +133,16 @@ json_parser = "generic"
 - **Transport**: `cursor`
 - **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
 - **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.
+
+### Kimi (Kimi Code)
+
+- **CLI**: `kimi` (v0.36.1 observed)
+- **Install / auth**: <https://platform.kimi.ai> — OAuth login (`kimi` interactive) wires the `managed:kimi-code` subscription provider
+- **Transport**: `kimi`
+- **Flags**: `-p <prompt-file>`, `--output-format stream-json`, and `-m <model>` via the `kimi/<model>` alias
+- **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; default `kimi-code/k3-256k`). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
+- **Multimodal**: image input is covered by the measured `image_in` capability on the authenticated models.
+- **Sub-agents**: no sub-agent dispatch surface; delegation is declared `EXPLICIT_UNSUPPORTED`.
 
 <a id="ccs_aliases"></a>
 

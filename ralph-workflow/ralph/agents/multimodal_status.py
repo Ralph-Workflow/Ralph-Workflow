@@ -22,7 +22,7 @@ Three states:
 
 Production callers import :func:`multimodal_status`; tests in
 ``tests/test_transport_multimodal_status.py`` keep the closed vocabulary
-pinned against the AgentTransport enum so a tenth transport cannot
+pinned against the AgentTransport enum so a new transport cannot
 silently inherit "unaccounted".
 """
 
@@ -45,6 +45,9 @@ class MultimodalStatus(StrEnum):
 # negative contract (no MCP by design); ``CODEX`` and ``PI`` are
 # declared covered at criterion 16 (criterion 5 widens their smoke
 # surface). Every non-GENERIC transport is COVERED by criterion 16.
+# KIMI's live model config (``~/.kimi-code/config.toml``) advertises
+# ``image_in`` among the kimi-code capabilities, so the multimodal
+# surface is declared covered like the other MCP-bearing transports.
 _TRANSPORT_STATUS: dict[AgentTransport, MultimodalStatus] = {
     AgentTransport.CLAUDE: MultimodalStatus.COVERED,
     AgentTransport.CLAUDE_INTERACTIVE: MultimodalStatus.COVERED,
@@ -54,6 +57,7 @@ _TRANSPORT_STATUS: dict[AgentTransport, MultimodalStatus] = {
     AgentTransport.AGY: MultimodalStatus.COVERED,
     AgentTransport.PI: MultimodalStatus.COVERED,
     AgentTransport.CURSOR: MultimodalStatus.COVERED,
+    AgentTransport.KIMI: MultimodalStatus.COVERED,
     AgentTransport.GENERIC: MultimodalStatus.NO_MCP,
 }
 

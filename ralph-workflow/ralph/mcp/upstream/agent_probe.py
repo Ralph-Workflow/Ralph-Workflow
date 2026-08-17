@@ -2,7 +2,7 @@
 
 After :mod:`ralph.mcp.upstream.validation` has confirmed that each upstream
 MCP server is reachable from Ralph, this module synthesizes the
-agent-specific config payload Ralph would emit for Claude/Codex/OpenCode/AGY and
+agent-specific config payload Ralph would emit for Claude/Codex/OpenCode/AGY/Kimi and
 re-runs the same MCP handshake to confirm the wire is shaped correctly.
 
 The probe is *self-contained*: it never spawns the agent binaries themselves.
@@ -24,6 +24,7 @@ from loguru import logger
 import ralph.mcp.transport.agy as _agy_transport
 import ralph.mcp.transport.claude as _claude_transport
 import ralph.mcp.transport.codex as _codex_transport
+import ralph.mcp.transport.kimi as _kimi_transport
 import ralph.mcp.transport.opencode as _opencode_transport
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
@@ -51,6 +52,7 @@ _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
     AgentTransport.CODEX,
     AgentTransport.OPENCODE,
     AgentTransport.AGY,
+    AgentTransport.KIMI,
 )
 
 
@@ -117,6 +119,8 @@ def _probe_pair(
             report = _probe_opencode(server, workspace_path)
         elif transport == AgentTransport.AGY:
             report = _probe_agy(server, workspace_path)
+        elif transport == AgentTransport.KIMI:
+            report = _probe_kimi(server, workspace_path)
         else:
             report = AgentProbeReport(
                 transport=transport,
@@ -300,6 +304,29 @@ def _probe_agy(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentP
         ralph_url_key="serverUrl",
     )
     return AgentProbeReport(transport=AgentTransport.AGY, server_name=server.name, ok=True)
+
+
+def _probe_kimi(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
+    del workspace_path
+    if server.transport == "stdio":
+        return AgentProbeReport(
+            transport=AgentTransport.KIMI,
+            server_name=server.name,
+            ok=True,
+            note="skipped (stdio proxied by Kimi CLI)",
+        )
+    if not server.url:
+        raise AgentTransportProbeError(
+            f"server '{server.name}' is missing url for Kimi http transport"
+        )
+    config_blob = _kimi_transport.kimi_mcp_config(server.url)
+    _validate_mcp_json_and_handshake(
+        server,
+        config_blob,
+        "Kimi MCP config",
+        ralph_url_key="url",
+    )
+    return AgentProbeReport(transport=AgentTransport.KIMI, server_name=server.name, ok=True)
 
 
 def _validate_mcp_json_and_handshake(

@@ -1,4 +1,4 @@
-"""Declarative registry of the eight built-in agent CLIs.
+"""Declarative registry of the nine built-in agent CLIs.
 
 This module is the single source of truth for the agents that Ralph Workflow
 ships with out of the box. Each entry is a :class:`~ralph.agents.builtin_spec.BuiltinAgentSpec`
@@ -7,7 +7,7 @@ the JSON parsing mode, the executable, the flags used for unattended
 ("yolo") invocation, resume/session support, and whether the agent is allowed
 to author commits.
 
-The eight built-in agents are:
+The nine built-in agents are:
 
 - ``claude`` (Claude Code interactive / PTY transport)
 - ``claude-headless`` (Claude Code headless JSON-stream transport)
@@ -17,6 +17,7 @@ The eight built-in agents are:
 - ``agy`` (AGY CLI; binary overridable via ``RALPH_AGY_BINARY``)
 - ``pi`` (Pi.dev CLI)
 - ``cursor`` (Cursor Agent CLI; binary overridable via ``RALPH_CURSOR_BINARY``)
+- ``kimi`` (Kimi Code CLI; binary overridable via ``RALPH_KIMI_BINARY``)
 
 Adding a new built-in agent requires editing this module only; the catalog
 picks the entries up via :func:`builtin_supports`. Custom agents configured
@@ -38,6 +39,7 @@ from ralph.agents.display_capability_stance import DisplayCapabilityStance
 from ralph.agents.execution_state._factory import (
     _make_agy_strategy,
     _make_cursor_strategy,
+    _make_kimi_strategy,
     _make_pi_strategy,
 )
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
@@ -51,6 +53,7 @@ from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
 from ralph.agents.parsers.cursor import CursorParser
+from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
@@ -163,6 +166,28 @@ _PI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.unimplemented(
         DisplayCapability.EDIT_DIFF,
         reason="pi parser emits tool_use metadata that is not yet routed through payload_from_tool_event",
+    ),
+)
+
+
+#: Kimi Code's parser preserves the upstream tool name verbatim in
+#: ``metadata["tool"]`` (the measured v0.36.1 wire carries kimi's native
+#: tool vocabulary with JSON-string ``arguments``), and does not yet
+#: normalize those names onto the canonical ``payload_from_tool_event``
+#: vocabulary. ``UNIMPLEMENTED`` with a measurable reason is the honest
+#: stance until a captured fixture proves the renderer side.
+_KIMI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.SYNTAX_HIGHLIGHTING,
+        reason="kimi parser preserves upstream tool names that are not yet mapped to payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.FILE_PREVIEW,
+        reason="kimi parser preserves upstream tool names that are not yet mapped to payload_from_tool_event",
+    ),
+    DisplayCapabilityStance.unimplemented(
+        DisplayCapability.EDIT_DIFF,
+        reason="kimi parser preserves upstream tool names that are not yet mapped to payload_from_tool_event",
     ),
 )
 
@@ -282,6 +307,20 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         display_name="Cursor",
         display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("cursor"),
+    BuiltinAgentSpec(
+        transport=AgentTransport.KIMI,
+        parser_factory=KimiParser,
+        strategy_factory=_make_kimi_strategy,
+        json_parser=JsonParserType.GENERIC,
+        cmd="kimi",
+        output_flag="--output-format=stream-json",
+        yolo_flag=None,
+        print_flag="-p",
+        session_flag="-r {}",
+        can_commit=True,
+        display_name="Kimi",
+        display_capabilities=_KIMI_CAPABILITIES,
+    ).to_support("kimi"),
 )
 
 

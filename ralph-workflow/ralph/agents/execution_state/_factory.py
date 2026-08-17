@@ -147,6 +147,55 @@ def _classify_cursor_activity(line: str) -> AgentActivitySignal | None:
     return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
 
 
+def _make_kimi_strategy(
+    *,
+    label_scope: str | None = None,
+    registry: ChildLivenessRegistry | None = None,
+    subagent_pid_source: SubagentPidSource | None = None,
+    **_kwargs: object,
+) -> BaseExecutionStrategy:
+    """Factory for Kimi strategy: CompletionEnforcingStrategy wrapping GenericExecutionStrategy.
+
+    Mirrors the AGY / Cursor factories: uses inheritance (not composition)
+    because :class:`CompletionEnforcingStrategy` is a mixin that requires
+    being inherited to initialize via MRO.  The Kimi transport surfaces
+    ``role:"tool"`` frames as ``type='tool_result'`` and
+    ``role:"assistant" + ``tool_calls```` frames as ``type='tool_use'``
+    via :class:`KimiParser`, so the strategy is a stock
+    :class:`GenericExecutionStrategy` subclass that inherits the
+    completion-enforcement contract.
+    """
+
+    class KimiExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
+        def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+            signal = _classify_kimi_activity(line)
+            if signal is not None:
+                return signal
+            return super().classify_activity_line(line)
+
+    return KimiExecutionStrategy(
+        label_scope=label_scope,
+        registry=registry,
+        subagent_pid_source=subagent_pid_source,
+    )
+
+
+def _classify_kimi_activity(line: str) -> AgentActivitySignal | None:
+    """Classify Kimi stream-json tool activity for watchdog control."""
+    obj = _parse_json_object(line)
+    if obj is None:
+        return None
+    role = obj.get("role")
+    if role == "tool":
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
+    if role != "assistant":
+        return None
+    tool_calls = obj.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
+    return None
+
+
 def _make_pi_strategy(
     *,
     label_scope: str | None = None,

@@ -114,6 +114,12 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # would add noise without changing testable behavior.
     "mcp/transport/nanocoder.py:64",
     "mcp/transport/nanocoder.py:69",
+    # mcp/transport/kimi.py — reads ``KIMI_CODE_HOME`` to resolve the
+    # user-global Kimi Code mcp.json dir, defaulting to ``~/.kimi-code``.
+    # Same platform-path convention shape as nanocoder above; the
+    # workspace-local config path is fully injected, so the seam would
+    # add noise without changing testable behavior.
+    "mcp/transport/kimi.py:80",
     # mcp/websearch/secrets.py:17 — ``getenv`` is a callable parameter
     # of type ``EnvGetter``, NOT an ambient read.
     "mcp/websearch/secrets.py:17",

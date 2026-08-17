@@ -156,7 +156,7 @@ def test_render_conformance_matrix_markdown_orders_rows_by_the_canonical_transpo
     }
     rendered = render_conformance_matrix_markdown(matrix)
     assert rendered.index("| agy ") < rendered.index("| cursor ") < rendered.index("| opencode ")
-    # matches the brief's canonical F4 ordering (the five transports with a
+    # matches the brief's canonical F4 ordering (the transports with a
     # registered `ralph smoke-interactive-*` CLI command).
     assert CONFORMANCE_MATRIX_TRANSPORT_ORDER == (
         "claude",
@@ -166,6 +166,7 @@ def test_render_conformance_matrix_markdown_orders_rows_by_the_canonical_transpo
         "nanocoder",
         "cursor",
         "opencode",
+        "kimi",
     )
 
 
@@ -220,6 +221,7 @@ def test_canonical_tuple_matches_registered_smoke_commands() -> None:
         "nanocoder",
         "cursor",
         "opencode",
+        "kimi",
     }
     assert set(CONFORMANCE_MATRIX_TRANSPORT_ORDER) == expected_canonical
     assert set(CONFORMANCE_MATRIX_TRANSPORT_ORDER) == registered_smoke_transports, (

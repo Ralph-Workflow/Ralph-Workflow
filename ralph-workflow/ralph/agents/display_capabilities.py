@@ -90,7 +90,7 @@ def all_display_capabilities() -> tuple[DisplayCapability, ...]:
     Every :class:`ralph.agents.support.AgentSupport` declaration must
     cover exactly this set; the catalog-total ``BuiltinAgentSpec``
     test (see ``tests/agents/test_display_capabilities.py``) asserts
-    that the eight built-in agents carry one stance per entry.
+    that the nine built-in agents carry one stance per entry.
     """
     return _ALL_DISPLAY_CAPABILITIES
 

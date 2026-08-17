@@ -143,6 +143,7 @@ from ralph.mcp.transport.common import (
 from ralph.mcp.transport.cursor import (
     load_existing_cursor_upstream_servers,
 )
+from ralph.mcp.transport.kimi import load_existing_kimi_upstream_servers
 from ralph.mcp.transport.nanocoder import (
     build_nanocoder_mcp_config,
     load_existing_nanocoder_upstream_servers,
@@ -809,6 +810,7 @@ __all__ = [
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",
     "load_existing_cursor_upstream_servers",
+    "load_existing_kimi_upstream_servers",
     "load_existing_nanocoder_upstream_servers",
     "pending_vt_snapshot_line",
     "permission_prompt_action_message",
