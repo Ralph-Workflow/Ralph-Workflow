@@ -34,6 +34,8 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -164,6 +166,29 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
 # of the lifecycle. The CLI must exit non-zero and surface the selector's
 # documented diagnostic so a superficial green smoke can never mask a broken
 # signal.
+#
+# wt-064-ccs-support S-6: each selector drives one full
+# ``ralph smoke-interactive-agy`` lifecycle, and that lifecycle spawns TWO
+# Python interpreters (the CLI itself plus the standalone Ralph MCP HTTP
+# server subprocess whose handlers mint the receipt, sentinel, and wire
+# records). ~2.5 s of every selector is therefore interpreter startup, not
+# test logic, and eight serial selectors burned ~20 s of the immutable 60 s
+# combined ``make test`` budget (see
+# ``ralph/verify.py::_TOTAL_TEST_BUDGET_SECONDS``) -- the single largest
+# line item in the slowest shard. The selectors are mutually independent
+# (distinct cwd, distinct ``MOCK_AGY_ARTIFACT_DIR``, and a per-bridge
+# reserved MCP port for the server subprocess), so a bounded thread pool
+# fans them out without weakening a single assertion: every selector below
+# still asserts the real CLI exit code and its own documented diagnostic,
+# through the same real CLI -> MCP server -> mock AGY subprocess boundary
+# the positive lifecycle test proves.
+
+#: Fan-out width for the negative selectors. Four concurrent lifecycles peak
+#: at eight short-lived Python processes (CLI + MCP server each) on the
+#: maintained 12-core host without starving sibling pytest shards past the
+#: per-test SIGALRM cap (same reasoning as the ``-n 4`` multimodal smoke
+#: profile); two waves finish the eight selectors in ~6 s instead of ~20 s.
+_NEGATIVE_SELECTOR_FANOUT = 4
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("no_output", ("AGY --print returned empty stdout",)),
@@ -174,6 +199,15 @@ _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("missing_artifact", ("smoke_test_result artifact was not submitted",)),
     ("missing_completion", ("completion sentinel was not observed",)),
 )
+
+
+@dataclass(frozen=True)
+class _NegativeSelectorOutcome:
+    """One selector's real-CLI result, paired with its documented diagnostics."""
+
+    behavior: str
+    returncode: int
+    output: str
 
 
 def _run_negative_smoke(tmp_path: Path, behavior: str) -> tuple[int, str]:
@@ -208,21 +242,61 @@ def _run_negative_smoke(tmp_path: Path, behavior: str) -> tuple[int, str]:
     return result.returncode, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize(("behavior", "diagnostics"), _NEGATIVE_SELECTORS)
-def test_agy_full_lifecycle_e2e_negative_selector_fails_loudly(
-    tmp_path: Path,
-    behavior: str,
-    diagnostics: tuple[str, ...],
-) -> None:
-    """Each selector must make the CLI exit non-zero with its own diagnostic."""
-    returncode, output = _run_negative_smoke(tmp_path, behavior)
+def _run_negative_selectors_in_parallel(
+    base_dir: Path,
+) -> list[_NegativeSelectorOutcome]:
+    """Run every negative selector concurrently, each in its own workspace.
 
-    assert returncode != 0, (
-        f"smoke-interactive-agy with MOCK_AGY_BEHAVIOR={behavior} exited 0 "
-        f"(a non-zero exit is required so a superficial green cannot mask the "
-        f"broken signal). Output:\n{output}"
-    )
-    for diagnostic in diagnostics:
-        assert diagnostic in output, (
-            f"MOCK_AGY_BEHAVIOR={behavior} must surface {diagnostic!r}.\n{output}"
+    Each behavior gets a dedicated cwd and ``MOCK_AGY_ARTIFACT_DIR`` under
+    ``base_dir``, and each lifecycle reserves its own ephemeral MCP port for
+    the harness's server subprocess, so the selectors share no mutable
+    state. Results are returned in ``_NEGATIVE_SELECTORS`` order regardless
+    of completion order, keeping assertions (and any failure report)
+    deterministic.
+    """
+    for behavior, _diagnostics in _NEGATIVE_SELECTORS:
+        (base_dir / behavior).mkdir()
+    with ThreadPoolExecutor(
+        max_workers=_NEGATIVE_SELECTOR_FANOUT,
+        thread_name_prefix="agy-neg",
+    ) as pool:
+        futures = {
+            behavior: pool.submit(_run_negative_smoke, base_dir / behavior, behavior)
+            for behavior, _diagnostics in _NEGATIVE_SELECTORS
+        }
+    return [
+        _NegativeSelectorOutcome(behavior, *futures[behavior].result())
+        for behavior, _diagnostics in _NEGATIVE_SELECTORS
+    ]
+
+
+def test_agy_full_lifecycle_e2e_negative_selectors_fail_loudly(
+    tmp_path: Path,
+) -> None:
+    """Every selector must exit non-zero with its own documented diagnostic.
+
+    Runs the selectors concurrently (see ``_NEGATIVE_SELECTOR_FANOUT``) but
+    asserts each one individually, in declaration order, against the real
+    CLI -> MCP server -> mock AGY subprocess boundary: a selector passes only
+    if its own exit code is non-zero AND every diagnostic it owns appears in
+    that selector's captured output.
+    """
+    outcomes = _run_negative_selectors_in_parallel(tmp_path)
+
+    assert len(outcomes) == len(_NEGATIVE_SELECTORS)
+    for outcome, (behavior, diagnostics) in zip(
+        outcomes,
+        _NEGATIVE_SELECTORS,
+        strict=True,
+    ):
+        assert outcome.behavior == behavior
+        assert outcome.returncode != 0, (
+            f"smoke-interactive-agy with MOCK_AGY_BEHAVIOR={outcome.behavior} "
+            f"exited 0 (a non-zero exit is required so a superficial green "
+            f"cannot mask the broken signal). Output:\n{outcome.output}"
         )
+        for diagnostic in diagnostics:
+            assert diagnostic in outcome.output, (
+                f"MOCK_AGY_BEHAVIOR={outcome.behavior} must surface "
+                f"{diagnostic!r}.\n{outcome.output}"
+            )

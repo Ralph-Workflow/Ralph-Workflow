@@ -26,6 +26,14 @@ The tests below pin:
      harness when the binary is present and the alias resolves.
   7. ``ralph smoke-interactive-ccs --help`` advertises ``--agent``,
      ``--subagents``, and ``--subagent-prompt-file``.
+  8. ``resolve_smoke_harness_spec("ccs/mm")`` -- the multi-word alias
+     the registry synthesizes to ``cmd="ccs mm"`` -- resolves to its
+     own sanitized, alias-scoped layout and does not collide with the
+     ``ccs/glm`` or ``ccs/work`` layouts.
+  9. ``smoke_interactive_ccs_command`` delegates a multi-word alias
+     (``ccs/mm`` -> ``cmd="ccs mm"``) to the shared harness, so the
+     ``cmd.startswith("ccs")`` guard accepts the space-separated
+     command form, not only single-word aliases.
 
 Test isolation guarantees (per ``docs/agents/testing-guide.md``):
 
@@ -76,6 +84,22 @@ def test_resolve_smoke_harness_spec_ccs_aliases_do_not_collide() -> None:
     assert glm_spec.relative_dir != work_spec.relative_dir
     assert glm_spec.output_file != work_spec.output_file
     assert glm_spec.run_id != work_spec.run_id
+
+
+def test_resolve_smoke_harness_spec_ccs_mm_scoped_without_collision() -> None:
+    """AC #8: the multi-word ``ccs/mm`` alias gets its own sanitized layout."""
+    spec = resolve_smoke_harness_spec("ccs/mm")
+
+    assert spec.agent_name == "ccs/mm"
+    assert spec.relative_dir.as_posix() == "tmp/interactive-ccs-smoke/mm"
+    assert spec.output_file.as_posix() == "tmp/interactive-ccs-smoke/mm/todo-list.js"
+    assert spec.run_id == "interactive-ccs-smoke-mm"
+
+    glm_spec = resolve_smoke_harness_spec("ccs/glm")
+    work_spec = resolve_smoke_harness_spec("ccs/work")
+    assert spec.relative_dir not in {glm_spec.relative_dir, work_spec.relative_dir}
+    assert spec.output_file not in {glm_spec.output_file, work_spec.output_file}
+    assert spec.run_id not in {glm_spec.run_id, work_spec.run_id}
 
 
 def test_resolve_smoke_harness_spec_ccs_empty_alias_raises() -> None:
@@ -169,6 +193,50 @@ def test_smoke_interactive_ccs_command_runs_harness_when_binary_present_and_alia
 
     assert exit_code == 0
     assert captured["agent_name"] == "ccs/glm"
+
+
+def test_smoke_interactive_ccs_command_runs_harness_for_multi_word_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """AC #9: the multi-word ``ccs/mm`` alias delegates to the shared harness."""
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/ccs")
+
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(scope_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(loader_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "ccs/mm":
+                return AgentConfig(
+                    cmd="ccs mm",
+                    transport=AgentTransport.CLAUDE,
+                )
+            return None
+
+    monkeypatch.setattr(registry_module, "AgentRegistry", FakeRegistry)
+
+    captured: dict[str, object] = {}
+
+    def fake_harness(agent_name: str, **kwargs: object) -> int:
+        captured["agent_name"] = agent_name
+        captured["kwargs"] = kwargs
+        return 0
+
+    monkeypatch.setattr(smoke_module, "smoke_harness_agent_command", fake_harness)
+
+    exit_code = smoke_module.smoke_interactive_ccs_command(
+        agent_name="ccs/mm",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    assert captured["agent_name"] == "ccs/mm"
 
 
 def test_cli_help_advertises_ccs_smoke_options() -> None:
