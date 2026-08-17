@@ -17,11 +17,13 @@ too). A regression in any layer breaks the render assertion.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from rich.console import Group
 from rich.syntax import Syntax
 
+from ralph.agents.parsers.agy import AgyParser
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.preview_payload import payload_from_tool_event
 
@@ -121,3 +123,46 @@ def test_notebook_edit_drives_write_payload_and_syntax_render() -> None:
         "notebook_edit", metadata, width=80, terminal_bg_is_light=None
     )
     assert isinstance(renderable, Syntax), type(renderable)
+
+
+def test_tool_done_frame_keeps_canonical_payload_end_to_end() -> None:
+    """Plan S-6: a wire-shaped ``step_type=tool`` DONE frame survives the
+    ``_dispatch_tool_update`` path with the canonical payload envelope.
+
+    The frame mirrors the measured v1.1.13 wire shape (see
+    ``tests/display/_fixtures/agy_wire_v1_1_13.jsonl``): a ``step_update``
+    with ``step_type=tool``, ``state=DONE``, ``tool_name``, and a
+    ``tool_info`` carrying ``name`` / ``parameters`` / ``output``. The
+    metadata the parser emits must still unwrap through
+    :func:`payload_from_tool_event` into the canonical payload shape.
+    """
+    frame = {
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "synthetic",
+            "step_index": 7,
+            "state": "DONE",
+            "step_type": "tool",
+            "tool_name": "write_to_file",
+            "duration_seconds": 0.01,
+            "tool_info": {
+                "name": "write_to_file",
+                "parameters": {
+                    "TargetFile": "/workspace/x.py",
+                    "content": "print('hi')\n",
+                },
+                "output": "Wrote 1 line to /workspace/x.py",
+            },
+        },
+    }
+    events = list(AgyParser().parse(iter([json.dumps(frame)])))
+    tool_results = [event for event in events if event.type == "tool_result"]
+    assert len(tool_results) == 1, f"expected one tool_result, got {[e.type for e in events]}"
+    metadata = tool_results[0].metadata
+    assert metadata is not None
+    assert metadata["tool"] == "write_to_file"
+    payload = payload_from_tool_event("write_to_file", metadata)
+    assert payload is not None
+    assert payload.operation == "write"
+    assert payload.path == "/workspace/x.py"
+    assert payload.content == "print('hi')\n"

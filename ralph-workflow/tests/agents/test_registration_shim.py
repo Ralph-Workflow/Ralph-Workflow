@@ -73,6 +73,13 @@ class TestRegisterAgentSupportShim:
             "display_name",
             "subagent_capability",
             "no_default_session_flag",
+            # S-4 (wt-015): generic data-driven seams replacing AGY name-typed
+            # branches — additive, defaulted kwargs; every future agent opts in
+            # via these rather than by name.
+            "dynamic_alias_help",
+            "dynamic_alias_help_prefix",
+            "empty_output_diagnostic_factory",
+            "empty_output_diagnostic_prefix",
         }
         assert param_names == expected, (
             f"register_agent_support signature changed. Expected {expected}, got {param_names}"

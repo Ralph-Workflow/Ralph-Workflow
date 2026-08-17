@@ -33,7 +33,11 @@ class AgentSpec:
             not auto-apply the default ``--resume {}`` template to
             interactive agents.  Replaces the historical hidden
             ``name != "agy"`` special case in
-            :meth:`AgentSupport.from_registration_kwargs`.
+            :meth:`AgentSupport.from_registration_kwargs` — one of the
+            declarative opt-outs (with ``AgentSupport``'s alias-help /
+            empty-output-diagnostic kwargs and ``CommandBuilderSpec``'s
+            builder flags) that keep agent behaviour data-driven instead
+            of name-typed.
     """
 
     name: str

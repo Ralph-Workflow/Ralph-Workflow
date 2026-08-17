@@ -63,6 +63,27 @@ def test_system_message_step_with_fenced_python_yields_highlighted_text() -> Non
     assert event.metadata.get("language") == "python"
 
 
+def test_system_message_step_with_fenced_shell_yields_highlighted_text() -> None:
+    """Plan S-6: a shell fence emits ``syntax_highlight: True`` with the
+    canonical Pygments alias, completing the python / ts / shell pin set."""
+    frame = _step(
+        {
+            "conversation_id": "synthetic",
+            "step_index": 5,
+            "state": "DONE",
+            "step_type": "system_message",
+            "text": "Run it like this:\n```bash\ngit status --short\n```\n",
+        }
+    )
+    events = _parse([frame])
+    text_events = _text_events(events)
+    assert len(text_events) == 1, f"expected one text event, got {text_events}"
+    event = text_events[0]
+    assert event.metadata is not None
+    assert event.metadata.get("syntax_highlight") is True
+    assert event.metadata.get("language") == "bash"
+
+
 def test_bodiless_system_message_step_stays_lifecycle() -> None:
     """The measured bodiless ``system_message`` contract is unchanged (S-8)."""
     frame = _step(

@@ -197,7 +197,7 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
+        (),
     )
     processes = [
         _FakeShardProcess([0], stdout=b"alpha passed\n"),
@@ -297,7 +297,7 @@ def test_pytest_tmpdir_regression_shards_use_isolated_repo_basetemps(
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
+        (),
     )
     spawner = _StubSpawner([_FakeShardProcess([0]), _FakeShardProcess([0])])
 
@@ -409,7 +409,7 @@ def test_run_test_suites_terminates_and_reaps_siblings_on_first_failure(
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
+        (),
     )
     failed = _FakeShardProcess([1], stderr=b"failed\n")
     sibling = _FakeShardProcess([None])
@@ -441,7 +441,7 @@ def test_run_test_suites_uses_one_parent_deadline_and_reaps_all_on_timeout(
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
+        (),
     )
     processes = [_FakeShardProcess([None]), _FakeShardProcess([None])]
     spawner = _StubSpawner(processes)
@@ -473,7 +473,7 @@ def test_run_test_suites_spawn_deadline_names_already_started_shard(
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
+        (),
     )
     clock = _FakeClock()
     process = _FakeShardProcess([None])
@@ -511,7 +511,7 @@ def test_run_test_suites_timeout_names_each_incomplete_shard_and_its_files(
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
+        (),
     )
     clock = _FakeClock()
 

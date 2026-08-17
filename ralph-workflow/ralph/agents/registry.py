@@ -73,12 +73,15 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.agents.builtin import builtin_supports
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.registration import register_agent_support_to_catalog
 from ralph.agents.spec import AgentSpec
-from ralph.agents.support import AgentSupport
+from ralph.agents.support import (
+    _DYNAMIC_ALIAS_HELP_BY_PREFIX,
+    _EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX,
+    AgentSupport,
+)
 from ralph.agents.vision_agent_provisioning import provision_vision_verdict_agent
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -99,6 +102,7 @@ from ralph.process.monitor import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ralph.language_detector.models import ProjectStack
     from ralph.process.monitor import SubagentPidSource
@@ -189,6 +193,110 @@ def agy_alias_help() -> str:
     )
 
 
+def builtin_supports() -> tuple[AgentSupport, ...]:
+    """Return the built-in :class:`AgentSupport` rows.
+
+    Thin module-level wrapper over :func:`ralph.agents.builtin.builtin_supports`;
+    deferred import keeps the registry<->builtin dependency graph acyclic (the
+    AGY declarative entry references :func:`agy_alias_help` from this module).
+    """
+    from ralph.agents.builtin import (  # noqa: PLC0415  # reason: lazy import breaks builtin<->registry cycle
+        builtin_supports as _builtin_supports_impl,
+    )
+
+    return _builtin_supports_impl()
+
+
+def _builtin_supports_lazy() -> tuple[AgentSupport, ...]:
+    """Backward-compatible alias for :func:`builtin_supports`."""
+    return builtin_supports()
+
+
+def _lookup_prefix_factory[F](
+    agent_name: str,
+    table: dict[str, F],
+) -> F | None:
+    """Return the factory registered under ``agent_name``'s longest ``/`` prefix.
+
+    Walks ``agent_name``'s ``/``-separated segments from the full name down
+    to the first segment (e.g. ``a/b/c`` → ``a/b/c``, ``a/b``, ``a``) and
+    returns the first table hit, or ``None`` when no prefix is registered.
+    """
+    segments = agent_name.split("/")
+    for end in range(len(segments), 0, -1):
+        factory = table.get("/".join(segments[:end]))
+        if factory is not None:
+            return factory
+    return None
+
+
+def lookup_dynamic_alias_help(
+    agent_name: str,
+    catalog: AgentCatalog | None = None,
+) -> str | None:
+    """Return the registered alias help string for ``agent_name``, or ``None``.
+
+    Two-phase lookup over registration data (no agent-name substring
+    checks):
+
+    - Phase 1 (catalog exact match): when ``catalog.get(agent_name)``
+      resolves to a support carrying ``dynamic_alias_help``, invoke it and
+      return its string. This is the registered-name path.
+    - Phase 2 (registered-prefix fallback): when the name never resolves
+      in the catalog, walk its longest ``/`` prefix through the
+      module-level ``_DYNAMIC_ALIAS_HELP_BY_PREFIX`` table populated by
+      :meth:`AgentSupport.from_registration_kwargs`, so an *unknown*
+      alias under a registered prefix (e.g. ``agy/<unknown-model>``)
+      still surfaces the agent's help string.
+
+    Args:
+        agent_name: Agent name or dynamic alias to look up.
+        catalog: Catalog to consult for Phase 1; defaults to the default
+            catalog.
+
+    Returns:
+        The help string, or ``None`` when no phase hits.
+    """
+    resolved = default_catalog() if catalog is None else catalog
+    support = resolved.get(agent_name)
+    if support is not None and support.dynamic_alias_help is not None:
+        return support.dynamic_alias_help()
+    factory = _lookup_prefix_factory(agent_name, _DYNAMIC_ALIAS_HELP_BY_PREFIX)
+    if factory is not None:
+        return factory()
+    return None
+
+
+def lookup_empty_output_diagnostic_factory(
+    agent_name: str,
+    catalog: AgentCatalog | None = None,
+) -> Callable[[list[str], Path | None], str | None] | None:
+    """Return the registered empty-output diagnostic factory for ``agent_name``.
+
+    Same two-phase semantics as :func:`lookup_dynamic_alias_help`:
+    Phase 1 resolves ``agent_name`` in the catalog and returns the
+    support's ``empty_output_diagnostic_factory`` when set; Phase 2 falls
+    back to the longest ``/``-prefix match against the module-level
+    ``_EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX`` table populated by
+    :meth:`AgentSupport.from_registration_kwargs`, so an unknown alias
+    under a registered prefix (e.g. ``agy/<unknown-model>``) still gets
+    the agent's diagnostic.
+
+    Args:
+        agent_name: Agent name or dynamic alias to look up.
+        catalog: Catalog to consult for Phase 1; defaults to the default
+            catalog.
+
+    Returns:
+        The diagnostic factory, or ``None`` when no phase hits.
+    """
+    resolved = default_catalog() if catalog is None else catalog
+    support = resolved.get(agent_name)
+    if support is not None and support.empty_output_diagnostic_factory is not None:
+        return support.empty_output_diagnostic_factory
+    return _lookup_prefix_factory(agent_name, _EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX)
+
+
 def builtin_agents() -> dict[str, AgentConfig]:
     """Return the built-in agent configurations keyed by agent name."""
     return {support.name: support.config for support in builtin_supports()}
@@ -202,7 +310,7 @@ def _find_builtin_support(name: str) -> AgentSupport | None:
     ``None`` for non-built-in names so a custom registration is
     unaffected.
     """
-    for support in builtin_supports():
+    for support in _builtin_supports_lazy():
         if support.name == name:
             return support
     return None
@@ -248,11 +356,15 @@ def _synthesize_override_support(
         is_builtin=True,
         no_default_session_flag=builtin.spec.no_default_session_flag,
         display_capabilities=builtin.display_capabilities,
+        dynamic_alias_help=builtin.dynamic_alias_help,
+        dynamic_alias_help_prefix=builtin.dynamic_alias_help_prefix,
+        empty_output_diagnostic_factory=builtin.empty_output_diagnostic_factory,
+        empty_output_diagnostic_prefix=builtin.empty_output_diagnostic_prefix,
     )
 
 
 def _seed_catalog_with_builtins(catalog: AgentCatalog) -> None:
-    for support in builtin_supports():
+    for support in _builtin_supports_lazy():
         if catalog.get(support.name) is None:
             register_agent_support_to_catalog(support.name, support, catalog)
 

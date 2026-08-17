@@ -22,6 +22,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ralph.agents._contracts import StrategyFactory
     from ralph.agents.display_capability_stance import DisplayCapabilityStance
@@ -69,6 +70,20 @@ class BuiltinAgentSpec:
             identifier. Defaults to True; nanocoder is the one documented
             False case (see :class:`ralph.agents.support.AgentSupport`'s
             docstring for the full reasoning and its evidence source).
+        dynamic_alias_help: Zero-arg callable returning the agent's alias
+            help string (e.g. the available-model list). Served for exact
+            catalog matches and, together with
+            ``dynamic_alias_help_prefix``, for unknown aliases under the
+            registered prefixes. Used by agy.
+        dynamic_alias_help_prefix: Agent-name prefixes under which
+            ``dynamic_alias_help`` is served for names that never resolve
+            in the catalog. Used by agy as ``("agy",)``.
+        empty_output_diagnostic_factory: Callable receiving the bounded
+            output lines and an optional CLI-log path that returns an
+            actionable empty-output cause or ``None``. Used by agy.
+        empty_output_diagnostic_prefix: Agent-name prefixes under which
+            ``empty_output_diagnostic_factory`` is served for names that
+            never resolve in the catalog. Used by agy as ``("agy",)``.
     """
 
     transport: AgentTransport
@@ -90,6 +105,12 @@ class BuiltinAgentSpec:
     no_default_session_flag: bool = False
     session_identifier_observable: bool = True
     display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
+    dynamic_alias_help: Callable[[], str] | None = None
+    dynamic_alias_help_prefix: tuple[str, ...] = ()
+    empty_output_diagnostic_factory: (
+        Callable[[list[str], Path | None], str | None] | None
+    ) = None
+    empty_output_diagnostic_prefix: tuple[str, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:
         """Materialize the dataclass into an :class:`AgentSupport`.

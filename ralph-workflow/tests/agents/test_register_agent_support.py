@@ -981,6 +981,12 @@ class TestPostRefactorContract:
             "session_identifier_observable",
             "display_capabilities",
             "_name_lower",
+            # S-4 (wt-015): generic data-driven seams replacing AGY
+            # name-typed branches, surfaced as fields on AgentSupport.
+            "dynamic_alias_help",
+            "dynamic_alias_help_prefix",
+            "empty_output_diagnostic_factory",
+            "empty_output_diagnostic_prefix",
         }
         assert set(from_kwargs.__dataclass_fields__) == expected_fields, (
             f"AgentSupport field set changed; expected {expected_fields}, "

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 from ralph.agents.display_capabilities import DisplayCapability, all_display_capabilities
 from ralph.agents.display_capability_stance import DisplayCapabilityStance
@@ -22,6 +23,27 @@ from ralph.config.enums import AgentTransport, JsonParserType
 if TYPE_CHECKING:
     from ralph.agents._contracts import StrategyFactory
     from ralph.agents.parsers.base import AgentParser
+
+
+#: Registered-prefix fallback table for dynamic alias help strings, keyed by
+#: agent-name prefix (e.g. ``"agy"``). Populated by
+#: :meth:`AgentSupport.from_registration_kwargs` from the
+#: ``dynamic_alias_help`` / ``dynamic_alias_help_prefix`` kwargs so a future
+#: agent opts into unknown-alias hints with registration data instead of a
+#: name-typed control-flow branch. Lives here (not in ``registry.py``) so
+#: registration populates it without an import-time cycle; the lookup
+#: helpers in :mod:`ralph.agents.registry` consult it as Phase 2 of the
+#: two-phase lookup.
+_DYNAMIC_ALIAS_HELP_BY_PREFIX: dict[str, Callable[[], str]] = {}  # bounded-accumulator-ok: registration write-once per prefix; cardinality capped by registered agent count
+
+#: Registered-prefix fallback table for empty-output diagnostic factories,
+#: keyed by agent-name prefix. Same population contract as
+#: ``_DYNAMIC_ALIAS_HELP_BY_PREFIX``; the callable receives the bounded
+#: output lines and an optional CLI-log path and returns an actionable
+#: cause string or ``None``.
+_EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX: dict[
+    str, Callable[[list[str], Path | None], str | None]
+] = {}  # bounded-accumulator-ok: registration write-once per prefix; cardinality capped by registered agent count
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +88,23 @@ class AgentSupport:
             complete declaration whenever ``is_builtin=True`` so the
             gate that audits built-in declarations cannot route around
             the contract.
+        dynamic_alias_help: Optional zero-arg callable returning the
+            agent's alias help string (e.g. the available-model list).
+            Consulted by ``lookup_dynamic_alias_help`` Phase 1 for exact
+            catalog matches; agents that also want hints for *unknown*
+            aliases register ``dynamic_alias_help_prefix`` so the module
+            prefix table resolves them via Phase 2.
+        dynamic_alias_help_prefix: Agent-name prefixes (e.g.
+            ``("agy",)``) under which ``dynamic_alias_help`` is served
+            for names that never resolve in the catalog.
+        empty_output_diagnostic_factory: Optional callable receiving the
+            bounded output lines and an optional CLI-log path, returning
+            an actionable empty-output cause or ``None``. Consulted by
+            ``lookup_empty_output_diagnostic_factory`` Phase 1; pair with
+            ``empty_output_diagnostic_prefix`` for the Phase 2 fallback.
+        empty_output_diagnostic_prefix: Agent-name prefixes under which
+            ``empty_output_diagnostic_factory`` is served for names that
+            never resolve in the catalog.
     """
 
     name: str
@@ -77,6 +116,10 @@ class AgentSupport:
     no_default_session_flag: bool = False
     session_identifier_observable: bool = True
     display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
+    dynamic_alias_help: Callable[[], str] | None = None
+    dynamic_alias_help_prefix: tuple[str, ...] = ()
+    empty_output_diagnostic_factory: Callable[[list[str], Path | None], str | None] | None = None
+    empty_output_diagnostic_prefix: tuple[str, ...] = ()
 
     _name_lower: str = ""
 
@@ -136,6 +179,12 @@ class AgentSupport:
         no_default_session_flag: bool = False,
         session_identifier_observable: bool = True,
         display_capabilities: tuple[DisplayCapabilityStance, ...] = (),
+        dynamic_alias_help: Callable[[], str] | None = None,
+        dynamic_alias_help_prefix: tuple[str, ...] = (),
+        empty_output_diagnostic_factory: (
+            Callable[[list[str], Path | None], str | None] | None
+        ) = None,
+        empty_output_diagnostic_prefix: tuple[str, ...] = (),
     ) -> AgentSupport:
         """Build an AgentSupport from the legacy register_agent_support kwargs.
 
@@ -177,6 +226,18 @@ class AgentSupport:
                 the field (empty tuple). The validation rejects empty
                 reasons for non-SUPPORTED stances and rejects duplicate
                 or out-of-vocabulary capabilities.
+            dynamic_alias_help: Zero-arg callable returning the agent's
+                alias help string. When non-None together with
+                ``dynamic_alias_help_prefix``, each prefix is registered
+                in the module-level prefix table so unknown aliases
+                under that prefix still surface the help.
+            dynamic_alias_help_prefix: Agent-name prefixes (e.g.
+                ``("agy",)``) to register ``dynamic_alias_help`` under.
+            empty_output_diagnostic_factory: Callable receiving the
+                bounded output lines and an optional CLI-log path that
+                returns an actionable empty-output cause or ``None``.
+            empty_output_diagnostic_prefix: Agent-name prefixes to
+                register ``empty_output_diagnostic_factory`` under.
 
         Returns:
             An AgentSupport instance ready for AgentCatalog.add().
@@ -218,8 +279,18 @@ class AgentSupport:
             no_default_session_flag=no_default_session_flag,
             session_identifier_observable=session_identifier_observable,
             display_capabilities=display_capabilities,
+            dynamic_alias_help=dynamic_alias_help,
+            dynamic_alias_help_prefix=dynamic_alias_help_prefix,
+            empty_output_diagnostic_factory=empty_output_diagnostic_factory,
+            empty_output_diagnostic_prefix=empty_output_diagnostic_prefix,
         )
         object.__setattr__(config, "_support", support)
+        if dynamic_alias_help is not None:
+            for prefix in dynamic_alias_help_prefix:
+                _DYNAMIC_ALIAS_HELP_BY_PREFIX[prefix] = dynamic_alias_help
+        if empty_output_diagnostic_factory is not None:
+            for prefix in empty_output_diagnostic_prefix:
+                _EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX[prefix] = empty_output_diagnostic_factory
         return support
 
 

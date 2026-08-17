@@ -32,7 +32,7 @@ _PRINT_MODE_TIMEOUT_PATTERN = re.compile(
 )
 
 
-def agy_empty_output_reason(output: list[str], *, cli_log_path: Path | None = None) -> str | None:
+def agy_empty_output_reason(output: list[str], cli_log_path: Path | None = None) -> str | None:
     """Return AGY's actionable empty-output cause from output or its bounded log tail.
 
     Precedence (most specific / most actionable first):

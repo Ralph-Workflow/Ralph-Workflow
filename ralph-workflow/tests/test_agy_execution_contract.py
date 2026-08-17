@@ -49,8 +49,8 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
 ) -> None:
     """An AGY operator diagnosis supplements, rather than hides, completion failure."""
     monkeypatch.setattr(
-        "ralph.agents.invoke._completion.agy_empty_output_reason",
-        lambda _output, *, cli_log_path: "AGY authentication failed",
+        "ralph.agents.invoke._completion.lookup_empty_output_diagnostic_factory",
+        lambda _agent_name: (lambda _output, _cli_log_path: "AGY authentication failed"),
     )
 
     with pytest.raises(AgentInvocationError) as excinfo:

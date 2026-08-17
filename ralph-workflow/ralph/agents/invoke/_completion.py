@@ -9,7 +9,6 @@ from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.agents.completion_signals import (
     CompletionSignals,
     _check_completion_sentinel,
@@ -35,6 +34,7 @@ from ralph.agents.invoke._session import (
     extract_transport_session_id,
     extract_transport_session_id_with_visible_tui,
 )
+from ralph.agents.registry import lookup_empty_output_diagnostic_factory
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
@@ -781,9 +781,10 @@ def check_process_result(
         )
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             _teardown_subtree_if_pid_available(handle)
+            diagnostic_factory = lookup_empty_output_diagnostic_factory(agent_name)
             diagnostic = (
-                agy_empty_output_reason(bounded_output, cli_log_path=opts.agy_cli_log_path)
-                if agent_name == "agy" or agent_name.startswith("agy/")
+                diagnostic_factory(bounded_output, opts.agy_cli_log_path)
+                if diagnostic_factory is not None
                 else None
             )
             canonical = (

@@ -28,6 +28,8 @@ from pathlib import Path
 import pytest
 
 from ralph.display.vt_normalizer import normalize_vt_text
+from ralph.mcp.server._wire_ledger import wire_evidence_for
+from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
 pytestmark = [
     pytest.mark.smoke,
@@ -38,6 +40,50 @@ pytestmark = [
 
 def _mock_agy_path() -> Path:
     return Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+
+
+#: Distinct broker secret so this file's wire-ledger verification never
+#: depends on (or mutates) ambient developer state.
+_WIRE_BROKER_SECRET = "test-agy-end-to-end-wire-broker-secret"
+
+
+def _run_wire_round_trip_smoke(tmp_path: Path, *, timeout_seconds: int = 25) -> tuple[int, str]:
+    """Run the smoke against the v1.1.13 mock with a real broker secret.
+
+    Selector ``normal`` + ``MOCK_AGY_V1_1_13=1`` makes the mock drive the
+    two canonical MCP round trips (``tools/call ralph_submit_md_artifact``
+    then ``tools/call declare_complete``) against the harness's real MCP
+    server, whose HMAC-chained wire ledger is keyed by the run-scoped
+    secret below.
+    """
+    mock_path = _mock_agy_path()
+    assert mock_path.is_file(), f"Mock AGY script not found at {mock_path}"
+    env = os.environ.copy()
+    env["RALPH_AGY_BINARY"] = str(mock_path)
+    env["MOCK_AGY_BEHAVIOR"] = "normal"
+    env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)
+    env["MOCK_AGY_V1_1_13"] = "1"
+    env["RALPH_BROKER_SECRET"] = _WIRE_BROKER_SECRET
+    env.pop("MCP_AUTH_TOKEN", None)
+    env.pop("AGY_BINARY", None)
+    env.pop("MOCK_AGY_ARTIFACT_DIR_OVERRIDE", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ralph",
+            "smoke-interactive-agy",
+            "--agent",
+            "agy/gemini-3.6-flash-low",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+    return result.returncode, result.stdout + result.stderr
 
 
 def _run_fresh_agy_smoke(
@@ -125,6 +171,41 @@ def _read_breaks_from_report(report_text: str) -> str:
             if stripped:
                 breaks_lines.append(stripped)
     return " ".join(breaks_lines)
+
+
+def test_mock_smoke_normal_selector_produces_both_wire_ledger_records(
+    tmp_path: Path,
+) -> None:
+    """Plan S-7: selector ``normal`` leaves BOTH canonical MCP records.
+
+    A fresh mock-backed smoke must write a verified wire-ledger
+    ``ralph_submit_md_artifact`` record AND a ``declare_complete`` record
+    for the run — no silent drop of either MCP round trip.
+    """
+    returncode, output = _run_wire_round_trip_smoke(tmp_path)
+    assert returncode == 0, (
+        f"smoke-interactive-agy exited {returncode} (expected 0 for the "
+        f"always-green normal selector). Output:\n{output}"
+    )
+    run_id = resolve_smoke_harness_spec("agy/gemini-3.6-flash-low").run_id
+    assert (
+        wire_evidence_for(
+            tmp_path,
+            run_id,
+            tool_name="ralph_submit_md_artifact",
+            secret=_WIRE_BROKER_SECRET,
+        )
+        is True
+    ), f"No verified ralph_submit_md_artifact wire record for run_id={run_id!r}.\n{output}"
+    assert (
+        wire_evidence_for(
+            tmp_path,
+            run_id,
+            tool_name="declare_complete",
+            secret=_WIRE_BROKER_SECRET,
+        )
+        is True
+    ), f"No verified declare_complete wire record for run_id={run_id!r}.\n{output}"
 
 
 def test_mock_smoke_log_documents_real_agy_invocation(tmp_path: Path) -> None:

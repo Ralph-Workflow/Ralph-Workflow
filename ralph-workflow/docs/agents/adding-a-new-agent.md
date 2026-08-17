@@ -216,6 +216,48 @@ Use the smallest checklist that matches the change.
 - Add smoke plumbing only when a live manual smoke is needed to prove a real
   runtime behavior that fakes cannot cover.
 
+### Adding an AGY-shaped agent
+
+AGY's behaviour is spec data, not agent-name branches: every AGY-specific
+outcome lives in fields any other transport can declare. An agent is
+"AGY-shaped" when it needs one or more of these seams:
+
+| Seam | Declared where | What it buys |
+| ---- | -------------- | ------------ |
+| `dynamic_alias_help` + `dynamic_alias_help_prefix` | `register_agent_support` kwargs (stored on `AgentSupport`) | `lookup_dynamic_alias_help` serves the help string for unregistered `<prefix>/<model>` aliases, and `UnknownAgentError` appends it to the message (see `ralph/agents/registry.py`). |
+| `empty_output_diagnostic_factory` + `empty_output_diagnostic_prefix` | the same registration kwargs | The generic completion check (`check_process_result`) calls the factory when an agent exits 0 with no completion evidence and surfaces the returned cause instead of a bare "missing evidence" error (see `ralph/agents/invoke/_completion.py`). |
+| `cmd_argv_override`, `yolo_before_session`, `workspace_dir_flag` | `CommandBuilderSpec` (see `ralph/agents/invoke/_command_builders/`) | Multi-token `config.cmd` wrapper overrides, yolo-before-session flag order, and a `--add-dir`-style workspace-directory flag. |
+| `no_default_session_flag` | registration kwargs | Suppresses the auto-applied `--resume {}` template for interactive agents. |
+
+Example — an interactive agent with AGY's alias and diagnostic needs:
+
+```python
+from ralph.agents import register_agent_support
+
+register_agent_support(
+    name="futureagent",
+    transport=AgentTransport.GENERIC,  # or a new PTY transport
+    parser_factory=FutureAgentParser,
+    strategy_factory=FutureAgentStrategy,
+    agent_registry=my_registry,
+    interactive=True,
+    no_default_session_flag=True,
+    dynamic_alias_help=futureagent_alias_help,  # zero-arg callable -> str
+    dynamic_alias_help_prefix=("futureagent",),
+    empty_output_diagnostic_factory=futureagent_empty_output_reason,
+    empty_output_diagnostic_prefix=("futureagent",),
+)
+```
+
+The AGY built-in in `ralph/agents/builtin.py` is the worked example: the
+registration kwargs above plus
+`CommandBuilderSpec(cmd_argv_override=True, yolo_before_session=True,
+workspace_dir_flag=("--add-dir",))`. Pin the no-special-casing contract
+with tests shaped like `tests/agents/test_dynamic_alias_help_lookup.py`,
+`tests/agents/test_empty_output_diagnostic_lookup.py`, and
+`tests/agents/test_generic_command_builder_seam.py` — each drives a seam
+through a non-AGY name so a reintroduced name-typed branch fails loudly.
+
 ### New transport
 
 - Complete the full transport checklist above.

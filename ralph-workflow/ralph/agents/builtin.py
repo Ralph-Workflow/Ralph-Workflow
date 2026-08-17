@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.agents.builtin_spec import BuiltinAgentSpec
 from ralph.agents.display_capabilities import DisplayCapability
 from ralph.agents.display_capability_stance import DisplayCapabilityStance
@@ -57,6 +58,11 @@ from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
+
+# Imported at module level (NOT lazily): ``ralph.agents.registry`` imports
+# this module lazily via ``_builtin_supports_lazy``, so the
+# builtin->registry edge keeps the module-level dependency graph acyclic.
+from ralph.agents.registry import agy_alias_help
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
@@ -277,6 +283,15 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         can_commit=True,
         interactive=True,
         no_default_session_flag=True,
+        # Generic data-driven seams (no name-typed control flow downstream):
+        # ``lookup_dynamic_alias_help`` serves this callable for unknown
+        # ``agy/<model>`` aliases, and ``lookup_empty_output_diagnostic_factory``
+        # routes empty-output diagnostics through it — any future agent
+        # registers the same kwargs to get the same behaviour.
+        dynamic_alias_help=agy_alias_help,
+        dynamic_alias_help_prefix=("agy",),
+        empty_output_diagnostic_factory=agy_empty_output_reason,
+        empty_output_diagnostic_prefix=("agy",),
         display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("agy"),
     BuiltinAgentSpec(

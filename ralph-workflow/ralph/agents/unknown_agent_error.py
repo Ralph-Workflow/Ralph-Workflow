@@ -1,6 +1,6 @@
 """Errors raised when agent lookup fails."""
 
-from ralph.agents.registry import agy_alias_help
+from ralph.agents.registry import lookup_dynamic_alias_help
 
 
 class UnknownAgentError(Exception):
@@ -13,6 +13,11 @@ class UnknownAgentError(Exception):
     def __init__(self, agent_name: str) -> None:
         self.agent_name = agent_name
         msg = f"Unknown agent: '{agent_name}'. Register the agent in the configuration."
-        if agent_name.startswith("agy/"):
-            msg = f"{msg} {agy_alias_help()}"
+        # Two-phase data-driven lookup (catalog exact match, then the
+        # registered-prefix fallback table): any agent that registers
+        # ``dynamic_alias_help`` gets the same hint here — no name-typed
+        # branch in this path.
+        alias_help = lookup_dynamic_alias_help(agent_name)
+        if alias_help is not None:
+            msg = f"{msg} {alias_help}"
         super().__init__(msg)

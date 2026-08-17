@@ -37,6 +37,9 @@ from ralph.agents.vision_agent_provisioning import provision_vision_verdict_agen
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
     from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.agents.parsers.base import AgentParser
     from ralph.config.agent_config import AgentConfig
@@ -119,6 +122,12 @@ def _validate_and_materialize_support(
     subagent_capability: bool | None,
     no_default_session_flag: bool,
     is_builtin: bool = False,
+    dynamic_alias_help: Callable[[], str] | None = None,
+    dynamic_alias_help_prefix: tuple[str, ...] = (),
+    empty_output_diagnostic_factory: (
+        Callable[[list[str], Path | None], str | None] | None
+    ) = None,
+    empty_output_diagnostic_prefix: tuple[str, ...] = (),
 ) -> AgentSupport:
     """Build an :class:`AgentSupport` from the registration kwargs.
 
@@ -149,6 +158,10 @@ def _validate_and_materialize_support(
         subagent_capability=subagent_capability,
         is_builtin=is_builtin,
         no_default_session_flag=no_default_session_flag,
+        dynamic_alias_help=dynamic_alias_help,
+        dynamic_alias_help_prefix=dynamic_alias_help_prefix,
+        empty_output_diagnostic_factory=empty_output_diagnostic_factory,
+        empty_output_diagnostic_prefix=empty_output_diagnostic_prefix,
     )
 
 
@@ -184,6 +197,12 @@ def register_agent_support(
     display_name: str | None = None,
     subagent_capability: bool | None = None,
     no_default_session_flag: bool = False,
+    dynamic_alias_help: Callable[[], str] | None = None,
+    dynamic_alias_help_prefix: tuple[str, ...] = (),
+    empty_output_diagnostic_factory: (
+        Callable[[list[str], Path | None], str | None] | None
+    ) = None,
+    empty_output_diagnostic_prefix: tuple[str, ...] = (),
 ) -> AgentConfig:
     """Register support for a new agent in one call.
 
@@ -222,6 +241,17 @@ def register_agent_support(
         display_name: Human-readable display name for UI/UX.
         subagent_capability: Whether the agent runtime exposes usable sub-agent
             tooling.
+        dynamic_alias_help: Zero-arg callable returning an alias help
+            string; served for unknown-agent hints and, together with
+            ``dynamic_alias_help_prefix``, for unregistered ``<prefix>/...``
+            aliases.
+        dynamic_alias_help_prefix: Agent-name prefixes to register
+            ``dynamic_alias_help`` under for the unknown-alias fallback.
+        empty_output_diagnostic_factory: Callable receiving the bounded
+            output lines and an optional CLI-log path that returns an
+            actionable empty-output cause or ``None``.
+        empty_output_diagnostic_prefix: Agent-name prefixes to register
+            ``empty_output_diagnostic_factory`` under.
 
     Returns:
         The registered ``AgentConfig``.
@@ -250,6 +280,10 @@ def register_agent_support(
         display_name,
         subagent_capability,
         no_default_session_flag,
+        dynamic_alias_help=dynamic_alias_help,
+        dynamic_alias_help_prefix=dynamic_alias_help_prefix,
+        empty_output_diagnostic_factory=empty_output_diagnostic_factory,
+        empty_output_diagnostic_prefix=empty_output_diagnostic_prefix,
     )
 
     _register_to_catalog(name, support, agent_registry.catalog)

@@ -148,6 +148,15 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 # chain changes.
 _AGY_LIFECYCLE_E2E_FILE = "tests/test_smoke_agy_full_lifecycle_e2e.py"
 _AGY_LIFECYCLE_E2E_WEIGHT_FLOOR = 1000
+#: In-shard xdist fan-out reserved for the dedicated REQUIRED-auto-integrate
+#: E2E shard. Those three files are subprocess-I/O-bound (each test spawns a
+#: bounded real subprocess: real-git landings, the AGY mock harness), so
+#: serial placement on one plain-pytest shard inflates the slowest-shard
+#: wall clock (~57 s on the maintained host, intermittently exceeding the
+#: 60 s combined budget when trailing smoke steps run). In-shard xdist runs
+#: their ~23 subprocess-bound tests concurrently (~13 s) while the main
+#: pool stays plain-pytest to avoid xdist coordination overhead.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "8"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
@@ -783,6 +792,7 @@ def _run_shards(
     wait: Callable[[float], None],
     marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
     xdist_workers: str = "0",
+    required_e2e_shard_xdist_workers: str | None = None,
 ) -> int:
     processes: list[ShardProcess] = []
     try:
@@ -798,13 +808,19 @@ def _run_shards(
                 )
                 _print_shard_outputs(outputs)
                 return TIMEOUT_EXIT_CODE
+            shard_xdist_workers = xdist_workers
+            if (
+                required_e2e_shard_xdist_workers is not None
+                and shard_index == len(shards) - 1
+            ):
+                shard_xdist_workers = required_e2e_shard_xdist_workers
             processes.append(
                 spawner(
                     _shard_command(
                         shard,
                         basetemp=basetemp_root / f"shard-{shard_index}",
                         marker_expression=marker_expression,
-                        xdist_workers=xdist_workers,
+                        xdist_workers=shard_xdist_workers,
                     ),
                     cwd=cwd,
                     env=env,
@@ -932,6 +948,7 @@ def run_test_suites(
     if auto_integrate_e2e_only and subprocess_e2e_only:
         raise ValueError("test-suite profiles are mutually exclusive")
     marker_expression = _VERIFICATION_MARK_EXPRESSION
+    required_e2e_shard: tuple[str, ...] = ()
     if auto_integrate_e2e_only:
         selected_files = REQUIRED_AUTO_INTEGRATE_E2E_FILES
     elif subprocess_e2e_only:
@@ -940,13 +957,32 @@ def run_test_suites(
     else:
         selected_files = file_discoverer(cwd)
         validate_required_auto_integrate_selection(selected_files)
+        # wt-015 S-11: the REQUIRED auto-integrate E2E files are
+        # subprocess-I/O-bound, so they are pinned onto ONE dedicated shard
+        # with an in-shard xdist fan-out (see
+        # ``_REQUIRED_E2E_SHARD_XDIST_WORKERS``). Keeping them in the
+        # plain-pytest main pool let the shard they landed on inflate the
+        # slowest-shard wall clock (~57 s) past the 60 s combined budget.
+        selected_set = set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+        required_e2e_shard = tuple(
+            path for path in selected_files if path in selected_set
+        )
+        selected_files = tuple(
+            path for path in selected_files if path not in selected_set
+        )
 
     shards = partition_selected_files(
         selected_files,
         worker_count=int(_pytest_workers()),
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
-    validate_exact_file_assignment(selected_files, shards)
+    if required_e2e_shard:
+        shards = (*shards, required_e2e_shard)
+        validate_exact_file_assignment(
+            (*selected_files, *required_e2e_shard), shards
+        )
+    else:
+        validate_exact_file_assignment(selected_files, shards)
     if auto_integrate_e2e_only:
         profile = "auto-integrate-e2e"
     elif subprocess_e2e_only:
@@ -971,6 +1007,12 @@ def run_test_suites(
             wait=wait,
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
+            # The dedicated REQUIRED-E2E shard (always last when present)
+            # gets its own in-shard xdist fan-out; every other shard stays
+            # plain-pytest.
+            required_e2e_shard_xdist_workers=_REQUIRED_E2E_SHARD_XDIST_WORKERS
+            if required_e2e_shard
+            else None,
         )
 
 

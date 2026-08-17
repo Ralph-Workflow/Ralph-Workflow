@@ -30,6 +30,7 @@ The test reuses the subprocess harness shape already proven by
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -41,7 +42,7 @@ from pathlib import Path
 import pytest
 
 from ralph.agents.completion_signals import _check_completion_sentinel
-from ralph.mcp.server._wire_ledger import wire_evidence_for
+from ralph.mcp.server._wire_ledger import WIRE_LEDGER_RELPATH, wire_evidence_for
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
 pytestmark = [
@@ -300,3 +301,40 @@ def test_agy_full_lifecycle_e2e_negative_selectors_fail_loudly(
                 f"MOCK_AGY_BEHAVIOR={outcome.behavior} must surface "
                 f"{diagnostic!r}.\n{outcome.output}"
             )
+
+
+def test_missing_completion_selector_produces_zero_wire_receipts(tmp_path: Path) -> None:
+    """Plan S-7: ``missing_completion`` leaves ZERO canonical round-trip records.
+
+    The selector makes ``drive_real_mcp_round_trips`` short-circuit to
+    ``(None, None)`` (see ``tests/_support/mock_agy_v1_1_13.py`` — the
+    round trip itself is pruned, not just the frame that reports it), so
+    the wire ledger must contain neither a ``ralph_submit_md_artifact``
+    nor a ``declare_complete`` record: the canonical submission pipeline
+    never fabricates a receipt for a round trip the mock deliberately
+    skipped, while the run still exits non-zero with its own diagnostic.
+    """
+    returncode, output = _run_negative_smoke(tmp_path, "missing_completion")
+
+    assert returncode != 0, f"missing_completion must exit non-zero.\n{output}"
+    assert "completion sentinel was not observed" in output, (
+        f"missing_completion must surface its documented diagnostic.\n{output}"
+    )
+
+    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    tool_names: set[object] = set()
+    if ledger_path.exists():
+        for line in ledger_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("method") == "tools/call":
+                tool_names.add(record.get("tool_name"))
+    assert "ralph_submit_md_artifact" not in tool_names, (
+        f"missing_completion must not leave a submit wire record; ledger "
+        f"tool_names={tool_names!r}"
+    )
+    assert "declare_complete" not in tool_names, (
+        f"missing_completion must not leave a declare_complete wire record; "
+        f"ledger tool_names={tool_names!r}"
+    )

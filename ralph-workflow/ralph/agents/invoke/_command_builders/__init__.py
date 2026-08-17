@@ -357,6 +357,37 @@ class CommandBuilder(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class CommandBuilderSpec:
+    """Declarative description of how :class:`ConfigurableCommandBuilder` assembles argv.
+
+    Attributes:
+        base_argv: Default argv prefix for the transport (``base_argv[0]`` is
+            the binary name).
+        format_flag: Optional two-token format flag emitted before the
+            output flag.
+        output_flag: Optional output-format flag string.
+        yolo_flag: Optional autonomy/yolo flag string.
+        model_flag_template: Optional ``str.format`` template for the model
+            flag.
+        positional_prompt: Whether the prompt text is appended as a
+            positional argument.
+        print_flag: Optional print/headless-mode flag emitted immediately
+            before the prompt.
+        extra_flags_before_prompt: Extra literal flags emitted before the
+            print flag.
+        cmd_argv_override: When True, the builder honours a multi-token
+            ``config.cmd`` override: ``_init_cmd`` returns
+            ``shlex.split(config.cmd)`` so a wrapper path plus its trailing
+            flags each land as separate argv tokens. agy / codex / cursor /
+            kimi set this; transports whose ``cmd`` only names the binary
+            keep the default False.
+        yolo_before_session: When True, the yolo flag precedes the session
+            flag (agy's flag order); the default emits the session flag
+            first.
+        workspace_dir_flag: When set, a ``--add-dir``-style flag prefix
+            emitted with ``str(options.workspace_path)`` so the agent can
+            access the workspace directory (agy uses ``("--add-dir",)``).
+    """
+
     base_argv: tuple[str, ...]
     format_flag: tuple[str, str] | None
     output_flag: str | None
@@ -365,6 +396,9 @@ class CommandBuilderSpec:
     positional_prompt: bool
     print_flag: str | None
     extra_flags_before_prompt: tuple[str, ...] = ()
+    cmd_argv_override: bool = False
+    yolo_before_session: bool = False
+    workspace_dir_flag: tuple[str, ...] | None = None
 
 
 class ConfigurableCommandBuilder:
@@ -377,20 +411,10 @@ class ConfigurableCommandBuilder:
         cmd = list(self.spec.base_argv)
         if not cmd:
             return []
-        if "codex" in cmd[0]:
-            return shlex.split(config.cmd)
-        if "agy" in cmd[0]:
-            return shlex.split(config.cmd)
-        if "agent" in cmd[0]:
-            # Cursor (binary ``agent``) honors a multi-token cmd override so
-            # operators may point at a wrapper that adds e.g. telemetry flags.
-            # shlex.split preserves the wrapper path AND its trailing flags as
-            # separate argv tokens, matching the AGY override contract.
-            return shlex.split(config.cmd)
-        if "kimi" in cmd[0]:
-            # Kimi (binary ``kimi``) honors the same multi-token cmd override
-            # contract as Cursor / AGY: ``RALPH_KIMI_BINARY`` or an
-            # ``[agents.kimi].cmd`` override may point at a wrapper script.
+        if self.spec.cmd_argv_override:
+            # Wrapper-friendly transports honour a multi-token ``config.cmd``
+            # override: shlex.split preserves the wrapper path AND its
+            # trailing flags as separate argv tokens.
             return shlex.split(config.cmd)
         return [_agent_command_name(config), *cmd[1:]]
 
@@ -402,7 +426,7 @@ class ConfigurableCommandBuilder:
         flags: list[str] = []
         yolo = config.yolo_flag if config.yolo_flag is not None else self.spec.yolo_flag
 
-        if "agy" in self.spec.base_argv[0]:
+        if self.spec.yolo_before_session:
             if yolo is not None:
                 flags.extend(_split_optional_flag(yolo))
             flags.extend(_format_session_flag(config.session_flag, options.session_id))
@@ -454,8 +478,11 @@ class ConfigurableCommandBuilder:
 
         cmd.extend(self._build_yolo_session_flags(config, options))
 
-        if options.workspace_path is not None and "agy" in self.spec.base_argv[0]:
-            cmd.extend(["--add-dir", str(options.workspace_path)])
+        if (
+            options.workspace_path is not None
+            and self.spec.workspace_dir_flag is not None
+        ):
+            cmd.extend([*self.spec.workspace_dir_flag, str(options.workspace_path)])
 
         if options.verbose and config.verbose_flag:
             cmd.append(config.verbose_flag)
@@ -532,6 +559,7 @@ class CodexCommandBuilder(ConfigurableCommandBuilder):
         positional_prompt=True,
         print_flag=None,
         extra_flags_before_prompt=(),
+        cmd_argv_override=True,
     )
 
     def __init__(self) -> None:
@@ -582,6 +610,9 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
         positional_prompt=True,
         print_flag="--print",
         extra_flags_before_prompt=(),
+        cmd_argv_override=True,
+        yolo_before_session=True,
+        workspace_dir_flag=("--add-dir",),
     )
 
     def __init__(self) -> None:
@@ -624,6 +655,7 @@ class CursorCommandBuilder(ConfigurableCommandBuilder):
         positional_prompt=True,
         print_flag="--print",
         extra_flags_before_prompt=("--trust", "--approve-mcps"),
+        cmd_argv_override=True,
     )
 
     def __init__(self) -> None:
@@ -716,6 +748,7 @@ class KimiCommandBuilder(ConfigurableCommandBuilder):
         positional_prompt=True,
         print_flag="-p",
         extra_flags_before_prompt=(),
+        cmd_argv_override=True,
     )
 
     def __init__(self) -> None:
