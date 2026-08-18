@@ -379,17 +379,23 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
         "discover_subprocess_e2e_files",
         lambda _cwd: ("tests/test_e2e.py",),
     )
+    weighed_paths: list[str] = []
+
+    def weigh_file(_cwd: Path, path: str) -> int:
+        weighed_paths.append(path)
+        return 1
 
     assert (
         test_suites_module.run_test_suites(
             cwd=tmp_path,
             spawner=spawner,
-            file_weigher=lambda _cwd, _path: 1,
+            file_weigher=weigh_file,
             wait=lambda _seconds: None,
             subprocess_e2e_only=True,
         )
         == 0
     )
+    assert weighed_paths == ["tests/test_e2e.py"]
     command = spawner.calls[0][0]
     assert command[3 : command.index("-q")] == ("tests/test_e2e.py",)
     marker_flag = command.index("-m", command.index("pytest") + 1)

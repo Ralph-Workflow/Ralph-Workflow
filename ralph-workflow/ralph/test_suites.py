@@ -978,19 +978,20 @@ def run_test_suites(
         # required AGY lifecycle file's real wall clock is invisible to
         # the static collector. Under ``test-subprocess-e2e`` the floor
         # must NOT apply: every discovered file carries
-        # ``subprocess_e2e``, and the floor was isolating the
+        # ``subprocess_e2e``, and the floor would isolate the
         # module-level ``smoke``-marked lifecycle file onto a singleton
         # shard whose marker expression (``... and not smoke ...``)
-        # deselects every item, making pytest exit 5 ("no tests ran")
-        # and failing the whole suite. Unit weights keep that file
-        # co-sharded with non-smoke files, so every shard collects at
-        # least one runnable test; smoke-marked debug harnesses still
-        # run on demand via ``pytest <file> -m smoke``.
-        file_weights=(
-            dict.fromkeys(selected_files, 1)
-            if subprocess_e2e_only
-            else {path: file_weigher(cwd, path) for path in selected_files}
-        ),
+        # deselects every item, making pytest exit 5 ("no tests ran").
+        # Assign its static collected weight as zero so LPT co-locates it
+        # with runnable E2E files without giving it phantom runtime cost.
+        file_weights={
+            path: (
+                0
+                if subprocess_e2e_only and path == _AGY_LIFECYCLE_E2E_FILE
+                else file_weigher(cwd, path)
+            )
+            for path in selected_files
+        },
     )
     if required_e2e_shard:
         shards = (*shards, required_e2e_shard)
