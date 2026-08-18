@@ -262,6 +262,7 @@ class TestGradeMultimodalEvidence:
         fixture_relpath: str,
         fixture_size: tuple[int, int],
         include_replay: bool = True,
+        replay_tool_name: str = "read_media",
     ) -> tuple[Path, str]:
         """Materialize the registry + ledger for the full positive contract."""
         width, height = fixture_size
@@ -325,7 +326,7 @@ class TestGradeMultimodalEvidence:
             append_wire_record(
                 tmp_path,
                 method="tools/call",
-                tool_name="read_media",
+                tool_name=replay_tool_name,
                 params=expected_replay_params(handle=uri),
                 run_id=run_id,
                 secret=secret,
@@ -335,7 +336,7 @@ class TestGradeMultimodalEvidence:
             assert wire_evidence_for(
                 tmp_path,
                 run_id,
-                tool_name="read_media",
+                tool_name=replay_tool_name,
                 secret=secret,
                 params_digest=replay_digest,
             ) is True
@@ -358,6 +359,27 @@ class TestGradeMultimodalEvidence:
             secret=secret,
         )
         assert evidence.holds is True
+        assert evidence.provenance is Provenance.WIRE, evidence.detail
+
+    def test_read_image_replay_hop_grades_wire(self, tmp_path: Path) -> None:
+        """The prompt permits read_image as the verified replay tool."""
+        fixture_size = (40, 24)
+        output_file, secret = self._setup_full_wire_run(
+            tmp_path,
+            fixture_relpath=SMOKE_FIXTURE_RELNAME,
+            fixture_size=fixture_size,
+            replay_tool_name="read_image",
+        )
+
+        evidence = grade_multimodal_evidence(
+            tmp_path,
+            "interactive-claude-smoke",
+            output_file=output_file,
+            fixture_relpath=SMOKE_FIXTURE_RELNAME,
+            fixture_size=fixture_size,
+            secret=secret,
+        )
+
         assert evidence.provenance is Provenance.WIRE, evidence.detail
 
     def test_ccs_text_handle_contract_does_not_require_pixel_secret(self, tmp_path: Path) -> None:

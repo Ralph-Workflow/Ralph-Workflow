@@ -791,6 +791,12 @@ def _check_replay_record(
         tool_name="read_media",
         secret=secret,
         params_digest=replay_digest,
+    ) or wire_evidence_for(
+        workspace_root,
+        run_id,
+        tool_name="read_image",
+        secret=secret,
+        params_digest=replay_digest,
     )
     if replay_record_present:
         return None
