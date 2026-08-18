@@ -46,8 +46,9 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (16, "15"),
-        (32, "31"),
+        (12, "10"),
+        (16, "14"),
+        (32, "30"),
         (64, "32"),
     ),
 )
@@ -56,16 +57,10 @@ def test_auto_worker_count_preserves_one_core_and_caps_at_thirty_two(
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile caps the shard count at ``available_cores - 1``.
+    """Auto profile leaves two cores for the runner and I/O overhead.
 
-    The 32-core CI profile gets 31 shards (one core reserved for the
-    runner process and the per-shard drain / SIGCHLD cleanup loop).
-    The 64-core profile is capped at ``_MAX_PYTEST_WORKERS = 32``.
-    Smaller hosts preserve one core for the runner. The default
-    resolution was tightened from a 12-shard cap (which drove the
-    slowest shard past 60s under host load) to ``available_cores - 1``
-    so the slowest shard fits comfortably under the immutable 60s
-    combined budget.
+    A 12-core host therefore uses ten shards, preserving smoke-suite
+    budget headroom; larger hosts remain bounded by the 32-worker cap.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
@@ -401,11 +396,11 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
 
 
-def test_default_profile_does_not_oversubscribe_dedicated_required_e2e_shard(
+def test_default_profile_dedicated_required_e2e_shard_uses_two_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard serializes its internal lifecycle workers."""
+    """The dedicated E2E shard uses two workers for isolated AGY lifecycles."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     processes = [_FakeShardProcess([0]), _FakeShardProcess([0]), _FakeShardProcess([0])]
     spawner = _StubSpawner(processes)
@@ -428,7 +423,7 @@ def test_default_profile_does_not_oversubscribe_dedicated_required_e2e_shard(
         *EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
     )
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "1"
+    assert dedicated_command[xdist_index + 1] == "2"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 

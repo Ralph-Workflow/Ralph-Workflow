@@ -148,12 +148,13 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 # chain changes.
 _AGY_LIFECYCLE_E2E_FILE = "tests/test_smoke_agy_full_lifecycle_e2e.py"
 _AGY_LIFECYCLE_E2E_WEIGHT_FLOOR = 1000
-# The dedicated required-E2E shard uses one xdist worker. The required AGY
-# lifecycle test starts a CLI, mock agent, and MCP server for each selector;
-# sharing its already dedicated shard with another worker can kill one of those
-# processes under full-suite load and hide a failed result frame. One worker
-# preserves the required coverage without nested process contention.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "1"
+# The dedicated required-E2E shard uses two xdist workers. Each lifecycle
+# owns a per-test ``tmp_path`` and per-bridge reserved MCP port; the AGY
+# file already uses ``_NEGATIVE_SELECTOR_FANOUT = 2``, so these subprocess
+# lifecycles are isolated while the three required files run concurrently.
+# Revert by flipping this constant back to ``"1"`` if nested-process
+# contention surfaces.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "2"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
@@ -254,25 +255,23 @@ def validate_exact_file_assignment(
 def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
-    The auto profile caps the shard count at ``available_cores - 1``,
+    The auto profile caps the shard count at ``available_cores - 2``,
     bounded by ``_MAX_PYTEST_WORKERS = 32``. Explicit overrides are capped
     at ``available_cores - 2``: one core for the parent process (shard
     polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
-    Makefile default ``PYTEST_WORKERS=8`` is tuned for the maintained
+    Makefile auto ``PYTEST_WORKERS`` is tuned for the maintained
     12-core (6P+6E) dev host; on smaller hosts it is capped down so the
-    slowest shard stays well under the verify step timeout even under
-    system load. Empirically, 8 shards on a 12-core host produces a
-    slowest-shard wall clock of 31-50 s (high variance due to 2 shards
-    landing on efficiency cores), while 9 shards pushes the slowest
-    shard to ~60 s (3 on efficiency cores, more contention) and 10
-    shards oversubscribes the host (12 Python processes on 12 cores
-    with zero OS/I/O headroom). The extra reserved core absorbs the
-    background I/O and scheduler overhead that the original 32-core
-    profile did not account for.
+    slowest shard leaves budget headroom for the smoke suites. Direct
+    measurement shows ten shards complete in ~31 seconds, whereas eleven
+    can take ~55 seconds; the two reserved cores absorb runner, I/O, and
+    scheduler overhead.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2
-    auto_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 1))
+    # Keep two cores free on the maintained 12-core host: direct evidence
+    # shows ten shards complete in ~31s while eleven shards consume ~55s,
+    # leaving no dependable headroom for budget-tracked smoke suites.
+    auto_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 2))
     if raw == "auto":
         return str(auto_max)
     try:

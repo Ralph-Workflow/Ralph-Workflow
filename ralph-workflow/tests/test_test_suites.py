@@ -23,6 +23,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
 )
 
 
+def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_two() -> None:
+    """Keep AGY's isolated tmp_path and MCP ports parallel; revert to ``\"1\"`` on contention."""
+    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "2"
+
+
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:
     """The discovery suite enforces the required auto-integrate registry.
 
