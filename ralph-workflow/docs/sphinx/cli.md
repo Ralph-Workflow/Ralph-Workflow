@@ -251,8 +251,9 @@ and successful `result` events. Ralph Workflow therefore accepts
 `agy/<published-id>[:low|medium|high]` aliases. The latest live smoke exited 0
 after creating its requested file and showing parser/tool activity without a
 permission prompt. It wrote a valid fallback `smoke_test_result`; Ralph Workflow
-validated and promoted it, recorded the receipt, and wrote host-owned durable
-completion evidence after AGY missed the MCP completion call. Continuation remains disabled:
+validated and promoted it and recorded the receipt; because AGY missed the MCP
+completion call, completion evidence was absent and the verdict was
+`DEGRADED (absent)` (the host does not synthesize completion evidence). Continuation remains disabled:
 `--continue` and `--conversation` accepted a prompt but did not expose proof
 that they resumed the intended conversation. See `tmp/agy-source-of-truth.txt`
 for verbatim observations before manually running a paid probe.

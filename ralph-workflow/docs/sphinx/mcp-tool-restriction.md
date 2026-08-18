@@ -89,9 +89,10 @@ Reference: https://github.com/openai/codex
 The latest v1.1.8 live smoke exited 0 after AGY created its requested file and
 showed parser/tool activity without a permission prompt. It wrote a valid fallback
 `smoke_test_result`; Ralph Workflow validated and promoted it to the canonical
-artifact at `.agent/artifacts/smoke_test_result.md`, recorded its receipt in
-`.agent/state.db`, and wrote host-owned durable completion evidence because AGY
-missed the MCP completion call. Direct MCP submission and fallback promotion use
+artifact at `.agent/artifacts/smoke_test_result.md` and recorded its receipt in
+`.agent/state.db`; because AGY missed the MCP completion call, completion
+evidence was absent and the verdict was `DEGRADED (absent)` (the host does not
+synthesize completion evidence). Direct MCP submission and fallback promotion use
 the same validation and canonical receipt transaction.
 
 The same fallback-promotion path remains available if an agent cannot call the

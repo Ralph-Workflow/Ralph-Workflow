@@ -192,8 +192,9 @@ The v1.1.8 manual record observed `gemini-3.6-flash-low` acceptance, an explicit
 `step_update`, and successful `result` events. The latest smoke exited 0 after
 creating the requested file and showing plain-text parser/tool activity without
 a permission prompt. AGY wrote a valid fallback artifact; Ralph validated and
-promoted it, recorded the canonical receipt, and wrote host-owned durable
-completion evidence after AGY missed the MCP completion call. The plain-text
+promoted it and recorded the canonical receipt; because AGY missed the MCP
+completion call, completion evidence was absent and the verdict was
+`DEGRADED (absent)` (the host does not synthesize completion evidence). The plain-text
 parser remains the smoke default because it retained file and tool visibility.
 Continuation remains disabled: `--continue` and `--conversation` accepted
 prompts but did not establish that a specific earlier conversation resumed.
