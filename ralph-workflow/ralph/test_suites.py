@@ -148,10 +148,12 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 # chain changes.
 _AGY_LIFECYCLE_E2E_FILE = "tests/test_smoke_agy_full_lifecycle_e2e.py"
 _AGY_LIFECYCLE_E2E_WEIGHT_FLOOR = 1000
-# The dedicated required-E2E shard uses two xdist workers: the subprocess-bound
-# AGY and real-git cases remain concurrent without the 8-worker oversubscription
-# that starves default shards under the immutable 60-second parent deadline.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "2"
+# The dedicated required-E2E shard uses one xdist worker. The required AGY
+# lifecycle test starts a CLI, mock agent, and MCP server for each selector;
+# sharing its already dedicated shard with another worker can kill one of those
+# processes under full-suite load and hide a failed result frame. One worker
+# preserves the required coverage without nested process contention.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "1"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:

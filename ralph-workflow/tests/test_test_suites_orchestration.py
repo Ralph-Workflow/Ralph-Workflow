@@ -405,7 +405,7 @@ def test_default_profile_does_not_oversubscribe_dedicated_required_e2e_shard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses the same plain-pytest topology as its peers."""
+    """The dedicated E2E shard serializes its internal lifecycle workers."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     processes = [_FakeShardProcess([0]), _FakeShardProcess([0]), _FakeShardProcess([0])]
     spawner = _StubSpawner(processes)
@@ -428,7 +428,7 @@ def test_default_profile_does_not_oversubscribe_dedicated_required_e2e_shard(
         *EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
     )
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "2"
+    assert dedicated_command[xdist_index + 1] == "1"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 

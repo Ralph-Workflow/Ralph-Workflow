@@ -184,13 +184,12 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
 # through the same real CLI -> MCP server -> mock AGY subprocess boundary
 # the positive lifecycle test proves.
 
-#: Run selectors serially. Under the default profile this test already runs
-#: inside an eight-worker dedicated E2E shard; nesting three independent CLI +
-#: MCP-server lifecycles caused the server process for a selector to be killed
-#: under host load, letting its fallback transcript mask the failed result.
-#: Serial execution preserves each black-box assertion and makes each selector
-#: own an isolated, live broker lifecycle.
-_NEGATIVE_SELECTOR_FANOUT = 1
+#: The runner gives the dedicated required-E2E shard one xdist worker. Two
+#: independent CLI/MCP lifecycles can therefore overlap without competing with
+#: another in-shard worker, reducing the slowest required shard while retaining
+#: separate workspaces, ports, and per-selector assertions. A larger fan-out
+#: previously killed a selector's server process under host load.
+_NEGATIVE_SELECTOR_FANOUT = 2
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("no_output", ("AGY --print returned empty stdout",)),
