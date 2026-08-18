@@ -397,7 +397,8 @@ def test_claude_headless_model_reference_resolves() -> None:
     assert agent.model_flag == "--model haiku"
 
 
-def test_claude_headless_argv_includes_verbose_for_stream_json() -> None:
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
+def test_claude_headless_argv_includes_verbose_for_stream_json(alias: str) -> None:
     """Headless Claude stream-json output requires --verbose (Claude CLI 2.1+).
 
     The command builder must emit --verbose unconditionally for the
@@ -406,7 +407,7 @@ def test_claude_headless_argv_includes_verbose_for_stream_json() -> None:
     """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
-    agent = registry.get("claude-headless/haiku")
+    agent = registry.get(f"claude-headless/{alias}")
     assert agent is not None
 
     argv = DefaultCommandBuilder().build(
@@ -416,6 +417,27 @@ def test_claude_headless_argv_includes_verbose_for_stream_json() -> None:
     assert "--verbose" in argv
     # --verbose should appear exactly once even when options.verbose is False.
     assert argv.count("--verbose") == 1
+
+
+@pytest.mark.parametrize(
+    ("transport", "prefix"),
+    [
+        (AgentTransport.CLAUDE_INTERACTIVE, "claude"),
+        (AgentTransport.CLAUDE, "claude-headless"),
+    ],
+)
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
+def test_claude_dynamic_alias_preserves_model_field(
+    transport: AgentTransport, prefix: str, alias: str
+) -> None:
+    """S-3 regression: dynamic aliases retain retry-model provenance."""
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get(f"{prefix}/{alias}")
+
+    assert agent is not None
+    assert agent.transport == transport
+    assert agent.model == alias
 
 
 def test_registry_validate_exempts_claude_interactive_output_flag() -> None:
