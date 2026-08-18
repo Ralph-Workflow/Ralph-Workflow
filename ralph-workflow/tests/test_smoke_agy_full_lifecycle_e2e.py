@@ -184,12 +184,13 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
 # through the same real CLI -> MCP server -> mock AGY subprocess boundary
 # the positive lifecycle test proves.
 
-#: Fan-out width for the negative selectors. Three concurrent lifecycles peak
-#: at six short-lived Python processes (CLI + MCP server each), finishing the
-#: seven selectors in ~14 s instead of ~19 s on this host. The value is capped
-#: low enough to avoid starving the per-test SIGALRM cap or corrupting the
-#: PTY transcript under the load of ``make verify``'s file-shard fan-out.
-_NEGATIVE_SELECTOR_FANOUT = 3
+#: Run selectors serially. Under the default profile this test already runs
+#: inside an eight-worker dedicated E2E shard; nesting three independent CLI +
+#: MCP-server lifecycles caused the server process for a selector to be killed
+#: under host load, letting its fallback transcript mask the failed result.
+#: Serial execution preserves each black-box assertion and makes each selector
+#: own an isolated, live broker lifecycle.
+_NEGATIVE_SELECTOR_FANOUT = 1
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("no_output", ("AGY --print returned empty stdout",)),
