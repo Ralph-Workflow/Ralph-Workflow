@@ -51,6 +51,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import ralph.pipeline.plumbing.smoke_plumbing as smoke_plumbing_module
 from ralph.agents import registry as registry_module
 from ralph.cli.commands import smoke as smoke_module
 from ralph.cli.main import app
@@ -247,3 +248,32 @@ def test_cli_help_advertises_ccs_smoke_options() -> None:
     assert "--agent" in output
     assert "--subagents" in output
     assert "--subagent-prompt-file" in output
+
+
+def test_ccs_mm_uses_headless_visible_output_ceiling() -> None:
+    """``ccs/mm`` headless output is graded against the headless ceiling.
+
+    CCS aliases run Claude in headless ``stream-json`` mode
+    (``ccs <alias> --output-format=stream-json --print ...``), which emits
+    one visible line per partial message exactly like ``claude -p``. Before
+    this regression the harness classified the command by its bare ``ccs``
+    name and applied the interactive 80-line ceiling, causing the subagent
+    smoke scenario to fail with ``82 > 80`` even though every contract fact
+    (artifact, completion, tool activity, subagent lifecycle) passed.
+    """
+    config = AgentConfig(
+        cmd="ccs mm --output-format=stream-json --print --include-partial-messages",
+        transport=AgentTransport.CLAUDE,
+    )
+    prefix = smoke_plumbing_module._resolve_visible_output_agent_prefix(config)
+    assert prefix == "claude-headless"
+
+
+def test_ccs_mm_subagent_visible_line_count_does_not_overrun() -> None:
+    """The observed ``ccs/mm`` subagent visible line count fits the headless ceiling."""
+    config = AgentConfig(
+        cmd="ccs mm --output-format=stream-json --print --include-partial-messages",
+        transport=AgentTransport.CLAUDE,
+    )
+    error = smoke_plumbing_module._visible_output_overrun_error(config, 82)
+    assert error is None

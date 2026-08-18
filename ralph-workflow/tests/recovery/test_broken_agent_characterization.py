@@ -66,3 +66,53 @@ def test_broken_agent_regression_live_timer_waits_during_grace_period() -> None:
     check_broken_agent_timer(handle, watchdog, "claude")
 
     assert handle.terminated is False
+
+
+def _watchdog_with_startup_grace(clock: FakeClock, grace_seconds: float) -> IdleWatchdog:
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=grace_seconds,
+        ),
+        clock,
+    )
+    watchdog.record_invocation_start()
+    return watchdog
+
+
+def test_broken_agent_honors_extended_startup_grace() -> None:
+    """A configured no_output_at_start_seconds larger than 12s delays the kill."""
+    clock = FakeClock(start=0.0)
+    handle = _LiveHandle()
+    watchdog = _watchdog_with_startup_grace(clock, 120.0)
+
+    # Well past the historical 12s floor, but still inside the extended grace.
+    clock.advance(35.0)
+    check_broken_agent_timer(handle, watchdog, "claude")
+    assert handle.terminated is False
+
+    # Just past the effective grace (120 - 3 = 117s) should fire.
+    clock.advance(117.0 - 35.0 + 0.1)
+    with pytest.raises(BrokenAgentExitError) as excinfo:
+        check_broken_agent_timer(handle, watchdog, "claude")
+
+    assert handle.terminated is True
+    assert excinfo.value.reason == "no_output"
+    assert excinfo.value.elapsed_seconds is not None
+    assert excinfo.value.elapsed_seconds >= 117.0
+    assert excinfo.value.grace_seconds == pytest.approx(117.0)
+
+
+def test_broken_agent_default_startup_grace_still_fires_at_floor() -> None:
+    """When no_output_at_start_seconds is the default, the 12s floor still fires."""
+    clock = FakeClock(start=0.0)
+    handle = _LiveHandle()
+    watchdog = _watchdog_with_startup_grace(clock, NO_OUTPUT_AT_START_SECONDS)
+    clock.advance(BROKEN_AGENT_OUTPUT_GRACE_SECONDS + 0.1)
+
+    with pytest.raises(BrokenAgentExitError) as excinfo:
+        check_broken_agent_timer(handle, watchdog, "claude")
+
+    assert handle.terminated is True
+    assert excinfo.value.reason == "no_output"
+    assert excinfo.value.grace_seconds == BROKEN_AGENT_OUTPUT_GRACE_SECONDS

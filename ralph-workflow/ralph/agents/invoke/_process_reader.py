@@ -115,6 +115,25 @@ def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
 
 
+def _effective_broken_agent_grace_seconds(watchdog: IdleWatchdog) -> float:
+    """Return the broken-agent grace for this invocation.
+
+    The historical 12-second floor is preserved, but when the operator
+    (or smoke harness) has configured a larger ``no_output_at_start_seconds``
+    startup grace, the broken-agent kill is deferred to just under that
+    value so a slow-initializing agent is not terminated while still
+    loading. When the configured grace is unset, the historical floor
+    remains the default.
+    """
+    configured = watchdog.no_output_at_start_seconds
+    if configured is None:
+        return BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+    # The -3 s margin keeps the broken-agent timer strictly inside the
+    # NO_OUTPUT_AT_START watchdog window so the broken-agent classification
+    # still wins the race for genuinely broken agents.
+    return max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, configured - 3.0)
+
+
 def check_broken_agent_timer(
     handle: ManagedProcess | ManagedPtyProcess,
     watchdog: IdleWatchdog,
@@ -122,6 +141,7 @@ def check_broken_agent_timer(
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
     """Fail over promptly when a silent agent exits, or after a live-startup grace window."""
+    grace_seconds = _effective_broken_agent_grace_seconds(watchdog)
     elapsed_seconds = watchdog.invocation_elapsed_seconds
     try:
         process_alive = handle.poll() is None
@@ -142,9 +162,9 @@ def check_broken_agent_timer(
             agent_name,
             reason="no_output",
             elapsed_seconds=elapsed_seconds,
-            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+            grace_seconds=grace_seconds,
         )
-    if elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS or evidence.has_meaningful_output:
+    if elapsed_seconds < grace_seconds or evidence.has_meaningful_output:
         return
     if not watchdog.observed_output_is_structurally_small():
         # Substantial observed output without a meaningful-LLM classification
@@ -165,7 +185,7 @@ def check_broken_agent_timer(
         agent_name,
         reason="no_llm_activity" if watchdog.has_any_output() else "no_output",
         elapsed_seconds=elapsed_seconds,
-        grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+        grace_seconds=grace_seconds,
     )
 
 

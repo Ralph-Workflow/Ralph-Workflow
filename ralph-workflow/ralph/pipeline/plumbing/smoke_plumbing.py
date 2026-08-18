@@ -2081,11 +2081,20 @@ def _resolve_visible_output_agent_prefix(config: AgentConfig) -> str:
     ceiling is keyed on the bare command name and short option that names
     the transport, so a ``claude -p`` invocation falls under the same
     ``claude-headless`` bucket as a plain ``claude-headless`` binary.
+
+    CCS aliases (``ccs/<alias>``) are wrappers around the same headless
+    Claude wire transport: the resolved command is
+    ``ccs <alias> --output-format=stream-json --print ...``. The
+    ``--output-format=stream-json`` flag is the invariant that puts the
+    run in the headless stream bucket, so any command carrying it is
+    classified as ``claude-headless`` for the visible-output ceiling.
     """
     cmd_tokens = (config.cmd or "").split() if config.cmd else []
     cmd_name = cmd_tokens[0].lower() if cmd_tokens else ""
     cmd_flags = set(cmd_tokens[1:])
-    is_headless_claude = cmd_name == "claude" and "-p" in cmd_flags
+    is_headless_claude = (
+        cmd_name == "claude" and "-p" in cmd_flags
+    ) or "--output-format=stream-json" in cmd_flags
     return "claude-headless" if is_headless_claude else cmd_name
 
 

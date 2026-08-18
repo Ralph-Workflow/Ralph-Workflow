@@ -803,6 +803,17 @@ class IdleWatchdog:
             return 0.0
         return self._clock.monotonic() - self._invocation_started_at
 
+    @property
+    def no_output_at_start_seconds(self) -> float | None:
+        """Configured startup grace for the NO_OUTPUT_AT_START watchdog reason.
+
+        The broken-agent timer in the process reader reads this live policy
+        value so a deliberately extended startup grace (e.g. for slow-
+        initializing interactive Claude) can delay the fast broken-agent
+        kill while the historical floor remains the default.
+        """
+        return self._config.no_output_at_start_seconds
+
     def circumstantial_evidence(self) -> CircumstantialEvidence:
         """Return an independent snapshot of the current silent-agent evidence."""
         return CircumstantialEvidence(
