@@ -570,6 +570,7 @@ class TestPromptRequirements:
         assert "read_media" in prompt
         assert "read_image" in prompt
         assert "ralph://media" in prompt
+        assert 'format="inline"' in prompt
         assert "params_digest" in prompt or "second, fresh tool call" in prompt
 
     def test_config_toml_pins_inline_cap(self) -> None:
