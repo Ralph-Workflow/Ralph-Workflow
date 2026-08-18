@@ -488,6 +488,14 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Pins the interactive Claude session-text classification vocabulary
+        # and its PTY exemption before the two budget-tracked smoke steps.
+        "canonical session text audit (audit_canonical_session_text)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_canonical_session_text"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # Criterion 5 multimodal proof: drive the deterministic multimodal
         # stub agent across all six harness identities (claude /
         # claude-headless / agy / nanocoder / cursor / opencode) and

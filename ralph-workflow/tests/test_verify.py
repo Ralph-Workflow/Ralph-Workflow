@@ -294,6 +294,15 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="workspace resource inventory audit: OK\n",
         ),
+        (
+            "uv",
+            ("run", "python", "-m", "ralph.testing.audit_canonical_session_text"),
+        ): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_canonical_session_text"),
+            returncode=0,
+            stdout="canonical session text audit: OK\n",
+        ),
         ("make", ("test-multimodal-smoke",)): _result(
             command="make",
             args=("test-multimodal-smoke",),
@@ -359,6 +368,7 @@ def test_main_runs_all_verify_steps_when_successful(
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
         ("make", ("test-multimodal-smoke",)),
         ("make", ("test-visual-smoke",)),
     ]
@@ -395,6 +405,12 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[25][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[26][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    multimodal_timeout = runner.calls[33][3]
+    assert multimodal_timeout is not None
+    assert multimodal_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
+        abs(multimodal_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001
+    )
     # The last step is ``make test-visual-smoke`` and is budget-tracked.
     # The actual timeout passed to the runner is
     # ``min(step_timeout, remaining_budget)`` so floating-point

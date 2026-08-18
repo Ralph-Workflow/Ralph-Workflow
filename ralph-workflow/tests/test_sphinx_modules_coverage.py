@@ -98,6 +98,7 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_lint_bypass": "test infrastructure, not public API",
     "testing.audit_typecheck_bypass": "test infrastructure, not public API",
     "testing.audit_mcp_timeout": "test infrastructure, not public API",
+    "testing.audit_canonical_session_text": "test infrastructure, not public API",
     "testing.audit_activity_aware_watchdog": "test infrastructure, not public API",
     "testing.audit_agent_registry_sync": "test infrastructure, not public API",
     "testing.audit_agent_module_state": "test infrastructure, not public API",

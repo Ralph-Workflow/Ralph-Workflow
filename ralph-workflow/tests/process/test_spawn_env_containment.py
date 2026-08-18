@@ -37,6 +37,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
             "ralph/testing/audit_agent_registry_sync.py",
             "ralph/testing/audit_artifact_submission_canonical_path.py",
             "ralph/testing/audit_cast_policy.py",
+            "ralph/testing/audit_canonical_session_text.py",
             "ralph/testing/audit_di_seam.py",
             "ralph/testing/audit_fenced_artifact_examples.py",
             "ralph/testing/audit_filesystem_polling_invocation.py",
