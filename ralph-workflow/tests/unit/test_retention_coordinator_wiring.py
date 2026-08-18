@@ -61,7 +61,9 @@ def test_concurrent_sweeps_coalesce_into_one_pass(tmp_path: Path) -> None:
         barrier_passes.append(removed)
         return removed
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    # Every barrier participant needs a worker; fewer workers deadlock before
+    # the queued calls can reach the coordinator's shared acquisition wave.
+    with ThreadPoolExecutor(max_workers=_SENTINEL_COUNT) as executor:
         futures = [executor.submit(_sweep) for _ in range(_SENTINEL_COUNT)]
         results = [future.result() for future in futures]
 
