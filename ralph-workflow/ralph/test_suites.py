@@ -79,6 +79,10 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # shard's work (more files per shard) and is therefore a budget-pressure
 # change, not a budget-relief change.
 _MAX_PYTEST_WORKERS = 32
+_HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
+# The maintained 12-core host has eight useful pytest slots once the AGY
+# lifecycle shard's nested CLI/MCP subprocesses are accounted for.
+_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
 # 24-shard fan-out already uses one pytest process per shard and adding
@@ -271,7 +275,12 @@ def _pytest_workers() -> str:
     # Keep two cores free on the maintained 12-core host: direct evidence
     # shows ten shards complete in ~31s while eleven shards consume ~55s,
     # leaving no dependable headroom for budget-tracked smoke suites.
-    auto_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 2))
+    worker_cap = (
+        _PERFORMANCE_CORE_PYTEST_WORKER_CAP
+        if available_cores <= _HETEROGENEOUS_CORE_HOST_MAX_CORES
+        else _MAX_PYTEST_WORKERS
+    )
+    auto_max = max(1, min(worker_cap, available_cores - 2))
     if raw == "auto":
         return str(auto_max)
     try:

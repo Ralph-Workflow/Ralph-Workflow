@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.config.enums import AgentTransport
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _AGENT_SESSION_CEILINGS,
     _SMOKE_IDLE_TIMEOUT_SECONDS,
@@ -62,6 +63,18 @@ def test_agy_prompt_allows_validated_fallback_when_submit_tool_is_unavailable() 
     assert "If the submission tool is unavailable" in prompt_text
     assert ".agent/tmp/smoke_test_result.md" in prompt_text
     assert "Do not write the canonical artifact directly" in prompt_text
+
+
+def test_agy_prompt_requires_workspace_relative_dispatcher_write_paths() -> None:
+    """AGY must not send an absolute output path through the workspace MCP tool."""
+    prompt_text = _build_smoke_prompt(
+        "tmp/interactive-agy-smoke/todo-list.js",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
+        transport=AgentTransport.AGY,
+    )
+
+    assert "workspace-relative path" in prompt_text
+    assert "never an absolute path" in prompt_text
 
 
 def test_smoke_invariants_hold() -> None:

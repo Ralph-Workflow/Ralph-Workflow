@@ -970,6 +970,9 @@ def _build_smoke_prompt(
         "- Keep it tiny: one file only.\n"
         "- Export a small in-memory todo list API.\n"
         "- Do not touch files outside tmp/.\n"
+        "- For any Ralph workspace write tool, pass the requested workspace-relative path "
+        "exactly (for example `tmp/interactive-agy-smoke/todo-list.js`), never an "
+        "absolute path.\n"
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
         f"{transport_requirement}"
@@ -1530,7 +1533,7 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
     ledger_path.unlink(missing_ok=True)
 
 
-def _mock_negative_selector() -> str | None:
+def _mock_negative_selector(env_getter: EnvGetter | None = None) -> str | None:
     """Return the v1.1.13 negative selector active for this mock run, if any.
 
     Composition-root env read: the smoke harness IS the composition root for
@@ -1539,7 +1542,8 @@ def _mock_negative_selector() -> str | None:
     """
     if not is_mock_agy_override():
         return None
-    selector = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")  # di-seam-allowlist: composition-root test infrastructure
+    getter = env_getter if env_getter is not None else os.getenv
+    selector = getter("MOCK_AGY_BEHAVIOR") or "normal"
     if selector in {"missing_artifact", "missing_completion"}:
         return selector
     return None
@@ -1734,7 +1738,12 @@ def is_mock_agy_override() -> bool:
     return basename.startswith("mock_agy") or basename == "mock_agy"
 
 
-def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | None:
+def _agy_upstream_diagnostic(
+    lines: list[str],
+    workspace_root: Path,
+    *,
+    env_getter: EnvGetter | None = None,
+) -> str | None:
     """Return an actionable diagnostic when AGY --print produced no usable output.
 
     AGY's headless --print mode is known to exit 0 with empty stdout when the
@@ -1758,7 +1767,8 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
     if read_smoke_test_result_artifact(workspace_root) is not None:
         return None
     if is_mock_agy_override():
-        behavior = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")  # di-seam-allowlist: composition-root test infrastructure
+        getter = env_getter if env_getter is not None else os.getenv
+        behavior = getter("MOCK_AGY_BEHAVIOR") or "normal"
         if behavior in {"no_output", "malformed_stream"}:
             return (
                 "AGY --print returned empty stdout; "
