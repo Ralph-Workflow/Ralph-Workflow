@@ -364,7 +364,9 @@ def _build_workspace_media_metadata(
     # so the resource_handle in the metadata envelope is replayable.
     # Inline-image deliveries never persist an artifact.
     resource_handle: str | None = None
-    if verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY and modality != "image":
+    if (
+        verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY and modality != "image"
+    ) or profile.identity.provider == "ccs":
         manifest = _get_media_manifest(session)
         if manifest is not None:
             source_path = normalized or path
@@ -468,22 +470,7 @@ def handle_read_image(
         )
 
     if format_value == "metadata":
-        from pathlib import Path
-
-        abs_path = workspace.absolute_path(normalized or path)
-        try:
-            raw_bytes = DEFAULT_FILE_BACKEND.read_bytes(Path(abs_path))
-        except OSError as exc:
-            return ToolResult(
-                content=[ToolContent.text_content(f"Failed to read media file '{path}': {exc}")],
-                is_error=True,
-            )
-        return _build_image_metadata_envelope(
-            path=path,
-            mime_type=mime_type,
-            raw_bytes=raw_bytes,
-            max_inline_bytes=max_inline_bytes,
-        )
+        return _build_workspace_media_metadata(session, workspace, path, max_inline_bytes)
 
     return _handle_workspace_media(session, workspace, path, max_inline_bytes)
 

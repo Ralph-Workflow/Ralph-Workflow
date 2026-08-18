@@ -321,6 +321,8 @@ def multimodal_prompt_requirements(fixture_relpath: str) -> str:
 def read_media_registry_for_fixture(
     workspace_root: Path,
     fixture_relpath: str,
+    *,
+    expected_uri: str | None = None,
 ) -> dict[str, str] | None:
     """Return the registry entry the server persisted for ``fixture_relpath``.
 
@@ -341,22 +343,27 @@ def read_media_registry_for_fixture(
     data: object = json.loads(registry_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return None
-    artifacts_obj = data.get("artifacts")
+    artifacts_obj: object = data.get("artifacts")
     if not isinstance(artifacts_obj, list):
         return None
-    for entry in artifacts_obj:
+    artifacts: list[object] = artifacts_obj
+    for entry in reversed(artifacts):
         if not isinstance(entry, dict):
             continue
         entry_source: object = entry.get("source_path")
-        if entry_source == fixture_relpath:
-            coerced: dict[str, str] = {}
-            for key in entry:
-                value = entry[key]
-                if isinstance(value, str):
-                    coerced[str(key)] = value
-                elif isinstance(value, bool | int):
-                    coerced[str(key)] = str(value)
-            return coerced if coerced else None
+        entry_uri: object = entry.get("uri")
+        if entry_source != fixture_relpath:
+            continue
+        if expected_uri is not None and entry_uri != expected_uri:
+            continue
+        coerced: dict[str, str] = {}
+        for key in entry:
+            value = entry[key]
+            if isinstance(value, str):
+                coerced[str(key)] = value
+            elif isinstance(value, bool | int):
+                coerced[str(key)] = str(value)
+        return coerced if coerced else None
     return None
 
 
@@ -432,8 +439,23 @@ def _check_registry_entry(
     server-minted URI to use in the next stage), or a downgrade
     ``Evidence`` on failure.
     """
-    registry_entry = read_media_registry_for_fixture(workspace_root, fixture_relpath)
+    registry_entry = read_media_registry_for_fixture(
+        workspace_root,
+        fixture_relpath,
+        expected_uri=receipt_token,
+    )
     if registry_entry is None:
+        persisted_entry = read_media_registry_for_fixture(workspace_root, fixture_relpath)
+        if persisted_entry is not None:
+            server_uri = persisted_entry.get("uri", "")
+            return Evidence(
+                holds=False,
+                provenance=Provenance.WORKSPACE_EFFECT,
+                detail=(
+                    f"MEDIA_RECEIPT={receipt_token!r} does not match the server-persisted "
+                    f"uri {server_uri!r} for {fixture_relpath} -- the agent fabricated the receipt"
+                ),
+            )
         return Evidence(
             holds=False,
             provenance=Provenance.WORKSPACE_EFFECT,
@@ -481,6 +503,7 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
     secret: str | None,
     expected_perception_secret: str | None = None,
     expected_delivery_mode: str | None = None,
+    require_perception_secret: bool = True,
 ) -> Evidence:
     """Grade the multimodal "agent actually used the media endpoint" fact.
 
@@ -547,20 +570,20 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
     if geometry is not None:
         return geometry
 
-    if expected_perception_secret is None:
-        try:
-            expected_perception_secret = extract_perception_secret_from_fixture(
-                (workspace_root / fixture_relpath).read_bytes()
+    if require_perception_secret:
+        if expected_perception_secret is None:
+            try:
+                expected_perception_secret = extract_perception_secret_from_fixture(
+                    (workspace_root / fixture_relpath).read_bytes()
+                )
+            except OSError:
+                expected_perception_secret = None
+        if expected_perception_secret is None:
+            return Evidence(
+                holds=False,
+                provenance=Provenance.WORKSPACE_EFFECT,
+                detail="fixture has no readable pixel-only PERCEPTION_SECRET",
             )
-        except OSError:
-            expected_perception_secret = None
-    if expected_perception_secret is None:
-        return Evidence(
-            holds=False,
-            provenance=Provenance.WORKSPACE_EFFECT,
-            detail="fixture has no readable pixel-only PERCEPTION_SECRET",
-        )
-    if expected_perception_secret is not None:
         secret_check = _check_perception_secret_token(
             output_file, expected_perception_secret
         )
@@ -581,7 +604,7 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
             + (
                 " + PERCEPTION_SECRET=<hex> token carried by the agent"
                 " + delivery_mode perceptible (inline_image/typed_block)"
-                if expected_perception_secret is not None
+                if require_perception_secret
                 else ""
             )
         ),

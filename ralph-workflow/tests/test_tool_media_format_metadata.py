@@ -105,6 +105,46 @@ class TestReadImageMetadata:
         assert result.is_error is False
         assert any(isinstance(c, ImageContent) for c in result.content)
 
+    def test_ccs_read_image_above_inline_cap_returns_text_replay_handle(
+        self, tmp_path: Path
+    ) -> None:
+        """CCS receives a schema-valid text handle for a non-inline image."""
+        _write_png(tmp_path)
+        ws = FsWorkspace(tmp_path)
+
+        result = handle_read_image(
+            MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="ccs"),
+            ),
+            ws,
+            {"path": "tiny.png"},
+            max_inline_bytes=1,
+        )
+
+        assert result.is_error is False
+        assert len(result.content) == 1
+        assert result.content[0].type == "text"
+        assert result.content[0].text.startswith("Replay handle: ralph://media/")
+
+    def test_ccs_metadata_registers_a_replay_handle(self, tmp_path: Path) -> None:
+        """CCS metadata must provide the handle required by the smoke replay hop."""
+        _write_png(tmp_path)
+        result = handle_read_image(
+            MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="ccs"),
+            ),
+            FsWorkspace(tmp_path),
+            {"path": "tiny.png", "format": "metadata"},
+            max_inline_bytes=1,
+        )
+
+        envelope = json.loads(result.content[0].text)
+
+        assert envelope["resource_handle"].startswith("ralph://media/")
+        assert envelope["inline_only"] is False
+
     def test_read_image_metadata_invalid_format_raises(self, tmp_path: Path) -> None:
         _write_png(tmp_path)
         ws = FsWorkspace(tmp_path)

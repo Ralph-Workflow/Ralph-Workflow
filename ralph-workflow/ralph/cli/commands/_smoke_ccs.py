@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.display.context import DisplayContext
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pro_support.hooks import ProPipelineHooks
 
 __all__ = ["smoke_interactive_ccs_command"]

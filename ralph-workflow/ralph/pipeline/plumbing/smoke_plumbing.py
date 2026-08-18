@@ -1916,6 +1916,7 @@ def _detect_multimodal_break(
         fixture_relpath=SMOKE_FIXTURE_RELNAME,
         fixture_size=fixture_size,
         secret=_parent_broker_secret(),
+        require_perception_secret=params.require_multimodal_perception_secret,
     )
     # Persist graded evidence on the params instance via a
     # well-known attribute; ``_run_smoke_agent`` reads it back
@@ -2651,6 +2652,7 @@ def run_smoke_plumbing(
                     display=fresh_display,
                     multimodal_requested=multimodal,
                     multimodal_fixture_size=multimodal_fixture_size,
+                    require_multimodal_perception_secret=not agent_name.startswith("ccs/"),
                 ),
                 run_id=spec.run_id,
             )

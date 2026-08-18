@@ -181,6 +181,43 @@ class TestMediaRegistryLookup:
     def test_returns_none_when_registry_missing(self, tmp_path: Path) -> None:
         assert read_media_registry_for_fixture(tmp_path, SMOKE_FIXTURE_RELNAME) is None
 
+    def test_returns_most_recent_entry_when_fixture_has_prior_runs(self, tmp_path: Path) -> None:
+        """The smoke grader must use the current run's persisted fixture handle."""
+        registry_dir = tmp_path / ".agent/tmp"
+        registry_dir.mkdir(parents=True)
+        registry_path = tmp_path / ".agent/tmp/media_registry.json"
+        registry_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "2",
+                    "artifacts": [
+                        {
+                            "artifact_id": "prior-run",
+                            "uri": "ralph://media/prior-run",
+                            "mime_type": "image/png",
+                            "title": "smoke-fixture.png",
+                            "modality": "image",
+                            "source_path": SMOKE_FIXTURE_RELNAME,
+                        },
+                        {
+                            "artifact_id": "current-run",
+                            "uri": "ralph://media/current-run",
+                            "mime_type": "image/png",
+                            "title": "smoke-fixture.png",
+                            "modality": "image",
+                            "source_path": SMOKE_FIXTURE_RELNAME,
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        entry = read_media_registry_for_fixture(tmp_path, SMOKE_FIXTURE_RELNAME)
+
+        assert entry is not None
+        assert entry["uri"] == "ralph://media/current-run"
+
     def test_returns_entry_when_present(self, tmp_path: Path) -> None:
         registry_dir = tmp_path / ".agent/tmp"
         registry_dir.mkdir(parents=True)
@@ -321,6 +358,33 @@ class TestGradeMultimodalEvidence:
             secret=secret,
         )
         assert evidence.holds is True
+        assert evidence.provenance is Provenance.WIRE, evidence.detail
+
+    def test_ccs_text_handle_contract_does_not_require_pixel_secret(self, tmp_path: Path) -> None:
+        """CCS's schema-safe text handle still proves replay and metadata use."""
+        fixture_size = (40, 24)
+        output_file, secret = self._setup_full_wire_run(
+            tmp_path,
+            fixture_relpath=SMOKE_FIXTURE_RELNAME,
+            fixture_size=fixture_size,
+        )
+        output_file.write_text(
+            output_file.read_text(encoding="utf-8").replace(
+                "PERCEPTION_SECRET=abababababababababababababababab\\n", ""
+            ),
+            encoding="utf-8",
+        )
+
+        evidence = grade_multimodal_evidence(
+            tmp_path,
+            "interactive-claude-smoke",
+            output_file=output_file,
+            fixture_relpath=SMOKE_FIXTURE_RELNAME,
+            fixture_size=fixture_size,
+            secret=secret,
+            require_perception_secret=False,
+        )
+
         assert evidence.provenance is Provenance.WIRE, evidence.detail
 
     def test_full_contract_without_pixel_secret_does_not_grade_wire(self, tmp_path: Path) -> None:

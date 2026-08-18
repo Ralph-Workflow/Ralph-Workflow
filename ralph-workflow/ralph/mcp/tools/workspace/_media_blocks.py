@@ -582,6 +582,11 @@ def _handle_workspace_media(
             "identity_key": identity_key,
         },
     )
+    if profile.identity.provider == "ccs":
+        return ToolResult(
+            content=[ToolContent.text_content(f"Replay handle: {entry.uri}")],
+            is_error=False,
+        )
     if warning_content:
         return ToolResult(content=[*warning_content, block], is_error=False)
     return ToolResult(content=[block], is_error=False)

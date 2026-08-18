@@ -49,6 +49,10 @@ class SmokeRunParams:
     #: so the operator report and the run's evidence row can cite the
     #: same geometry the grader recomputes the sha256 over.
     multimodal_fixture_size: tuple[int, int] | None = None
+    #: CCS receives text replay handles rather than image bytes, so its
+    #: smoke contract proves handle replay and metadata without requiring
+    #: pixel-only perception evidence.
+    require_multimodal_perception_secret: bool = True
     #: Optional fresh ``ParallelDisplay`` instance the smoke plumbing owns
     #: for the duration of the run. When set, the per-instance
     #: :class:`CapabilityObservationRecorder` is snapshotted between
