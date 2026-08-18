@@ -401,6 +401,37 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
 
 
+def test_default_profile_does_not_oversubscribe_dedicated_required_e2e_shard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dedicated E2E shard uses the same plain-pytest topology as its peers."""
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    processes = [_FakeShardProcess([0]), _FakeShardProcess([0]), _FakeShardProcess([0])]
+    spawner = _StubSpawner(processes)
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        spawner=spawner,
+        file_discoverer=lambda _cwd: (
+            *EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+            "tests/test_alpha.py",
+            "tests/test_bravo.py",
+        ),
+        file_weigher=lambda _cwd, _path: 1,
+        wait=lambda _seconds: None,
+    )
+
+    assert exit_code == 0
+    dedicated_command = spawner.calls[-1][0]
+    assert dedicated_command[3 : dedicated_command.index("-q")] == (
+        *EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    )
+    xdist_index = dedicated_command.index("-n")
+    assert dedicated_command[xdist_index + 1] == "2"
+    assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
+
+
 def test_run_test_suites_terminates_and_reaps_siblings_on_first_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
