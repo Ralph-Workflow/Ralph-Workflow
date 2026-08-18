@@ -163,7 +163,7 @@ json_parser = "generic"
 - **Transport**: `claude`
 - **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode bypassPermissions`, `--verbose`, and `--resume {}`
 - **Constraint**: CCS aliases are explicitly headless Claude commands configured under `[ccs_aliases]`. `ccs/<alias>` also resolves as a dynamic alias (like `claude/<model>`) even with no `[ccs_aliases]` entry at all.
-- **Smoke test**: `ralph smoke-interactive-ccs --agent ccs/mm` (the live v8.9.0 verification target; the command defaults to `ccs/glm`).
+- **Smoke test**: `ralph smoke-interactive-ccs --agent ccs/<alias>` (the requested target is `ccs/mm`; when unspecified it defaults to `ccs/glm`).
 - **Caveats** (measured against the live CCS v8.9.0 CLI):
     - `--permission-mode auto` is a valid `claude` flag value but is rejected by
       `ccs`'s own pre-flight validator (`Invalid permission mode: "auto". Valid
@@ -191,17 +191,19 @@ json_parser = "generic"
       confirmed via `ccs env <alias>`) and never need `ANTHROPIC_API_KEY` in
       Ralph Workflow's own environment. `ccs/<alias>` commands are now
       exempt from that preflight check.
-    - The session-resume flow (`--resume {}`) requires the transport's
-      `session_id` to survive the PTY line capture. A live `ccs/glm` run
-      that otherwise passed every WIRE-level evidence check (file created,
-      15 parsed events, tool activity, artifact submitted, completion
-      observed) still reported "session ID was not observed" -- the `claude`
-      transport's session-id extraction did not recover the id from CCS's
-      PTY-interleaved stdout/stderr in that run, even though the id is
-      present and independently extractable from the same raw `init` frame
-      captured outside the PTY. This narrows retries/resume for
-      `ccs/<alias>` without blocking a single-turn run; it is tracked as a
-      follow-up, not fixed by this change.
+    - Session identification: CCS aliases wrap headless Claude but the wrapper
+      hides the session-id banner from the PTY capture, so Ralph Workflow
+      declares `session_identifier_observable=False` for every `ccs/<alias>`.
+      The smoke harness therefore no longer requires an observable session
+      ID for `ccs/mm` or any other CCS alias; single-turn runs pass without
+      retries/resume. The `--resume {}` flag is still emitted, but session
+      continuation remains best-effort for this transport.
+    - Visible-output ceiling: because the resolved command carries
+      `--output-format=stream-json`, `ccs/<alias>` is classified as
+      `claude-headless` for the smoke harness's visible-output limit. This
+      gives `ccs/mm` the same 250-line ceiling as built-in headless Claude
+      rather than the 80-line interactive ceiling, so subagent runs are not
+      spuriously failed on output volume.
 
 ### Built-in configuration examples
 

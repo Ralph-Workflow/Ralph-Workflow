@@ -16,6 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
@@ -235,23 +237,25 @@ def test_render_success_artifact_names_raw_log_corruption(tmp_path: Path) -> Non
     assert "NUL-byte run" in outcome, outcome
 
 
-def _write_clean_claude_session_raw_log(workspace_root: Path) -> None:
+def _write_clean_claude_session_raw_log(workspace_root: Path, alias: str) -> None:
     """Write a raw log containing only canonical Claude session metadata."""
     raw_path = workspace_root / ".agent" / "raw" / "claude.log"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
         b'{"event":"init","tools":["call_mcp_tool"]}\n'
-        b"Session ID: pty-claude-haiku-abc123\n"
-        b"Resume this session with --resume pty-claude-haiku-resume-789\n"
+        + f"Session ID: pty-claude-{alias}-abc123\n".encode()
+        + f"Resume this session with --resume pty-claude-{alias}-resume-789\n".encode()
     )
 
 
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
 def test_render_phase_failure_report_keeps_missing_artifact_without_corruption_diagnosis(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
+    alias: str,
 ) -> None:
-    """A missing artifact with clean session metadata is not corruption."""
-    _write_clean_claude_session_raw_log(tmp_path)
+    """S-6: every interactive Claude alias accepts canonical session metadata."""
+    _write_clean_claude_session_raw_log(tmp_path, alias)
 
     required_artifact = RequiredArtifact(
         phase="plan",
@@ -283,7 +287,7 @@ def test_render_phase_failure_report_keeps_missing_artifact_without_corruption_d
     monkeypatch.setattr(phase_agent_handler_module, "_emit_via_display", _fake_emit_via_display)
 
     effect = InvokeAgentEffect(
-        agent_name="claude/haiku",
+        agent_name=f"claude/{alias}",
         phase="plan",
         prompt_file="planning_prompt.md",
         drain="plan",
@@ -294,7 +298,7 @@ def test_render_phase_failure_report_keeps_missing_artifact_without_corruption_d
 
     unified_config = UnifiedConfig(
         general=GeneralConfig(),
-        agents={"claude/haiku": _claude_interactive_config()},
+        agents={f"claude/{alias}": _claude_interactive_config()},
     )
 
     phase_agent_handler_module.render_phase_failure_report(
@@ -318,7 +322,7 @@ def test_render_success_artifact_omits_corruption_with_clean_session_metadata(
     tmp_path: Path,
 ) -> None:
     """The PASS/DEGRADED path is free of corruption text for a clean session log."""
-    _write_clean_claude_session_raw_log(tmp_path)
+    _write_clean_claude_session_raw_log(tmp_path, "haiku")
 
     required_artifact = RequiredArtifact(
         phase="plan",

@@ -602,7 +602,7 @@ def test_ansi_wrapped_non_canonical_session_line_is_still_a_break(
 def test_interactive_pty_transport_skips_non_jsonl_for_visible_tool_output(
     isolated_workspace: Path,
 ) -> None:
-    """Interactive Claude PTY output is human-visible text, not JSONL.
+    """S-6: interactive Claude PTY output is human-visible text, not JSONL.
 
     The live ``claude/haiku`` smoke capture includes rendered MCP tool
     status lines, file contents emitted by ``write_file``, and source code

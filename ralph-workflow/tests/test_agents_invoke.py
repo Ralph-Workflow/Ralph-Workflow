@@ -536,6 +536,52 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
 
 # === consolidated from test_agents_invoke_1.py ===
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
+    """Official headless ``claude`` emits stream-json flags exactly once.
+
+    The official Claude Code CLI requires ``--verbose`` when
+    ``--output-format=stream-json`` is used; the builder must add it
+    automatically and only once. Third-party wrappers such as ``ccs`` keep
+    their original argv order and are covered separately.
+    """
+    config = AgentConfig(
+        cmd="claude",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        verbose_flag="--verbose",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = build_command(
+        config,
+        "PROMPT.md",
+        options=BuildCommandOptions(
+            model_flag="--model claude-sonnet-4",
+            session_id="abc123",
+            verbose=True,
+        ),
+    )
+
+    assert cmd == [
+        "claude",
+        "--output-format=stream-json",
+        "--verbose",
+        "--print",
+        "--include-partial-messages",
+        "--resume",
+        "abc123",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-sonnet-4",
+        "PROMPT.md",
+    ]
+
+
+def test_build_command_ccs_wrapper_keeps_original_argv_order() -> None:
+    """``ccs`` wrappers are not promoted to the official-claude flag order."""
     config = AgentConfig(
         cmd="ccs work",
         output_flag="--output-format=stream-json",

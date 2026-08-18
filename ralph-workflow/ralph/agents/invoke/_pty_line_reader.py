@@ -141,6 +141,15 @@ _NANOCODER_TERMINAL_CONFIG_ERROR_PATTERNS = (
     re.compile(r"\bModel\s+'[^']+'\s+not found in agents\.config\.json\b", re.IGNORECASE),
 )
 
+#: Default seconds to wait for an interactive agent to exit naturally after
+#: ``/exit`` before escalating to SIGTERM. Mirrors the process manager's
+#: default grace period so the bounded teardown contract is consistent.
+_DEFAULT_INTERACTIVE_EXIT_GRACE_SECONDS: float = 2.0
+
+#: Hard ceiling on the natural-exit wait so a wedged child cannot stall the
+#: completion evidence thread indefinitely.
+_MAX_INTERACTIVE_EXIT_GRACE_SECONDS: float = 5.0
+
 
 def _terminal_interactive_startup_error(agent_name: str, line: str) -> str | None:
     """Return a terminal startup/configuration error visible in PTY output."""
@@ -985,10 +994,36 @@ class PtyLineReader:
             self._lines_event.set()
         with contextlib.suppress(OSError):
             _write_pty_input(self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock)
+        # A completed interactive session should exit on its own after
+        # ``/exit``. Wait within the existing bounded grace contract before
+        # escalating to SIGTERM/SIGKILL so a normal completion does not
+        # trigger "survived graceful terminate, escalating to force kill".
+        self._terminate_if_still_alive_after_grace()
+
+    def _terminate_if_still_alive_after_grace(self) -> None:
+        """Wait for natural post-``/exit`` exit, then escalate only if needed."""
+        policy = self._policy
+        grace = (
+            policy.parent_exit_grace_seconds
+            if policy is not None
+            else _DEFAULT_INTERACTIVE_EXIT_GRACE_SECONDS
+        )
+        # Cap the natural-exit wait so a wedged child cannot stall the
+        # completion evidence thread indefinitely.
+        grace = min(grace, _MAX_INTERACTIVE_EXIT_GRACE_SECONDS)
+        with contextlib.suppress(
+            AttributeError, OSError, ProcessLookupError, RuntimeError, TimeoutError
+        ):
+            self._handle.wait(timeout=grace)
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
-            self._handle.terminate(grace_period_s=0.5)
-            pid = self._handle.pid
-            teardown_subtree(pid)
+            if self._handle.poll() is None:
+                self._handle.terminate(grace_period_s=0.5)
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if pid is not None:
+            with contextlib.suppress(Exception):
+                teardown_subtree(pid)
 
     def _completion_evidence_thread(self) -> None:
         if self._workspace_path is None or self._completion_run_id is None:
