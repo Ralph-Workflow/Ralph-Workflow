@@ -235,177 +235,23 @@ def test_render_success_artifact_names_raw_log_corruption(tmp_path: Path) -> Non
     assert "NUL-byte run" in outcome, outcome
 
 
-def test_render_phase_failure_report_omits_corruption_for_valid_claude_transcript(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """A valid Claude interactive raw transcript must not be diagnosed as corrupted.
-
-    The reported failure combined ``FAILED (no artifact)`` with
-    ``raw transcript corrupted`` because the ``Session ID:`` line was
-    graded NON_JSONL. With a clean raw capture the verdict must stay
-    ``FAILED (no artifact)`` without any corruption text.
-    """
-    _write_valid_claude_raw_log(tmp_path)
-
-    required_artifact = RequiredArtifact(
-        phase="plan",
-        artifact_type="plan",
-        artifact_path=".agent/artifacts/plan.md",
-        markdown_path=None,
-        normalizer=None,
-        artifact_required=True,
-    )
-
-    class _StubPolicyBundle:
-        pipeline = object()
-        artifacts = object()
-
-    captured: list[tuple[str, tuple[object, ...]]] = []
-
-    def _fake_emit_via_display(
-        ctx: object, method_name: str, *args: object, **kwargs: object
-    ) -> bool:
-        del ctx, kwargs
-        captured.append((method_name, args))
-        return True
-
-    monkeypatch.setattr(
-        phase_agent_handler_module,
-        "resolve_phase_required_artifact",
-        lambda *args, **kwargs: required_artifact,
-    )
-    monkeypatch.setattr(phase_agent_handler_module, "_emit_via_display", _fake_emit_via_display)
-
-    effect = InvokeAgentEffect(
-        agent_name="claude/haiku",
-        phase="plan",
-        prompt_file="planning_prompt.md",
-        drain="plan",
-    )
-    workspace = FsWorkspace(tmp_path)
-
-    from ralph.config.models import GeneralConfig, UnifiedConfig
-
-    unified_config = UnifiedConfig(
-        general=GeneralConfig(),
-        agents={"claude/haiku": _claude_interactive_config()},
-    )
-
-    phase_agent_handler_module.render_phase_failure_report(
-        effect,
-        policy_bundle=_StubPolicyBundle(),
-        workspace=workspace,
-        display=None,
-        display_context=make_display_context(),
-        verbosity=Verbosity.VERBOSE,
-        run_id="valid-claude-transcript-run",
-        config=unified_config,
-    )
-
-    assert len(captured) == 1, f"expected exactly one rendered verdict line, got {captured}"
-    message = str(captured[0][1][1])
-    assert "FAILED (no artifact)" in message, message
-    assert "raw transcript corrupted:" not in message, message
-
-
-def test_render_phase_failure_report_omits_corruption_for_ansi_wrapped_claude_transcript(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """ANSI-wrapped ``Session ID:`` lines must not be diagnosed as corrupted.
-
-    The interactive Claude TUI styles the session banner; the phase
-    verdict seam must normalize the line before grading.
-    """
-    raw_path = tmp_path / ".agent" / "raw" / "claude.log"
+def _write_clean_claude_session_raw_log(workspace_root: Path) -> None:
+    """Write a raw log containing only canonical Claude session metadata."""
+    raw_path = workspace_root / ".agent" / "raw" / "claude.log"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
-        b"\x1b[2mSession ID: 28ee58c0-0614-474f-b609-80cc6c252f90\x1b[22m\n"
-        b'{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}\n'
+        b'{"event":"init","tools":["call_mcp_tool"]}\n'
+        b"Session ID: pty-claude-haiku-abc123\n"
+        b"Resume this session with --resume pty-claude-haiku-resume-789\n"
     )
 
-    required_artifact = RequiredArtifact(
-        phase="plan",
-        artifact_type="plan",
-        artifact_path=".agent/artifacts/plan.md",
-        markdown_path=None,
-        normalizer=None,
-        artifact_required=True,
-    )
 
-    class _StubPolicyBundle:
-        pipeline = object()
-        artifacts = object()
-
-    captured: list[tuple[str, tuple[object, ...]]] = []
-
-    def _fake_emit_via_display(
-        ctx: object, method_name: str, *args: object, **kwargs: object
-    ) -> bool:
-        del ctx, kwargs
-        captured.append((method_name, args))
-        return True
-
-    monkeypatch.setattr(
-        phase_agent_handler_module,
-        "resolve_phase_required_artifact",
-        lambda *args, **kwargs: required_artifact,
-    )
-    monkeypatch.setattr(phase_agent_handler_module, "_emit_via_display", _fake_emit_via_display)
-
-    effect = InvokeAgentEffect(
-        agent_name="claude/haiku",
-        phase="plan",
-        prompt_file="planning_prompt.md",
-        drain="plan",
-    )
-    workspace = FsWorkspace(tmp_path)
-
-    from ralph.config.models import GeneralConfig, UnifiedConfig
-
-    unified_config = UnifiedConfig(
-        general=GeneralConfig(),
-        agents={"claude/haiku": _claude_interactive_config()},
-    )
-
-    phase_agent_handler_module.render_phase_failure_report(
-        effect,
-        policy_bundle=_StubPolicyBundle(),
-        workspace=workspace,
-        display=None,
-        display_context=make_display_context(),
-        verbosity=Verbosity.VERBOSE,
-        run_id="ansi-claude-transcript-run",
-        config=unified_config,
-    )
-
-    assert len(captured) == 1, f"expected exactly one rendered verdict line, got {captured}"
-    message = str(captured[0][1][1])
-    assert "FAILED (no artifact)" in message, message
-    assert "raw transcript corrupted:" not in message, message
-
-
-def test_render_phase_failure_report_omits_corruption_for_visible_pty_tool_output(
+def test_render_phase_failure_report_keeps_missing_artifact_without_corruption_diagnosis(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Visible tool/file output from an interactive Claude PTY is not corruption.
-
-    The live ``claude/haiku`` smoke raw log includes rendered MCP tool
-    status lines and file-content echoes. The phase verdict seam passes
-    the interactive transport to ``detect_raw_log_breaks`` so these
-    human-visible lines do not get folded into ``FAILED (no artifact)``.
-    """
-    raw_path = tmp_path / ".agent" / "raw" / "claude.log"
-    raw_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_path.write_bytes(
-        b"Session ID: 28ee58c0-0614-474f-b609-80cc6c252f90\n"
-        b"\xe2\x9c\x93 PASS \xe2\x86\xb3 ralph.write_file (path=tmp/interactive-claude-smoke/todo-list.js)\n"
-        b"const todos = [];\n"
-        b"module.exports = TodoAPI;\n"
-        b"Task declared complete: session_id=28ee58c0-0614-474f-b609-80cc6c252f90\n"
-    )
+    """A missing artifact with clean session metadata is not corruption."""
+    _write_clean_claude_session_raw_log(tmp_path)
 
     required_artifact = RequiredArtifact(
         phase="plan",
@@ -458,7 +304,7 @@ def test_render_phase_failure_report_omits_corruption_for_visible_pty_tool_outpu
         display=None,
         display_context=make_display_context(),
         verbosity=Verbosity.VERBOSE,
-        run_id="visible-pty-output-run",
+        run_id="clean-session-missing-artifact-run",
         config=unified_config,
     )
 
@@ -466,3 +312,42 @@ def test_render_phase_failure_report_omits_corruption_for_visible_pty_tool_outpu
     message = str(captured[0][1][1])
     assert "FAILED (no artifact)" in message, message
     assert "raw transcript corrupted:" not in message, message
+
+
+def test_render_success_artifact_omits_corruption_with_clean_session_metadata(
+    tmp_path: Path,
+) -> None:
+    """The PASS/DEGRADED path is free of corruption text for a clean session log."""
+    _write_clean_claude_session_raw_log(tmp_path)
+
+    required_artifact = RequiredArtifact(
+        phase="plan",
+        artifact_type="plan",
+        artifact_path=".agent/artifacts/plan.md",
+        markdown_path=None,
+        normalizer=None,
+        artifact_required=False,
+    )
+
+    class _CapturingDisplay:
+        def __init__(self) -> None:
+            self.outcomes: list[str] = []
+
+        def record_artifact_outcome(self, produced: str) -> None:
+            self.outcomes.append(produced)
+
+    display = _CapturingDisplay()
+
+    phase_agent_handler_module.render_success_artifact(
+        "plan",
+        tmp_path,
+        make_display_context(),
+        display,
+        Verbosity.VERBOSE,
+        required_artifact,
+        run_id="clean-session-success-run",
+        agent_config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+    )
+
+    assert display.outcomes, "render_success_artifact must record an artifact outcome"
+    assert "raw transcript corrupted:" not in display.outcomes[0]

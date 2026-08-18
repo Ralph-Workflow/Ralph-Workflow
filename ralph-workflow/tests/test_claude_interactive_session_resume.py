@@ -35,6 +35,12 @@ def test_extract_session_id_from_interactive_transcript_marker() -> None:
     assert extract_transport_session_id(output) == "pty-session-42"
 
 
+def test_extract_session_id_from_plain_session_id_marker() -> None:
+    output = ["Session ID: pty-session-42\n"]
+
+    assert extract_transport_session_id(output) == "pty-session-42"
+
+
 def test_bounded_output_does_not_treat_stop_hook_turn_boundary_as_explicit_completion() -> None:
     output = bounded_output_lines(["turn boundary seen"], explicit_completion_seen=False)
 

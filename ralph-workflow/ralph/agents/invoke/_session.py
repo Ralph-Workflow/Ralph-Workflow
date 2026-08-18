@@ -109,6 +109,7 @@ def _is_kimi_meta_session_frame(parsed: dict[str, object]) -> bool:
     return parsed.get("role") == "meta" and parsed.get("type") == "session.resume_hint"
 
 
+
 def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
     event_type = parsed.get("type")
     is_agy_init = parsed.get("event") == "init"
