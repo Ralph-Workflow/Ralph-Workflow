@@ -217,10 +217,24 @@ class TestMultimodalToolRoundtrip:
         assert result.get("isError") is not True, f"read_media returned error: {result}"
         content = result.get("content", [])
         assert len(content) == 1
-        block = content[0]
-        assert block.get("type") == "image"
-        assert block.get("mimeType") == "image/png"
-        assert isinstance(block.get("data"), str) and block["data"]
+        handle_block = content[0]
+        assert handle_block.get("type") == "text"
+        handle_text = handle_block.get("text")
+        assert isinstance(handle_text, str) and "ralph://media/" in handle_text
+        handle = handle_text.rsplit(" ", maxsplit=1)[-1]
+        assert handle.startswith("ralph://media/")
+
+        replay = _do_tool_call(
+            server,
+            state,
+            [11],
+            str(RalphToolName.READ_MEDIA),
+            {"path": handle},
+        )
+        replay_content = replay.get("content", [])
+        assert len(replay_content) == 1
+        assert replay_content[0].get("type") == "text"
+        assert handle in str(replay_content[0].get("text"))
 
     def test_read_media_pdf_returns_resource_reference_and_is_retrievable(
         self, tmp_path: Path

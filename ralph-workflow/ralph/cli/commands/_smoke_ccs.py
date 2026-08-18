@@ -30,6 +30,7 @@ from loguru import logger
 from ralph.agents import registry as _registry_module
 from ralph.config import loader as _loader_module
 from ralph.config.enums import AgentTransport
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.workspace import scope as _scope_module
 
 if TYPE_CHECKING:
@@ -106,7 +107,7 @@ def smoke_interactive_ccs_command(
         agent_name,
         display_context=display_context,
         pro_hooks=pro_hooks,
-        model_identity=model_identity,
+        model_identity=model_identity or MultimodalModelIdentity(provider="ccs"),
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
         multimodal=multimodal,

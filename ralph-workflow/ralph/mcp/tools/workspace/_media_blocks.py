@@ -157,6 +157,11 @@ def _replay_from_manifest_entry(
                 ],
                 is_error=True,
             )
+        if profile.identity.provider == "ccs":
+            return ToolResult(
+                content=[ToolContent.text_content(f"Replay handle: {entry.uri}")],
+                is_error=False,
+            )
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         return ToolResult(
             content=[ImageContent(data=encoded, mime_type=entry.mime_type)],
@@ -225,6 +230,11 @@ def _replay_from_persisted_entry(
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(modality)
     if verdict.delivery == DeliveryMode.INLINE_IMAGE:
+        if profile.identity.provider == "ccs":
+            return ToolResult(
+                content=[ToolContent.text_content(f"Replay handle: {uri}")],
+                is_error=False,
+            )
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         return ToolResult(
             content=[ImageContent(data=encoded, mime_type=mime_type)],
@@ -424,7 +434,66 @@ def _handle_workspace_media(
         and file_size <= max_inline_bytes
     ):
         encoded = base64.b64encode(raw_bytes).decode("ascii")
-        return ToolResult(content=[ImageContent(data=encoded, mime_type=mime_type)], is_error=False)
+        if profile.identity.provider != "ccs":
+            return ToolResult(content=[ImageContent(data=encoded, mime_type=mime_type)], is_error=False)
+
+        # Unknown clients such as CCS accept the standard MCP image union but
+        # still need a Ralph-minted handle for the mandatory replay hop. Keep
+        # the visible payload schema-valid and expose the handle as text.
+        manifest = _get_media_manifest(session)
+        if manifest is None:
+            return ToolResult(
+                content=[ToolContent.text_content("No active session manifest is available.")],
+                is_error=True,
+            )
+        source_path = normalized or path
+        identity_key = build_media_identity(
+            modality=modality,
+            mime_type=mime_type,
+            title=title,
+            source=MediaSource(source_path=source_path, raw_bytes=raw_bytes),
+        )
+        artifact_id = new_artifact_id()
+        cache_path = write_durable_media_cache(workspace, artifact_id, raw_bytes)
+        entry = manifest.add(
+            title=title,
+            mime_type=mime_type,
+            modality=modality,
+            raw_bytes=raw_bytes,
+            extras=MediaEntryExtras(
+                source_path=source_path,
+                identity_key=identity_key,
+                cache_path=cache_path,
+                byte_loader=_workspace_artifact_loader(workspace, cache_path, source_path),
+                artifact_id=artifact_id,
+            ),
+        )
+        entry.set_replay_source(
+            cache_path=cache_path,
+            source_path=source_path,
+            byte_loader=_workspace_artifact_loader(workspace, cache_path, source_path),
+        )
+        _persist_media_session_entry(
+            session,
+            workspace,
+            {
+                "uri": entry.uri,
+                "mime_type": mime_type,
+                "title": title,
+                "modality": modality,
+                "delivery": DeliveryMode.INLINE_IMAGE,
+                "reason": verdict.reason,
+                "source_path": source_path,
+                "cache_path": cache_path,
+                "source_uri": "",
+                "block_type": "",
+                "identity_key": identity_key,
+            },
+        )
+        return ToolResult(
+            content=[ToolContent.text_content(f"Replay handle: {entry.uri}")],
+            is_error=False,
+        )
     manifest = _get_media_manifest(session)
     if manifest is None:
         return ToolResult(
