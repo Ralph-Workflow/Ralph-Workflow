@@ -16,7 +16,7 @@ availability remains the CLI provider's responsibility.
 | `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
 | `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
 | `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
-| `agy/<published-id>[:effort]` | `--model <published-id>` and optional `--effort <effort>` | Example: `agy/gemini-3.6-flash-high:high`. The v1.1.8 probe accepted `gemini-3.6-flash-high --effort high`; aliases validate `low`, `medium`, and `high` before invocation. |
+| `agy/<published-id>` | `--model <published-id>` | Example: `agy/gemini-3.6-flash-low`. AGY v1.1.8 accepts `--effort` only without an explicit model, so Ralph Workflow rejects any `:<effort>` suffix on an alias before invocation. Use the exact published ID, including any tier-encoded suffix such as `-low` or `-high`, as the model. |
 | `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
 | `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
 | `kimi/<model>` | `-m <model>` | The model must be a full configured ID from `~/.kimi-code/config.toml` (for example `kimi/kimi-code/kimi-for-coding`); bare unprefixed IDs are rejected by the CLI. |
@@ -69,7 +69,7 @@ availability remains the CLI provider's responsibility.
 - **CLI**: `agy`
 - **Install / auth**: <https://github.com/google-antigravity/antigravity-cli>
 - **Transport**: `agy`
-- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.10 publishes model IDs and `--effort low|medium|high`. Live probes accepted both `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`.
+- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.10 publishes model IDs. Live probes accepted exact published IDs such as `gemini-3.6-flash-low`; the measured CLI accepts `--effort` only without an explicit model, so Ralph Workflow does not emit `--model <id> --effort <level>`.
 - **Parser**: `agy` (`AgyParser`; maps `--output-format stream-json` events including `step_update` tool activity and multi-subagent updates, with plain-text fallback)
 - **Wire format (measured against the live v1.1.10 binary; vocabulary re-measured against v1.1.13)**: the full
   measured record, including the PTY capture method and the exact probe

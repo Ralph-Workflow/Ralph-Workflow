@@ -65,10 +65,11 @@ def test_parse_agy_alias_matches_bare_id_against_real_stdout(
         "gemini-3.6-flash-low",
         None,
     )
-    assert _parse_agy_alias("gemini-3.6-flash-low:low", models=models) == (
-        "gemini-3.6-flash-low",
-        "low",
-    )
+    # Measured rule (tmp/agy-source-of-truth.txt): any ``:<effort>``
+    # suffix is rejected because the latest ledger concludes ``--effort``
+    # is accepted only without an explicit model.
+    assert _parse_agy_alias("gemini-3.6-flash-low:low", models=models) is None
+    assert _parse_agy_alias("claude-sonnet-4-6:low", models=models) is None
     assert _parse_agy_alias("not-published", models=models) is None
 
 
@@ -112,12 +113,13 @@ def test_agy_unknown_alias_still_returns_none(monkeypatch: pytest.MonkeyPatch) -
 @pytest.mark.parametrize(
     ("alias", "expected_flag"),
     [
-        ("agy/gemini-3.6-flash-low:low", "--model gemini-3.6-flash-low --effort low"),
-        ("agy/gemini-3.6-flash-high:high", "--model gemini-3.6-flash-high --effort high"),
+        # Measured rule: only bare published IDs are accepted; effort
+        # suffixes are rejected before invocation.
+        ("agy/gemini-3.6-flash-low", "--model gemini-3.6-flash-low"),
         ("agy/claude-sonnet-4-6", "--model claude-sonnet-4-6"),
     ],
 )
-def test_agy_synthesized_config_carries_model_and_effort_flags(
+def test_agy_synthesized_config_carries_model_flag(
     monkeypatch: pytest.MonkeyPatch,
     alias: str,
     expected_flag: str,
@@ -130,3 +132,43 @@ def test_agy_synthesized_config_carries_model_and_effort_flags(
     config = registry.get(alias)
     assert config is not None
     assert config.model_flag == expected_flag
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "agy/claude-sonnet-4-6:high",
+        "agy/claude-opus-4-6-thinking:low",
+    ],
+)
+def test_agy_synthesized_config_rejects_effort_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+) -> None:
+    monkeypatch.setattr(
+        "ralph.agents.registry._default_agy_models_probe",
+        lambda: _MEASURED_AGY_MODELS_STDOUT,
+    )
+    registry = AgentRegistry.from_config(UnifiedConfig())
+    assert registry.get(alias) is None
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "agy/gemini-3.6-flash-low:low",
+        "agy/gemini-3.6-flash-high:high",
+        "agy/gemini-3.5-flash-medium:medium",
+    ],
+)
+def test_agy_tier_encoded_model_rejects_effort_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+) -> None:
+    """Published IDs that already encode an effort tier reject ``:effort``."""
+    monkeypatch.setattr(
+        "ralph.agents.registry._default_agy_models_probe",
+        lambda: _MEASURED_AGY_MODELS_STDOUT,
+    )
+    registry = AgentRegistry.from_config(UnifiedConfig())
+    assert registry.get(alias) is None

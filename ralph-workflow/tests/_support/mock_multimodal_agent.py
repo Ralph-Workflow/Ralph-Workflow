@@ -1063,7 +1063,6 @@ def main() -> int:
         height=height,
         skip_media=skip_media,
     )
-
     if not skip_media:
         _post_artifact_and_complete(endpoint, workspace_root, output_path, run_id)
 

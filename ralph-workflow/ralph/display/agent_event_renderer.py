@@ -29,6 +29,7 @@ not need to be touched.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
@@ -43,6 +44,7 @@ from ralph.display._channel_prefix_stripper import (
     _PARSER_CHANNEL_PREFIXES_SPACELESS,
     strip_parser_channel_prefix,
 )
+from ralph.display._edit_preview_render import highlight_code_spans
 from ralph.display._tool_correlation import tool_call_id
 from ralph.display._tool_result_dedup import strip_duplicate_tool_prefix
 from ralph.display.activity_event_kind import ActivityEventKind
@@ -179,6 +181,52 @@ class EventRenderer(Protocol):
 
 
 # --- Per-kind renderer implementations ---
+
+
+#: Regex matching the first markdown fenced code block in a text-event
+#: body. Group 1 is the fence opener line, group 2 the fenced code, group
+#: 3 the closing fence line. Used only when the parser annotated the event
+#: with ``syntax_highlight``/``language`` metadata; the regex itself does
+#: no language detection (the parser owns that contract).
+_FENCED_BLOCK_RE = re.compile(
+    r"(?P<open>^[ \t]*```[^\n]*\n)(?P<code>.*?)(?P<close>^[ \t]*```[ \t]*$)",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _stylize_fenced_code(
+    text: Text,
+    body_start: int,
+    body: str,
+    *,
+    language: str,
+    ctx: DisplayContext | None,
+) -> None:
+    """Apply lexer-derived spans to the fenced code region of ``text``.
+
+    Transport-neutral AC-02 seam: a parser (AGY today, any future agent
+    whose parser sets the same annotation) marks a text event with
+    ``syntax_highlight: True`` and a canonical Pygments ``language``;
+    this helper re-locates the fenced code inside the ALREADY-APPENDED
+    body and overlays themed token styles on that region only. The plain
+    content is never altered (``.plain`` stays byte-identical) and any
+    resolution failure leaves the flat body style untouched.
+    """
+    match = _FENCED_BLOCK_RE.search(body)
+    if match is None:
+        return
+    code = match.group("code")
+    if not code:
+        return
+    spans = highlight_code_spans(
+        code,
+        language,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
+        surface_hex=ctx.terminal_background_hex if ctx is not None else None,
+    )
+    code_start = body_start + match.start("code")
+    for start, end, style in spans:
+        text.stylize(style, code_start + start, code_start + end)
 
 
 def _format_body_with_unit(body: str, unit_id: str | None) -> str:
@@ -341,7 +389,16 @@ def _render_text_event(
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
+    body_start = len(text.plain)
     _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
+    # AC-02 (plan S-3): a parser-annotated fenced-code text event renders
+    # its code region with REAL lexer-derived token styles, not just
+    # parser metadata. Transport-neutral: any agent whose parser sets the
+    # ``syntax_highlight``/``language`` annotation gets identical styling.
+    metadata = event.metadata or {}
+    language = metadata.get("language")
+    if metadata.get("syntax_highlight") is True and isinstance(language, str) and language:
+        _stylize_fenced_code(text, body_start, body, language=language, ctx=ctx)
     return text
 
 

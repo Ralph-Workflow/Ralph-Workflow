@@ -48,7 +48,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.subprocess_e2e,
-    pytest.mark.timeout_seconds(30),
+    pytest.mark.timeout_seconds(45),
 ]
 
 _AGENT = "agy/gemini-3.6-flash-low"
@@ -184,12 +184,12 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
 # through the same real CLI -> MCP server -> mock AGY subprocess boundary
 # the positive lifecycle test proves.
 
-#: Fan-out width for the negative selectors. Four concurrent lifecycles peak
-#: at eight short-lived Python processes (CLI + MCP server each) on the
-#: maintained 12-core host without starving sibling pytest shards past the
-#: per-test SIGALRM cap (same reasoning as the ``-n 4`` multimodal smoke
-#: profile); two waves finish the eight selectors in ~6 s instead of ~20 s.
-_NEGATIVE_SELECTOR_FANOUT = 4
+#: Fan-out width for the negative selectors. Three concurrent lifecycles peak
+#: at six short-lived Python processes (CLI + MCP server each), finishing the
+#: seven selectors in ~14 s instead of ~19 s on this host. The value is capped
+#: low enough to avoid starving the per-test SIGALRM cap or corrupting the
+#: PTY transcript under the load of ``make verify``'s file-shard fan-out.
+_NEGATIVE_SELECTOR_FANOUT = 3
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("no_output", ("AGY --print returned empty stdout",)),

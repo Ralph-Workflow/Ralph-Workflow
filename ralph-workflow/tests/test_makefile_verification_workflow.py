@@ -138,9 +138,10 @@ def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
     """The budget-tracked smoke suite must not serialize independent harnesses."""
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    # wt-056: -n 4 is the measured optimum for these I/O-bound stub tests
-    # (fewer xdist workers = less startup overhead + less CPU contention).
-    assert "-n 4 --dist worksteal" in body[0]
+    # wt-015: -n 2 is the measured optimum for these I/O-bound stub tests
+    # on this host; -n 4 reliably causes the pi harness to retry-loop and
+    # fail, while -n 2 keeps the suite inside the budget and exits clean.
+    assert "-n 2 --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

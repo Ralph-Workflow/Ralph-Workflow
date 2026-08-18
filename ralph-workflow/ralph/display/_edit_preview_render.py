@@ -107,3 +107,59 @@ def _make_syntax(
         or preview_background_for_background(terminal_bg_is_light, surface_hex=surface_hex),
         start_line=start_line,
     )
+
+
+def highlight_code_spans(
+    code: str,
+    language: str,
+    *,
+    terminal_bg_is_light: bool | None = None,
+    surface_hex: str | None = None,
+) -> list[tuple[int, int, str]]:
+    """Return lexer-derived ``(start, end, style)`` spans for ``code``.
+
+    Shared transport-neutral seam: the same themed Pygments highlighting
+    that powers the edit-preview ``Syntax`` renderable, exposed as plain
+    character-offset spans so inline text renderers (e.g. the canonical
+    agent-event registry rendering a fenced AGY text event) can stylize a
+    code region inside a larger :class:`rich.text.Text` without building a
+    block-level panel.
+
+    Fail-closed: any Pygments / theme failure, an empty ``code``, or an
+    unknown ``language`` returns an empty list so the caller falls back to
+    its plain body style rather than surfacing a renderer exception.
+    """
+    if not code:
+        return []
+    from pygments.lexers import (
+        get_lexer_by_name,  # reason: deferred import keeps the display hot path cheap
+    )
+    from pygments.util import ClassNotFound
+
+    try:
+        lexer = get_lexer_by_name(language)
+    except ClassNotFound:
+        return []
+    except Exception:
+        return []
+    try:
+        theme = syntax_theme_for_background(terminal_bg_is_light, surface_hex=surface_hex)
+        spans: list[tuple[int, int, str]] = []
+        offset = 0
+        for token, text in lexer.get_tokens(code):
+            end = offset + len(text)
+            if text:
+                style = theme.get_style_for_token(token)
+                color = style.color
+                if color is not None and color.is_default is False:
+                    spans.append(
+                        (
+                            offset,
+                            end,
+                            f"bold {color.name}" if style.bold else color.name,
+                        )
+                    )
+            offset = end
+        return spans
+    except Exception:
+        return []

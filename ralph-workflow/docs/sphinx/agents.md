@@ -45,7 +45,7 @@ phases to:
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 | `kimi`            | `kimi`       | Headless subprocess  | Yes       | Kimi Code CLI; `kimi/<model>` dynamic aliases (full configured `kimi-code/...` IDs) |
 
-The registry resolves dynamic aliases. AGY v1.1.8 probes accepted `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`; aliases validate published IDs and the `low`, `medium`, or `high` effort suffix before invocation. Re-measure published IDs after AGY updates. Their syntax differs by agent;
+The registry resolves dynamic aliases. AGY v1.1.8 probes accepted exact published IDs such as `gemini-3.6-flash-low`; the measured CLI accepts `--effort` only without an explicit model, so Ralph Workflow rejects any `:<effort>` suffix on an `agy/<published-id>` alias before invocation. Use the full published ID, including any tier-encoded suffix such as `-low` or `-high`, as the model. Re-measure published IDs after AGY updates. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
 rather than assuming one shared provider/model format. It includes every
 built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
@@ -186,10 +186,10 @@ process cleanup through the Nanocoder smoke test.
 ### AGY (PTY)
 
 The AGY command builder has a PTY integration path. v1.1.8 manual probes
-observed `gemini-3.6-flash-low`, an explicit `gemini-3.6-flash-high --effort high`
-run, stream-json `init`/`step_update`/successful `result` events, and an exit-0
-smoke that created a file and validated/promoted its fallback artifact before
-completion evidence was recorded. The plain-text parser remains the smoke default;
+observed the exact published ID `gemini-3.6-flash-low`, stream-json
+`init`/`step_update`/successful `result` events, and an exit-0 smoke that
+created a file and validated/promoted its fallback artifact before completion
+evidence was recorded. The plain-text parser remains the smoke default;
 stream-json is a separately observed CLI format. Session resume remains
 unavailable because the continuation probes did not expose session identity.
 See `tmp/agy-source-of-truth.txt` for the exact observations.
@@ -278,10 +278,9 @@ which agent currently implements what. Adding a ninth built-in or a new
 capability without declaring the full cross-product fails the gate that
 ``tests/agents/test_display_capabilities.py`` enforces.
 
-AGY's v1.1.8 source record includes manual observations for
-`gemini-3.6-flash-low`, an explicit `gemini-3.6-flash-high --effort high`
-invocation, stream-json `init`/`step_update`/`result`, and the exit-0 smoke
-artifact/completion path. The continuation probes did not
+AGY's v1.1.8 source record includes manual observations for the exact
+published ID `gemini-3.6-flash-low`, stream-json `init`/`step_update`/`result`,
+and the exit-0 smoke artifact/completion path. The continuation probes did not
 establish a resumed-session identity, so the integration keeps AGY session reuse
 disabled. The deterministic mock verifies the Ralph Workflow harness; the
 source record preserves the separate live evidence.

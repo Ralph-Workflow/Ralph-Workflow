@@ -21,13 +21,35 @@ def test_agy_model_resolution_rejects_unknown_or_conflicting_alias(alias: str) -
 
 
 @pytest.mark.parametrize(
-    ("alias", "model_flag"),
+    "alias",
     [
-        ("agy/gemini-3.6-flash-low:low", "--model gemini-3.6-flash-low --effort low"),
-        ("agy/gemini-3.6-flash-high:high", "--model gemini-3.6-flash-high --effort high"),
+        # Measured rule (tmp/agy-source-of-truth.txt, v1.1.8 probe):
+        # ``--effort`` is accepted only without an explicit model, so any
+        # ``agy/<model>:<effort>`` alias is rejected before invocation.
+        "agy/gemini-3.6-flash-low:low",
+        "agy/gemini-3.6-flash-low:high",
+        "agy/gemini-3.6-flash-medium:medium",
+        "agy/gemini-3.6-flash-high:high",
+        "agy/gemini-3.5-flash-low:low",
+        "agy/gemini-3.1-pro-low:low",
+        "agy/gpt-oss-120b-medium:medium",
+        "agy/claude-sonnet-4-6:low",
+        "agy/claude-opus-4-6-thinking:high",
     ],
 )
-def test_agy_model_resolution_accepts_observed_model_effort_alias(
+def test_agy_model_resolution_rejects_effort_suffix(alias: str) -> None:
+    assert AgentRegistry.from_config(UnifiedConfig()).get(alias) is None
+
+
+@pytest.mark.parametrize(
+    ("alias", "model_flag"),
+    [
+        # Only bare published model IDs are accepted.
+        ("agy/gemini-3.6-flash-low", "--model gemini-3.6-flash-low"),
+        ("agy/claude-sonnet-4-6", "--model claude-sonnet-4-6"),
+    ],
+)
+def test_agy_model_resolution_accepts_observed_model_alias(
     alias: str,
     model_flag: str,
 ) -> None:
@@ -37,12 +59,12 @@ def test_agy_model_resolution_accepts_observed_model_effort_alias(
     assert config.model_flag == model_flag
 
 
-def test_agy_model_resolution_rejection_names_published_models_and_efforts() -> None:
+def test_agy_model_resolution_rejection_names_published_models() -> None:
     help_text = agy_alias_help()
 
     assert "gemini-3.6-flash-low" in help_text
     assert "claude-sonnet-4-6" in help_text
-    assert "low, medium, high" in help_text
+    assert "Effort suffixes are not supported" in help_text
 
 
 def test_agy_model_resolution_regression_accepts_model_from_successful_probe(

@@ -974,7 +974,24 @@ def run_test_suites(
     shards = partition_selected_files(
         selected_files,
         worker_count=int(_pytest_workers()),
-        file_weights={path: file_weigher(cwd, path) for path in selected_files},
+        # The static weight floor (``_AGY_LIFECYCLE_E2E_WEIGHT_FLOOR``)
+        # exists ONLY for the default ``make test`` profile, where the
+        # required AGY lifecycle file's real wall clock is invisible to
+        # the static collector. Under ``test-subprocess-e2e`` the floor
+        # must NOT apply: every discovered file carries
+        # ``subprocess_e2e``, and the floor was isolating the
+        # module-level ``smoke``-marked lifecycle file onto a singleton
+        # shard whose marker expression (``... and not smoke ...``)
+        # deselects every item, making pytest exit 5 ("no tests ran")
+        # and failing the whole suite. Unit weights keep that file
+        # co-sharded with non-smoke files, so every shard collects at
+        # least one runnable test; smoke-marked debug harnesses still
+        # run on demand via ``pytest <file> -m smoke``.
+        file_weights=(
+            dict.fromkeys(selected_files, 1)
+            if subprocess_e2e_only
+            else {path: file_weigher(cwd, path) for path in selected_files}
+        ),
     )
     if required_e2e_shard:
         shards = (*shards, required_e2e_shard)

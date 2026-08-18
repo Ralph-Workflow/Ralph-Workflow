@@ -67,9 +67,10 @@ Testing notes:
 
 from __future__ import annotations
 
+import importlib
 import shlex
 from copy import deepcopy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -189,7 +190,8 @@ def agy_alias_help() -> str:
     """Return the actionable AGY alias vocabulary for operator-facing failures."""
     return (
         f"Available AGY models: {', '.join(agy_published_models())}. "
-        f"Accepted effort suffixes: {', '.join(agy_reasoning_efforts())}."
+        "Effort suffixes are not supported when a model is given explicitly; "
+        "use the bare published model ID (e.g. agy/gemini-3.6-flash-low)."
     )
 
 
@@ -200,10 +202,11 @@ def builtin_supports() -> tuple[AgentSupport, ...]:
     deferred import keeps the registry<->builtin dependency graph acyclic (the
     AGY declarative entry references :func:`agy_alias_help` from this module).
     """
-    from ralph.agents.builtin import (  # noqa: PLC0415  # reason: lazy import breaks builtin<->registry cycle
-        builtin_supports as _builtin_supports_impl,
+    builtin = importlib.import_module("ralph.agents.builtin")
+    _builtin_supports_impl = cast(
+        "Callable[[], tuple[AgentSupport, ...]]",
+        builtin.builtin_supports,
     )
-
     return _builtin_supports_impl()
 
 
@@ -883,18 +886,18 @@ def _parse_agy_alias(
 ) -> tuple[str, str | None] | None:
     """Parse an observed AGY model alias without silently changing its selection.
 
-    AGY v1.1.8 accepts the published model IDs and the documented
-    ``low``, ``medium``, and ``high`` effort values together. Ralph preserves
-    both selections exactly and rejects malformed aliases before invocation.
+    AGY v1.1.8 accepts the published model IDs. The latest measured ledger
+    conclusion is that ``--effort`` is accepted only without an explicit
+    model, so Ralph aliases always take the form ``agy/<published-model-id>``.
+    Any ``:<effort>`` suffix is rejected before invocation rather than
+    emitting an unsupported ``--model <id> --effort <tier>`` selection.
     """
-    model_id, separator, effort = alias_value.partition(":")
+    model_id, separator, _effort = alias_value.partition(":")
     if model_id not in models:
         return None
     if not separator:
         return model_id, None
-    if ":" in effort or effort not in _AGY_REASONING_EFFORTS:
-        return None
-    return model_id, effort
+    return None
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:

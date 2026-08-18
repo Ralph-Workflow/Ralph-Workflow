@@ -7,6 +7,7 @@ Asserts that 32 concurrent ``sweep_agent_dir`` calls sharing one
 
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -40,7 +41,8 @@ def _seed_aged_sentinels(tmp_path: Path) -> tuple[Path, list[Path]]:
 def test_concurrent_sweeps_coalesce_into_one_pass(tmp_path: Path) -> None:
     """32 concurrent sweeps with one coordinator run one pass (AC-09)."""
     _agent_dir, sentinels = _seed_aged_sentinels(tmp_path)
-    coordinator = RetentionPassCoordinator()
+    barrier = threading.Barrier(_SENTINEL_COUNT)
+    coordinator = RetentionPassCoordinator(on_wave_acquired=barrier.wait)
     keep_run_id = "current-run"
     # Register the keep run so it is never swept (sanity: none of the
     # aged sentinels share this id).
