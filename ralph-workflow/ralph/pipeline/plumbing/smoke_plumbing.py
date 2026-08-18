@@ -2091,7 +2091,11 @@ def _resolve_visible_output_agent_prefix(config: AgentConfig) -> str:
     """
     cmd_tokens = (config.cmd or "").split() if config.cmd else []
     cmd_name = cmd_tokens[0].lower() if cmd_tokens else ""
-    cmd_flags = set(cmd_tokens[1:])
+    # The headless invariant is the output flag, which may live either in
+    # ``config.cmd`` (built-in ``claude-headless`` / user overrides) or in
+    # ``config.output_flag`` (dynamic ``ccs/<alias>`` aliases whose cmd is
+    # just ``ccs <alias>`` and whose flags are added by the command builder).
+    cmd_flags = set(cmd_tokens[1:]) | set((config.output_flag or "").split())
     is_headless_claude = (
         cmd_name == "claude" and "-p" in cmd_flags
     ) or "--output-format=stream-json" in cmd_flags

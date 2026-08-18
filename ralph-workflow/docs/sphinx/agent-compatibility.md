@@ -163,7 +163,7 @@ json_parser = "generic"
 - **Transport**: `claude`
 - **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode bypassPermissions`, `--verbose`, and `--resume {}`
 - **Constraint**: CCS aliases are explicitly headless Claude commands configured under `[ccs_aliases]`. `ccs/<alias>` also resolves as a dynamic alias (like `claude/<model>`) even with no `[ccs_aliases]` entry at all.
-- **Smoke test**: `ralph smoke-interactive-ccs --agent ccs/<alias>` (defaults to `ccs/glm`).
+- **Smoke test**: `ralph smoke-interactive-ccs --agent ccs/mm` (the live v8.9.0 verification target; the command defaults to `ccs/glm`).
 - **Caveats** (measured against the live CCS v8.9.0 CLI):
     - `--permission-mode auto` is a valid `claude` flag value but is rejected by
       `ccs`'s own pre-flight validator (`Invalid permission mode: "auto". Valid

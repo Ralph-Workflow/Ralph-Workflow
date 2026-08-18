@@ -191,6 +191,37 @@ class TestMultimodalToolRoundtrip:
         assert block.get("mimeType") == "image/png"
         assert isinstance(block.get("data"), str) and len(block["data"]) > 0
 
+    def test_ccs_media_result_matches_client_content_schema(self, tmp_path: Path) -> None:
+        """CCS receives a standard image block, never a resource_reference alias.
+
+        CCS validates each tools/call content item against the Claude content
+        union. The prior live run rejected Ralph's nonstandard
+        resource_reference item, so an image request made with the wrapper's
+        unrecognised provider identity must still return the standard MCP image
+        shape with base64 data.
+        """
+        png_file = tmp_path / "smoke-fixture.png"
+        png_file.write_bytes(_TINY_PNG_BYTES)
+
+        server = _build_multimodal_server(tmp_path, provider="ccs")
+        state = _initialize_multimodal(server)
+
+        result = _do_tool_call(
+            server,
+            state,
+            [10],
+            str(RalphToolName.READ_MEDIA),
+            {"path": "smoke-fixture.png"},
+        )
+
+        assert result.get("isError") is not True, f"read_media returned error: {result}"
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "image"
+        assert block.get("mimeType") == "image/png"
+        assert isinstance(block.get("data"), str) and block["data"]
+
     def test_read_media_pdf_returns_resource_reference_and_is_retrievable(
         self, tmp_path: Path
     ) -> None:

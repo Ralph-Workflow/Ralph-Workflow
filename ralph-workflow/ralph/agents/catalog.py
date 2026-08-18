@@ -626,6 +626,14 @@ def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "Ag
     if base is None:
         return None
 
+    # CCS aliases wrap headless Claude but hide its session-id banner, so
+    # the synthesized support must opt out of the smoke harness's
+    # "session ID was not observed" check. All other dynamic aliases inherit
+    # the base built-in's declaration.
+    session_identifier_observable = base.session_identifier_observable
+    if name_or_command.lower().startswith("ccs/"):
+        session_identifier_observable = False
+
     return AgentSupport(
         name=name_or_command.lower(),
         spec=base.spec,
@@ -635,4 +643,5 @@ def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "Ag
         is_builtin=base.is_builtin,
         no_default_session_flag=base.no_default_session_flag,
         display_capabilities=base.display_capabilities,
+        session_identifier_observable=session_identifier_observable,
     )

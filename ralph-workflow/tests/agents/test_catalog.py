@@ -159,6 +159,20 @@ class TestAgentCatalog:
         claude_agents = catalog.by_transport(AgentTransport.CLAUDE)
         assert len(claude_agents) == 1
 
+    def test_ccs_dynamic_alias_support_declares_session_not_observable(self) -> None:
+        """``ccs/<alias>`` inherits the CLAUDE transport but does not emit session IDs.
+
+        CCS aliases resolve to ``cmd="ccs <alias>"`` and ``transport=CLAUDE``,
+        so the synthesized :class:`AgentSupport` inherits the ``claude``
+        built-in's parser, strategy, and display capabilities. The wrapper
+        hides Claude's session-id banner, so the smoke harness must not
+        require an observable session ID for CCS aliases.
+        """
+        support = default_catalog().get("ccs/mm")
+        assert support is not None, "ccs/mm must resolve in the default catalog"
+        assert support.spec.transport is AgentTransport.CLAUDE
+        assert support.session_identifier_observable is False
+
     def test_remove_clears_legacy_registries(self) -> None:
         catalog = default_catalog()
         support = _make_support("legacy-remove", transport=AgentTransport.GENERIC, cmd="legacy-cmd")
