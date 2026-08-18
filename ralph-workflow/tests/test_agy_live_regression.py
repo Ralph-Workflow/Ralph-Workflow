@@ -45,8 +45,8 @@ from ralph.agents.invoke import AgentInvocationError, run_pty_and_read_lines
 from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
-from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.config.models import AgentConfig
+from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
