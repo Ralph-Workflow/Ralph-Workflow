@@ -775,7 +775,6 @@ class DefaultCommandBuilder:
         cmd = shlex.split(config.cmd)
         transport = _agent_transport(config)
 
-        verbose_added = False
         if transport == AgentTransport.CLAUDE and config.output_flag is not None:
             cmd.append(config.output_flag)
             # The official Claude Code CLI requires --verbose when

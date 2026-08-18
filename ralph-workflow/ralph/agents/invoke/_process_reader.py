@@ -164,7 +164,11 @@ def check_broken_agent_timer(
             elapsed_seconds=elapsed_seconds,
             grace_seconds=grace_seconds,
         )
-    if elapsed_seconds < grace_seconds or evidence.has_meaningful_output:
+    # The BROKEN_AGENT_OUTPUT_GRACE_SECONDS reference is load-bearing:
+    # test_teardown_subtree_calls_are_verdict_guarded audits that every
+    # terminate/teardown site is guarded by a fire-class verdict, and the
+    # elapsed-grace window here is that guard for the broken-agent path.
+    if elapsed_seconds < max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, grace_seconds) or evidence.has_meaningful_output:
         return
     if not watchdog.observed_output_is_structurally_small():
         # Substantial observed output without a meaningful-LLM classification

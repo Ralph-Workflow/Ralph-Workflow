@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke._session import TURN_BOUNDARY_MARKER
+from ralph.agents._session_markers import TURN_BOUNDARY_MARKER
 from ralph.display.vt_normalizer import normalize_vt_text
 
 from .agent_output_line import AgentOutputLine

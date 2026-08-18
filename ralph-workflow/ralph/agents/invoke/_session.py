@@ -6,15 +6,8 @@ import json
 import re
 from typing import cast
 
+from ralph.agents._session_markers import TURN_BOUNDARY_MARKER
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
-
-#: Canonical harness-authored input lines that can appear verbatim in a
-#: PTY transport's raw capture. ``[claude turn boundary]`` is injected
-#: into the reader's line queue by ``_pty_line_reader`` to delimit
-#: turns; it belongs in the verbatim capture, so parsers and the
-#: corruption detector must recognize it instead of reporting a
-#: NON_JSONL break for every interactive-transport run.
-TURN_BOUNDARY_MARKER: str = "[claude turn boundary]"
 
 #: Explicit completion marker emitted by the interactive harness.
 #: Lines carrying this marker also contain a session id extracted by

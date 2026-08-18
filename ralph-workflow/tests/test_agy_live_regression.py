@@ -286,9 +286,9 @@ def test_live_agy_produces_green_parity_table(
     permits allowance; the upstream-blocked xfail gate converts
     documented transient conditions into a clear xfail.
     """
-    _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     output = live_smoke_session.output
     cli_log_tail = live_smoke_session.cli_log_tail
+    _xfail_if_upstream_blocked(cli_log_tail, smoke_output=output)
 
     assert "agy/gemini-3.6-flash-low" in output, (
         f"Expected AGY parity row in output. cli.log tail: {cli_log_tail[-200:]!r}\n"
@@ -305,23 +305,27 @@ def test_live_agy_produces_green_parity_table(
     # Evidence Provenance plan (S-2, measured 2026-08-06 --
     # tests/display/_fixtures/agy_wire_provenance.md): a genuine
     # call_mcp_tool submission grades WORKSPACE_EFFECT, not WIRE, unless
-    # RALPH_BROKER_SECRET is set in this process's environment (F2/A5 --
-    # an unsigned server cannot produce a WIRE witness). A bare
-    # "Breaks=none" column would therefore be dishonest in the common case
-    # where the secret is unset; assert the DEGRADED verdict is named
-    # instead when unsigned, and only require a literal "none" break cell
-    # when the environment happens to have the secret set (a WIRE-eligible
-    # run can legitimately reach PASS).
-    if os.environ.get("RALPH_BROKER_SECRET"):
+    # the run's own process can HMAC-bind its receipts. The smoke CLI
+    # mints a run-scoped RALPH_BROKER_SECRET when the operator's shell
+    # exports none, so the honest verdict is read from the provenance
+    # brackets in the report rather than from the pytest process's env.
+    # A bare "Breaks=none" column is only honest when every required fact
+    # graded WIRE; otherwise the report must name the DEGRADED demotion.
+    required_facts_wire = (
+        "- smoke_test_result artifact submitted observed [WIRE]" in output
+        and "- completion sentinel observed [WIRE]" in output
+        and "- tool activity observed [WIRE]" in output
+    )
+    if required_facts_wire:
         assert re.search(r"│\s*none\s*│", output) is not None, (
-            f"Expected Breaks=none in parity table (RALPH_BROKER_SECRET set, "
-            f"WIRE-eligible). cli.log tail: {cli_log_tail[-200:]!r}\n"
+            f"Expected Breaks=none in parity table (all required facts graded WIRE). "
+            f"cli.log tail: {cli_log_tail[-200:]!r}\n"
             f"Output:\n{output[-5000:]}"
         )
     else:
         assert "DEGR" in output, (
-            f"Expected a DEGRADED verdict column (RALPH_BROKER_SECRET unset, "
-            f"WIRE unreachable). cli.log tail: {cli_log_tail[-200:]!r}\n"
+            f"Expected a DEGRADED verdict column (at least one required fact graded "
+            f"below WIRE). cli.log tail: {cli_log_tail[-200:]!r}\n"
             f"Output:\n{output[-5000:]}"
         )
 
@@ -357,9 +361,9 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
     marker substrings overlap, so substring-only checks would let an
     upstream-blocked run pass falsely; the xfail gate prevents that.
     """
-    _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     output = live_smoke_session.output
     cli_log_tail = live_smoke_session.cli_log_tail
+    _xfail_if_upstream_blocked(cli_log_tail, smoke_output=output)
 
     assert "- tool activity observed" in output, (
         f"Expected the dash-prefixed '- tool activity observed' success marker. "
@@ -389,19 +393,25 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
     )
     # Evidence Provenance plan (S-2, measured 2026-08-06 -- see the parity-table
     # assertion above for the full reasoning): "No breaks observed" / "Breaks: none"
-    # is only honest when every required fact reached WIRE, which needs
-    # RALPH_BROKER_SECRET set. Otherwise the report must name the DEGRADED
-    # demotion instead.
-    if os.environ.get("RALPH_BROKER_SECRET"):
+    # is only honest when every required fact reached WIRE. The smoke CLI may
+    # mint a run-scoped RALPH_BROKER_SECRET, so the honest verdict is read
+    # from the provenance brackets in the report rather than from the pytest
+    # process's env. Otherwise the report must name the DEGRADED demotion.
+    required_facts_wire = (
+        "- smoke_test_result artifact submitted observed [WIRE]" in output
+        and "- completion sentinel observed [WIRE]" in output
+        and "- tool activity observed [WIRE]" in output
+    )
+    if required_facts_wire:
         assert "No breaks observed" in output or "Breaks: none" in output, (
-            f"Expected no breaks marker in parity report (RALPH_BROKER_SECRET set, "
-            f"WIRE-eligible). cli.log tail: {cli_log_tail[-200:]!r}\n"
+            f"Expected no breaks marker in parity report (all required facts graded WIRE). "
+            f"cli.log tail: {cli_log_tail[-200:]!r}\n"
             f"Output:\n{output[-5000:]}"
         )
     else:
         assert "DEGRADED (" in output, (
             f"Expected a named DEGRADED demotion in parity report "
-            f"(RALPH_BROKER_SECRET unset, WIRE unreachable). "
+            f"(at least one required fact graded below WIRE). "
             f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
         )
 
