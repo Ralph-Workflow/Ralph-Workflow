@@ -695,6 +695,29 @@ def test_agy_transport_still_detects_nul_bytes(
     assert not any(b.kind == "NON_JSONL" for b in breaks), breaks
 
 
+def test_headless_claude_transport_rejects_multiline_session_id(
+    isolated_workspace: Path,
+) -> None:
+    """A session identifier split across lines is not canonical headless JSONL.
+
+    The session-text grammar is anchored per physical line. Joining these
+    lines before matching would incorrectly tolerate arbitrary multiline
+    injections in the strict ``AgentTransport.CLAUDE`` stream.
+    """
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b"Session ID:\n"
+        b"28ee58c0-0614-474f-b609-80cc6c252f90\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CLAUDE)
+    non_jsonl = [item for item in breaks if item.kind == "NON_JSONL"]
+    assert len(non_jsonl) == 2, breaks
+
+
 def test_headless_claude_transport_keeps_strict_jsonl(
     isolated_workspace: Path,
 ) -> None:
