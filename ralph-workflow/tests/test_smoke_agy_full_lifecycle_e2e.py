@@ -184,11 +184,11 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
 # through the same real CLI -> MCP server -> mock AGY subprocess boundary
 # the positive lifecycle test proves.
 
-#: The runner gives the dedicated required-E2E shard one xdist worker. Two
-#: independent CLI/MCP lifecycles can therefore overlap without competing with
-#: another in-shard worker, reducing the slowest required shard while retaining
-#: separate workspaces, ports, and per-selector assertions. A larger fan-out
-#: previously killed a selector's server process under host load.
+#: Two concurrent selectors keep the seven real CLI -> MCP lifecycles below
+#: the test's immutable 45-second ceiling. A wider three-selector fan-out
+#: previously exhausted host capacity and killed a selector's MCP server; two
+#: preserves independent workspaces and bounded load while avoiding the serial
+#: timeout.
 _NEGATIVE_SELECTOR_FANOUT = 2
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
