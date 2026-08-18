@@ -88,6 +88,12 @@ class RetentionPassCoordinator:
         self._published_until = 0.0
         self._in_flight = False
         self._joiners = 0
+        # Callers that joined an already-published wave through the burst
+        # window and have not yet consumed the shared count. While any are
+        # pending the window stays open, so callers queued behind a
+        # saturated executor keep joining the same wave regardless of how
+        # long earlier batches took.
+        self._late_joiners = 0
         # Test seam: invoked once per caller AFTER the wave is acquired
         # (owner or joiner) but BEFORE the owner runs the sweep body, so
         # a barrier can prove every caller entered the wave first.
@@ -110,14 +116,22 @@ class RetentionPassCoordinator:
         with self._condition:
             now = time.monotonic()
             if self._wave is not None and (
-                self._in_flight or now < self._published_until
+                self._in_flight
+                or now < self._published_until
+                or self._late_joiners > 0
             ):
                 # A published result stays available through the bounded burst
                 # window so work queued behind an executor's worker cap joins
-                # the same concurrent wave.
+                # the same concurrent wave. The window re-arms while any late
+                # joiner is still consuming, which keeps coalescing
+                # deterministic no matter how the scheduler stretches the
+                # delay between executor batches.
                 yield_wave: int | None = self._wave
                 owner = False
                 consume = False
+                late = not self._in_flight
+                if late:
+                    self._late_joiners += 1
             elif self._in_flight:
                 yield_wave = None
                 owner = False
@@ -129,7 +143,19 @@ class RetentionPassCoordinator:
                 owner = True
                 consume = False
         if not owner and not consume:
-            yield yield_wave
+            try:
+                yield yield_wave
+            finally:
+                if late:
+                    with self._condition:
+                        self._late_joiners -= 1
+                        if self._late_joiners == 0:
+                            # Re-arm the window from the last consumption so
+                            # the next executor batch still joins this wave.
+                            self._published_until = (
+                                time.monotonic() + _COALESCED_WAVE_WINDOW_SECONDS
+                            )
+                        self._condition.notify_all()
             return
         if consume:
             # The wave is mid-sweep: announce entry BEFORE blocking so a
@@ -153,8 +179,9 @@ class RetentionPassCoordinator:
             with self._condition:
                 # Hold the published wave until every joiner consumed it.
                 # The bounded burst window keeps it available to callers
-                # queued behind a saturated executor after the owner exits.
-                while self._joiners > 0:
+                # queued behind a saturated executor after the owner exits;
+                # pending late joiners keep that window open.
+                while self._joiners > 0 or self._late_joiners > 0:
                     self._condition.wait()
                 self._in_flight = False
                 self._condition.notify_all()
