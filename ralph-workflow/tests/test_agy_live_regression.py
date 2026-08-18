@@ -45,6 +45,7 @@ from ralph.agents.invoke import AgentInvocationError, run_pty_and_read_lines
 from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
+from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.config.models import AgentConfig
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
@@ -430,7 +431,7 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         f"Output:\n{output[-5000:]}"
     )
 
-    text_lines = re.findall(r"- text: [^\n]+", output) or []
+    text_lines = re.findall(r"- text: [^\n]+", strip_terminal_control(output)) or []
     assert any(line.startswith("- text:") for line in text_lines), (
         "Expected at least one - text: line in detailed report. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -686,7 +687,7 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
         f"Output:\n{output[-5000:]}"
     )
 
-    text_lines = re.findall(r"- text: [^\n]+", output) or []
+    text_lines = re.findall(r"- text: [^\n]+", strip_terminal_control(output)) or []
     assert any(line.startswith("- text:") for line in text_lines), (
         "Expected at least one - text: line in detailed report (parser-classified "
         "output). cli.log tail: "
