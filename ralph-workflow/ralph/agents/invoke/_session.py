@@ -7,23 +7,77 @@ import re
 from typing import cast
 
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
-from ralph.display.raw_overflow import TURN_BOUNDARY_MARKER
 
-_EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
-_TURN_BOUNDARY_MARKER = TURN_BOUNDARY_MARKER
+#: Canonical harness-authored input lines that can appear verbatim in a
+#: PTY transport's raw capture. ``[claude turn boundary]`` is injected
+#: into the reader's line queue by ``_pty_line_reader`` to delimit
+#: turns; it belongs in the verbatim capture, so parsers and the
+#: corruption detector must recognize it instead of reporting a
+#: NON_JSONL break for every interactive-transport run.
+TURN_BOUNDARY_MARKER: str = "[claude turn boundary]"
 
-_COMPLETION_SESSION_ID_PATTERNS = (
-    re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
-    re.compile(r"sessionId\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
-)
+#: Explicit completion marker emitted by the interactive harness.
+#: Lines carrying this marker also contain a session id extracted by
+#: the PTY/session layer; they are canonical completion metadata, not
+#: corrupted wire output.
+_EXPLICIT_COMPLETION_MARKER: str = "Task declared complete:"
 
-_TRANSPORT_TEXT_SESSION_PATTERNS = (
+#: Canonical interactive-transport session/resume metadata lines.
+#:
+#: These exact text shapes are emitted and parsed by the PTY/session
+#: layer for interactive Claude and related transports. They are not
+#: JSONL, but they are expected verbatim capture content -- not
+#: corruption -- so consumers that grade raw transcripts must recognize
+#: them. Anchored patterns only: a line that merely mentions
+#: ``Session ID`` without matching a canonical shape is still graded as
+#: ``NON_JSONL``.
+_TRANSPORT_SESSION_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^Claude session ready\. Session ID:\s*([A-Za-z0-9._:-]+)$"),
     re.compile(r"^Session ID:\s*([A-Za-z0-9._:-]+)$", re.IGNORECASE),
     re.compile(r"^Resume this session with --resume\s+([A-Za-z0-9._:-]+)$"),
     re.compile(r"^--resume\s+([A-Za-z0-9._:-]+)$"),
     re.compile(r"^--session\s+([A-Za-z0-9._:-]+)$"),
 )
+
+#: Patterns that extract a session id from an explicit completion
+#: marker line. These are anchored loosely inside the marker text so
+#: future timestamp/summary ordering changes do not silently break
+#: recognition.
+_COMPLETION_SESSION_ID_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+    re.compile(r"sessionId\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+)
+
+
+def extract_transport_text_session_id(stripped: str) -> str | None:
+    """Extract a session id from a canonical transport text session line.
+
+    Single source of truth for the exact text shapes the PTY/session
+    layer emits and parses. Callers that need ANSI/VT-normalized
+    matching (e.g. the raw-log classifier) normalize the line first,
+    then call this helper.
+    """
+    if _EXPLICIT_COMPLETION_MARKER in stripped:
+        for pattern in _COMPLETION_SESSION_ID_PATTERNS:
+            match = pattern.search(stripped)
+            if match is not None:
+                return match.group(1)
+    for pattern in _TRANSPORT_SESSION_TEXT_PATTERNS:
+        match = pattern.search(stripped)
+        if match is not None:
+            return match.group(1)
+    return None
+
+
+def is_canonical_session_text_line(stripped: str) -> bool:
+    """Return True when ``stripped`` is a canonical transport session/completion line.
+
+    Single source of truth for raw-log graders and other consumers that
+    need to recognize session/resume/completion metadata without
+    reimplementing the pattern vocabulary.
+    """
+    return extract_transport_text_session_id(stripped) is not None
+
 
 _TRANSPORT_JSON_TYPES = frozenset(
     {
@@ -53,19 +107,6 @@ def _is_kimi_meta_session_frame(parsed: dict[str, object]) -> bool:
     session metadata.
     """
     return parsed.get("role") == "meta" and parsed.get("type") == "session.resume_hint"
-
-
-def _match_transport_text_session_id(stripped: str) -> str | None:
-    if _EXPLICIT_COMPLETION_MARKER in stripped:
-        for pattern in _COMPLETION_SESSION_ID_PATTERNS:
-            match = pattern.search(stripped)
-            if match is not None:
-                return match.group(1)
-    for pattern in _TRANSPORT_TEXT_SESSION_PATTERNS:
-        match = pattern.search(stripped)
-        if match is not None:
-            return match.group(1)
-    return None
 
 
 def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
@@ -110,7 +151,12 @@ def _extract_transport_session_id_from_line(line: str) -> str | None:
     try:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
-        return _match_transport_text_session_id(line.strip())
+        # The primary line extractor matches canonical text patterns on
+        # the raw line. ANSI/VT stripping is handled by
+        # ``extract_transport_session_id_with_visible_tui`` so that
+        # callers which need the original wire bytes (e.g. subprocess
+        # readers that parse NDJSON frames) are not silently normalized.
+        return extract_transport_text_session_id(line.strip())
     if not isinstance(parsed, dict):
         return None
     return _match_transport_json_session_id(parsed)
@@ -151,12 +197,12 @@ def extract_transport_session_id_with_visible_tui(line: str) -> str | None:
     primary = extract_transport_session_id_from_line(line)
     if primary:
         return primary
-    # Fallback: strip ANSI codes and re-run the visible-TUI extractor
-    # so a session id carried in a TUI banner / status line is
-    # captured.
+    # Fallback: strip ANSI/VT control codes and re-run the text-pattern
+    # extractor so a session id carried in a TUI banner or status line
+    # is captured even when the wire line starts with escape sequences.
     visible_line = _visible_tui_text(line)
     if visible_line and visible_line != line.strip():
-        return extract_visible_tui_transport_session_id(visible_line)
+        return extract_transport_text_session_id(visible_line)
     return None
 
 
@@ -166,7 +212,7 @@ def extract_visible_tui_transport_session_id(text: str) -> str | None:
     This intentionally excludes generic ``session_id=...`` patterns so assistant or
     tool text cannot masquerade as transport session metadata.
     """
-    return _match_transport_text_session_id(text.strip())
+    return extract_transport_text_session_id(text.strip())
 
 
 def _bounded_output_lines(
@@ -178,3 +224,14 @@ def _bounded_output_lines(
     if explicit_completion_seen and not any(_EXPLICIT_COMPLETION_MARKER in line for line in lines):
         lines.append(_EXPLICIT_COMPLETION_MARKER)
     return lines
+
+
+__all__ = [
+    "TURN_BOUNDARY_MARKER",
+    "_EXPLICIT_COMPLETION_MARKER",
+    "_bounded_output_lines",
+    "extract_transport_session_id",
+    "extract_transport_session_id_from_line",
+    "extract_transport_session_id_with_visible_tui",
+    "extract_visible_tui_transport_session_id",
+]

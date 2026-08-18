@@ -596,6 +596,7 @@ def test_build_command_does_not_duplicate_print_flag_when_claude_cmd_already_use
         "claude",
         "-p",
         "--output-format=stream-json",
+        "--verbose",
         "--include-partial-messages",
         "--permission-mode",
         "auto",
@@ -1788,11 +1789,11 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "claude",
         "-p",
         "--output-format=stream-json",
+        "--verbose",
         "--include-partial-messages",
         "--resume",
         "abc123",
         "--dangerously-skip-permissions",
-        "--verbose",
         "--mcp-config",
     ]
     mcp_payload = _agents_invoke_2_json_object(cmd[9])

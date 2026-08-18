@@ -646,17 +646,22 @@ def _resolve_transport() -> str:
 
 def _extract_server_uri(first_response: dict[str, Any]) -> str | None:
     """Return the first ``ralph://media/{artifact_id}`` URI the server minted."""
+    sys.stderr.write(f"mock_multimodal_agent: extract_server_uri input={json.dumps(first_response, default=str)[:1000]!r}\n")
     result = first_response.get("result") if isinstance(first_response, dict) else None
     if not isinstance(result, dict):
+        sys.stderr.write(f"mock_multimodal_agent: result not dict, got {type(result)!r}\n")
         return None
     content = result.get("content", [])
     if not isinstance(content, list):
+        sys.stderr.write(f"mock_multimodal_agent: content not list, got {type(content)!r}\n")
         return None
     for block in content:
         if isinstance(block, dict) and block.get("type") == "resource_reference":
             uri = block.get("uri")
             if isinstance(uri, str):
+                sys.stderr.write(f"mock_multimodal_agent: found resource_reference uri={uri!r}\n")
                 return uri
+    sys.stderr.write("mock_multimodal_agent: no resource_reference uri found in content\n")
     return None
 
 

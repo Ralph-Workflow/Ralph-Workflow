@@ -928,7 +928,10 @@ def _resolve_dynamic_claude_family(
     # tokenize the flag with ``shlex.split``, so quoting here is what
     # preserves the single-token guarantee end to end.
     return base_config.model_copy(
-        update={"model_flag": f"--model {shlex.quote(segments[1])}"}
+        update={
+            "model_flag": f"--model {shlex.quote(segments[1])}",
+            "model": segments[1],
+        }
     )
 
 

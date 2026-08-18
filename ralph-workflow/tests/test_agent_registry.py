@@ -250,18 +250,17 @@ def test_claude_haiku_alias_builds_interactive_argv_end_to_end() -> None:
     assert argv[model_index + 1] == "haiku"
 
 
-@pytest.mark.parametrize("alias", ["opus", "sonnet"])
-def test_claude_opus_or_sonnet_argv_end_to_end(alias: str) -> None:
-    """``claude/opus`` and ``claude/sonnet`` build correct argv end to end.
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
+def test_claude_alias_argv_end_to_end(alias: str) -> None:
+    """``claude/<alias>`` builds correct interactive and headless argv.
 
-    Mirrors ``test_claude_haiku_alias_builds_interactive_argv_end_to_end``
-    for the remaining Anthropic short aliases: the dynamic-alias resolver
-    must synthesize ``model_flag == "--model <alias>"`` on the interactive
-    transport with the yolo flag in the built PTY argv, and the headless
-    transport must agree -- ``--model`` followed by the bare alias as two
-    consecutive argv tokens. A regression that flips an alias's transport
-    or strips the yolo flag surfaces here instead of as a silent CLI
-    failure.
+    Covers all three Anthropic short aliases end to end: the dynamic-alias
+    resolver must synthesize ``model_flag == "--model <alias>"`` on the
+    interactive transport with the yolo flag in the built PTY argv, and the
+    headless transport must agree -- ``--model`` followed by the bare alias
+    as two consecutive argv tokens. A regression that flips an alias's
+    transport or strips the yolo flag surfaces here instead of as a silent
+    CLI failure.
     """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
@@ -396,6 +395,27 @@ def test_claude_headless_model_reference_resolves() -> None:
     assert agent.output_flag == "--output-format=stream-json"
     assert agent.transport == AgentTransport.CLAUDE
     assert agent.model_flag == "--model haiku"
+
+
+def test_claude_headless_argv_includes_verbose_for_stream_json() -> None:
+    """Headless Claude stream-json output requires --verbose (Claude CLI 2.1+).
+
+    The command builder must emit --verbose unconditionally for the
+    stream-json headless transport so the CLI does not exit with
+    ``--output-format=stream-json requires --verbose``.
+    """
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("claude-headless/haiku")
+    assert agent is not None
+
+    argv = DefaultCommandBuilder().build(
+        agent, "tmp/headless-claude-smoke/PROMPT.md", options=BuildCommandOptions()
+    )
+
+    assert "--verbose" in argv
+    # --verbose should appear exactly once even when options.verbose is False.
+    assert argv.count("--verbose") == 1
 
 
 def test_registry_validate_exempts_claude_interactive_output_flag() -> None:

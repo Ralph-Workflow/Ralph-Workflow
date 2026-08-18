@@ -80,10 +80,13 @@ from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
 from ralph.agents.invoke._runtime_resolvers import RUNTIME_RESOLVERS
 from ralph.agents.invoke._session import (
+    TURN_BOUNDARY_MARKER,
     _bounded_output_lines,
     extract_transport_session_id,
     extract_transport_session_id_from_line,
+    extract_transport_text_session_id,
     extract_visible_tui_transport_session_id,
+    is_canonical_session_text_line,
 )
 from ralph.agents.invoke._session_resume import (
     fresh_session_options,
@@ -601,11 +604,13 @@ def _fail_for_missing_credentials(
         # binary) resolves its own provider credential per-profile -- e.g.
         # a GLM-backed profile injects ``ANTHROPIC_AUTH_TOKEN`` /
         # ``ANTHROPIC_BASE_URL`` itself (verified via ``ccs env <alias>``),
-        # never ``ANTHROPIC_API_KEY``. Requiring ``ANTHROPIC_API_KEY`` here
-        # rejected every real ``ccs/<alias>`` invocation before it ever
-        # reached the ``ccs`` binary, regardless of whether the alias's
-        # underlying profile actually needed that variable.
-        if config.cmd.split()[:1] == ["ccs"]:
+        # never ``ANTHROPIC_API_KEY``. The official Claude Code CLI (both
+        # interactive ``claude`` and headless ``claude -p``) stores its own
+        # credentials in ``~/.claude/.credentials.json`` after login, so it
+        # does not require ``ANTHROPIC_API_KEY`` in Ralph's environment either.
+        # Only third-party wrappers or unknown binaries named ``claude`` in a
+        # test harness should be required to provide the env var.
+        if config.cmd.split()[:1] in (["ccs"], ["claude"]):
             return
         required_env_var = "ANTHROPIC_API_KEY"
     elif transport == AgentTransport.OPENCODE:
@@ -768,6 +773,7 @@ merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
 
 # Re-export all public types and error classes
 __all__ = [
+    "TURN_BOUNDARY_MARKER",
     "AgentInactivityTimeoutError",
     "AgentInvocationError",
     "AgentRunCtx",
@@ -807,11 +813,13 @@ __all__ = [
     "extract_choice_menu_state",
     "extract_transport_session_id",
     "extract_transport_session_id_from_line",
+    "extract_transport_text_session_id",
     "extract_visible_tui_transport_session_id",
     "fresh_session_options",
     "get_process_manager",
     "interactive_auto_response_for_prompt",
     "invoke_agent",
+    "is_canonical_session_text_line",
     "is_permission_prompt_line",
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",

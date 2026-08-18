@@ -51,14 +51,29 @@ def test_local_opencode_model_is_exempt_from_provider_key_preflight() -> None:
     )
 
 
-def test_claude_transport_requires_anthropic_key() -> None:
-    """S-3: Claude transport uses the Anthropic credential regardless of model flag."""
-    config = AgentConfig(cmd="claude -p", transport=AgentTransport.CLAUDE)
+def test_claude_wrapper_requires_anthropic_key() -> None:
+    """S-3: a non-official Claude wrapper still requires the Anthropic credential."""
+    config = AgentConfig(cmd="claude-wrapper -p", transport=AgentTransport.CLAUDE)
 
     with pytest.raises(MissingCredentialsError) as excinfo:
         _fail_for_missing_credentials(config, InvokeOptions(), env_getter=lambda _name: None)
 
     assert excinfo.value.env_var == "ANTHROPIC_API_KEY"
+
+
+def test_official_claude_cli_is_exempt_from_anthropic_key_preflight() -> None:
+    """The official Claude Code CLI manages its own credentials.
+
+    Both interactive ``claude`` and headless ``claude -p`` store credentials
+    in ``~/.claude/.credentials.json`` after login, so they must not be
+    blocked by ``ANTHROPIC_API_KEY`` in Ralph's environment.
+    """
+    for cmd in ("claude", "claude -p"):
+        for transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+            config = AgentConfig(cmd=cmd, transport=transport)
+            _fail_for_missing_credentials(
+                config, InvokeOptions(), env_getter=lambda _name: None
+            )
 
 
 def test_ccs_alias_is_exempt_from_anthropic_key_preflight() -> None:

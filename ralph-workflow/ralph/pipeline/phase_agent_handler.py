@@ -268,7 +268,7 @@ def _raw_transcript_break_detail(
     except (ValueError, IndexError):
         return None
     raw_path = raw_log_path_for(workspace_root, unit_id, model=agent_config.model)
-    breaks = detect_raw_log_breaks(raw_path)
+    breaks = detect_raw_log_breaks(raw_path, transport=agent_config.transport)
     if not breaks:
         return None
     return f"raw transcript corrupted: {breaks[0].detail}"

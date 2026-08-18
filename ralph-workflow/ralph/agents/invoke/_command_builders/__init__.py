@@ -777,6 +777,18 @@ class DefaultCommandBuilder:
 
         if transport == AgentTransport.CLAUDE and config.output_flag is not None:
             cmd.append(config.output_flag)
+            # The official Claude Code CLI requires --verbose when
+            # --output-format=stream-json is combined with --print (measured
+            # v2.1.234). Emit it here so callers do not have to remember to set
+            # options.verbose for this transport. Third-party CLAUDE-transport
+            # binaries (e.g. ``ccs``) keep their original argv order.
+            if (
+                _agent_command_name(config) == "claude"
+                and config.output_flag == "--output-format=stream-json"
+                and config.verbose_flag
+                and config.verbose_flag not in cmd
+            ):
+                cmd.append(config.verbose_flag)
 
         if config.print_flag and not _command_already_enables_print_mode(cmd):
             cmd.append(config.print_flag)
@@ -789,7 +801,11 @@ class DefaultCommandBuilder:
 
         cmd.extend(_split_optional_flag(config.yolo_flag))
 
-        if options.verbose and config.verbose_flag:
+        if (
+            options.verbose
+            and config.verbose_flag
+            and config.verbose_flag not in cmd
+        ):
             cmd.append(config.verbose_flag)
 
         _extend_claude_transport_flags(cmd, transport, options)

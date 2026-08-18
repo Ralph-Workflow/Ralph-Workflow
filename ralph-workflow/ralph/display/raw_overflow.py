@@ -10,8 +10,10 @@ import time
 import weakref
 from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
+from ralph.config.agent_transport import AgentTransport
 from ralph.display._raw_log_break import RawLogBreak
 from ralph.display.record_writer import safe_id_for
+from ralph.display.vt_normalizer import normalize_vt_text
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -110,6 +112,42 @@ def is_harness_input_echo(line: str) -> bool:
     :data:`HARNESS_PTY_INPUT_ECHO_LINES`; never a substring test.
     """
     return line.strip() in HARNESS_PTY_INPUT_ECHO_LINES
+
+
+def _is_canonical_transport_session_line(line: str) -> bool:
+    """Return True when ``line`` is canonical PTY/session metadata.
+
+    Interactive Claude emits human-readable session/resume/completion
+    lines into the raw PTY capture (e.g. ``Session ID: <uuid>``).  They
+    are not JSONL, but they are expected verbatim content -- not
+    corruption.  ANSI/VT control codes are stripped before matching so
+    TUI-styled banners are recognized.
+
+    The canonical pattern vocabulary lives in
+    ``ralph.agents.invoke._session`` and is imported here lazily to
+    avoid an import-time cycle with ``ralph.agents.invoke`` (which
+    imports this module for ``RawOverflowLog``).
+    """
+    from ralph.agents.invoke import is_canonical_session_text_line
+
+    return is_canonical_session_text_line(normalize_vt_text(line).strip())
+
+
+#: Transports whose raw capture is an interactive PTY stream rather than a
+#: machine-readable JSONL protocol. For these transports visible tool
+#: output, file contents, ANSI TUI redraws, and other human-readable text
+#: are expected verbatim capture content, not corruption. NUL-byte
+#: detection is still enforced (it signals the cross-writer truncation
+#: hazard), but NON_JSONL grading is skipped so a healthy interactive run
+#: is not mislabeled ``raw transcript corrupted``.
+_INTERACTIVE_PTY_TRANSPORTS: frozenset[AgentTransport] = frozenset(
+    {AgentTransport.CLAUDE_INTERACTIVE, AgentTransport.NANOCODER, AgentTransport.AGY}
+)
+
+
+def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
+    """Return True when ``transport`` emits visible PTY output rather than JSONL."""
+    return transport in _INTERACTIVE_PTY_TRANSPORTS
 
 
 def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = None) -> Path:
@@ -219,7 +257,9 @@ with contextlib.suppress(ValueError):
     atexit.register(close_all_raw_overflow_logs)
 
 
-def detect_raw_log_breaks(raw_path: Path) -> list[RawLogBreak]:
+def detect_raw_log_breaks(
+    raw_path: Path, *, transport: AgentTransport | None = None
+) -> list[RawLogBreak]:
     """Read ``raw_path`` back as JSONL and return every corruption break.
 
     S-8 / C4 / DoD 15: a corrupted or truncated transcript is a reported
@@ -227,13 +267,21 @@ def detect_raw_log_breaks(raw_path: Path) -> list[RawLogBreak]:
 
     - ``NUL_BYTES``: any NUL byte anywhere in the file. The parser
       cannot recover the next JSON frame's start (it cannot tell where
-      the JSON ends, since JSON itself permits ``\\\\u0000`` as an
+      the JSON ends, since JSON itself permits ``\\u0000`` as an
       escaped sequence inside a string but a bare NUL cannot appear in
       a well-formed JSON document on the wire).
     - ``NON_JSONL``: a line that is not a parseable JSON object. This
       catches the 2026-08-06 captured shape where a separate writer
       (the display layer's ``_get_overflow_log``) appended rendered
       ``\u2713 PASS\u2026`` text into the same verbatim capture.
+
+    For interactive PTY transports (``claude_interactive``, ``nanocoder``)
+    the raw capture is expected human-visible output rather than JSONL,
+    so only ``NUL_BYTES`` and ``READ_ERROR`` breaks are reported. JSONL
+    streams (headless Claude, AGY print mode, Codex, etc.) keep strict
+    JSON-object validation for every line, with an allowlist for canonical
+    session/resume/completion metadata lines emitted by the PTY/session
+    layer.
 
     The function reads the file in binary mode so a NUL-byte break is
     observable. ``read_text(errors='replace')`` would silently swallow
@@ -270,6 +318,8 @@ def detect_raw_log_breaks(raw_path: Path) -> list[RawLogBreak]:
                 ),
             )
         )
+    if is_interactive_pty_transport(transport):
+        return breaks
     return breaks + _detect_non_jsonl_breaks(payload)
 
 
@@ -282,6 +332,11 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
     JSONL: lines that parse as JSON objects are skipped, and every
     other non-empty line (rendered ``\u2713 PASS\u2026`` text, control
     codes, malformed JSON) is a break.
+
+    Canonical interactive-transport session/resume/completion metadata
+    lines (see :func:`_is_canonical_transport_session_line`) are expected
+    verbatim capture content, not corruption. They are recognized after
+    VT/ANSI normalization so TUI-wrapped session lines are not misgraded.
     """
     breaks: list[RawLogBreak] = []
     offset = 0
@@ -297,7 +352,9 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
             line_offset = chunk_offset
             chunk_offset += len(raw_line)
             line_bytes = raw_line.rstrip(b"\n").rstrip(b"\r")
-            line_text = line_bytes.decode("utf-8", errors="replace").strip()
+            line_text = normalize_vt_text(
+                line_bytes.decode("utf-8", errors="replace")
+            ).strip()
             if not line_text:
                 continue
             if is_harness_input_echo(line_text):
@@ -309,6 +366,12 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
                 # AGY vendor print-mode tool-result status line (see
                 # :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`): measured
                 # wire output, not a corrupted frame.
+                continue
+            if _is_canonical_transport_session_line(line_text):
+                # Canonical interactive-transport session/resume/completion
+                # metadata (see :func:`_is_canonical_transport_session_line`):
+                # emitted by the PTY/session layer, parsed by the session
+                # extractor, and expected verbatim in the raw capture.
                 continue
             try:
                 parsed: object = json.loads(line_text)

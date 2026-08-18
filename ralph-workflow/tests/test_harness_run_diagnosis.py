@@ -6,7 +6,10 @@ no real network, no time.sleep, no real file I/O.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -1180,6 +1183,7 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
         tmp_path,
         "smoke_test_result",
         run_id=run_id,
+        receipt_secret=os.environ.get("RALPH_BROKER_SECRET"),
     )
     assert result is not None
 
@@ -1187,7 +1191,13 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
 def _make_completion_sentinel(tmp_path: Path, run_id: str) -> None:
     sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
     sentinel.parent.mkdir(parents=True, exist_ok=True)
-    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+    payload: dict[str, str] = {"run_id": run_id}
+    secret = os.environ.get("RALPH_BROKER_SECRET")
+    if secret is not None:
+        payload["hmac"] = hmac.new(
+            secret.encode(), run_id.encode(), hashlib.sha256
+        ).hexdigest()
+    sentinel.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(

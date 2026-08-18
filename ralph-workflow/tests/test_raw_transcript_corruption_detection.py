@@ -398,3 +398,316 @@ def test_line_embedding_marker_text_is_still_a_break(isolated_workspace: Path) -
         "a non-JSON line that embeds (but is not exactly) a harness "
         "marker must still be reported as NON_JSONL"
     )
+
+
+# --- S-3: Claude interactive PTY session/resume metadata ---------------
+
+
+def _write_claude_raw_log(raw_path: Path, *lines: str) -> None:
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes("".join(f"{line}\n" for line in lines).encode("utf-8"))
+
+
+def test_reported_claude_session_id_line_is_not_a_break(isolated_workspace: Path) -> None:
+    """The 2026-08-17 regression: ``Session ID: <uuid>`` was graded NON_JSONL.
+
+    The normalized interactive-Claude transcript begins with this exact
+    line. The corruption detector must recognize the canonical
+    session/resume vocabulary emitted by the PTY/session layer instead of
+    reporting ``raw transcript corrupted`` for a healthy run.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "Session ID: 28ee58c0-0614-474f-b609-80cc6c252f90",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}',
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_claude_session_ready_banner_is_not_a_break(isolated_workspace: Path) -> None:
+    """The TUI banner form ``Claude session ready. Session ID: <id>`` is valid."""
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "Claude session ready. Session ID: pty-banner-42",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}',
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_claude_resume_line_is_not_a_break(isolated_workspace: Path) -> None:
+    """The resumable-exit hint ``Resume this session with --resume <id>`` is valid."""
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "Resume this session with --resume pty-session-99",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}',
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_claude_explicit_completion_marker_is_not_a_break(isolated_workspace: Path) -> None:
+    """The harness completion marker ``Task declared complete: ...`` is valid.
+
+    Interactive Claude runs emit this non-JSON line through the same
+    PTY/session layer; it is canonical completion metadata, not corruption.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "Task declared complete: session_id=pty-session-1, summary=done, timestamp=1",
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_valid_claude_transcript_with_tool_activity_is_not_corrupted(
+    isolated_workspace: Path,
+) -> None:
+    """A complete healthy Claude interactive raw transcript has no breaks.
+
+    Mixes session metadata, JSON assistant/tool frames, tool results, the
+    harness turn-boundary, and the explicit completion marker.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "Session ID: 28ee58c0-0614-474f-b609-80cc6c252f90",
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_read","name":"mcp__ralph__read_file","input":{"path":"PROMPT.md"}}]}}',
+        '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_read","content":[{"type":"text","text":"prompt contents"}]}]}}',
+        "[claude turn boundary]",
+        "Task declared complete: session_id=28ee58c0-0614-474f-b609-80cc6c252f90, summary=done, timestamp=1",
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Some Session ID: abc-123",
+        "Session ID: abc-123 extra",
+        "session id abc-123",
+        "Session ID: abc 123",
+        "Resume this session with --resume ",
+        "Task declared complete without session_id",
+    ],)
+def test_non_canonical_session_lines_are_still_breaks(isolated_workspace: Path, line: str) -> None:
+    """Only the exact canonical shapes are tolerated; near-matches remain NON_JSONL.
+
+    This preserves the strict trust boundary: an agent cannot smuggle
+    arbitrary text by merely mentioning ``Session ID``.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(raw_path, line)
+
+    breaks = detect_raw_log_breaks(raw_path)
+    non_jsonl = [b for b in breaks if b.kind == "NON_JSONL"]
+    assert non_jsonl, f"line {line!r} must remain a NON_JSONL break"
+
+
+def test_ansi_wrapped_session_id_line_is_not_a_break(isolated_workspace: Path) -> None:
+    """ANSI-styled ``Session ID:`` lines are canonical PTY metadata, not corruption.
+
+    The interactive Claude TUI wraps session/resume hints in styling such
+    as ``\\x1b[2m...\\x1b[22m``. The corruption detector must grade the
+    visible text after stripping the escape sequences.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "\x1b[2mSession ID: 28ee58c0-0614-474f-b609-80cc6c252f90\x1b[22m",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}',
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_ansi_wrapped_session_ready_banner_is_not_a_break(isolated_workspace: Path) -> None:
+    """ANSI-styled ``Claude session ready.`` banners are canonical metadata."""
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "\x1b[32mClaude session ready. Session ID: pty-banner-42\x1b[0m",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}',
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_ansi_wrapped_resume_line_is_not_a_break(isolated_workspace: Path) -> None:
+    """ANSI-styled resume hints are canonical metadata."""
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "\x1b[2mResume this session with --resume pty-session-99\x1b[22m",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}',
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_ansi_wrapped_explicit_completion_marker_is_not_a_break(
+    isolated_workspace: Path,
+) -> None:
+    """ANSI-styled completion markers are canonical metadata."""
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "\x1b[1mTask declared complete: session_id=pty-session-1, summary=done\x1b[22m",
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_ansi_noise_only_line_is_not_a_break(isolated_workspace: Path) -> None:
+    """A line that is purely ANSI/VT control noise contributes no visible text.
+
+    PTY repaints emit sequences such as cursor-save/restore and mode
+    switches. After normalization they become empty and must not be
+    graded as NON_JSONL.
+    """
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b"\x1b[?25l\x1b[H\x1b[2J\x1b[?25h\n"
+        b'{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}\n'
+    )
+
+    assert detect_raw_log_breaks(raw_path) == []
+
+
+def test_ansi_wrapped_non_canonical_session_line_is_still_a_break(
+    isolated_workspace: Path,
+) -> None:
+    """Styling does not excuse a non-canonical session mention."""
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    _write_claude_raw_log(
+        raw_path,
+        "\x1b[2mSome Session ID: abc-123\x1b[22m",
+    )
+
+    breaks = detect_raw_log_breaks(raw_path)
+    non_jsonl = [b for b in breaks if b.kind == "NON_JSONL"]
+    assert non_jsonl, "non-canonical styled session mention must remain NON_JSONL"
+
+
+# --- S-3: interactive PTY transport-aware raw-log grading ----------------
+
+
+def test_interactive_pty_transport_skips_non_jsonl_for_visible_tool_output(
+    isolated_workspace: Path,
+) -> None:
+    """Interactive Claude PTY output is human-visible text, not JSONL.
+
+    The live ``claude/haiku`` smoke capture includes rendered MCP tool
+    status lines, file contents emitted by ``write_file``, and source code
+    lines. For ``AgentTransport.CLAUDE_INTERACTIVE`` these are expected
+    verbatim capture content, so they must not be graded as ``NON_JSONL``
+    corruption.
+    """
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b"Session ID: 28ee58c0-0614-474f-b609-80cc6c252f90\n"
+        b"\x1b[32m\xe2\x9c\x93 PASS \xe2\x86\xb3 ralph.write_file (path=tmp/interactive-claude-smoke/todo-list.js)\x1b[0m\n"
+        b"const todos = [];\n"
+        b"let nextId = 1;\n"
+        b"\n"
+        b"module.exports = TodoAPI;\n"
+        b"[claude turn boundary]\n"
+        b"Task declared complete: session_id=28ee58c0-0614-474f-b609-80cc6c252f90\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CLAUDE_INTERACTIVE)
+    assert breaks == [], f"expected no breaks for interactive PTY visible output, got {breaks}"
+
+
+def test_interactive_pty_transport_still_detects_nul_bytes(
+    isolated_workspace: Path,
+) -> None:
+    """NUL-byte truncation remains corruption even for interactive PTY."""
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b"Session ID: 28ee58c0-0614-474f-b609-80cc6c252f90\n"
+        + (b"\x00" * 256)
+        + b"visible text after the hole\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CLAUDE_INTERACTIVE)
+    assert any(b.kind == "NUL_BYTES" for b in breaks), breaks
+    assert not any(b.kind == "NON_JSONL" for b in breaks), breaks
+
+
+def test_agy_transport_skips_non_jsonl_for_visible_pty_output(
+    isolated_workspace: Path,
+) -> None:
+    """AGY's raw capture is an interactive PTY stream, not JSONL.
+
+    The live ``agy/gemini-3.6-flash-low`` smoke capture includes rendered
+    MCP tool status lines, source code emitted by ``write_file``, and other
+    human-readable Claude Code PTY text. For ``AgentTransport.AGY`` these are
+    expected verbatim capture content, so they must not be graded as
+    ``NON_JSONL`` corruption. NUL-byte truncation remains a break.
+    """
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b"Session ID: agy-smoke-gemini-3.6-flash-low\n"
+        b"\x1b[32m\xe2\x9c\x93 PASS \xe2\x86\xb3 ralph.write_file (path=tmp/interactive-agy-smoke/todo-list.js)\x1b[0m\n"
+        b"const todos = [];\n"
+        b"let nextId = 1;\n"
+        b"\n"
+        b"module.exports = TodoAPI;\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.AGY)
+    assert breaks == [], f"expected no breaks for AGY interactive PTY output, got {breaks}"
+
+
+def test_agy_transport_still_detects_nul_bytes(
+    isolated_workspace: Path,
+) -> None:
+    """NUL-byte truncation remains corruption for AGY interactive PTY."""
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b"Session ID: agy-smoke-gemini-3.6-flash-low\n"
+        + (b"\x00" * 256)
+        + b"visible text after the hole\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.AGY)
+    assert any(b.kind == "NUL_BYTES" for b in breaks), breaks
+    assert not any(b.kind == "NON_JSONL" for b in breaks), breaks
+
+
+def test_headless_claude_transport_keeps_strict_jsonl(
+    isolated_workspace: Path,
+) -> None:
+    """Headless Claude emits stream-json; non-JSON lines remain breaks."""
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        b'{"type":"system","message":"hello"}\n'
+        b"visible text line\n"
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CLAUDE)
+    non_jsonl = [b for b in breaks if b.kind == "NON_JSONL"]
+    assert non_jsonl, f"expected NON_JSONL break for headless Claude, got {breaks}"

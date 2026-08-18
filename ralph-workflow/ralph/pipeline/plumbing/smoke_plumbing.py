@@ -2044,7 +2044,8 @@ def _raw_transcript_corruption_errors(workspace_root: Path, config: AgentConfig)
         return []
     raw_path = raw_log_path_for(workspace_root, unit_id, model=config.model)
     return [
-        f"raw transcript corrupted: {br.detail}" for br in detect_raw_log_breaks(raw_path)
+        f"raw transcript corrupted: {br.detail}"
+        for br in detect_raw_log_breaks(raw_path, transport=config.transport)
     ]
 
 

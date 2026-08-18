@@ -73,7 +73,7 @@ from ralph.agents.invoke._pty_transcript import (
     transcript_lines_from_events,
 )
 from ralph.agents.invoke._session import (
-    _TURN_BOUNDARY_MARKER,
+    TURN_BOUNDARY_MARKER,
     extract_visible_tui_transport_session_id,
 )
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
@@ -967,7 +967,7 @@ class PtyLineReader:
         while not self._monitor_stop.is_set():
             if self._stop_sentinel_path.exists():
                 with self._lines_lock:
-                    self._lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
+                    self._lines_queue.append(TURN_BOUNDARY_MARKER + "\n")
                     self._lines_event.set()
                 with contextlib.suppress(OSError):
                     _write_pty_input(
@@ -981,7 +981,7 @@ class PtyLineReader:
             return
         self._completion_exit_sent = True
         with self._lines_lock:
-            self._lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
+            self._lines_queue.append(TURN_BOUNDARY_MARKER + "\n")
             self._lines_event.set()
         with contextlib.suppress(OSError):
             _write_pty_input(self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock)

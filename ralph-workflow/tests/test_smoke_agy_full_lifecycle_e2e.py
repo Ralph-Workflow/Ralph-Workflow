@@ -193,7 +193,7 @@ _NEGATIVE_SELECTOR_FANOUT = 4
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("no_output", ("AGY --print returned empty stdout",)),
-    ("malformed_stream", ("raw transcript corrupted", "no tool activity was observed")),
+    ("malformed_stream", ("no tool activity was observed",)),
     ("failed_result", ("result frame reported status=FAILED",)),
     ("missing_dispatch", ("subagent dispatch was not observed",)),
     ("missing_result", ("subagent result was not observed",)),

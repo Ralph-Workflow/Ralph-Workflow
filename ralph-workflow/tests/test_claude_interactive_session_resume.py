@@ -67,12 +67,12 @@ def test_claude_interactive_resumable_exit_keeps_transcript_session_id(
     assert excinfo.value.resumable_session_id == "pty-session-99"
 
 
-@pytest.mark.parametrize("alias", ["opus", "sonnet"])
-def test_claude_opus_or_sonnet_resumable_exit_when_no_completion_evidence(
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
+def test_claude_alias_resumable_exit_when_no_completion_evidence(
     alias: str,
     tmp_path: Path,
 ) -> None:
-    """``claude/opus`` and ``claude/sonnet`` rc=0 exits without evidence stay resumable.
+    """Every ``claude/<alias>`` rc=0 exit without evidence stays resumable.
 
     Regression pin for the production failure where ``claude/opus`` exited
     cleanly (rc=0) with no artifact (``.agent/artifacts/plan.md absent``).

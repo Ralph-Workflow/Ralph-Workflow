@@ -278,7 +278,7 @@ def _identity_seed_anchors() -> tuple[_palette.RoleAnchor, ...]:
 _IDENTITY_SEED_ANCHORS: Final[tuple[_palette.RoleAnchor, ...]] = _identity_seed_anchors()
 
 
-def _generate_identity_palette(surface_hex: str | None) -> tuple[str, ...]:
+def _generate_identity_palette_uncached(surface_hex: str | None) -> tuple[str, ...]:
     slots: list[str] = []
     for anchor in _IDENTITY_SEED_ANCHORS:
         if surface_hex is not None:
@@ -287,6 +287,12 @@ def _generate_identity_palette(surface_hex: str | None) -> tuple[str, ...]:
             hex_val = _palette.solve_dual_safe(anchor)
         slots.append(hex_val)
     return tuple(slots)
+
+
+_GENERATE_IDENTITY_PALETTE_MAXSIZE: Final[int] = 64
+_generate_identity_palette = lru_cache(maxsize=_GENERATE_IDENTITY_PALETTE_MAXSIZE)(
+    _generate_identity_palette_uncached
+)
 
 
 IDENTITY_PALETTE: Final[tuple[str, ...]] = _generate_identity_palette(_CANONICAL_DARK_SURFACE_HEX)
