@@ -737,3 +737,29 @@ the observed-vocabulary list above stays complete: the measured
 `step_type` set for v1.1.13 live runs is `user_input`, `unknown`,
 `agent_response`, `tool`, `checkpoint`, `subagent`, `system_message`,
 and `error_message`.
+
+## 2026-08-18: v1.1.14 live smoke re-characterization
+
+`agy --version` printed **1.1.14** immediately before the command below:
+
+```bash
+uv run python -m ralph smoke-interactive-agy --agent agy/gemini-3.6-flash-low
+```
+
+Ralph invoked AGY as `agy --output-format stream-json
+--dangerously-skip-permissions --add-dir <workspace> --model
+gemini-3.6-flash-low --print <prompt>`. The live display showed `init`,
+`user_input`, `checkpoint`, `agent_response`, and `tool` activity; it
+reported **21 parser events**, a WIRE-grade artifact receipt, a WIRE-grade
+completion sentinel, and WIRE-grade tool activity. The smoke report's
+verdict was `PASS`, but the command exited `1` because the closing AGY
+result frame reported `status=ERROR` after the successful receipt and
+sentinel. This is retained as an upstream/environmental closing-frame
+failure, not converted into a green command result.
+
+The command output did not expose a new JSON payload shape beyond the
+operator-visible vocabulary above, and no raw stream file survived in the
+scratch smoke directory. The existing normalized v1.1.13 fixtures remain
+the tracked wire capture; the parser's generic bodiless-step fallback
+continues to surface additive `step_type` values visibly rather than
+silently discarding them.
