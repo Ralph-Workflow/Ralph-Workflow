@@ -80,8 +80,8 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # change, not a budget-relief change.
 _MAX_PYTEST_WORKERS = 32
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
-# The maintained 12-core host has eight useful pytest slots once the AGY
-# lifecycle shard's nested CLI/MCP subprocesses are accounted for.
+# The maintained 12-core host has eight useful pytest slots under the
+# standard deterministic profile.
 _PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
@@ -111,10 +111,6 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.
     "tests/test_tool_git_read_path_validation.py",
-    # Full-lifecycle AGY smoke (parser -> harness -> MCP wire -> artifact
-    # submission -> completion sentinel) must run under the default
-    # ``make test`` profile so the AGY transport contract cannot rot silently.
-    "tests/test_smoke_agy_full_lifecycle_e2e.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (
@@ -140,24 +136,9 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
-# wt-063: the AGY full-lifecycle E2E file spawns a real headless-agent
-# subprocess chain per test (~18 s measured wall on the maintained
-# 12-core host) while its static collection count is 2 items, so LPT
-# cannot see the cost and packs ~30 s of neighbouring files beside it
-# -- the ~50 s straggler that repeatedly blew the 60 s per-suite
-# deadline (measured wt-063: deadline kill at 8/9/10/11 shards). The
-# floor re-expresses its wall clock in corpus weight units (~26 ms per
-# unit at 11 shards); ``max()`` keeps it a FLOOR so a grown static
-# estimate takes over again. Re-measure when the file's subprocess
-# chain changes.
-_AGY_LIFECYCLE_E2E_FILE = "tests/test_smoke_agy_full_lifecycle_e2e.py"
-_AGY_LIFECYCLE_E2E_WEIGHT_FLOOR = 1000
-# The dedicated required-E2E shard uses two xdist workers. Each lifecycle
-# owns a per-test ``tmp_path`` and per-bridge reserved MCP port; the AGY
-# file already uses ``_NEGATIVE_SELECTOR_FANOUT = 2``, so these subprocess
-# lifecycles are isolated while the three required files run concurrently.
-# Revert by flipping this constant back to ``"1"`` if nested-process
-# contention surfaces.
+# Required real-git files use a dedicated shard with two xdist workers.
+# Each test owns a ``tmp_path``; the retained registry remains small and
+# deterministic under the default test profile.
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = "2"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
@@ -676,8 +657,6 @@ def _test_file_weight(cwd: Path, relative_path: str) -> int:
     if weight is None:
         source = (cwd / relative_path).read_text(encoding="utf-8")
         weight = estimate_test_file_weight(source)
-    if relative_path == _AGY_LIFECYCLE_E2E_FILE:
-        return max(weight, _AGY_LIFECYCLE_E2E_WEIGHT_FLOOR)
     if relative_path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
         return weight * _REQUIRED_E2E_WEIGHT_MULTIPLIER
     return weight
@@ -963,12 +942,8 @@ def run_test_suites(
     else:
         selected_files = file_discoverer(cwd)
         validate_required_auto_integrate_selection(selected_files)
-        # wt-015 S-11: the REQUIRED auto-integrate E2E files are
-        # subprocess-I/O-bound, so they are pinned onto ONE dedicated shard
-        # with an in-shard xdist fan-out (see
-        # ``_REQUIRED_E2E_SHARD_XDIST_WORKERS``). Keeping them in the
-        # plain-pytest main pool let the shard they landed on inflate the
-        # slowest-shard wall clock (~57 s) past the 60 s combined budget.
+        # Required auto-integrate E2E files are subprocess-I/O-bound, so
+        # they run on one dedicated shard with bounded in-shard xdist.
         selected_set = set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
         required_e2e_shard = tuple(
             path for path in selected_files if path in selected_set
@@ -982,25 +957,7 @@ def run_test_suites(
     shards = partition_selected_files(
         selected_files,
         worker_count=int(_pytest_workers()),
-        # The static weight floor (``_AGY_LIFECYCLE_E2E_WEIGHT_FLOOR``)
-        # exists ONLY for the default ``make test`` profile, where the
-        # required AGY lifecycle file's real wall clock is invisible to
-        # the static collector. Under ``test-subprocess-e2e`` the floor
-        # must NOT apply: every discovered file carries
-        # ``subprocess_e2e``, and the floor would isolate the
-        # module-level ``smoke``-marked lifecycle file onto a singleton
-        # shard whose marker expression (``... and not smoke ...``)
-        # deselects every item, making pytest exit 5 ("no tests ran").
-        # Assign its static collected weight as zero so LPT co-locates it
-        # with runnable E2E files without giving it phantom runtime cost.
-        file_weights={
-            path: (
-                0
-                if subprocess_e2e_only and path == _AGY_LIFECYCLE_E2E_FILE
-                else file_weigher(cwd, path)
-            )
-            for path in selected_files
-        },
+        file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     if required_e2e_shard:
         shards = (*shards, required_e2e_shard)

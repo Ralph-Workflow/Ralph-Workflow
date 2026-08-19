@@ -8,12 +8,9 @@
 # ~15k tests: the former fixed default of 8 no longer fits the 60s
 # per-suite deadline on the 12-core host. 8/9/10 shards concentrate the
 # same work into fewer serial shards (measured wt-063: deadline kill at
-# each); 11 shards fit only after the AGY full-lifecycle E2E file got a
-# measured weight floor (see ``_AGY_LIFECYCLE_E2E_WEIGHT_FLOOR`` in
-# ralph/test_suites.py) — its ~18 s subprocess chain was invisible to
-# the static item-count estimator and produced a ~50 s straggler shard.
-# With both in place the quiet-host ``make verify`` gate reports ~51 s
-# cumulative test elapsed of the 60 s combined budget. In-shard xdist
+# each). The standard profile retains only its real-git required-E2E
+# files; AGY smoke stays independently selected with ``-m smoke``.
+# In-shard xdist
 # is NOT the escape hatch — 6 shards * 2 workers measured ~149 s
 # slowest shard (see PYTEST_XDIST_WORKERS_PER_SHARD below). ``auto``
 # is also what ralph.test_suites resolves when the variable is unset,

@@ -67,6 +67,9 @@ def _run_full_lifecycle_smoke(tmp_path: Path) -> tuple[int, str]:
     mock_path = _mock_agy_path()
     assert mock_path.is_file(), f"Mock AGY script not found at {mock_path}"
     env = os.environ.copy()
+    # The subprocess must import Ralph and pydantic from this test's uv
+    # interpreter, not a parent pipx installation compiled for another Python.
+    env.pop("PYTHONPATH", None)
     env["RALPH_AGY_BINARY"] = str(mock_path)
     env["MOCK_AGY_BEHAVIOR"] = "normal"
     env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)
@@ -214,6 +217,7 @@ class _NegativeSelectorOutcome:
 def _run_negative_smoke(tmp_path: Path, behavior: str) -> tuple[int, str]:
     """Run the lifecycle smoke with one MOCK_AGY_BEHAVIOR selector forced."""
     env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
     env["RALPH_AGY_BINARY"] = str(_mock_agy_path())
     env["MOCK_AGY_BEHAVIOR"] = behavior
     env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)

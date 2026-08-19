@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -13,8 +15,7 @@ from ralph.mcp.transport.agy import (
     load_existing_agy_upstream_servers,
 )
 
-if TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.smoke
 
 
 def test_agy_mcp_config_produces_serverurl_key(tmp_path: Path) -> None:

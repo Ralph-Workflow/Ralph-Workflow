@@ -6,6 +6,8 @@ import contextlib
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.invoke import (
     InvokeOptions,
     _clear_session_completion_sentinel,
@@ -20,7 +22,8 @@ from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+pytestmark = pytest.mark.smoke
 
 
 def _write_prompt(tmp_path: Path, text: str = "hello") -> Path:

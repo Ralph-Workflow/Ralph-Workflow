@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.agents.parsers.agy import AgyParser
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -39,6 +41,8 @@ _AGY_WIRE_SUBAGENT_FIXTURE = _FIXTURES_DIR / "agy_wire_subagent.jsonl"
 _AGY_WIRE_TEXT_FIXTURE = _FIXTURES_DIR / "agy_wire_text.jsonl"
 _AGY_WIRE_B_SERIES_FIXTURE = _FIXTURES_DIR / "agy_wire_b_series.jsonl"
 _AGY_WIRE_V1_1_13_FIXTURE = _FIXTURES_DIR / "agy_wire_v1_1_13.jsonl"
+
+pytestmark = pytest.mark.smoke
 
 
 def _replay(fixture: Path) -> list:

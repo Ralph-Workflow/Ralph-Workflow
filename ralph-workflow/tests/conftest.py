@@ -84,6 +84,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         relative_path = item.path.relative_to(Path.cwd()).as_posix()
         if relative_path in _REQUIRED_AUTO_INTEGRATE_E2E_PATHS:
             item.add_marker("required_auto_integrate_e2e")
+        # AGY regression coverage is intentionally an explicit smoke profile.
+        # Node IDs cover AGY-only modules and mixed-module AGY parametrizations
+        # without excluding the non-AGY cases in those mixed modules.
+        if "agy" in item.nodeid.casefold():
+            item.add_marker("smoke")
 
 
 if TYPE_CHECKING:

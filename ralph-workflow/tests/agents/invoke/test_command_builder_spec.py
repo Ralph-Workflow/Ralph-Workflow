@@ -26,7 +26,13 @@ from ralph.config.models import AgentConfig
     (
         (OpencodeCommandBuilder, AgentTransport.OPENCODE, "opencode"),
         (NanocoderCommandBuilder, AgentTransport.NANOCODER, "nanocoder"),
-        (AgyCommandBuilder, AgentTransport.AGY, "agy"),
+        pytest.param(
+            AgyCommandBuilder,
+            AgentTransport.AGY,
+            "agy",
+            marks=pytest.mark.smoke,
+            id="AgyCommandBuilder-agy-agy",
+        ),
         (CursorCommandBuilder, AgentTransport.CURSOR, "agent"),
     ),
 )
@@ -269,6 +275,7 @@ def test_codex_command_builder_preserves_quoted_effort_override(tmp_path: Path) 
     ]
 
 
+@pytest.mark.smoke
 def test_agy_command_builder_parity(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")

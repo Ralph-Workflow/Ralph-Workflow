@@ -1,14 +1,11 @@
-"""Fast default-gate regression for the AGY parser-to-harness pipeline (S-4).
+"""Opt-in AGY parser-to-harness regression.
 
-The slow, real-binary end-to-end proof is the default-gate
-``tests/test_smoke_agy_full_lifecycle_e2e.py`` (re-included into
-``make test`` via ``REQUIRED_AUTO_INTEGRATE_E2E_FILES``). This module is the
-sub-5 s, subprocess-free complement: it replays the measured v1.1.13 wire
-capture (``tests/display/_fixtures/agy_wire_v1_1_13.jsonl`` -- see
+This module replays the measured v1.1.13 wire capture
+(``tests/display/_fixtures/agy_wire_v1_1_13.jsonl`` -- see
 ``agy_wire_provenance.md`` in the same directory) through ``AgyParser`` and
-through ``ralph.pipeline.plumbing.smoke_plumbing._meaningful_output_lines``
-so a parser or harness-whitelist regression is caught by default CI without
-spawning a mock binary.
+through ``ralph.pipeline.plumbing.smoke_plumbing._meaningful_output_lines``.
+It is selected explicitly with ``pytest -m smoke``, alongside the full
+AGY lifecycle smoke, and is not part of the standard verification profile.
 
 The v1.1.13 capture is bodiless for ``system_message`` steps, so the
 syntax-highlight contract is pinned with one synthetic payload-carrying
@@ -21,6 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ralph.agents.parsers.agy import AgyParser
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -32,6 +31,8 @@ _FIXTURE = (
     Path(__file__).parent / "display" / "_fixtures" / "agy_wire_v1_1_13.jsonl"
 )
 _WHITELIST = {"text", "thinking", "tool_use", "tool_result", "error"}
+
+pytestmark = pytest.mark.smoke
 
 
 def _fixture_lines() -> list[str]:

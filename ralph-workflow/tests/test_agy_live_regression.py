@@ -77,6 +77,7 @@ def _quick_policy() -> object:
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.live_agy,
+    pytest.mark.smoke,
     pytest.mark.skipif(
         not shutil.which("agy"),
         reason="live AGY binary not installed in PATH",
@@ -117,16 +118,11 @@ def _build_live_env() -> dict[str, str]:
         "HOME": str(real_home),
         "XDG_CONFIG_HOME": str(real_home / ".config"),
     }
-    # Ensure the subprocess uses the LOCAL ralph source (with the fixes
-    # under test) rather than a stale pipx-installed copy.  Prepending the
-    # repo root to PYTHONPATH is insufficient because the existing
-    # PYTHONPATH (set by the shell to the pipx venv's site-packages) can
-    # shadow it depending on Python version and site initialisation order.
-    # Setting PYTHONPATH to the repo root alone makes ``import ralph``
-    # resolve the local package; all third-party dependencies are still
-    # discoverable via the interpreter's own site-packages.
-    repo_root = Path(__file__).resolve().parent.parent
-    env["PYTHONPATH"] = str(repo_root)
+    # ``sys.executable`` already points at the uv-managed environment that
+    # imports the local editable package. Never inherit the parent pipx
+    # PYTHONPATH: its Python 3.13 extension modules are incompatible with
+    # this repository's pinned Python 3.14 interpreter.
+    env.pop("PYTHONPATH", None)
     env.pop("RALPH_AGY_BINARY", None)
     return env
 
