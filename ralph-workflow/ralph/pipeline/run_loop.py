@@ -27,6 +27,8 @@ from ralph.display.parallel_display import (
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
+from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
     recovery_retained_record,
@@ -1181,6 +1183,37 @@ def _apply_startup_rebase_outcomes(
     return state
 
 
+def _resume_after_cooldown_wait(
+    state: PipelineState,
+    ctx: _LoopContext,
+    phase: str,
+    unavailability_reason: str,
+    delay_ms: int,
+) -> PipelineState:
+    """Emit resume status and select the highest-priority available agent."""
+    emit_activity_line(
+        ctx.active_display,
+        None,
+        status_text("RESUMED", "cooldown expired; retrying", "green"),
+    )
+    chain = state.chain_for_phase(state.phase)
+    if chain is not None:
+        selection = ctx.controller.preferred_agent_index(str(state.phase), chain.agents)
+        if selection.index is not None and selection.index != chain.current_index:
+            chain = AgentChainState(
+                agents=chain.agents,
+                current_index=selection.index,
+                retries=0,
+            )
+            state = state.with_phase_chain(state.phase, chain).copy_with(
+                last_agent_session_id=None,
+                agent_retry_intent=cleared_agent_retry_intent(),
+            )
+    state = state.copy_with(is_waiting_state=False)
+    _log_resumed_state(state, ctx, phase, unavailability_reason, delay_ms)
+    return state
+
+
 def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1322,16 +1355,9 @@ def _run_inner_loop(
                 ctx.sleep(delay_ms / 1000.0)
 
                 if is_all_unavailable:
-                    emit_activity_line(
-                        ctx.active_display,
-                        None,
-                        status_text(
-                            "RESUMED",
-                            "cooldown expired; retrying",
-                            "green",
-                        ),
+                    state = _resume_after_cooldown_wait(
+                        state, ctx, current_phase_str, unavail_reason, delay_ms
                     )
-                    _log_resumed_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
             except BaseException as e:
                 if isinstance(e, KeyboardInterrupt):
                     raise

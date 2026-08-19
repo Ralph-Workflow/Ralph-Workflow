@@ -1294,13 +1294,19 @@ class RecoveryController:
         failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
         return failed_state, [], failure_evt
 
+    def earliest_available_wait_ms(self, phase: str, agents: list[str]) -> int:
+        """Return milliseconds until any agent in ``agents`` becomes available."""
+        if any(self._is_agent_available(phase, agent) for agent in agents):
+            return 0
+        return self._unavailability_tracker.earliest_unavailable_wait_ms(phase, agents)
+
     def _earliest_unavailable_wait_ms(
         self,
         phase: str,
         chain: AgentChainState,
     ) -> int:
-        """Return milliseconds until the first unavailable agent in the chain becomes available."""
-        return self._unavailability_tracker.earliest_unavailable_wait_ms(phase, chain.agents)
+        """Return milliseconds until the first unavailable chain agent becomes available."""
+        return self.earliest_available_wait_ms(phase, chain.agents)
 
     def _get_max_retries_for_chain(self, phase: str) -> int:
         """Get max_retries from policy for the chain used by this phase."""

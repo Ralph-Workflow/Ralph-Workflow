@@ -1,10 +1,14 @@
-"""Unit tests for the pure priority agent selection module."""
+"""Unit tests for priority agent selection and its controller surface."""
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.recovery.agent_selection import (
     agent_availability,
     format_selection_evidence,
     select_preferred_agent,
 )
+from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
 def test_lowest_index_wins_among_selectable_agents() -> None:
@@ -91,3 +95,33 @@ def test_skipped_reasons_formatting_and_evidence() -> None:
     )
     evidence = format_selection_evidence(selection)
     assert evidence == "Selected agent agy (skipped claude: cooldown (1500ms remaining); opencode: spent)"
+
+
+def test_controller_earliest_available_wait_uses_smallest_remaining_cooldown() -> None:
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_entries={
+                "development:claude": UnavailabilityEntry(
+                    unavailable_until_ms=5000,
+                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+                    attempt=0,
+                    base_backoff_ms=5000,
+                    max_backoff_ms=5000,
+                ),
+                "development:opencode": UnavailabilityEntry(
+                    unavailable_until_ms=8000,
+                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+                    attempt=0,
+                    base_backoff_ms=5000,
+                    max_backoff_ms=5000,
+                ),
+            },
+        )
+    )
+
+    assert controller.earliest_available_wait_ms("development", ["claude", "opencode"]) == 5000
+    clock.advance(5.0)
+    assert controller.earliest_available_wait_ms("development", ["claude", "opencode"]) == 0

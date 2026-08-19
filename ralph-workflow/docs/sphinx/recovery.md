@@ -52,9 +52,9 @@ Recovery resumed after offline
 
 Each phase uses an agent chain. If an agent exhausts its retry budget or enters backoff, Ralph Workflow falls over to the preferred available agent in the chain.
 
-Preferred agent selection via `select_preferred_agent` picks the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance), rather than strictly walking forward down the chain. Once a preferred agent's cooldown expires, subsequent attempts automatically return to it.
+Preferred agent selection via `select_preferred_agent` picks the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance), rather than strictly walking forward down the chain. Once a preferred agent's cooldown expires, subsequent attempts automatically return to it. After an all-agents-unavailable wait, Ralph Workflow re-selects the highest-priority agent whose cooldown expired instead of resuming on the agent that failed.
 
-The run transcript records the selected agent and the cooldown, spent, or lower-priority reason for every skipped agent.
+When no agent is selectable, the reducer's `AGENT_FAILURE` path waits for the earliest cooldown rather than routing to failure. The run transcript records the selected agent and the cooldown, spent, or lower-priority reason for every skipped agent.
 
 That is how longer unattended runs stay moving without being pinned to one provider while always preferring the highest-priority agent when available.
 

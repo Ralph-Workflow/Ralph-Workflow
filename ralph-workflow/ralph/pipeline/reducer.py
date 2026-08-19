@@ -646,7 +646,8 @@ def _retry_or_fall_over(
         new_chain = chain.with_retry_increment()
         new_metrics = state.metrics.with_retry_increment()
         return state.with_phase_chain(state.phase, new_chain).copy_with(
-            metrics=new_metrics
+            metrics=new_metrics,
+            is_waiting_state=False,
         ), []
 
     if selection.index is not None:
@@ -660,9 +661,46 @@ def _retry_or_fall_over(
             metrics=new_metrics,
             last_agent_session_id=None,
             agent_retry_intent=cleared_agent_retry_intent(),
+            is_waiting_state=False,
         ), []
 
     return None
+
+
+def _all_agents_unavailable_wait_state(
+    state: PipelineState,
+    chain: AgentChainState,
+    selection: AgentSelection | None,
+    recovery: RecoveryController | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Build a cooldown wait state when priority selection finds no agent."""
+    if (
+        selection is None
+        or selection.index is not None
+        or recovery is None
+        or recovery.agents_now_available(state.phase, chain.agents)
+    ):
+        return None
+    wait_ms = recovery.earliest_available_wait_ms(state.phase, chain.agents)
+    reason = "all agents unavailable; waiting for cooldown expiry"
+    return state.copy_with(
+        last_error=reason,
+        last_retry_delay_ms=wait_ms,
+        is_waiting_state=True,
+    ), []
+
+
+def _selection_attempt(
+    state: PipelineState,
+    chain: AgentChainState,
+    selection: AgentSelection | None,
+    recovery: RecoveryController | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Return a retry, fallover, or cooldown wait state selected for this failure."""
+    same_phase_attempt = _retry_or_fall_over(state, chain, selection=selection)
+    if same_phase_attempt is not None:
+        return same_phase_attempt
+    return _all_agents_unavailable_wait_state(state, chain, selection, recovery)
 
 
 def _handle_agent_failure(
@@ -709,9 +747,9 @@ def _handle_agent_failure(
             current_allowance_spent=(chain.retries >= max_retries),
         )
 
-    same_phase_attempt = _retry_or_fall_over(state, chain, selection=selection)
-    if same_phase_attempt is not None:
-        return same_phase_attempt
+    selected_attempt = _selection_attempt(state, chain, selection, recovery)
+    if selected_attempt is not None:
+        return selected_attempt
 
     # Chain exhausted: check for per-phase workflow_fallback before global failure route.
     if policy is not None:
