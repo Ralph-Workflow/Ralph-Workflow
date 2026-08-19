@@ -717,8 +717,7 @@ def _run_dispatch(
             "read_media",
             {"path": "smoke-fixture.png", "format": "inline"},
         )
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
-        sys.stderr.write(f"mock_multimodal_agent: read_media failed: {exc}\n")
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
         return False, mint_handle, width, height
     server_uri = _extract_server_uri(first)
     if not ignore_response and server_uri is not None:
@@ -1009,6 +1008,7 @@ def _emit_stop_frame(transport: str, stop_emitter: Any, session_id: str) -> None
 
 def main() -> int:
     endpoint, output_file, run_id = _read_env_or_fail()
+    sys.stderr.write(f"mock_multimodal_agent: main endpoint={endpoint!r} output_file={output_file!r}\n")
     if not endpoint:
         sys.stderr.write(
             f"mock_multimodal_agent: {ENDPOINT_ENV} not set; smoke harness "

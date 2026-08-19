@@ -7,8 +7,8 @@ The recovery controller is the second half of the recovery contract
 documented in ``ralph.agents.idle_watchdog``. The pipeline NEVER exits
 because of agent unavailability. This is enforced by the
 all-agents-unavailable wait branch (in
-``_handle_retry_progression``) and the ``wrap=True`` re-arming in
-``_next_available_agent_index``:
+``_handle_retry_progression``) and priority agent selection in
+``preferred_agent_index``:
 
   - **All-agents-unavailable wait branch**: when every agent in the
     chain is on cooldown, the controller returns
@@ -20,15 +20,14 @@ all-agents-unavailable wait branch (in
     loop keys off; ``last_error`` text is operator-readable context
     only and is not parsed by the run loop.
 
-  - **wrap=True re-arming**: when the chain advances, the
-    ``_next_available_agent_index`` search is cyclic. Earlier agents
-    whose cooldown has expired are reconsidered; the recovered
-    agent is selected for the next attempt (it is not the agent
-    that was on cooldown longest).
+  - **Priority Agent Selection**: after any failure, agent selection
+    evaluates the chain in priority order and picks the highest-priority
+    agent that is available and not spent. Earlier agents whose cooldown
+    has expired are preferred over lower-priority agents.
 
-The pipeline has exactly two recovery states: exponential backoff to
-the next agent (``AgentUnavailabilityTracker.mark_unavailable``) and
-retry with the same agent (``AgentChain.record_retry``). The
+The pipeline has recovery states: exponential backoff to
+the next available agent (``AgentUnavailabilityTracker.mark_unavailable``) and
+retry with the same agent. The
 all-agents-unavailable wait branch is a third observable effect
 (``is_waiting_state=True``) but it is NOT a third state -- it is a
 transient holding pattern that the run loop interprets as
@@ -66,6 +65,12 @@ from ralph.recovery._broken_agent_same_shape_tracker import (
 from ralph.recovery._same_shape_retry_tracker import (
     SameShapeRetryLoopError,
     SameShapeRetryTracker,
+)
+from ralph.recovery.agent_selection import (
+    AgentSelection,
+    agent_availability,
+    format_selection_evidence,
+    select_preferred_agent,
 )
 from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
@@ -440,7 +445,7 @@ def _assert_never_exit_invariant() -> None:
 _assert_never_exit_invariant()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
@@ -544,6 +549,9 @@ class RecoveryController:
         self._broken_agent_same_shape_state: dict[
             str, tuple[BrokenAgentFingerprint, int]
         ] = {}  # bounded-accumulator-ok: bounded by phase; lives only for the controller instance
+        self._spent_agents: dict[str, set[str]] = (
+            {}
+        )  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -1040,8 +1048,58 @@ class RecoveryController:
         """Reset backoff counter for a phase/agent after successful invocation."""
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
+        self._spent_agents.pop(phase, None)
         if agent is not None:
             self._unavailability_tracker.reset_backoff(phase, agent)
+
+    def note_retry_exhaustion(self, phase: str, agent: str) -> None:
+        """Mark an agent's retry allowance as spent for the current round of a phase."""
+        self._spent_agents.setdefault(phase, set()).add(agent)
+
+    def preferred_agent_index(
+        self,
+        phase: str,
+        agents: Sequence[str],
+        *,
+        current_index: int | None = None,
+        current_allowance_spent: bool = False,
+    ) -> AgentSelection:
+        """Select the highest-priority selectable agent for a phase.
+
+        Builds AgentAvailability rows for all agents in phase, evaluates priority selection,
+        and logs the selection decision to the transcript.
+        """
+        snap = self._unavailability_tracker.snapshot()
+        cooldowns_dict = snap.get("unavailable_timeouts", {})
+        now_ms = int(self._clock.monotonic() * 1000)
+        spent_set = self._spent_agents.get(phase, set())
+
+        rows: list[tuple[str, bool, int, bool]] = []
+        for idx, agent in enumerate(agents):
+            key = f"{phase}:{agent}"
+            timeout_ms = cooldowns_dict.get(key)
+            cooldown_ms = 0
+            if isinstance(timeout_ms, int):
+                cooldown_ms = max(0, timeout_ms - now_ms)
+
+            avail = self._is_agent_available(phase, agent)
+            is_spent = (
+                agent in spent_set
+                or (idx == current_index and current_allowance_spent)
+            )
+
+            rows.append(
+                agent_availability(
+                    agent,
+                    avail,
+                    cooldown_ms,
+                    is_spent,
+                )
+            )
+
+        selection = select_preferred_agent(rows)
+        logger.bind(recovery=True).info(format_selection_evidence(selection))
+        return selection
 
     def _write_session_reset_hint(
         self,
@@ -1118,34 +1176,29 @@ class RecoveryController:
             if use_budget and current_agent is not None
             else None
         )
-        is_agent_unavailable = failure.is_unavailable and agent is not None
-        next_available_index = self._next_available_agent_index(
-            chain, phase, wrap=is_agent_unavailable
+        current_allowance_spent = (
+            (budget_state is not None and budget_state.exhausted)
+            or (budget_state is None and chain.retries >= max_retries)
         )
-        current_agent_available = current_agent is None or self._is_agent_available(
-            phase, current_agent
+        if current_allowance_spent and current_agent is not None:
+            self.note_retry_exhaustion(phase, current_agent)
+
+        selection = self.preferred_agent_index(
+            phase,
+            chain.agents,
+            current_index=chain.current_index,
+            current_allowance_spent=current_allowance_spent,
         )
-        # Retry the current agent only when it is actually available. An agent
-        # marked unavailable (cooldown/backoff) must never be retried, even if
-        # it is the only agent in the chain. If no agent is available, the chain
-        # is exhausted and we fail the phase.
-        can_retry_current = current_agent_available
-        should_retry_in_chain = (
-            current_agent is not None
-            and can_retry_current
-            and (
-                (budget_state is not None and not budget_state.exhausted)
-                or (budget_state is None and chain.retries < max_retries)
-            )
-        )
-        if should_retry_in_chain:
+
+        if selection.index == chain.current_index:
             return (
                 self._apply_chain_retry(state, phase, chain, retry_in_session=retry_in_session),
                 [],
                 failure_evt,
             )
 
-        if next_available_index is not None:
+        if selection.index is not None:
+            next_available_index = selection.index
             next_agent = chain.agents[next_available_index]
             from_agent = current_agent or f"agent[{chain.current_index}]"
             fallover_record = _build_fallover_record(
@@ -1248,31 +1301,6 @@ class RecoveryController:
     ) -> int:
         """Return milliseconds until the first unavailable agent in the chain becomes available."""
         return self._unavailability_tracker.earliest_unavailable_wait_ms(phase, chain.agents)
-
-    def _next_available_agent_index(
-        self,
-        chain: AgentChainState,
-        phase: str,
-        *,
-        wrap: bool = False,
-    ) -> int | None:
-        """Return the index of the next available agent in chain order.
-
-        By default only agents after the current index are considered, preserving
-        the existing forward-only fallover semantics for budget exhaustion. When
-        ``wrap=True`` the search is cyclic, so earlier agents whose unavailable
-        cooldown has expired can be reconsidered. The current agent itself is
-        never returned here; it is handled by the retry-current logic.
-        """
-        n = len(chain.agents)
-        if n <= 1:
-            return None
-        max_offset = n if wrap else n - chain.current_index
-        for offset in range(1, max_offset):
-            index = (chain.current_index + offset) % n
-            if self._is_agent_available(phase, chain.agents[index]):
-                return index
-        return None
 
     def _get_max_retries_for_chain(self, phase: str) -> int:
         """Get max_retries from policy for the chain used by this phase."""
@@ -1380,6 +1408,7 @@ class RecoveryController:
                 "Without policy, the runtime cannot determine the failure route. "
                 "Set policy_bundle when constructing RecoveryController."
             )
+        self._spent_agents.pop(state.phase, None)
         failed_route = self._policy_bundle.pipeline.recovery.failed_route
         return progress.advance_phase(
             state,

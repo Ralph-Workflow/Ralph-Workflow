@@ -20,7 +20,7 @@ never-skip-an-agent invariant:
   - **Never-skip-an-agent invariant:** every agent is
     RECOVERABLE; an agent on cooldown is never permanently
     skipped. The controller reconsiders earlier agents when
-    the chain advances (``wrap=True`` re-arming).
+    the chain advances (preferred agent selection).
 
 The tests below drive the recovery controller through its
 PUBLIC surface only (``RecoveryController.handle``,
@@ -177,7 +177,7 @@ def test_walk_through_every_agent_on_cooldown_returns_wait() -> None:
 
 
 def test_wrap_true_rearms_to_earliest_cooldown() -> None:
-    """``wrap=True`` re-arming: the controller advances to the
+    """Preferred agent selection: the controller advances to the
     EARLIEST-cooldown agent when the chain is exhausted and an
     earlier agent's cooldown has expired.
 
@@ -188,14 +188,14 @@ def test_wrap_true_rearms_to_earliest_cooldown() -> None:
 
       (a) Mark claude on cooldown (now all agents on cooldown).
       (b) Find agy on cooldown too.
-      (c) Use ``wrap=True`` to reconsider opencode (the second
+      (c) Use priority selection to reconsider opencode (the second
           agent, the only available one).
       (d) Set ``chain.current_index = 1`` (opencode's index).
 
     This test verifies the never-skip-an-agent invariant: an
     agent is never permanently skipped. The controller
     reconsiders earlier agents whose cooldown has expired via
-    ``wrap=True``.
+    priority agent selection.
     """
     initial_entries: dict[str, UnavailabilityEntry] = {
         "development:claude": UnavailabilityEntry(
@@ -226,10 +226,10 @@ def test_wrap_true_rearms_to_earliest_cooldown() -> None:
     )
 
     # Claude is now on cooldown; the controller looks for the next
-    # available agent. The first attempt (offset 1) sees agy on
-    # cooldown (with wrap=True, it would also see claude on cooldown
-    # but claude is the CURRENT agent). The second attempt (offset 2)
-    # with wrap=True sees opencode available (the only available
+    # available agent. The first attempt sees agy on
+    # cooldown (it would also see claude on cooldown
+    # but claude is the CURRENT agent). The second attempt
+    # sees opencode available (the only available
     # agent).
     chain = new_state.chain_for_phase("development")
     assert chain is not None

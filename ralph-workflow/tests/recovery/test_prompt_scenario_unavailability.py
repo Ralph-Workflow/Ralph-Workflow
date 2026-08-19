@@ -357,7 +357,7 @@ def test_prompt_scenario_forever_wait_through_many_cooldown_cycles() -> None:
     chain are unavailable, never increments ``recovery_cycle_count``,
     and the run loop sleeps for the earliest cooldown. After the
     cooldown expires, the controller routes to the FIRST available
-    agent (wrap=True semantics in ``_next_available_agent_index``).
+    agent (preferred agent selection in ``preferred_agent_index``).
 
     Setup:
       - 3-agent chain (claude, opencode, agy) with a custom
@@ -388,7 +388,7 @@ def test_prompt_scenario_forever_wait_through_many_cooldown_cycles() -> None:
         backoff up to the 30_000ms cap). Call handle() once more; the
         chain must advance to the FIRST available agent in chain
         order (claude, index 0), NOT the last available agent. The
-        wrap=True semantics in ``_next_available_agent_index`` is
+        preferred selection semantics in ``preferred_agent_index`` is
         exercised here.
     """
     clock = FakeClock(start=0.0)
@@ -467,7 +467,7 @@ def test_prompt_scenario_forever_wait_through_many_cooldown_cycles() -> None:
     )
     assert chain.current_index == 0, (
         f"controller must route to the FIRST available agent in chain "
-        f"order (wrap=True semantics in _next_available_agent_index), "
+        f"order (preferred agent selection in preferred_agent_index), "
         f"got current_index={chain.current_index}, available={available!r}"
     )
 

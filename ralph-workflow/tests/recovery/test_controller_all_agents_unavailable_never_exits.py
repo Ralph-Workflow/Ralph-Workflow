@@ -10,9 +10,9 @@ controller from the wt-012 plan:
     unavailability.
 
   - AC-08: When all chain agents are on cooldown, the recovery controller
-    wrap=True re-arming in _next_available_agent_index reconsiders
+    preferred agent selection in preferred_agent_index reconsiders
     earlier agents whose cooldown has expired. A black-box test exercises
-    the wrap path and asserts that the recovered agent is the one
+    the preferred selection path and asserts that the recovered agent is the one
     selected for the next attempt, not the agent that was on cooldown
     longest.
 
@@ -270,7 +270,7 @@ def test_handle_after_earliest_cooldown_expires_does_not_exit_pipeline() -> None
 
 
 def test_wrap_rearming_skips_later_agents_still_on_cooldown() -> None:
-    """AC-08 (specific): wrap=True re-arming must skip agents that are
+    """AC-08 (specific): priority agent selection must skip agents that are
     still on cooldown and select the recovered agent.
 
     Setup:
@@ -283,15 +283,15 @@ def test_wrap_rearming_skips_later_agents_still_on_cooldown() -> None:
       - First handle() with claude failing -> wait state, wait_ms=5000.
       - Advance clock 5.1s. claude is now available; opencode and agy
         are still on cooldown.
-      - Advance the chain to opencode (so we can verify wrap=True
-        re-arming). The chain state has current_index=1 (opencode).
+      - Advance the chain to opencode (so we can verify priority
+        selection). The chain state has current_index=1 (opencode).
       - Second handle() with opencode failing. The controller must:
         (a) see opencode is on cooldown.
         (b) see agy is on cooldown.
-        (c) use wrap=True to reconsider claude (index 0), which is now
+        (c) use priority selection to reconsider claude (index 0), which is now
             available.
         (d) select claude as the next agent.
-      - The chain's current_index must wrap to 0 (claude).
+      - The chain's current_index must return to 0 (claude).
 
     Assertions:
       - The chain's current_index == 0 (claude, the recovered agent).
@@ -349,7 +349,7 @@ def test_wrap_rearming_skips_later_agents_still_on_cooldown() -> None:
     clock.advance(5.1)
 
     # Move the chain forward manually (simulating a previous successful
-    # fallover) to position the chain at opencode (index 1) so wrap=True
+    # fallover) to position the chain at opencode (index 1) so priority selection
     # must re-consider claude.
     state_advanced = state_after_first.with_phase_chain(
         "development",
@@ -365,7 +365,7 @@ def test_wrap_rearming_skips_later_agents_still_on_cooldown() -> None:
         FailureContext(phase="development", agent="opencode"),
     )
 
-    # The controller must wrap=True re-arm to claude.
+    # The controller must select claude via priority selection.
     chain = state_after_second.chain_for_phase("development")
     assert chain is not None
     assert chain.agents[chain.current_index] == "claude", (

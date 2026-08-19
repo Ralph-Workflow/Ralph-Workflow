@@ -50,9 +50,13 @@ Recovery resumed after offline
 
 ## Retry and fallover
 
-Each phase uses an agent chain. If one agent exhausts its retry budget, Ralph Workflow can fall over to the next configured agent.
+Each phase uses an agent chain. If an agent exhausts its retry budget or enters backoff, Ralph Workflow falls over to the preferred available agent in the chain.
 
-That is how longer unattended runs stay moving without being pinned to one provider.
+Preferred agent selection via `select_preferred_agent` picks the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance), rather than strictly walking forward down the chain. Once a preferred agent's cooldown expires, subsequent attempts automatically return to it.
+
+The run transcript records the selected agent and the cooldown, spent, or lower-priority reason for every skipped agent.
+
+That is how longer unattended runs stay moving without being pinned to one provider while always preferring the highest-priority agent when available.
 
 ## Recovery-cycle cap
 

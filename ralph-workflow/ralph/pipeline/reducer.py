@@ -44,6 +44,7 @@ from ralph.pipeline._reducer_worker_state import (
 from ralph.pipeline._reducer_worker_state import (
     handle_workers_resumed as _handle_workers_resumed,
 )
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
     cleared_agent_retry_intent,
@@ -84,9 +85,9 @@ from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.exhausted_analysis_bypass_result import ExhaustedAnalysisBypassResult
     from ralph.policy.models import PipelinePolicy
+    from ralph.recovery.agent_selection import AgentSelection
     from ralph.recovery.controller import RecoveryController
 
 
@@ -386,6 +387,11 @@ def reduce(
         )
         if recovered_agent_failure is not None:
             return recovered_agent_failure
+        if recovery is not None:
+            new_st, effs = _handle_agent_failure(
+                state, pipeline_policy, routing_timing, recovery=recovery
+            )
+            return _restore_work_units(state, new_st), effs
     worker_result = _dispatch_worker_event(
         state, event, recovery, policy=pipeline_policy, routing_timing=routing_timing
     )
@@ -608,22 +614,47 @@ def redirect_expired_cycle_in_place(
 def _retry_or_fall_over(
     state: PipelineState,
     chain: AgentChainState,
+    *,
+    selection: AgentSelection | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
     """Retry the current agent, or fall over to the next one in the chain.
 
-    ``None`` once the agent has spent its retries and the chain has no further
-    agent, leaving the caller to route out of the phase.
+    When selection is None, uses default forward-only fallback logic.
+    When selection is provided, routes to the selected index or returns None if None.
     """
-    max_retries = 3
-    if chain.retries < max_retries:
+    if selection is None:
+        max_retries = 3
+        if chain.retries < max_retries:
+            new_chain = chain.with_retry_increment()
+            new_metrics = state.metrics.with_retry_increment()
+            return state.with_phase_chain(state.phase, new_chain).copy_with(
+                metrics=new_metrics
+            ), []
+
+        if chain.current_index + 1 < len(chain.agents):
+            new_chain = chain.with_advance()
+            new_metrics = state.metrics.with_fallback_increment()
+            return state.with_phase_chain(state.phase, new_chain).copy_with(
+                metrics=new_metrics,
+                last_agent_session_id=None,
+                agent_retry_intent=cleared_agent_retry_intent(),
+            ), []
+
+        return None
+
+    if selection.index == chain.current_index:
         new_chain = chain.with_retry_increment()
         new_metrics = state.metrics.with_retry_increment()
         return state.with_phase_chain(state.phase, new_chain).copy_with(
             metrics=new_metrics
         ), []
 
-    if chain.current_index + 1 < len(chain.agents):
-        new_chain = chain.with_advance()
+    if selection.index is not None:
+        new_chain = AgentChainState(
+            agents=chain.agents,
+            current_index=selection.index,
+            retries=0,
+        )
         new_metrics = state.metrics.with_fallback_increment()
         return state.with_phase_chain(state.phase, new_chain).copy_with(
             metrics=new_metrics,
@@ -638,6 +669,8 @@ def _handle_agent_failure(
     state: PipelineState,
     policy: PipelinePolicy | None = None,
     routing_timing: RoutingTiming | None = None,
+    *,
+    recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
@@ -659,7 +692,24 @@ def _handle_agent_failure(
     if state.agent_retry_intent.skip_same_agent_retries:
         return _handle_skip_same_agent_retries(state, chain, policy)
 
-    same_phase_attempt = _retry_or_fall_over(state, chain)
+    selection: AgentSelection | None = None
+    if recovery is not None:
+        max_retries = 3
+        current_agent = (
+            chain.agents[chain.current_index]
+            if chain.agents and chain.current_index < len(chain.agents)
+            else None
+        )
+        if chain.retries >= max_retries and current_agent is not None:
+            recovery.note_retry_exhaustion(state.phase, current_agent)
+        selection = recovery.preferred_agent_index(
+            state.phase,
+            chain.agents,
+            current_index=chain.current_index,
+            current_allowance_spent=(chain.retries >= max_retries),
+        )
+
+    same_phase_attempt = _retry_or_fall_over(state, chain, selection=selection)
     if same_phase_attempt is not None:
         return same_phase_attempt
 

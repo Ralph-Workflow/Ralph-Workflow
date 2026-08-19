@@ -17,8 +17,8 @@ The three tests collectively prove:
   - AC-09: the wait state never enters 'failed_terminal' and never
     increments recovery_cycle_count, even across many handle() calls.
   - AC-10: after a cooldown expires, the controller routes to the FIRST
-    available agent in chain order (wrap=true semantics in
-    ``_next_available_agent_index``).
+    available agent in chain order (preferred agent selection in
+    ``preferred_agent_index``).
   - AC-11: when agents have different cooldowns, the wait state uses the
     EARLIEST cooldown (not the latest) so the run loop sleeps the minimum
     time and retries as soon as the first agent is unblocked.
@@ -216,8 +216,8 @@ def test_wait_state_survives_ten_cooldown_cycles() -> None:
 
 def test_wait_state_resumes_to_first_available_agent_after_cooldown() -> None:
     """AC-10: after a cooldown expires, the controller routes to the FIRST
-    available agent in chain order (wrap=true semantics in
-    ``_next_available_agent_index``), not the last available agent.
+    available agent in chain order (preferred agent selection in
+    ``preferred_agent_index``), not the last available agent.
 
     Setup:
         - 3-agent chain (claude, opencode, agy) with different cooldowns:
@@ -233,9 +233,7 @@ def test_wait_state_resumes_to_first_available_agent_after_cooldown() -> None:
 
     Behaviour:
         - The current agent (claude) is unavailable, but the controller must
-          search FORWARD in chain order (wrap=true) and pick the FIRST
-          available agent. The first available agent in chain order is
-          opencode (index 1) — NOT agy (index 2, the last available).
+          evaluate priority selection and pick the FIRST available agent in chain order.
 
     Assertions:
         - chain.current_index points to 1 (opencode).
@@ -288,7 +286,7 @@ def test_wait_state_resumes_to_first_available_agent_after_cooldown() -> None:
 
     # A NO_OUTPUT_AT_START failure for the current agent (claude) triggers
     # the unavailable-handling path. The controller must skip claude (still
-    # on cooldown) and search forward (wrap=true) for the first available
+    # on cooldown) and evaluate priority selection for the first available
     # agent. opencode is the first available, so the chain must advance to
     # index 1.
     opts = _no_output_opts()

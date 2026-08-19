@@ -11,9 +11,8 @@ states; no third state is allowed:
      ``AgentUnavailabilityTracker.mark_unavailable`` in
      ``ralph/recovery/agent_unavailability_tracker.py``. The current
      agent is marked unavailable for a per-reason backoff; the chain
-     advances to the next agent whose cooldown has expired. The
-     ``wrap=True`` re-arming in
-     ``RecoveryController._next_available_agent_index`` reconsiders
+     advances to the preferred available agent whose cooldown has expired.
+     Priority agent selection in ``select_preferred_agent`` reconsiders
      earlier agents whose cooldown has expired.
 
   2. **Retry with the same agent** -- driven by

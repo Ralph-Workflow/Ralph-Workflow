@@ -376,9 +376,9 @@ The two MAIN RULES are wired as:
   `ralph/recovery/controller.py`, which calls
   `AgentUnavailabilityTracker.mark_unavailable` (per-reason
   `ReasonBackoffPolicy` exponential backoff capped at `max_backoff_ms`).
-  The chain advances to the next available agent; `wrap=True` re-arming
-  in `_next_available_agent_index` reconsiders earlier agents whose
-  cooldown has expired.
+  After each failure, the chain selects the highest-priority agent that is
+  available and still has retry allowance; a recovered earlier agent is
+  therefore preferred over a lower-priority fallback.
 - **Same-agent retry** -- driven by
   `RecoveryController._apply_chain_retry`, which calls
   `AgentChain.with_retry_increment` and re-invokes the same agent in

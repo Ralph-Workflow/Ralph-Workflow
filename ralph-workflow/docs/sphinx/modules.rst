@@ -2991,6 +2991,13 @@ ralph.recovery.agent_budget_registry
    :members:
    :show-inheritance:
 
+ralph.recovery.agent_selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.agent_selection
+   :members:
+   :show-inheritance:
+
 ralph.recovery.budget_state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

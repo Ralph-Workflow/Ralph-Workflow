@@ -13,8 +13,7 @@ recovery invariant:
     ``AgentUnavailabilityTracker.mark_unavailable`` (per-reason
     ``ReasonBackoffPolicy`` exponential backoff capped at
     ``max_backoff_ms``) and advances ``chain.current_index`` to the
-    next available agent in the chain (cyclic, ``wrap=True``
-    re-arming).
+    next available agent in the chain (priority agent selection).
 
   - **Never-exit invariant:** the pipeline NEVER exits because of
     agent unavailability. When all agents in the chain are on
@@ -257,7 +256,7 @@ def test_recovery_never_exits_on_unavailability_when_all_agents_on_cooldown() ->
 
 
 def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_true() -> None:
-    """wrap=True re-arming: when the chain advances, earlier agents
+    """Priority agent selection: when the chain advances, earlier agents
     whose cooldown has expired are reconsidered.
 
     Setup:
@@ -270,14 +269,14 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
       - First handle() with claude failing -> wait state, wait_ms=5000.
       - Advance FakeClock by 5.1s. claude is now available; opencode and
         agy are still on cooldown.
-      - Set chain current_index=1 (opencode) so we can verify wrap=True.
+      - Set chain current_index=1 (opencode) so we can verify priority selection.
       - Second handle() with opencode failing. The controller must
         see opencode is on cooldown, see agy is on cooldown, use
-        wrap=True to reconsider claude (index 0), which is now
+        priority agent selection to reconsider claude (index 0), which is now
         available, and select claude as the next agent.
 
     Assertions:
-      - chain.current_index wraps to 0 (claude, the recovered agent).
+      - chain.current_index returns to 0 (claude, the recovered agent).
       - state.is_waiting_state is False (we found an available agent).
     """
     clock = FakeClock(start=0.0)
@@ -325,7 +324,7 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     clock.advance(5.1)
 
     # Manually advance the chain to opencode (index=1) so we can
-    # verify wrap=True re-arming finds claude (index=0).
+    # verify priority selection re-arms/selects claude (index=0).
     state_at_opencode = state_after_first.with_phase_chain(
         "development",
         AgentChainState(
@@ -336,8 +335,8 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     )
 
     # Second failure: opencode. The controller sees opencode is on
-    # cooldown, agy is on cooldown, claude is available. The wrap
-    # re-arming must select claude.
+    # cooldown, agy is on cooldown, claude is available. Priority
+    # agent selection must select claude.
     exc2 = AgentInactivityTimeoutError("opencode", 30.0, opts=_no_output_opts())
     state_after_second, _effects2, _evt2 = controller.handle(
         state_at_opencode,
@@ -348,7 +347,7 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     chain = state_after_second.chain_for_phase("development")
     assert chain is not None
     assert chain.current_index == 0, (
-        f"wrap=True re-arming must select claude (the recovered agent), got index"
+        f"priority agent selection must select claude (the recovered agent), got index"
         f" {chain.current_index}"
     )
     assert state_after_second.is_waiting_state is False
