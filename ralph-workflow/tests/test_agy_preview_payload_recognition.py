@@ -62,6 +62,39 @@ def test_write_to_file_drives_write_payload_and_syntax_render() -> None:
     assert isinstance(renderable, Syntax), type(renderable)
 
 
+def test_done_only_write_tool_update_emits_previewable_use_before_result() -> None:
+    """A live-style DONE-only write still drives the shared syntax preview path."""
+    frame = {
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "synthetic",
+            "step_index": 8,
+            "state": "DONE",
+            "step_type": "tool",
+            "tool_info": {
+                "name": "write_to_file",
+                "parameters": {
+                    "TargetFile": "tmp/interactive-agy-smoke/todo-list.js",
+                    "content": "export const todos = [];\n",
+                },
+            },
+        },
+    }
+
+    events = list(AgyParser().parse(iter([json.dumps(frame)])))
+    assert [event.type for event in events] == ["tool_use", "tool_result"]
+    tool_use = events[0]
+    assert tool_use.metadata is not None
+    payload = payload_from_tool_event("write_to_file", tool_use.metadata)
+    assert payload is not None
+    assert payload.path == "tmp/interactive-agy-smoke/todo-list.js"
+    assert payload.content == "export const todos = [];\n"
+    renderable = build_edit_preview(
+        "write_to_file", tool_use.metadata, width=80, terminal_bg_is_light=None
+    )
+    assert isinstance(renderable, Syntax), type(renderable)
+
+
 def test_replace_file_content_drives_replace_payload_and_group_render() -> None:
     metadata = _agy_metadata(
         "replace_file_content", old_string="old", new_string="new"

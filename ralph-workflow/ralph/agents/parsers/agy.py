@@ -800,6 +800,18 @@ class AgyParser(NdjsonParserBase):
         )
 
         if step.get("state") == "DONE":
+            # AGY may emit only a terminal tool update (the live 1.1.14
+            # write_to_file trace did). The display preview is constructed
+            # from tool_use events, so synthesize that missing semantic event
+            # only when its correlation key was not already observed. This
+            # preserves normal ACTIVE/DONE pairs while making DONE-only,
+            # content-bearing writes observable through the shared renderer.
+            if call_id is None or call_id not in self._emitted_tool_use_ids:
+                if call_id:
+                    self._emitted_tool_use_ids.add(call_id)
+                yield AgentOutputLine(
+                    type="tool_use", content=content_label, raw=raw, metadata=metadata
+                )
             output = info.get("output")
             result_content = (
                 output

@@ -75,6 +75,8 @@ def test_agy_prompt_requires_workspace_relative_dispatcher_write_paths() -> None
 
     assert "workspace-relative path" in prompt_text
     assert "never an absolute path" in prompt_text
+    assert "do not use AGY's native `write_to_file` tool" in prompt_text
+    assert "Ralph's `write_file`" in prompt_text
 
 
 def test_smoke_invariants_hold() -> None:
