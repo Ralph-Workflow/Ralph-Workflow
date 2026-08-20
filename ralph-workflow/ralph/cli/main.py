@@ -6,6 +6,7 @@ for argument parsing and rich-click for enhanced help output.
 
 from __future__ import annotations
 
+import atexit
 import os
 import sys
 from collections.abc import Callable
@@ -60,6 +61,7 @@ from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
 from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sink
 from ralph.display.parallel_display import resolve_active_display
+from ralph.display.terminal_restore import restore_terminal, snapshot_terminal_modes
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
@@ -549,6 +551,31 @@ Side effects:
 """
 
 
+class _CLIRestoreState:
+    registered: bool = False
+
+
+_CLI_RESTORE_STATE = _CLIRestoreState()
+
+
+def ensure_cli_terminal_restore(
+    *,
+    register_fn: Callable[[Callable[[], None]], None] | None = None,
+) -> None:
+    """Snapshot TTY modes and register terminal restoration idempotently."""
+    if _CLI_RESTORE_STATE.registered:
+        return
+    snapshot_terminal_modes()
+    reg = register_fn if register_fn is not None else atexit.register
+    reg(restore_terminal)
+    _CLI_RESTORE_STATE.registered = True
+
+
+def reset_cli_restore_state() -> None:
+    """Reset CLI restore registration state for unit tests."""
+    _CLI_RESTORE_STATE.registered = False
+
+
 def main(
     ctx: typer.Context,
     config: Annotated[
@@ -920,6 +947,7 @@ def main(
         routed through ``ralph.process.manager``.
     """
     removed_malloc_debug_vars = sanitize_process_environment()
+    ensure_cli_terminal_restore()
     if removed_malloc_debug_vars:
         logger.debug(
             "Stripped inherited malloc-debug environment variables: {}",

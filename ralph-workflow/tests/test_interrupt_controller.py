@@ -200,3 +200,24 @@ def test_install_force_kill_handler_default_signum_is_sigint() -> None:
     assert calls[0] == ("get", signal.SIGINT)
     assert calls[1] == ("set", (signal.SIGINT, calls[1][1][1]))
     assert calls[2] == ("set", (signal.SIGINT, previous))
+
+
+def test_force_exit_restores_terminal_before_calling_hard_exit() -> None:
+    events: list[tuple[str, object]] = []
+
+    controller = InterruptController(
+        shutdown_all=lambda grace_period_s: events.append(("shutdown", grace_period_s)),
+        record_interrupt=lambda: events.append(("record", None)),
+        restore_terminal=lambda: events.append(("restore", None)),
+        hard_exit=lambda code: events.append(("exit", code)),
+    )
+
+    controller.force_exit()
+
+    assert events == [
+        ("record", None),
+        ("shutdown", 0),
+        ("restore", None),
+        ("exit", INTERRUPT_EXIT_CODE),
+    ]
+

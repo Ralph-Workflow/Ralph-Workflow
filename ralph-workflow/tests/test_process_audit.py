@@ -57,6 +57,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_install.py",  # wheel build/install smoke coverage in a throwaway venv
     "test_interrupt_signal_realtime.py",  # live SIGINT black-box coverage needs a subprocess
     "test_claude_interactive_interrupt_realtime.py",  # PTY-backed live SIGINT black-box coverage
+    "test_terminal_state_restored_on_exit.py",  # PTY-backed terminal state restoration E2E coverage
     "test_skills_package_sync_script.py",  # node packaging sync coverage uses a subprocess
     "test_audit_test_policy.py",  # contains subprocess.run literals as test-fixture code strings
     "test_audit_mcp_timeout.py",  # subprocess.run/Popen literals as audit-fixture code strings

@@ -846,6 +846,45 @@ _INVARIANTS: tuple[
         qualname="spawn_pty_process",
         present=("os.setsid()", "TIOCSCTTY"),
     ),
+    # display/terminal_restore.py: defines terminal_restore_sequence and carries
+    # each mode-off escape code (?25h, ?1049l, ?1006l, ?2004l).
+    Invariant(
+        rel_path="display/terminal_restore.py",
+        present=(
+            "def terminal_restore_sequence",
+            "?25h",
+            "?1049l",
+            "?1006l",
+            "?2004l",
+        ),
+    ),
+    # interrupt/controller.py::force_exit: calls restore before calling hard_exit.
+    FunctionBodyInvariant(
+        rel_path="interrupt/controller.py",
+        qualname="InterruptController.force_exit",
+        present=(
+            "restore = self.restore_terminal or _restore_terminal",
+            "restore()",
+            "hard_exit(",
+        ),
+    ),
+    # cli/main.py: registers terminal restore via atexit.
+    FunctionBodyInvariant(
+        rel_path="cli/main.py",
+        qualname="ensure_cli_terminal_restore",
+        present=("atexit", "snapshot_terminal_modes"),
+    ),
+    # display/_terminal_bg_query.py::_probe: publishes snapshot before setraw,
+    # and calls tcflush on timeout path.
+    FunctionBodyInvariant(
+        rel_path="display/_terminal_bg_query.py",
+        qualname="_probe",
+        present=(
+            "set_global_snapshot(original)",
+            "tcflush",
+            "tty.setraw",
+        ),
+    ),
 )
 
 

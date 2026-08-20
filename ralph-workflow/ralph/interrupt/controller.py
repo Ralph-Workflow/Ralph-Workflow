@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.display.terminal_restore import restore_terminal as _restore_terminal
 from ralph.interrupt.state import request_user_interrupt
 from ralph.process.manager import get_process_manager
 
@@ -53,6 +54,7 @@ class InterruptController:
     stop_connectivity: Callable[[], None] | None = None
     kill_process_group: Callable[[int, int], None] | None = None
     hard_exit: Callable[[int], None] | None = None
+    restore_terminal: Callable[[], None] | None = None
     # Optional label-targeted shutdown. When set, ``begin_interrupt`` with
     # a non-empty ``kill_label`` calls this closure INSTEAD of the
     # generic ``shutdown_all``. The closure is built by
@@ -141,6 +143,8 @@ class InterruptController:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
         self.force_interrupt(bridge_pgids=pgids)
+        restore = self.restore_terminal or _restore_terminal
+        restore()
         hard_exit = self.hard_exit or os._exit
         hard_exit(INTERRUPT_EXIT_CODE)
 

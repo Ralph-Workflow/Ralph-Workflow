@@ -133,6 +133,17 @@ uv run python -m ralph.testing.audit_terminal_escape_containment
 
 This audit is the LAST entry in `ralph/verify.py::_VERIFY_STEPS`; it is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
 
+## Terminal state restoration contract
+
+The terminal state restoration contract ensures that after any exit path Ralph controls, the user's terminal is left in its original, fully usable state (cursor visible, line editing/echo restored, alternate screen exited, mouse tracking disabled, bracketed paste disabled, SGR attributes reset). It is owned by `ralph/display/terminal_restore.py` and wired across Ralph's entry and exit paths:
+
+- **Normal and exception exit paths.** Snapshot TTY modes at CLI entry (`ralph/cli/main.py::_ensure_cli_terminal_restore`) and register `restore_terminal` via `atexit`.
+- **Interrupt and signal paths.** `InterruptController.force_exit` (`ralph/interrupt/controller.py`) invokes `restore_terminal` before calling `hard_exit` (`os._exit`), ensuring double Ctrl-C or SIGTERM restores the console.
+- **Probe safety.** The OSC 11 background probe (`ralph/display/_terminal_bg_query.py::_probe`) publishes its pre-raw termios snapshot before `setraw` and flushes unread reply bytes (`tcflush`) on the timeout path.
+- **Signal handler cleanup.** `install_width_refresher` (`ralph/display/context.py`) captures the previous `SIGWINCH` handler and returns a `stop()` callback that restores it on shutdown.
+
+*Unrecoverable states:* Terminal state cannot be restored from inside the process if the process receives an uncatchable `SIGKILL` (signal 9) or if the terminal emulator window is closed externally.
+
 ## Cross-links
 
 - `ralph/verify.py` — budget tracker, `_VERIFY_STEPS`, invariant checks

@@ -60,6 +60,9 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.theme import Theme
 
+    from ralph.interrupt.signal_getter import SignalGetter
+    from ralph.interrupt.signal_setter import SignalSetter
+
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
 
 _STREAMING_DEDUP_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
@@ -745,7 +748,10 @@ def make_display_context(
 def install_sigwinch_refresher(
     ctx_holder: list[DisplayContext],
     on_refresh: Callable[[DisplayContext], None] | None = None,
-) -> None:
+    *,
+    signal_getter: SignalGetter | None = None,
+    signal_setter: SignalSetter | None = None,
+) -> Callable[[], None]:
     """Install a SIGWINCH handler that refreshes DisplayContext on terminal resize.
 
     On POSIX systems, this installs a signal handler that replaces the
@@ -761,16 +767,32 @@ def install_sigwinch_refresher(
             ctx_holder[0].refreshed().
         on_refresh: Optional callback invoked with the refreshed context after
             ctx_holder[0] is replaced.
+        signal_getter: Optional signal inspector for dependency injection / testing.
+        signal_setter: Optional signal installer for dependency injection / testing.
 
-    Note:
-        This function must be called from the main thread, as signal.signal
-        only works in the main thread. If called from a non-main thread,
-        the function returns silently without installing the handler.
+    Returns:
+        A stop() callable that reinstalls the previous SIGWINCH handler.
     """
     if sys.platform == "win32":
-        return
+        return lambda: None
     if threading.main_thread() is not threading.current_thread():
-        return
+        return lambda: None
+
+    getter = (
+        signal_getter
+        if signal_getter is not None
+        else cast(
+            "SignalGetter", signal.getsignal
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
+    setter = (
+        signal_setter
+        if signal_setter is not None
+        else cast(
+            "SignalSetter", signal.signal
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
+    previous = getter(signal.SIGWINCH)
 
     def handler(_signum: int, _frame: object) -> None:
         refreshed = ctx_holder[0].refreshed()
@@ -778,7 +800,13 @@ def install_sigwinch_refresher(
         if on_refresh is not None:
             on_refresh(refreshed)
 
-    signal.signal(signal.SIGWINCH, handler)
+    setter(signal.SIGWINCH, handler)
+
+    def stop() -> None:
+        if previous is not None:
+            setter(signal.SIGWINCH, previous)
+
+    return stop
 
 
 def install_poll_refresher(
@@ -824,6 +852,9 @@ def install_poll_refresher(
 def install_width_refresher(
     ctx_holder: list[DisplayContext],
     on_refresh: Callable[[DisplayContext], None] | None = None,
+    *,
+    signal_getter: SignalGetter | None = None,
+    signal_setter: SignalSetter | None = None,
 ) -> Callable[[], None]:
     """Install a width refresher using the best available strategy.
 
@@ -835,14 +866,19 @@ def install_width_refresher(
             to refresh on resize.
         on_refresh: Optional callback invoked with the refreshed context after
             ctx_holder[0] is replaced.
+        signal_getter: Optional signal inspector for dependency injection / testing.
+        signal_setter: Optional signal installer for dependency injection / testing.
 
     Returns:
-        A stop() callable (for poll-based refresher; SIGWINCH handler has no cleanup).
+        A stop() callable that cleans up the installed refresher strategy.
     """
     if sys.platform != "win32" and threading.main_thread() is threading.current_thread():
-        install_sigwinch_refresher(ctx_holder, on_refresh)
-        # SIGWINCH handler cannot be uninstalled, return no-op stop
-        return lambda: None
+        return install_sigwinch_refresher(
+            ctx_holder,
+            on_refresh,
+            signal_getter=signal_getter,
+            signal_setter=signal_setter,
+        )
     return install_poll_refresher(ctx_holder, interval_seconds=2.0, on_refresh=on_refresh)
 
 

@@ -1336,8 +1336,8 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # process-lifetime memo of an immutable terminal probe (OSC 11)
         # and the disambiguating _probed flag — see audit_lint_bypass for
         # the policy-compliant rationale.
-        ("ralph/display/_terminal_bg_query.py", 214),
-        ("ralph/display/_terminal_bg_query.py", 230),
+        ("ralph/display/_terminal_bg_query.py", 222),
+        ("ralph/display/_terminal_bg_query.py", 238),
         ("ralph/mcp/tools/artifact.py", 239),
         ("ralph/mcp/tools/artifact.py", 269),
         ("ralph/mcp/tools/artifact.py", 386),

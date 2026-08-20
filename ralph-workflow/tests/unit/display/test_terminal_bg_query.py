@@ -85,6 +85,7 @@ class _FakeTermios:
 
     TCSANOW = 0
     TCSADRAIN = 1
+    TCIFLUSH = 0
 
     def __init__(self) -> None:
         self.calls: list[tuple[object, ...]] = []
@@ -96,6 +97,9 @@ class _FakeTermios:
 
     def tcsetattr(self, fd: int, when: int, attrs: object) -> None:
         self.calls.append(("tcsetattr", fd, when, attrs))
+
+    def tcflush(self, fd: int, queue_selector: int) -> None:
+        self.calls.append(("tcflush", fd, queue_selector))
 
 
 class _RaisingTcgetattrTermios:
@@ -216,7 +220,87 @@ def test_probe_closes_an_owned_fd_and_never_enters_raw_mode_when_tcgetattr_fails
     assert closed == [23]
 
 
-# --- query_terminal_background_hex: process-lifetime cache (B-5) ---
+def test_probe_flushes_input_queue_on_timeout_or_invalid_reply_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-6: on timeout / incomplete reply path, tcflush runs before tcsetattr."""
+    fake_termios = _FakeTermios()
+    fake_tty = _FakeTty()
+    monkeypatch.setitem(sys.modules, "termios", fake_termios)
+    monkeypatch.setitem(sys.modules, "tty", fake_tty)
+    monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
+
+    def _raising_write(fd: int, data: bytes) -> int:
+        raise OSError("timeout / broken pipe")
+
+    monkeypatch.setattr(os, "write", _raising_write)
+
+    attempted, result = _mod._probe(0.05)
+
+    assert attempted is True
+    assert result is None
+    flush_index = next(i for i, call in enumerate(fake_termios.calls) if call[0] == "tcflush")
+    setattr_index = next(i for i, call in enumerate(fake_termios.calls) if call[0] == "tcsetattr")
+    assert flush_index < setattr_index
+
+
+def test_probe_does_not_flush_input_queue_on_successful_reply_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-6: on successful reply path, tcflush is NOT called so user keystrokes are preserved."""
+    fake_termios = _FakeTermios()
+    fake_tty = _FakeTty()
+    monkeypatch.setitem(sys.modules, "termios", fake_termios)
+    monkeypatch.setitem(sys.modules, "tty", fake_tty)
+    monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
+
+    reply_chunks = iter([b"\x1b]11;rgb:2d/2a/2e\x07"])
+
+    def _read_reply_chunk(fd: int, count: int) -> bytes:
+        return next(reply_chunks, b"")
+
+    monkeypatch.setattr(os, "write", lambda fd, data: len(data))
+    monkeypatch.setattr(_mod, "_wait_readable", lambda fd, timeout: True)
+    monkeypatch.setattr(os, "read", _read_reply_chunk)
+
+    attempted, result = _mod._probe(0.05)
+
+    assert attempted is True
+    assert result == "#2D2A2E"
+    assert not any(call[0] == "tcflush" for call in fake_termios.calls)
+
+
+def test_probe_publishes_snapshot_to_terminal_restore_during_raw_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-6: pre-raw snapshot is published before setraw and cleared after restore."""
+    from ralph.display.terminal_restore import get_global_snapshot
+
+    fake_termios = _FakeTermios()
+    fake_tty = _FakeTty()
+    snapshot_during_raw: list[object] = []
+
+    def _checking_setraw(fd: int, when: int) -> None:
+        snap = get_global_snapshot()
+        if snap is not None:
+            snapshot_during_raw.append(snap)
+        fake_tty.calls.append((fd, when))
+
+    monkeypatch.setitem(sys.modules, "termios", fake_termios)
+    monkeypatch.setitem(sys.modules, "tty", fake_tty)
+    monkeypatch.setattr(fake_tty, "setraw", _checking_setraw)
+    monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
+    monkeypatch.setattr(os, "write", lambda fd, data: len(data))
+    monkeypatch.setattr(_mod, "_wait_readable", lambda fd, timeout: False)
+
+    attempted, _result = _mod._probe(0.05)
+
+    assert attempted is True
+    assert len(snapshot_during_raw) == 1
+    assert snapshot_during_raw[0] == fake_termios.original_attrs
+    # Cleared after probe finished
+    assert get_global_snapshot() is None
+
 @pytest.mark.criteria("B-5")
 
 

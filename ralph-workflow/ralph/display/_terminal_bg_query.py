@@ -52,6 +52,8 @@ import time
 from io import IOBase
 from typing import TYPE_CHECKING, Final
 
+from ralph.display.terminal_restore import set_global_snapshot
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -172,25 +174,31 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
 
     try:
         original = termios.tcgetattr(fd)
+        set_global_snapshot(original)
     except Exception:
         # Not a real tty, or the process is backgrounded.
         if close_fd:
             with contextlib.suppress(Exception):
                 os.close(fd)
         return False, None
+    parsed_color: str | None = None
     try:
         tty.setraw(fd, termios.TCSANOW)
         os.write(fd, _OSC11_QUERY.encode())
         reply = _read_reply(fd, timeout=timeout)
+        parsed_color = parse_osc11_reply(reply)
     except Exception:
         return True, None
     finally:
         with contextlib.suppress(Exception):
+            if parsed_color is None and hasattr(termios, "tcflush") and hasattr(termios, "TCIFLUSH"):
+                termios.tcflush(fd, termios.TCIFLUSH)
             termios.tcsetattr(fd, termios.TCSADRAIN, original)
+        set_global_snapshot(None)
         if close_fd:
             with contextlib.suppress(Exception):
                 os.close(fd)
-    return True, parse_osc11_reply(reply)
+    return True, parsed_color
 
 
 def query_terminal_background_hex(

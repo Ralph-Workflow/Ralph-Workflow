@@ -42,8 +42,9 @@ def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
     # 21 escape-containment invariants + 4 markup-parse containment
     # invariants (the strip_markup_safe choke point, its two delegating
-    # sinks, and the package-wide from_markup scan).
-    expected = 25
+    # sinks, and the package-wide from_markup scan) + 4 terminal-restore
+    # wiring invariants.
+    expected = 29
     assert len(audit_module._INVARIANTS) == expected
 
 

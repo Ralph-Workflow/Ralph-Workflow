@@ -65,3 +65,30 @@ class TestInstallSigwinchRefresher:
         handler = signal.getsignal(signal.SIGWINCH)
         # The handler should be a callable (not the default SIG_DFL or SIG_IGN)
         assert callable(handler)
+
+    def test_sigwinch_stop_reinstalls_previous_handler(self) -> None:
+        """stop() reinstalls the signal handler captured before install_sigwinch_refresher."""
+        calls: list[tuple[str, object]] = []
+        previous_handler = object()
+
+        def fake_getsignal(signum: int) -> object:
+            calls.append(("get", signum))
+            return previous_handler
+
+        def fake_signal(signum: int, handler: object) -> object:
+            calls.append(("set", (signum, handler)))
+            return handler
+
+        ctx_holder: list[DisplayContext] = [make_display_context(env={"COLUMNS": "80"})]
+        stop = install_sigwinch_refresher(
+            ctx_holder,
+            signal_getter=fake_getsignal,
+            signal_setter=fake_signal,
+        )
+
+        assert ("get", signal.SIGWINCH) in calls
+        assert any(c[0] == "set" and c[1][0] == signal.SIGWINCH for c in calls if isinstance(c[1], tuple))
+
+        stop()
+        assert calls[-1] == ("set", (signal.SIGWINCH, previous_handler))
+

@@ -779,6 +779,16 @@ The runner populates ``waiting_status_line`` from the display subscriber and
 ``last_failure_category`` from pipeline state so these breadcrumbs appear even
 when the phase exits unexpectedly.
 
+Terminal state restoration
+--------------------------
+
+The :mod:`ralph.display.terminal_restore` module is the single owner of terminal-state restoration. It provides total-guarded functions to reset terminal modes and control sequences across normal, interrupt, and probe exit paths.
+
+- **Normal exits:** Snapshot TTY modes at CLI entry and register an ``atexit`` hook.
+- **Signal and interrupt exits:** ``InterruptController.force_exit`` invokes ``restore_terminal()`` before invoking ``hard_exit``.
+- **Background probe safety:** ``_terminal_bg_query._probe`` publishes its pre-raw termios snapshot before ``setraw`` and flushes unread reply bytes on the timeout path.
+- **Signal handler cleanup:** ``install_sigwinch_refresher`` captures the pre-existing ``SIGWINCH`` handler and returns a ``stop()`` callback that reinstalls it on shutdown.
+
 See also
 --------
 

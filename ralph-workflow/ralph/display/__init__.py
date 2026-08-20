@@ -50,6 +50,14 @@ views used by CLI diagnostics and listing commands.
    compact / medium / wide branch (single ``default`` mode is the only
    owner of display layout).
 
+   **Terminal state restoration:** ``ralph.display.terminal_restore`` is the
+   single owner of terminal state restoration. It captures TTY mode snapshots
+   at CLI entry, registers an ``atexit`` hook for normal exits, runs before
+   ``hard_exit`` in ``InterruptController.force_exit`` for signal/interrupt
+   exits, publishes pre-raw snapshots during the OSC 11 background probe, and
+   restores terminal control sequences (showing cursor, leaving alternate
+   screen, disabling mouse tracking and bracketed paste, resetting SGR).
+
    **Display mode (single default):** After the wt-028-display consolidation,
    ``DisplayContext.mode`` is always the literal string ``"default"``. There
    is no width-based dispatch, no ``compact`` / ``medium`` / ``wide`` tier,

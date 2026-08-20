@@ -3430,6 +3430,13 @@ ralph.display.long_content_summary
    :members:
    :show-inheritance:
 
+ralph.display.terminal_restore
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.terminal_restore
+   :members:
+   :show-inheritance:
+
 ralph.display.mode
 ~~~~~~~~~~~~~~~~~~
 
