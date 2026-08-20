@@ -103,6 +103,45 @@ def test_terminal_restore_regression_sigterm_resets_input_and_display_modes() ->
 
 
 @pytest.mark.subprocess_e2e
+def test_terminal_restore_regression_sigint_resets_input_and_display_modes() -> None:
+    """SIGINT preserves KeyboardInterrupt semantics while atexit restores the terminal."""
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
+    )
+    script = textwrap.dedent(
+        """
+        import os
+        import signal
+        import sys
+        import tty
+        from ralph.cli.main import ensure_cli_terminal_restore
+
+        ensure_cli_terminal_restore()
+        tty.setraw(0)
+        sys.stdout.write('\\x1b[?25l\\x1b[?1049h\\x1b[?1000h\\x1b[?1006h')
+        sys.stdout.flush()
+        os.kill(os.getpid(), signal.SIGINT)
+        """
+    )
+    master_fd, slave_fd = pty.openpty()
+    try:
+        handle = pm.spawn(
+            [sys.executable, "-c", script],
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+        )
+        assert handle.wait(timeout=5.0) != 0
+        captured = _drain_pty(master_fd)
+        for sequence in (b"\x1b[?25h", b"\x1b[?1049l", b"\x1b[?1000l", b"\x1b[?1006l"):
+            assert sequence in captured
+        lflag = int(termios.tcgetattr(slave_fd)[3])
+        assert lflag & termios.ICANON
+        assert lflag & termios.ECHO
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+@pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_redirected_stdout_uses_terminal_stderr() -> None:
     """S-7: normal exit reaches the controlling terminal when stdout is redirected."""
     pm = ProcessManager(

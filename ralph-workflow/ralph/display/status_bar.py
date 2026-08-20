@@ -93,6 +93,7 @@ from typing import IO, TYPE_CHECKING, Protocol
 from rich.cells import cell_len
 from rich.text import Text
 
+from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_analysis_cycle_compact,
@@ -101,6 +102,7 @@ from ralph.display.phase_status import (
     format_dev_cycle_compact,
     format_dev_cycle_minimal,
 )
+from ralph.display.terminal_restore import terminal_understands_vt
 from ralph.display.theme import (
     _DISPLAY_IDENTITY_ACTIVE_SET,
     _fresh_style,
@@ -163,24 +165,22 @@ _MIN_BUDGET: int = _ELLIPSIS_LEN + 1
 #     while a terminal expands ``\t`` to the next tab stop (typically
 #     8 columns), which would otherwise blow up alignment / truncation
 #     for any tab-containing path or phase label.
-#   * CSI / SGR escape sequences (``ESC[...m`` and friends) are
-#     stripped so a hostile path cannot inject color or cursor moves
-#     into the bar. All later budgeting uses terminal display cells
-#     (``rich.cells.cell_len``), not character count.
+#   * Every terminal control sequence is stripped through
+#     :func:`strip_terminal_control`, the canonical full-range stripper,
+#     before later C0 handling can turn a leaked ESC byte into visible payload.
+#     All later budgeting uses terminal display cells (``rich.cells.cell_len``),
+#     not character count.
 _SAFE_LINE_NEWLINE_RE: re.Pattern[str] = re.compile(r"[\r\n]+")
 _SAFE_LINE_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x09\x0b-\x1f\x7f]")
-_SAFE_LINE_ESCAPE_RE: re.Pattern[str] = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _safe_single_line(text: str) -> str:
     """Return ``text`` reduced to one safe visual line.
 
     Neutralises three hostile-input classes that the live Status Bar
-    cannot tolerate (see :data:`_SAFE_LINE_NEWLINE_RE`,
-    :data:`_SAFE_LINE_CONTROL_RE`, :data:`_SAFE_LINE_ESCAPE_RE`).
-    Collapses line breaks AND tab characters AND other C0 control
-    bytes to a single ASCII space (preserving readability), and drops
-    CSI escape sequences entirely. The tab-to-space normalization is
+    cannot tolerate. It first delegates to :func:`strip_terminal_control`,
+    then collapses line breaks AND tab characters AND other C0 control
+    bytes to a single ASCII space (preserving readability). The tab-to-space normalization is
     required because tabs expand to the next terminal tab stop while
     all layout is measured with terminal display cells; without this
     normalization a single tab in a path or phase label would silently
@@ -192,7 +192,7 @@ def _safe_single_line(text: str) -> str:
     """
     if not text:
         return ""
-    cleaned = _SAFE_LINE_ESCAPE_RE.sub("", text)
+    cleaned = strip_terminal_control(text)
     cleaned = _SAFE_LINE_CONTROL_RE.sub(" ", cleaned)
     cleaned = _SAFE_LINE_NEWLINE_RE.sub(" ", cleaned)
     return cleaned.strip()
@@ -1661,6 +1661,8 @@ class StatusBar:
             return
         self._fallback_rendered = False
         self._fallback_frame = None
+        if not self._real_tty() or not terminal_understands_vt():
+            return
         file_obj: IO[str] = self._ctx().console.file
         file_obj.write("\r\x1b[1A\x1b[2K")
         file_obj.flush()

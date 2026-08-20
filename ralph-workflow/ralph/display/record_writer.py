@@ -24,7 +24,6 @@ accidentally leak a live-display artifact into the run record.
 from __future__ import annotations
 
 import contextlib
-import re
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable
@@ -32,6 +31,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
+
+from ralph.display.line_sanitizer import strip_terminal_control
 
 #: Default bound for the in-memory ring buffer. Sized so a chatty
 #: agent cannot exhaust the writer's heap on a long unattended run,
@@ -64,13 +65,6 @@ _HHMMSS_LEN: Final[int] = 8
 #: phase rule; condensation markers stay at the body level of
 #: the entry they replace.
 _INDENT_WIDTH: Final[int] = 2
-
-#: ANSI / CSI escape sequence stripper for the rendered record. The
-#: writer is the destination for the human-readable file; a stray
-#: color code from upstream (the agent payload, a model-side escape
-#: sequence) must never leak into the greppable record. Same family
-#: of patterns as ``status_bar.py``'s ``_SAFE_LINE_ESCAPE_RE``.
-_ANSI_ESCAPE_RE: Final[re.Pattern[str]] = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 @dataclass(frozen=True)
@@ -193,7 +187,7 @@ def _strip_ansi(value: object) -> str:
     if value is None:
         return ""
     try:
-        return _ANSI_ESCAPE_RE.sub("", str(value))
+        return strip_terminal_control(str(value))
     except Exception:
         return ""
 
@@ -268,7 +262,7 @@ def _body_lines(body: object) -> tuple[str, ...]:
         else str(body)
     )
     return tuple(
-        _ANSI_ESCAPE_RE.sub("", line.replace("\t", " ")).rstrip()
+        strip_terminal_control(line.replace("\t", " ")).rstrip()
         for line in text.replace("\r\n", "\n").split("\n")
     )
 

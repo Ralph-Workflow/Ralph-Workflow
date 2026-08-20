@@ -67,8 +67,9 @@ def terminal_restore_sequence() -> str:
 
     Includes:
     - Show cursor (\\x1b[?25h)
-    - Leave alternate screen (\\x1b[?1049l)
-    - Disable mouse reporting (\\x1b[?1000l\\x1b[?1002l\\x1b[?1003l\\x1b[?1006l\\x1b[?1015l)
+    - Leave alternate screens (\\x1b[?1049l\\x1b[?1047l\\x1b[?47l)
+    - Disable mouse reporting (\\x1b[?9l\\x1b[?1000l\\x1b[?1002l\\x1b[?1003l\\x1b[?1005l\\x1b[?1006l\\x1b[?1015l\\x1b[?1016l)
+    - Disable synchronized output (\\x1b[?2026l)
     - Disable bracketed paste (\\x1b[?2004l)
     - Disable focus reporting (\\x1b[?1004l)
     - Restore normal cursor keys (\\x1b[?1l) and numeric keypad (\\x1b>)
@@ -80,7 +81,10 @@ def terminal_restore_sequence() -> str:
     return (
         "\x1b[?25h"
         "\x1b[?1049l"
-        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l"
+        "\x1b[?1047l"
+        "\x1b[?47l"
+        "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l"
+        "\x1b[?2026l"
         "\x1b[?2004l"
         "\x1b[?1004l"
         "\x1b[?1l"

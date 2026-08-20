@@ -259,6 +259,21 @@ class CallSiteInvariant:
         return problems
 
 
+class NarrowCsiParameterInvariant:
+    """Reject the unsafe narrow CSI parameter class anywhere in production code."""
+
+    def violations(self) -> list[str]:
+        needle = "[0-" + "9;?]"
+        problems: list[str] = []
+        for path in _PACKAGE_ROOT.rglob("*.py"):
+            rel_path = path.relative_to(_PACKAGE_ROOT).as_posix()
+            if rel_path == Path(__file__).relative_to(_PACKAGE_ROOT).as_posix():
+                continue
+            if needle in _read(rel_path):
+                problems.append(f"{rel_path}: forbidden narrow CSI parameter class {needle!r}")
+        return problems
+
+
 class PackageWideCallSiteInvariant:
     """AST-scoped check: a callee call anywhere under the package MUST avoid a literal.
 
@@ -475,6 +490,7 @@ def logging_configurator_violations() -> list[str]:
 
 _INVARIANTS: tuple[
     Invariant
+    | NarrowCsiParameterInvariant
     | FunctionBodyInvariant
     | CallSiteInvariant
     | PackageWideCallSiteInvariant
@@ -482,15 +498,17 @@ _INVARIANTS: tuple[
     ...,
 ] = (
     # line_sanitizer.py: the canonical stripper exists, uses the FULL
-    # [0-?] CSI parameter-byte class (NOT the narrower [0-9;?] form).
+    # [0-?] CSI parameter-byte class (NOT the narrower class).
     Invariant(
         rel_path="display/line_sanitizer.py",
         present=(
             "def strip_terminal_control",
             "[0-?]",
         ),
-        absent=("[0-9;?]",),
+        absent=("[0-" + "9;?]",),
     ),
+    # The unsafe narrow CSI parameter class cannot reappear in production.
+    NarrowCsiParameterInvariant(),
     # line_sanitizer.strip_markup_safe: the ONE guarded from_markup call
     # site. The guard must stay TOTAL -- ``except ValueError`` never
     # matched Rich's MarkupError (a ConsoleError), which is the exact
@@ -706,7 +724,13 @@ _INVARIANTS: tuple[
             "def terminal_restore_sequence",
             "?25h",
             "?1049l",
+            "?1047l",
+            "?47l",
+            "?9l",
+            "?1005l",
             "?1006l",
+            "?1016l",
+            "?2026l",
             "?2004l",
             "?1004l",
             "?1l",
@@ -714,6 +738,12 @@ _INVARIANTS: tuple[
             "(B",
             "tcflush",
         ),
+    ),
+    # StatusBar fallback cleanup may repaint only on a real VT-capable TTY.
+    FunctionBodyInvariant(
+        rel_path="display/status_bar.py",
+        qualname="StatusBar._fallback_cleanup",
+        present=("_real_tty", "terminal_understands_vt"),
     ),
     # display/excepthook.py: crash output must strip terminal control and
     # restore the terminal after rendering the traceback.
@@ -814,8 +844,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         "All terminal-escape containment invariants OK: "
-        "line_sanitizer has strip_terminal_control with [0-?] class (not "
-        "[0-9;?]) and the totally-guarded strip_markup_safe choke point "
+        "line_sanitizer has strip_terminal_control with the full CSI class and "
+        "no production narrow parameter regex; the totally-guarded strip_markup_safe choke point "
         "(no except-ValueError narrowing); _sanitize and _strip_markup "
         "delegate to it and no from_markup call anywhere under ralph/ "
         "takes non-literal text outside the allowlist; "

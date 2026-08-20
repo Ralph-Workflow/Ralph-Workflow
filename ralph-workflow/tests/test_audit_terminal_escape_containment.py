@@ -40,11 +40,10 @@ from ralph.testing.audit_terminal_escape_containment import main as audit_main
 
 def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
-    # 21 escape-containment invariants + 4 markup-parse containment
-    # invariants (the strip_markup_safe choke point, its two delegating
-    # sinks, package-wide from_markup scan, and 5 terminal-restoration
-    # wiring invariants (one crash sink added; one CLI invariant extended).
-    expected = 32
+    # 22 escape-containment invariants (including the package-wide narrow
+    # CSI ban) + 4 markup-parse containment invariants and 8 terminal
+    # restoration wiring invariants, including the Status Bar fallback gate.
+    expected = 34
     assert len(audit_module._INVARIANTS) == expected
 
 
@@ -855,6 +854,13 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
 @pytest.mark.parametrize(
     ("rel_path", "qualname", "required_literal"),
     (
+        ("display/terminal_restore.py", None, "?1049l"),
+        ("display/terminal_restore.py", None, "?1047l"),
+        ("display/terminal_restore.py", None, "?47l"),
+        ("display/terminal_restore.py", None, "?9l"),
+        ("display/terminal_restore.py", None, "?1005l"),
+        ("display/terminal_restore.py", None, "?1016l"),
+        ("display/terminal_restore.py", None, "?2026l"),
         ("display/terminal_restore.py", None, "?1004l"),
         ("display/terminal_restore.py", None, "?1l"),
         ("display/terminal_restore.py", None, "[r"),

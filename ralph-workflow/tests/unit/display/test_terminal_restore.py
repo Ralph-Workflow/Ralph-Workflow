@@ -57,11 +57,17 @@ def test_terminal_restore_sequence_contains_expected_mode_resets() -> None:
     seq = terminal_restore_sequence()
     assert "\x1b[?25h" in seq  # show cursor
     assert "\x1b[?1049l" in seq  # leave alt screen
+    assert "\x1b[?1047l" in seq  # leave legacy alt screen
+    assert "\x1b[?47l" in seq  # leave legacy alternate buffer
+    assert "\x1b[?9l" in seq  # disable X10 mouse
     assert "\x1b[?1000l" in seq  # disable mouse
     assert "\x1b[?1002l" in seq
     assert "\x1b[?1003l" in seq
     assert "\x1b[?1006l" in seq
     assert "\x1b[?1015l" in seq
+    assert "\x1b[?1005l" in seq
+    assert "\x1b[?1016l" in seq
+    assert "\x1b[?2026l" in seq  # disable synchronized output
     assert "\x1b[?2004l" in seq  # disable bracketed paste
     assert "\x1b[?1004l" in seq  # disable focus reporting
     assert "\x1b[?1l" in seq  # normal cursor keys
@@ -70,8 +76,9 @@ def test_terminal_restore_sequence_contains_expected_mode_resets() -> None:
     assert "\x1b(B" in seq  # ASCII G0 character set
     assert "\x1b[?7h" in seq  # enable autowrap
     assert "\x1b[0m" in seq  # reset SGR
-    for code in ("\x1b[?25h", "\x1b[?1049l", "\x1b[?1006l", "\x1b[?2004l", "\x1b[?1004l", "\x1b[?1l", "\x1b>", "\x1b[r", "\x1b(B"):
+    for code in ("\x1b[?25h", "\x1b[?1049l", "\x1b[?1047l", "\x1b[?47l", "\x1b[?9l", "\x1b[?1005l", "\x1b[?1006l", "\x1b[?1016l", "\x1b[?2026l", "\x1b[?2004l", "\x1b[?1004l", "\x1b[?1l", "\x1b>", "\x1b[r", "\x1b(B"):
         assert seq.count(code) == 1
+    assert seq.index("\x1b[?1049l") < seq.index("\x1b[?1047l")
     assert seq.endswith("\r")
 
 
