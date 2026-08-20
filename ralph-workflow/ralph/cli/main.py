@@ -7,8 +7,11 @@ for argument parsing and rich-click for enhanced help output.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import os
+import signal
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
@@ -61,7 +64,12 @@ from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
 from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sink
 from ralph.display.parallel_display import resolve_active_display
-from ralph.display.terminal_restore import restore_terminal, snapshot_terminal_modes
+from ralph.display.terminal_restore import (
+    _resolve_fd,
+    restore_terminal,
+    snapshot_terminal_modes,
+    terminal_restore_sequence,
+)
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
@@ -553,6 +561,7 @@ Side effects:
 
 class _CLIRestoreState:
     registered: bool = False
+    signals_registered: bool = False
 
 
 _CLI_RESTORE_STATE = _CLIRestoreState()
@@ -561,19 +570,46 @@ _CLI_RESTORE_STATE = _CLIRestoreState()
 def ensure_cli_terminal_restore(
     *,
     register_fn: Callable[[Callable[[], None]], None] | None = None,
+    signal_getter: Callable[[int], object] | None = None,
+    signal_setter: Callable[[int, object], object] | None = None,
 ) -> None:
-    """Snapshot TTY modes and register terminal restoration idempotently."""
-    if _CLI_RESTORE_STATE.registered:
+    """Snapshot TTY modes and register normal and termination restoration once."""
+    if not _CLI_RESTORE_STATE.registered:
+        snapshot_terminal_modes()
+        reg = register_fn if register_fn is not None else atexit.register
+        reg(restore_terminal)
+        _CLI_RESTORE_STATE.registered = True
+    if _CLI_RESTORE_STATE.signals_registered or threading.current_thread() is not threading.main_thread():
         return
-    snapshot_terminal_modes()
-    reg = register_fn if register_fn is not None else atexit.register
-    reg(restore_terminal)
-    _CLI_RESTORE_STATE.registered = True
+    getter = signal_getter if signal_getter is not None else signal.getsignal
+    setter = signal_setter if signal_setter is not None else signal.signal
+    signums: tuple[int, ...] = ()
+    if hasattr(signal, "SIGTERM"):
+        signums += (signal.SIGTERM,)
+    if hasattr(signal, "SIGHUP"):
+        signums += (signal.SIGHUP,)
+    for signum in signums:
+        previous = getter(signum)
+
+        def _restore_then_delegate(received: int, frame: object, *, previous: object = previous) -> None:
+            fd = _resolve_fd(None)
+            if fd is not None:
+                with contextlib.suppress(Exception):
+                    os.write(fd, terminal_restore_sequence().encode())
+            if callable(previous):
+                previous(received, frame)
+            else:
+                setter(received, signal.SIG_DFL)
+                signal.raise_signal(received)
+
+        setter(signum, _restore_then_delegate)
+    _CLI_RESTORE_STATE.signals_registered = True
 
 
 def reset_cli_restore_state() -> None:
     """Reset CLI restore registration state for unit tests."""
     _CLI_RESTORE_STATE.registered = False
+    _CLI_RESTORE_STATE.signals_registered = False
 
 
 def main(

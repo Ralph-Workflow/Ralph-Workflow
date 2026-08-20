@@ -274,8 +274,9 @@ def test_probe_publishes_snapshot_to_terminal_restore_during_raw_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """S-6: pre-raw snapshot is published before setraw and cleared after restore."""
-    from ralph.display.terminal_restore import get_global_snapshot
+    from ralph.display.terminal_restore import get_global_snapshot, set_global_snapshot
 
+    set_global_snapshot(None)
     fake_termios = _FakeTermios()
     fake_tty = _FakeTty()
     snapshot_during_raw: list[object] = []
@@ -300,6 +301,29 @@ def test_probe_publishes_snapshot_to_terminal_restore_during_raw_window(
     assert snapshot_during_raw[0] == fake_termios.original_attrs
     # Cleared after probe finished
     assert get_global_snapshot() is None
+
+
+def test_probe_restores_snapshot_that_existed_before_raw_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4: an OSC probe must not discard the CLI entry snapshot."""
+    from ralph.display.terminal_restore import get_global_snapshot, set_global_snapshot
+
+    fake_termios = _FakeTermios()
+    fake_tty = _FakeTty()
+    previous: list[int | list[bytes | int]] = [9, 8, 7, 6, 5, 4, [b"p"]]
+    set_global_snapshot(previous)
+    monkeypatch.setitem(sys.modules, "termios", fake_termios)
+    monkeypatch.setitem(sys.modules, "tty", fake_tty)
+    monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
+    monkeypatch.setattr(os, "write", lambda fd, data: len(data))
+    monkeypatch.setattr(_mod, "_wait_readable", lambda fd, timeout: False)
+
+    attempted, _result = _mod._probe(0.05)
+
+    assert attempted is True
+    assert get_global_snapshot() == previous
+    set_global_snapshot(None)
 
 @pytest.mark.criteria("B-5")
 

@@ -135,11 +135,12 @@ This audit is the LAST entry in `ralph/verify.py::_VERIFY_STEPS`; it is not budg
 
 ## Terminal state restoration contract
 
-The terminal state restoration contract ensures that after any exit path Ralph controls, the user's terminal is left in its original, fully usable state (cursor visible, line editing/echo restored, alternate screen exited, mouse tracking disabled, bracketed paste disabled, SGR attributes reset). It is owned by `ralph/display/terminal_restore.py` and wired across Ralph's entry and exit paths:
+The terminal state restoration contract ensures that after any exit path Ralph controls, the user's terminal is left in its original, fully usable state: cursor visible, line editing/echo restored, alternate screen exited, mouse/focus reporting and bracketed paste disabled, normal cursor and keypad modes restored, scroll region reset, G0 charset returned to ASCII, autowrap enabled, and SGR attributes reset. It is owned by `ralph/display/terminal_restore.py` and wired across Ralph's entry and exit paths:
 
-- **Normal and exception exit paths.** Snapshot TTY modes at CLI entry (`ralph/cli/main.py::_ensure_cli_terminal_restore`) and register `restore_terminal` via `atexit`.
-- **Interrupt and signal paths.** `InterruptController.force_exit` (`ralph/interrupt/controller.py`) invokes `restore_terminal` before calling `hard_exit` (`os._exit`), ensuring double Ctrl-C or SIGTERM restores the console.
-- **Probe safety.** The OSC 11 background probe (`ralph/display/_terminal_bg_query.py::_probe`) publishes its pre-raw termios snapshot before `setraw` and flushes unread reply bytes (`tcflush`) on the timeout path.
+- **Normal and exception exit paths.** Snapshot TTY modes at CLI entry (`ralph/cli/main.py::ensure_cli_terminal_restore`) and register `restore_terminal` via `atexit`.
+- **Interrupt and termination paths.** `InterruptController.force_exit` (`ralph/interrupt/controller.py`) invokes `restore_terminal` before `hard_exit` (`os._exit`); CLI handlers restore with `os.write` before delegating `SIGTERM` and `SIGHUP`.
+- **Controlling-terminal and input safety.** The restore target falls back from stdout to stderr and then the controlling terminal; after writing disable sequences it drains queued mouse/focus reports with `termios.tcflush(..., TCIFLUSH)`.
+- **Probe safety.** The OSC 11 background probe (`ralph/display/_terminal_bg_query.py::_probe`) publishes its pre-raw termios snapshot before `setraw`, flushes unread reply bytes (`tcflush`) on the timeout path, and restores the snapshot that existed before the probe.
 - **Signal handler cleanup.** `install_width_refresher` (`ralph/display/context.py`) captures the previous `SIGWINCH` handler and returns a `stop()` callback that restores it on shutdown.
 
 *Unrecoverable states:* Terminal state cannot be restored from inside the process if the process receives an uncatchable `SIGKILL` (signal 9) or if the terminal emulator window is closed externally.

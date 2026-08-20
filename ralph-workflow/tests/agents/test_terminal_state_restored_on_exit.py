@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import pty
+import signal
 import sys
 import termios
 import textwrap
@@ -65,6 +66,107 @@ def test_terminal_restore_on_normal_exit_under_pty() -> None:
     finally:
         os.close(master_fd)
         os.close(slave_fd)
+
+
+@pytest.mark.subprocess_e2e
+def test_terminal_restore_regression_sigterm_resets_input_and_display_modes() -> None:
+    """S-7: SIGTERM restores every mode a crashed TUI can leave behind."""
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
+    )
+    script = textwrap.dedent(
+        """
+        import os
+        import signal
+        import sys
+        from ralph.cli.main import ensure_cli_terminal_restore
+
+        ensure_cli_terminal_restore()
+        sys.stdout.write('\\x1b[?25l\\x1b[?1049h\\x1b[?1004h\\x1b[?1h\\x1b[5;10r')
+        sys.stdout.flush()
+        os.kill(os.getpid(), signal.SIGTERM)
+        """
+    )
+    master_fd, slave_fd = pty.openpty()
+    try:
+        handle = pm.spawn(
+            [sys.executable, "-c", script],
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+        )
+        assert handle.wait(timeout=5.0) == -signal.SIGTERM
+        captured = _drain_pty(master_fd)
+        for sequence in (b"\x1b[?25h", b"\x1b[?1049l", b"\x1b[?1004l", b"\x1b[?1l", b"\x1b[r"):
+            assert sequence in captured
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+@pytest.mark.subprocess_e2e
+def test_terminal_restore_regression_redirected_stdout_uses_terminal_stderr() -> None:
+    """S-7: normal exit reaches the controlling terminal when stdout is redirected."""
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
+    )
+    read_fd, write_fd = os.pipe()
+    master_fd, slave_fd = pty.openpty()
+    script = "from ralph.cli.main import ensure_cli_terminal_restore; ensure_cli_terminal_restore()"
+    try:
+        handle = pm.spawn(
+            [sys.executable, "-c", script],
+            opts=SpawnOptions(stdin=slave_fd, stdout=write_fd, stderr=slave_fd),
+        )
+        os.close(write_fd)
+        write_fd = -1
+        assert handle.wait(timeout=5.0) == 0
+        assert b"\x1b[?25h" in _drain_pty(master_fd)
+        assert os.read(read_fd, 4096) == b""
+    finally:
+        os.close(read_fd)
+        if write_fd >= 0:
+            os.close(write_fd)
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+@pytest.mark.subprocess_e2e
+def test_terminal_restore_regression_normal_exit_restores_raw_termios() -> None:
+    """S-7: the CLI snapshot survives probing and restores raw terminal modes."""
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
+    )
+    script = textwrap.dedent(
+        """
+        import tty
+        from ralph.cli.main import ensure_cli_terminal_restore
+
+        ensure_cli_terminal_restore()
+        tty.setraw(0)
+        """
+    )
+    master_fd, slave_fd = pty.openpty()
+    try:
+        handle = pm.spawn(
+            [sys.executable, "-c", script],
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+        )
+        assert handle.wait(timeout=5.0) == 0
+        lflag = int(termios.tcgetattr(slave_fd)[3])
+        assert lflag & termios.ICANON
+        assert lflag & termios.ECHO
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+def _drain_pty(master_fd: int) -> bytes:
+    chunks: list[bytes] = []
+    while wait_for_master_readable(master_fd, timeout_seconds=0.05):
+        chunk = read_master_chunk(master_fd, max_bytes=4096)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @pytest.mark.subprocess_e2e

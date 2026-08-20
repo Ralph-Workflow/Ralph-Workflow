@@ -1,8 +1,9 @@
 """Terminal state restoration utilities.
 
 Provides safe, idempotent restoration of terminal modes (termios) and
-escape sequence states (cursor visibility, alternate screen, mouse tracking,
-bracketed paste, line wrap, SGR formatting).
+escape sequence states (cursor visibility, alternate screen, mouse and focus
+tracking, bracketed paste, cursor and keypad modes, scroll region, character
+set, line wrap, SGR formatting).
 """
 
 from __future__ import annotations
@@ -39,6 +40,11 @@ class _Flushable(Protocol):
 
 
 @runtime_checkable
+class _Closeable(Protocol):
+    def close(self) -> None: ...
+
+
+@runtime_checkable
 class _HasFileno(Protocol):
     def fileno(self) -> int: ...
 
@@ -51,6 +57,9 @@ def terminal_restore_sequence() -> str:
     - Leave alternate screen (\\x1b[?1049l)
     - Disable mouse reporting (\\x1b[?1000l\\x1b[?1002l\\x1b[?1003l\\x1b[?1006l\\x1b[?1015l)
     - Disable bracketed paste (\\x1b[?2004l)
+    - Disable focus reporting (\\x1b[?1004l)
+    - Restore normal cursor keys (\\x1b[?1l) and numeric keypad (\\x1b>)
+    - Reset scroll region (\\x1b[r) and G0 charset to ASCII (\\x1b(B)
     - Enable autowrap (\\x1b[?7h)
     - Reset SGR attributes (\\x1b[0m)
     - Carriage return (\\r)
@@ -60,6 +69,11 @@ def terminal_restore_sequence() -> str:
         "\x1b[?1049l"
         "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l"
         "\x1b[?2004l"
+        "\x1b[?1004l"
+        "\x1b[?1l"
+        "\x1b>"
+        "\x1b[r"
+        "\x1b(B"
         "\x1b[?7h"
         "\x1b[0m"
         "\r"
@@ -126,7 +140,7 @@ def restore_terminal(
     Swallows all exceptions.
     """
     try:
-        target_stream = stream if stream is not None else sys.stdout
+        target_stream, close_stream = (stream, False) if stream is not None else _default_tty_stream()
         is_tty = False
         try:
             if isinstance(target_stream, _IsATty):
@@ -140,14 +154,37 @@ def restore_terminal(
                     target_stream.write(terminal_restore_sequence())
                 if isinstance(target_stream, _Flushable):
                     target_stream.flush()
+                target_fd = _fd_of(target_stream)
+                if target_fd is not None and hasattr(termios, "tcflush") and hasattr(termios, "TCIFLUSH"):
+                    termios.tcflush(target_fd, termios.TCIFLUSH)
             except Exception:
                 pass
 
         target_fd = _fd_of(target_stream)
         restore_terminal_modes(fd=target_fd, modes=modes)
         _STATE.restored = True
+        if close_stream and isinstance(target_stream, _Closeable):
+            target_stream.close()
     except Exception:
         pass
+
+
+def _default_tty_stream() -> tuple[TextIO | object | None, bool]:
+    for candidate in (sys.stdout, sys.stderr):
+        try:
+            if isinstance(candidate, _IsATty) and candidate.isatty():
+                return candidate, False
+        except Exception:
+            pass
+    try:
+        fd = os.open(  # resource-lifecycle-ok: wrapped stream is closed by restore_terminal after its one restore write; filesystem-write-ok: transient controlling-tty output fd, never persists content
+            "/dev/tty", os.O_WRONLY | os.O_NOCTTY
+        )
+        return os.fdopen(  # filesystem-write-ok: transient controlling-tty output stream closed after one restore write
+            fd, "w"
+        ), True
+    except Exception:
+        return None, False
 
 
 def _resolve_fd(fd: int | None) -> int | None:

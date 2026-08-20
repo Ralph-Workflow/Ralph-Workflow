@@ -52,7 +52,7 @@ import time
 from io import IOBase
 from typing import TYPE_CHECKING, Final
 
-from ralph.display.terminal_restore import set_global_snapshot
+from ralph.display.terminal_restore import get_global_snapshot, set_global_snapshot
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -78,11 +78,14 @@ _REPLY_TERMINATORS: Final[tuple[str, ...]] = ("\x07", "\x1b\\")
 
 _HEX_DIGITS_PER_BYTE: Final[int] = 2
 
-#: Process-lifetime cache. ``None`` means "probe has not yet run" OR
-#: "probe ran and the terminal gave no usable reply"; a ``str`` is the
-#: resolved ``#RRGGBB``. The :data:`_probed` flag disambiguates.
-_cached_background: str | None = None
-_probed: bool = False
+class _BackgroundCacheState:
+    """Process-lifetime OSC 11 cache; ``probed`` disambiguates ``None``."""
+
+    background: str | None = None
+    probed: bool = False
+
+
+_BACKGROUND_CACHE = _BackgroundCacheState()
 
 
 def _scale_channel(raw: str) -> int:
@@ -172,6 +175,7 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
     import termios
     import tty
 
+    previous = get_global_snapshot()
     try:
         original = termios.tcgetattr(fd)
         set_global_snapshot(original)
@@ -194,7 +198,7 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
             if parsed_color is None and hasattr(termios, "tcflush") and hasattr(termios, "TCIFLUSH"):
                 termios.tcflush(fd, termios.TCIFLUSH)
             termios.tcsetattr(fd, termios.TCSADRAIN, original)
-        set_global_snapshot(None)
+        set_global_snapshot(previous)
         if close_fd:
             with contextlib.suppress(Exception):
                 os.close(fd)
@@ -219,13 +223,12 @@ def query_terminal_background_hex(
     Returns:
         The measured background colour as ``#RRGGBB``, or ``None``.
     """
-    global _cached_background, _probed  # noqa: PLW0603 - process-lifetime memo of an immutable probe
-    if _probed:
-        return _cached_background
+    if _BACKGROUND_CACHE.probed:
+        return _BACKGROUND_CACHE.background
     attempted, result = _probe(timeout)
     if attempted:
-        _cached_background = result
-        _probed = True
+        _BACKGROUND_CACHE.background = result
+        _BACKGROUND_CACHE.probed = True
     return result
 
 
@@ -235,9 +238,8 @@ def reset_cache() -> None:
     Exists for tests and for callers that deliberately want a fresh
     measurement; production code relies on the cache.
     """
-    global _cached_background, _probed  # noqa: PLW0603 - test seam for the memo above
-    _cached_background = None
-    _probed = False
+    _BACKGROUND_CACHE.background = None
+    _BACKGROUND_CACHE.probed = False
 
 
 __all__ = [

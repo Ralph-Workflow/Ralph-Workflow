@@ -51,6 +51,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(display): restore all terminal input and display modes on every controlled exit** — restoration now disables focus reporting and application cursor/keypad modes, resets the scroll region and G0 charset, drains queued reports, preserves the CLI termios snapshot across OSC probing, falls back to the controlling terminal when output is redirected, and runs before delegated SIGTERM/SIGHUP termination. Locked by `tests/unit/display/test_terminal_restore.py`, `tests/unit/display/test_terminal_bg_query.py`, and `tests/agents/test_terminal_state_restored_on_exit.py`.
+
 - **fix(claude): suppress duplicate headless stream blocks** — the parser records blocks emitted from partial stream frames, preventing mirrored assistant and result frames from repeating text, thinking, and tool activity. Locked by `tests/agents/parsers/test_claude_headless_wire_capture.py`.
 - **fix(claude): separate headless and interactive raw captures** — raw-log identity now maps Claude `-p` / stream-JSON configurations to `claude-headless`, preventing them from overwriting interactive Claude captures. Locked by `tests/test_raw_transcript_corruption_detection.py`.
 - **fix(display): prevent hanging-indent wrap collapse on wide chrome prefixes** — `ParallelDisplay._wrap_body_with_hanging_indent` floors the readable body budget at 7 cells so long agent aliases like `claude-headless/haiku` do not degenerate output to single-character rows. Locked by `tests/test_parallel_display.py`.

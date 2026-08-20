@@ -5,6 +5,8 @@ Drives terminal restoration through fakes and mock streams without real TTY I/O.
 
 from __future__ import annotations
 
+import signal
+import termios
 from unittest.mock import patch
 
 from ralph.cli.main import ensure_cli_terminal_restore, reset_cli_restore_state
@@ -57,8 +59,15 @@ def test_terminal_restore_sequence_contains_expected_mode_resets() -> None:
     assert "\x1b[?1006l" in seq
     assert "\x1b[?1015l" in seq
     assert "\x1b[?2004l" in seq  # disable bracketed paste
+    assert "\x1b[?1004l" in seq  # disable focus reporting
+    assert "\x1b[?1l" in seq  # normal cursor keys
+    assert "\x1b>" in seq  # numeric keypad
+    assert "\x1b[r" in seq  # reset scroll region
+    assert "\x1b(B" in seq  # ASCII G0 character set
     assert "\x1b[?7h" in seq  # enable autowrap
     assert "\x1b[0m" in seq  # reset SGR
+    for code in ("\x1b[?25h", "\x1b[?1049l", "\x1b[?1006l", "\x1b[?2004l", "\x1b[?1004l", "\x1b[?1l", "\x1b>", "\x1b[r", "\x1b(B"):
+        assert seq.count(code) == 1
     assert seq.endswith("\r")
 
 
@@ -74,6 +83,25 @@ def test_restore_terminal_writes_nothing_on_non_tty_stream() -> None:
     stream = _make_dummy_non_tty_stream()
     restore_terminal(stream=stream, modes=None)
     assert stream.getvalue() == ""
+
+
+def test_restore_terminal_flushes_pending_input_after_writing_sequence() -> None:
+    stream = _make_dummy_tty_stream()
+    with patch("termios.tcflush") as flush, patch("os.isatty", return_value=True):
+        restore_terminal(stream=stream, modes=None)
+    flush.assert_called_once_with(1, termios.TCIFLUSH)
+    assert stream.getvalue() == terminal_restore_sequence()
+
+
+def test_restore_terminal_uses_stderr_when_default_stdout_is_not_a_tty() -> None:
+    stdout = _make_dummy_non_tty_stream()
+    stderr = _make_dummy_tty_stream()
+    with patch("ralph.display.terminal_restore.sys.stdout", stdout), patch(
+        "ralph.display.terminal_restore.sys.stderr", stderr
+    ), patch("termios.tcflush"), patch("os.isatty", return_value=True):
+        restore_terminal(modes=None)
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == terminal_restore_sequence()
 
 
 def test_restore_terminal_modes_swallows_raising_tcsetattr() -> None:
@@ -102,6 +130,33 @@ def test_snapshot_and_restore_terminal_modes() -> None:
 def test_restore_terminal_is_total_guarded_on_arbitrary_object() -> None:
     bogus_object: object = object()
     restore_terminal(stream=bogus_object, modes=None)
+
+
+def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_previous() -> None:
+    reset_cli_restore_state()
+    installed: dict[int, object] = {}
+    previous_calls: list[int] = []
+    writes: list[tuple[int, bytes]] = []
+
+    def getter(signum: int) -> object:
+        return lambda received, frame: previous_calls.append(received)
+
+    def setter(signum: int, handler: object) -> None:
+        installed[signum] = handler
+
+    with patch("ralph.cli.main.threading.current_thread", return_value=__import__("threading").main_thread()), patch(
+        "ralph.cli.main.os.write", side_effect=lambda fd, data: writes.append((fd, data)) or len(data)
+    ), patch("ralph.cli.main._resolve_fd", return_value=1):
+        ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
+        ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
+        assert set(installed) == {signal.SIGTERM, signal.SIGHUP}
+        handler = installed[signal.SIGTERM]
+        assert callable(handler)
+        handler(signal.SIGTERM, None)
+
+    assert writes == [(1, terminal_restore_sequence().encode())]
+    assert previous_calls == [signal.SIGTERM]
+    reset_cli_restore_state()
 
 
 def test_cli_ensure_terminal_restore_registers_once() -> None:

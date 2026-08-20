@@ -53,10 +53,12 @@ views used by CLI diagnostics and listing commands.
    **Terminal state restoration:** ``ralph.display.terminal_restore`` is the
    single owner of terminal state restoration. It captures TTY mode snapshots
    at CLI entry, registers an ``atexit`` hook for normal exits, runs before
-   ``hard_exit`` in ``InterruptController.force_exit`` for signal/interrupt
-   exits, publishes pre-raw snapshots during the OSC 11 background probe, and
-   restores terminal control sequences (showing cursor, leaving alternate
-   screen, disabling mouse tracking and bracketed paste, resetting SGR).
+   ``hard_exit`` in ``InterruptController.force_exit``, and restores on
+   ``SIGTERM`` and ``SIGHUP``. It restores cursor visibility, the alternate
+   screen, mouse and focus reporting, bracketed paste, normal cursor and keypad
+   modes, scroll region, G0 ASCII charset, SGR, and autowrap; it then drains
+   queued terminal input. When stdout is redirected it uses stderr or the
+   controlling terminal, and the OSC 11 probe preserves the entry snapshot.
 
    **Display mode (single default):** After the wt-028-display consolidation,
    ``DisplayContext.mode`` is always the literal string ``"default"``. There

@@ -850,3 +850,36 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
         f"PackageWideCallSiteInvariant must return no violations on an empty "
         f"package; got {violations!r}"
     )
+
+
+@pytest.mark.parametrize(
+    ("rel_path", "qualname", "required_literal"),
+    (
+        ("display/terminal_restore.py", None, "?1004l"),
+        ("display/terminal_restore.py", None, "?1l"),
+        ("display/terminal_restore.py", None, "[r"),
+        ("display/terminal_restore.py", None, "(B"),
+        ("display/terminal_restore.py", None, "tcflush"),
+        ("display/_terminal_bg_query.py", "_probe", "get_global_snapshot()"),
+        ("cli/main.py", "ensure_cli_terminal_restore", "SIGTERM"),
+        ("cli/main.py", "ensure_cli_terminal_restore", "SIGHUP"),
+    ),
+)
+def test_audit_blocks_regression_when_terminal_restore_invariant_literal_is_removed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rel_path: str,
+    qualname: str | None,
+    required_literal: str,
+) -> None:
+    """S-8: each widened terminal-restoration literal is load-bearing."""
+    _patch_rel(monkeypatch, rel_path, lambda source: source.replace(required_literal, "REMOVED"))
+    _narrow_invariants(
+        monkeypatch,
+        rel_path=rel_path,
+        qualname=qualname,
+        invariant_cls=FunctionBodyInvariant if qualname is not None else Invariant,
+    )
+
+    assert audit_main([]) == 1
+    assert required_literal in capsys.readouterr().out
