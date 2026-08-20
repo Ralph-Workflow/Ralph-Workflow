@@ -66,6 +66,38 @@ class TestInstallSigwinchRefresher:
         # The handler should be a callable (not the default SIG_DFL or SIG_IGN)
         assert callable(handler)
 
+    def test_sigwinch_handler_is_total_non_reentrant_and_restores_default(self) -> None:
+        if sys.platform == "win32":
+            pytest.skip("SIGWINCH not available on Windows")
+        calls: list[object] = []
+        installed: dict[int, object] = {}
+
+        def setter(signum: int, handler: object) -> object:
+            installed[signum] = handler
+            return handler
+
+        ctx_holder: list[DisplayContext] = [make_display_context(env={"COLUMNS": "80"})]
+
+        def on_refresh(_ctx: DisplayContext) -> None:
+            calls.append("refresh")
+            handler = installed[signal.SIGWINCH]
+            assert callable(handler)
+            handler(signal.SIGWINCH, None)
+            raise RuntimeError("callback failure")
+
+        stop = install_sigwinch_refresher(
+            ctx_holder,
+            on_refresh,
+            signal_getter=lambda _signum: None,
+            signal_setter=setter,
+        )
+        handler = installed[signal.SIGWINCH]
+        assert callable(handler)
+        handler(signal.SIGWINCH, None)
+        assert calls == ["refresh"]
+        stop()
+        assert installed[signal.SIGWINCH] is signal.SIG_DFL
+
     def test_sigwinch_stop_reinstalls_previous_handler(self) -> None:
         """stop() reinstalls the signal handler captured before install_sigwinch_refresher."""
         calls: list[tuple[str, object]] = []

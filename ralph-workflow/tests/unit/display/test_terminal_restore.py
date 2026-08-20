@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import signal
 import termios
+from typing import TYPE_CHECKING
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    import pytest
 
 from ralph.cli.main import ensure_cli_terminal_restore, reset_cli_restore_state
 from ralph.display.terminal_restore import (
@@ -79,6 +83,19 @@ def test_restore_terminal_writes_sequence_on_tty_stream() -> None:
     assert "\x1b[?1049l" in content
 
 
+def test_restore_terminal_dumb_tty_skips_escape_write_but_restores_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+    stream = _make_dummy_tty_stream()
+    modes: list[int | list[bytes | int]] = [1, 2, 3, 4, 5, 6, []]
+    monkeypatch.setenv("TERM", "dumb")
+    with patch("termios.tcsetattr") as set_attrs, patch("termios.tcflush") as flush, patch(
+        "os.isatty", return_value=True
+    ):
+        restore_terminal(stream=stream, modes=modes)
+    assert stream.getvalue() == ""
+    flush.assert_called_once_with(1, termios.TCIFLUSH)
+    set_attrs.assert_called_once_with(1, termios.TCSANOW, modes)
+
+
 def test_restore_terminal_writes_nothing_on_non_tty_stream() -> None:
     stream = _make_dummy_non_tty_stream()
     restore_terminal(stream=stream, modes=None)
@@ -144,9 +161,16 @@ def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_pr
     def setter(signum: int, handler: object) -> None:
         installed[signum] = handler
 
+    saved_modes: list[int | list[bytes | int]] = [1, 2, 3, 4, 5, 6, []]
     with patch("ralph.cli.main.threading.current_thread", return_value=__import__("threading").main_thread()), patch(
         "ralph.cli.main.os.write", side_effect=lambda fd, data: writes.append((fd, data)) or len(data)
-    ), patch("ralph.cli.main._resolve_fd", return_value=1):
+    ), patch("ralph.cli.main._resolve_fd", return_value=1), patch(
+        "ralph.cli.main.restore_terminal_modes"
+    ) as restore_modes:
+        ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
+        from ralph.display.terminal_restore import set_global_snapshot
+
+        set_global_snapshot(saved_modes)
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
         assert set(installed) == {signal.SIGTERM, signal.SIGHUP}
@@ -155,6 +179,7 @@ def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_pr
         handler(signal.SIGTERM, None)
 
     assert writes == [(1, terminal_restore_sequence().encode())]
+    restore_modes.assert_called_once_with(fd=1)
     assert previous_calls == [signal.SIGTERM]
     reset_cli_restore_state()
 

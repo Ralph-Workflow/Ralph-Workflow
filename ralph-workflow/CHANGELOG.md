@@ -43,6 +43,10 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(console): restore terminal modes and contain residual control-sequence leaks** — signal restoration reapplies saved termios modes, VT writes are gated on terminal capability, the canonical stripper consumes DCS/SOS/PM/APC and dangling fragments, and SIGWINCH refreshes are total and non-reentrant. Locked by `tests/test_line_sanitizer.py`, `tests/unit/display/test_terminal_restore.py`, `tests/unit/display/test_terminal_bg_query.py`, and `tests/unit/display/test_context_resize_install_sigwinch_refresher.py`.
+
 ### Added
 
 - **feat(auto-integrate): reclaim the volatile target-owning worktree by default** — remote freshness checks run at every seam when the configured remote exists; Ralph snapshots `refs/ralph-reclaim/<target>/...` before resetting a dirty target owner, while `auto_integrate_reclaim_target_worktree = false` retains refuse-and-retry. Locked by `tests/test_auto_integrate_worktree_sync.py` and `tests/test_plain_renderer_run_start.py`.

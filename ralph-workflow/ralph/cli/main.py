@@ -67,6 +67,7 @@ from ralph.display.parallel_display import resolve_active_display
 from ralph.display.terminal_restore import (
     _resolve_fd,
     restore_terminal,
+    restore_terminal_modes,
     snapshot_terminal_modes,
     terminal_restore_sequence,
 )
@@ -596,6 +597,8 @@ def ensure_cli_terminal_restore(
             if fd is not None:
                 with contextlib.suppress(Exception):
                     os.write(fd, terminal_restore_sequence().encode())
+            with contextlib.suppress(Exception):
+                restore_terminal_modes(fd=fd)
             if callable(previous):
                 previous(received, frame)
             else:

@@ -20,12 +20,15 @@ import re
 
 from rich.text import Text
 
-# Full CSI+OSC+two-char ESC stripper: takes the [0-?] parameter byte range
-# (0x30-0x3F: digits plus ':', ';', '<', '=', '>', '?') so it matches every
-# valid CSI sequence including private-parameter forms.
+# Full CSI + string-terminated + two-char ESC stripper. The CSI branch uses
+# [0-?] (0x30-0x3F: digits plus ':', ';', '<', '=', '>', '?') so it matches
+# every valid CSI sequence including private-parameter forms. String controls
+# must precede the two-character branch, otherwise it consumes only ESC P/X/^/_.
 _TERMINAL_ESCAPE_RE = re.compile(
     r"\x1b(?:\[[0-?]*[ -/]*[@-~]"
-    r"|\][^\x1b\x07]*(?:\x07|\x1b\\)"
+    r"|[\]PX^_][^\x1b\x07]*(?:\x07|\x1b\\)"
+    r"|[\]PX^_][^\x1b\x07]*$"
+    r"|\[[^\x1b]*$"
     r"|[@-Z\\-_])"
 )
 
@@ -50,9 +53,12 @@ def strip_terminal_control(text: str) -> str:
       and the private-parameter forms ``ESC[>0c`` (device attributes
       reply) and ``ESC[<35;1;2M`` (SGR mouse report).
 
-    - **OSC** sequences (``ESC]`` ... terminator) -- titles
-      (``ESC]0;some title BEL`` and the ST-terminated
-      ``ESC]0;t ESC\\`` form).
+    - **String-terminated** sequences (OSC ``ESC]``, DCS ``ESC P``,
+      SOS ``ESC X``, PM ``ESC ^``, APC ``ESC _``) through BEL or ST;
+      includes title, tmux-passthrough, and graphics payloads.
+
+    - **Dangling string introducers** at the end of a streamed fragment,
+      so an incomplete OSC/DCS/SOS/PM/APC payload never becomes visible.
 
     - **Two-character ESC** forms (``ESC M`` reverse index, etc.).
 

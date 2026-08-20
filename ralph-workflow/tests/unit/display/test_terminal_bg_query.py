@@ -200,6 +200,24 @@ def test_probe_completes_a_full_exchange_and_still_restores_terminal_mode(
     assert ("tcsetattr", 17, fake_termios.TCSADRAIN, fake_termios.original_attrs) in fake_termios.calls
 
 
+def test_probe_dumb_terminal_skips_osc_write_but_restores_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_termios = _FakeTermios()
+    fake_tty = _FakeTty()
+    monkeypatch.setenv("TERM", "dumb")
+    monkeypatch.setitem(sys.modules, "termios", fake_termios)
+    monkeypatch.setitem(sys.modules, "tty", fake_tty)
+    monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
+    monkeypatch.setattr(os, "write", lambda _fd, _data: pytest.fail("must not send OSC on TERM=dumb"))
+
+    attempted, result = _mod._probe(0.05)
+
+    assert attempted is True
+    assert result is None
+    assert ("tcsetattr", 17, fake_termios.TCSADRAIN, fake_termios.original_attrs) in fake_termios.calls
+
+
 def test_probe_closes_an_owned_fd_and_never_enters_raw_mode_when_tcgetattr_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

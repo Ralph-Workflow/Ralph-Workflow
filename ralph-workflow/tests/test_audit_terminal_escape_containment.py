@@ -42,9 +42,9 @@ def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
     # 21 escape-containment invariants + 4 markup-parse containment
     # invariants (the strip_markup_safe choke point, its two delegating
-    # sinks, and the package-wide from_markup scan) + 4 terminal-restore
-    # wiring invariants.
-    expected = 29
+    # sinks, package-wide from_markup scan, and 4 terminal-restoration
+    # wiring invariants (two were extended and two were added).
+    expected = 31
     assert len(audit_module._INVARIANTS) == expected
 
 
@@ -863,6 +863,11 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
         ("display/_terminal_bg_query.py", "_probe", "get_global_snapshot()"),
         ("cli/main.py", "ensure_cli_terminal_restore", "SIGTERM"),
         ("cli/main.py", "ensure_cli_terminal_restore", "SIGHUP"),
+        ("cli/main.py", "ensure_cli_terminal_restore", "restore_terminal_modes"),
+        ("display/terminal_restore.py", "restore_terminal", "terminal_understands_vt"),
+        ("display/_terminal_bg_query.py", "_probe", "terminal_understands_vt"),
+        ("display/context.py", "install_sigwinch_refresher", "refresh_in_progress"),
+        ("display/context.py", "install_sigwinch_refresher", "signal.SIG_DFL"),
     ),
 )
 def test_audit_blocks_regression_when_terminal_restore_invariant_literal_is_removed(

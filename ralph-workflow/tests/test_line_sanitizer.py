@@ -184,6 +184,13 @@ def test_strip_terminal_control_osc_title_st_terminated() -> None:
     assert strip_terminal_control("\x1b]0;t\x1b\\") == ""
 
 
+def test_strip_terminal_control_string_terminated_and_dangling_sequences() -> None:
+    """DCS, APC, and a streamed dangling OSC fragment leave no visible payload."""
+    assert strip_terminal_control("\x1bPtmux;payload\x1b\\") == ""
+    assert strip_terminal_control("\x1b_Ga=T,payload\x1b\\") == ""
+    assert strip_terminal_control("before\x1b]0;title") == "before"
+
+
 def test_strip_terminal_control_two_char_esc() -> None:
     """Two-character ESC sequences (e.g. ESC M -- reverse index) vanish."""
     assert strip_terminal_control("\x1bM") == ""

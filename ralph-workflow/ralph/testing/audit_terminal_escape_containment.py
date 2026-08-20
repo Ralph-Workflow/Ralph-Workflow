@@ -877,7 +877,13 @@ _INVARIANTS: tuple[
     FunctionBodyInvariant(
         rel_path="cli/main.py",
         qualname="ensure_cli_terminal_restore",
-        present=("atexit", "snapshot_terminal_modes", "SIGTERM", "SIGHUP"),
+        present=(
+            "atexit",
+            "snapshot_terminal_modes",
+            "restore_terminal_modes",
+            "SIGTERM",
+            "SIGHUP",
+        ),
     ),
     # display/_terminal_bg_query.py::_probe: publishes snapshot before setraw,
     # and calls tcflush on timeout path.
@@ -887,10 +893,23 @@ _INVARIANTS: tuple[
         present=(
             "get_global_snapshot()",
             "set_global_snapshot(original)",
+            "terminal_understands_vt",
             "tcflush",
             "tty.setraw",
         ),
         absent=("set_global_snapshot(None)",),
+    ),
+    # VT writes are capability-gated, while termios restoration remains unconditional.
+    FunctionBodyInvariant(
+        rel_path="display/terminal_restore.py",
+        qualname="restore_terminal",
+        present=("terminal_understands_vt", "restore_terminal_modes"),
+    ),
+    # SIGWINCH refreshes are total and drop nested signal delivery.
+    FunctionBodyInvariant(
+        rel_path="display/context.py",
+        qualname="install_sigwinch_refresher",
+        present=("refresh_in_progress", "except Exception:", "signal.SIG_DFL"),
     ),
 )
 

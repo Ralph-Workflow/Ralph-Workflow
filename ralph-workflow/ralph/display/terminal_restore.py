@@ -11,7 +11,10 @@ from __future__ import annotations
 import os
 import sys
 import termios
-from typing import Protocol, TextIO, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TextIO, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 TermiosModes = list[int | list[bytes | int]]
 
@@ -47,6 +50,16 @@ class _Closeable(Protocol):
 @runtime_checkable
 class _HasFileno(Protocol):
     def fileno(self) -> int: ...
+
+
+def terminal_understands_vt(env: Mapping[str, str] | None = None) -> bool:
+    """Return whether TERM permits VT control sequences.
+
+    This is deliberately distinct from theme.py's Unicode-glyph TERM=dumb
+    check: it protects terminal-control writes, not character selection.
+    """
+    term = (os.environ if env is None else env).get("TERM", "")
+    return bool(term and term != "dumb")
 
 
 def terminal_restore_sequence() -> str:
@@ -150,7 +163,7 @@ def restore_terminal(
 
         if is_tty:
             try:
-                if isinstance(target_stream, _Writable):
+                if terminal_understands_vt() and isinstance(target_stream, _Writable):
                     target_stream.write(terminal_restore_sequence())
                 if isinstance(target_stream, _Flushable):
                     target_stream.flush()

@@ -793,18 +793,27 @@ def install_sigwinch_refresher(
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     previous = getter(signal.SIGWINCH)
+    refresh_in_progress = False
 
     def handler(_signum: int, _frame: object) -> None:
-        refreshed = ctx_holder[0].refreshed()
-        ctx_holder[0] = refreshed
-        if on_refresh is not None:
-            on_refresh(refreshed)
+        nonlocal refresh_in_progress
+        if refresh_in_progress:
+            return
+        refresh_in_progress = True
+        try:
+            refreshed = ctx_holder[0].refreshed()
+            ctx_holder[0] = refreshed
+            if on_refresh is not None:
+                on_refresh(refreshed)
+        except Exception:
+            return
+        finally:
+            refresh_in_progress = False
 
     setter(signal.SIGWINCH, handler)
 
     def stop() -> None:
-        if previous is not None:
-            setter(signal.SIGWINCH, previous)
+        setter(signal.SIGWINCH, signal.SIG_DFL if previous is None else previous)
 
     return stop
 

@@ -52,7 +52,11 @@ import time
 from io import IOBase
 from typing import TYPE_CHECKING, Final
 
-from ralph.display.terminal_restore import get_global_snapshot, set_global_snapshot
+from ralph.display.terminal_restore import (
+    get_global_snapshot,
+    set_global_snapshot,
+    terminal_understands_vt,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -188,9 +192,10 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
     parsed_color: str | None = None
     try:
         tty.setraw(fd, termios.TCSANOW)
-        os.write(fd, _OSC11_QUERY.encode())
-        reply = _read_reply(fd, timeout=timeout)
-        parsed_color = parse_osc11_reply(reply)
+        if terminal_understands_vt():
+            os.write(fd, _OSC11_QUERY.encode())
+            reply = _read_reply(fd, timeout=timeout)
+            parsed_color = parse_osc11_reply(reply)
     except Exception:
         return True, None
     finally:
