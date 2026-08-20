@@ -133,16 +133,21 @@ def test_real_tool_result_failure_surfaces_as_error_not_tool_result() -> None:
     assert not any("No such file or directory" in r.content for r in tool_results), tool_results
 
 
-def test_real_final_assistant_text_is_captured() -> None:
-    parser = ClaudeParser()
-    success_results = list(parser.parse(iter(_load_fixture_lines(_SUCCESS_FIXTURE))))
-    texts = [r.content for r in success_results if r.type == "text"]
-    assert any("Done" in t for t in texts), texts
+def test_claude_headless_regression_each_streamed_content_block_emits_once() -> None:
+    """S-2: partial, assistant, and result frames must not duplicate content."""
+    success_results = list(ClaudeParser().parse(iter(_load_fixture_lines(_SUCCESS_FIXTURE))))
+    assert [r.content for r in success_results if r.type == "text"].count("Done.") == 1
+    assert [r.content for r in success_results if r.type == "tool_use"].count("Bash") == 1
+    assert len([r for r in success_results if r.type == "thinking"]) == 7
 
-    parser = ClaudeParser()
-    error_results = list(parser.parse(iter(_load_fixture_lines(_TOOL_ERROR_FIXTURE))))
-    error_texts = [r.content for r in error_results if r.type == "text"]
-    assert any("failed" in t.lower() or "doesn't exist" in t for t in error_texts), error_texts
+    error_results = list(ClaudeParser().parse(iter(_load_fixture_lines(_TOOL_ERROR_FIXTURE))))
+    failure_summary = (
+        "It failed. The file `/nonexistent-file-xyz-123.txt` doesn't exist, so "
+        '`cat` returned exit code 1 with the error: "No such file or directory".'
+    )
+    assert [r.content for r in error_results if r.type == "text"].count(failure_summary) == 1
+    assert [r.content for r in error_results if r.type == "tool_use"].count("Bash") == 1
+    assert len([r for r in error_results if r.type == "thinking"]) == 4
 
 
 def test_real_system_status_event_still_surfaces() -> None:

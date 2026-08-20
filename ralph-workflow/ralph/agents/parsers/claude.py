@@ -59,6 +59,11 @@ _CLAUDE_EXPECTED_STOP_REASONS: Final[frozenset[str]] = frozenset({"end_turn", "t
 _CLAUDE_RATE_LIMIT_OK_STATUSES: Final[frozenset[str]] = frozenset({"allowed"})
 
 
+def _content_block_fingerprint(block: dict[str, object]) -> str:
+    """Return a stable content identity shared by stream and assistant frames."""
+    return json.dumps(block, sort_keys=True, separators=(",", ":"), default=str)
+
+
 class ClaudeParser(NdjsonParserBase):
     """Parser for Claude's NDJSON streaming output with robust delta accumulation.
 
@@ -120,6 +125,8 @@ class ClaudeParser(NdjsonParserBase):
         self._fallback_thinking_accumulator: TextAccumulator | None = None
         self._current_message_id: str | None = None
         self._seen_content_blocks: set[tuple[str, int]] = set()  # bounded-accumulator-ok: cleared
+        self._emitted_text: set[str] = set()  # bounded-accumulator-ok: cleared
+        self._streamed_block_fingerprints: set[str] = set()  # bounded-accumulator-ok: cleared
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
         """Classify a single raw NDJSON line.
@@ -173,7 +180,6 @@ class ClaudeParser(NdjsonParserBase):
         if event_type == "message_stop":
             flushed = self.flush_accumulators()
             self._current_message_id = None
-            self._seen_content_blocks.clear()
             return flushed
         if event_type == "content_block_stop":
             return self._flush_content_block(obj)
@@ -187,6 +193,9 @@ class ClaudeParser(NdjsonParserBase):
             return
         msg_id = str(message.get("id", ""))
         if msg_id:
+            self._seen_content_blocks.clear()
+            self._emitted_text.clear()
+            self._streamed_block_fingerprints.clear()
             self._current_message_id = msg_id
 
     def _flush_content_block(self, obj: dict[str, object]) -> Iterator[AgentOutputLine]:
@@ -319,6 +328,7 @@ class ClaudeParser(NdjsonParserBase):
             return
         block_type = str(content_block.get("type", ""))
         key = (self._current_message_id, index)
+        self._seen_content_blocks.add(key)
         if block_type == "text":
             if key not in self._text_accumulator:
                 self._text_accumulator[key] = TextAccumulator()
@@ -332,7 +342,14 @@ class ClaudeParser(NdjsonParserBase):
     ) -> Iterator[AgentOutputLine]:
         event_type = str(event.get("type", "unknown"))
 
-        if event_type == "content_block_delta":
+        if event_type == "message_start":
+            self._record_message_start(event)
+        elif event_type == "message_stop":
+            yield from self.flush_accumulators()
+            self._current_message_id = None
+        elif event_type == "content_block_stop":
+            yield from self._flush_content_block(event)
+        elif event_type == "content_block_delta":
             yield from self._parse_content_block_delta(event, raw)
         elif event_type == "content_block_start":
             self._track_content_block_start(event)
@@ -435,7 +452,9 @@ class ClaudeParser(NdjsonParserBase):
         if key not in self._text_accumulator:
             return
         acc = self._text_accumulator.pop(key)
-        yield from acc.flush(kind="text")
+        for line in acc.flush(kind="text"):
+            self._emitted_text.add(line.content)
+            yield line
 
     def _flush_thinking_accumulator(self, key: tuple[str, int]) -> Iterator[AgentOutputLine]:
         if key not in self._thinking_accumulator:
@@ -448,7 +467,9 @@ class ClaudeParser(NdjsonParserBase):
             return
         acc = self._fallback_accumulator
         self._fallback_accumulator = None
-        yield from acc.flush(kind="text")
+        for line in acc.flush(kind="text"):
+            self._emitted_text.add(line.content)
+            yield line
 
     def _flush_fallback_thinking_accumulator(self) -> Iterator[AgentOutputLine]:
         if self._fallback_thinking_accumulator is None:
@@ -469,7 +490,7 @@ class ClaudeParser(NdjsonParserBase):
             return
 
         result = str(obj.get("result", ""))
-        if result:
+        if result and result not in self._emitted_text:
             yield AgentOutputLine(type="text", content=result, raw=raw, metadata=obj)
 
     def _parse_content_block_start(
@@ -500,6 +521,7 @@ class ClaudeParser(NdjsonParserBase):
         if not isinstance(content_block, dict):
             return
 
+        self._streamed_block_fingerprints.add(_content_block_fingerprint(content_block))
         yield from self._parse_content_block(content_block, raw)
 
     def _parse_stream_error(
@@ -566,18 +588,24 @@ class ClaudeParser(NdjsonParserBase):
         if not isinstance(content, list):
             return
 
-        yield from self._parse_message_content(content, raw)
+        message_id = str(message.get("id", ""))
+        yield from self._parse_message_content(content, raw, message_id)
 
     def _parse_message_content(
         self,
         content: list[object],
         raw: str,
+        message_id: str = "",
     ) -> Iterator[AgentOutputLine]:
-        for block in content:
+        for index, block in enumerate(content):
+            if message_id and (message_id, index) in self._seen_content_blocks:
+                continue
             if not isinstance(block, dict):
                 continue
 
             block_obj = cast("dict[str, object]", block)
+            if _content_block_fingerprint(block_obj) in self._streamed_block_fingerprints:
+                continue
             block_type = str(block_obj.get("type", ""))
             if block_type == "text":
                 text = str(block_obj.get("text", ""))
