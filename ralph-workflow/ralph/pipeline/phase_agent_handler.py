@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import os
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -14,6 +16,7 @@ from ralph.agents.completion_signals import evaluate_completion, graded_phase_ve
 from ralph.agents.invoke._process_reader import _parent_broker_secret
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
+from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.parallel_display import (
     ParallelDisplay,
     get_display_context,
@@ -276,6 +279,116 @@ def _raw_transcript_break_detail(
     return f"raw transcript corrupted: {breaks[0].detail}"
 
 
+#: Bytes of raw transcript tail scanned for a terminal transport failure.
+#: The frame is emitted immediately before the agent process exits, so the
+#: tail always carries it; bounding the read keeps the phase-close seam
+#: cheap on the multi-megabyte captures a long unit produces.
+_TRANSPORT_FAILURE_TAIL_BYTES: Final = 64 * 1024
+
+#: Longest transport-failure message folded into the verdict. Long enough
+#: for an API rejection with its parameter path, short enough that the
+#: verdict line stays readable in a terminal.
+_TRANSPORT_FAILURE_DETAIL_MAX_CHARS: Final = 240
+
+
+#: Frame types that END a unit's turn successfully. A failure frame
+#: followed by one of these was recovered from, so it is history rather
+#: than the cause of a missing artifact. One raw capture accumulates
+#: every attempt and every phase for an ``(executable, model)`` pair, so
+#: without this the scan reports stale frames from attempts that already
+#: succeeded.
+#:
+#: Deliberately COMPLETION only. A ``turn.started`` proves a retry began,
+#: not that it worked -- and the field shape being diagnosed is a retry
+#: whose process was killed before writing anything further. Treating a
+#: bare start as recovery would erase the one cause the operator has.
+_TRANSPORT_RECOVERY_FRAME_TYPES: Final = frozenset({"turn.completed"})
+
+
+def _terminal_transport_failure_message(obj: dict[str, object]) -> str | None:
+    """Return the human-readable message of a terminal transport frame.
+
+    Recognises the Codex ``turn.failed`` frame, whose ``error`` field is
+    either a string or an object carrying ``message``. Returns ``None``
+    for any other frame shape.
+    """
+    if obj.get("type") != "turn.failed":
+        return None
+    error: object = obj.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        return str(message) if message else "turn failed"
+    if isinstance(error, str) and error:
+        return error
+    return "turn failed"
+
+
+def _transport_failure_detail(
+    workspace_root: Path, agent_config: AgentConfig | None
+) -> str | None:
+    """Return a bounded description of a turn killed at the transport.
+
+    A work unit whose turn is rejected by the provider API never writes
+    its artifact, so completion evidence grades it ``FAILED (no
+    artifact)`` -- which reads as an agent-quality outcome and hides the
+    infrastructure fault that actually happened. Measured 2026-08-20: a
+    Codex turn died on a 400 (``Invalid value: 'output_text'``) and the
+    verdict said only that the receipt was missing.
+
+    Folding the transcript's terminal failure frame into the verdict
+    detail keeps the grade unchanged (no artifact IS no artifact) while
+    naming the cause. Returns ``None`` when no agent config is
+    available, the transcript is absent, or no terminal failure frame is
+    present -- never raises.
+    """
+    if agent_config is None:
+        return None
+    unit_id = raw_log_unit_id_for(agent_config)
+    if not unit_id:
+        return None
+    raw_path = raw_log_path_for(workspace_root, unit_id, model=agent_config.model)
+    try:
+        with raw_path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - _TRANSPORT_FAILURE_TAIL_BYTES))
+            tail = handle.read()
+    except OSError:
+        return None
+    message: str | None = None
+    for raw_line in tail.decode("utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            parsed: object = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        if parsed.get("type") in _TRANSPORT_RECOVERY_FRAME_TYPES:
+            # The unit kept going after the failure; drop what we had.
+            message = None
+            continue
+        # Keep scanning: the LAST unrecovered failure frame is the one
+        # that ended the unit.
+        message = _terminal_transport_failure_message(parsed) or message
+    if message is None:
+        return None
+    # The message is agent-influenced text lifted out of the transcript
+    # and rendered on the operator's terminal, so it goes through the
+    # same control-sequence stripper as every other agent-origin string.
+    # Pinned by
+    # ``tests/test_phase_transport_failure_reporting.py::
+    # test_transport_failure_detail_contains_terminal_escapes``.
+    message = strip_terminal_control(message).replace("\n", " ").strip()
+    if not message:
+        return None
+    if len(message) > _TRANSPORT_FAILURE_DETAIL_MAX_CHARS:
+        message = message[: _TRANSPORT_FAILURE_DETAIL_MAX_CHARS - 1] + "..."
+    return f"agent turn failed at the transport: {message}"
+
+
 def _compute_graded_phase_verdict(
     workspace_root: Path,
     required_artifact: RequiredArtifact,
@@ -308,6 +421,14 @@ def _compute_graded_phase_verdict(
         sentinel_secret=secret,
     )
     label, weakest, detail = graded_phase_verdict(signals, required_artifact=required_artifact)
+    # Only a phase that actually graded FAILED gets the transport cause
+    # folded in. A PASS or DEGRADED phase produced its artifact, so a
+    # failure frame in its transcript was recovered from and naming it
+    # would read as an alarm about a run that worked.
+    if label == "FAILED":
+        transport_detail = _transport_failure_detail(workspace_root, agent_config)
+        if transport_detail is not None:
+            detail = f"{detail}; {transport_detail}" if detail else transport_detail
     break_detail = _raw_transcript_break_detail(workspace_root, agent_config)
     if break_detail is not None:
         detail = f"{detail}; {break_detail}" if detail else break_detail
