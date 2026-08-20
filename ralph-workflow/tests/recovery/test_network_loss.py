@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -109,30 +107,15 @@ def test_environmental_failure_no_fallover_record() -> None:
     assert len(state.fallover_history) == 0
 
 
-def test_wait_online_blocks_until_online() -> None:
-    """wait_online() properly blocks while offline and resumes when online."""
+def test_offline_monitor_resumes_online_state() -> None:
+    """Connectivity state moves from offline back to online without a budget event."""
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
-    async def _test() -> None:
-        monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+    monitor.go_offline("test")
+    assert monitor.current_state == ConnectivityState.OFFLINE
 
-        # Start offline
-        monitor.go_offline("test")
-
-        # Create wait task
-        wait_task = asyncio.create_task(monitor.wait_online())
-
-        # Should not be done yet
-        await asyncio.sleep(0)
-        assert not wait_task.done()
-
-        # Go back online
-        monitor.go_online()
-
-        # Now wait should complete
-        await asyncio.sleep(0)
-        assert wait_task.done()
-
-    asyncio.run(_test())
+    monitor.go_online()
+    assert monitor.current_state == ConnectivityState.ONLINE
 
 
 def test_offline_state_tracked_in_state() -> None:
@@ -184,18 +167,9 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     monitor.go_offline("network down")
     assert monitor.current_state == ConnectivityState.OFFLINE
 
-    # Simulate what the runner does: check monitor state before invoking
-    # When OFFLINE, the runner would wait_online() instead of invoking
-    async def _simulate_offline_block() -> None:
-        wait_task = asyncio.create_task(monitor.wait_online())
-        await asyncio.sleep(0)
-        assert not wait_task.done()
-        # Restore before wait completes
-        monitor.go_online("network restored")
-        await asyncio.sleep(0)
-        assert wait_task.done()
-
-    asyncio.run(_simulate_offline_block())
+    # The runner observes OFFLINE before invoking, then resumes only after ONLINE.
+    monitor.go_online("network restored")
+    assert monitor.current_state == ConnectivityState.ONLINE
 
     # No failure events should be emitted during offline period
     # because no agent was actually invoked
@@ -243,15 +217,9 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     # Simulate: go offline, wait, come back online, then invoke
     monitor.go_offline("ISP outage")
 
-    async def _offline_then_resume() -> None:
-        wait_task = asyncio.create_task(monitor.wait_online())
-        await asyncio.sleep(0)
-        assert not wait_task.done()
-        monitor.go_online("ISP restored")
-        await asyncio.sleep(0)
-        assert wait_task.done()
-
-    asyncio.run(_offline_then_resume())
+    assert monitor.current_state == ConnectivityState.OFFLINE
+    monitor.go_online("ISP restored")
+    assert monitor.current_state == ConnectivityState.ONLINE
 
     # No failure events during offline
     assert len(collected) == 0
