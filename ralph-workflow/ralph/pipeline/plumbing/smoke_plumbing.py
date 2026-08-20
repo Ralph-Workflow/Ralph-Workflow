@@ -12,7 +12,6 @@ import json
 import os
 import re
 import secrets
-import shlex
 import sqlite3
 from collections import deque
 from collections.abc import Callable, Mapping
@@ -45,7 +44,11 @@ from ralph.config.enums import AgentTransport
 from ralph.display.capability_observation_recorder import infer_surface_for_preview
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.preview_payload import payload_from_tool_event
-from ralph.display.raw_overflow import detect_raw_log_breaks, raw_log_path_for
+from ralph.display.raw_overflow import (
+    detect_raw_log_breaks,
+    raw_log_path_for,
+    raw_log_unit_id_for,
+)
 from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -2077,9 +2080,8 @@ def _raw_transcript_corruption_errors(workspace_root: Path, config: AgentConfig)
     Never raises: an unreadable/malformed ``config.cmd`` degrades to an
     empty break list rather than crashing the whole smoke error sweep.
     """
-    try:
-        unit_id = shlex.split(config.cmd)[0]
-    except (ValueError, IndexError):
+    unit_id = raw_log_unit_id_for(config)
+    if not unit_id:
         return []
     raw_path = raw_log_path_for(workspace_root, unit_id, model=config.model)
     return [
@@ -2128,17 +2130,7 @@ def _resolve_visible_output_agent_prefix(config: AgentConfig) -> str:
     run in the headless stream bucket, so any command carrying it is
     classified as ``claude-headless`` for the visible-output ceiling.
     """
-    cmd_tokens = (config.cmd or "").split() if config.cmd else []
-    cmd_name = cmd_tokens[0].lower() if cmd_tokens else ""
-    # The headless invariant is the output flag, which may live either in
-    # ``config.cmd`` (built-in ``claude-headless`` / user overrides) or in
-    # ``config.output_flag`` (dynamic ``ccs/<alias>`` aliases whose cmd is
-    # just ``ccs <alias>`` and whose flags are added by the command builder).
-    cmd_flags = set(cmd_tokens[1:]) | set((config.output_flag or "").split())
-    is_headless_claude = (
-        cmd_name == "claude" and "-p" in cmd_flags
-    ) or "--output-format=stream-json" in cmd_flags
-    return "claude-headless" if is_headless_claude else cmd_name
+    return raw_log_unit_id_for(config).lower()
 
 
 def _artifact_submission_evidence(

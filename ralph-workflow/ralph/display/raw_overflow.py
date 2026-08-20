@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import json
+import shlex
 import threading
 import time
 import weakref
@@ -18,6 +19,8 @@ from ralph.display.vt_normalizer import normalize_vt_text
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from ralph.config.models import AgentConfig
 
 DEFAULT_MAX_OVERFLOW_FILE_BYTES = 50 * 1024 * 1024
 #: Userspace buffer for the persistent handle. Amortizes write syscalls
@@ -148,6 +151,27 @@ _INTERACTIVE_PTY_TRANSPORTS: frozenset[AgentTransport] = frozenset(
 def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
     """Return True when ``transport`` emits visible PTY output rather than JSONL."""
     return transport in _INTERACTIVE_PTY_TRANSPORTS
+
+
+def raw_log_unit_id_for(config: AgentConfig) -> str:
+    """Return the canonical raw-capture identity for an agent configuration.
+
+    Headless Claude's ``-p`` / stream-JSON transport shares the ``claude``
+    executable with interactive Claude. Its capture must retain the alias in
+    its filename so the two independently-written transcripts cannot collide.
+    Malformed commands preserve the readers' quiet failure behavior by
+    returning an empty identity rather than raising.
+    """
+    try:
+        tokens = shlex.split(config.cmd)
+    except ValueError:
+        return ""
+    if not tokens:
+        return ""
+    flags = set(tokens[1:]) | set((config.output_flag or "").split())
+    if (tokens[0].lower() == "claude" and "-p" in flags) or "--output-format=stream-json" in flags:
+        return "claude-headless"
+    return tokens[0]
 
 
 def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = None) -> Path:

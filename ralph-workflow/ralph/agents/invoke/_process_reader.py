@@ -60,6 +60,7 @@ from ralph.agents.invoke._types import AgentRunCtx, ProcessReaderCtx
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.display.raw_overflow import (
     get_or_create_raw_overflow_log,
+    raw_log_unit_id_for,
 )
 from ralph.mcp.server._activity_sink import (
     ActivitySink,
@@ -360,7 +361,7 @@ class ProcessLineReader:
         self._log_growth_state: dict[str, tuple[int, float]] = {}  # bounded-accumulator-ok: drained
         self._raw_overflow = get_or_create_raw_overflow_log(
             self._workspace_path or Path.cwd(),
-            _agent_command_name(self._config),
+            raw_log_unit_id_for(self._config),
             model=self._config.model,
         )
         self._last_activity_kind = "none"

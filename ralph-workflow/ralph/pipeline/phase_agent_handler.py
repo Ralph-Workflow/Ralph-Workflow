@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
@@ -20,7 +19,11 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
-from ralph.display.raw_overflow import detect_raw_log_breaks, raw_log_path_for
+from ralph.display.raw_overflow import (
+    detect_raw_log_breaks,
+    raw_log_path_for,
+    raw_log_unit_id_for,
+)
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -263,9 +266,8 @@ def _raw_transcript_break_detail(
     """
     if agent_config is None:
         return None
-    try:
-        unit_id = shlex.split(agent_config.cmd)[0]
-    except (ValueError, IndexError):
+    unit_id = raw_log_unit_id_for(agent_config)
+    if not unit_id:
         return None
     raw_path = raw_log_path_for(workspace_root, unit_id, model=agent_config.model)
     breaks = detect_raw_log_breaks(raw_path, transport=agent_config.transport)

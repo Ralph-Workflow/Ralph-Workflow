@@ -35,6 +35,8 @@ from ralph.display.raw_overflow import (
     _forget_raw_overflow_log,
     detect_raw_log_breaks,
     get_or_create_raw_overflow_log,
+    raw_log_path_for,
+    raw_log_unit_id_for,
 )
 
 
@@ -82,6 +84,28 @@ def test_same_path_constructors_share_state(isolated_workspace: Path) -> None:
     # bytes survive on disk.
     second_path = second.path.read_bytes()
     assert b"first writer line\n" in second_path
+
+
+def test_headless_claude_uses_a_distinct_raw_log_identity(
+    isolated_workspace: Path,
+) -> None:
+    """Headless Claude must not overwrite interactive Claude's raw capture."""
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+
+    interactive = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE, model="haiku")
+    headless = AgentConfig(cmd="claude -p", transport=AgentTransport.CLAUDE, model="haiku")
+    non_claude = AgentConfig(cmd="agy --print", transport=AgentTransport.AGY, model="flash")
+
+    interactive_path = raw_log_path_for(
+        isolated_workspace, raw_log_unit_id_for(interactive), model=interactive.model
+    )
+    headless_path = raw_log_path_for(
+        isolated_workspace, raw_log_unit_id_for(headless), model=headless.model
+    )
+    assert interactive_path != headless_path
+    assert headless_path.name == "claude-headless_haiku.log"
+    assert raw_log_unit_id_for(non_claude) == "agy"
 
 
 def test_first_writer_bytes_survive_late_first_writer(isolated_workspace: Path) -> None:

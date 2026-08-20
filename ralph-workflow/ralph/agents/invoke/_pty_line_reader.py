@@ -82,6 +82,7 @@ from ralph.agents.parsers.claude_interactive_transcript_parser import (
 from ralph.display.raw_overflow import (
     RawOverflowLog,
     get_or_create_raw_overflow_log,
+    raw_log_unit_id_for,
 )
 from ralph.mcp.server._activity_sink import (
     reset_active_sink,
@@ -1600,7 +1601,7 @@ class PtyLineReader:
         self._process_monitor = process_monitor
         self._raw_overflow = get_or_create_raw_overflow_log(
             self._workspace_path or Path.cwd(),
-            self._agent_name,
+            raw_log_unit_id_for(self._config),
             model=self._config.model,
         )
         watchdog = IdleWatchdog(
