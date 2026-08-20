@@ -71,19 +71,6 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 #: ``drop_unit`` / ``stop()`` reached interpreter finalization with
 #: the file handle still open, triggering a ``ResourceWarning`` on
 #: every affected test.
-#: Paths this PROCESS has already opened for writing.
-#:
-#: The first write to a path truncates, so each run starts a clean file.
-#: That decision belongs to the RUN, not to a ``RawOverflowLog``
-#: instance: ``drop_unit`` closes and forgets a unit's log, and a
-#: re-spawned worker for the same unit id builds a fresh instance. With
-#: truncation keyed to the instance, wave 2 erased wave 1's bytes --
-#: and once the display's condensed bodies moved out of the verbatim
-#: capture into their own file, that file became the ONLY copy of the
-#: bodies the live view's markers point at, so the loss was
-#: unrecoverable rather than merely duplicated.
-_OPENED_PATHS: set[str] = set()  # bounded-accumulator-ok: one entry per unit log per process
-
 _REGISTRY_LOCK = threading.Lock()
 _REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
     weakref.WeakValueDictionary()
@@ -215,6 +202,7 @@ def get_or_create_raw_overflow_log(
     *,
     model: str | None = None,
     condensed: bool = False,
+    append_existing: bool = False,
     max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
     flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
     now: Callable[[], float] = time.monotonic,
@@ -239,6 +227,7 @@ def get_or_create_raw_overflow_log(
             unit_id,
             model=model,
             condensed=condensed,
+            append_existing=append_existing,
             max_bytes=max_bytes,
             flush_interval_seconds=flush_interval_seconds,
             now=now,
@@ -466,6 +455,7 @@ class RawOverflowLog:
         *,
         model: str | None = None,
         condensed: bool = False,
+        append_existing: bool = False,
         max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
         flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
         now: Callable[[], float] = time.monotonic,
@@ -479,7 +469,14 @@ class RawOverflowLog:
         self.path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
         self.is_condensed = condensed
         self._lock = threading.Lock()
-        self._first_write = True
+        # The first write truncates, so each RUN starts a clean capture.
+        # ``append_existing`` says the caller already owns this path in
+        # THIS run -- a worker re-spawned for a unit whose log was
+        # dropped -- so the second writer continues the file instead of
+        # erasing what the first one wrote. Keeping this a caller
+        # decision, rather than a process-global memo, means a genuinely
+        # new run in the same process still starts clean.
+        self._first_write = not append_existing
         self._disabled = False
         self._max_bytes = max(max_bytes, 0)
         self._bytes_written = 0
@@ -528,10 +525,7 @@ class RawOverflowLog:
                 if self._fh is None:
                     # filesystem-write-ok: bounded binary overflow stream directory creation
                     self.path.parent.mkdir(parents=True, exist_ok=True)
-                    path_key = str(self.path)
-                    first_open_this_process = path_key not in _OPENED_PATHS
-                    _OPENED_PATHS.add(path_key)
-                    mode = "wb" if self._first_write and first_open_this_process else "ab"
+                    mode = "wb" if self._first_write else "ab"
                     # filesystem-write-ok: bounded binary overflow stream remains live until byte cap
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
                     self._fh = cast(
