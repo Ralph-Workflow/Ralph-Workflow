@@ -299,7 +299,6 @@ class Invariant:
             ),
         ]
 
-
 class FunctionBodyInvariant:
     """AST-scoped check: every literal must hold inside a named function body.
 

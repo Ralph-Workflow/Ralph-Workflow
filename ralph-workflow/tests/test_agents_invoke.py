@@ -2719,6 +2719,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -2834,6 +2835,7 @@ def test_invoke_agent_merges_existing_opencode_config_content(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -3037,6 +3039,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -3231,6 +3234,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -3957,6 +3961,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -4140,6 +4145,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
         )
     )
@@ -4164,6 +4170,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
         )
     )
