@@ -1183,6 +1183,27 @@ def _apply_startup_rebase_outcomes(
     return state
 
 
+def _reselect_preferred_agent(
+    state: PipelineState,
+    ctx: _LoopContext,
+) -> PipelineState:
+    """Select the highest-priority available agent for the state's phase."""
+    chain = state.chain_for_phase(state.phase)
+    if chain is not None and hasattr(ctx.controller, "preferred_agent_index"):
+        selection = ctx.controller.preferred_agent_index(str(state.phase), chain.agents)
+        if selection.index is not None and selection.index != chain.current_index:
+            chain = AgentChainState(
+                agents=chain.agents,
+                current_index=selection.index,
+                retries=0,
+            )
+            state = state.with_phase_chain(state.phase, chain).copy_with(
+                last_agent_session_id=None,
+                agent_retry_intent=cleared_agent_retry_intent(),
+            )
+    return state
+
+
 def _resume_after_cooldown_wait(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1196,19 +1217,7 @@ def _resume_after_cooldown_wait(
         None,
         status_text("RESUMED", "cooldown expired; retrying", "green"),
     )
-    chain = state.chain_for_phase(state.phase)
-    if chain is not None:
-        selection = ctx.controller.preferred_agent_index(str(state.phase), chain.agents)
-        if selection.index is not None and selection.index != chain.current_index:
-            chain = AgentChainState(
-                agents=chain.agents,
-                current_index=selection.index,
-                retries=0,
-            )
-            state = state.with_phase_chain(state.phase, chain).copy_with(
-                last_agent_session_id=None,
-                agent_retry_intent=cleared_agent_retry_intent(),
-            )
+    state = _reselect_preferred_agent(state, ctx)
     state = state.copy_with(is_waiting_state=False)
     _log_resumed_state(state, ctx, phase, unavailability_reason, delay_ms)
     return state
@@ -1256,6 +1265,7 @@ def _run_inner_loop(
         state, ctx.policy_bundle.pipeline
     )
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
+        captured_phase = str(state.phase)
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
         ctx.latest_state[:] = [state]
@@ -1375,6 +1385,8 @@ def _run_inner_loop(
                     is_all_unavailable,
                 )
                 state = state.copy_with(last_retry_delay_ms=1000)
+        if str(state.phase) != captured_phase:
+            state = _reselect_preferred_agent(state, ctx)
         prev_phase = _runner_module.emit_phase_transition_if_changed(
             ctx.active_display,
             prev_phase,

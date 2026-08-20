@@ -57,6 +57,7 @@ from ralph.display.capability_observation_recorder import CapabilityObservationR
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+from ralph.pipeline.plumbing.smoke_evidence import Provenance
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 if TYPE_CHECKING:
@@ -152,9 +153,9 @@ def _fake_execute_smoke_turns(
     _params: SmokeRunParams,
     _session_id: object,
     **_kwargs: object,
-) -> tuple[list[str], list[str], None, None]:
+) -> tuple[list[str], list[str], None, None, Provenance]:
     """Return a copy of the captured fixture as the run's transcript."""
-    return list(_read_captured_fixture_lines()), [], None, None
+    return list(_read_captured_fixture_lines()), [], None, None, Provenance.ABSENT
 
 
 class TestSmokeCapabilityBreaksWhenSupportedButUnrendered:
