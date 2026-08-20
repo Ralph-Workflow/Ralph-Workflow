@@ -298,11 +298,17 @@ _TRANSPORT_FAILURE_DETAIL_MAX_CHARS: Final = 240
 #: without this the scan reports stale frames from attempts that already
 #: succeeded.
 #:
-#: Deliberately COMPLETION only. A ``turn.started`` proves a retry began,
-#: not that it worked -- and the field shape being diagnosed is a retry
-#: whose process was killed before writing anything further. Treating a
-#: bare start as recovery would erase the one cause the operator has.
-_TRANSPORT_RECOVERY_FRAME_TYPES: Final = frozenset({"turn.completed"})
+#: Both COMPLETION and START clear the pending cause, because the rule is
+#: "report the outcome of the last turn that BEGAN". One raw capture is
+#: keyed only by ``(executable, model)``, so it accumulates every retry,
+#: every phase, and every parallel work unit sharing that agent. Without
+#: the start clearing too, phase B's verdict inherits phase A's failure.
+#:
+#: The cost is silence when a retry is killed before writing anything.
+#: That is the right trade: a missing cause makes an operator look at the
+#: transcript, while a cause borrowed from a different phase makes them
+#: chase a fault that phase never had.
+_TRANSPORT_RECOVERY_FRAME_TYPES: Final = frozenset({"turn.completed", "turn.started"})
 
 
 def _terminal_transport_failure_message(obj: dict[str, object]) -> str | None:
@@ -386,7 +392,13 @@ def _transport_failure_detail(
         return None
     if len(message) > _TRANSPORT_FAILURE_DETAIL_MAX_CHARS:
         message = message[: _TRANSPORT_FAILURE_DETAIL_MAX_CHARS - 1] + "..."
-    return f"agent turn failed at the transport: {message}"
+    # Quoted and attributed on purpose. The raw capture is the agent's own
+    # stdout, so an agent can emit a frame shaped like a transport failure
+    # and put words in this line. Presenting the text as a quotation from
+    # the transcript -- rather than as Ralph Workflow's own finding --
+    # keeps the provenance honest.
+    quoted = f'"{message}"'
+    return f"agent turn failed at the transport; transcript reports: {quoted}"
 
 
 def _compute_graded_phase_verdict(

@@ -229,3 +229,51 @@ def test_transport_failure_detail_contains_terminal_escapes(
 
     assert "\x1b" not in message, repr(message)
     assert "wiped your screen" in message
+
+
+def test_a_later_phases_verdict_does_not_inherit_an_earlier_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """One capture spans phases and parallel units; causes must not bleed.
+
+    The raw capture is keyed only by ``(executable, model)``, so it
+    accumulates every retry, every phase, and every parallel work unit
+    using that agent. A failure from an earlier turn must not be
+    presented as this phase's cause.
+    """
+    raw_path = tmp_path / ".agent" / "raw" / "codex.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "turn.started"}),
+                json.dumps({"type": "turn.failed", "error": {"message": _API_REJECTION}}),
+                # A later phase begins on the same agent and is killed
+                # before writing anything of its own.
+                json.dumps({"type": "turn.started"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    message = _render_and_capture(tmp_path, monkeypatch)
+
+    assert "agent turn failed at the transport" not in message, message
+
+
+def test_transport_failure_text_is_attributed_to_the_transcript(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The capture is agent stdout, so the quote must read as a quote.
+
+    An agent can emit a frame shaped like a transport failure. Presenting
+    its text as Ralph Workflow's own finding would let it put words into
+    the operator's verdict line.
+    """
+    _write_turn_failed_raw_log(tmp_path)
+
+    message = _render_and_capture(tmp_path, monkeypatch)
+
+    assert "transcript reports:" in message
+    assert f'"{_API_REJECTION}"' in message
