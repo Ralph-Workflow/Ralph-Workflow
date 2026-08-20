@@ -498,3 +498,21 @@ def test_parallel_display_wide_chrome_prefix_does_not_collapse_to_single_char_ro
     assert max(len(line) for line in lines) >= 5
 
 
+def test_parallel_display_wrap_close_body_wide_chrome_prefix_with_trailer() -> None:
+    """DA-006 regression: _wrap_close_body with trailer and wide chrome prefix must not collapse to single-char rows."""
+    header = "⋯ output · 05:15:54 → 05:15:56 · 1.7s"
+    hang_prefix = "05:15:56 [output][claude-headless/haiku] "
+    visible = "This is a sentence that should not be split into one character per line when wrapped. (truncated, 16 lines · 1.7 KiB, see .agent/raw/claude-headless_haiku.log)"
+    chrome_width = len(hang_prefix)
+    rows = ParallelDisplay._wrap_close_body(
+        header,
+        visible,
+        total_width=80,
+        hang_prefix=hang_prefix,
+        chrome_prefix_width=chrome_width,
+    )
+    # Must wrap into readable rows, not 150+ single-character rows.
+    assert len(rows) <= 15
+    assert all(len(r) >= 5 for r in rows)
+
+

@@ -1159,63 +1159,27 @@ class ParallelDisplay:
         # console width so a wide header + chrome pair does not
         # push the head's first row past the console width and
         # clip the middle of a marker like ``CONDENSE-<unit>``.
-        first_budget = max(1, total_width - cell_len(f"{header} ") - chrome_prefix_width)
-        cont_budget = max(1, total_width - cell_len(hang_prefix))
+        first_budget = max(0, total_width - cell_len(f"{header} ") - chrome_prefix_width)
+        cont_budget = max(7, total_width - cell_len(hang_prefix))
         if cell_len(visible) <= first_budget:
             return [first_line]
-        # When the body does not fit on the chrome-prefixed first
-        # row but does fit on a single continuation row, place the
-        # body on a continuation so it remains a contiguous substring
-        # in the live log. A split body (e.g. ``Claude Headless
-        # checks the`` + ``display.``) breaks the grep carrier and
-        # the cold-transcript readability contract.
         if cell_len(visible) <= cont_budget:
             return [header, visible]
-        # If the first word is wider than the chrome-prefixed first
-        # budget but fits on a continuation row, emit it on the
-        # continuation so it survives as a contiguous substring and
-        # Rich does not crop its tail on the chrome-prefixed first
-        # row. The continuation uses ``hang_prefix`` (one cell
-        # narrower than the chrome) so a marker one cell wider than
-        # the head budget fits in a ``total_width``-column terminal.
-        chunks: list[str] = []
-        remaining = visible
-        first_token = remaining.split(" ", 1)[0]
-        if cell_len(first_token) > first_budget and cell_len(first_token) <= cont_budget:
-            chunks.append(first_token)
-            remaining = remaining[len(first_token) :].lstrip()
-        # First iteration: first-row chunk fits within ``first_budget``,
-        # which is the terminal width minus the chrome prefix. The
-        # first chunk is taken as the longest word-boundary prefix that
-        # fits; if NO word fits, a single character is taken so the
-        # joined passage never silently disappears.
-        if chunks and not remaining:
-            first_chunk = chunks[0]
-            continuation_rows: list[str] = []
+        words = visible.split(" ")
+        first_words: list[str] = []
+        if first_budget > 0:
+            while words and cell_len(" ".join([*first_words, words[0]])) <= first_budget:
+                first_words.append(words.pop(0))
+        if first_words:
+            first_chunk = f"{header} {' '.join(first_words)}"
+            remaining = " ".join(words)
         else:
-            budget = first_budget
-            head_words: list[str] = []
-            tail_words = remaining.split(" ")
-            while tail_words and cell_len(" ".join([*head_words, tail_words[0]])) <= budget:
-                head_words.append(tail_words.pop(0))
-            if head_words:
-                first_chunk = " ".join(head_words)
-                remaining = " ".join(tail_words)
-            else:
-                # No single word fits in the first-row budget; take a
-                # single character so the first row carries the prefix
-                # start without dropping the body. Continuation rows then
-                # carry the rest with the full terminal width budget.
-                first_chunk = remaining[0]
-                remaining = remaining[1:]
-            chunks.append(first_chunk)
-            # Continuation rows use the terminal width MINUS the hang-prefix
-            # width because the caller hangs them under the body column,
-            # not under the chrome prefix.
-            continuation_rows = ParallelDisplay._wrap_trailing_words(
-                remaining, total_width=cont_budget
-            )
-        return [f"{header} {chunks[0]}", *continuation_rows]
+            first_chunk = header
+            remaining = visible
+        continuation_rows = ParallelDisplay._wrap_trailing_words(
+            remaining, total_width=cont_budget
+        )
+        return [first_chunk, *continuation_rows]
 
     @staticmethod
     def _wrap_close_body_with_trailer(
@@ -1233,18 +1197,22 @@ class ParallelDisplay:
         first_line_with_head = f"{header} {head}"
         if cell_len(first_line_with_head) + chrome_prefix_width <= total_width:
             return [first_line_with_head, trailer]
-        cont_budget_for_head = max(1, total_width - cell_len(f"{header} ") - chrome_prefix_width)
-        head_rows = ParallelDisplay._wrap_trailing_words(head, total_width=cont_budget_for_head)
-        first_row = head_rows[0] if head_rows else head
-        if head_rows and cell_len(first_row) > cont_budget_for_head:
-            head_rows = head_rows[1:] if len(head_rows) > 1 else []
-            tail_rows = [first_row, *head_rows]
-            first_row = ""
+        cont_budget = max(7, total_width - cell_len(hang_prefix))
+        first_budget = max(0, total_width - cell_len(f"{header} ") - chrome_prefix_width)
+        head_words = head.split(" ")
+        first_head_words: list[str] = []
+        if first_budget > 0:
+            while head_words and cell_len(" ".join([*first_head_words, head_words[0]])) <= first_budget:
+                first_head_words.append(head_words.pop(0))
+        if first_head_words:
+            first_row = f"{header} {' '.join(first_head_words)}"
+            remaining_head = " ".join(head_words)
         else:
-            tail_rows = head_rows[1:] if head_rows else []
-        cont_budget = max(1, total_width - cell_len(hang_prefix))
+            first_row = header
+            remaining_head = head
+        head_cont_rows = ParallelDisplay._wrap_trailing_words(remaining_head, total_width=cont_budget)
         trailer_rows = ParallelDisplay._split_long_trailer(trailer, total_width=cont_budget)
-        return [f"{header} {first_row}", *tail_rows, *trailer_rows]
+        return [first_row, *head_cont_rows, *trailer_rows]
 
     @staticmethod
     def _wrap_trailing_words(remaining: str, *, total_width: int) -> list[str]:
@@ -1264,11 +1232,11 @@ class ParallelDisplay:
         if not remaining:
             return []
         rows: list[str] = []
+        budget = max(7, total_width)
         while remaining:
-            if cell_len(remaining) <= total_width:
+            if cell_len(remaining) <= budget:
                 rows.append(remaining)
                 break
-            budget = max(1, total_width)
             head_words: list[str] = []
             tail_words = remaining.split(" ")
             while tail_words and cell_len(" ".join([*head_words, tail_words[0]])) <= budget:
