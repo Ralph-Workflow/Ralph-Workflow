@@ -646,8 +646,11 @@ def _handle_workspace_media(
         },
     )
     if inline_image_requires_text_handle(profile.identity):
+        # Keep any warning: a handle-only provider on a restricted
+        # transport would otherwise get a bare handle with nothing saying
+        # why the pixels were withheld.
         return ToolResult(
-            content=[ToolContent.text_content(f"Replay handle: {entry.uri}")],
+            content=[*warning_content, ToolContent.text_content(f"Replay handle: {entry.uri}")],
             is_error=False,
         )
     if warning_content:

@@ -103,6 +103,16 @@ _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS: frozenset[str] = frozenset({"codex"})
 _INLINE_IMAGE_HANDLE_ONLY_PROVIDERS: frozenset[str] = frozenset({"ccs"})
 
 
+def transport_inline_image_roundtrip_unsafe(transport: str | None) -> bool:
+    """Return True when ``transport`` cannot carry an inline image block.
+
+    The transport-only form of :func:`inline_image_roundtrip_unsafe`, for
+    callers that hold a transport but no resolved identity yet (session
+    construction, chain planning).
+    """
+    return (transport or "").lower() in _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS
+
+
 def inline_image_roundtrip_unsafe(identity: MultimodalModelIdentity) -> bool:
     """Return True when ``identity``'s transport cannot take an inline image.
 
@@ -112,7 +122,7 @@ def inline_image_roundtrip_unsafe(identity: MultimodalModelIdentity) -> bool:
     verdict :func:`get_delivery_mode` returns for such identities)
     before emitting an ``ImageContent`` block.
     """
-    return (identity.transport or "").lower() in _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS
+    return transport_inline_image_roundtrip_unsafe(identity.transport)
 
 
 def inline_image_requires_text_handle(identity: MultimodalModelIdentity) -> bool:
@@ -265,18 +275,28 @@ class ResolvedCapabilityProfile:
         return stored
 
     def to_payload(self) -> dict[str, object]:
-        """Serialize to a JSON-compatible dict for session payload persistence."""
+        """Serialize to a JSON-compatible dict for session payload persistence.
+
+        Serialises CORRECTED verdicts (via :meth:`verdict_for`), not the
+        raw stored ones. Re-emitting an uncorrected verdict would carry a
+        stale ``inline_image`` forward through every re-serialisation and
+        record it in the session file and the wire-ledger capability
+        digest -- an audit trail that disagrees with what the runtime
+        actually did.
+        """
         return {
             "provider": self.identity.provider,
             "model_id": self.identity.model_id,
             "transport": self.identity.transport,
             "verdicts": {
                 modality: {
-                    "delivery": v.delivery.value,
-                    "reason": v.reason,
-                    "block_type": v.block_type,
+                    "delivery": corrected.delivery.value,
+                    "reason": corrected.reason,
+                    "block_type": corrected.block_type,
                 }
-                for modality, v in self.verdicts.items()
+                for modality, corrected in (
+                    (modality, self.verdict_for(modality)) for modality in self.verdicts
+                )
             },
         }
 
@@ -340,4 +360,5 @@ __all__ = [
     "inline_image_roundtrip_unsafe",
     "profile_from_payload",
     "resolve_capability_profile",
+    "transport_inline_image_roundtrip_unsafe",
 ]

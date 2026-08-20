@@ -73,6 +73,10 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     read_commit_message_artifact,
 )
+from ralph.mcp.multimodal.capabilities import (
+    MultimodalModelIdentity,
+    transport_inline_image_roundtrip_unsafe,
+)
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -319,6 +323,7 @@ def run_commit_plumbing(
         drain="commit",
         session_id_prefix="commit",
         agents_policy=chain_config.agents_policy,
+        transport=_commit_chain_transport(chain_config),
     ) as bridge:
         extra_env = _commit_bridge_env(bridge)
         # Normalize the key set so downstream consumers (and tests)
@@ -1212,7 +1217,6 @@ def _default_commit_bridge_factory(
     """
     del (
         drain,
-        transport,
         capabilities,
         session_id_prefix,
         run_id,
@@ -1226,6 +1230,20 @@ def _default_commit_bridge_factory(
     )
     bridge_fn = _resolve_commit_start_commit_bridge()
     policy = agents_policy or AgentsPolicy()
+    # ``transport`` must reach the session identity: the multimodal layer
+    # keys some delivery decisions on the agent CLI, and dropping it here
+    # left those guards blind for the whole commit session. Forwarded
+    # through the same widening-fallback ladder as ``model_identity`` so
+    # a patched starter with a narrower signature still works.
+    try:
+        return bridge_fn(
+            workspace_root,
+            agents_policy=policy,
+            model_identity=model_identity,
+            transport=transport,
+        )
+    except TypeError:
+        pass
     try:
         return bridge_fn(
             workspace_root,
@@ -1239,11 +1257,38 @@ def _default_commit_bridge_factory(
             return bridge_fn(workspace_root)
 
 
+def _commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | None:
+    """Return the transport this commit session should be tagged with.
+
+    One bridge serves the whole commit chain, but the chain is walked
+    only after the session exists -- so a heterogeneous chain has no
+    single correct answer. Resolve it conservatively: if ANY agent in
+    the chain is one the multimodal layer must restrict, tag the session
+    with that transport, because degrading a capable agent to a resource
+    reference is harmless while handing a restricted one an inline image
+    kills its turn. A homogeneous chain uses its own transport; a mixed
+    chain of unrestricted agents stays untagged.
+    """
+    transports: list[AgentTransport] = []
+    for agent_name in chain_config.agents:
+        cfg = chain_config.registry.get(agent_name)
+        if cfg is not None and cfg.transport is not None:
+            transports.append(cfg.transport)
+    if not transports:
+        return None
+    for transport in transports:
+        if transport_inline_image_roundtrip_unsafe(transport.value):
+            return transport
+    first = transports[0]
+    return first if all(t is first for t in transports) else None
+
+
 def _start_commit_bridge(
     repo_root: Path,
     *,
     agents_policy: AgentsPolicy,
     model_identity: MultimodalModelIdentity | None = None,
+    transport: AgentTransport | None = None,
 ) -> SessionBridgeLike:
     return build_session_bridge(
         workspace_root=repo_root,
@@ -1251,6 +1296,7 @@ def _start_commit_bridge(
         agents_policy=agents_policy,
         session_id_prefix="commit",
         model_identity=model_identity,
+        transport=transport,
         # BINDING: the session's run_id is the same value the completion
         # gate reads from MCP_RUN_ID_ENV (threaded via _commit_bridge_env
         # → bridge.run_id). Pre-fix this was None → uuid4() and the receipt

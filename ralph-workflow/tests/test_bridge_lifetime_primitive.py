@@ -50,6 +50,9 @@ def test_with_bridge_lifetime_creates_and_yields_bridge() -> None:
         agents_policy=None,
         session_id_prefix="commit",
         model_identity=core.model_identity,
+        # The lifetime primitive forwards the agent transport so the
+        # session identity can carry it; None when the caller omits it.
+        transport=None,
     )
     assert bridge.shutdown.call_count == 1
 

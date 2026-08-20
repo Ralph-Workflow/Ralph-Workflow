@@ -44,6 +44,31 @@ def _fake_display_context() -> DisplayContext:
     return make_display_context(env={"NO_COLOR": "1", "COLUMNS": "120"})
 
 
+def _make_mixed_commit_chain_config() -> CommitChainConfig:
+    """A commit chain whose fallback agent is inline-image restricted."""
+    registry = AgentRegistry()
+    registry.register(
+        "claude-headless",
+        AgentConfig(
+            cmd="claude -p",
+            output_flag="--output-format=stream-json",
+            can_commit=True,
+            json_parser=JsonParserType.CLAUDE,
+            transport=AgentTransport.CLAUDE,
+        ),
+    )
+    registry.register(
+        "codex",
+        AgentConfig(cmd="codex", can_commit=True, transport=AgentTransport.CODEX),
+    )
+    return CommitChainConfig(
+        registry=registry,
+        agents=["claude-headless", "codex"],
+        verbose=False,
+        agents_policy=AgentsPolicy(),
+    )
+
+
 def _make_commit_chain_config() -> CommitChainConfig:
     registry = AgentRegistry()
     registry.register(
@@ -197,6 +222,112 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         agents_policy=_make_commit_chain_config().agents_policy,
         session_id_prefix="commit",
         model_identity=None,
+        # The commit session is tagged with its chain's transport so the
+        # multimodal delivery guards are not blind on this path.
+        transport=AgentTransport.CLAUDE,
+    )
+    assert bridge.shutdown.call_count == 1
+    mock_delete.assert_called_once_with(workspace_root)
+    mock_read.assert_called_once_with(workspace_root)
+
+
+def test_commit_bridge_is_tagged_with_the_restricted_chain_transport(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A restricted agent anywhere in the chain tags the whole session.
+
+    One bridge serves the entire commit chain but is built before the
+    chain is walked, so a mixed chain has no single correct transport.
+    The restricted one wins: degrading a capable agent to a resource
+    reference is harmless, while handing a restricted agent an inline
+    image kills its turn.
+    """
+    workspace_root = Path("/workspace")
+    display_context = _fake_display_context()
+    bridge = MagicMock()
+    bridge_factory_mock = MagicMock(return_value=bridge)
+    shared_deps = PipelineDeps(
+        display_context=display_context,
+        bridge_factory=bridge_factory_mock,
+    )
+    captured_execute_calls: list[dict[str, object]] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        del workspace_scope, kwargs
+        captured_execute_calls.append({"config": config, "pipeline_deps": pipeline_deps})
+        _exercise_fake_executor_seam("commit-agent")
+        return PipelineEvent.AGENT_SUCCESS
+
+    recording_factory = _RecordingPipelineFactoryForSharedDeps(shared_deps)
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "DefaultPipelineFactory",
+        lambda: recording_factory,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message",
+        _fake_commit_prompt,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message_for_opencode",
+        _fake_commit_prompt_for_opencode,
+    )
+
+    with (
+        patch.object(commit_module, "delete_commit_message_artifacts") as mock_delete,
+        patch.object(
+            commit_module,
+            "read_commit_message_artifact",
+            return_value="feat: shared deps commit",
+        ) as mock_read,
+        patch.object(
+            commit_module,
+            "write_commit_prompt_file",
+            return_value="PROMPT.md",
+        ),
+    ):
+        result = commit_plumbing_module.run_commit_plumbing(
+            diff="diff --git a/x b/x",
+            repo_root=workspace_root,
+            chain_config=_make_mixed_commit_chain_config(),
+            display_context=display_context,
+        )
+
+    assert result.message == "feat: shared deps commit"
+    assert len(recording_factory.calls) == 1
+    assert recording_factory.calls[0]["display_context"] is display_context
+    assert len(captured_execute_calls) == 1
+
+    executed_deps = captured_execute_calls[0]["pipeline_deps"]
+    assert isinstance(executed_deps, PipelineDeps)
+    assert executed_deps.display_context is display_context
+    assert executed_deps.bridge_factory is bridge_factory_mock
+    assert callable(executed_deps.registry_factory)
+    assert callable(executed_deps.artifact_requirements_resolver)
+
+    bridge_factory_mock.assert_called_once_with(
+        workspace_root=workspace_root,
+        drain="commit",
+        agents_policy=_make_mixed_commit_chain_config().agents_policy,
+        session_id_prefix="commit",
+        model_identity=None,
+        # The commit session is tagged with its chain's transport so the
+        # multimodal delivery guards are not blind on this path.
+        transport=AgentTransport.CODEX,
     )
     assert bridge.shutdown.call_count == 1
     mock_delete.assert_called_once_with(workspace_root)
@@ -677,3 +808,43 @@ def _make_fake_smoke_registry() -> object:
             return None
 
     return FakeRegistry
+
+
+def test_default_commit_bridge_factory_forwards_transport(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """The transport must survive the commit factory, not die one frame in.
+
+    Tagging the session at the lifetime seam is inert if the production
+    commit factory drops the argument on the way to
+    ``build_session_bridge`` -- which is exactly what it used to do.
+    """
+    from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
+
+    captured: dict[str, object] = {}
+
+    def _fake_start_commit_bridge(
+        repo_root: Path,
+        *,
+        agents_policy: object,
+        model_identity: object = None,
+        transport: object = None,
+    ) -> object:
+        del repo_root, agents_policy, model_identity
+        captured["transport"] = transport
+        return object()
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "_resolve_commit_start_commit_bridge",
+        lambda: _fake_start_commit_bridge,
+    )
+
+    commit_plumbing_module._default_commit_bridge_factory(
+        workspace_root=Path("/workspace"),
+        drain="commit",
+        agents_policy=None,
+        transport=AgentTransport.CODEX,
+    )
+
+    assert captured["transport"] is AgentTransport.CODEX

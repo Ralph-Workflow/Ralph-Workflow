@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from ralph.config.enums import AgentTransport
     from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.factory import PipelineCore
     from ralph.pipeline.session_bridge import BridgeFactory
@@ -32,12 +33,19 @@ def with_bridge_lifetime(
     session_id_prefix: str,
     agents_policy: AgentsPolicy | None = None,
     run_id: str | None = None,
+    transport: AgentTransport | None = None,
 ) -> Iterator[SessionBridgeLike]:
     """Own bridge startup/shutdown for a single plumbing chain or smoke run.
 
     Yields the bridge created from ``bridge_factory`` and guarantees
     ``bridge.shutdown()`` is called in the ``finally`` block, even when the
     body raises.
+
+    ``transport`` names the agent CLI this session will serve. It reaches
+    the session's model identity, where the multimodal layer keys some
+    delivery decisions on the CLI rather than on the provider. Omitting
+    it leaves those guards blind for the whole session, so callers that
+    know their agent MUST pass it.
     """
     if run_id is None:
         bridge = bridge_factory(
@@ -46,6 +54,7 @@ def with_bridge_lifetime(
             agents_policy=agents_policy,
             session_id_prefix=session_id_prefix,
             model_identity=pipeline_core.model_identity,
+            transport=transport,
         )
     else:
         bridge = bridge_factory(
@@ -55,6 +64,7 @@ def with_bridge_lifetime(
             session_id_prefix=session_id_prefix,
             run_id=run_id,
             model_identity=pipeline_core.model_identity,
+            transport=transport,
         )
     try:
         yield bridge

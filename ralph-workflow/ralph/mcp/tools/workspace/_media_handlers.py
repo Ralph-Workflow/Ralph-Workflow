@@ -460,9 +460,11 @@ def handle_read_image(
     between the legacy image content block (``format='inline'``, default)
     and a bounded metadata envelope (``format='metadata'``). The metadata
     envelope drops the image bytes inline and exposes size, sha256,
-    width, height, and an ``inline_only`` flag. ``handle_read_image``
-    never persists a ``ralph://media/{artifact_id}`` artifact, so the
-    envelope's ``resource_handle`` is always ``None``.
+    width, height, and an ``inline_only`` flag. ``resource_handle`` is
+    ``None`` whenever the image was inline-deliverable, because that path
+    persists no artifact; a delivery that degrades to a resource
+    reference (a handle-only provider, or a transport that cannot accept
+    an inline image) does register one and reports it here.
 
     This is a compatibility alias over ``_handle_workspace_media`` that restricts
     inputs to image formats only while preserving the same truthful delivery

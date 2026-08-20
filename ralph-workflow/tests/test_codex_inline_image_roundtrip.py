@@ -632,3 +632,35 @@ def test_codex_metadata_handle_survives_a_stale_inline_verdict(tmp_path: Path) -
 
     assert envelope["resource_handle"] is not None
     assert envelope["inline_only"] is False
+
+
+def test_serialised_profile_does_not_carry_a_stale_inline_verdict() -> None:
+    """Re-serialisation must not propagate a verdict the runtime overrode.
+
+    The session payload and the wire-ledger capability digest are the
+    audit record of what was delivered. Emitting the raw stored verdict
+    made that record disagree with the runtime on every re-save.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        ResolvedCapabilityProfile,
+    )
+
+    profile = ResolvedCapabilityProfile(
+        identity=_CODEX_IDENTITY,
+        verdicts={
+            MODALITY_IMAGE: CapabilityVerdict(
+                modality=MODALITY_IMAGE,
+                delivery=DeliveryMode.INLINE_IMAGE,
+                provider=_CODEX_IDENTITY.provider,
+                model_id=_CODEX_IDENTITY.model_id,
+                reason="stored by a pre-guard session",
+            )
+        },
+    )
+
+    payload = profile.to_payload()
+    verdicts = payload["verdicts"]
+    assert isinstance(verdicts, dict)
+
+    assert verdicts[MODALITY_IMAGE]["delivery"] == DeliveryMode.RESOURCE_REFERENCE_REPLAY.value

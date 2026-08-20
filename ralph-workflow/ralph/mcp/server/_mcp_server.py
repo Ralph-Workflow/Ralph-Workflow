@@ -13,6 +13,7 @@ from ralph import __version__
 from ralph.agents.system_clock import SystemClock
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
+from ralph.mcp.multimodal.capabilities import inline_image_roundtrip_unsafe
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
@@ -569,9 +570,13 @@ class McpServer:
                 ServerState.RUNNING,
             )
 
-        raw_bytes = entry.load_bytes()
-        if raw_bytes is None:
-            error = {"code": -32602, "message": f"Resource bytes no longer available: '{uri}'"}
+        withheld = self._withheld_media_error(entry.modality, uri)
+        raw_bytes = None if withheld is not None else entry.load_bytes()
+        if withheld is not None or raw_bytes is None:
+            error = withheld or {
+                "code": -32602,
+                "message": f"Resource bytes no longer available: '{uri}'",
+            }
             return (
                 JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
                 ServerState.RUNNING,
@@ -589,6 +594,29 @@ class McpServer:
             ),
             ServerState.RUNNING,
         )
+
+    def _withheld_media_error(self, modality: str, uri: str) -> dict[str, object] | None:
+        """Return a JSON-RPC error when this caller must not receive the bytes.
+
+        An image withheld from the tool surface has to stay withheld
+        here. The delivery guard exists because the caller's agent CLI
+        cannot carry image bytes back into its own API request; serving
+        them through the resource surface would reopen the same failure
+        by a side door and make the tool-side explanation ("cannot accept
+        the bytes by any route") untrue.
+        """
+        identity = self._session.caller_model_identity
+        if modality != "image" or not inline_image_roundtrip_unsafe(identity):
+            return None
+        return {
+            "code": -32602,
+            "message": (
+                f"Resource '{uri}' holds image bytes that cannot be delivered to "
+                f"transport '{identity.transport}': its agent CLI cannot carry an "
+                "inline image back into the model request. Use read_media with "
+                "format='metadata' for size, sha256, and pixel dimensions."
+            ),
+        }
 
     def _respond_exec_resource(
         self, uri: str, request: JsonRpcRequest

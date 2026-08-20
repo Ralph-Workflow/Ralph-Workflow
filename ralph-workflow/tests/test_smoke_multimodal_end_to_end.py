@@ -110,6 +110,24 @@ _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
 #: full-harness spawn cost on all nine transports.
 _IGNORE_RESPONSE_TRANSPORTS: tuple[str, ...] = ("agy", "claude", "cursor")
 
+#: Transports Ralph Workflow deliberately denies perceptible image
+#: delivery, because their CLI cannot round-trip an inline image block
+#: back into its own API request (see
+#: ``ralph.mcp.multimodal.capabilities._INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS``).
+#: Their media calls are answered with a resource reference, which the
+#: grader correctly refuses to count as WIRE -- the model can skip
+#: reading it. These transports therefore CANNOT satisfy the positive
+#: WIRE contract, and asserting they do would be asserting a capability
+#: the product does not ship. They are covered by
+#: :func:`test_restricted_transport_cannot_grade_wire` instead, which
+#: pins the denial and its reason.
+_INLINE_IMAGE_RESTRICTED_TRANSPORTS: tuple[str, ...] = ("codex",)
+
+#: Transports that must satisfy the positive WIRE contract.
+_WIRE_POSITIVE_TRANSPORT_IDS: tuple[str, ...] = tuple(
+    t for t in _TRANSPORT_IDS if t not in _INLINE_IMAGE_RESTRICTED_TRANSPORTS
+)
+
 
 def test_smoke_transport_table_covers_every_non_generic_transport() -> None:
     """Every covered transport has a deterministic multimodal smoke row."""
@@ -316,7 +334,7 @@ def _end_to_end_test_for_harness(
 
 @pytest.mark.parametrize(
     "transport",
-    _TRANSPORT_IDS,
+    _WIRE_POSITIVE_TRANSPORT_IDS,
 )
 def test_positive_multimodal_run_grades_wire(
     transport: str,
@@ -337,6 +355,38 @@ def test_positive_multimodal_run_grades_wire(
         f"{result.multimodal_tool_used.provenance.name!r} (expected WIRE) "
         f"-- detail: {result.multimodal_tool_used.detail}"
     )
+
+
+@pytest.mark.parametrize(
+    "transport",
+    _INLINE_IMAGE_RESTRICTED_TRANSPORTS,
+)
+def test_restricted_transport_cannot_grade_wire(
+    transport: str,
+    tmp_path: Path,
+) -> None:
+    """A transport denied inline images cannot -- and must not -- grade WIRE.
+
+    This is a deliberate capability denial, not a defect: the CLI cannot
+    carry an inline image block back into its own API request, and
+    sending one kills the turn outright. Ralph Workflow answers with a
+    resource reference instead, which the grader refuses to count as
+    perceptible delivery because the model can skip reading it.
+
+    Pinning the denial here keeps it honest in both directions. If a
+    future change starts handing these transports inline bytes again,
+    this test fails; and the positive WIRE contract above stays a real
+    assertion for every transport that can actually meet it.
+    """
+    result = _end_to_end_test_for_harness(tmp_path, transport, positive=True)
+
+    assert result.multimodal_tool_used is not None
+    provenance = result.multimodal_tool_used.provenance
+    assert provenance is not provenance.WIRE, (
+        f"transport {transport!r} is denied inline image delivery, so it "
+        f"cannot grade WIRE; got {provenance.name!r}"
+    )
+    assert "resource_reference_replay" in result.multimodal_tool_used.detail
 
 
 @pytest.mark.parametrize(

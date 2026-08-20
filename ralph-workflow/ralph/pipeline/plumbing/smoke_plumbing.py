@@ -2642,6 +2642,7 @@ def run_smoke_plumbing(
         session_id_prefix="smoke",
         agents_policy=agents_policy,
         run_id=spec.run_id,
+        transport=agent_config.transport,
     ) as bridge:
         if effective_output_file.exists():
             effective_output_file.unlink()
