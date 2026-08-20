@@ -907,5 +907,83 @@ def test_required_evidence_non_multimodal_run_has_only_three_canonical_keys() ->
     assert label_for(result) == PASS
 
 
+def _claude_config() -> AgentConfig:
+    return AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE)
+
+
+def test_ceiling_reports_wire_for_claude_system_init_frame() -> None:
+    """S-3 regression: Claude's system/init envelope must yield Provenance.WIRE."""
+    frame = json.dumps(
+        {
+            "type": "system",
+            "subtype": "init",
+            "tools": ["mcp__ralph__write_file", "mcp__ralph__read_file"],
+            "mcp_servers": [{"name": "ralph", "status": "connected"}],
+        }
+    )
+    assert transport_evidence_ceiling(_claude_config(), [frame]) == Provenance.WIRE
+
+
+def test_ceiling_latches_wire_even_when_init_frame_evicted_from_transcript_fifo(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """S-5 regression: latched ceiling must stay WIRE even when FIFO transcript evicts init frame."""
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    output_file = tmp_path / "output.txt"
+
+    params = SmokeRunParams(
+        agent_name="claude-headless/haiku",
+        config=_claude_config(),
+        unified_config=UnifiedConfig(general=GeneralConfig()),
+        workspace_root=tmp_path,
+        prompt_file=prompt_file,
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=make_display_context(),
+        bridge=object(),
+        pipeline_deps=object(),
+    )
+    run_id = "test-latched-ceiling-evicted"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        del args
+        raw_sink = kwargs.get("raw_output_sink")
+        raw_line_sink = kwargs.get("raw_line_sink")
+        assert callable(raw_line_sink)
+
+        init_line = json.dumps(
+            {
+                "type": "system",
+                "subtype": "init",
+                "tools": ["mcp__ralph__write_file"],
+                "mcp_servers": [{"name": "ralph"}],
+            }
+        )
+        if isinstance(raw_sink, deque):
+            raw_sink.append(init_line)
+        raw_line_sink(init_line)
+
+        # Evict init_line from raw_sink (maxlen=400) by appending 450 lines
+        for i in range(450):
+            line = json.dumps({"event": "step_update", "step_index": i})
+            if isinstance(raw_sink, deque):
+                raw_sink.append(line)
+            raw_line_sink(line)
+
+        output_file.write_text("// smoke output\n", encoding="utf-8")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    assert result.transport_evidence_ceiling == Provenance.WIRE
+
+
 def label_for(result: SmokeRunResult) -> str:
     return grade_verdict(_required_evidence(result))[0]

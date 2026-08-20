@@ -1397,11 +1397,25 @@ def _nanocoder_prompt_submission_error(
     return "nanocoder prompt was not submitted after startup banner"
 
 
+def _update_smoke_turn_state(
+    raw_lines: deque[str],
+    rendered_lines: deque[str],
+    all_lines: deque[str],
+    live_output_lines: deque[str],
+    config: AgentConfig,
+    highest_latched_ceiling: Provenance,
+) -> Provenance:
+    all_lines.extend(raw_lines)
+    live_output_lines.extend(rendered_lines)
+    cur_c = transport_evidence_ceiling(config, list(raw_lines))
+    return max(highest_latched_ceiling, cur_c)
+
+
 def _execute_smoke_turns(
     params: SmokeRunParams,
     current_session_id: str | None,
     run_id: str = _SMOKE_RUN_ID,
-) -> tuple[list[str], list[str], str | None, AgentInvocationError | None]:
+) -> tuple[list[str], list[str], str | None, AgentInvocationError | None, Provenance]:
     """Execute smoke test turns and return collected lines and state."""
     all_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     live_output_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
@@ -1413,6 +1427,7 @@ def _execute_smoke_turns(
     # OpenCodeResumableExitError retry branch still surfaces the ceiling
     # before the run's final report table prints.
     ceiling_reported = False
+    highest_latched_ceiling: Provenance = Provenance.ABSENT
 
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
@@ -1424,24 +1439,10 @@ def _execute_smoke_turns(
             observed_session_id = session_id
 
         def _observe_raw_line(line: str, *, _turn_raw_lines: deque[str] = raw_lines) -> None:
-            # G1/S-1 (Evidence Provenance F3): report the ceiling as soon as
-            # an init-shaped frame is observed while lines stream in, not
-            # only after execute_agent_effect returns — for the common
-            # single-turn run, waiting for the return means the whole
-            # turn's tokens are already spent before the operator learns
-            # the transport could never pass. raw_lines already contains
-            # this line by the time raw_line_sink fires (it is invoked
-            # immediately after the append inside stream_parsed_agent_activity),
-            # so list(raw_lines) is a faithful up-to-this-line view.
-            #
-            # ``_turn_raw_lines`` is bound as a default-value parameter
-            # (not read directly from the enclosing loop scope) so this
-            # closure is pinned to THIS iteration's ``raw_lines`` object,
-            # not whatever ``raw_lines`` is rebound to by a later loop
-            # iteration (ruff B023: function-definition-in-loop closures
-            # over a loop variable capture by reference, not by value).
             del line  # already appended to raw_lines by the time this fires
-            nonlocal ceiling_reported
+            nonlocal ceiling_reported, highest_latched_ceiling
+            cur_c = transport_evidence_ceiling(params.config, list(_turn_raw_lines))
+            highest_latched_ceiling = max(highest_latched_ceiling, cur_c)
             if ceiling_reported:
                 return
             ceiling_reported = _report_evidence_ceiling_once(
@@ -1476,8 +1477,14 @@ def _execute_smoke_turns(
                 invoke_agent=invoke_agent,
                 raise_resumable_exit=True,
             )
-            all_lines.extend(raw_lines)
-            live_output_lines.extend(rendered_lines)
+            highest_latched_ceiling = _update_smoke_turn_state(
+                raw_lines,
+                rendered_lines,
+                all_lines,
+                live_output_lines,
+                params.config,
+                highest_latched_ceiling,
+            )
             if not ceiling_reported:
                 ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
             current_session_id = observed_session_id or extract_transport_session_id(
@@ -1489,8 +1496,14 @@ def _execute_smoke_turns(
             # Non-success event from the shared core ends the turn loop.
             break
         except OpenCodeResumableExitError as exc:
-            all_lines.extend(raw_lines)
-            live_output_lines.extend(rendered_lines)
+            highest_latched_ceiling = _update_smoke_turn_state(
+                raw_lines,
+                rendered_lines,
+                all_lines,
+                live_output_lines,
+                params.config,
+                highest_latched_ceiling,
+            )
             if not ceiling_reported:
                 ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
             current_session_id = (
@@ -1503,8 +1516,14 @@ def _execute_smoke_turns(
                 break
             continue
         except AgentInvocationError as exc:
-            all_lines.extend(raw_lines)
-            live_output_lines.extend(rendered_lines)
+            highest_latched_ceiling = _update_smoke_turn_state(
+                raw_lines,
+                rendered_lines,
+                all_lines,
+                live_output_lines,
+                params.config,
+                highest_latched_ceiling,
+            )
             merged_output = list(raw_lines)
             for line in exc.parsed_output:
                 if line not in merged_output:
@@ -1514,7 +1533,13 @@ def _execute_smoke_turns(
             final_exception = exc
             break
 
-    return list(all_lines), list(live_output_lines), current_session_id, final_exception
+    return (
+        list(all_lines),
+        list(live_output_lines),
+        current_session_id,
+        final_exception,
+        highest_latched_ceiling,
+    )
 
 
 def _clear_smoke_artifact(workspace_root: Path) -> None:
@@ -2207,12 +2232,16 @@ def _tool_name_reaches_ralph(name: str) -> bool:
 
 def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] | None:
     """Return the tool names an ``init``-shaped frame advertises, or None if not one."""
-    if obj.get("event") != "init":
+    if obj.get("event") == "init":
+        init_info = obj.get("init")
+        if not isinstance(init_info, dict):
+            return None
+        raw_tools = cast("dict[str, object]", init_info).get("tools")
+    elif obj.get("type") == "system" and obj.get("subtype") == "init":
+        raw_tools = obj.get("tools")
+    else:
         return None
-    init_info = obj.get("init")
-    if not isinstance(init_info, dict):
-        return None
-    raw_tools = cast("dict[str, object]", init_info).get("tools")
+
     if not isinstance(raw_tools, list):
         return None
     names: list[str] = []
@@ -2364,9 +2393,13 @@ def _run_smoke_agent(
     ``opencode/minimax/MiniMax-M3``) is what the gate grades, not a stale
     ``builtin_supports()`` lookup that misses the alias.
     """
-    all_lines, live_output_lines, current_session_id, final_exception = _execute_smoke_turns(
-        params, None, run_id=run_id
-    )
+    (
+        all_lines,
+        live_output_lines,
+        current_session_id,
+        final_exception,
+        latched_ceiling,
+    ) = _execute_smoke_turns(params, None, run_id=run_id)
 
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
@@ -2416,7 +2449,9 @@ def _run_smoke_agent(
         submitted=artifact_submitted,
         secret=secret,
     )
-    transport_ceiling = transport_evidence_ceiling(params.config, lines)
+    transport_ceiling = max(
+        latched_ceiling, transport_evidence_ceiling(params.config, lines)
+    )
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES

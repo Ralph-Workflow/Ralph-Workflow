@@ -1389,13 +1389,11 @@ class ParallelDisplay:
         # the body beyond the right edge on a short terminal.
         budget_terminal = total_width - prefix_width
         budget_measure = body_measure - prefix_width
-        # DA-004 (S-4): the floor is the available budget itself, not a
-        # fixed ``max(20, ...)``. On a 40-column terminal with a 33-col
-        # chrome prefix the available body width is 7 cols; the previous
-        # ``max(20, ...)`` floor forced body wraps to 20 cols that
-        # overflowed the terminal and broke the hanging-indent column.
-        # A body that fits a single token flows through unchanged.
-        budget = max(1, min(budget_terminal, budget_measure))
+        # S-2: floor the minimum readable body budget at 7 cells so wide
+        # chrome prefixes (e.g. claude-headless/haiku) do not collapse the wrap
+        # to single-character rows. On a 40-column terminal with a 33-col chrome
+        # prefix the available body width is 7 cols.
+        budget = max(7, min(budget_terminal, budget_measure))
         if budget <= 0 or cell_len(body) <= budget:
             return body
 

@@ -483,3 +483,18 @@ def test_malformed_input_still_emits_error_event(tmp_path: Path) -> None:
 
     rendered = buf.getvalue()
     assert "parser error" in rendered
+
+
+def test_parallel_display_wide_chrome_prefix_does_not_collapse_to_single_char_rows() -> None:
+    """S-1 regression: wide chrome prefix floor at 7 cells keeps word wrapping readable."""
+    prefix = "03:18:03 [output][claude-headless/haiku] ⋯ output · 03:18:01 → 03:18:03 · 2.5s "
+    body = "This is a sentence that should not be split into one character per line when wrapped."
+    wrapped = ParallelDisplay._wrap_body_with_hanging_indent(
+        prefix=prefix, body=body, total_width=80, body_measure=80
+    )
+    lines = wrapped.splitlines()
+    # A 84-char body with a 7-cell budget wraps to ~12-15 rows, not 68+ single-char rows.
+    assert len(lines) <= 20
+    assert max(len(line) for line in lines) >= 5
+
+
