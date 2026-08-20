@@ -39,10 +39,12 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
     for index, (agent, available, cooldown_ms_remaining, spent) in enumerate(rows):
         if index == selected_index:
             continue
-        if not available or cooldown_ms_remaining > 0:
+        if cooldown_ms_remaining > 0:
             skipped_reasons.append(
                 (agent, f"cooldown ({cooldown_ms_remaining}ms remaining)")
             )
+        elif not available:
+            skipped_reasons.append((agent, "unavailable"))
         elif spent:
             skipped_reasons.append((agent, "spent"))
         else:

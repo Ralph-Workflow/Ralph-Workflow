@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+from loguru import logger
+
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -96,7 +98,16 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
         lambda _display, _phase, text: emitted.append(text),
     )
 
-    run_loop._run_inner_loop(state, ctx, prev_phase="development")
+    logs: list[str] = []
+
+    def sink(msg: Any) -> None:
+        logs.append(str(msg))
+
+    sink_id = logger.add(sink, level="INFO", format="{message}")
+    try:
+        run_loop._run_inner_loop(state, ctx, prev_phase="development")
+    finally:
+        logger.remove(sink_id)
 
     assert len(seen_states) == 2
     resumed_chain = seen_states[1].chain_for_phase("development")
@@ -105,4 +116,5 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
     assert resumed_chain.retries == 0
     assert seen_states[1].last_agent_session_id is None
     assert seen_states[1].is_waiting_state is False
-    assert any("Selected agent claude" in message for message in emitted) is False
+    assert any("Phase development: Selected agent claude" in log for log in logs)
+    assert any("skipped opencode: cooldown" in log for log in logs)

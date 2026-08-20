@@ -128,3 +128,16 @@ def test_controller_earliest_available_wait_uses_smallest_remaining_cooldown() -
     assert controller.earliest_available_wait_ms("development", ["claude", "opencode"]) == 5000
     clock.advance(5.0)
     assert controller.earliest_available_wait_ms("development", ["claude", "opencode"]) == 0
+
+
+def test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_zero_ms() -> None:
+    rows = [
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
+    ]
+    selection = select_preferred_agent(rows)
+    assert selection.index == 1
+    assert selection.agent == "opencode"
+    assert selection.skipped_reasons == (("claude", "unavailable"),)
+    assert "0ms remaining" not in selection.skipped_reasons[0][1]
+
