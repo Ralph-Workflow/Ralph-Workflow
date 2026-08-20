@@ -173,7 +173,7 @@ def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_pr
         set_global_snapshot(saved_modes)
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
-        assert set(installed) == {signal.SIGTERM, signal.SIGHUP}
+        assert set(installed) == {signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT}
         handler = installed[signal.SIGTERM]
         assert callable(handler)
         handler(signal.SIGTERM, None)

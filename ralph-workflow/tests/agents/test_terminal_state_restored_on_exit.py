@@ -214,3 +214,41 @@ def test_terminal_restore_on_hard_exit_controller() -> None:
     finally:
         os.close(master_fd)
         os.close(slave_fd)
+
+
+@pytest.mark.subprocess_e2e
+def test_terminal_restore_regression_crash_output_is_sanitized_and_restored() -> None:
+    """S-9: an unhandled crash cannot leak VT bytes or leave the PTY raw."""
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
+    )
+    script = textwrap.dedent(
+        """
+        import sys
+        import tty
+        from ralph.cli.main import ensure_cli_terminal_restore
+
+        ensure_cli_terminal_restore()
+        tty.setraw(0)
+        raise RuntimeError("agent: \\x1b[?1003h\\x1b[?1006h\\x1b[?25l")
+        """
+    )
+    master_fd, slave_fd = pty.openpty()
+    try:
+        handle = pm.spawn(
+            [sys.executable, "-c", script],
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+        )
+        assert handle.wait(timeout=5.0) != 0
+        captured = _drain_pty(master_fd)
+        assert b"\x1b[?1003h" not in captured
+        assert b"\x1b[?1006h" not in captured
+        assert b"\x1b[?25l" not in captured
+        assert b"\x1b[?25h" in captured
+        assert b"\x1b[?1049l" in captured
+        lflag = int(termios.tcgetattr(slave_fd)[3])
+        assert lflag & termios.ICANON
+        assert lflag & termios.ECHO
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)

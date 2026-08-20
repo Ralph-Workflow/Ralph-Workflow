@@ -1,155 +1,8 @@
-"""Audit that the terminal-escape containment contract is wired into every sink.
+"""Audit the terminal-escape containment contract at every output sink.
 
-Enforces the AST-scoped invariants a regression of the
-wt-036-claude-code-permission fix would break. Whole-file
-literal presence is not enough -- the audit MUST inspect the
-specific function / method / ``SpawnOptions`` call that wires the
-fix so an adversarial edit that removes the strip from one sink
-while keeping the helper name in the file is still caught.
-
-The escape containment contract:
-
-  - ``ralph/display/line_sanitizer.py`` MUST expose
-    ``strip_terminal_control`` and use the full ``[0-?]`` CSI
-    parameter-byte range (0x30-0x3F). A narrower class such as
-    ``[0-9;?]`` leaks private-parameter CSI sequences
-    (``ESC[>0c`` device-attributes reply, ``ESC[<35;1;2M`` SGR
-    mouse report) on screen.
-
-  - ``ralph/display/_plain_constants.py`` MUST NOT carry the
-    SGR-only ``[0-9;]*m`` regex that the previous plan revision
-    relied on (it cannot match ``ESC[?1049h`` alternate screen,
-    ``ESC[2J`` erase display, ``ESC[>0c`` private-parameter CSI).
-    Stripping MUST go through ``strip_terminal_control``.
-
-  - ``ralph/display/parallel_display.py``:
-      * MUST NOT keep any ``_ANSI_ESCAPE`` reference (the old
-        SGR-only import was the hidden second consumer -- an
-        ImportError trap if just the constant is deleted without
-        migrating its users).
-      * ``ParallelDisplay.strip_markup`` MUST delegate to
-        ``strip_terminal_control(line)`` (the
-        rewrite target).
-      * The module-level ``emit_activity_line`` MUST call
-        ``_sanitize(line)`` in BOTH its ``unit_id is None`` and
-        ``unit_id`` branches (the two ``console.print`` sites
-        that previously painted the real terminal unsanitized).
-      * ``ParallelDisplay._render_titled_lines`` MUST call
-        ``strip_terminal_control`` on each body line (the
-        artifact / handoff body sink).
-
-  - ``ralph/display/line_sanitizer.py`` MUST also expose
-    ``strip_markup_safe`` -- the single guarded
-    ``Text.from_markup`` call site -- whose guard stays TOTAL
-    (``except Exception``). A type-named guard already regressed
-    once: Rich raises ``MarkupError`` from its own
-    ``ConsoleError`` hierarchy, so ``except ValueError`` never
-    matched and a grep pattern carrying ``[/pdf /text /imageb]``
-    (an unmatched closing tag) crashed ``emit_parsed_event``.
-
-  - ``ralph/display/_plain_constants._sanitize`` and
-    ``ralph/display/parallel_display._strip_markup`` MUST
-    delegate to ``strip_markup_safe`` and MUST NOT parse markup
-    themselves.
-
-  - No ``from_markup(...)`` call anywhere under ``ralph/`` may
-    take a non-literal argument outside
-    :data:`_MARKUP_PARSE_ALLOWLIST` (package-wide AST scan via
-    :class:`MarkupParseInvariant`). Guarding at each call site
-    instead of routing through the choke point is exactly the
-    shape that regressed, so it is rejected by construction.
-
-  - ``ralph/display/activity_model.render_event_line`` MUST call
-    ``strip_terminal_control(content or "")`` BEFORE the
-    truncation and rich ``escape`` (the activity_router render
-    path -- the original code did ``rich.markup.escape`` only,
-    which escapes rich markup but NOT ANSI/C0 bytes).
-
-  - ``ralph/agents/invoke/_pty_runner.py`` MUST NOT contain
-    ``file=sys.stdout`` (it painted the rich Live status bar
-    underneath) and MUST NOT contain ``tqdm(`` (the wrapper
-    that wrote it).
-
-  - ``ralph/agents/invoke/_process_reader.py`` MUST pass
-    ``stdin=subprocess.DEVNULL`` to its ``SpawnOptions(...)``
-    call (so the agent child never inherits Ralph's
-    controlling-terminal stdin) and MUST NOT carry ``stdin=None``
-    anywhere (which is INHERIT).
-
-  - ``ralph/agents/subprocess_executor.py`` MUST pass
-    ``stdin=_DEVNULL`` to its ``SpawnOptions(...)`` call (file-
-    local alias of ``subprocess.DEVNULL`` matching the existing
-    ``PIPE`` / ``STDOUT`` aliases).
-
-  - ``ralph/agents/invoke/_pty_line_reader.py`` MUST still
-    ``yield queued_line`` (proves the reader keeps yielding raw
-    VT text -- a defence-in-depth pin against an over-eager
-    future fix that sanitizes at the source and silently breaks
-    interactive permission auto-approval).
-
-  - ``ralph/process/manager/_spawn_options.py`` MUST default
-    ``SpawnOptions.stdin`` to ``subprocess.DEVNULL`` (so no
-    child inherits Ralph's controlling-terminal stdin by
-    construction). The dataclass field must NOT be reverted to
-    ``None``.
-
-  - No ``SpawnOptions(...)`` call site anywhere under the
-    ``ralph/`` package may pass ``stdin=None`` (package-wide
-    AST scan via :class:`PackageWideCallSiteInvariant` -- the
-    helper exists in three flavors: ``Invariant`` (whole-file),
-    ``FunctionBodyInvariant`` (function/method) and
-    ``CallSiteInvariant`` (single file callee). The new variant
-    extends coverage to a callee-in-any-file).
-
-  - ``ralph/logging.py::configure_logging`` MUST NOT hand
-    ``sys.stderr`` to ``logger.add`` (the public library
-    configurator accepts an injected ``console_sink`` keyword)
-    and MUST NOT enable ``colorize=True`` (the stripper removes
-    the SGR codes that colorizer emits). Sanitization happens
-    through :func:`strip_terminal_control` via the injected
-    ``console_sink``.
-
-  - ``ralph/cli/main.py::_configure_logging`` MUST NOT hand
-    ``sys.stderr`` to ``logger.add`` for ANY of the five
-    verbosity branches. Every branch routes through an injected
-    ``console_sink`` (or the library/worker fallback
-    ``make_stderr_log_sink``).
-
-  - ``ralph/cli/main.py::main`` MUST wire the Console-backed
-    sink by passing ``make_sanitizing_log_sink(_cli_ctx)`` to
-    ``configure_logging`` (the CLI call site). Without this
-    wiring, loguru emits records via raw ``sys.stderr`` and the
-    rich ``Live`` status bar races the logger for the terminal.
-
-  - ``ralph/display/log_sink.py::make_sanitizing_log_sink``
-    MUST call ``strip_terminal_control`` and print through the
-    injected Console with ``markup=False`` / ``highlight=False``.
-
-  - ``ralph/display/log_sink.py::make_stderr_log_sink`` MUST
-    call ``strip_terminal_control`` before writing the line.
-
-  - ``ralph/display/log_sink.py`` MUST NOT construct a
-    ``rich.Console`` itself (DI invariant: the single source
-    of truth for ``Console`` construction is
-    ``ralph.display.theme``).
-
-  - ``ralph/process/pty.py::spawn_pty_process`` MUST keep
-    ``os.setsid()`` (new session) and ``TIOCSCTTY`` (controlling
-    terminal = slave pty) inside the child branch. Without this
-    pair a PTY child could claim the foreground process group
-    of Ralph's controlling TTY.
-
-Every literal was grep-verified against the current tree at
-implementation time. Restoring any forbidden literal, removing
-a required call from the wired sink, or narrowing the CSI
-class back to ``[0-9;?]`` fails the audit with exit 1 and a
-banner that names the violated invariant.
-
-Usage:
-
-    python -m ralph.testing.audit_terminal_escape_containment
-
-Exit 0 = clean, 1 = at least one invariant violated.
+Each invariant pins a sanitizer, terminal restore call, or process-isolation
+setting at its actual wired boundary, so unrelated literals cannot mask a
+regression. Run as ``python -m ralph.testing.audit_terminal_escape_containment``.
 """
 
 from __future__ import annotations
@@ -862,6 +715,12 @@ _INVARIANTS: tuple[
             "tcflush",
         ),
     ),
+    # display/excepthook.py: crash output must strip terminal control and
+    # restore the terminal after rendering the traceback.
+    Invariant(
+        rel_path="display/excepthook.py",
+        present=("strip_terminal_control", "restore_terminal"),
+    ),
     # interrupt/controller.py::force_exit: calls restore before calling hard_exit.
     FunctionBodyInvariant(
         rel_path="interrupt/controller.py",
@@ -882,6 +741,8 @@ _INVARIANTS: tuple[
             "restore_terminal_modes",
             "SIGTERM",
             "SIGHUP",
+            "SIGQUIT",
+            "install_sanitizing_excepthook",
         ),
     ),
     # display/_terminal_bg_query.py::_probe: publishes snapshot before setraw,
@@ -974,8 +835,9 @@ def main(argv: list[str] | None = None) -> int:
         "colorize=False); the CLI call site wires make_sanitizing_log_sink "
         "for the DisplayContext Console. Both log_sink factories call "
         "strip_terminal_control with markup=False / highlight=False and "
-        "no raw Console construction. ralph.process.pty.spawn_pty_process "
-        "still calls os.setsid() + TIOCSCTTY."
+        "no raw Console construction. display.excepthook strips crash output "
+        "and restores the terminal. ralph.process.pty.spawn_pty_process still "
+        "calls os.setsid() + TIOCSCTTY."
     )
     return 0
 

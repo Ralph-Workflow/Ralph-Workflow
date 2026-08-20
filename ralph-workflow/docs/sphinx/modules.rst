@@ -3437,6 +3437,13 @@ ralph.display.terminal_restore
    :members:
    :show-inheritance:
 
+ralph.display.excepthook
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.excepthook
+   :members:
+   :show-inheritance:
+
 ralph.display.mode
 ~~~~~~~~~~~~~~~~~~
 

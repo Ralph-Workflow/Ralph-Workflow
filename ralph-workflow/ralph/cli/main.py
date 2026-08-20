@@ -62,6 +62,7 @@ from ralph.config.loader import ConfigTomlError, load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
+from ralph.display.excepthook import install_sanitizing_excepthook
 from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sink
 from ralph.display.parallel_display import resolve_active_display
 from ralph.display.terminal_restore import (
@@ -579,6 +580,7 @@ def ensure_cli_terminal_restore(
         snapshot_terminal_modes()
         reg = register_fn if register_fn is not None else atexit.register
         reg(restore_terminal)
+        install_sanitizing_excepthook()
         _CLI_RESTORE_STATE.registered = True
     if _CLI_RESTORE_STATE.signals_registered or threading.current_thread() is not threading.main_thread():
         return
@@ -589,6 +591,8 @@ def ensure_cli_terminal_restore(
         signums += (signal.SIGTERM,)
     if hasattr(signal, "SIGHUP"):
         signums += (signal.SIGHUP,)
+    if hasattr(signal, "SIGQUIT"):
+        signums += (signal.SIGQUIT,)
     for signum in signums:
         previous = getter(signum)
 
