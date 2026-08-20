@@ -51,15 +51,15 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
     return AgentSelection(selected_index, selected_agent, tuple(skipped_reasons))
 
 
-def format_selection_evidence(selection: AgentSelection) -> str:
+def format_selection_evidence(phase: str, selection: AgentSelection) -> str:
     """Format a selection decision as one operator-readable transcript line."""
     skipped = "; ".join(
         f"{agent}: {reason}" for agent, reason in selection.skipped_reasons
     )
     if selection.agent is None:
-        return f"No selectable agent (skipped {skipped})" if skipped else "No selectable agent"
+        return f"Phase {phase}: No selectable agent (skipped {skipped})" if skipped else f"Phase {phase}: No selectable agent"
     return (
-        f"Selected agent {selection.agent} (skipped {skipped})"
+        f"Phase {phase}: Selected agent {selection.agent} (skipped {skipped})"
         if skipped
-        else f"Selected agent {selection.agent}"
+        else f"Phase {phase}: Selected agent {selection.agent}"
     )

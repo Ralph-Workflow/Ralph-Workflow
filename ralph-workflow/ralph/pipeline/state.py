@@ -413,18 +413,6 @@ class PipelineState(_FrozenPipelineStateModel):
             return 0
         return max(0, 3 - chain.retries)
 
-    def advance_agent(self) -> PipelineState:
-        """Advance to the next agent in the fallback chain."""
-        chain = self.chain_for_phase(self.phase)
-        if chain is None:
-            return self
-        new_chain = AgentChainState(
-            agents=chain.agents,
-            current_index=min(chain.current_index + 1, len(chain.agents) - 1),
-            retries=0,
-        )
-        return self.with_phase_chain(self.phase, new_chain)
-
     def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
         """Get the tracked agent chain state for a phase, if any."""
         return self.phase_chains.get(str(phase))

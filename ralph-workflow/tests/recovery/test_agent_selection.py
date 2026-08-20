@@ -93,8 +93,11 @@ def test_skipped_reasons_formatting_and_evidence() -> None:
         ("claude", "cooldown (1500ms remaining)"),
         ("opencode", "spent"),
     )
-    evidence = format_selection_evidence(selection)
-    assert evidence == "Selected agent agy (skipped claude: cooldown (1500ms remaining); opencode: spent)"
+    evidence = format_selection_evidence("development", selection)
+    assert evidence == (
+        "Phase development: Selected agent agy "
+        "(skipped claude: cooldown (1500ms remaining); opencode: spent)"
+    )
 
 
 def test_controller_earliest_available_wait_uses_smallest_remaining_cooldown() -> None:

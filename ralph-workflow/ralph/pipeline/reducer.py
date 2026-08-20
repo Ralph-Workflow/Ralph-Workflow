@@ -728,7 +728,7 @@ def _handle_agent_failure(
         return expired
 
     if state.agent_retry_intent.skip_same_agent_retries:
-        return _handle_skip_same_agent_retries(state, chain, policy)
+        return _handle_skip_same_agent_retries(state, chain, policy, recovery)
 
     selection: AgentSelection | None = None
     if recovery is not None:
@@ -787,7 +787,21 @@ def _handle_skip_same_agent_retries(
     state: PipelineState,
     chain: AgentChainState,
     policy: PipelinePolicy | None,
+    recovery: RecoveryController | None,
 ) -> tuple[PipelineState, list[Effect]]:
+    if recovery is not None:
+        current_agent = chain.agents[chain.current_index]
+        recovery.note_retry_exhaustion(state.phase, current_agent)
+        selection = recovery.preferred_agent_index(
+            state.phase,
+            chain.agents,
+            current_index=chain.current_index,
+            current_allowance_spent=True,
+        )
+        selected_attempt = _selection_attempt(state, chain, selection, recovery)
+        if selected_attempt is not None:
+            return selected_attempt
+
     if chain.current_index + 1 < len(chain.agents):
         new_chain = chain.with_advance()
         new_metrics = state.metrics.with_fallback_increment()

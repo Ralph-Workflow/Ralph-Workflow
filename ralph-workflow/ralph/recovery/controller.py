@@ -1098,7 +1098,7 @@ class RecoveryController:
             )
 
         selection = select_preferred_agent(rows)
-        logger.bind(recovery=True).info(format_selection_evidence(selection))
+        logger.bind(recovery=True).info(format_selection_evidence(phase, selection))
         return selection
 
     def _write_session_reset_hint(
