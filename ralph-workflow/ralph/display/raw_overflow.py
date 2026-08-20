@@ -71,6 +71,19 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 #: ``drop_unit`` / ``stop()`` reached interpreter finalization with
 #: the file handle still open, triggering a ``ResourceWarning`` on
 #: every affected test.
+#: Paths this PROCESS has already opened for writing.
+#:
+#: The first write to a path truncates, so each run starts a clean file.
+#: That decision belongs to the RUN, not to a ``RawOverflowLog``
+#: instance: ``drop_unit`` closes and forgets a unit's log, and a
+#: re-spawned worker for the same unit id builds a fresh instance. With
+#: truncation keyed to the instance, wave 2 erased wave 1's bytes --
+#: and once the display's condensed bodies moved out of the verbatim
+#: capture into their own file, that file became the ONLY copy of the
+#: bodies the live view's markers point at, so the loss was
+#: unrecoverable rather than merely duplicated.
+_OPENED_PATHS: set[str] = set()  # bounded-accumulator-ok: one entry per unit log per process
+
 _REGISTRY_LOCK = threading.Lock()
 _REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
     weakref.WeakValueDictionary()
@@ -99,45 +112,6 @@ PTY_EXIT_COMMAND: Final = "/exit"
 HARNESS_PTY_INPUT_ECHO_LINES: frozenset[str] = frozenset(
     {TURN_BOUNDARY_MARKER, PTY_EXIT_COMMAND}
 )
-
-
-#: Measured AGY ``--print --output-format stream-json`` vendor status
-#: vocabulary (live capture 2026-08-17, AGY v1.1.13
-#: ``gemini-3.6-flash-low``). AGY's print mode emits one human-rendered
-#: status line per completed tool call onto the same stdout/PTY the
-#: stream-json frames arrive on, shaped
-#: ``\u2713 PASS \u21b3 <tool_name> (<param summary>) <JSON tool result>``.
-#: It is genuine vendor wire output -- the rendered sibling of the
-#: stream-json ``tool`` DONE frame, not a corrupted or harness-authored
-#: line -- so the corruption detector must recognize the prefix rather
-#: than fail every live AGY smoke with ``raw transcript corrupted``
-#: while the surrounding frames are intact. Prefix match only: a line
-#: that does not START with the marker is still graded, so a corrupted
-#: line merely *containing* the text cannot slip past.
-AGY_PRINT_TOOL_RESULT_STATUS_PREFIX: Final = "\u2713 PASS \u21b3 "
-
-
-def is_agy_print_tool_result_status_line(
-    line: str, transport: AgentTransport | None = None
-) -> bool:
-    """Return True when ``line`` is AGY's print-mode tool-result status line.
-
-    Prefix match against
-    :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`; never a substring test.
-
-    Scoped to the AGY transport. The prefix is ALSO the plain-text form
-    of this project's own success row -- ``theme`` maps ``success`` to
-    (``\u2713``, ``PASS``) and ``agent_event_renderer`` pins
-    ``\u2713 PASS \u21b3`` as stable for log consumers -- so an
-    unscoped exemption let display-authored rows pass as vendor output
-    on every JSONL transport. Measured on the 2026-08-20 codex capture:
-    64 renderer rows were silently exempted while the transcript was
-    genuinely being corrupted. Without the scope this allowlist hides
-    exactly the regression class it sits next to.
-    """
-    if transport is not AgentTransport.AGY:
-        return False
-    return line.lstrip().startswith(AGY_PRINT_TOOL_RESULT_STATUS_PREFIX)
 
 
 def is_harness_input_echo(line: str) -> bool:
@@ -344,9 +318,13 @@ def detect_raw_log_breaks(
       escaped sequence inside a string but a bare NUL cannot appear in
       a well-formed JSON document on the wire).
     - ``NON_JSONL``: a line that is not a parseable JSON object. This
-      catches the 2026-08-06 captured shape where a separate writer
-      (the display layer's ``_get_overflow_log``) appended rendered
-      ``\u2713 PASS\u2026`` text into the same verbatim capture.
+      catches the shape where rendered text reaches the verbatim
+      capture -- historically the display layer wrote its condensed
+      bodies to this same path, which is why a rendered
+      ``\u2713 PASS\u2026`` row or a markdown ``---`` front-matter line
+      could appear mid-stream. The display now owns a separate file
+      (see :data:`CONDENSED_LOG_SUFFIX`), so a break here means the
+      agent's own output is damaged.
 
     For interactive PTY transports (``claude_interactive``, ``nanocoder``)
     the raw capture is expected human-visible output rather than JSONL,
@@ -436,11 +414,6 @@ def _detect_non_jsonl_breaks(
                 # Ralph-authored harness input (see
                 # :data:`HARNESS_PTY_INPUT_ECHO_LINES`): expected verbatim
                 # capture content, not a corrupted or truncated frame.
-                continue
-            if is_agy_print_tool_result_status_line(line_text, transport):
-                # AGY vendor print-mode tool-result status line (see
-                # :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`): measured
-                # wire output, not a corrupted frame.
                 continue
             if _is_canonical_transport_session_line(line_text):
                 # Canonical interactive-transport session/resume/completion
@@ -555,7 +528,10 @@ class RawOverflowLog:
                 if self._fh is None:
                     # filesystem-write-ok: bounded binary overflow stream directory creation
                     self.path.parent.mkdir(parents=True, exist_ok=True)
-                    mode = "wb" if self._first_write else "ab"
+                    path_key = str(self.path)
+                    first_open_this_process = path_key not in _OPENED_PATHS
+                    _OPENED_PATHS.add(path_key)
+                    mode = "wb" if self._first_write and first_open_this_process else "ab"
                     # filesystem-write-ok: bounded binary overflow stream remains live until byte cap
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
                     self._fh = cast(
@@ -637,7 +613,6 @@ __all__ = [
     "RawOverflowLog",
     "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
-    "is_agy_print_tool_result_status_line",
     "is_harness_input_echo",
     "raw_log_path_for",
 ]

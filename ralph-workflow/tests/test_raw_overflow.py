@@ -26,18 +26,53 @@ def test_append_writes_lines(tmp_path: Path) -> None:
     log.close()
 
 
-def test_first_write_truncates_previous_content(tmp_path: Path) -> None:
+def test_a_second_writer_in_one_run_continues_the_file(tmp_path: Path) -> None:
+    """Truncation is per RUN, not per writer instance.
+
+    ``drop_unit`` closes and forgets a unit's log, so a re-spawned worker
+    for the same unit id builds a fresh writer. While truncation was
+    keyed to the instance, that writer opened the path ``wb`` and erased
+    the earlier wave -- and since the display's condensed bodies live in
+    their own file now, that file is the only copy of the bodies the
+    rendered records point at, so the loss was unrecoverable.
+
+    A genuinely new run is a new process, which starts a clean file.
+    """
     log1 = RawOverflowLog(tmp_path, "unit-1")
-    log1.append("run1 line")
+    log1.append("wave1 line")
     log1.close()
 
     log2 = RawOverflowLog(tmp_path, "unit-1")
-    log2.append("run2 line")
+    log2.append("wave2 line")
     log2.flush()
 
     content = log2.path.read_text(encoding="utf-8")
-    assert "run1 line" not in content
-    assert "run2 line" in content
+    assert "wave1 line" in content, "the earlier wave was erased"
+    assert "wave2 line" in content
+    log2.close()
+
+
+def test_a_fresh_process_starts_a_clean_file(tmp_path: Path) -> None:
+    """Each run still begins with an empty capture.
+
+    Truncation is keyed to the set of paths this process has opened, so
+    clearing that set reproduces what a new run sees.
+    """
+    from ralph.display import raw_overflow as raw_overflow_module
+
+    log1 = RawOverflowLog(tmp_path, "unit-1")
+    log1.append("previous run line")
+    log1.close()
+
+    raw_overflow_module._OPENED_PATHS.discard(str(log1.path))
+
+    log2 = RawOverflowLog(tmp_path, "unit-1")
+    log2.append("new run line")
+    log2.flush()
+
+    content = log2.path.read_text(encoding="utf-8")
+    assert "previous run line" not in content
+    assert "new run line" in content
     log2.close()
 
 

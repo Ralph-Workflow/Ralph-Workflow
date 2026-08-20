@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import sys
 import threading
@@ -336,6 +337,24 @@ def _setup_active_display(
                 ctx,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
         )
+
+    # A serial run ends with neither ``drop_unit`` (parallel-only) nor
+    # ``ParallelDisplay.stop()`` -- the cleanup step named "display stop"
+    # runs the width refresher's stop, which is what ``_stop`` holds
+    # here. Compose the display's own run-end flush onto it so buffered
+    # rendered entries and condensed bodies reach disk, instead of the
+    # markers advertising files that were never written.
+    _refresher_stop = _stop
+
+    def _stop_with_run_end_flush() -> None:
+        try:
+            _refresher_stop()
+        finally:
+            if isinstance(active, ParallelDisplay):
+                with contextlib.suppress(Exception):
+                    active.flush_run_end_writers()
+
+    _stop = _stop_with_run_end_flush
 
     # Return ``active._ctx`` so the caller holds the SAME Python object
     # the refresher mutates in place. This way, after a refresh tick

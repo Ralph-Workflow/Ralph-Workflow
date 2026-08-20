@@ -547,7 +547,6 @@ class ParallelDisplay:
         "_last_waiting_signature",
         "_last_worker_states",
         "_monotonic",
-        "_overflow_logs",
         "_overflow_warned",
         "_pending_phase_headers",
         "_pending_tool_results",
@@ -1932,8 +1931,8 @@ class ParallelDisplay:
         # S-7 / AC-06: condensation still applies to the joined passage --
         # a long reasoning or text block may exceed the soft limit on
         # close. The condenser carries the count + size + destination
-        # marker the product criteria require; the verbatim overflow
-        # log under .agent/raw/<safe_id>.log remains the destination.
+        # marker the product criteria require; the display's condensed
+        # log under .agent/raw/<safe_id>.overflow.log is the destination.
         overflow = self._get_condensed_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
         if base_tag == "think":
@@ -1961,7 +1960,7 @@ class ParallelDisplay:
         # belong on no surface. The close line carries the base
         # tag, a span and duration suffix, and (when oversized) the
         # condensation marker the condenser already produced; the
-        # verbatim overflow log under .agent/raw/<safe_id>.log
+        # condensed log under .agent/raw/<safe_id>.overflow.log
         # remains the destination the marker points to.
         # DA-002 (wt-028-display S-2 / S-3): the cross-kind text/
         # thinking companion dedup at close time. When the previous
@@ -2543,48 +2542,24 @@ class ParallelDisplay:
         with self._watchdog_attention_lock:
             self._watchdog_attention = value
 
-    def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
-        # S-8 / C4: route through the shared-by-path registry so the
-        # display's per-unit overflow log and the reader-owned
-        # overflow log (constructed in
-        # ``_process_reader.py`` / ``_pty_line_reader.py``) are the
-        # same object. Two independently-constructed writers used to
-        # share the file path but neither lock nor ``_first_write``
-        # state, leading to truncation races between the two writers.
-        # ``drop_unit`` still expects to find the per-unit instance
-        # in ``self._overflow_logs`` so the existing close/flush
-        # bookkeeping keeps working; populate that mapping here.
-        from ralph.display.raw_overflow import get_or_create_raw_overflow_log
-
-        if unit_id not in self._overflow_logs:
-            self._overflow_logs[unit_id] = get_or_create_raw_overflow_log(
-                self._workspace_root,
-                unit_id,
-                max_bytes=_MAX_OVERFLOW_FILE_BYTES,
-            )
-        return self._overflow_logs[unit_id]
-
     def _init_overflow_registries(self) -> None:
-        """Create the two per-unit raw-log registries.
+        """Create the per-unit condensed-log registry.
 
-        Two files, not one: ``_overflow_logs`` holds the VERBATIM capture
-        of what each agent process wrote, and ``_condensed_logs`` holds
-        the bodies this display condensed out of the live view. Sharing
-        one file made the display's own text read back as agent
-        corruption -- see ``CONDENSED_LOG_SUFFIX``.
+        The display owns ONE raw file per unit: the bodies it condensed
+        out of the live view. The agent's verbatim capture belongs to the
+        readers alone -- the display writing there is what made its own
+        text read back as agent corruption (see ``CONDENSED_LOG_SUFFIX``).
         """
-        self._overflow_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
         self._condensed_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
 
     def _get_condensed_log(self, unit_id: str) -> RawOverflowLog:
         """Return the display-owned condensed log for ``unit_id``.
 
-        Distinct from :meth:`_get_overflow_log`: that one is the shared
-        VERBATIM capture of the agent's own output, and this one holds
-        the bodies the display condensed out of the live view. Writing
-        both to one file made the display's own text read back as agent
-        corruption (see ``CONDENSED_LOG_SUFFIX``), so the condensation
-        markers point here and the verbatim capture stays byte-faithful.
+        This is the ONLY raw file the display writes. The agent's
+        verbatim capture is written by the readers; putting both in one
+        file made the display's own text read back as agent corruption
+        (see ``CONDENSED_LOG_SUFFIX``), so the condensation markers point
+        here and the verbatim capture stays byte-faithful.
         """
         from ralph.display.raw_overflow import get_or_create_raw_overflow_log
 
@@ -2920,7 +2895,7 @@ class ParallelDisplay:
             ),
         )
         # The live presentation seam already preserves the unabridged body
-        # in this same per-unit verbatim log. The record shares that reference;
+        # in this same per-unit condensed log. The record shares that reference;
         # writing again would duplicate the capture.
         del condensed
         event = make_event_for_emit(
@@ -3060,7 +3035,8 @@ class ParallelDisplay:
             self.emit_activity_line(
                 unit_id,
                 "progress",
-                f"\\[overflow log full, raw content for {unit_id} discarded]",
+                f"\\[overflow log full, {overflow.path.name} for {unit_id} "
+                "is no longer being written]",
             )
 
     def _emit_drop_warning(self, unit_id: str) -> None:
@@ -3477,7 +3453,7 @@ class ParallelDisplay:
         # advertises its condensed-content markers by path, so the
         # buffered writers must reach disk here or those references name
         # empty files.
-        self._stop_flush_rendered_writers()
+        self.flush_run_end_writers()
 
     @property
     def capability_recorder(self) -> CapabilityObservationRecorder:
@@ -3492,8 +3468,17 @@ class ParallelDisplay:
         """
         return self._capability_recorder
 
-    def _stop_flush_rendered_writers(self) -> None:
-        """Flush any per-unit rendered-record writer that was not already collected."""
+    def flush_run_end_writers(self) -> None:
+        """Flush every buffered per-unit writer at run end.
+
+        Public because the run loop must call it directly: a serial run
+        ends without ``drop_unit`` (which is parallel-only) and without
+        ``stop()`` (the pipeline's "display stop" cleanup step is the
+        width refresher's, not this object's). ``RenderedRecordWriter``
+        buffers in memory with no atexit or finalizer safety net, so
+        without this call a serial run drops its buffered rendered
+        entries and its ``.rendered.log`` is never written.
+        """
         # P0 (wt-028-display S-11 / AC-07): flush any per-unit
         # rendered-record writer that was not already collected by
         # ``drop_unit`` (e.g. a single-wave run whose drop_unit is
@@ -3505,14 +3490,14 @@ class ParallelDisplay:
             with contextlib.suppress(Exception):
                 writer.disable()
         self._rendered_writers.clear()
-        # S-23 (wt-028-display P1 / AC-06): flush the verbatim
-        # overflow logs too so the condensed-content marker on the
-        # rendered record line points at a file that has the
-        # unabridged body on disk. ``RawOverflowLog`` buffers in
-        # userspace; without this flush the marker would advertise a
-        # reference that is empty until the 5-second flush interval
-        # elapses (or run end never arrives).
-        for overflow in (*self._overflow_logs.values(), *self._condensed_logs.values()):
+        # S-23 (wt-028-display P1 / AC-06): flush the condensed logs
+        # so the condensed-content marker on the rendered record line
+        # points at a file that has the unabridged body on disk.
+        # ``RawOverflowLog`` buffers in userspace; without this flush
+        # the marker would advertise a reference that is empty until
+        # the 5-second flush interval elapses (or run end never
+        # arrives).
+        for overflow in self._condensed_logs.values():
             with contextlib.suppress(Exception):
                 overflow.flush()
 
@@ -5783,10 +5768,8 @@ class ParallelDisplay:
         # fresh ``RawOverflowLog`` (the closed handle above is no
         # longer usable, and the registry short-circuit would have
         # handed back the dead instance).
-        for registry in (self._overflow_logs, self._condensed_logs):
-            overflow = registry.pop(unit_id, None)
-            if overflow is None:
-                continue
+        overflow = self._condensed_logs.pop(unit_id, None)
+        if overflow is not None:
             with contextlib.suppress(Exception):
                 overflow.flush()
             with contextlib.suppress(Exception):

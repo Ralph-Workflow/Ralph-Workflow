@@ -167,9 +167,8 @@ def test_condensed_writes_do_not_consume_the_verbatim_byte_budget(
             _MARKDOWN_ARTIFACT_BODY,
             {},
         )
-        verbatim = display._get_overflow_log("codex")
-        assert verbatim.size_bytes == 0, "display content reached the verbatim capture"
-        assert not verbatim.is_disabled
+        verbatim = raw_log_path_for(tmp_path, "codex")
+        assert not verbatim.exists(), "display content reached the verbatim capture"
     finally:
         display.stop()
 
@@ -231,27 +230,24 @@ class _RaisingParser:
         raise ValueError("parse failed")
 
 
-def test_cap_warning_is_not_shared_between_the_two_logs(tmp_path: Path) -> None:
+def test_cap_warning_is_not_shared_between_logs(tmp_path: Path) -> None:
     """Each file needs its own one-shot 'log full' warning.
 
-    The warning is one-shot per unit. With two files behind one unit, the
-    condensed log -- which fills far faster -- consumed the single slot,
-    so the agent's own capture going full became silent.
+    The slot is keyed by log path rather than by unit, so one log
+    reaching the cap cannot silence the warning for another.
     """
     display = _display(tmp_path)
     try:
-        condensed = display._get_condensed_log("codex")
-        verbatim = display._get_overflow_log("codex")
+        first = display._get_condensed_log("unit-a")
+        second = display._get_condensed_log("unit-b")
         # Drive both past the byte cap so each guard fires.
-        condensed.disable()
-        verbatim.disable()
-        display._check_overflow_size("codex", condensed)
-        display._check_overflow_size("codex", verbatim)
+        first.disable()
+        second.disable()
+        display._check_overflow_size("unit-a", first)
+        display._check_overflow_size("unit-b", second)
 
         warned = display._overflow_warned
-        assert len(warned) == 2, (
-            f"each log must own a warning slot; got {warned}"
-        )
+        assert len(warned) == 2, f"each log must own a warning slot; got {warned}"
     finally:
         display.stop()
 
@@ -277,3 +273,34 @@ def test_stop_flushes_the_condensed_log_to_disk(tmp_path: Path) -> None:
 
     assert condensed.exists()
     assert condensed.stat().st_size > 0, "stop() left the advertised file empty"
+
+
+def test_a_respawned_unit_does_not_erase_the_earlier_wave(tmp_path: Path) -> None:
+    """The condensed log is the only copy; a second wave must not wipe it.
+
+    ``drop_unit`` closes and forgets a unit's log, so a re-spawned worker
+    for the same unit id builds a fresh writer. While truncation was
+    keyed to the writer instance, that second writer opened the path
+    ``wb`` and erased wave one -- including bodies wave one's rendered
+    record still points at by path.
+    """
+    display = _display(tmp_path)
+    try:
+        display.emit_parsed_event(
+            "codex", ActivityEventKind.TOOL_RESULT, _MARKDOWN_ARTIFACT_BODY, {}
+        )
+        display.drop_unit("codex")
+        display.emit_parsed_event(
+            "codex",
+            ActivityEventKind.TOOL_RESULT,
+            "second wave body\n" + "y" * 5000,
+            {},
+        )
+        display.drop_unit("codex")
+    finally:
+        display.stop()
+
+    body = raw_log_path_for(tmp_path, "codex", condensed=True).read_text(encoding="utf-8")
+
+    assert "type: development_result" in body, "wave one was erased"
+    assert "second wave body" in body
