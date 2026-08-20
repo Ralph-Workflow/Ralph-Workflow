@@ -836,8 +836,9 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
 
         step_start = time.monotonic()
-        # Reset PYTHONPATH to the workspace root before spawning each verify
-        # step. An ambient PYTHONPATH inherited from the invoking shell (e.g.
+        # Reset PYTHONPATH to the workspace root and Loguru to INFO before
+        # spawning each verify step. An ambient PYTHONPATH inherited from the
+        # invoking shell (e.g.
         # a pipx-installed copy of this package on some other interpreter's
         # site-packages) can shadow the project's own editable `ralph`
         # install for any `uv run python -m ralph.*` step, causing imports
@@ -847,13 +848,15 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         # walk from ``__file__.parent.parent.parent``) anchored to the
         # workspace under test. `ProcessRunOptions.env` is merged on top of
         # `os.environ` (`ralph/executor/_process_run_options.py`), so only
-        # the one contaminating key is replaced and the rest of the
-        # inherited environment (PATH, HOME, secrets, ...) is untouched.
+        # the contaminating keys are replaced and the rest of the inherited
+        # environment (PATH, HOME, secrets, ...) is untouched. In particular,
+        # a caller's ``LOGURU_LEVEL=WARNING`` would otherwise suppress the
+        # INFO records that the worker logging regressions intentionally prove.
         result = runner(
             command,
             args,
             cwd=cwd,
-            env={"PYTHONPATH": str(cwd)},
+            env={"PYTHONPATH": str(cwd), "LOGURU_LEVEL": "INFO"},
             timeout=effective_timeout,
             capture_output=False,
         )

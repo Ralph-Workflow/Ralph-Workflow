@@ -30,6 +30,7 @@ class StubRunner:
     def __init__(self, responses: dict[tuple[str, tuple[str, ...]], ProcessResult]) -> None:
         self._responses = dict(responses)
         self.calls: list[tuple[str, tuple[str, ...], str | Path | None, float | None, bool]] = []
+        self.environments: list[dict[str, str] | None] = []
 
     def __call__(
         self,
@@ -41,9 +42,9 @@ class StubRunner:
         timeout: float | None = None,
         capture_output: bool = True,
     ) -> ProcessResult:
-        del env
         key = (command, tuple(args))
         self.calls.append((command, tuple(args), cwd, timeout, capture_output))
+        self.environments.append(env)
         try:
             return self._responses[key]
         except KeyError as exc:
@@ -506,6 +507,20 @@ def test_main_rejects_positional_arguments(tmp_path: Path) -> None:
         raise AssertionError("expected SystemExit")
 
     assert runner.calls == []
+
+
+def test_verify_regression_inherited_loguru_level_is_overridden(tmp_path: Path) -> None:
+    """S-3: verification children must not inherit a warning-only Loguru level."""
+    runner = StubRunner(_all_steps_success_responses())
+
+    assert verify_module.run_verify(cwd=tmp_path, runner=runner) == 0
+
+    assert all(environment is not None for environment in runner.environments)
+    assert all(
+        environment["LOGURU_LEVEL"] == "INFO"
+        for environment in runner.environments
+        if environment is not None
+    )
 
 
 def test_total_test_budget_matches_suite_timeout_policy() -> None:
