@@ -8,7 +8,7 @@ from this module rather than re-declaring provider knowledge elsewhere.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ralph.mcp.multimodal._capability_verdict import CapabilityVerdict
 from ralph.mcp.multimodal._delivery_mode import DeliveryMode
@@ -63,6 +63,69 @@ _PROVIDER_UNSUPPORTED_REASON: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Inline-image round-trip safety (transport-keyed, not provider-keyed)
+# ---------------------------------------------------------------------------
+
+#: Agent transports whose CLI cannot round-trip an inline MCP image block
+#: back into its own provider API request.
+#:
+#: Measured 2026-08-20 on ``codex-cli 0.147.0``: after a ``read_media``
+#: call answered with a base64 ``ImageContent`` block, the CLI
+#: re-serialised that tool result into its next Responses API request
+#: using the content-part type ``output_text``. The API rejects it::
+#:
+#:     [400]: Invalid value: 'output_text'. Supported values are:
+#:     'input_text', 'input_image', 'input_file', and 'scoped_content'.
+#:     (param: input[101].output[1])
+#:
+#: The turn died (``turn.failed``) and the whole work unit was graded
+#: ``FAILED (no artifact)``. The defect is in the CLI's wire
+#: serialisation, so Ralph cannot repair it — it can only decline to
+#: hand that transport an inline image. Delivery degrades to
+#: ``RESOURCE_REFERENCE_REPLAY``, which keeps the artifact registered
+#: and replayable instead of killing the turn.
+#:
+#: This is keyed on TRANSPORT, not provider, for two reasons: the bug
+#: lives in the CLI rather than in any provider's API (so a Codex CLI
+#: pointed at ``--model anthropic/claude-...`` is equally affected),
+#: and a Codex CLI run resolves to ``provider='openai'`` anyway (see
+#: ``_TRANSPORT_FIXED_PROVIDER`` in ``ralph.mcp.session_plan``), so a
+#: provider-keyed check would never fire.
+#:
+#: Remove the entry once codex-cli serialises MCP image results with an
+#: ``input_*`` content-part type; the regression suite in
+#: ``tests/test_codex_inline_image_roundtrip.py`` pins the contract.
+_INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS: frozenset[str] = frozenset({"codex"})
+
+#: Providers that accept the standard MCP image union but still require a
+#: Ralph-minted text handle for the mandatory replay hop.
+_INLINE_IMAGE_HANDLE_ONLY_PROVIDERS: frozenset[str] = frozenset({"ccs"})
+
+
+def inline_image_roundtrip_unsafe(identity: MultimodalModelIdentity) -> bool:
+    """Return True when ``identity``'s transport cannot take an inline image.
+
+    See :data:`_INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS` for the
+    measured failure this guards. Callers on the media-delivery path
+    MUST consult this (directly, or via the ``RESOURCE_REFERENCE_REPLAY``
+    verdict :func:`get_delivery_mode` returns for such identities)
+    before emitting an ``ImageContent`` block.
+    """
+    return (identity.transport or "").lower() in _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS
+
+
+def inline_image_requires_text_handle(identity: MultimodalModelIdentity) -> bool:
+    """Return True when inline image bytes must be replaced by a text handle.
+
+    Distinct from :func:`inline_image_roundtrip_unsafe`: these providers
+    *can* carry the image union but need the Ralph-minted handle for the
+    replay hop, so the verdict stays ``INLINE_IMAGE`` and only the
+    emitted block changes.
+    """
+    return identity.provider.lower() in _INLINE_IMAGE_HANDLE_ONLY_PROVIDERS
+
+
 def get_delivery_mode(
     identity: MultimodalModelIdentity,
     modality: str,
@@ -90,6 +153,24 @@ def get_delivery_mode(
         )
 
     if modality == "image":
+        # Criterion 14 ("unresolvable -> capable") makes inline the
+        # default for images regardless of how the identity resolved --
+        # EXCEPT for a transport whose CLI provably cannot round-trip the
+        # block back into its own API request. That is a measured wire
+        # failure, not a capability guess, so it is not covered by the
+        # "do not guess" rule above.
+        if inline_image_roundtrip_unsafe(identity):
+            return CapabilityVerdict(
+                modality=modality,
+                delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
+                provider=identity.provider,
+                model_id=identity.model_id,
+                reason=(
+                    f"transport '{identity.transport}' cannot round-trip an inline "
+                    "image block into its provider API request; delivering as "
+                    "resource_reference_replay instead"
+                ),
+            )
         return CapabilityVerdict(
             modality=modality,
             delivery=DeliveryMode.INLINE_IMAGE,
@@ -156,10 +237,32 @@ class ResolvedCapabilityProfile:
     verdicts: dict[str, CapabilityVerdict]
 
     def verdict_for(self, modality: str) -> CapabilityVerdict:
-        """Return the pre-computed verdict, or compute fresh for unlisted modalities."""
-        if modality in self.verdicts:
-            return self.verdicts[modality]
-        return get_delivery_mode(self.identity, modality)
+        """Return the pre-computed verdict, or compute fresh for unlisted modalities.
+
+        A STORED verdict is corrected against the identity before it is
+        returned. ``profile_from_payload`` trusts a persisted verdict
+        string verbatim, so a session written before a delivery guard
+        existed -- or by a different transport -- can carry
+        ``inline_image`` for an identity that provably cannot accept one.
+        Correcting here means every consumer sees the same answer instead
+        of each one re-deriving the guard (and some forgetting to).
+        """
+        if modality not in self.verdicts:
+            return get_delivery_mode(self.identity, modality)
+        stored = self.verdicts[modality]
+        if stored.delivery == DeliveryMode.INLINE_IMAGE and inline_image_roundtrip_unsafe(
+            self.identity
+        ):
+            return replace(
+                stored,
+                delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
+                reason=(
+                    f"stored verdict says inline, but transport "
+                    f"'{self.identity.transport}' cannot round-trip an inline image "
+                    f"block into its provider API request"
+                ),
+            )
+        return stored
 
     def to_payload(self) -> dict[str, object]:
         """Serialize to a JSON-compatible dict for session payload persistence."""
@@ -233,6 +336,8 @@ __all__ = [
     "MultimodalModelIdentity",
     "ResolvedCapabilityProfile",
     "get_delivery_mode",
+    "inline_image_requires_text_handle",
+    "inline_image_roundtrip_unsafe",
     "profile_from_payload",
     "resolve_capability_profile",
 ]

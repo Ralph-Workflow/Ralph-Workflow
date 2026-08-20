@@ -103,9 +103,14 @@ def _build_image_metadata_envelope(
 
     The envelope is bounded: it returns mime_type, size_bytes, sha256,
     width, height (PNG only), and an ``inline_only`` flag. The image
-    bytes are dropped; ``handle_read_image`` never persists a
-    Ralph-owned ``ralph://media/{artifact_id}`` artifact so the
-    ``resource_handle`` is always ``None``.
+    bytes are dropped.
+
+    ``resource_handle`` is ``None`` on THIS builder's path because it
+    never persists an artifact. It is not ``None`` for every
+    ``read_image`` call: a delivery that degrades to a resource
+    reference (a handle-only provider, or a transport that cannot accept
+    an inline image) routes through ``_build_workspace_media_metadata``
+    instead, which does register a replayable handle.
     """
     width, height = _png_dimensions(raw_bytes)
     envelope = finalize_envelope_bytes_out(
@@ -299,7 +304,11 @@ def _build_workspace_media_metadata(
     bytes to compute sha256 + size; for resource-reference deliveries
     we run the same workspace path but never emit the inline block.
     """
-    from ralph.mcp.multimodal.capabilities import DeliveryMode
+    from ralph.mcp.multimodal.capabilities import (
+        DeliveryMode,
+        inline_image_requires_text_handle,
+        inline_image_roundtrip_unsafe,
+    )
     from ralph.mcp.multimodal.resources import (
         MediaEntryExtras,
         new_artifact_id,
@@ -363,10 +372,20 @@ def _build_workspace_media_metadata(
     # artifact (resource_reference_replay path), register it here too
     # so the resource_handle in the metadata envelope is replayable.
     # Inline-image deliveries never persist an artifact.
+    #
+    # The ``modality != "image"`` clause used to be unconditional
+    # because an image ALWAYS resolved to ``INLINE_IMAGE``, making
+    # "resource-reference image" unreachable. It is reachable now: a
+    # transport that cannot round-trip an inline image block (see
+    # ``_INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS``) gets
+    # ``RESOURCE_REFERENCE_REPLAY`` for images too, and its metadata
+    # envelope must still carry a dereferenceable handle -- otherwise
+    # the degraded path hands back an envelope pointing at nothing.
     resource_handle: str | None = None
     if (
-        verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY and modality != "image"
-    ) or profile.identity.provider == "ccs":
+        verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
+        and (modality != "image" or inline_image_roundtrip_unsafe(profile.identity))
+    ) or inline_image_requires_text_handle(profile.identity):
         manifest = _get_media_manifest(session)
         if manifest is not None:
             source_path = normalized or path

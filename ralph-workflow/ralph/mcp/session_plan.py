@@ -8,7 +8,7 @@ into the Ralph MCP subprocess for that session.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -328,8 +328,34 @@ def build_session_mcp_plan(
     _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:
         resolved_identity = _model_opts.model_identity
+        if resolved_identity.transport is None and transport is not None:
+            # The caller named a provider but not the CLI carrying it.
+            # Some delivery guards key on the transport, so an untagged
+            # injected identity would silently reopen paths the resolved
+            # ones close. An explicit transport is never overwritten.
+            resolved_identity = replace(resolved_identity, transport=transport.value)
     elif _model_opts.model_flag is not None:
         resolved_identity = resolve_model_identity(transport, _model_opts.model_flag)
+    elif transport is not None:
+        # No model flag -- the common ``ralph run`` shape. The provider
+        # stays unresolved (we genuinely do not know which model the CLI
+        # will pick), but the TRANSPORT is known and must survive: the
+        # multimodal layer keys some delivery decisions on the agent CLI
+        # rather than on the provider, because the defect being guarded
+        # lives in the CLI's own wire serialisation (see
+        # ``inline_image_roundtrip_unsafe``). Falling through to
+        # ``UNKNOWN_IDENTITY`` here discarded the transport and left
+        # those guards dead on the default run path.
+        #
+        # Only the transport is added. Resolving the canonical provider
+        # instead would flip every other modality for flagless runs from
+        # resource-reference to UNSUPPORTED -- a much wider behaviour
+        # change than this fix intends.
+        resolved_identity = MultimodalModelIdentity(
+            provider=UNKNOWN_IDENTITY.provider,
+            model_id=None,
+            transport=transport.value,
+        )
     else:
         resolved_identity = UNKNOWN_IDENTITY
     return SessionMcpPlan(

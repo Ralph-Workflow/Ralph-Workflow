@@ -877,6 +877,15 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
         raise
 
 
+def _identity_is_serialisable(identity: MultimodalModelIdentity) -> bool:
+    """Return True when an identity carries information worth handing on.
+
+    A resolved provider or a known transport each independently affect
+    downstream delivery decisions, so either one is enough.
+    """
+    return identity.is_known() or identity.transport is not None
+
+
 def session_payload_json(session: SessionLike) -> str:
     """Serialize the session metadata to a compact JSON string for MCP handshake."""
     session_payload: dict[str, object] = {
@@ -898,7 +907,15 @@ def session_payload_json(session: SessionLike) -> str:
     if isinstance(raw_allowed_roots, tuple) and raw_allowed_roots:
         session_payload["allowed_roots"] = [str(path) for path in raw_allowed_roots]
     raw_identity: object = getattr(session, "model_identity", None)
-    if isinstance(raw_identity, MultimodalModelIdentity) and raw_identity.is_known():
+    # An identity is worth serialising when EITHER half is resolved. The
+    # gate used to be ``is_known()`` alone (provider resolved), which
+    # dropped a transport-tagged unknown-provider identity on the way to
+    # the subprocess -- and the multimodal layer keys some delivery
+    # decisions on the transport, so those guards died at this boundary
+    # even though the parent session had the information.
+    if isinstance(raw_identity, MultimodalModelIdentity) and _identity_is_serialisable(
+        raw_identity
+    ):
         session_payload["model_identity"] = {
             "provider": raw_identity.provider,
             "model_id": raw_identity.model_id,
@@ -907,7 +924,9 @@ def session_payload_json(session: SessionLike) -> str:
     raw_profile: object = getattr(session, "capability_profile", None)
     if isinstance(raw_profile, ResolvedCapabilityProfile):
         session_payload["capability_profile"] = raw_profile.to_payload()
-    elif isinstance(raw_identity, MultimodalModelIdentity) and raw_identity.is_known():
+    elif isinstance(raw_identity, MultimodalModelIdentity) and _identity_is_serialisable(
+        raw_identity
+    ):
         session_payload["capability_profile"] = resolve_capability_profile(
             raw_identity
         ).to_payload()

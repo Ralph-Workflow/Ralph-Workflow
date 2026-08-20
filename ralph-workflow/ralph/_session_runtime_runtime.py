@@ -19,10 +19,11 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     summarize_retry_failure_evidence,
 )
 from ralph.config.enums import AgentTransport
+from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike
-from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts
+from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, resolve_model_identity
 
 from ._session_runtime_deps import ManagedAgentSessionDeps
 
@@ -410,9 +411,16 @@ def _resolve_session_plan(
     if request.session_mcp_plan is not None:
         return request.session_mcp_plan
     if request.capabilities is not None:
+        # Pre-supplied capabilities replace the capability computation,
+        # NOT the identity: falling back to the dataclass defaults here
+        # discarded the agent's transport and left the multimodal
+        # delivery guards blind on this path.
+        identity = resolve_model_identity(agent_config.transport, agent_config.model_flag)
         return SessionMcpPlan(
             capabilities=request.capabilities,
             server_env=request.server_env,
+            model_identity=identity,
+            capability_profile=resolve_capability_profile(identity),
         )
     return deps.build_session_mcp_plan(
         agent_config.transport,

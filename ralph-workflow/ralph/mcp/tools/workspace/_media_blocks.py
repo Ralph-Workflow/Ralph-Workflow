@@ -19,7 +19,11 @@ from ralph.mcp.multimodal.artifacts import (
     VideoContent,
     infer_modality_and_mime,
 )
-from ralph.mcp.multimodal.capabilities import DeliveryMode
+from ralph.mcp.multimodal.capabilities import (
+    DeliveryMode,
+    inline_image_requires_text_handle,
+    inline_image_roundtrip_unsafe,
+)
 from ralph.mcp.multimodal.errors import MultimodalFailureKind
 from ralph.mcp.multimodal.resources import (
     MediaEntryExtras,
@@ -92,6 +96,33 @@ def _build_warning_block(
     return ToolContent.text_content(f"WARNING: {message}")
 
 
+def _build_image_withheld_block(
+    *,
+    transport: str | None,
+    title: str,
+    uri: str,
+) -> ToolContent:
+    """Explain an image the agent asked for but cannot be sent.
+
+    Emitted when the delivery guard withholds inline image bytes because
+    the agent CLI cannot round-trip them (see
+    ``inline_image_roundtrip_unsafe``). The text is deliberately explicit
+    that this is a dead end for this transport: sending the agent to
+    re-read the handle, or to a retrieval route its CLI does not expose,
+    wastes a turn and teaches it nothing.
+    """
+    message = (
+        f"image '{title}' was NOT delivered as pixels. The '{transport}' agent CLI "
+        "cannot carry an inline image block back into its model request, so sending "
+        "one would fail the whole turn. Re-reading the handle "
+        f"({uri}) returns this same reference, not the image -- do not retry it. "
+        "Use read_media with format='metadata' for the file's size, sha256, and "
+        "pixel dimensions, or work from the file path directly."
+    )
+    logger.warning(message)
+    return ToolContent.text_content(f"WARNING: {message}")
+
+
 def _make_typed_block(
     block_type: str,
     *,
@@ -157,7 +188,7 @@ def _replay_from_manifest_entry(
                 ],
                 is_error=True,
             )
-        if profile.identity.provider == "ccs":
+        if inline_image_requires_text_handle(profile.identity):
             return ToolResult(
                 content=[ToolContent.text_content(f"Replay handle: {entry.uri}")],
                 is_error=False,
@@ -230,7 +261,7 @@ def _replay_from_persisted_entry(
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(modality)
     if verdict.delivery == DeliveryMode.INLINE_IMAGE:
-        if profile.identity.provider == "ccs":
+        if inline_image_requires_text_handle(profile.identity):
             return ToolResult(
                 content=[ToolContent.text_content(f"Replay handle: {uri}")],
                 is_error=False,
@@ -421,20 +452,29 @@ def _handle_workspace_media(
     title = PurePosixPath(path).name
     # S-6 (criterion 17): image payloads that fit the inline cap and
     # whose mime type is in the inline-image set are emitted as
-    # ``ImageContent`` UNCONDITIONALLY. The capability verdict is no
-    # longer a gate for image-only inline delivery -- criterion 14
-    # ("unresolvable -> capable") makes the inline path the default
-    # for any image the runtime can read, regardless of how the
-    # provider / model identity resolved. The unknown-identity ->
-    # warning-block prepending only applies to the resource-reference
-    # path below.
+    # ``ImageContent``. The capability verdict is not a gate for
+    # image-only inline delivery -- criterion 14 ("unresolvable ->
+    # capable") makes the inline path the default for any image the
+    # runtime can read, regardless of how the provider / model identity
+    # resolved. The unknown-identity -> warning-block prepending only
+    # applies to the resource-reference path below.
+    #
+    # The ONE thing that does suppress the inline path is a transport
+    # that provably cannot round-trip the block (see
+    # ``_INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS``). That is a measured
+    # wire failure rather than a capability guess -- emitting the block
+    # anyway kills the agent's next API request outright -- so it is not
+    # covered by criterion 14. The check is on the identity, NOT on
+    # ``verdict.delivery``: a caller-injected resource-reference verdict
+    # on an unknown identity must still take the inline path.
     if (
         modality == "image"
         and mime_type in INLINE_IMAGE_MIME_TYPES
         and file_size <= max_inline_bytes
+        and not inline_image_roundtrip_unsafe(profile.identity)
     ):
         encoded = base64.b64encode(raw_bytes).decode("ascii")
-        if profile.identity.provider != "ccs":
+        if not inline_image_requires_text_handle(profile.identity):
             return ToolResult(content=[ImageContent(data=encoded, mime_type=mime_type)], is_error=False)
 
         # Unknown clients such as CCS accept the standard MCP image union but
@@ -542,9 +582,32 @@ def _handle_workspace_media(
     # prepending is only used for the resource_reference path now; the
     # INLINE_IMAGE-eligible branch above returns early so this code never
     # runs for an inline-capable image.
+    #
+    # An image withheld for round-trip safety reaches here with a KNOWN
+    # identity, and it needs the warning just as much: without it the
+    # agent receives a bare resource reference for a file it can plainly
+    # see is a PNG, with nothing saying why the bytes were withheld.
+    # Scoped to ``image`` -- the guard says nothing about a PDF or an
+    # audio file, whose delivery on this transport is unaffected.
     identity_unknown = not profile.identity.is_known()
+    image_withheld = modality == "image" and inline_image_roundtrip_unsafe(profile.identity)
     warning_content: list[ToolContent] = []
-    if identity_unknown:
+    if image_withheld:
+        # A withheld image needs its OWN wording. The generic degraded
+        # block ends "delivered via resource-reference replay so the
+        # agent can still proceed", which is not true here: this
+        # transport cannot accept the bytes by any route Ralph Workflow
+        # offers it, so re-reading the handle returns this same
+        # reference. Saying so plainly beats sending the agent round a
+        # loop looking for pixels it will never get.
+        warning_content.append(
+            _build_image_withheld_block(
+                transport=profile.identity.transport,
+                title=title,
+                uri=entry.uri,
+            )
+        )
+    elif identity_unknown:
         warning_content.append(
             _build_warning_block(
                 provider=verdict.provider,
@@ -582,7 +645,7 @@ def _handle_workspace_media(
             "identity_key": identity_key,
         },
     )
-    if profile.identity.provider == "ccs":
+    if inline_image_requires_text_handle(profile.identity):
         return ToolResult(
             content=[ToolContent.text_content(f"Replay handle: {entry.uri}")],
             is_error=False,
