@@ -513,7 +513,9 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     # the raw overflow log was appended to, opening a buffered handle.
     # Force a flush first so the buffered bytes hit disk before we
     # release the strong references.
-    overflow = pd._overflow_logs.get(unit_id)
+    # Condensed bodies are display-authored, so they land in the
+    # ``.overflow.log`` sibling rather than the verbatim capture.
+    overflow = pd._condensed_logs.get(unit_id)
     assert overflow is not None
     assert overflow._fh is not None and not overflow._fh.closed, (
         "fixture must trigger the raw-overflow append path so the "
@@ -551,7 +553,7 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     # design (mode="wb"), so the post-reap file is just the new
     # append, not an extension of the old one. What matters is
     # that the append succeeded and the bytes hit disk.
-    fresh = get_or_create_raw_overflow_log(tmp_path, unit_id)
+    fresh = get_or_create_raw_overflow_log(tmp_path, unit_id, condensed=True)
     try:
         assert fresh is not None
         # The fresh instance must be writable (no stale handle from

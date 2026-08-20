@@ -219,11 +219,21 @@ class SubprocessAgentExecutor:
             assert handle is not None
             assert handle.stdout is not None
             async for raw_line in handle.stdout:
-                line = sanitize_display_line(raw_line.rstrip(b"\n"))
+                stripped_bytes = raw_line.rstrip(b"\n")
+                line = sanitize_display_line(stripped_bytes)
 
                 if self.activity_router is not None:
                     raw_log = self._get_raw_log(unit.unit_id)
-                    raw_log.append(line)
+                    # The VERBATIM capture gets the undecorated line.
+                    # ``sanitize_display_line`` is a presentation helper:
+                    # it strips control sequences and truncates at 200
+                    # characters with an ellipsis. Writing its output
+                    # here severed every wire frame longer than that
+                    # into unparseable JSON, and Ralph Workflow then read
+                    # the file back and graded the run
+                    # ``raw transcript corrupted``. The display below
+                    # still receives the sanitized text.
+                    raw_log.append(stripped_bytes.decode("utf-8", errors="replace"))
                     raw_ref = raw_log.relative_reference(
                         self._raw_overflow_root or self._cwd or Path.cwd()
                     )

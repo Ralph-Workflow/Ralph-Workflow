@@ -192,7 +192,7 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
     pd, buf = _make_display(tmp_path, width=10000)
 
     # 500 chars: above soft_limit(400), below hard_limit(4000)
-    # condenser produces head + " … (truncated, see .agent/raw/u.log)"
+    # condenser produces head + " … (truncated, see .agent/raw/u.overflow.log)"
     medium_text = "B" * 500
     raw_json = json.dumps(
         {
@@ -212,10 +212,10 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
 
     out = buf.getvalue()
     assert "[output" in out
-    assert ".agent/raw/u.log" in out
+    assert ".agent/raw/u.overflow.log" in out
     content_rows = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_rows) == 1
-    assert ".agent/raw/u.log" in content_rows[0]
+    assert ".agent/raw/u.overflow.log" in content_rows[0]
 
 
 def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) -> None:

@@ -199,7 +199,7 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
     # The raw overflow log uses block buffering (RFC-013 P1); close() via
     # drop_unit() flushes the buffered tail to disk before the assertion.
     pd.drop_unit("unit-1")
-    overflow_log = tmp_path / ".agent" / "raw" / "unit-1.log"
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-1.overflow.log"
     assert overflow_log.exists(), "overflow log should be created for oversized content"
     written = overflow_log.read_text(encoding="utf-8")
     assert "A" * 100 in written
@@ -214,7 +214,7 @@ def test_oversized_text_preserves_full_payload_in_overflow_log(tmp_path: Path) -
     pd._emit_activity_event("unit-hard-limit", ActivityEventKind.TEXT, original_payload, None, {})
     pd.drop_unit("unit-hard-limit")
 
-    written = (tmp_path / ".agent" / "raw" / "unit-hard-limit.log").read_text(encoding="utf-8")
+    written = (tmp_path / ".agent" / "raw" / "unit-hard-limit.overflow.log").read_text(encoding="utf-8")
     assert original_payload in written
 
 
@@ -249,7 +249,7 @@ def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: 
     # The raw overflow log uses block buffering; flush via drop_unit.
     pd.drop_unit("unit-tool-result")
 
-    overflow_log = tmp_path / ".agent" / "raw" / "unit-tool-result.log"
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-tool-result.overflow.log"
     assert overflow_log.exists(), (
         f"overflow log should be created for the condensed tool result; expected at {overflow_log}"
     )
@@ -266,7 +266,7 @@ def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: 
     # truncation marker so the operator knows where to find the
     # unabridged payload.
     rendered = buf.getvalue()
-    assert "unit-tool-result.log" in rendered, (
+    assert "unit-tool-result.overflow.log" in rendered, (
         f"visible line must reference the overflow log path so the operator "
         f"can locate the unabridged payload; got: {rendered!r}"
     )
@@ -296,7 +296,7 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
     # Close line carries [output] tag and the joined passage is condensed.
     assert "[output][unit-1]" in rendered
     # S-7 / AC-06: condensation marker carries the destination.
-    assert "see .agent/raw/unit-1.log" in rendered
+    assert "see .agent/raw/unit-1.overflow.log" in rendered
     # The full 500 chars do NOT appear (condenser truncated head-only).
     assert soft_limit_content not in rendered
     # One logical close entry retains the grep-critical carrier for cold
@@ -321,7 +321,7 @@ def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:
     rendered = buf.getvalue()
     # S-7 / AC-06: the close path applies the condenser; the marker
     # appears in the visible line and points at the verbatim destination.
-    assert "see .agent/raw/unit-1.log" in rendered
+    assert "see .agent/raw/unit-1.overflow.log" in rendered
     # Full content is condensed (head-only truncation kicks in at soft_limit).
     assert soft_limit_content not in rendered
     # The legacy ``[see ...]`` per-fragment marker format is retired;
@@ -336,7 +336,7 @@ def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
     small_content = "hello world"
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, small_content, None, {})
 
-    overflow_log = tmp_path / ".agent" / "raw" / "unit-1.log"
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-1.overflow.log"
     assert not overflow_log.exists(), "short content should not trigger overflow log"
 
 
@@ -464,7 +464,10 @@ def test_malformed_input_written_to_overflow_log(tmp_path: Path) -> None:
     # Flush buffered tail to disk (RFC-013 P1).
     pd.drop_unit("unit-bad")
 
-    overflow_log = tmp_path / ".agent" / "raw" / "unit-bad.log"
+    # The diagnostic copy is display-authored (the line has already been
+    # through the display sanitizer), so it belongs in the display-owned
+    # log rather than the verbatim capture the grader reads.
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-bad.overflow.log"
     assert overflow_log.exists(), "malformed line should be written to overflow log"
     content = overflow_log.read_text(encoding="utf-8")
     assert "broken" in content

@@ -30,6 +30,24 @@ _BUFFER_BYTES = 64 * 1024
 #: ralph.timeout_defaults.LOG_GROWTH_SECONDS (30.0): operators tail this
 #: file and the on-disk copy must never look wedged while the unit is live.
 DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
+#: Filename suffix of the DISPLAY-owned condensed log, the sibling of the
+#: verbatim capture.
+#:
+#: The two used to be one file. The reader appended the agent's wire
+#: JSONL and the display appended condensed tool-result / preview bodies
+#: to the same path, so Ralph's own multi-line text landed as bare
+#: non-JSON lines inside a JSONL stream and
+#: :func:`detect_raw_log_breaks` read them back as agent corruption
+#: (measured 2026-08-20: ``raw transcript corrupted: line at byte 157612
+#: is not parseable JSON (first 60 chars: '---')`` -- the ``---`` front
+#: matter of a markdown artifact the display had condensed).
+#:
+#: Splitting the files fixes that at the source rather than by escaping
+#: around it: the verbatim capture holds only what the agent wrote, and
+#: the condensed bodies stay plain readable text an operator can page
+#: through. Both names end in ``.log`` so the ``.agent/raw/`` path policy
+#: (``.log`` files only) still accepts them.
+CONDENSED_LOG_SUFFIX: Final = ".overflow"
 
 
 #: Shared-by-path registry (S-8 / C4). Two callers constructing
@@ -99,12 +117,26 @@ HARNESS_PTY_INPUT_ECHO_LINES: frozenset[str] = frozenset(
 AGY_PRINT_TOOL_RESULT_STATUS_PREFIX: Final = "\u2713 PASS \u21b3 "
 
 
-def is_agy_print_tool_result_status_line(line: str) -> bool:
+def is_agy_print_tool_result_status_line(
+    line: str, transport: AgentTransport | None = None
+) -> bool:
     """Return True when ``line`` is AGY's print-mode tool-result status line.
 
     Prefix match against
     :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`; never a substring test.
+
+    Scoped to the AGY transport. The prefix is ALSO the plain-text form
+    of this project's own success row -- ``theme`` maps ``success`` to
+    (``\u2713``, ``PASS``) and ``agent_event_renderer`` pins
+    ``\u2713 PASS \u21b3`` as stable for log consumers -- so an
+    unscoped exemption let display-authored rows pass as vendor output
+    on every JSONL transport. Measured on the 2026-08-20 codex capture:
+    64 renderer rows were silently exempted while the transcript was
+    genuinely being corrupted. Without the scope this allowlist hides
+    exactly the regression class it sits next to.
     """
+    if transport is not AgentTransport.AGY:
+        return False
     return line.lstrip().startswith(AGY_PRINT_TOOL_RESULT_STATUS_PREFIX)
 
 
@@ -174,7 +206,13 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     return tokens[0]
 
 
-def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = None) -> Path:
+def raw_log_path_for(
+    workspace_root: Path,
+    unit_id: str,
+    *,
+    model: str | None = None,
+    condensed: bool = False,
+) -> Path:
     """Return the on-disk path a real ``RawOverflowLog`` writer uses for this unit.
 
     S-4 (G4 / DoD 15): named so every caller that needs to *find* an
@@ -184,8 +222,17 @@ def raw_log_path_for(workspace_root: Path, unit_id: str, *, model: str | None = 
     risking drift. Factored out of :func:`get_or_create_raw_overflow_log`,
     which now calls this helper instead of inlining the expression --
     a refactor, not a behavior change.
+
+    ``condensed=True`` returns the DISPLAY-owned sibling
+    (``<safe_id>.overflow.log``) instead of the verbatim capture. The two
+    are separate files on purpose: the verbatim capture must stay a
+    byte-faithful record of what the agent process wrote, and the
+    display's condensed bodies are Ralph-authored text. Interleaving
+    them made Ralph's own writes read back as agent corruption -- see
+    :data:`CONDENSED_LOG_SUFFIX`.
     """
-    return workspace_root / ".agent" / "raw" / f"{safe_id_for(unit_id, model)}.log"
+    suffix = CONDENSED_LOG_SUFFIX if condensed else ""
+    return workspace_root / ".agent" / "raw" / f"{safe_id_for(unit_id, model)}{suffix}.log"
 
 
 def get_or_create_raw_overflow_log(
@@ -193,6 +240,7 @@ def get_or_create_raw_overflow_log(
     unit_id: str,
     *,
     model: str | None = None,
+    condensed: bool = False,
     max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
     flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
     now: Callable[[], float] = time.monotonic,
@@ -206,7 +254,7 @@ def get_or_create_raw_overflow_log(
     already-written bytes (S-8 / C4 / DoD 15). Returns the existing
     instance on a repeat call -- not a fresh one.
     """
-    key_path = raw_log_path_for(workspace_root, unit_id, model=model)
+    key_path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
     key = str(key_path.resolve(strict=False))
     with _REGISTRY_LOCK:
         existing = _REGISTRY.get(key)
@@ -216,6 +264,7 @@ def get_or_create_raw_overflow_log(
             workspace_root,
             unit_id,
             model=model,
+            condensed=condensed,
             max_bytes=max_bytes,
             flush_interval_seconds=flush_interval_seconds,
             now=now,
@@ -344,10 +393,12 @@ def detect_raw_log_breaks(
         )
     if is_interactive_pty_transport(transport):
         return breaks
-    return breaks + _detect_non_jsonl_breaks(payload)
+    return breaks + _detect_non_jsonl_breaks(payload, transport)
 
 
-def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
+def _detect_non_jsonl_breaks(
+    payload: bytes, transport: AgentTransport | None = None
+) -> list[RawLogBreak]:
     """Return one ``NON_JSONL`` break per unparseable line.
 
     Splits the payload on NUL bytes first so a measured NUL-hole run
@@ -386,7 +437,7 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
                 # :data:`HARNESS_PTY_INPUT_ECHO_LINES`): expected verbatim
                 # capture content, not a corrupted or truncated frame.
                 continue
-            if is_agy_print_tool_result_status_line(line_text):
+            if is_agy_print_tool_result_status_line(line_text, transport):
                 # AGY vendor print-mode tool-result status line (see
                 # :data:`AGY_PRINT_TOOL_RESULT_STATUS_PREFIX`): measured
                 # wire output, not a corrupted frame.
@@ -441,6 +492,7 @@ class RawOverflowLog:
         unit_id: str,
         *,
         model: str | None = None,
+        condensed: bool = False,
         max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
         flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
         now: Callable[[], float] = time.monotonic,
@@ -451,8 +503,8 @@ class RawOverflowLog:
         # suffix a mismatched pair (e.g. ``pi.log`` here, ``pi_X.log``
         # there) would orphan the rendered record's condensation
         # markers from the verbatim capture they point at.
-        safe_id = safe_id_for(unit_id, model)
-        self.path = workspace_root / ".agent" / "raw" / f"{safe_id}.log"
+        self.path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
+        self.is_condensed = condensed
         self._lock = threading.Lock()
         self._first_write = True
         self._disabled = False

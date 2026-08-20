@@ -204,14 +204,17 @@ deliberately lifted to 4.5:1 rather than reproduced bit-for-bit. `NO_COLOR` disa
 retains ANSI colour for render-capable redirected or CI capture. Motion is
 reserved for a real TTY; redirected and CI output instead records durable state
 transitions and elapsed-time heartbeats. Condensed output identifies its count,
-byte size, and `.agent/raw/` recovery destination.
+byte size, and `.agent/raw/<id>.overflow.log` recovery destination.
 
 
 ### Canonical activity presentation
 
 Providers first write every original line to verbatim `.agent/raw/<id>.log`.
-They then normalize each logical event once before the live display and the
-ANSI-free `.agent/raw/<id>.rendered.log` record consume it. A phase header
+That file holds agent bytes only; bodies the display condenses out of the live
+view are written to the `.agent/raw/<id>.overflow.log` sibling instead, so the
+verbatim capture stays parseable as the transcript Ralph Workflow grades for
+corruption. They then normalize each logical event once before the live display
+and the ANSI-free `.agent/raw/<id>.rendered.log` record consume it. A phase header
 carries readable phase words, cycle/iteration position, and identity once;
 its indented event rows carry their timestamp, role, body, and only a
 non-default severity. It never exposes parser channel names or repeats phase,

@@ -385,6 +385,8 @@ def test_agy_print_tool_result_status_line_is_not_a_break(
     live AGY smoke with ``raw transcript corrupted`` while the wire
     frames, artifact receipt, and completion sentinel were all intact.
     """
+    from ralph.config.enums import AgentTransport
+
     raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
@@ -399,7 +401,35 @@ def test_agy_print_tool_result_status_line_is_not_a_break(
         ).encode("utf-8")
     )
 
-    assert detect_raw_log_breaks(raw_path) == []
+    assert detect_raw_log_breaks(raw_path, transport=AgentTransport.AGY) == []
+
+
+def test_agy_status_prefix_is_not_exempt_on_a_jsonl_transport(
+    isolated_workspace: Path,
+) -> None:
+    """The exemption is AGY's alone -- it is not a free pass for the prefix.
+
+    ``\u2713 PASS \u21b3`` is also the plain-text form of this project's
+    own rendered success row, so an unscoped exemption made
+    display-authored text indistinguishable from vendor output on every
+    JSONL transport. Measured on the 2026-08-20 codex capture: 64
+    renderer rows were exempted while the transcript was genuinely
+    corrupted, hiding the regression class this detector exists to catch.
+    """
+    from ralph.config.enums import AgentTransport
+
+    raw_path = isolated_workspace / ".agent" / "raw" / "codex.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(
+        (
+            '{"type":"item.completed","item":{"id":"item_18"}}\n'
+            "\u2713 PASS \u21b3 exec (command=make verify) Exit code: 0\n"
+        ).encode("utf-8")
+    )
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CODEX)
+
+    assert [b.kind for b in breaks] == ["NON_JSONL"]
 
 
 def test_line_embedding_marker_text_is_still_a_break(isolated_workspace: Path) -> None:

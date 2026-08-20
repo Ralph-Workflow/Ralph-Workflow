@@ -177,7 +177,11 @@ from ralph.display.phase_status import (
 )
 from ralph.display.presented_entry import outcome_is_failure
 from ralph.display.preview_payload import payload_from_tool_event
-from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
+from ralph.display.raw_overflow import (
+    DEFAULT_MAX_OVERFLOW_FILE_BYTES,
+    RawOverflowLog,
+    raw_log_path_for,
+)
 from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import (
@@ -519,6 +523,7 @@ class ParallelDisplay:
         "_block_open_wall",
         "_capability_recorder",
         "_clock",
+        "_condensed_logs",
         "_ctx",
         "_drop_last_warned",
         "_emitted_empty_activity",
@@ -766,7 +771,7 @@ class ParallelDisplay:
         # Per-unit raw overflow logs, lazy-created on first oversized emit
         # Per-unit raw overflow logs, lazy-created on first oversized emit
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._overflow_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
+        self._init_overflow_registries()
         # Track units where the 50 MB guard WARN was already emitted
         self._overflow_warned: set[str] = set()  # bounded-accumulator-ok: drop_unit
         # Per-unit last drop-warning timestamp; _NEVER_WARNED means never warned yet
@@ -1929,7 +1934,7 @@ class ParallelDisplay:
         # close. The condenser carries the count + size + destination
         # marker the product criteria require; the verbatim overflow
         # log under .agent/raw/<safe_id>.log remains the destination.
-        overflow = self._get_overflow_log(unit_id)
+        overflow = self._get_condensed_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
         if base_tag == "think":
             from ralph.display.presented_entry import _strip_markdown_emphasis
@@ -2559,6 +2564,39 @@ class ParallelDisplay:
             )
         return self._overflow_logs[unit_id]
 
+    def _init_overflow_registries(self) -> None:
+        """Create the two per-unit raw-log registries.
+
+        Two files, not one: ``_overflow_logs`` holds the VERBATIM capture
+        of what each agent process wrote, and ``_condensed_logs`` holds
+        the bodies this display condensed out of the live view. Sharing
+        one file made the display's own text read back as agent
+        corruption -- see ``CONDENSED_LOG_SUFFIX``.
+        """
+        self._overflow_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
+        self._condensed_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
+
+    def _get_condensed_log(self, unit_id: str) -> RawOverflowLog:
+        """Return the display-owned condensed log for ``unit_id``.
+
+        Distinct from :meth:`_get_overflow_log`: that one is the shared
+        VERBATIM capture of the agent's own output, and this one holds
+        the bodies the display condensed out of the live view. Writing
+        both to one file made the display's own text read back as agent
+        corruption (see ``CONDENSED_LOG_SUFFIX``), so the condensation
+        markers point here and the verbatim capture stays byte-faithful.
+        """
+        from ralph.display.raw_overflow import get_or_create_raw_overflow_log
+
+        if unit_id not in self._condensed_logs:
+            self._condensed_logs[unit_id] = get_or_create_raw_overflow_log(
+                self._workspace_root,
+                unit_id,
+                condensed=True,
+                max_bytes=_MAX_OVERFLOW_FILE_BYTES,
+            )
+        return self._condensed_logs[unit_id]
+
     def _result_preview_target(self, unit_id: str, metadata: dict[str, object]) -> tuple[str, str]:
         """Return a correlated result tool name/path, with display-local fallback."""
         tool_name = str(metadata.get("tool_name", "") or "")
@@ -2635,7 +2673,7 @@ class ParallelDisplay:
         include_header: bool = True,
     ) -> None:
         """Project a file preview to the record and, unless quiet, terminal."""
-        overflow = self._get_overflow_log(unit_id)
+        overflow = self._get_condensed_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
         _record_preview, full_source = preview_record_text(
             tool_name,
@@ -2869,7 +2907,7 @@ class ParallelDisplay:
                 if iter_ is None:
                     iter_ = cached_iter
 
-        overflow = self._get_overflow_log(unit_id)
+        overflow = self._get_condensed_log(unit_id)
         visible_body, condensed = cast(
             "tuple[str, bool]",
             condense_content(
@@ -2985,7 +3023,15 @@ class ParallelDisplay:
         surfacing the ``[overflow log full ...]`` warning the
         operator relies on.
         """
-        overflow = self._get_overflow_log(unit_id)
+        # The line handed here has already been through the display
+        # sanitizer (control-stripped and truncated at 200 chars with an
+        # ellipsis), so it is NOT wire bytes and must not enter the
+        # verbatim capture -- a long frame would land there severed into
+        # unparseable JSON and be graded as agent corruption. The readers
+        # already wrote the untouched line to the verbatim capture before
+        # the router saw it, so nothing is lost by keeping this
+        # diagnostic copy in the display-owned log.
+        overflow = self._get_condensed_log(unit_id)
         overflow.append(raw_line)
         self._check_overflow_size(unit_id, overflow)
 
@@ -3002,10 +3048,14 @@ class ParallelDisplay:
         that case, and the warning still has to surface so the
         operator learns the cap was hit.
         """
-        if unit_id in self._overflow_warned:
+        # Keyed by path, not by unit: a unit owns two logs now, and a
+        # single shared slot let the condensed log (which fills far
+        # faster) silence the warning for the agent's own capture.
+        warn_key = str(overflow.path)
+        if warn_key in self._overflow_warned:
             return
         if overflow.size_bytes >= _MAX_OVERFLOW_FILE_BYTES or overflow.is_disabled:
-            self._overflow_warned.add(unit_id)
+            self._overflow_warned.add(warn_key)
             overflow.disable()
             self.emit_activity_line(
                 unit_id,
@@ -3193,7 +3243,7 @@ class ParallelDisplay:
             # call body. Remove the renderer's leading pairing chrome, while
             # preserving an arrow that was actually part of the source body.
             text = text.replace(" ↳ ", " ", 1)
-        overflow = self._get_overflow_log(unit_id)
+        overflow = self._get_condensed_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
         visible, condensed_flag, summary_line, ai_summary_line = cast(
@@ -3423,6 +3473,11 @@ class ParallelDisplay:
             self._status_bar.stop()
         self.flush_blocks()
         self._flush_pending_tool_results()
+        # A run that ends without ``drop_unit`` (a single-wave run) still
+        # advertises its condensed-content markers by path, so the
+        # buffered writers must reach disk here or those references name
+        # empty files.
+        self._stop_flush_rendered_writers()
 
     @property
     def capability_recorder(self) -> CapabilityObservationRecorder:
@@ -3457,7 +3512,7 @@ class ParallelDisplay:
         # userspace; without this flush the marker would advertise a
         # reference that is empty until the 5-second flush interval
         # elapses (or run end never arrives).
-        for overflow in self._overflow_logs.values():
+        for overflow in (*self._overflow_logs.values(), *self._condensed_logs.values()):
             with contextlib.suppress(Exception):
                 overflow.flush()
 
@@ -3601,7 +3656,7 @@ class ParallelDisplay:
         if count >= _MIN_TOOL_RESULT_COLLAPSE_COUNT:
             hidden_count = count - 1
             hidden_bytes = hidden_count * len(content.encode())
-            overflow = self._get_overflow_log(unit_id)
+            overflow = self._get_condensed_log(unit_id)
             overflow.append("\n".join([content] * hidden_count))
             self._check_overflow_size(unit_id, overflow)
             marker = (
@@ -5684,7 +5739,13 @@ class ParallelDisplay:
         ``ActivityRouter``. Safe to call for a unit that was never
         added; missing entries are silently skipped.
         """
-        self._overflow_warned.discard(unit_id)
+        # Warning slots are keyed by log path (a unit owns two logs), so
+        # clear both of this unit's keys rather than the unit id.
+        for log_path in (
+            raw_log_path_for(self._workspace_root, unit_id),
+            raw_log_path_for(self._workspace_root, unit_id, condensed=True),
+        ):
+            self._overflow_warned.discard(str(log_path))
         self._drop_last_warned.pop(unit_id, None)
         self._last_emitted_tool_signature.pop(unit_id, None)
         self._last_worker_states.pop(unit_id, None)
@@ -5722,8 +5783,10 @@ class ParallelDisplay:
         # fresh ``RawOverflowLog`` (the closed handle above is no
         # longer usable, and the registry short-circuit would have
         # handed back the dead instance).
-        overflow = self._overflow_logs.pop(unit_id, None)
-        if overflow is not None:
+        for registry in (self._overflow_logs, self._condensed_logs):
+            overflow = registry.pop(unit_id, None)
+            if overflow is None:
+                continue
             with contextlib.suppress(Exception):
                 overflow.flush()
             with contextlib.suppress(Exception):
