@@ -189,16 +189,30 @@ def live_smoke_session() -> Generator[_LiveSmokeResult, None, None]:
     _write_smoke_prompt(prompt_file)
 
     env = _build_live_env()
+    preflight_cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+    upstream_reason = _detect_upstream_blocked_reason(preflight_cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            "Live AGY is upstream-blocked before smoke launch "
+            f"({upstream_reason}); cli.log tail: {preflight_cli_log_tail[-200:]!r}"
+        )
 
-    result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
-        capture_output=True,
-        text=True,
-        cwd=workspace,
-        env=env,
-        timeout=240,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
+            capture_output=True,
+            text=True,
+            cwd=workspace,
+            env=env,
+            timeout=240,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+        timeout_diagnostic = _live_timeout_diagnostic(exc.timeout, cli_log_tail)
+        if timeout_diagnostic is not None:
+            pytest.xfail(timeout_diagnostic)
+        raise
     output = result.stdout + result.stderr
     cli_log_tail = _read_cli_log_tail(_REAL_HOME)
 
@@ -449,6 +463,8 @@ def test_live_agy_pty_read_thread_sees_output(
     smoke harness). The per-suite 60s cap on ``test-live-agy`` is
     sized to accommodate this one direct PTY invocation.
     """
+    _xfail_if_live_agy_upstream_blocked()
+
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     ctx = AgentRunCtx(
         config=config,
@@ -553,6 +569,32 @@ _UPSTREAM_BLOCKED_PATTERNS: tuple[tuple[str, str], ...] = (
         "stream reading error: connection reset by peer",
     ),
 )
+
+
+def _live_timeout_diagnostic(timeout_seconds: float, cli_log_tail: str) -> str | None:
+    """Classify a bounded live timeout from its AGY CLI-log evidence."""
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is None:
+        return None
+    return (
+        f"Live AGY exceeded the {timeout_seconds:g}s observation bound while upstream "
+        f"authentication was unavailable: {upstream_reason}"
+    )
+
+
+def test_live_agy_timeout_regression_is_upstream_blocked_when_cli_log_records_auth() -> None:
+    """S-2: a bounded live timeout with AGY auth evidence is an upstream xfail."""
+
+    diagnostic = _live_timeout_diagnostic(
+        120,
+        "You are not logged into Antigravity. Print mode: triggering interactive OAuth",
+    )
+
+    assert diagnostic == (
+        "Live AGY exceeded the 120s observation bound while upstream authentication "
+        "was unavailable: AGY not logged into Antigravity (no OAuth credentials in test env)"
+    )
 
 
 def _detect_upstream_blocked_reason(cli_log_tail: str) -> str | None:
@@ -746,6 +788,8 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
     zero real MCP calls; only a live run driven under a forced secret can
     prove the real binary's dispatch route still reaches ``WIRE``.
     """
+    _xfail_if_live_agy_upstream_blocked()
+
     workspace = Path(tempfile.mkdtemp(prefix="agy-live-smoke-wire-"))
     prompt_file = workspace / "tmp" / "interactive-agy-smoke" / "PROMPT.md"
     _write_smoke_prompt(prompt_file)
@@ -798,6 +842,18 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
             f"Completion sentinel graded {demoted_rank}, not WIRE, even with the "
             f"secret forced -- declare_complete was not dispatched via a real "
             f"tools/call. cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+        )
+
+
+def _xfail_if_live_agy_upstream_blocked() -> None:
+    """Stop a live call before it can hang on documented upstream auth."""
+
+    cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            "Live AGY is upstream-blocked before invocation "
+            f"({upstream_reason}); cli.log tail: {cli_log_tail[-200:]!r}"
         )
 
 

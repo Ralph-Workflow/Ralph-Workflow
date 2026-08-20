@@ -22,7 +22,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -59,6 +58,9 @@ def _run_wire_round_trip_smoke(tmp_path: Path, *, timeout_seconds: int = 25) -> 
     mock_path = _mock_agy_path()
     assert mock_path.is_file(), f"Mock AGY script not found at {mock_path}"
     env = os.environ.copy()
+    # The isolated test HOME may inherit pipx's Python 3.13 environment.
+    # Run the project interpreter explicitly so the mock smoke exercises this checkout.
+    env.pop("PYTHONPATH", None)
     env["RALPH_AGY_BINARY"] = str(mock_path)
     env["MOCK_AGY_BEHAVIOR"] = "normal"
     env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)
@@ -69,7 +71,11 @@ def _run_wire_round_trip_smoke(tmp_path: Path, *, timeout_seconds: int = 25) -> 
     env.pop("MOCK_AGY_ARTIFACT_DIR_OVERRIDE", None)
     result = subprocess.run(
         [
-            sys.executable,
+            "uv",
+            "run",
+            "--project",
+            str(Path(__file__).resolve().parents[1]),
+            "python",
             "-m",
             "ralph",
             "smoke-interactive-agy",
@@ -108,6 +114,9 @@ def _run_fresh_agy_smoke(
     mock_path = _mock_agy_path()
     assert mock_path.is_file(), f"Mock AGY script not found at {mock_path}"
     env = os.environ.copy()
+    # The isolated test HOME may inherit pipx's Python 3.13 environment.
+    # Run the project interpreter explicitly so the mock smoke exercises this checkout.
+    env.pop("PYTHONPATH", None)
     env["RALPH_AGY_BINARY"] = str(mock_path)
     env["MOCK_AGY_BEHAVIOR"] = "normal"
     env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)
@@ -117,7 +126,11 @@ def _run_fresh_agy_smoke(
     env.pop("MOCK_AGY_ARTIFACT_DIR_OVERRIDE", None)
     result = subprocess.run(
         [
-            sys.executable,
+            "uv",
+            "run",
+            "--project",
+            str(Path(__file__).resolve().parents[1]),
+            "python",
             "-m",
             "ralph",
             "smoke-interactive-agy",
