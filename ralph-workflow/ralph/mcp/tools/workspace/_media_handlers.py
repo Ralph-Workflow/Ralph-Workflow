@@ -92,49 +92,6 @@ def _png_dimensions(raw_bytes: bytes) -> tuple[int | None, int | None]:
     return (width, height)
 
 
-def _build_image_metadata_envelope(
-    *,
-    path: str,
-    mime_type: str,
-    raw_bytes: bytes,
-    max_inline_bytes: int,
-) -> ToolResult:
-    """Build the ``format='metadata'`` envelope for ``handle_read_image``.
-
-    The envelope is bounded: it returns mime_type, size_bytes, sha256,
-    width, height (PNG only), and an ``inline_only`` flag. The image
-    bytes are dropped.
-
-    ``resource_handle`` is ``None`` on THIS builder's path because it
-    never persists an artifact. It is not ``None`` for every
-    ``read_image`` call: a delivery that degrades to a resource
-    reference (a handle-only provider, or a transport that cannot accept
-    an inline image) routes through ``_build_workspace_media_metadata``
-    instead, which does register a replayable handle.
-    """
-    width, height = _png_dimensions(raw_bytes)
-    envelope = finalize_envelope_bytes_out(
-        {
-            "format": "metadata",
-            "media_kind": "image",
-            "mime_type": mime_type,
-            "size_bytes": len(raw_bytes),
-            "sha256": hashlib.sha256(raw_bytes).hexdigest(),
-            "width": width,
-            "height": height,
-            "resource_handle": None,
-            "inline_only": True,
-            "bytes_in": len(raw_bytes),
-            "truncated": False,
-            "max_inline_bytes": max_inline_bytes,
-        }
-    )
-    return ToolResult(
-        content=[ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))],
-        is_error=False,
-    )
-
-
 def _build_media_metadata_envelope(
     *,
     path: str,

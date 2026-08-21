@@ -19,7 +19,11 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     summarize_retry_failure_evidence,
 )
 from ralph.config.enums import AgentTransport
-from ralph.mcp.multimodal.capabilities import resolve_capability_profile
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+    resolve_capability_profile,
+)
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike
@@ -400,6 +404,17 @@ def _reset_tool_registry_callback(bridge: object) -> Callable[[], object] | None
     return cast("Callable[[], object]", reset_tool_registry_obj)
 
 
+def _transport_tagged_identity(transport: AgentTransport | None) -> MultimodalModelIdentity:
+    """Return an unresolved identity carrying only the transport."""
+    if transport is None:
+        return UNKNOWN_IDENTITY
+    return MultimodalModelIdentity(
+        provider=UNKNOWN_IDENTITY.provider,
+        model_id=None,
+        transport=transport.value,
+    )
+
+
 def _resolve_session_plan(
     *,
     request: ManagedAgentSessionRequest,
@@ -415,7 +430,16 @@ def _resolve_session_plan(
         # NOT the identity: falling back to the dataclass defaults here
         # discarded the agent's transport and left the multimodal
         # delivery guards blind on this path.
-        identity = resolve_model_identity(agent_config.transport, agent_config.model_flag)
+        # Tag the transport only. Resolving the canonical provider here
+        # would flip pdf/document/audio/video for a flagless session from
+        # resource-reference to a hard UNSUPPORTED error -- a far wider
+        # behaviour change than this path intends, and one
+        # ``resolve_session_mcp_plan`` deliberately refuses to make.
+        identity = (
+            resolve_model_identity(agent_config.transport, agent_config.model_flag)
+            if agent_config.model_flag is not None
+            else _transport_tagged_identity(agent_config.transport)
+        )
         return SessionMcpPlan(
             capabilities=request.capabilities,
             server_env=request.server_env,

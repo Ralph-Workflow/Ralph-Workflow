@@ -42,6 +42,14 @@ def _get_session_capability_profile(session: object) -> ResolvedCapabilityProfil
     runtime path from the persisted session contract), falling back to
     computing one from the session's model identity.
     """
+    # Prefer the CALLER's profile. A delegated call (a vision subagent)
+    # carries its own identity, and the resource surface and the wire
+    # ledger both read the caller's -- so reading the session's here made
+    # the tools serve one identity's bytes while the audit trail recorded
+    # another's delivery mode.
+    caller: object = getattr(session, "caller_capability_profile", None)
+    if isinstance(caller, ResolvedCapabilityProfile):
+        return caller
     raw: object = getattr(session, "capability_profile", None)
     if isinstance(raw, ResolvedCapabilityProfile):
         return raw

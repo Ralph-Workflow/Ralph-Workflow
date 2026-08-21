@@ -290,6 +290,34 @@ def _setup_connectivity_monitor(
     return real_monitor, _stop_mon
 
 
+def compose_display_stop(
+    refresher_stop: Callable[[], None],
+    display: ParallelDisplay,
+) -> Callable[[], None]:
+    """Return a cleanup callable that also flushes the display's writers.
+
+    A serial run ends with neither ``drop_unit`` (parallel-only) nor
+    ``ParallelDisplay.stop()`` -- the cleanup step named "display stop"
+    invokes the width refresher's stop, which is what ``refresher_stop``
+    holds. Composing the display's own run-end flush onto it is what
+    makes buffered rendered entries and condensed bodies reach disk on
+    the primary run path; without it the condensation markers advertise
+    files that were never written.
+
+    The flush runs in a ``finally`` so a refresher failure cannot skip
+    it, and is suppressed so cleanup never raises.
+    """
+
+    def _stop_with_run_end_flush() -> None:
+        try:
+            refresher_stop()
+        finally:
+            with contextlib.suppress(Exception):
+                display.flush_run_end_writers()
+
+    return _stop_with_run_end_flush
+
+
 def _setup_active_display(
     display: ParallelDisplay | None,
     is_quiet: bool,
@@ -344,17 +372,7 @@ def _setup_active_display(
     # here. Compose the display's own run-end flush onto it so buffered
     # rendered entries and condensed bodies reach disk, instead of the
     # markers advertising files that were never written.
-    _refresher_stop = _stop
-
-    def _stop_with_run_end_flush() -> None:
-        try:
-            _refresher_stop()
-        finally:
-            if isinstance(active, ParallelDisplay):
-                with contextlib.suppress(Exception):
-                    active.flush_run_end_writers()
-
-    _stop = _stop_with_run_end_flush
+    _stop = compose_display_stop(_stop, active)
 
     # Return ``active._ctx`` so the caller holds the SAME Python object
     # the refresher mutates in place. This way, after a refresh tick

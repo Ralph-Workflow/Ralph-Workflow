@@ -17,7 +17,8 @@ major coding harness against Ralph's multimodal MCP endpoints:
   ``smoke-interactive-opencode``, ``smoke-interactive-codex``,
   ``smoke-interactive-pi``, ``smoke-interactive-kimi``), each with
   its redirect seam
-  recorded in S-13. The positive case runs on every transport; the
+  recorded in S-13. The positive case runs on every transport that can receive perceptible
+media delivery (see ``_WIRE_POSITIVE_TRANSPORT_IDS``); the
   ignore-response case runs on one transport per redirect method
   (see ``_IGNORE_RESPONSE_TRANSPORTS`` -- S-7 consolidation), with
   the grader-level causality pinned by

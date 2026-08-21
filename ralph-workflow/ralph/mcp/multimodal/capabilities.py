@@ -110,7 +110,7 @@ def transport_inline_image_roundtrip_unsafe(transport: str | None) -> bool:
     callers that hold a transport but no resolved identity yet (session
     construction, chain planning).
     """
-    return (transport or "").lower() in _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS
+    return (transport or "").strip().lower() in _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS
 
 
 def inline_image_roundtrip_unsafe(identity: MultimodalModelIdentity) -> bool:

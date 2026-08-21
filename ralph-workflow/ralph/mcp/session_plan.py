@@ -23,6 +23,7 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
     resolve_capability_profile,
+    transport_inline_image_roundtrip_unsafe,
 )
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain, drain_class_for_session
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
@@ -256,6 +257,31 @@ def effective_session_mcp_plan_from_servers(
     )
 
 
+def _reconcile_injected_transport(
+    identity: MultimodalModelIdentity,
+    transport: AgentTransport | None,
+) -> MultimodalModelIdentity:
+    """Reconcile a caller-supplied identity with the transport being launched.
+
+    Two facts can disagree here: the identity a caller injected (which
+    may carry a transport of its own, possibly stale) and the transport
+    this session is actually being built for. Delivery guards key on the
+    transport, so picking wrong in either direction is a live hazard --
+    and a caller that supplies both, like the bridge lifetime primitive,
+    would otherwise silently discard the transport the chain resolved.
+
+    The MORE RESTRICTED one wins. Degrading a capable agent to a resource
+    reference costs it an inline image; handing a restricted agent an
+    inline image kills its turn. Same rule the commit chain applies when
+    it cannot know which of its agents will run.
+    """
+    if transport is None or identity.transport == transport.value:
+        return identity
+    if identity.transport is None or transport_inline_image_roundtrip_unsafe(transport.value):
+        return replace(identity, transport=transport.value)
+    return identity
+
+
 def build_session_mcp_plan(
     *,
     transport: AgentTransport | None,
@@ -327,13 +353,7 @@ def build_session_mcp_plan(
 
     _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:
-        resolved_identity = _model_opts.model_identity
-        if resolved_identity.transport is None and transport is not None:
-            # The caller named a provider but not the CLI carrying it.
-            # Some delivery guards key on the transport, so an untagged
-            # injected identity would silently reopen paths the resolved
-            # ones close. An explicit transport is never overwritten.
-            resolved_identity = replace(resolved_identity, transport=transport.value)
+        resolved_identity = _reconcile_injected_transport(_model_opts.model_identity, transport)
     elif _model_opts.model_flag is not None:
         resolved_identity = resolve_model_identity(transport, _model_opts.model_flag)
     elif transport is not None:

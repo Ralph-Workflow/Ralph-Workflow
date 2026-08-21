@@ -11,6 +11,8 @@ import time
 import weakref
 from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
+from loguru import logger
+
 from ralph.config.agent_transport import AgentTransport
 from ralph.display._raw_log_break import RawLogBreak
 from ralph.display.record_writer import safe_id_for
@@ -71,6 +73,44 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 #: ``drop_unit`` / ``stop()`` reached interpreter finalization with
 #: the file handle still open, triggering a ``ResourceWarning`` on
 #: every affected test.
+#: Bytes already written to each raw-log path in THIS process, surviving
+#: the writer instance that wrote them.
+#:
+#: A writer is per-acquisition: ``drop_unit`` forgets a unit's log, the
+#: readers build one per agent invocation, and the weak registry evicts
+#: an instance once nothing holds it. Keying "have we opened this?" and
+#: "how much have we written?" to the instance therefore made attempt N
+#: truncate attempt N-1's transcript and reset the byte cap, so a run's
+#: capture held only its last invocation and the 50 MB ceiling could be
+#: exceeded arbitrarily by re-acquiring.
+#:
+#: The state belongs to the FILE for the lifetime of the run, and a run
+#: is a process, so it lives here. Guarded by its own lock because the
+#: instance locks are per-writer and two paths can be opened at once.
+_PATH_STATE_LOCK = threading.Lock()
+_PATH_STATE: dict[str, int] = {}  # bounded-accumulator-ok: one entry per unit log per process
+
+
+def _resume_path_state(key: str) -> tuple[bool, int]:
+    """Return ``(is_first_open, bytes_already_written)`` for ``key``."""
+    with _PATH_STATE_LOCK:
+        if key not in _PATH_STATE:
+            return True, 0
+        return False, _PATH_STATE[key]
+
+
+def _record_path_bytes(key: str, total: int) -> None:
+    """Record the running byte total for ``key``."""
+    with _PATH_STATE_LOCK:
+        _PATH_STATE[key] = total
+
+
+def reset_raw_overflow_path_state() -> None:
+    """Forget every path's write state. For tests that simulate a new run."""
+    with _PATH_STATE_LOCK:
+        _PATH_STATE.clear()
+
+
 _REGISTRY_LOCK = threading.Lock()
 _REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
     weakref.WeakValueDictionary()
@@ -202,7 +242,6 @@ def get_or_create_raw_overflow_log(
     *,
     model: str | None = None,
     condensed: bool = False,
-    append_existing: bool = False,
     max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
     flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
     now: Callable[[], float] = time.monotonic,
@@ -227,7 +266,6 @@ def get_or_create_raw_overflow_log(
             unit_id,
             model=model,
             condensed=condensed,
-            append_existing=append_existing,
             max_bytes=max_bytes,
             flush_interval_seconds=flush_interval_seconds,
             now=now,
@@ -360,12 +398,10 @@ def detect_raw_log_breaks(
         )
     if is_interactive_pty_transport(transport):
         return breaks
-    return breaks + _detect_non_jsonl_breaks(payload, transport)
+    return breaks + _detect_non_jsonl_breaks(payload)
 
 
-def _detect_non_jsonl_breaks(
-    payload: bytes, transport: AgentTransport | None = None
-) -> list[RawLogBreak]:
+def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
     """Return one ``NON_JSONL`` break per unparseable line.
 
     Splits the payload on NUL bytes first so a measured NUL-hole run
@@ -455,7 +491,6 @@ class RawOverflowLog:
         *,
         model: str | None = None,
         condensed: bool = False,
-        append_existing: bool = False,
         max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
         flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
         now: Callable[[], float] = time.monotonic,
@@ -467,19 +502,15 @@ class RawOverflowLog:
         # there) would orphan the rendered record's condensation
         # markers from the verbatim capture they point at.
         self.path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
-        self.is_condensed = condensed
         self._lock = threading.Lock()
-        # The first write truncates, so each RUN starts a clean capture.
-        # ``append_existing`` says the caller already owns this path in
-        # THIS run -- a worker re-spawned for a unit whose log was
-        # dropped -- so the second writer continues the file instead of
-        # erasing what the first one wrote. Keeping this a caller
-        # decision, rather than a process-global memo, means a genuinely
-        # new run in the same process still starts clean.
-        self._first_write = not append_existing
+        self._path_key = str(self.path)
+        first_open, already_written = _resume_path_state(self._path_key)
+        # The first write of a RUN truncates; a later writer for the same
+        # path continues it. See :data:`_PATH_STATE`.
+        self._first_write = first_open
         self._disabled = False
         self._max_bytes = max(max_bytes, 0)
-        self._bytes_written = 0
+        self._bytes_written = already_written
         self._flush_interval = max(flush_interval_seconds, 0.0)
         self._now = now
         self._fh: BinaryIO | None = None
@@ -521,6 +552,20 @@ class RawOverflowLog:
                 if self._bytes_written + len(encoded) > self._max_bytes:
                     self._close_locked()
                     self._disabled = True
+                    # Surfaced from the writer, not the display: the
+                    # display only owns the condensed log, so once the
+                    # verbatim capture moved out from under it the graded
+                    # transcript could hit the cap and stop recording
+                    # with no operator signal at all -- and the idle
+                    # watchdog's log-growth probe reads ``is_disabled``,
+                    # so it goes quiet at the same moment.
+                    logger.warning(
+                        "raw log {path} reached its {cap}-byte cap and is no longer "
+                        "being written; the remainder of this unit's output is not "
+                        "captured",
+                        path=self.path,
+                        cap=self._max_bytes,
+                    )
                     return False
                 if self._fh is None:
                     # filesystem-write-ok: bounded binary overflow stream directory creation
@@ -537,6 +582,7 @@ class RawOverflowLog:
                     return False
                 fh.write(encoded)
                 self._bytes_written += len(encoded)
+                _record_path_bytes(self._path_key, self._bytes_written)
                 if self._now() - self._last_flush >= self._flush_interval:
                     fh.flush()
                     self._last_flush = self._now()

@@ -423,7 +423,7 @@ The following format args are added by Phase 4. Each is opt-in: the default valu
 | `web_search` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "query_length", "result_count", "results": [{title, url, snippet (<=240 chars), snippet_budget_bytes}], "backend_chain_used", "bytes_in", "bytes_out"}` |
 | `visit_url` | `format='raw'\|'metadata'` | `'raw'` | `{"format": "metadata", "status", "title", "effective_url", "content_type", "byte_count", "head_preview" (<=480 chars), "bytes_in", "bytes_out", "truncated", optional links (<=10)}` (full text body dropped) |
 | `download_url` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", ..., "sha256" (16 hex chars), "head_preview" (<=240 bytes), "bytes_in", "truncated"}` (downloaded body NOT echoed inline) |
-| `read_image` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind": "image", "mime_type", "size_bytes", "sha256", "width", "height" (PNG only), "resource_handle" (always null for read_image), "inline_only": true, ...}` |
+| `read_image` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind": "image", "mime_type", "size_bytes", "sha256", "width", "height" (PNG only), "resource_handle" (null when the image was inline-deliverable; a `ralph://media/<artifact-id>` handle when delivery degraded to a resource reference), "inline_only", ...}` |
 | `read_media` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind", "mime_type", "size_bytes", "sha256", "resource_handle" (`ralph://media/<artifact-id>` when registered, else null), "inline_only", "title", "path", ...}` |
 
 Example payloads:

@@ -524,7 +524,6 @@ class ParallelDisplay:
         "_capability_recorder",
         "_clock",
         "_condensed_logs",
-        "_condensed_paths_written",
         "_ctx",
         "_drop_last_warned",
         "_emitted_empty_activity",
@@ -2552,12 +2551,6 @@ class ParallelDisplay:
         text read back as agent corruption (see ``CONDENSED_LOG_SUFFIX``).
         """
         self._condensed_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
-        # Paths this display has already written in THIS run. ``drop_unit``
-        # forgets a unit's log, so a re-spawned worker builds a fresh
-        # writer; without this the fresh writer would truncate and erase
-        # the earlier wave's bodies -- the only copy, now that they live
-        # apart from the verbatim capture.
-        self._condensed_paths_written: set[str] = set()  # bounded-accumulator-ok: one per unit log
 
     def _get_condensed_log(self, unit_id: str) -> RawOverflowLog:
         """Return the display-owned condensed log for ``unit_id``.
@@ -2571,15 +2564,12 @@ class ParallelDisplay:
         from ralph.display.raw_overflow import get_or_create_raw_overflow_log
 
         if unit_id not in self._condensed_logs:
-            path_key = str(raw_log_path_for(self._workspace_root, unit_id, condensed=True))
             self._condensed_logs[unit_id] = get_or_create_raw_overflow_log(
                 self._workspace_root,
                 unit_id,
                 condensed=True,
-                append_existing=path_key in self._condensed_paths_written,
                 max_bytes=_MAX_OVERFLOW_FILE_BYTES,
             )
-            self._condensed_paths_written.add(path_key)
         return self._condensed_logs[unit_id]
 
     def _result_preview_target(self, unit_id: str, metadata: dict[str, object]) -> tuple[str, str]:
@@ -5734,13 +5724,11 @@ class ParallelDisplay:
         ``ActivityRouter``. Safe to call for a unit that was never
         added; missing entries are silently skipped.
         """
-        # Warning slots are keyed by log path (a unit owns two logs), so
-        # clear both of this unit's keys rather than the unit id.
-        for log_path in (
-            raw_log_path_for(self._workspace_root, unit_id),
-            raw_log_path_for(self._workspace_root, unit_id, condensed=True),
-        ):
-            self._overflow_warned.discard(str(log_path))
+        # The warning slot is keyed by log path; the display owns exactly
+        # one log per unit.
+        self._overflow_warned.discard(
+            str(raw_log_path_for(self._workspace_root, unit_id, condensed=True))
+        )
         self._drop_last_warned.pop(unit_id, None)
         self._last_emitted_tool_signature.pop(unit_id, None)
         self._last_worker_states.pop(unit_id, None)

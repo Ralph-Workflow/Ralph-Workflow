@@ -519,25 +519,30 @@ def test_injected_identity_gets_the_transport_backfilled(tmp_path: Path) -> None
     assert inline_image_roundtrip_unsafe(plan.model_identity)
 
 
-def test_injected_identity_keeps_an_explicit_transport(tmp_path: Path) -> None:
-    """Backfill must never overwrite a transport the caller stated."""
+def test_injected_identity_keeps_a_capable_explicit_transport(tmp_path: Path) -> None:
+    """A stated transport survives when neither side is restricted.
+
+    Backfill and reconciliation exist to close a hazard, not to
+    second-guess a caller: with no restricted transport involved, the
+    identity the caller supplied is left exactly as given.
+    """
     from ralph.config.enums import AgentTransport
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
 
     plan = build_session_mcp_plan(
-        transport=AgentTransport.CODEX,
+        transport=AgentTransport.CLAUDE,
         drain="development",
         workspace_path=tmp_path,
         agents_policy=_minimal_agents_policy(),
         model_opts=SessionModelOpts(
             model_identity=MultimodalModelIdentity(
-                provider="claude", model_id="claude-opus-5", transport="claude"
+                provider="opencode", model_id="minimax", transport="opencode"
             )
         ),
     )
 
-    assert plan.model_identity.transport == "claude"
+    assert plan.model_identity.transport == "opencode"
 
 
 def test_prebuilt_capability_plan_keeps_the_agent_identity(tmp_path: Path) -> None:
@@ -664,3 +669,33 @@ def test_serialised_profile_does_not_carry_a_stale_inline_verdict() -> None:
     assert isinstance(verdicts, dict)
 
     assert verdicts[MODALITY_IMAGE]["delivery"] == DeliveryMode.RESOURCE_REFERENCE_REPLAY.value
+
+
+def test_a_restricted_launched_transport_overrides_an_injected_one(
+    tmp_path: Path,
+) -> None:
+    """When the two disagree, the restricted transport wins.
+
+    The bridge lifetime primitive passes BOTH an injected identity and
+    the transport the chain resolved. While a stated transport was always
+    kept, a stale injected tag silently discarded the chain's answer and
+    handed a restricted agent the inline image that kills its turn.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-5", transport="claude"
+            )
+        ),
+    )
+
+    assert plan.model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(plan.model_identity)

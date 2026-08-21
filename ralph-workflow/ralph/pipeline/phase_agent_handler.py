@@ -308,6 +308,12 @@ _TRANSPORT_FAILURE_DETAIL_MAX_CHARS: Final = 240
 #: That is the right trade: a missing cause makes an operator look at the
 #: transcript, while a cause borrowed from a different phase makes them
 #: chase a fault that phase never had.
+#:
+#: This orders SEQUENTIAL turns. It cannot separate CONCURRENT ones: the
+#: capture is keyed by ``(executable, model)``, so same-workspace
+#: parallel workers running the same agent interleave their frames in one
+#: file and no ordering heuristic can attribute a failure to a unit.
+#: Separating those would need a per-unit capture path.
 _TRANSPORT_RECOVERY_FRAME_TYPES: Final = frozenset({"turn.completed", "turn.started"})
 
 
@@ -323,10 +329,14 @@ def _terminal_transport_failure_message(obj: dict[str, object]) -> str | None:
     error: object = obj.get("error")
     if isinstance(error, dict):
         message = error.get("message")
-        return str(message) if message else "turn failed"
+        return str(message) if message else ""
     if isinstance(error, str) and error:
         return error
-    return "turn failed"
+    # A failure frame carrying no message. Returning the empty string
+    # says "a failure happened, with nothing to quote" -- synthesising
+    # words here would put them in quotation marks the caller attributes
+    # to the transcript.
+    return ""
 
 
 def _transport_failure_detail(
@@ -377,8 +387,11 @@ def _transport_failure_detail(
             message = None
             continue
         # Keep scanning: the LAST unrecovered failure frame is the one
-        # that ended the unit.
-        message = _terminal_transport_failure_message(parsed) or message
+        # that ended the unit. ``""`` is a real result (a failure with no
+        # message), so test for None rather than truthiness.
+        found = _terminal_transport_failure_message(parsed)
+        if found is not None:
+            message = found
     if message is None:
         return None
     # The message is agent-influenced text lifted out of the transcript
@@ -397,6 +410,13 @@ def _transport_failure_detail(
     # and put words in this line. Presenting the text as a quotation from
     # the transcript -- rather than as Ralph Workflow's own finding --
     # keeps the provenance honest.
+    return _format_transport_failure_detail(message)
+
+
+def _format_transport_failure_detail(message: str) -> str:
+    """Render the operator-facing detail for a failure frame's message."""
+    if not message:
+        return "agent turn failed at the transport (the frame carried no message)"
     quoted = f'"{message}"'
     return f"agent turn failed at the transport; transcript reports: {quoted}"
 

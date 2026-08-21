@@ -26,11 +26,15 @@ def test_append_writes_lines(tmp_path: Path) -> None:
     log.close()
 
 
-def test_first_write_truncates_previous_content(tmp_path: Path) -> None:
-    """A new run starts a clean capture."""
+def test_first_write_of_a_run_truncates_previous_content(tmp_path: Path) -> None:
+    """Each run starts a clean capture."""
+    from ralph.display.raw_overflow import reset_raw_overflow_path_state
+
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("run1 line")
     log1.close()
+
+    reset_raw_overflow_path_state()  # a new run
 
     log2 = RawOverflowLog(tmp_path, "unit-1")
     log2.append("run2 line")
@@ -42,23 +46,20 @@ def test_first_write_truncates_previous_content(tmp_path: Path) -> None:
     log2.close()
 
 
-def test_append_existing_continues_a_file_from_the_same_run(tmp_path: Path) -> None:
-    """A second writer for a path THIS run already owns must not truncate.
+def test_a_later_writer_in_one_run_continues_the_file(tmp_path: Path) -> None:
+    """Within a run, a second writer for a path must not erase the first.
 
-    ``drop_unit`` closes and forgets a unit's log, so a re-spawned worker
-    builds a fresh writer for the same path. Truncating there erased the
-    earlier wave -- and once the display's condensed bodies moved out of
-    the verbatim capture into their own file, that file became the only
-    copy of the bodies the rendered records still point at.
-
-    The caller decides, rather than a process-global memo, so a genuinely
-    new run in the same process still starts clean (the test above).
+    A writer is per-acquisition: ``drop_unit`` forgets a unit's log, the
+    readers build one per agent invocation, and the weak registry evicts
+    an instance once nothing holds it. Truncating on each acquisition
+    left a run's transcript holding only its last invocation, and erased
+    condensed bodies the rendered records still point at by path.
     """
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("wave1 line")
     log1.close()
 
-    log2 = RawOverflowLog(tmp_path, "unit-1", append_existing=True)
+    log2 = RawOverflowLog(tmp_path, "unit-1")
     log2.append("wave2 line")
     log2.flush()
 
@@ -66,6 +67,23 @@ def test_append_existing_continues_a_file_from_the_same_run(tmp_path: Path) -> N
     assert "wave1 line" in content, "the earlier wave was erased"
     assert "wave2 line" in content
     log2.close()
+
+
+def test_the_byte_cap_survives_a_new_writer(tmp_path: Path) -> None:
+    """The cap belongs to the FILE, not to whichever writer holds it.
+
+    Resetting the byte count on each acquisition let a run exceed the
+    ceiling arbitrarily by re-acquiring the log.
+    """
+    log1 = RawOverflowLog(tmp_path, "unit-1", max_bytes=40)
+    log1.append("x" * 30)
+    log1.close()
+
+    log2 = RawOverflowLog(tmp_path, "unit-1", max_bytes=40)
+
+    assert log2.size_bytes == 31
+    assert log2.append("y" * 30) is False
+    assert log2.is_disabled
 
 
 def test_unit_id_sanitization(tmp_path: Path) -> None:
@@ -221,12 +239,16 @@ def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
 
 
 def test_size_bytes_returns_zero_when_prior_run_file_exists(tmp_path: Path) -> None:
+    from ralph.display.raw_overflow import reset_raw_overflow_path_state
+
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("prior run content")
     log1.flush()
     prior_size = log1.path.stat().st_size
     assert prior_size > 0
     log1.close()
+
+    reset_raw_overflow_path_state()  # a new run
 
     log2 = RawOverflowLog(tmp_path, "unit-1")
     assert log2.size_bytes == 0
