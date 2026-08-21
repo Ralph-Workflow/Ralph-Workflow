@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS
-from ralph.agents.invoke._workspace import WorkspaceMonitor
+from ralph.agents.invoke._workspace import STOP_OBSERVER_BUDGET_SECONDS, WorkspaceMonitor
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
@@ -175,6 +175,7 @@ def test_the_shipped_probe_budget_is_finite_and_small() -> None:
     value a real launch is exposed to.
     """
     assert 0.0 < CAPACITY_PROBE_BUDGET_SECONDS <= 30.0
+    assert 0.0 < STOP_OBSERVER_BUDGET_SECONDS <= 30.0
 
 
 class _SlowWatchLock:
@@ -187,11 +188,12 @@ class _SlowWatchLock:
     that parks one parks the other.
     """
 
-    def __init__(self, *, stall: bool = True) -> None:
+    def __init__(self, *, stall: bool = True, holder: str | None = None) -> None:
         self.entered = threading.Event()
         self.finished = threading.Event()
         self.released = False
         self.stall = stall
+        self.holder = holder
 
     def try_acquire(self, workspace: Path) -> str | None:
         del workspace
@@ -199,7 +201,7 @@ class _SlowWatchLock:
         if self.stall:
             threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
         self.finished.set()
-        return None
+        return self.holder
 
     def claimed_owner_id(self, workspace: Path) -> str | None:
         del workspace
@@ -277,3 +279,154 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
 
     assert observer.entered.is_set(), "the watch start was never reached"
     assert lock.released, "the abandoned watch kept its cross-process claim"
+
+
+class _SlowStoppingObserver(_SlowObserver):
+    """An observer whose teardown will not finish.
+
+    ``observer.join(5)`` reads like the bound on a teardown, but the
+    unbounded half is ``stop()``: watchdog joins every emitter thread
+    there with no timeout. Teardown runs on the launch thread inside
+    ``start()`` -- unwinding a failed watch, or discarding a stale one
+    -- so an emitter that will not join is a launch that does not
+    happen.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stopping = threading.Event()
+        self.stopped = threading.Event()
+
+    def start(self) -> None:
+        self.entered.set()
+
+    def stop(self) -> None:
+        self.stopping.set()
+        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.stopped.set()
+
+
+def test_a_teardown_that_will_not_finish_does_not_park_the_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unwinding a failed watch may not cost more than the watch would."""
+    observer = _SlowStoppingObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.STOP_OBSERVER_BUDGET_SECONDS", _PROBE_BUDGET_SECONDS
+    )
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+        monitor.stop()
+        still_stopping = not observer.stopped.is_set()
+    finally:
+        release_workspace_awareness(tmp_path)
+
+    assert observer.stopping.is_set(), "the teardown was never reached"
+    assert still_stopping, "the caller waited for the whole teardown"
+
+
+class _SlowSidecar:
+    """A shared-awareness sidecar whose reads and writes take their time."""
+
+    def __init__(self) -> None:
+        self.polling = threading.Event()
+        self.polled = threading.Event()
+        self.writing = threading.Event()
+        self.written = threading.Event()
+
+    def poll(self) -> object:
+        self.polling.set()
+        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.polled.set()
+        return None
+
+    def begin_ownership(self, owner_id: str, *, prior_holder: str | None = None) -> None:
+        del owner_id, prior_holder
+        self.writing.set()
+        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.written.set()
+
+    def publish_changes(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    def release(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+
+def test_a_slow_ownership_write_does_not_park_the_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recording the claim is workspace I/O like taking it."""
+    sidecar = _SlowSidecar()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.shared_awareness_for_workspace", lambda _root: sidecar
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.CrossProcessWatchLock", _SlowWatchLock(stall=False)
+    )
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+        still_writing = not sidecar.written.is_set()
+        status = awareness_for_workspace(tmp_path).snapshot()
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+    assert sidecar.writing.is_set(), "the ownership write was never reached"
+    assert still_writing, "the launch waited for the whole ownership write"
+    assert status["mode"] == "live_fallback"
+
+
+def test_a_slow_owner_sidecar_read_does_not_park_the_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The consumer path reads the workspace too.
+
+    When another process already holds the watch lock, this one does not
+    watch: it polls the owner's sidecar instead. That poll is a read
+    under ``<workspace>/.agent/``, on the launch thread, in the same
+    pre-spawn window as everything else here.
+    """
+    sidecar = _SlowSidecar()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.shared_awareness_for_workspace", lambda _root: sidecar
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.CrossProcessWatchLock",
+        _SlowWatchLock(stall=False, holder="another-process"),
+    )
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+        still_polling = not sidecar.polled.is_set()
+        status = awareness_for_workspace(tmp_path).snapshot()
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+    assert sidecar.polling.is_set(), "the owner sidecar was never polled"
+    assert still_polling, "the launch waited for the whole sidecar read"
+    assert status["mode"] == "live_fallback"

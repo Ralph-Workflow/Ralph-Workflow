@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, ClassVar, Protocol, cast, runtime_checkable
 from loguru import logger
 
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
+from ralph.agents.invoke._awareness_status import current_status, live_fallback_status
 from ralph.agents.invoke._callback_arity import (
     TWO_ARG_ARITY,
     VALID_CALLBACK_ARITIES,
@@ -59,6 +60,11 @@ if TYPE_CHECKING:
 
         Observer: type[_ObserverProtocol]
 
+
+#: How long tearing a watch down may take before the caller stops
+#: waiting for it. Teardown runs on the launch thread inside ``start()``,
+#: so an emitter that will not join is a launch that does not happen.
+STOP_OBSERVER_BUDGET_SECONDS = 5.0
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
 
@@ -155,28 +161,6 @@ class _SharedWorkspaceWatch:
 def _shared_workspace_key(workspace: Path) -> str:
     """Return the lexical root key without probing a possibly absent workspace."""
     return str(workspace.absolute())
-
-
-def _current_status() -> dict[str, object]:
-    """Return the status for an active event observer."""
-    return {
-        "mode": "watch",
-        "freshness": "current",
-        "cause": None,
-        "automatic_recovery": False,
-        "safe_next_action": "None required.",
-    }
-
-
-def _live_fallback_status(cause: str) -> dict[str, object]:
-    """Return the bounded, explicit status used without a host observer."""
-    return {
-        "mode": "live_fallback",
-        "freshness": "live_fallback",
-        "cause": cause,
-        "automatic_recovery": True,
-        "safe_next_action": "Ralph will retry observation on the next workspace lease.",
-    }
 
 
 class WorkspaceMonitor:
@@ -312,7 +296,7 @@ class WorkspaceMonitor:
         self._shared_consumer = False
         self._prior_lock_holder: str | None = None
         self._shared_awareness_io_error: SharedAwarenessError | None = None
-        self._awareness_status: dict[str, object] = _live_fallback_status("unavailable")
+        self._awareness_status: dict[str, object] = live_fallback_status("unavailable")
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes.
@@ -357,10 +341,14 @@ class WorkspaceMonitor:
                 msg = "prepared workspace watch lost its lifecycle-owned observer"
                 raise RuntimeError(msg)
             # The canonical recursive watch: ONE schedule call, on the
-            # lifecycle-owned observer, statically here. Scheduling is
-            # cheap on both backends -- what can take unbounded time is
-            # the observer START below, where watchdog's inotify emitter
-            # builds the whole watch tree inline.
+            # lifecycle-owned observer, statically here, because
+            # ``audit_fsevents_watch_consolidation`` requires exactly
+            # that shape. It is the one step in this method left
+            # unbounded: the fsevents emitter resolves the workspace
+            # path here (``realpath``), so a mount hung on the ROOT
+            # itself can still park it. Everything reachable past a
+            # readable root -- the tree walk in the observer START
+            # below, the lock, the sidecar -- is bounded.
             scheduled = True
             try:
                 self._observer.schedule(handler, str(self._workspace), recursive=True)
@@ -388,7 +376,7 @@ class WorkspaceMonitor:
         self._shared_key = key
         self._handler = shared.handler
         self._started = True
-        self._awareness_status = _current_status()
+        self._awareness_status = current_status()
         awareness_for_workspace(self._workspace).set_watch_active()
         return True
 
@@ -404,7 +392,7 @@ class WorkspaceMonitor:
 
     def _activate_live_fallback(self, reason: str) -> None:
         """Record a visible live-read fallback for this workspace."""
-        self._awareness_status = _live_fallback_status(reason)
+        self._awareness_status = live_fallback_status(reason)
         awareness_for_workspace(self._workspace).set_live_fallback(reason)
 
     def _prepare_new_shared_watch(self, key: str) -> bool:
@@ -511,7 +499,7 @@ class WorkspaceMonitor:
         self._shared_watches[key] = shared
         self._shared_key = key
         self._started = True
-        self._awareness_status = _current_status()
+        self._awareness_status = current_status()
         awareness_for_workspace(self._workspace).set_watch_active()
 
     def record_event(self, src_path: str) -> None:
@@ -677,10 +665,46 @@ class WorkspaceMonitor:
 
     @classmethod
     def _stop_observer(cls, observer: _ObserverProtocol) -> None:
+        """Tear a watch down without letting the teardown park the caller.
+
+        ``observer.join(5)`` reads like the bound here, but the
+        unbounded half is ``stop()``: watchdog's ``BaseObserver.stop``
+        runs ``on_thread_stop`` -> ``unschedule_all`` ->
+        ``_clear_emitters``, which joins every emitter thread with NO
+        timeout (and on Linux ``InotifyBuffer.close`` joins again). This
+        is reached from ``start()`` -- tearing down a stale shared watch,
+        or unwinding a failed one -- on the launch thread, holding the
+        class-wide lock, in the window before the agent process exists.
+        A wedged emitter parks every workspace's monitor, not just this
+        one's.
+        """
+        failed: list[tuple[type[BaseException], str]] = []
+
+        def _stop() -> bool:
+            try:
+                observer.stop()
+            except BaseException as exc:
+                # Only the type and the message cross back: see below.
+                failed.append((type(exc), str(exc)))
+                return False
+            return True
+
         try:
-            observer.stop()
+            call_within_budget(_stop, fallback=None, budget_seconds=STOP_OBSERVER_BUDGET_SECONDS)
         finally:
             observer.join(5)
+        if failed:
+            # A FRESH exception, never the captured one. Holding the
+            # original keeps its traceback, the traceback keeps the
+            # frames that were live when the teardown blew up, and one
+            # of those frames holds the monitor. Leases are held weakly,
+            # so a monitor that outlives refcounting until the next
+            # cyclic collection leaves a live-looking lease behind and
+            # the next monitor for that workspace attaches to a watch
+            # that should have been gone. The type and the message are
+            # what callers act on.
+            kind, message = failed[0]
+            raise kind(message)
 
     def _abort_start_on_oserror(self, exc: OSError, observer: _ObserverProtocol) -> None:
         """Clean up after an OSError during observer start.
@@ -697,12 +721,12 @@ class WorkspaceMonitor:
         self._handler = None
         self._release_cross_process_watch_lock()
         if exc.errno in (errno.EMFILE, errno.ENOSPC):
-            self._awareness_status = _live_fallback_status("watch_capacity")
+            self._awareness_status = live_fallback_status("watch_capacity")
             awareness_for_workspace(self._workspace).set_live_fallback("watch_capacity")
             logger.warning("Workspace monitoring unavailable: inotify limit reached")
             return
         if exc.errno is None:
-            self._awareness_status = _live_fallback_status("observer_start_failed")
+            self._awareness_status = live_fallback_status("observer_start_failed")
             awareness_for_workspace(self._workspace).set_live_fallback("observer_start_failed")
             logger.opt(exception=True).warning(
                 "Workspace watch registration failed; falling back to live reads"
@@ -785,11 +809,17 @@ class WorkspaceMonitor:
                 ownership_error.append(exc)
             return True
 
-        call_within_budget(
+        answered_ownership = call_within_budget(
             _begin_ownership, fallback=None, budget_seconds=self._probe_budget_seconds
         )
         if ownership_error:
             self._shared_awareness_io_error = ownership_error[0]
+        if answered_ownership is None:
+            # The sidecar write never answered. Recording ownership of a
+            # claim that was never published is the same error the two
+            # calls above refuse to make.
+            self._activate_live_fallback("watch_lock_io_timed_out")
+            return False
         self._owns_shared_awareness = True
         return True
 

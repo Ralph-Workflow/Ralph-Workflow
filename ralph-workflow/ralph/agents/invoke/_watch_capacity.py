@@ -112,13 +112,18 @@ CAPACITY_PROBE_BUDGET_SECONDS = 10.0
 def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
     """Run ``probe``, returning ``fallback`` if it does not answer in time.
 
-    What the abandoned call leaves behind depends on what it was. A
-    capacity probe is a read-only walk holding no lock, and costs an
-    idle thread. A watch start that lands after its budget leaves a LIVE
-    observer -- an inotify tree and an emitter thread this process no
-    longer tracks; see ``_workspace.WorkspaceMonitor._abandon_slow_watch_start``
-    for what that means. Both are paid in preference to blocking the
-    run, which is what the caller is here to avoid.
+    What the abandoned call leaves behind depends on what it was, and
+    every one of these is paid in preference to blocking the run:
+
+    * a capacity probe is a read-only walk holding no lock, and costs
+      an idle thread;
+    * a watch start that lands late leaves a LIVE observer -- an
+      inotify tree and an emitter thread this process no longer tracks
+      (see ``_workspace.WorkspaceMonitor._abandon_slow_watch_start``);
+    * a watch-lock claim that lands late holds that lock for the life
+      of the process, so no other process may watch that workspace;
+    * a sidecar read or write that lands late holds the sidecar's own
+      lock for as long as it runs.
     """
     answer: list[T] = []
 
