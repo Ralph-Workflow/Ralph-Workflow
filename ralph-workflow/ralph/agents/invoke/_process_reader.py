@@ -139,8 +139,29 @@ def _effective_broken_agent_grace_seconds(watchdog: IdleWatchdog) -> float:
     return max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, configured - 3.0)
 
 
+def _effective_exit_settle_seconds(watchdog: IdleWatchdog) -> float:
+    """Return the settle window for this invocation.
+
+    Read from the live policy, the same way
+    :func:`_effective_broken_agent_grace_seconds` reads the startup
+    grace. An operator who widens ``drain_window_seconds`` is saying
+    this host needs longer for a reader to deliver output a process has
+    already written -- which is precisely the question this window asks,
+    so a bare constant ignored the one knob that answers it.
+
+    Floored at the default so no configuration removes the window, and
+    capped at the broken-agent grace: past that the slow path fires
+    anyway, so a larger value would only disable the fast one.
+    """
+    configured = watchdog.drain_window_seconds
+    return min(
+        max(BROKEN_AGENT_EXIT_SETTLE_SECONDS, configured),
+        BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+    )
+
+
 def _exit_evidence_has_settled(watchdog: IdleWatchdog) -> bool:
-    """True once an exited process's remaining output must have arrived.
+    """True once an exited process's remaining output should have arrived.
 
     "Dead" and "produced nothing" are read at one instant, but they are
     not true at the same instant: the process is dead as soon as
@@ -150,12 +171,16 @@ def _exit_evidence_has_settled(watchdog: IdleWatchdog) -> bool:
     output and exited promptly -- the shard run diagnosed "no meaningful
     LLM output; check credentials" against ``echo``.
 
-    The reader has an idle poll of its own and re-checks the queue
-    before returning here, so this window costs a genuinely broken agent
-    ``BROKEN_AGENT_EXIT_SETTLE_SECONDS`` of failover and nothing else.
+    SHOULD, not must. This bounds the race; it cannot close it. A reader
+    starved past the window still produces the false verdict, and the
+    only honest remedy for a host that starves readers that long is to
+    widen ``drain_window_seconds``, which this reads. What it does buy
+    is that the reader's own idle poll fits inside the window, so the
+    ordinary case -- a line sitting in the queue while the exit is
+    sampled -- is no longer a diagnosis.
     """
     settled_for = watchdog.seconds_since_process_exit
-    return settled_for is not None and settled_for >= BROKEN_AGENT_EXIT_SETTLE_SECONDS
+    return settled_for is not None and settled_for >= _effective_exit_settle_seconds(watchdog)
 
 
 def check_broken_agent_timer(
@@ -167,13 +192,17 @@ def check_broken_agent_timer(
     """Fail over promptly when a silent agent exits, or after a live-startup grace window."""
     grace_seconds = _effective_broken_agent_grace_seconds(watchdog)
     elapsed_seconds = watchdog.invocation_elapsed_seconds
+    liveness_observed = True
     try:
         process_alive = handle.poll() is None
     except Exception:
         # Liveness is circumstantial evidence: an unavailable probe must not
         # manufacture a clean-exit diagnosis, so preserve the live grace path.
+        # It is not evidence the process came BACK either, which is why the
+        # reading is flagged unobserved rather than passed off as a live one.
         process_alive = True
-    watchdog.record_process_liveness(process_alive)
+        liveness_observed = False
+    watchdog.record_process_liveness(process_alive, observed=liveness_observed)
     evidence = watchdog.circumstantial_evidence()
     if (
         elapsed_seconds > 0.0
@@ -958,6 +987,52 @@ class ProcessLineReader:
                 self._raw_overflow.append(line)
         return pending_lines
 
+    def _teardown_read_lines(
+        self,
+        watchdog: IdleWatchdog,
+        sink_token: Token[Callable[[str], None] | None],
+        subagent_token: Token[Callable[[str], None] | None],
+    ) -> None:
+        """Release everything ``read_lines`` acquired, in reverse order."""
+        # BEFORE the capture is closed and AFTER the reader thread is
+        # joined: the reader may append while the loop is breaking out,
+        # so draining any earlier would leave exactly the lines this
+        # exists to save.
+        self._capture_abandoned_lines()
+        watchdog.record_invocation_end()
+        reset_active_sink(sink_token)
+        reset_subagent_sink(subagent_token)
+        if self._monitor is not None:
+            self._monitor.set_on_event(None)
+        self._raw_overflow.close()
+        self._unsubscribe()
+
+    def _capture_abandoned_lines(self) -> None:
+        """Write queued lines the read loop stopped short of.
+
+        The loop can leave the queue un-drained: terminal completion
+        evidence breaks out of it, and the reader-done branch breaks
+        after a drain window the reader thread can still append behind.
+        Those lines are agent output like any other, and losing whole
+        lines leaves the file PARSEABLE -- so the corruption detector
+        reports nothing and the loss is silent, which is the same
+        failure mode the eviction sink and ``_capture_pending`` were
+        written to close. Each covers one exit; neither covers
+        abandonment.
+
+        Capture only, never yielded: the parser stream stopped
+        deliberately, and re-opening it here would deliver a frame after
+        the completion that ended the turn. The verbatim record has no
+        such constraint -- it is supposed to hold everything the agent
+        wrote.
+        """
+        with self._lines_lock:
+            pending = list(self._lines_queue)
+            self._lines_queue.clear()
+        for line in pending:
+            with contextlib.suppress(Exception):
+                self._raw_overflow.append(line)
+
     def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
         """Classify a line and route it to the matching watchdog activity sink.
 
@@ -1160,13 +1235,7 @@ class ProcessLineReader:
 
             reader.join(timeout=10)
         finally:
-            watchdog.record_invocation_end()
-            reset_active_sink(sink_token)
-            reset_subagent_sink(subagent_token)
-            if self._monitor is not None:
-                self._monitor.set_on_event(None)
-            self._raw_overflow.close()
-            self._unsubscribe()
+            self._teardown_read_lines(watchdog, sink_token, subagent_token)
 
 
 def _run_subprocess_and_read_lines(

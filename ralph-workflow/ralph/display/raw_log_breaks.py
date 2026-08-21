@@ -5,9 +5,18 @@ capture. This module owns READING one back and deciding whether it is
 damaged -- the verdict a phase reports as "raw transcript corrupted".
 
 The two halves share only a file path, and keeping them in one module
-had pushed it past the repo's size limit. The seam is also the honest
-one: everything here is a pure function of bytes, and every guard in it
-exists because a real capture was misgraded.
+had pushed it past the repo's size limit. Every guard here exists
+because a real capture was misgraded.
+
+The verdict is a function of the bytes AND the transport: an
+interactive-PTY capture is human-visible output rather than JSONL, so
+non-JSON lines are not graded for it at all. That is a deliberate
+exemption and not an aside -- it means the SAME bytes grade clean or
+corrupt depending on which CLI wrote them, so a capture file two agents
+share is a capture whose verdict is decided by whichever of them closed
+the phase. Keeping one file per invocation is what makes the exemption
+safe (see ``raw_overflow._invocation_signature``), and it is why that
+key is over-inclusive rather than clever.
 """
 
 from __future__ import annotations

@@ -75,12 +75,21 @@ _COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
-#: An epoch second needs ten digits today and eleven until the year
-#: 5138, so a longer run is not a timestamp -- it is this line's
-#: timestamp with another line's digits welded onto it. That was the
-#: whole residue of the delimiter grammar: a torn write whose surviving
-#: remainder is all digits extends the field instead of breaking it.
-_MAX_TIMESTAMP_DIGITS = 12
+#: An epoch second is TEN digits, and stays ten until 2286-11-20. A
+#: longer run is not a timestamp -- it is this line's timestamp with
+#: another line's digits welded onto it. That weld was the whole residue
+#: of the delimiter grammar: a torn write whose surviving remainder is
+#: all digits extends the field instead of breaking it.
+#:
+#: Ten, not the twelve a previous round chose while arguing for ten. The
+#: slack was the entire residue: at twelve a two-digit weld is graded
+#: clean, at ten there is none, measured at every cut point by
+#: ``test_a_torn_write_is_graded_at_every_cut``. The emitter's own
+#: timestamp is asserted to fit this bound
+#: (``test_the_emitters_timestamp_fits_the_graders_bound``), so a move to
+#: milliseconds fails there rather than turning every completion line
+#: into a corruption report.
+_MAX_TIMESTAMP_DIGITS = 10
 
 #: The TAIL: the summary's closing delimiter, then ``timestamp=<int>``
 #: and the end of the line. ``coordination.py`` interpolates

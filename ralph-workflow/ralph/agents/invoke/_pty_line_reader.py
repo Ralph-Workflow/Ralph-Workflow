@@ -1503,6 +1503,31 @@ class PtyLineReader:
         else:
             watchdog.record_activity()
 
+    def _capture_abandoned_lines(self) -> None:
+        """Write queued lines the read loop stopped short of.
+
+        The done path breaks out after a bounded drain window, and the
+        reader thread can append behind it. Those lines are agent output
+        like any other, and losing whole lines leaves the file
+        PARSEABLE -- so the corruption detector reports nothing and the
+        loss is silent, the same failure mode the eviction sink and
+        ``_capture_pending`` were written to close. Each covers one
+        exit; neither covers abandonment.
+
+        Capture only, never yielded: the parser stream stopped
+        deliberately. The verbatim record is supposed to hold everything
+        the agent wrote.
+        """
+        overflow = self._raw_overflow
+        if overflow is None:
+            return
+        with self._lines_lock:
+            pending = list(self._lines_queue)
+            self._lines_queue.clear()
+        for line in pending:
+            with contextlib.suppress(Exception):
+                overflow.append(line)
+
     def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
         drain_deadline = (
             self._clock.monotonic() + self._policy.drain_window_seconds
@@ -1773,4 +1798,7 @@ class PtyLineReader:
         # covers the rare setup-throws-mid-init case where the log was
         # never constructed.
         if self._raw_overflow is not None:
+            # AFTER ``_cleanup`` joins the reader threads, so a line
+            # appended while the loop was breaking out is still saved.
+            self._capture_abandoned_lines()
             self._raw_overflow.close()

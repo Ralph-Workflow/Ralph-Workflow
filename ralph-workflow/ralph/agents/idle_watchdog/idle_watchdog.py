@@ -807,6 +807,17 @@ class IdleWatchdog:
         return self._clock.monotonic() - self._invocation_started_at
 
     @property
+    def drain_window_seconds(self) -> float:
+        """Configured window for output still in flight after a stop.
+
+        Read live, like :attr:`no_output_at_start_seconds`: an operator
+        who widens the drain window is saying this host needs longer for
+        a reader to deliver what a process already wrote, and every rule
+        that waits on in-flight output has to hear that.
+        """
+        return self._config.drain_window_seconds
+
+    @property
     def seconds_since_process_exit(self) -> float | None:
         """Seconds since the process was first observed dead, or ``None``.
 
@@ -841,7 +852,7 @@ class IdleWatchdog:
             elapsed_seconds=self.invocation_elapsed_seconds,
         )
 
-    def record_process_liveness(self, is_alive: bool) -> None:
+    def record_process_liveness(self, is_alive: bool, *, observed: bool = True) -> None:
         """Record the current liveness of the agent process for the next snapshot.
 
         The FIRST observation of a dead process is stamped, so a caller
@@ -850,8 +861,18 @@ class IdleWatchdog:
         reader thread has been scheduled, so the two facts a
         just-exited-with-no-output verdict rests on are not observable at
         the same instant.
+
+        ``observed=False`` says the probe did not answer. The caller
+        still passes the SAFE liveness (alive), because an unavailable
+        probe must not manufacture a clean-exit diagnosis -- but a probe
+        that failed is not evidence the process came back, and treating
+        it as such discarded the whole accumulated settle window on
+        every intermittent failure. Before the window existed a failed
+        probe cost one tick; it must not now cost more.
         """
         self._process_alive = is_alive
+        if not observed:
+            return
         if is_alive:
             self._process_exit_observed_at = None
         elif self._process_exit_observed_at is None:

@@ -1820,6 +1820,10 @@ def _populate_per_invocation_state(
     watchdog.record_tool_call_activity("Bash", {"command": "ls"})
     watchdog.record_error_activity("oops")
     watchdog.record_tool_result_activity()
+    # Stamps ``_process_exit_observed_at``. A field the populate helper
+    # never dirties is a field this test cannot speak about: the map
+    # entry alone passes against a reset that does not clear it.
+    watchdog.record_process_liveness(is_alive=False)
     # Drive a fire path so ``_last_alive_by`` and ``_last_fire_reason``
     # get populated, then advance past the no_output_at_start threshold
     # so the fire path naturally populates ``_last_alive_by``.
@@ -1881,6 +1885,10 @@ def _per_invocation_fields() -> dict[str, object]:
         "_in_drain_window": False,
         "_drain_started_at": None,
         "_classify_quiet_provider": None,
+        # The previous run's exit is not this run's: a stale stamp
+        # reads as an exit that settled long ago, and the broken-agent
+        # verdict then condemns the new invocation on its first poll.
+        "_process_exit_observed_at": None,
     }
 
 

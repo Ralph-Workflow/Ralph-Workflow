@@ -30,7 +30,7 @@ from ralph.display.raw_log_breaks import (
     iter_capture_lines,
     nul_separated_chunks,
 )
-from ralph.display.record_writer import safe_id_for, safe_id_is_lossless
+from ralph.display.record_writer import safe_id_for
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -192,73 +192,54 @@ def reset_raw_overflow_path_state() -> None:
 _DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
 
 
-def _disambiguated(unit_id: str, model: str | None) -> str:
-    """Append a digest when the filename sanitiser would fold this identity.
-
-    ``safe_id_for`` builds the filename from ``unit_id`` and ``model``,
-    folding everything that is not alphanumeric, ``.`` or ``-`` into a
-    single ``_`` and stripping ``_`` from the edges. So ``codex/a@b``,
-    ``codex/a_b`` and ``codex/a:b`` all became ``codex_a_b.log`` --
-    three agents writing one capture, each grading the others' bytes and
-    quoting their transport failures.
-
-    The test for "would this fold" comes FROM the sanitiser
-    (:func:`safe_id_is_lossless`). Restating it as a second character
-    class here is what let the defect survive a fifth time: that class
-    counted ``_`` as safe, while the sanitiser collapses and strips it,
-    so ``codex/gpt5`` and ``codex/_gpt5`` were judged distinct and
-    landed in one file. It also called every non-ASCII letter unsafe and
-    appended a digest to identities that never needed one.
-
-    Applied at EVERY branch, not just the last one. Adding it only where
-    the model-flag fallback runs left the headless-Claude and ``ccs``
-    branches folding exactly as before, which is how this defect has
-    survived four rounds of being "closed": each fix covered the family
-    in front of it. The digest is taken over the raw pair, before any
-    folding, and is added ONLY when folding would actually occur -- so
-    an identity made of safe characters keeps the filename an operator
-    already knows.
-    """
-    # ``_`` in the UNIT ID is lossy for a second reason: ``safe_id_for``
-    # joins the two halves with it, so ``ccs-a_b`` with no model and
-    # ``ccs-a`` with model ``b`` both read ``ccs-a_b``. With no ``_`` in
-    # the unit id the first one is unambiguously the join.
-    if (
-        safe_id_is_lossless(unit_id)
-        and "_" not in unit_id
-        and (model is None or safe_id_is_lossless(model))
-    ):
-        return unit_id
-    return f"{unit_id}-{_digest_of(f'{unit_id}\x00{model or ""}')}"
+def _signature_token(raw: object) -> str:
+    """Render one config field as a stable signature token."""
+    enum_value = cast("object", getattr(raw, "value", None))
+    if isinstance(enum_value, str):
+        return enum_value
+    if isinstance(raw, str):
+        return raw
+    if raw is None:
+        return ""
+    return repr(raw)
 
 
 def _invocation_signature(config: AgentConfig, model: str | None) -> str:
     """Return everything that distinguishes one agent's invocation.
 
-    The WHOLE invocation, not the parts the readable identity happens to
-    use. Keying on those parts closed this defect family by family for
-    six rounds and never closed the class:
+    EVERY field of the config, read from the model itself, not a list of
+    the ones a reader thought mattered. Keying on a chosen subset closed
+    this defect family by family for seven rounds and never closed the
+    class -- the last round named the whole invocation in its commit
+    message and then digested four fields, so two ``[agents.X]`` entries
+    differing only in ``yolo_flag`` still shared one capture. That is
+    the shipped shape: ``ralph-workflow-agents.toml`` puts
+    ``--dangerously-skip-permissions`` in ``yolo_flag``, not in ``cmd``,
+    so the round that claimed to close "two entries differing only in a
+    cmd flag" closed the form that does not ship and left the form that
+    does. ``output_flag``, ``print_flag``, ``streaming_flag``,
+    ``session_flag`` and ``verbose_flag`` all reach argv the same way.
 
-    * ``[ccs_aliases]`` in its STRING form leaves ``model_flag`` unset,
-      so ``ccs/claude`` and the builtin ``claude-headless`` differed
-      only in their ``cmd`` text and shared a file.
-    * ``ccs/nano`` and the builtin ``nanocoder`` differ only in
-      TRANSPORT -- and the corruption grader exempts interactive-PTY
-      transports, so the same bytes graded clean or corrupt depending on
-      which agent closed the phase.
-    * Two ``[agents.X]`` entries differing only in a cmd flag
-      (``--permission-mode plan`` vs ``--dangerously-skip-permissions``)
-      shared a file, because only the executable was ever read.
+    Enumerating fields is what keeps failing, so nothing is enumerated:
+    ``AgentConfig`` is frozen and carries only static configuration --
+    no session id, no timestamp, nothing that varies between runs of one
+    agent -- so digesting all of it can only separate agents that differ
+    somewhere, and two configs equal in every field ARE one invocation.
+    A field added later is covered the day it is added.
 
-    Two agents that are genuinely the same invocation still share one
-    capture, which is correct: there is nothing to tell apart.
+    ``model`` is passed separately because the capture path is keyed on
+    the resolved model, which a dynamic alias may set after the config
+    is built.
+
+    Each part carries its field NAME, which is what makes the encoding
+    injective: a value containing another field's ``name=`` literal adds
+    an occurrence of it, so no two different configs render the same
+    string. The ``\x00`` separator is belt-and-braces on top of that.
     """
-    raw_transport = cast("object", getattr(config, "transport", None))
-    raw_value = cast("object", getattr(raw_transport, "value", None))
-    transport = raw_value if isinstance(raw_value, str) else ""
-    raw_flag = cast("object", getattr(config, "model_flag", None))
-    flag = raw_flag if isinstance(raw_flag, str) else ""
-    return "\x00".join((config.cmd, flag, model or "", transport))
+    fields = sorted(type(config).model_fields)
+    parts = [f"{name}={_signature_token(cast('object', getattr(config, name, None)))}" for name in fields]
+    parts.append(f"resolved_model={model or ''}")
+    return "\x00".join(parts)
 
 
 def _digest_of(raw: str) -> str:
@@ -353,9 +334,14 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # ``claude-headless`` beside them, wrote ``claude-headless.log``:
     # four agents, one capture, each grading the others' bytes.
     #
-    # "Applied at EVERY branch" was written about ``_disambiguated``,
-    # which was true -- and about the wrong function. What separates
-    # agents that set only ``model_flag`` is the flag.
+    # The digest below is applied at EVERY branch and UNCONDITIONALLY.
+    # An earlier version added it only where the filename sanitiser
+    # would fold the identity; that test lived in ``_disambiguated``,
+    # which the unconditional digest made dead code and which is now
+    # deleted. Its rule survives here, more cheaply: a digest over the
+    # whole invocation separates identities the sanitiser folds and
+    # identities it does not, without a second function deciding which
+    # is which.
     flag_model = _model_from_flag(config, model)
 
     signature = _invocation_signature(config, model)

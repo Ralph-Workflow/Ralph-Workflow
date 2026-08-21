@@ -138,6 +138,12 @@ def record_invocation_start(self: IdleWatchdog) -> None:
       * ``_last_activity`` -- baseline for the stdout activity line
       * ``_invocation_started_at`` -- invocation timestamp
       * ``_last_meaningful_output_at`` / ``_has_meaningful_output``
+      * ``_process_alive`` / ``_process_exit_observed_at`` -- the
+        previous run's EXIT is not this run's. Left standing, the
+        stale stamp reads as an exit that settled long ago and the
+        broken-agent verdict condemns the new invocation on its
+        very first poll -- exactly the race the settle window exists
+        to prevent, restored in full
       * ``_waiting_on_child_started_at`` /
         ``_cumulative_waiting_on_child_seconds`` --
         WAITING_ON_CHILD is per-invocation; the cumulative counter
@@ -206,6 +212,7 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._observed_output_bytes = 0
     self._captured_session_id = None
     self._process_alive = True
+    self._process_exit_observed_at = None
     self._waiting_on_child_started_at = None
     self._cumulative_waiting_on_child_seconds = 0.0
     self._in_drain_window = False

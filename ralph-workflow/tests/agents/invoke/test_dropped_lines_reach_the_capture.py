@@ -16,6 +16,7 @@ passes just as happily when neither reader is connected to it.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,6 +51,42 @@ def _captured_lines(workspace: Path, reader_config: AgentConfig) -> list[str]:
     if not path.exists():
         return []
     return path.read_text(encoding="utf-8").splitlines()
+
+
+def test_a_line_queued_as_the_loop_exits_still_reaches_the_capture(
+    tmp_path: Path,
+) -> None:
+    """Terminal completion breaks the loop; the queue may not be empty.
+
+    The reader thread appends independently of the loop, so a line can
+    arrive between the emptiness check and the break. The eviction sink
+    covers queue OVERFLOW and ``_capture_pending`` covers a watchdog
+    FIRE; neither covers abandonment, and the abandoned line vanished
+    from the verbatim record with the file still parseable -- so the
+    corruption detector reported nothing.
+
+    The completion callback is the deterministic stand-in for that
+    append: it is consulted at exactly the moment the loop is breaking
+    out, which is the window the reader thread races.
+    """
+    reset_raw_overflow_path_state()
+    ctx = _make_subprocess_ctx(workspace_path=tmp_path)
+    reader: ProcessLineReader | None = None
+
+    def terminal_and_append() -> bool:
+        assert reader is not None
+        reader._lines_queue.append("late-frame")
+        return True
+
+    ctx = replace(ctx, completion_is_terminal=terminal_and_append)
+    reader = ProcessLineReader(_FakeManagedProcess(), ctx, FakeClock(start=0.0))
+
+    yielded = list(reader.read_lines())
+
+    captured = _captured_lines(tmp_path, ctx.config)
+    assert "late-frame" in captured, captured
+    # The parser stream stopped deliberately; only the record continues.
+    assert "late-frame" not in yielded
 
 
 def test_a_process_reader_burst_loses_no_line(tmp_path: Path) -> None:
