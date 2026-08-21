@@ -207,3 +207,58 @@ def test_the_standalone_seam_canonicalises_like_the_others() -> None:
     assert standalone_session_identity("  Codex  ").transport == "codex"
     assert standalone_session_identity("codex").transport == "codex"
     assert standalone_session_identity("   ").transport is None
+
+
+def test_every_seam_that_writes_a_transport_spelling_agrees() -> None:
+    """Four seams write one; three normalised differently.
+
+    The same operator input produced ``'codex'``, ``'CODEX'`` and
+    ``'  codex  '`` depending on which path ran, and the wire-ledger
+    capability digest differed with it -- two digests for one run. Every
+    matcher strips and lowercases, so this is an audit-trail defect
+    rather than a guard failure, which is exactly why nothing caught it.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        identity_on_transport,
+    )
+    from ralph.mcp.server.runtime import standalone_session_identity
+    from ralph.mcp.server.runtime_session import payload_transport
+
+    for raw in ("codex", "CODEX", "  codex  ", "\tCodex\n"):
+        seams = {
+            "payload": payload_transport(raw),
+            "standalone": standalone_session_identity(raw).transport,
+            "rebased": identity_on_transport(
+                MultimodalModelIdentity(provider="openai", model_id="m", transport=raw), None
+            ).transport,
+        }
+        assert set(seams.values()) == {"codex"}, (raw, seams)
+
+    # And a value that is not a transport reads as absent at every seam.
+    for blank in ("", "   ", "\t\n"):
+        assert payload_transport(blank) is None
+        assert standalone_session_identity(blank).transport is None
+
+
+def test_a_blank_transport_is_not_serialised_as_known() -> None:
+    """``transport=""`` must not reach the child payload or the digest.
+
+    ``identity_is_serialisable`` tests ``is not None``, so an empty
+    string read as "known to be nothing" and was written out; only the
+    reader's own normalisation dropped it again. Unknown means ``None``
+    at every seam.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        identity_on_transport,
+    )
+    from ralph.mcp.server.lifecycle import identity_is_serialisable
+
+    for blank in ("", "  "):
+        rebased = identity_on_transport(
+            MultimodalModelIdentity(provider="unknown", model_id=None, transport=blank), None
+        )
+
+        assert rebased.transport is None
+        assert identity_is_serialisable(rebased) is False

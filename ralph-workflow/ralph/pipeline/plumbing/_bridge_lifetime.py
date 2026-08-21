@@ -34,6 +34,7 @@ def with_bridge_lifetime(
     agents_policy: AgentsPolicy | None = None,
     run_id: str | None = None,
     transport: AgentTransport | None = None,
+    drop_injected_identity: bool = False,
 ) -> Iterator[SessionBridgeLike]:
     """Own bridge startup/shutdown for a single plumbing chain or smoke run.
 
@@ -46,14 +47,23 @@ def with_bridge_lifetime(
     delivery decisions on the CLI rather than on the provider. Omitting
     it leaves those guards blind for the whole session, so callers that
     know their agent MUST pass it.
+
+    ``drop_injected_identity`` withholds ``pipeline_core.model_identity``
+    from the session. A caller serving a chain whose agents name
+    DIFFERENT CLIs has no honest provider for it, and passing one anyway
+    resolved the first agent's capabilities for every agent in the chain
+    -- minting typed blocks for whichever one actually ran. The session
+    then resolves as unresolved, which degrades delivery to resource
+    references every candidate can accept.
     """
+    effective_identity = None if drop_injected_identity else pipeline_core.model_identity
     if run_id is None:
         bridge = bridge_factory(
             workspace_root=repo_root,
             drain=drain,
             agents_policy=agents_policy,
             session_id_prefix=session_id_prefix,
-            model_identity=pipeline_core.model_identity,
+            model_identity=effective_identity,
             transport=transport,
         )
     else:
@@ -63,7 +73,7 @@ def with_bridge_lifetime(
             agents_policy=agents_policy,
             session_id_prefix=session_id_prefix,
             run_id=run_id,
-            model_identity=pipeline_core.model_identity,
+            model_identity=effective_identity,
             transport=transport,
         )
     try:

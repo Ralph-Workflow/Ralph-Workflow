@@ -14,6 +14,8 @@ survived a targeted 4887-test sweep.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from ralph.config.enums import AgentTransport
 from ralph.pipeline.fan_out import phase_session_identity
 
@@ -110,3 +112,57 @@ def test_ambiguity_is_computed_from_the_candidates() -> None:
     # and treating it as such would drop the tag the guards need.
     assert session_transport_is_ambiguous(["claude", "codex"]) is False
     assert select_session_transport(["claude", "codex"]) == "codex"
+
+
+def test_the_commit_chain_uses_the_same_ambiguity_rule() -> None:
+    """One rule, two call sites -- and only one had been fixed.
+
+    ``commit_chain_transport`` answers ``None`` both when nothing is
+    known and when the chain's agents DISAGREE, exactly as the fan-out
+    resolver did. The commit session then kept its injected model
+    identity verbatim, so a chain of ``claude`` then ``opencode``
+    resolved CLAUDE's capabilities for whichever agent actually ran and
+    minted typed blocks it cannot carry.
+    """
+    from ralph.pipeline.plumbing.commit_plumbing import (
+        commit_chain_is_ambiguous,
+        commit_chain_transport,
+    )
+
+    class _Registry:
+        def __init__(self, transports: dict[str, AgentTransport]) -> None:
+            self._transports = transports
+
+        def get(self, name: str) -> object:
+            transport = self._transports.get(name)
+            if transport is None:
+                return None
+            return SimpleNamespace(transport=transport)
+
+    def chain(*names: str) -> object:
+        registry = _Registry(
+            {
+                "claude": AgentTransport.CLAUDE,
+                "opencode": AgentTransport.OPENCODE,
+                "codex": AgentTransport.CODEX,
+            }
+        )
+        return SimpleNamespace(agents=list(names), registry=registry)
+
+    mixed = chain("claude", "opencode")
+    assert commit_chain_transport(mixed) is None
+    assert commit_chain_is_ambiguous(mixed) is True
+
+    # A homogeneous chain has an honest answer; a restricted candidate
+    # RESOLVES the chain rather than making it ambiguous.
+    same = chain("claude", "claude")
+    assert commit_chain_transport(same) is AgentTransport.CLAUDE
+    assert commit_chain_is_ambiguous(same) is False
+
+    restricted = chain("claude", "codex")
+    assert commit_chain_transport(restricted) is AgentTransport.CODEX
+    assert commit_chain_is_ambiguous(restricted) is False
+
+    empty = chain()
+    assert commit_chain_transport(empty) is None
+    assert commit_chain_is_ambiguous(empty) is False

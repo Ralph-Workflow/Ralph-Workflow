@@ -77,6 +77,7 @@ from ralph.mcp.artifacts.commit_message import (
 )
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
+    session_transport_is_ambiguous,
     transport_inline_image_roundtrip_unsafe,
 )
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
@@ -326,6 +327,9 @@ def run_commit_plumbing(
         session_id_prefix="commit",
         agents_policy=chain_config.agents_policy,
         transport=commit_chain_transport(chain_config),
+        # A chain whose agents disagree has no honest provider, so the
+        # injected identity must not supply one for the whole chain.
+        drop_injected_identity=commit_chain_is_ambiguous(chain_config),
     ) as bridge:
         extra_env = _commit_bridge_env(bridge)
         # Normalize the key set so downstream consumers (and tests)
@@ -1302,11 +1306,7 @@ def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | 
     A homogeneous chain uses its own transport; a mixed
     chain of unrestricted agents stays untagged.
     """
-    transports: list[AgentTransport] = []
-    for agent_name in chain_config.agents:
-        cfg = chain_config.registry.get(agent_name)
-        if cfg is not None and cfg.transport is not None:
-            transports.append(cfg.transport)
+    transports = _commit_chain_transports(chain_config)
     if not transports:
         return None
     for transport in transports:
@@ -1314,6 +1314,36 @@ def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | 
             return transport
     first = transports[0]
     return first if all(t is first for t in transports) else None
+
+
+def _commit_chain_transports(chain_config: CommitChainConfig) -> list[AgentTransport]:
+    """Return the transport of each resolvable agent in the chain, in order."""
+    transports: list[AgentTransport] = []
+    for agent_name in chain_config.agents:
+        cfg = chain_config.registry.get(agent_name)
+        if cfg is not None and cfg.transport is not None:
+            transports.append(cfg.transport)
+    return transports
+
+
+def commit_chain_is_ambiguous(chain_config: CommitChainConfig) -> bool:
+    """True when the chain's agents name different CLIs and none is restricted.
+
+    :func:`commit_chain_transport` answers ``None`` both when there is
+    nothing to go on and when the candidates DISAGREE, and the commit
+    session keeps its injected model identity verbatim in that case --
+    so a chain of ``claude`` then ``opencode`` resolved CLAUDE's
+    capabilities for the whole chain and minted ``PdfContent`` /
+    ``DocumentContent`` for whichever agent actually ran.
+
+    The same conflation was fixed for the fan-out phase session (see
+    ``ralph.mcp.multimodal.capabilities.session_transport_is_ambiguous``,
+    which this delegates to) and left in place here -- one rule, two
+    call sites, one of them still guessing.
+    """
+    return session_transport_is_ambiguous(
+        [transport.value for transport in _commit_chain_transports(chain_config)]
+    )
 
 
 def _start_commit_bridge(

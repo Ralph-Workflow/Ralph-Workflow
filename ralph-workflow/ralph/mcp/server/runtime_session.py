@@ -56,10 +56,20 @@ def payload_transport(raw: object) -> str | None:
     one made ``"transport": ""`` outrank an operator's
     ``--agent-transport`` declaration and left the guards blind, so the
     field is normalised at the single point every reader goes through.
+
+    Lowercased as well as stripped, so every seam that writes a transport
+    spelling agrees. Four of them do -- this one, the declared-transport
+    field below, ``standalone_session_identity`` and
+    ``identity_on_transport`` -- and three normalised differently, so the
+    same operator input produced ``'codex'``, ``'CODEX'`` and
+    ``'  codex  '`` depending on which path ran, and two different
+    wire-ledger capability digests for one run. Every matcher strips and
+    lowercases, so this changes no guard; it makes the audit trail agree
+    with itself.
     """
     if not isinstance(raw, str):
         return None
-    return raw.strip() or None
+    return raw.strip().lower() or None
 
 
 class FileBackedSession:
@@ -87,7 +97,7 @@ class FileBackedSession:
         # Normalised: an empty string is no declaration, and storing it
         # verbatim would make the identity look transport-bearing and
         # write ``"transport": ""`` into every downstream payload.
-        self._declared_agent_transport = (declared_agent_transport or "").strip() or None
+        self._declared_agent_transport = (declared_agent_transport or "").strip().lower() or None
         self._path = path
         self._loader = loader or _load_session_payload
         self._session_id_factory = session_id_factory or (
@@ -619,7 +629,7 @@ def session_from_env(
         model_identity = MultimodalModelIdentity(
             provider=UNKNOWN_IDENTITY.provider,
             model_id=None,
-            transport=declared_agent_transport,
+            transport=payload_transport(declared_agent_transport),
         )
     raw_profile = payload.get("capability_profile")
     stored_profile = profile_from_payload(raw_profile) if isinstance(raw_profile, dict) else None

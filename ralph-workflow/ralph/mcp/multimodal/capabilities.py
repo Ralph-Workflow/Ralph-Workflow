@@ -175,6 +175,14 @@ def identity_on_transport(
     stated = (identity.transport or "").strip().lower()
     launched = (transport or "").strip().lower()
     if not stated and not launched:
+        if identity.transport is not None:
+            # A BLANK transport is not an unknown one. Left untouched it
+            # kept ``transport=""``, which ``identity_is_serialisable``
+            # reads as known -- so ``"transport": ""`` was written into
+            # the child payload and the capability digest, and only the
+            # reader's normalisation dropped it again. Unknown means
+            # ``None`` at every seam.
+            return replace(identity, transport=None)
         # Neither side knows the CLI. Returned UNTOUCHED, as documented:
         # canonicalising here rewrote a ``None`` transport to ``""``,
         # which reads as "known to be nothing" and flips
