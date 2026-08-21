@@ -394,8 +394,18 @@ def carries_upstream_media_blocks(content: object) -> bool:
     what stops the two drifting -- the same lesson as every other
     "two questions, one function" defect in this area.
     """
-    if not isinstance(content, (list, tuple)):
+    if content is None:
+        # No content key at all: nothing to serve, nothing to refuse.
         return False
+    if not isinstance(content, (list, tuple)):
+        # A ``content`` that is not a block SEQUENCE is non-conforming,
+        # and ``_get_content_list`` leaves it untouched for exactly that
+        # reason -- so it reaches the agent un-normalised. Refusing it
+        # here is what fail-closed means: ``{"content": {"type":
+        # "image", "data": ...}}`` crossed the boundary with its base64
+        # intact, by both the registry route and the text-smuggling
+        # route this guard was written for.
+        return True
     for block in cast("Sequence[object]", content):
         if not isinstance(block, Mapping):
             # A block whose shape the contract rejects is not something

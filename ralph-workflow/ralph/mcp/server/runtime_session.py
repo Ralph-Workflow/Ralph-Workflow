@@ -27,6 +27,7 @@ from ralph.mcp.multimodal.capabilities import (
     ResolvedCapabilityProfile,
     caller_identity_for,
     caller_profile_for,
+    identity_on_transport,
     profile_from_payload,
     resolve_capability_profile,
     transport_inline_image_roundtrip_unsafe,
@@ -97,10 +98,22 @@ def reconcile_declared_transport(declared: str | None, persisted: object) -> str
     """
     stated = payload_transport(persisted)
     declared_clean = payload_transport(declared)
+    # 1. Either side restricted wins, whichever it is: degrading a
+    #    capable CLI costs a resource reference, handing a restricted
+    #    one an inline image kills its turn.
     for candidate in (declared_clean, stated):
         if candidate is not None and transport_inline_image_roundtrip_unsafe(candidate):
             return candidate
-    return stated or declared_clean
+    # 2. Otherwise the DECLARATION names the process an operator started
+    #    this server for. Returning the payload's value here let a stale
+    #    or hand-written file naming another CLI stand -- a declared
+    #    ``claude`` session inheriting ``agy`` and minting an
+    #    AudioContent the claude CLI cannot take. The payload's provider
+    #    does not travel with it: the caller re-bases through
+    #    ``identity_on_transport``, which drops a provider that
+    #    described a different CLI.
+    # 3. With no declaration, the payload stands -- it is all there is.
+    return declared_clean or stated
 
 
 class FileBackedSession:
@@ -423,12 +436,21 @@ class FileBackedSession:
             )
         provider = str(raw.get("provider", "unknown"))
         model_id = raw.get("model_id")
-        return MultimodalModelIdentity(
+        stated = MultimodalModelIdentity(
             provider=provider,
             model_id=str(model_id) if model_id is not None else None,
-            transport=reconcile_declared_transport(
-                self._declared_agent_transport, raw.get("transport")
-            ),
+            transport=payload_transport(raw.get("transport")),
+        )
+        # Through ``identity_on_transport``, NOT by pairing the payload's
+        # provider with whichever transport won. That provider described
+        # the CLI the payload named; carrying it onto a different one is
+        # the thing that function exists to prevent, and skipping it let
+        # a stale ``{"provider": "gemini", "transport": "agy"}`` payload
+        # mint an AudioContent for a declared ``claude`` session -- a
+        # modality Ralph's own matrix says that CLI cannot take.
+        return identity_on_transport(
+            stated,
+            reconcile_declared_transport(self._declared_agent_transport, raw.get("transport")),
         )
 
     @property
@@ -647,19 +669,20 @@ def session_from_env(
     )
     raw_identity = payload.get("model_identity")
     if isinstance(raw_identity, dict):
-        raw_identity = {
-            **raw_identity,
-            "transport": reconcile_declared_transport(
-                declared_agent_transport, raw_identity.get("transport")
-            ),
-        }
-    if isinstance(raw_identity, dict):
         provider = str(raw_identity.get("provider", "unknown"))
         model_id_raw = raw_identity.get("model_id")
-        model_identity = MultimodalModelIdentity(
-            provider=provider,
-            model_id=str(model_id_raw) if model_id_raw is not None else None,
-            transport=payload_transport(raw_identity.get("transport")),
+        # Re-based exactly as the file-backed twin is: the payload's
+        # provider described the CLI the payload named, so it must not
+        # ride along onto a different one.
+        model_identity = identity_on_transport(
+            MultimodalModelIdentity(
+                provider=provider,
+                model_id=str(model_id_raw) if model_id_raw is not None else None,
+                transport=payload_transport(raw_identity.get("transport")),
+            ),
+            reconcile_declared_transport(
+                declared_agent_transport, raw_identity.get("transport")
+            ),
         )
     else:
         model_identity = MultimodalModelIdentity(

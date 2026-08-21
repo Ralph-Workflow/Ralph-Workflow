@@ -137,9 +137,16 @@ def test_a_text_block_that_decodes_to_media_is_not_served_as_a_payload() -> None
     for media_type in ("image", "audio", "video", "pdf", "document"):
         assert carries_upstream_media_blocks([{"type": media_type}]) is True, media_type
 
-    # Shapes that are not a block sequence at all must not raise, and
-    # are not something to refuse -- there is nothing there to serve.
+    # A missing ``content`` is nothing to serve and nothing to refuse.
     assert carries_upstream_media_blocks(None) is False
-    assert carries_upstream_media_blocks("not a list") is False
+
+    # A ``content`` that is not a block SEQUENCE is non-conforming, and
+    # the normaliser leaves it untouched for that reason -- so it
+    # reaches the agent with its bytes intact. This test previously
+    # asserted the opposite ("there is nothing there to serve"), which
+    # is how ``{"content": {"type": "image", "data": ...}}`` crossed the
+    # boundary un-normalised while the guard was called fail-closed.
+    assert carries_upstream_media_blocks({"type": "image", "data": _B64}) is True
+    assert carries_upstream_media_blocks("not a list") is True
     # A tuple is a block sequence: the server serialises one like a list.
     assert carries_upstream_media_blocks((dict(_IMAGE_BLOCK),)) is True

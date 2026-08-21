@@ -936,3 +936,51 @@ def test_the_child_payload_records_the_verdicts_the_runtime_acts_on(
     assert profile["verdicts"][MODALITY_IMAGE]["delivery"] == (
         DeliveryMode.RESOURCE_REFERENCE_REPLAY.value
     )
+
+
+def test_a_stale_payload_provider_does_not_ride_onto_another_cli(tmp_path: Path) -> None:
+    """A payload's provider described the CLI the PAYLOAD named.
+
+    When the resolved transport is not the one the payload stated, that
+    provider is stale and must be dropped -- which is exactly what
+    ``identity_on_transport`` is for. The session skipped it and paired
+    the payload's provider with whichever transport won, so a declared
+    ``claude`` server reading a stale ``{"provider": "gemini",
+    "transport": "agy"}`` file resolved GEMINI's capabilities and minted
+    an AudioContent, a modality Ralph's own matrix says the claude CLI
+    cannot take.
+    """
+    import json
+
+    from ralph.mcp.server.runtime_session import FileBackedSession
+
+    def identity_for(declared: str | None, stated: dict[str, str] | None) -> object:
+        payload: dict[str, object] = {"session_id": "s", "run_id": "r", "drain": "development"}
+        if stated is not None:
+            payload["model_identity"] = stated
+        session = FileBackedSession(
+            tmp_path / "session.json",
+            loader=lambda _path: json.loads(json.dumps(payload)),
+            declared_agent_transport=declared,
+        )
+        return session.model_identity
+
+    stale_gemini = {"provider": "gemini", "model_id": "g", "transport": "agy"}
+    rebased = identity_for("claude", stale_gemini)
+
+    assert rebased.transport == "claude", "the declaration names the process actually running"
+    assert rebased.provider == "unknown", "a provider for another CLI must not travel"
+
+    # A restricted side still wins outright, and drops the provider too.
+    restricted = identity_for("codex", {"provider": "claude", "model_id": "c", "transport": "claude"})
+    assert restricted.transport == "codex"
+    assert restricted.provider == "unknown"
+
+    # Agreement keeps everything: nothing is stale here.
+    agreeing = identity_for("claude", {"provider": "claude", "model_id": "c", "transport": "claude"})
+    assert agreeing.provider == "claude"
+    assert agreeing.model_id == "c"
+
+    # With no declaration the payload stands -- it is all there is.
+    payload_only = identity_for(None, {"provider": "claude", "model_id": "c", "transport": "claude"})
+    assert payload_only.provider == "claude"

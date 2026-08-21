@@ -443,3 +443,48 @@ def test_the_capability_profile_beside_the_identity_is_canonicalised_too() -> No
         digests.add(json.dumps(payload["capability_profile"], sort_keys=True))
 
     assert len(digests) == 1, "one run must produce one capability digest"
+
+
+def test_a_padded_provider_cannot_change_what_an_agent_is_served() -> None:
+    """The NINTH field, beside eight transport seams already fixed.
+
+    ``get_delivery_mode`` lowercases the provider when it matches the
+    capability matrix but does not strip it, so ``' claude '`` missed
+    every entry and fell through to unknown-provider delivery. One
+    padded character in a persisted payload changed what the agent was
+    served -- conservatively, but silently -- and produced a different
+    wire-ledger digest for the same run.
+
+    Canonicalising in ``MultimodalModelIdentity`` itself is what makes
+    the seams belt-and-braces: an identity cannot be constructed
+    carrying a spelling its own matcher will not recognise.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        get_delivery_mode,
+    )
+
+    canonical = get_delivery_mode(MultimodalModelIdentity(provider="claude"), "audio")
+    for spelling in (" claude ", "CLAUDE", "\tClaude\n"):
+        identity = MultimodalModelIdentity(provider=spelling)
+
+        assert identity.provider == "claude", spelling
+        assert get_delivery_mode(identity, "audio").delivery is canonical.delivery, spelling
+
+
+def test_a_blank_provider_is_unknown_not_a_resolved_one() -> None:
+    """``is_known()`` gates the identity-unknown degradation warning.
+
+    An exact ``!= "unknown"`` test read ``{"provider": ""}`` and
+    ``{"provider": "Unknown"}`` as RESOLVED providers, suppressing the
+    warning that tells an operator delivery is running on defaults.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+
+    for blank in ("", "   ", "Unknown", "unknown"):
+        identity = MultimodalModelIdentity(provider=blank)
+
+        assert identity.provider == "unknown", blank
+        assert identity.is_known() is False, blank
+
+    assert MultimodalModelIdentity(provider="claude").is_known() is True
