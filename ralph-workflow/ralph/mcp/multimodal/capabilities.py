@@ -9,6 +9,7 @@ from this module rather than re-declaring provider knowledge elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ralph.mcp.multimodal._capability_verdict import CapabilityVerdict
@@ -17,7 +18,7 @@ from ralph.mcp.multimodal._multimodal_model_identity import MultimodalModelIdent
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 # Typed-block support per provider and modality.
 # Maps (provider, modality) -> block_type string for TYPED_BLOCK delivery.
@@ -225,11 +226,18 @@ _DELIVERY_DEMAND: dict[DeliveryMode, int] = {
 def delivery_demand(delivery: DeliveryMode) -> int:
     """Return how much ``delivery`` asks of the receiving CLI.
 
-    The public reading of :data:`_DELIVERY_DEMAND`. Every rule that
-    combines two answers about one artifact -- the fixed-provider bound,
-    the stored-verdict correction -- takes the LESSER of the two by this
-    order, so it is the ordering the guards are stated in and the one a
-    test has to be able to name.
+    THE reading of :data:`_DELIVERY_DEMAND`, used by the guards
+    themselves and not only by the tests that describe them. Added as a
+    test-facing accessor while production kept indexing the private dict
+    directly, it made the sweep that swept every provider and transport
+    vacuous: stubbing it to ``return 0`` turned the comparison into
+    ``0 > 0`` and the test could no longer fail, while every guard went
+    on working. An accessor nothing production calls does not describe
+    production.
+
+    Every rule that combines two answers about one artifact -- the
+    CLI bound, the stored-verdict correction -- takes the LESSER of the
+    two by this order.
     """
     return _DELIVERY_DEMAND[delivery]
 
@@ -401,12 +409,70 @@ def session_transport_is_ambiguous(transports: Sequence[str]) -> bool:
 #: this dict rather than restating it: the two answer the same question
 #: -- one resolves an identity, the other decides what that identity may
 #: be DELIVERED -- and a "mirrors X" comment is not a mechanism.
-TRANSPORT_FIXED_PROVIDER: dict[str, str] = {
-    "claude": "claude",
-    "claude_interactive": "claude",
-    "codex": "openai",
-    "agy": "gemini",
-}
+TRANSPORT_FIXED_PROVIDER: Mapping[str, str] = MappingProxyType(
+    {
+        "claude": "claude",
+        "claude_interactive": "claude",
+        "codex": "openai",
+        "agy": "gemini",
+    }
+)
+
+#: The CLIs that resolve a real VENDOR from the model they are given,
+#: and are therefore bounded by that vendor and by nothing else.
+#:
+#: Exactly one today. ``opencode`` reads a catalog and answers
+#: ``(anthropic, opencode)`` for ``--model anthropic/...``, so the API
+#: the block must survive is anthropic's and a CLI-shaped bound would
+#: withhold delivery the target accepts.
+#:
+#: This is an ASSUMPTION, not a measurement, and it is the only
+#: unmeasured one left in this file: nothing in this repo records what
+#: the opencode CLI does with a typed block, unlike the codex bound
+#: above, which carries a dated wire capture. It is stated here so the
+#: next person can measure it rather than inherit it as settled.
+VENDOR_ROUTING_TRANSPORTS: frozenset[str] = frozenset({"opencode"})
+
+
+def cli_bound_provider(transport: str | None) -> str | None:
+    """Return the provider whose acceptance bounds delivery through a CLI.
+
+    Three answers, and the DEFAULT is the conservative one:
+
+    * A fixed-provider CLI is bounded by its vendor. It calls one
+      vendor's API whatever ``--model`` says, so a foreign model flag
+      changes the model and not the request format the block must
+      survive.
+    * A vendor-routing CLI is bounded by nothing here: it reaches the
+      API its model names, which ``_delivery_for_provider`` has already
+      answered for.
+    * EVERYTHING ELSE is bounded by an unresolved provider. Ralph has no
+      vendor for ``nanocoder``, ``pi``, ``cursor``, ``kimi`` or
+      ``generic`` -- ``resolve_model_identity`` answers them with the
+      transport's own name -- so it has no basis for promising typed
+      delivery through them and says so instead of guessing.
+
+    That default costs nothing Ralph resolves for itself: none of those
+    transports' provider slugs appears in ``_TYPED_BLOCK_SUPPORT``, so
+    the two answers agree and the verdict stands. What it closes is the
+    provider a PAYLOAD names -- a hand-written or stale
+    ``model_identity`` claiming ``gemini`` on a ``kimi`` session, which
+    minted an AudioContent through a CLI Ralph knows nothing about. It
+    also makes an unrecognised transport safe by default, so adding one
+    is no longer a way to leave the guard behind.
+
+    ``generic`` matters most: ``multimodal_status`` declares that
+    transport as carrying NO MCP at all, and it was still handed typed
+    blocks.
+    """
+    if transport is None:
+        return None
+    fixed = TRANSPORT_FIXED_PROVIDER.get(transport)
+    if fixed is not None:
+        return fixed
+    if transport in VENDOR_ROUTING_TRANSPORTS:
+        return None
+    return UNKNOWN_IDENTITY.provider
 
 
 def get_delivery_mode(
@@ -444,11 +510,11 @@ def get_delivery_mode(
     surface available without false typed-delivery promises).
     """
     verdict = _delivery_for_provider(identity, modality)
-    canonical = TRANSPORT_FIXED_PROVIDER.get(identity.transport or "")
+    canonical = cli_bound_provider(identity.transport)
     if canonical is None or canonical == identity.provider:
         return verdict
     through_the_cli = _delivery_for_provider(replace(identity, provider=canonical), modality)
-    if _DELIVERY_DEMAND[through_the_cli.delivery] >= _DELIVERY_DEMAND[verdict.delivery]:
+    if delivery_demand(through_the_cli.delivery) >= delivery_demand(verdict.delivery):
         return verdict
     # Resolved as an UNRESOLVED provider, not as the CLI's own verdict.
     # That is what this pairing actually is -- Ralph cannot confirm what
@@ -624,7 +690,7 @@ class ResolvedCapabilityProfile:
             return get_delivery_mode(self.identity, modality)
         stored = self.verdicts[modality]
         fresh = get_delivery_mode(self.identity, modality)
-        if _DELIVERY_DEMAND[stored.delivery] > _DELIVERY_DEMAND[fresh.delivery]:
+        if delivery_demand(stored.delivery) > delivery_demand(fresh.delivery):
             return fresh
         if stored.delivery is not fresh.delivery and _PERCEPTIBLE_DELIVERIES.issuperset(
             {stored.delivery, fresh.delivery}
@@ -653,13 +719,15 @@ class ResolvedCapabilityProfile:
         and the wire-ledger capability digest, an audit trail that
         disagrees with what the runtime actually did.
 
-        The transport is canonicalised on the way out for the same
-        reason. ``session_payload_json`` canonicalises the identity it
-        writes, but this profile is written BESIDE it in the same JSON
-        object and copied its spelling verbatim -- and the wire-ledger
-        digest is taken over this payload, so one run still produced a
-        different digest per spelling. Seven seams normalised; this was
-        the eighth, hiding in the same object as the seventh.
+        The transport is canonicalised on the way out too. That is now
+        BELT-AND-BRACES rather than the guarantee: since
+        ``MultimodalModelIdentity.__post_init__`` canonicalises on
+        construction, an identity cannot reach here carrying a spelling
+        this would have to fix, and removing the call changes no output.
+        Said plainly because the paragraph that used to stand here
+        described a live hazard -- one run producing a different
+        wire-ledger digest per spelling -- which a later commit closed at
+        construction, leaving this reading as a claim about the past.
         """
         return {
             "provider": self.identity.provider,
@@ -699,7 +767,14 @@ def resolve_capability_profile(identity: MultimodalModelIdentity) -> ResolvedCap
 
 
 def _canonical_identity(identity: MultimodalModelIdentity) -> MultimodalModelIdentity:
-    """Return ``identity`` with its transport in canonical spelling."""
+    """Return ``identity`` with its transport in canonical spelling.
+
+    Belt-and-braces, like the ``to_payload`` canonicalisation:
+    ``MultimodalModelIdentity.__post_init__`` already does this on
+    construction, so this cannot change an identity that exists. Kept as
+    a statement of what this function requires of its input, not as a
+    guard anything currently depends on.
+    """
     canonical = payload_transport(identity.transport)
     if canonical == identity.transport:
         return identity
@@ -746,6 +821,33 @@ def payload_provider(raw: object) -> str:
     return raw if isinstance(raw, str) else UNKNOWN_IDENTITY.provider
 
 
+def payload_delivery(raw: object) -> DeliveryMode:
+    """Return a delivery mode from an untrusted payload field.
+
+    Anything unrecognised -- a misspelling, a mode from a future
+    version, a non-string -- becomes a replay handle rather than an
+    error: an unreadable stored verdict must not take the artifact away,
+    and it must not be coerced with ``str()`` into a mode either.
+    """
+    if not isinstance(raw, str):
+        return DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    try:
+        return DeliveryMode(raw)
+    except ValueError:
+        return DeliveryMode.RESOURCE_REFERENCE_REPLAY
+
+
+def payload_block_type(raw: object) -> str | None:
+    """Return a block type from an untrusted payload field, or ``None``.
+
+    The same rule as :func:`payload_model_id`: a non-string is not a
+    block type. ``str(...)`` put a JSON object's Python ``repr`` in the
+    ``block_type`` field of a persisted verdict, where it reached
+    ``to_payload`` and the wire-ledger capability digest.
+    """
+    return raw if isinstance(raw, str) else None
+
+
 def payload_model_id(raw: object) -> str | None:
     """Return a model id from an untrusted payload field, or ``None``.
 
@@ -756,6 +858,39 @@ def payload_model_id(raw: object) -> str | None:
     into every verdict ``reason`` shown to the agent.
     """
     return raw if isinstance(raw, str) else None
+
+
+def _rehydrated_reason(
+    identity: MultimodalModelIdentity,
+    modality: str,
+    delivery: DeliveryMode,
+) -> str:
+    """Explain a rehydrated verdict in RALPH's words, never the payload's.
+
+    A verdict's ``reason`` is prose shown to the agent -- ``_media_blocks``
+    prints it in the sentence that says why a file was degraded or
+    refused, and it is stored in the wire-ledger capability digest. Read
+    straight from the payload, that sentence was written by whatever
+    wrote the session file: control characters, another provider's name
+    beside the corrected one, an arbitrary instruction addressed to the
+    agent reading it. The commit that stopped the identity and the
+    verdict disagreeing about the provider left the disagreement
+    representable one field to the right, in the string that quotes it.
+
+    So the payload's ``reason`` is not read at all. A stored verdict
+    that agrees with a fresh resolution gets the fresh explanation --
+    identical prose, because both are derived from the same identity --
+    and one that disagrees gets a Ralph-authored line naming both. The
+    stored DELIVERY still stands; only the words are ours.
+    """
+    fresh = get_delivery_mode(identity, modality)
+    if delivery is fresh.delivery:
+        return fresh.reason
+    return (
+        f"stored verdict '{delivery.value}' rehydrated from the session payload "
+        f"for provider '{identity.provider}'; a fresh resolution says "
+        f"'{fresh.delivery.value}'"
+    )
 
 
 def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
@@ -787,19 +922,14 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
     for modality, v in raw_verdicts.items():
         if not isinstance(v, dict):
             continue
-        delivery_raw = v.get("delivery", "")
-        try:
-            delivery = DeliveryMode(str(delivery_raw))
-        except ValueError:
-            delivery = DeliveryMode.RESOURCE_REFERENCE_REPLAY
-        block_type_raw = v.get("block_type")
+        delivery = payload_delivery(v.get("delivery"))
         verdicts[modality] = CapabilityVerdict(
             modality=modality,
             delivery=delivery,
             provider=identity.provider,
             model_id=identity.model_id,
-            reason=str(v.get("reason", "")),
-            block_type=str(block_type_raw) if block_type_raw is not None else None,
+            reason=_rehydrated_reason(identity, modality, delivery),
+            block_type=payload_block_type(v.get("block_type")),
         )
     for modality in SUPPORTED_MODALITIES:
         if modality not in verdicts:
@@ -810,17 +940,21 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
 __all__ = [
     "TRANSPORT_FIXED_PROVIDER",
     "UNKNOWN_IDENTITY",
+    "VENDOR_ROUTING_TRANSPORTS",
     "CapabilityVerdict",
     "DeliveryMode",
     "MultimodalModelIdentity",
     "ResolvedCapabilityProfile",
     "caller_identity_for",
     "caller_profile_for",
+    "cli_bound_provider",
     "delivery_demand",
     "get_delivery_mode",
     "identity_on_transport",
     "inline_image_requires_text_handle",
     "inline_image_roundtrip_unsafe",
+    "payload_block_type",
+    "payload_delivery",
     "payload_model_id",
     "payload_provider",
     "payload_transport",

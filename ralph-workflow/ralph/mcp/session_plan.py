@@ -95,16 +95,19 @@ class SessionMcpPlan:
 # to its canonical provider slug (used as the identity's ``provider``
 # field when no qualified ``provider/model`` form is present in the
 # flag).
-#: DERIVED, never restated. This map and the delivery-side bound in
-#: ``capabilities`` answer the same question -- which CLIs call exactly
-#: one vendor's API -- and while they were two hand-kept literals either
-#: could gain a transport the other did not, resolving an identity the
-#: delivery side would then decline to bound.
-_TRANSPORT_FIXED_PROVIDER: dict[AgentTransport, str] = {
-    transport: TRANSPORT_FIXED_PROVIDER[transport.value]
-    for transport in AgentTransport
-    if transport.value in TRANSPORT_FIXED_PROVIDER
-}
+def _fixed_provider_for(transport: AgentTransport) -> str | None:
+    """Return the vendor this CLI is fixed to, or ``None``.
+
+    READ, never restated, and read on every call rather than snapshotted
+    at import. This and the delivery-side bound in ``capabilities``
+    answer the same question -- which CLIs call exactly one vendor's API
+    -- and while they were two hand-kept literals either could gain a
+    transport the other did not, resolving an identity the delivery side
+    would then decline to bound. A dict comprehension fixed the drift at
+    import time and left it reachable at runtime: one ``setitem`` on the
+    now-public source map and the two sides disagreed again.
+    """
+    return TRANSPORT_FIXED_PROVIDER.get(transport.value)
 
 
 def _resolve_transport_fixed_identity(
@@ -120,7 +123,7 @@ def _resolve_transport_fixed_identity(
     ``openai``). Otherwise the transport's canonical provider is used.
     """
     provider_slug, model_id = parse_model_flag(model_flag or "")
-    canonical_provider = _TRANSPORT_FIXED_PROVIDER[transport]
+    canonical_provider = TRANSPORT_FIXED_PROVIDER[transport.value]
     if provider_slug is None:
         return MultimodalModelIdentity(
             provider=canonical_provider,
@@ -207,7 +210,7 @@ def resolve_model_identity(
     if transport is None:
         return UNKNOWN_IDENTITY
 
-    if transport in _TRANSPORT_FIXED_PROVIDER:
+    if _fixed_provider_for(transport) is not None:
         return _resolve_transport_fixed_identity(transport, model_flag)
 
     if transport == AgentTransport.OPENCODE:

@@ -23,6 +23,7 @@ from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 from ralph.mcp.multimodal.capabilities import (
     TRANSPORT_FIXED_PROVIDER,
+    VENDOR_ROUTING_TRANSPORTS,
     DeliveryMode,
     MultimodalModelIdentity,
     delivery_demand,
@@ -65,28 +66,75 @@ def test_a_stated_transport_can_only_restrict_delivery() -> None:
     assert raised == []
 
 
-def test_a_router_transport_does_not_bound_its_model_s_provider() -> None:
-    """The bound is fixed-provider CLIs only, and that is a decision.
+def test_only_a_vendor_routing_cli_escapes_the_bound() -> None:
+    """Everything Ralph cannot name a vendor for is bounded, by default.
 
-    ``opencode`` fronting ``gemini`` reaches gemini's API, so audio and
-    video stay typed blocks. Bounding every transport Ralph has no
-    vendor for would degrade this working path on a guess.
+    ``resolve_model_identity`` answers ``nanocoder``, ``pi``, ``cursor``,
+    ``kimi`` and ``generic`` with the transport's OWN name -- it never
+    parses a vendor out of their model flags -- so Ralph has no basis
+    for promising typed delivery through them. Only ``opencode`` reads a
+    catalog and resolves a real vendor.
+
+    An unrecognised transport is bounded too, so adding one is not a way
+    to leave the guard behind.
     """
-    routers = [t for t in _TRANSPORTS if t not in TRANSPORT_FIXED_PROVIDER]
-    assert "opencode" in routers
-    for transport in routers:
-        for provider in ("gemini", "anthropic"):
-            for modality in SUPPORTED_MODALITIES:
-                identity = MultimodalModelIdentity(
-                    provider=provider, model_id="m", transport=transport
-                )
-                bare = MultimodalModelIdentity(provider=provider, model_id="m")
-                if transport_inline_image_roundtrip_unsafe(transport):
-                    continue
-                assert (
-                    get_delivery_mode(identity, modality).delivery
-                    == get_delivery_mode(bare, modality).delivery
-                ), f"{transport} bounded {provider}/{modality}"
+    unvouched = [
+        transport
+        for transport in _TRANSPORTS
+        if transport not in TRANSPORT_FIXED_PROVIDER
+        and transport not in VENDOR_ROUTING_TRANSPORTS
+    ]
+    assert set(unvouched) == {"nanocoder", "generic", "pi", "cursor", "kimi"}
+    for transport in unvouched:
+        for modality in SUPPORTED_MODALITIES:
+            claimed = MultimodalModelIdentity(
+                provider="gemini", model_id="g", transport=transport
+            )
+            delivery = get_delivery_mode(claimed, modality).delivery
+            assert delivery is not DeliveryMode.TYPED_BLOCK, f"{transport}/{modality}"
+    unknown_cli = MultimodalModelIdentity(provider="gemini", transport="a-cli-added-later")
+    assert (
+        get_delivery_mode(unknown_cli, "audio").delivery is not DeliveryMode.TYPED_BLOCK
+    )
+
+
+def test_the_bound_costs_nothing_ralph_resolves_for_itself() -> None:
+    """Bounding those CLIs withholds nothing from an ordinary run.
+
+    Their resolved providers are the transport names, which carry no
+    typed blocks in the matrix -- so the two answers agree and the
+    verdict stands. What the bound closes is the provider a PAYLOAD
+    names: a stale or hand-written ``model_identity`` claiming ``gemini``
+    on a ``kimi`` session minted an AudioContent through a CLI Ralph
+    knows nothing about.
+    """
+    for transport in AgentTransport:
+        resolved = resolve_model_identity(transport, None)
+        for modality in SUPPORTED_MODALITIES:
+            bounded = get_delivery_mode(resolved, modality)
+            unbounded = get_delivery_mode(
+                MultimodalModelIdentity(
+                    provider=resolved.provider, model_id=resolved.model_id
+                ),
+                modality,
+            )
+            if transport_inline_image_roundtrip_unsafe(transport.value):
+                continue
+            assert bounded.delivery == unbounded.delivery, (
+                f"{transport.value}/{modality}: bound changed a resolved identity"
+            )
+
+
+def test_a_vendor_routing_cli_still_delivers_its_model_s_typed_blocks() -> None:
+    """``opencode`` reaches the API its model names, so it is not bounded.
+
+    This is the file's one unmeasured assumption -- nothing in the repo
+    records what the opencode CLI does with a typed block. It is pinned
+    here so that changing it is a decision rather than a drift.
+    """
+    assert frozenset({"opencode"}) == VENDOR_ROUTING_TRANSPORTS
+    routed = MultimodalModelIdentity(provider="anthropic", transport="opencode")
+    assert get_delivery_mode(routed, "pdf").delivery is DeliveryMode.TYPED_BLOCK
 
 
 def test_the_two_fixed_provider_tables_are_one_table() -> None:
