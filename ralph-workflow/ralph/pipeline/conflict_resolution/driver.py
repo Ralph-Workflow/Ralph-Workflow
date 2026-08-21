@@ -91,7 +91,7 @@ _MAX_RESOLVER_AGENTS = 2
 #: plain file I/O. On a healthy filesystem all of it is fast; on a hung
 #: mount none of it is bounded by anything here. Nor does the ceiling
 #: cover the wait an ABANDONED attempt spends being cleaned up -- see
-#: ``hard_stop._REAP_WAIT_SECONDS``, which is charged to neither.
+#: ``hard_stop.REAP_WAIT_SECONDS``, which is charged to neither.
 RESOLVE_TIMEOUT_SECONDS = 900.0
 
 #: Shortest share worth spending on one attempt. Below it the remaining

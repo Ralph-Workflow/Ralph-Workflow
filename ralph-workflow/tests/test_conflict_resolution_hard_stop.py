@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution import hard_stop as hard_stop_module
 from ralph.pipeline.conflict_resolution.driver import (
     RESOLVE_TIMEOUT_SECONDS,
     SESSION_CEILING_FRACTION,
@@ -40,6 +41,8 @@ from ralph.pipeline.conflict_resolution.hard_stop import (
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pytest
 
     from ralph.policy.models import PolicyBundle
@@ -184,8 +187,8 @@ def test_every_hard_stop_is_a_bounded_share_of_the_deadline(
 
 def test_a_call_that_returns_in_time_yields_its_value() -> None:
     """The hard stop is transparent to an attempt that finishes."""
-    assert call_with_hard_stop(lambda: True, 5.0) is True
-    assert call_with_hard_stop(lambda: False, 5.0) is False
+    assert call_with_hard_stop(lambda: True, 5.0, manager=_FakeProcessManager([])) is True
+    assert call_with_hard_stop(lambda: False, 5.0, manager=_FakeProcessManager([])) is False
 
 
 def test_a_call_that_outlives_its_stop_is_abandoned() -> None:
@@ -196,7 +199,20 @@ def test_a_call_that_outlives_its_stop_is_abandoned() -> None:
         return release.wait(timeout=30.0)
 
     try:
-        assert call_with_hard_stop(_never_returns_in_time, 0.05) is None
+        # The registry and the teardown are BOTH injected, even though
+        # this test asserts nothing about them. Left to their defaults
+        # they are the live process registry and a real
+        # ``teardown_subtree``, so an abandonment inside the suite reaps
+        # whatever the shard happens to be running -- by process GROUP.
+        assert (
+            call_with_hard_stop(
+                _never_returns_in_time,
+                0.05,
+                manager=_FakeProcessManager([]),
+                teardown=lambda pid: None,
+            )
+            is None
+        )
     finally:
         release.set()
 
@@ -208,7 +224,7 @@ def test_a_raising_call_is_reported_as_a_failed_attempt() -> None:
         msg = "agent layer exploded"
         raise RuntimeError(msg)
 
-    assert call_with_hard_stop(_raises, 5.0) is False
+    assert call_with_hard_stop(_raises, 5.0, manager=_FakeProcessManager([])) is False
 
 
 def test_only_processes_the_attempt_started_are_reaped() -> None:
@@ -379,11 +395,13 @@ def test_reporting_an_abandonment_cannot_block_the_abandonment() -> None:
     """
     release = threading.Event()
     reporting = threading.Event()
+    reported = threading.Event()
 
     def _blocking_report(timeout_seconds: float, reaped: tuple[int, ...]) -> None:
         del timeout_seconds, reaped
         reporting.set()
         release.wait(timeout=20.0)
+        reported.set()
 
     def _never_returns_in_time() -> bool:
         return release.wait(timeout=20.0)
@@ -395,11 +413,20 @@ def test_reporting_an_abandonment_cannot_block_the_abandonment() -> None:
             manager=_FakeProcessManager([]),
             teardown=lambda pid: None,
             report=_blocking_report,
+            reap_wait_seconds=0.05,
         )
+        # The caller is back before the announcement has finished --
+        # that is the assertion. It is checked BEFORE waiting for the
+        # announcement to start, because a report made on the caller's
+        # thread would have finished before this line ran.
+        returned_without_it = not reported.is_set()
+        announced_elsewhere = reporting.wait(timeout=0.5)
     finally:
         release.set()
 
     assert outcome is None
+    assert returned_without_it, "the caller waited for the announcement"
+    assert announced_elsewhere, "the announcement never ran at all"
 
 
 class _LateSpawnManager:
@@ -603,3 +630,61 @@ def test_an_abandonment_is_always_announced() -> None:
 
     assert announced, "the abandonment was never announced"
     assert announced[0][0] == 0.05
+
+
+class _ThreadStarvedThreading:
+    """``threading``, with only one thread left to give.
+
+    The attempt gets it; the cleanup that follows an abandonment does
+    not. That is the shape of a process that has run out of threads,
+    and the abandonment has to survive it.
+    """
+
+    def __init__(self) -> None:
+        self.threads_made = 0
+        self.Event = threading.Event
+
+    def Thread(
+        self,
+        *,
+        target: Callable[[], None],
+        name: str,
+        daemon: bool,
+    ) -> threading.Thread:
+        self.threads_made += 1
+        if self.threads_made > 1:
+            msg = "can't start new thread"
+            raise RuntimeError(msg)
+        return threading.Thread(target=target, name=name, daemon=daemon)
+
+
+def test_an_abandonment_survives_having_no_thread_to_clean_up_with(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Out of threads is not a reason to go back to a wedged layer.
+
+    If the cleanup thread cannot be started, the abandonment still
+    stands. Letting that failure escape would send the driver into its
+    generic handler, which logs on this thread and then tries the next
+    chain candidate against the layer that just proved it does not
+    return.
+    """
+    release = threading.Event()
+    starved = _ThreadStarvedThreading()
+    monkeypatch.setattr(hard_stop_module, "threading", starved)
+
+    def _never_returns_in_time() -> bool:
+        return release.wait(timeout=20.0)
+
+    try:
+        outcome = call_with_hard_stop(
+            _never_returns_in_time,
+            0.05,
+            manager=_FakeProcessManager([]),
+            teardown=lambda pid: None,
+        )
+    finally:
+        release.set()
+
+    assert outcome is None
+    assert starved.threads_made > 1, "the cleanup thread was never attempted"

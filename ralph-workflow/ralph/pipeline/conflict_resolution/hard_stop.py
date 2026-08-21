@@ -28,13 +28,23 @@ reaped BY LABEL at all: they are registered in the server's own process
 manager, not this one, and are reached as live children of the server
 whose subtree is torn down.
 
-WHAT IT CANNOT CLEAN UP. An attempt abandoned before it reaches its
-spawn can still spawn afterwards, because Python cannot interrupt the
-worker thread. A second sweep after a bounded settle window closes the
-common case (a spawn already in flight); an attempt wedged for minutes
-before spawning is not closed by anything here, and the reap is
-deliberately re-runnable so a caller that needs a later guarantee can
-ask for one.
+WHAT IT CANNOT CLEAN UP. Three cases, all of them deliberate:
+
+* An attempt abandoned before it reaches its spawn can still spawn
+  afterwards, because Python cannot interrupt the worker thread. A
+  second sweep after a bounded settle window closes the common case (a
+  spawn already in flight); an attempt wedged for minutes before
+  spawning is not closed by anything here.
+* A snapshot that could not be read reaps nothing at all, because
+  without it this attempt's processes cannot be told from anyone
+  else's.
+* A cleanup thread that cannot be started reaps nothing, and says
+  nothing either.
+
+The reap is deliberately re-runnable so a caller that needs a later
+guarantee can ask for one. A first ``teardown_subtree`` that spends the
+whole reap wait also leaves the second sweep unfinished when the driver
+returns.
 """
 
 from __future__ import annotations
@@ -240,13 +250,12 @@ def _clean_up_after_abandoning(
     try:
         threading.Thread(target=_clean_up, name=_ABANDON_CLEANUP_THREAD_NAME, daemon=True).start()
     except RuntimeError:
-        # Out of threads. The abandonment still stands -- losing it here
-        # would send the caller back to the layer it just gave up on --
-        # so the cleanup is simply skipped, and said so.
-        logger.opt(exception=True).error(
-            "conflict_resolution: could not start the cleanup thread for an "
-            "abandoned attempt; its processes were NOT reaped"
-        )
+        # Out of threads, so there is no thread to say this on either --
+        # and saying it here would take the display lock this whole
+        # function exists to stay off. The abandonment still stands:
+        # losing it would send the caller back to the layer it just gave
+        # up on. It is silent, and the caller's own failed round is what
+        # the operator sees.
         return
     done.wait(reap_wait_seconds)
 
@@ -264,9 +273,12 @@ def _log_abandonment(timeout_seconds: float, reaped: tuple[int, ...]) -> None:
 def live_agent_pids(*, manager: ProcessRegistry | None = None) -> frozenset[int] | None:
     """PIDs of the attempt-owned processes running before an attempt.
 
-    Anything under an attempt-owned label that is NOT in this set when an
-    attempt is abandoned was started BY that attempt, which is what makes
-    the reap precise enough to run while other work may be in flight.
+    Anything under an attempt-owned label that is NOT in this set when
+    an attempt is abandoned is TREATED as started by that attempt. The
+    rule is a start-time one, not an ownership one: an MCP server that
+    another part of the run respawns during the window matches too. What
+    is never at risk is a process outside this one's tree --
+    ``teardown_subtree`` proves descent before it signals anything.
 
     Args:
         manager: Process registry to read; defaults to the process
