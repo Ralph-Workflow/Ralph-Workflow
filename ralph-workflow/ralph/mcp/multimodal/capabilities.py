@@ -222,6 +222,18 @@ _DELIVERY_DEMAND: dict[DeliveryMode, int] = {
 }
 
 
+def delivery_demand(delivery: DeliveryMode) -> int:
+    """Return how much ``delivery`` asks of the receiving CLI.
+
+    The public reading of :data:`_DELIVERY_DEMAND`. Every rule that
+    combines two answers about one artifact -- the fixed-provider bound,
+    the stored-verdict correction -- takes the LESSER of the two by this
+    order, so it is the ordering the guards are stated in and the one a
+    test has to be able to name.
+    """
+    return _DELIVERY_DEMAND[delivery]
+
+
 def caller_identity_for(
     session_identity: MultimodalModelIdentity,
     delegated_identity: MultimodalModelIdentity | None,
@@ -233,6 +245,18 @@ def caller_identity_for(
     the session's transport WINS rather than merely filling a blank.
     Letting a delegate state its own transport was a way to declare the
     guards away.
+
+    "Wins" is exact only where the session HAS a transport;
+    ``identity_on_transport`` returns the identity untouched when it does
+    not, so a delegate that states its own CLI keeps it on a session
+    that knows nothing about the process it is talking to. That is not a
+    way to declare the guards away, and dropping it would be the unsafe
+    change: a stated transport can only ever RESTRICT delivery -- it is
+    read by the round-trip-unsafe check and by the fixed-provider bound,
+    both of which take the lesser answer, and by nothing that raises one
+    (pinned by ``test_a_stated_transport_can_only_restrict_delivery``).
+    A delegate that names a capable CLI on a blank session gains
+    whatever its own PROVIDER already granted it, and no more.
 
     THE one definition. Three copies of this rule existed -- in
     ``AgentSession``, in ``FileBackedSession``, and in the test double
@@ -360,10 +384,24 @@ def session_transport_is_ambiguous(transports: Sequence[str]) -> bool:
     return any(transport != first for transport in transports)
 
 
-#: The provider a transport is FIXED to, where the CLI determines it.
-#: Mirrors ``session_plan._TRANSPORT_FIXED_PROVIDER``, which resolves an
-#: identity; this decides what that identity may be DELIVERED.
-_TRANSPORT_CANONICAL_PROVIDER: dict[str, str] = {
+#: The provider a transport is FIXED to: the CLIs that call exactly ONE
+#: vendor's API, whatever model flag they are given.
+#:
+#: MEMBERSHIP IS THE WHOLE RULE, and it is not "CLIs Ralph happens to
+#: know about". A fixed-provider CLI re-serialises whatever a tool
+#: returns into that one vendor's request, so a model flag naming
+#: another vendor changes the MODEL and not the API the block has to
+#: survive. A router CLI -- ``opencode``, ``cursor``, ``kimi``, ``pi``,
+#: ``generic``, ``nanocoder`` -- reaches the named provider's own API,
+#: so its model's provider IS the bound and there is no second answer to
+#: take the lesser of. Bounding those by a CLI vendor would withhold a
+#: typed block the target API accepts.
+#:
+#: THE definition. ``session_plan`` derives its enum-keyed view from
+#: this dict rather than restating it: the two answer the same question
+#: -- one resolves an identity, the other decides what that identity may
+#: be DELIVERED -- and a "mirrors X" comment is not a mechanism.
+TRANSPORT_FIXED_PROVIDER: dict[str, str] = {
     "claude": "claude",
     "claude_interactive": "claude",
     "codex": "openai",
@@ -377,16 +415,22 @@ def get_delivery_mode(
 ) -> CapabilityVerdict:
     """Determine how to deliver a modality for the given model identity.
 
-    Bounded by BOTH the model's provider and the CLI's own. A model flag
-    naming a qualified ``provider/model`` deliberately overrides the
-    transport's canonical provider -- a router CLI really can front
-    another vendor's model -- but the block still has to travel through
-    that CLI. Taking only the model's provider let a ``claude``-transport
-    agent carrying ``--model gemini/...`` mint AudioContent and
-    VideoContent, which Ralph's own matrix says the claude CLI does not
-    accept. Neither side may be exceeded, so the LESS demanding of the
-    two answers wins -- the same conservative rule a mixed chain and a
-    declared-vs-persisted transport already use.
+    Bounded by the model's provider and, for a FIXED-PROVIDER CLI, by
+    that CLI's own vendor as well. A model flag naming a qualified
+    ``provider/model`` deliberately overrides the transport's canonical
+    provider, but on a fixed-provider CLI the block still has to survive
+    that one vendor's request format. Taking only the model's provider
+    let a ``claude``-transport agent carrying ``--model gemini/...`` mint
+    AudioContent and VideoContent, which Ralph's own matrix says the
+    claude CLI does not accept. Neither side may be exceeded, so the
+    LESS demanding of the two answers wins -- the same conservative rule
+    a mixed chain and a declared-vs-persisted transport already use.
+
+    A ROUTER CLI has no such second answer and gets no such bound: it
+    reaches the named provider's own API, so its model's provider
+    already IS the API the block must survive. See
+    :data:`TRANSPORT_FIXED_PROVIDER` for why that membership is the
+    whole rule.
 
     Returns a CapabilityVerdict indicating the delivery mode:
 
@@ -400,7 +444,7 @@ def get_delivery_mode(
     surface available without false typed-delivery promises).
     """
     verdict = _delivery_for_provider(identity, modality)
-    canonical = _TRANSPORT_CANONICAL_PROVIDER.get(identity.transport or "")
+    canonical = TRANSPORT_FIXED_PROVIDER.get(identity.transport or "")
     if canonical is None or canonical == identity.provider:
         return verdict
     through_the_cli = _delivery_for_provider(replace(identity, provider=canonical), modality)
@@ -408,11 +452,12 @@ def get_delivery_mode(
         return verdict
     # Resolved as an UNRESOLVED provider, not as the CLI's own verdict.
     # That is what this pairing actually is -- Ralph cannot confirm what
-    # a router CLI fronting another vendor accepts -- and it lands on a
-    # replay handle rather than the CLI's ``unsupported``. Adopting the
-    # CLI's answer wholesale would turn a reachable artifact into a hard
-    # error, which is a bigger loss than the typed block it withholds:
-    # a reference is strictly more than nothing.
+    # a fixed-provider CLI carries for a model from another vendor --
+    # and it lands on a replay handle rather than the CLI's
+    # ``unsupported``. Adopting the CLI's answer wholesale would turn a
+    # reachable artifact into a hard error, which is a bigger loss than
+    # the typed block it withholds: a reference is strictly more than
+    # nothing.
     unresolved = _delivery_for_provider(
         replace(identity, provider=UNKNOWN_IDENTITY.provider), modality
     )
@@ -619,7 +664,7 @@ class ResolvedCapabilityProfile:
         return {
             "provider": self.identity.provider,
             "model_id": self.identity.model_id,
-            "transport": _normalised_transport(self.identity.transport),
+            "transport": payload_transport(self.identity.transport),
             "verdicts": {
                 modality: {
                     "delivery": corrected.delivery.value,
@@ -655,27 +700,75 @@ def resolve_capability_profile(identity: MultimodalModelIdentity) -> ResolvedCap
 
 def _canonical_identity(identity: MultimodalModelIdentity) -> MultimodalModelIdentity:
     """Return ``identity`` with its transport in canonical spelling."""
-    canonical = _normalised_transport(identity.transport)
+    canonical = payload_transport(identity.transport)
     if canonical == identity.transport:
         return identity
     return replace(identity, transport=canonical)
 
 
-def _normalised_transport(raw: object) -> str | None:
-    """Return the canonical spelling of a persisted transport value.
+def payload_transport(raw: object) -> str | None:
+    """Return a usable transport from an untrusted payload field, or ``None``.
 
-    Blank is not a transport, and case and padding are not part of one.
+    An empty or whitespace-only value is NOT a transport. Treating it as
+    one made ``"transport": ""`` outrank an operator's
+    ``--agent-transport`` declaration and left the guards blind.
+
+    Lowercased as well as stripped, so every seam that writes a transport
+    spelling agrees: each matcher strips and lowercases before comparing,
+    so this changes no guard -- it makes the session file and the
+    wire-ledger capability digest agree with themselves.
+
+    THE definition, re-exported by
+    :mod:`ralph.mcp.server.runtime_session` for its historical callers.
+    Two copies of this rule existed, one per package, and the packages
+    they served hand identities to each other.
     """
     if not isinstance(raw, str):
         return None
     return raw.strip().lower() or None
 
 
+def payload_provider(raw: object) -> str:
+    """Return a provider name from an untrusted payload field.
+
+    ``str(...)`` is the wrong coercion for a JSON field: it turns a
+    payload ``{"provider": null}`` into the literal provider ``'none'``,
+    which :meth:`MultimodalModelIdentity.is_known` reads as RESOLVED --
+    so the identity-unknown degradation warning is suppressed for an
+    identity that has no provider at all, and ``'none'`` is what the
+    wire ledger records as the provider served. ``null`` is the natural
+    serialisation of "no provider".
+
+    THREE readers coerced this way. Fixing the one in front of me left
+    the other two minting ``'none'`` from the same payload, so the rule
+    lives here and every reader goes through it.
+    """
+    return raw if isinstance(raw, str) else UNKNOWN_IDENTITY.provider
+
+
+def payload_model_id(raw: object) -> str | None:
+    """Return a model id from an untrusted payload field, or ``None``.
+
+    A non-string is not a model id -- the same rule
+    :func:`payload_transport` applies to its own field. The readers
+    coerced with ``str(...)``, so a JSON number or object arrived as a
+    model id spelled after Python's ``repr``, and that spelling travels
+    into every verdict ``reason`` shown to the agent.
+    """
+    return raw if isinstance(raw, str) else None
+
+
 def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
-    """Rehydrate a ResolvedCapabilityProfile from a serialized session payload dict."""
-    provider = str(raw.get("provider", "unknown"))
-    model_id_raw = raw.get("model_id")
-    transport_raw = raw.get("transport")
+    """Rehydrate a ResolvedCapabilityProfile from a serialized session payload dict.
+
+    Every field is read through the payload seams above, and the
+    rehydrated verdicts take their ``provider`` and ``model_id`` from
+    the CANONICALISED identity rather than from the payload again. Read
+    twice, they disagreed: the identity said ``provider='claude'`` while
+    the verdict beside it -- the text the agent is actually shown, and
+    the value ``_build_warning_block`` quotes -- still said
+    ``'  CLAUDE  '``.
+    """
     # Normalised on the way IN. A persisted profile is untrusted input
     # like any other, and its transport was copied verbatim onto the
     # caller identity and re-serialised to the grandchild -- so one
@@ -683,9 +776,9 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
     # every matcher then had to strip and lower again, and produced a
     # different capability digest for the same run.
     identity = MultimodalModelIdentity(
-        provider=provider,
-        model_id=str(model_id_raw) if model_id_raw is not None else None,
-        transport=_normalised_transport(transport_raw),
+        provider=payload_provider(raw.get("provider")),
+        model_id=payload_model_id(raw.get("model_id")),
+        transport=payload_transport(raw.get("transport")),
     )
     raw_verdicts = raw.get("verdicts")
     if not isinstance(raw_verdicts, dict):
@@ -703,8 +796,8 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
         verdicts[modality] = CapabilityVerdict(
             modality=modality,
             delivery=delivery,
-            provider=provider,
-            model_id=str(model_id_raw) if model_id_raw is not None else None,
+            provider=identity.provider,
+            model_id=identity.model_id,
             reason=str(v.get("reason", "")),
             block_type=str(block_type_raw) if block_type_raw is not None else None,
         )
@@ -715,6 +808,7 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
 
 
 __all__ = [
+    "TRANSPORT_FIXED_PROVIDER",
     "UNKNOWN_IDENTITY",
     "CapabilityVerdict",
     "DeliveryMode",
@@ -722,10 +816,14 @@ __all__ = [
     "ResolvedCapabilityProfile",
     "caller_identity_for",
     "caller_profile_for",
+    "delivery_demand",
     "get_delivery_mode",
     "identity_on_transport",
     "inline_image_requires_text_handle",
     "inline_image_roundtrip_unsafe",
+    "payload_model_id",
+    "payload_provider",
+    "payload_transport",
     "profile_for_caller",
     "profile_from_payload",
     "resolve_capability_profile",

@@ -19,6 +19,7 @@ from ralph.mcp._model_flag_parser import parse_model_flag
 from ralph.mcp._session_model_opts import SessionModelOpts
 from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
 from ralph.mcp.multimodal.capabilities import (
+    TRANSPORT_FIXED_PROVIDER,
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
@@ -94,11 +95,15 @@ class SessionMcpPlan:
 # to its canonical provider slug (used as the identity's ``provider``
 # field when no qualified ``provider/model`` form is present in the
 # flag).
+#: DERIVED, never restated. This map and the delivery-side bound in
+#: ``capabilities`` answer the same question -- which CLIs call exactly
+#: one vendor's API -- and while they were two hand-kept literals either
+#: could gain a transport the other did not, resolving an identity the
+#: delivery side would then decline to bound.
 _TRANSPORT_FIXED_PROVIDER: dict[AgentTransport, str] = {
-    AgentTransport.CLAUDE: "claude",
-    AgentTransport.CLAUDE_INTERACTIVE: "claude",
-    AgentTransport.CODEX: "openai",
-    AgentTransport.AGY: "gemini",
+    transport: TRANSPORT_FIXED_PROVIDER[transport.value]
+    for transport in AgentTransport
+    if transport.value in TRANSPORT_FIXED_PROVIDER
 }
 
 

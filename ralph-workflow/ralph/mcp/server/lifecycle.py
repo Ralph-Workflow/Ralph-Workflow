@@ -19,6 +19,7 @@ from loguru import logger
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    payload_transport,
     profile_for_caller,
     resolve_capability_profile,
 )
@@ -41,7 +42,6 @@ from ralph.mcp.server._mcp_server_extras import McpServerExtras
 from ralph.mcp.server._process_like import ProcessLike
 from ralph.mcp.server._spawn_process import SpawnProcess
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-from ralph.mcp.server.runtime_session import payload_transport
 from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager

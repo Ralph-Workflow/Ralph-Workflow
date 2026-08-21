@@ -127,7 +127,7 @@ def test_a_profile_from_another_provider_is_re_resolved() -> None:
 
 def test_an_empty_payload_transport_does_not_outrank_the_declaration() -> None:
     """``"transport": ""`` is absence, not a CLI the payload named."""
-    from ralph.mcp.server.runtime_session import payload_transport
+    from ralph.mcp.multimodal.capabilities import payload_transport
 
     assert payload_transport("") is None
     assert payload_transport("   ") is None
@@ -230,9 +230,9 @@ def test_every_seam_that_writes_a_transport_spelling_agrees() -> None:
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
+        payload_transport,
     )
     from ralph.mcp.server.runtime import standalone_session_identity
-    from ralph.mcp.server.runtime_session import payload_transport
 
     for raw in ("codex", "CODEX", "  codex  ", "\tCodex\n"):
         seams = {

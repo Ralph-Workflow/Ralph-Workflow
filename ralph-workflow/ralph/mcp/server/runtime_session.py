@@ -28,6 +28,9 @@ from ralph.mcp.multimodal.capabilities import (
     caller_identity_for,
     caller_profile_for,
     identity_on_transport,
+    payload_model_id,
+    payload_provider,
+    payload_transport,
     profile_from_payload,
     resolve_capability_profile,
     transport_inline_image_roundtrip_unsafe,
@@ -49,29 +52,6 @@ from ralph.mcp.protocol.session import (
     session_has_capability,
 )
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
-
-
-def payload_transport(raw: object) -> str | None:
-    """Return a usable transport from a payload field, or ``None``.
-
-    An empty or whitespace-only value is NOT a transport. Treating it as
-    one made ``"transport": ""`` outrank an operator's
-    ``--agent-transport`` declaration and left the guards blind, so the
-    field is normalised at the single point every reader goes through.
-
-    Lowercased as well as stripped, so every seam that writes a transport
-    spelling agrees. Four of them do -- this one, the declared-transport
-    field below, ``standalone_session_identity`` and
-    ``identity_on_transport`` -- and three normalised differently, so the
-    same operator input produced ``'codex'``, ``'CODEX'`` and
-    ``'  codex  '`` depending on which path ran, and two different
-    wire-ledger capability digests for one run. Every matcher strips and
-    lowercases, so this changes no guard; it makes the audit trail agree
-    with itself.
-    """
-    if not isinstance(raw, str):
-        return None
-    return raw.strip().lower() or None
 
 
 def reconcile_declared_transport(declared: str | None, persisted: object) -> str | None:
@@ -144,15 +124,13 @@ def session_identity_from_payload(
     With no declaration the payload stands as written -- there is
     nothing to contradict it.
     """
-    # NOT ``str(...)``: that turns a JSON ``null`` into "none".
-    raw_provider = raw_identity.get("provider", UNKNOWN_IDENTITY.provider)
-    provider = raw_provider if isinstance(raw_provider, str) else UNKNOWN_IDENTITY.provider
-    model_id_raw = raw_identity.get("model_id")
+    # Read through the payload seams, NOT ``str(...)``: that turns a
+    # JSON ``null`` provider into the literal provider "none".
     stated_transport = payload_transport(raw_identity.get("transport"))
     resolved = reconcile_declared_transport(declared, raw_identity.get("transport"))
     stated = MultimodalModelIdentity(
-        provider=provider,
-        model_id=str(model_id_raw) if model_id_raw is not None else None,
+        provider=payload_provider(raw_identity.get("provider")),
+        model_id=payload_model_id(raw_identity.get("model_id")),
         transport=stated_transport,
     )
     if resolved is None or stated_transport == resolved:
@@ -541,8 +519,8 @@ class FileBackedSession:
         # key on the CLI.
         raw_transport = payload_transport(raw.get("transport"))
         return MultimodalModelIdentity(
-            provider=str(raw.get("provider", "unknown")),
-            model_id=str(raw["model_id"]) if raw.get("model_id") is not None else None,
+            provider=payload_provider(raw.get("provider")),
+            model_id=payload_model_id(raw.get("model_id")),
             transport=raw_transport,
         )
 
