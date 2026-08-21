@@ -315,6 +315,45 @@ def _fan_out_display_and_subscriber(
     return parallel_display, effective_subscriber
 
 
+def phase_session_identity(
+    first_agent_transport: AgentTransport | None,
+    first_agent_model_flag: str | None,
+    chain_transport: AgentTransport | None,
+) -> tuple[AgentTransport | None, str | None]:
+    """Return the (transport, model_flag) pair to tag a phase session with.
+
+    The model flag belongs to the FIRST candidate agent. Once the
+    session's tag names a different CLI, the two no longer describe the
+    same agent, and pairing them resolves a provider for a model the
+    tagged CLI is not running -- which turns pdf/document delivery into
+    a hard unsupported error for the very agent the flag came from. So
+    the flag is dropped and only the safe tag is carried.
+
+    The reset also fires when the restricted candidate happens to be
+    FIRST. The tag then equals the flag's own agent, so an identity test
+    alone skipped the reset and resolved a provider for the whole chain
+    -- making the same mixed chain give a capable agent a usable
+    reference or a hard error depending only on chain order.
+
+    A ``chain_transport`` of ``None`` means "no restricted candidate and
+    no agreement", and the original transport is KEPT: it also selects
+    the native upstream MCP loaders, and clearing it silently dropped a
+    mixed chain's upstream server discovery for the whole session. No
+    candidate is restricted in that case, so the delivery guard does not
+    care which of the agreeing-on-nothing transports the tag names.
+
+    Public because it is the whole decision: as a private branch inside
+    the plan builder it could be reverted with the suite green.
+    """
+    if chain_transport is None:
+        return first_agent_transport, first_agent_model_flag
+    if chain_transport is not first_agent_transport or transport_inline_image_roundtrip_unsafe(
+        chain_transport.value
+    ):
+        return chain_transport, None
+    return first_agent_transport, first_agent_model_flag
+
+
 def _build_session_mcp_plan_for_phase(
     effect: FanOutEffect,
     policy_bundle: PolicyBundle,
@@ -375,27 +414,7 @@ def _build_session_mcp_plan_for_phase(
     # first candidate, and once the tag names a different CLI the two no
     # longer describe the same agent.
     chain_transport = _phase_session_transport(candidate_agents, config)
-    # Also when the restricted candidate happens to be FIRST: the tag
-    # then equals the flag's own agent, so an `is not` test skipped the
-    # reset and resolved a provider for the whole chain -- making the
-    # same mixed chain give a capable agent a usable reference or a hard
-    # error depending only on chain order.
-    if chain_transport is not None and (
-        chain_transport is not transport
-        or transport_inline_image_roundtrip_unsafe(chain_transport.value)
-    ):
-        # Pairing them would resolve a provider for a model the tagged
-        # CLI is not running -- which turns pdf/document delivery into a
-        # hard unsupported error for the very agent the flag came from.
-        # Leave the provider unresolved and carry only the safe tag.
-        model_flag = None
-        transport = chain_transport
-    # A ``None`` answer means "no restricted candidate and no agreement".
-    # The original transport is KEPT in that case: it also selects the
-    # native upstream MCP loaders, and clearing it silently dropped a
-    # mixed chain's upstream server discovery for the whole session. No
-    # candidate is restricted there, so the delivery guard does not care
-    # which of the agreeing-on-nothing transports the tag names.
+    transport, model_flag = phase_session_identity(transport, model_flag, chain_transport)
 
     effective_agents_policy = (
         policy_bundle.agents

@@ -33,6 +33,7 @@ from ralph.pipeline.conflict_resolution.graph import (
     TERMINAL_RESOLVED,
     route_after_round,
 )
+from ralph.pipeline.conflict_resolution.hard_stop import call_with_hard_stop
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.session import (
     invoke_resolution_agent,
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.pipeline.conflict_resolution.hard_stop import HardStop
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
@@ -81,6 +83,14 @@ RESOLVE_TIMEOUT_SECONDS = 900.0
 #: budget is declined rather than used to start an agent that would be
 #: force-cut before it could read its own prompt.
 _MIN_ATTEMPT_SECONDS = 1.0
+
+#: How much of an attempt's share the AGENT LAYER is given as its session
+#: ceiling. The remainder is the driver's own margin: the agent layer is
+#: meant to cut its session and unwind first, and the driver's hard stop
+#: is what happens when it does not. Strictly < 1.0, so the two bounds
+#: can never expire at the same instant and a healthy force-cut is never
+#: mistaken for a wedge.
+_SESSION_CEILING_FRACTION = 0.9
 
 __all__ = [
     "MonotonicClock",
@@ -119,6 +129,7 @@ def run_rebase_conflict_resolution_pipeline(
     deadline: float | None = None,
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
+    hard_stop: HardStop | None = None,
 ) -> bool:
     """Resolve ONE commit a rebase has stopped on, or decline.
 
@@ -151,6 +162,8 @@ def run_rebase_conflict_resolution_pipeline(
             session.
         clock: Injected monotonic clock; defaults to
             :func:`time.monotonic`.
+        hard_stop: Injected wall-clock stop for one attempt; defaults to
+            :func:`~ralph.pipeline.conflict_resolution.hard_stop.call_with_hard_stop`.
 
     Returns:
         ``True`` only when every path that conflicted on this stop is
@@ -170,6 +183,7 @@ def run_rebase_conflict_resolution_pipeline(
             clock=clock or time.monotonic,
             deadline=deadline,
             stop=stop,
+            hard_stop=hard_stop,
         )
     except Exception as exc:
         logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
@@ -189,6 +203,7 @@ def run_conflict_resolution_pipeline(
     display_context: DisplayContext | None,
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
+    hard_stop: HardStop | None = None,
 ) -> bool:
     """Resolve the in-progress merge's conflicts, or decline.
 
@@ -205,6 +220,8 @@ def run_conflict_resolution_pipeline(
             session.
         clock: Injected monotonic clock the whole-pipeline deadline is
             measured against; defaults to :func:`time.monotonic`.
+        hard_stop: Injected wall-clock stop for one attempt; defaults to
+            :func:`~ralph.pipeline.conflict_resolution.hard_stop.call_with_hard_stop`.
 
     Returns:
         ``True`` only when every previously-conflicted path is
@@ -226,6 +243,7 @@ def run_conflict_resolution_pipeline(
             clock=clock or time.monotonic,
             deadline=None,
             stop=None,
+            hard_stop=hard_stop,
         )
     except Exception as exc:
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
@@ -262,6 +280,7 @@ def _run_rounds(
     clock: MonotonicClock,
     deadline: float | None,
     stop: RebaseStop | None,
+    hard_stop: HardStop | None,
 ) -> bool:
     """Body of the bounded loop, shared by both entry points.
 
@@ -299,6 +318,7 @@ def _run_rounds(
         clock=clock,
         deadline=deadline,
         round_cap=round_cap,
+        hard_stop=hard_stop or call_with_hard_stop,
     )
     emit_conflict_phase_line(
         display,
@@ -427,6 +447,7 @@ def _default_invoker(
     clock: MonotonicClock,
     deadline: float | None,
     round_cap: int,
+    hard_stop: HardStop,
 ) -> ResolutionInvoker:
     """Build the real MCP-backed round runner.
 
@@ -441,6 +462,14 @@ def _default_invoker(
     A caller-supplied ``deadline`` extends that guarantee across a whole
     multi-stop rebase: every stop shares one instant, so ten stops cost
     the configured ceiling in total rather than ten times over.
+
+    Neither the deadline nor the share is worth anything while the driver
+    is blocked inside an attempt, because every watchdog that would end
+    that attempt runs BELOW it. ``hard_stop`` is what makes the share an
+    enforcement rather than a request: the agent layer is given
+    ``_SESSION_CEILING_FRACTION`` of the share to cut and unwind its own
+    session, and the driver takes the round back when the whole share is
+    gone -- whatever state the layer below is in.
     """
     effective_deadline = deadline if deadline is not None else clock() + RESOLVE_TIMEOUT_SECONDS
 
@@ -454,17 +483,32 @@ def _default_invoker(
                 round_index,
             )
             return False
-        return invoke_resolution_agent(
-            agent_name=agent_name,
-            prompt_path=prompt_path,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            max_session_seconds=budget,
-        )
+
+        def _attempt() -> bool:
+            return invoke_resolution_agent(
+                agent_name=agent_name,
+                prompt_path=prompt_path,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                policy_bundle=policy_bundle,
+                display=display,
+                display_context=display_context,
+                max_session_seconds=budget * _SESSION_CEILING_FRACTION,
+            )
+
+        outcome = hard_stop(_attempt, budget)
+        if outcome is None:
+            # The layer below did not come back. Its agent processes have
+            # been reaped by the stop, so the round is simply failed and
+            # the caller keeps its own path to abort the rebase.
+            emit_conflict_phase_line(
+                display,
+                f"round {round_index}: '{agent_name}' did not return within its "
+                f"{round(budget)}s share; abandoning it",
+            )
+            return False
+        return outcome
 
     return _invoke
 

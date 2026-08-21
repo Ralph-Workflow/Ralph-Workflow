@@ -342,12 +342,18 @@ def test_an_unrestricted_transport_still_gets_typed_blocks() -> None:
 def test_a_reference_block_never_claims_a_typed_delivery(tmp_path: Path) -> None:
     """A reference block must carry a reference delivery.
 
-    A verdict can name a block type nothing knows how to build --
-    ``profile_from_payload`` never validates it -- and that falls
-    through to a resource reference. Stamping the verdict's own
-    ``typed_block`` on it contradicts the block's contract and makes the
-    artifact invisible to both handoff extractors, which filter on the
-    two reference values.
+    A stored verdict can name a ``typed_block`` this identity never
+    resolves -- ``profile_from_payload`` validates neither the delivery
+    nor the block type -- and what comes back is then a resource
+    reference. Stamping the verdict's own ``typed_block`` on it
+    contradicts the block's contract and makes the artifact invisible to
+    both handoff extractors, which filter on the two reference values.
+
+    The identity here is one whose FRESH pdf verdict is a reference, so
+    the stored verdict genuinely over-promises. An identity that does
+    resolve a typed block for the modality proves nothing about this:
+    ``verdict_for`` repairs the block type against the fresh answer and
+    the artifact is correctly delivered as that typed block.
     """
     from ralph.mcp.multimodal.artifacts import MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import (
@@ -357,20 +363,20 @@ def test_a_reference_block_never_claims_a_typed_delivery(tmp_path: Path) -> None
     )
 
     (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
-    claude = MultimodalModelIdentity(
-        provider="claude", model_id="claude-opus-5", transport="claude"
+    identity = MultimodalModelIdentity(
+        provider="google", model_id="gemini-2.5-pro", transport="gemini"
     )
-    session = MockSessionWithManifest(MEDIA_READ_CAPABILITY, model_identity=claude)
+    session = MockSessionWithManifest(MEDIA_READ_CAPABILITY, model_identity=identity)
     _set_profile(
         session,
         ResolvedCapabilityProfile(
-            identity=claude,
+            identity=identity,
             verdicts={
                 MODALITY_PDF: CapabilityVerdict(
                     modality=MODALITY_PDF,
                     delivery=DeliveryMode.TYPED_BLOCK,
-                    provider="claude",
-                    model_id="claude-opus-5",
+                    provider="google",
+                    model_id="gemini-2.5-pro",
                     reason="fresh",
                     block_type="a-block-type-nothing-builds",
                 )
@@ -426,7 +432,20 @@ def test_a_stored_typed_block_verdict_cannot_outrank_the_transport() -> None:
 
 
 def test_a_more_conservative_stored_verdict_is_respected() -> None:
-    """The correction runs one way only; deliberate restraint is kept."""
+    """The correction runs one way only; deliberate restraint is kept.
+
+    Scope note, because the name overreaches on its own: this pins what
+    ``verdict_for`` RETURNS, which is a ceiling on what a stored verdict
+    may promise. It does not pin what any delivery path does with it.
+    The fresh-read image path deliberately ignores the verdict --
+    criterion 14 treats an unresolvable identity as capable for images
+    -- so with this very profile ``handle_read_media`` still returns an
+    ``ImageContent``. That is by design, and
+    ``test_a_sanitised_verdict_does_not_gate_the_fresh_image_path``
+    below states it out loud so nobody reads this test as the guarantee
+    it is not. The protection against a restricted transport comes from
+    the transport check, not from this correction.
+    """
     from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE
     from ralph.mcp.multimodal.capabilities import (
         UNKNOWN_IDENTITY,

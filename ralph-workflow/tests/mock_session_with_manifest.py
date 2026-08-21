@@ -8,7 +8,8 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
-    profile_for_caller,
+    caller_identity_for,
+    caller_profile_for,
 )
 from ralph.mcp.multimodal.resources import MediaManifest
 
@@ -35,21 +36,22 @@ class MockSessionWithManifest:
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        delegated = self.delegated_model_identity
-        if delegated is None:
-            return self.model_identity
-        from ralph.mcp.multimodal.capabilities import identity_on_transport
+        """Return the identity a delegated call is judged against.
 
-        return identity_on_transport(delegated, self.model_identity.transport)
+        The rule itself lives in :func:`caller_identity_for` so this
+        class, ``FileBackedSession``, and the test double cannot drift.
+        """
+        return caller_identity_for(self.model_identity, self.delegated_model_identity)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
-        stored = (
-            self.delegated_capability_profile
-            if self.delegated_capability_profile is not None
-            else (None if self.delegated_model_identity is not None else self.capability_profile)
+        """Resolve a fresh caller-specific profile for every ledgered tool call."""
+        return caller_profile_for(
+            self.model_identity,
+            self.delegated_model_identity,
+            self.capability_profile,
+            self.delegated_capability_profile,
         )
-        return profile_for_caller(stored, self.caller_model_identity)
 
     def check_capability(self, capability: str) -> object:
         return capability == self.allowed_capability

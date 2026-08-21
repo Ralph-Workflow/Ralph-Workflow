@@ -888,7 +888,24 @@ def _identity_is_serialisable(identity: MultimodalModelIdentity) -> bool:
 
 
 def session_payload_json(session: SessionLike) -> str:
-    """Serialize the session metadata to a compact JSON string for MCP handshake."""
+    """Serialize the session metadata to a compact JSON string for MCP handshake.
+
+    IN-PROCESS ONLY: ``delegated_agent_id``,
+    ``delegated_model_identity`` and ``delegated_capability_profile`` are
+    deliberately NOT written here. Nothing in production sets them --
+    they exist for a sub-agent delegation path that is not wired -- so
+    serialising them would invent a wire format for a feature that has
+    no producer.
+
+    The consequence, stated so it is not discovered the hard way: a
+    delegated identity set on a parent session does not survive this
+    boundary, and the child resolves as the session itself. Anyone
+    wiring delegation must add the three keys here AND to
+    ``FileBackedSession``, or the guards in
+    :func:`ralph.mcp.multimodal.capabilities.caller_identity_for` will
+    silently judge the parent instead of the delegate on the far side.
+    ``tests/test_delegated_identity_boundary.py`` pins this.
+    """
     session_payload: dict[str, object] = {
         "session_id": session.session_id,
         "run_id": session.run_id,

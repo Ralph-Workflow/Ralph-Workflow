@@ -192,7 +192,19 @@ def _ceiling_updates(general: object, ceiling: float) -> dict[str, object]:
     Returns:
         The ``GeneralConfig`` field overrides to copy in.
     """
-    updates: dict[str, object] = {"agent_max_session_seconds": ceiling}
+    updates: dict[str, object] = {
+        "agent_max_session_seconds": ceiling,
+        # The ceiling bounds ONE attempt, and ``execute_agent_effect``
+        # runs an attempt up to ``max_same_agent_retries`` more times
+        # against the same config -- eleven attempts of the full share
+        # under the shipped default. Retrying a resolution round is this
+        # driver's own job (``MAX_RESOLUTION_ROUNDS`` rounds over
+        # ``_MAX_RESOLVER_AGENTS`` chain candidates, each re-prompted
+        # with the paths that actually survived), so the agent layer is
+        # given exactly one attempt per share and the share becomes the
+        # invocation's true wall-clock cost.
+        "max_same_agent_retries": 0,
+    }
     idle: object = getattr(general, "agent_idle_timeout_seconds", None)
     if _is_number(idle) and float(idle) > ceiling:
         updates["agent_idle_timeout_seconds"] = ceiling

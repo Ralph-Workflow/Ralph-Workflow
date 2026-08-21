@@ -163,12 +163,19 @@ def identity_on_transport(
     # readers' normalisation did not cover. Comparing raw also made a
     # difference in case alone look like a different CLI and cost the
     # identity its provider and model id.
-    stated = (identity.transport or "").strip()
-    launched = (transport or "").strip()
-    if not launched or stated.lower() == launched.lower():
-        return identity if identity.transport == stated or not stated else replace(
-            identity, transport=stated
-        )
+    # Canonicalised, not merely compared. Every consumer strips and
+    # lowercases before matching, so a difference in spelling changed
+    # nothing about behaviour -- but the spelling IS written into the
+    # session file and the wire-ledger capability digest, and the other
+    # seam that re-bases a transport (``_reconcile_injected_transport``)
+    # lowercases. Two seams normalising differently made the digest
+    # depend on which one ran, and left this function returning
+    # ``transport='CODEX'`` while claiming to have re-based the identity
+    # onto the launched ``codex``.
+    stated = (identity.transport or "").strip().lower()
+    launched = (transport or "").strip().lower()
+    if not launched or stated == launched:
+        return identity if identity.transport == stated else replace(identity, transport=stated)
     if not stated:
         return replace(identity, transport=launched)
     return MultimodalModelIdentity(provider="unknown", model_id=None, transport=launched)
@@ -180,6 +187,67 @@ def identity_on_transport(
 _PERCEPTIBLE_DELIVERIES: frozenset[DeliveryMode] = frozenset(
     {DeliveryMode.INLINE_IMAGE, DeliveryMode.TYPED_BLOCK}
 )
+
+#: How much each delivery asks of the receiving CLI, ordered.
+#:
+#: Splitting deliveries into "perceptible" and "everything else" made
+#: ``RESOURCE_REFERENCE_REPLAY`` indistinguishable from ``UNSUPPORTED``,
+#: so a stored reference-replay verdict survived against an identity
+#: whose fresh answer was ``UNSUPPORTED`` -- delivering a resource
+#: reference where a fresh profile returns an error. A reference is
+#: strictly MORE than nothing, so it needs its own rung. The two
+#: perceptible modes share a rung: neither is more demanding than the
+#: other, they simply differ in shape.
+_DELIVERY_DEMAND: dict[DeliveryMode, int] = {
+    DeliveryMode.UNSUPPORTED: 0,
+    DeliveryMode.RESOURCE_REFERENCE_REPLAY: 1,
+    DeliveryMode.TYPED_BLOCK: 2,
+    DeliveryMode.INLINE_IMAGE: 2,
+}
+
+
+def caller_identity_for(
+    session_identity: MultimodalModelIdentity,
+    delegated_identity: MultimodalModelIdentity | None,
+) -> MultimodalModelIdentity:
+    """Return the identity a delegated call must be judged against.
+
+    A delegate names a different MODEL, never a different CLI: the
+    transport describes the process on the other end of this session, so
+    the session's transport WINS rather than merely filling a blank.
+    Letting a delegate state its own transport was a way to declare the
+    guards away.
+
+    THE one definition. Three copies of this rule existed -- in
+    ``AgentSession``, in ``FileBackedSession``, and in the test double
+    every media test runs through -- so a mutation to any single copy
+    left the others green, and the double could drift from the pair it
+    was standing in for without a failure anywhere.
+    """
+    if delegated_identity is None:
+        return session_identity
+    return identity_on_transport(delegated_identity, session_identity.transport)
+
+
+def caller_profile_for(
+    session_identity: MultimodalModelIdentity,
+    delegated_identity: MultimodalModelIdentity | None,
+    session_profile: ResolvedCapabilityProfile | None,
+    delegated_profile: ResolvedCapabilityProfile | None,
+) -> ResolvedCapabilityProfile:
+    """Return the capability profile a delegated call must be judged against.
+
+    A delegate that names its own model does NOT inherit the parent's
+    profile -- that profile answers for a different model -- so the
+    stored profile is dropped and re-resolved. See
+    :func:`caller_identity_for` for why this lives in one place.
+    """
+    stored = delegated_profile
+    if stored is None and delegated_identity is None:
+        stored = session_profile
+    return profile_for_caller(
+        stored, caller_identity_for(session_identity, delegated_identity)
+    )
 
 
 def profile_for_caller(
@@ -381,18 +449,40 @@ class ResolvedCapabilityProfile:
         Ralph-minted typed block to a CLI that cannot carry one.
 
         The correction runs in ONE direction: a stored verdict may not
-        promise a delivery more perceptible than this identity allows.
-        A stored verdict that is more conservative than the fresh answer
-        is kept, so a payload sanitised to a safe value stays safe and a
-        parent's deliberate restraint is not undone.
+        ask more of this identity than the fresh answer does. A stored
+        verdict that is more conservative than the fresh answer is kept
+        here, so a parent's deliberate restraint survives re-resolution
+        and re-serialisation.
+
+        What that does NOT mean: it is a CEILING, not a gate. Whether a
+        given delivery path consults the verdict at all is that path's
+        decision, and the fresh-read image path deliberately does not --
+        criterion 14 makes an unresolvable identity capable for images,
+        so a caller-injected reference-replay verdict does not suppress
+        an inline image there (``_media_blocks`` says so at the call
+        site). Reading this as "a sanitised payload cannot produce image
+        bytes anywhere" would be wrong; the guarantee against a
+        restricted transport comes from the transport check, not from
+        this correction.
+
+        ``block_type`` is corrected on the same terms as ``delivery``.
+        Checking only the delivery left the identical hole one FIELD
+        over: a stored ``pdf -> typed_block`` whose ``block_type`` said
+        ``video`` was handed straight through, and the delivery path
+        builds whatever block that names -- so a PDF was delivered as a
+        ``VideoContent``, and an image as a ``PdfContent``. Both stored
+        and fresh were perceptible, so the delivery rule short-circuited
+        and never looked. A typed block whose type does not match the
+        one this identity actually resolves is not a milder version of
+        the fresh verdict; it is a different, unbuildable one.
         """
         if modality not in self.verdicts:
             return get_delivery_mode(self.identity, modality)
         stored = self.verdicts[modality]
         fresh = get_delivery_mode(self.identity, modality)
-        if _PERCEPTIBLE_DELIVERIES & {stored.delivery} and fresh.delivery not in (
-            _PERCEPTIBLE_DELIVERIES
-        ):
+        if _DELIVERY_DEMAND[stored.delivery] > _DELIVERY_DEMAND[fresh.delivery]:
+            return fresh
+        if stored.delivery is DeliveryMode.TYPED_BLOCK and stored.block_type != fresh.block_type:
             return fresh
         return stored
 
@@ -401,10 +491,10 @@ class ResolvedCapabilityProfile:
 
         Serialises CORRECTED verdicts (via :meth:`verdict_for`), not the
         raw stored ones. Re-emitting an uncorrected verdict would carry a
-        stale ``inline_image`` forward through every re-serialisation and
-        record it in the session file and the wire-ledger capability
-        digest -- an audit trail that disagrees with what the runtime
-        actually did.
+        stale ``inline_image`` -- or a stale ``block_type`` -- forward
+        through every re-serialisation and record it in the session file
+        and the wire-ledger capability digest, an audit trail that
+        disagrees with what the runtime actually did.
         """
         return {
             "provider": self.identity.provider,
@@ -477,6 +567,8 @@ __all__ = [
     "DeliveryMode",
     "MultimodalModelIdentity",
     "ResolvedCapabilityProfile",
+    "caller_identity_for",
+    "caller_profile_for",
     "get_delivery_mode",
     "identity_on_transport",
     "inline_image_requires_text_handle",

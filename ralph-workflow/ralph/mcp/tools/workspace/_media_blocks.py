@@ -126,27 +126,6 @@ def _build_image_withheld_block(
     return ToolContent.text_content(f"WARNING: {message}")
 
 
-def _reference_delivery(delivery: DeliveryMode) -> DeliveryMode:
-    """Return the delivery mode to stamp on a resource-reference block.
-
-    A block being emitted AS a reference must say so. When an
-    ``INLINE_IMAGE`` verdict is refused -- a non-image, or an image whose
-    mime type is not inline-capable -- the reference used to carry the
-    verdict's own ``inline_image`` value, which contradicts
-    ``ResourceReferenceContent``'s contract and, more concretely, makes
-    the artifact invisible to the handoff extractors that filter on the
-    two reference values.
-    """
-    if delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY:
-        return delivery
-    # Including TYPED_BLOCK here reproduced the very bug this helper
-    # exists to stop: a verdict naming a block type nothing can build
-    # falls through to a reference, and stamping ``typed_block`` on it
-    # left both handoff extractors -- which filter on the reference
-    # values -- unable to see the artifact at all.
-    return DeliveryMode.RESOURCE_REFERENCE_REPLAY
-
-
 def _inline_image_deliverable(
     verdict: CapabilityVerdict,
     modality: str,
@@ -269,7 +248,7 @@ def _replay_from_manifest_entry(
         mime_type=entry.mime_type,
         title=entry.title,
         modality=entry.modality,
-        delivery=_reference_delivery(verdict.delivery),
+        delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
     )
     return ToolResult(content=[ref], is_error=False)
 
@@ -286,7 +265,6 @@ def _replay_from_persisted_entry(
     modality = persisted.get("modality", "")
     mime_type = persisted.get("mime_type", "")
     title = persisted.get("title", "")
-    block_type = persisted.get("block_type", "")
     uri = persisted.get("uri", original_path)
 
     raw_bytes = _load_artifact_bytes(workspace, cache_path, source_path)
@@ -317,8 +295,15 @@ def _replay_from_persisted_entry(
             content=[ImageContent(data=encoded, mime_type=mime_type)],
             is_error=False,
         )
-    if verdict.delivery == DeliveryMode.TYPED_BLOCK and block_type:
-        block = _make_typed_block(block_type, uri=uri, mime_type=mime_type, title=title)
+    # ``verdict.block_type``, NOT the registry row's. The row is
+    # persisted, untrusted input like any other stored value, and this
+    # branch was gated only on the verdict's DELIVERY while building
+    # whatever block the ROW named -- so a legacy or corrupt row minted
+    # the wrong typed block without needing a corrupt capability profile
+    # at all. The verdict's value is corrected against the live identity
+    # by ``verdict_for``; the row's is not corrected by anything.
+    if verdict.delivery == DeliveryMode.TYPED_BLOCK and verdict.block_type:
+        block = _make_typed_block(verdict.block_type, uri=uri, mime_type=mime_type, title=title)
         if block is not None:
             return ToolResult(content=[block], is_error=False)
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
@@ -337,7 +322,7 @@ def _replay_from_persisted_entry(
         mime_type=mime_type,
         title=title,
         modality=modality,
-        delivery=_reference_delivery(verdict.delivery),
+        delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
     )
     return ToolResult(content=[ref], is_error=False)
 

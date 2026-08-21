@@ -94,6 +94,27 @@ def test_a_profile_from_another_provider_is_re_resolved() -> None:
     assert rebased.verdict_for("audio").delivery is DeliveryMode.UNSUPPORTED
     assert rebased.verdict_for(MODALITY_PDF).delivery is DeliveryMode.UNSUPPORTED
 
+    # The IDENTITY must be re-resolved, not just the deliveries. Asserting
+    # only on delivery let the re-resolution guard be deleted with this
+    # test still green: ``verdict_for`` independently corrects gemini's
+    # perceptible verdicts down for an openai identity, so both asserts
+    # above survive a profile that never re-resolved at all. These are
+    # the fields this layer prints and the wire ledger records, and a
+    # verdict still claiming ``provider='gemini'`` is an audit trail
+    # naming the wrong API.
+    assert rebased.identity.provider == "openai"
+    assert rebased.identity.model_id == "gpt-5"
+
+    # ``image`` is the modality where the two providers AGREE, so no
+    # per-verdict correction fires and the stored verdict is returned
+    # verbatim. That makes it the only place the re-resolution itself is
+    # observable: a profile that merely carried the new identity over
+    # gemini's verdicts still reports ``provider='gemini'`` here, in the
+    # text this layer prints and the wire ledger records.
+    image_verdict = rebased.verdict_for("image")
+    assert image_verdict.provider == "openai"
+    assert "gemini" not in image_verdict.reason
+
 
 def test_an_empty_payload_transport_does_not_outrank_the_declaration() -> None:
     """``"transport": ""`` is absence, not a CLI the payload named."""
@@ -104,3 +125,48 @@ def test_an_empty_payload_transport_does_not_outrank_the_declaration() -> None:
     assert payload_transport(None) is None
     assert payload_transport(7) is None
     assert payload_transport(" codex ") == "codex"
+
+
+def test_a_re_based_identity_carries_the_canonical_transport_spelling() -> None:
+    """The transport written into an identity is canonicalised, not copied.
+
+    Every consumer strips and lowercases before matching, so a
+    difference in spelling changed no behaviour and no test -- but the
+    spelling IS what lands in the session file and the wire-ledger
+    capability digest, and the other seam that re-bases a transport
+    lowercases. Two seams normalising differently made that digest
+    depend on which one ran, and left this function returning
+    ``transport='CODEX'`` while claiming to have re-based the identity
+    onto the launched ``codex``.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        identity_on_transport,
+    )
+
+    shouted = MultimodalModelIdentity(provider="openai", model_id="m", transport="  CODEX ")
+
+    assert identity_on_transport(shouted, "codex").transport == "codex"
+    assert identity_on_transport(shouted, None).transport == "codex"
+    assert identity_on_transport(shouted, "  Codex  ").transport == "codex"
+
+
+def test_a_blank_stated_transport_takes_the_launched_one() -> None:
+    """Whitespace is not a transport, in either position.
+
+    Treating a whitespace-only value as authoritative let
+    ``--agent-transport "  "`` override a delegate's genuine restricted
+    CLI and then strip to nothing, reopening the incident at the one
+    seam the payload readers' normalisation did not cover.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        identity_on_transport,
+    )
+
+    blank = MultimodalModelIdentity(provider="openai", model_id="m", transport="   ")
+    stated = MultimodalModelIdentity(provider="openai", model_id="m", transport="codex")
+
+    assert identity_on_transport(blank, "codex").transport == "codex"
+    # A blank LAUNCHED value must not clear a real stated transport.
+    assert identity_on_transport(stated, "   ").transport == "codex"

@@ -25,8 +25,8 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
-    identity_on_transport,
-    profile_for_caller,
+    caller_identity_for,
+    caller_profile_for,
     profile_from_payload,
     resolve_capability_profile,
 )
@@ -463,25 +463,21 @@ class FileBackedSession:
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        delegated = self.delegated_model_identity
-        if delegated is None:
-            return self.model_identity
-        # The session's transport WINS, it is not merely a fallback: a
-        # delegate names a different model and cannot change which CLI
-        # is on the other end of this session.
-        return identity_on_transport(delegated, self.model_identity.transport)
+        """Return the identity a delegated call is judged against.
+
+        The rule itself lives in :func:`caller_identity_for` so this
+        class, ``FileBackedSession``, and the test double cannot drift.
+        """
+        return caller_identity_for(self.model_identity, self.delegated_model_identity)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
-        return profile_for_caller(
-            self.delegated_capability_profile
-            if self.delegated_capability_profile is not None
-            else (
-                None
-                if self.delegated_model_identity is not None
-                else self.capability_profile
-            ),
-            self.caller_model_identity,
+        """Resolve a fresh caller-specific profile for every ledgered tool call."""
+        return caller_profile_for(
+            self.model_identity,
+            self.delegated_model_identity,
+            self.capability_profile,
+            self.delegated_capability_profile,
         )
 
     def check_capability(self, capability: str) -> object:

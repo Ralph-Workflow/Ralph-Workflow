@@ -252,3 +252,57 @@ def test_a_non_positive_share_cannot_produce_a_ceiling() -> None:
     config = _config()
     assert with_session_ceiling(config, 0.0) is config
     assert with_session_ceiling(config, -1.0) is config
+
+
+class _RetryingSession:
+    """Stands in for ``execute_agent_effect`` INCLUDING its retry loop.
+
+    :func:`~ralph.pipeline.effect_executor.execute_agent_effect` does not
+    run one agent: it runs an attempt and then re-runs it, through
+    ``run_with_direct_mcp_recovery``, up to ``max_same_agent_retries``
+    times. Every one of those attempts is built by
+    ``_build_attempt_invoke_options`` from the SAME config, so every one
+    of them is granted the SAME session ceiling. A fake that spends the
+    ceiling once therefore models an invocation that cannot fail, and
+    proves nothing about the case the integration actually hits -- an
+    agent that hangs, is force-cut, and is retried.
+
+    This fake spends the ceiling once per attempt the config permits,
+    which is the worst case that contract allows.
+    """
+
+    def __init__(self, clock: _FakeClock) -> None:
+        self.clock = clock
+        self.ceilings: list[float | None] = []
+
+    def __call__(
+        self, effect: object, config: object, *args: object, **kwargs: object
+    ) -> PipelineEvent:
+        del effect, args, kwargs
+        assert isinstance(config, UnifiedConfig)
+        ceiling = config.general.agent_max_session_seconds
+        assert ceiling is not None
+        for _ in range(1 + config.general.max_same_agent_retries):
+            self.ceilings.append(ceiling)
+            self.clock.now += ceiling
+        return PipelineEvent.AGENT_FAILURE
+
+
+def test_retried_attempts_cannot_outlive_the_configured_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A round that is retried internally still fits the whole-pipeline budget.
+
+    The regression: the share was applied as a PER-ATTEMPT session
+    ceiling while the agent layer was still free to run eleven attempts
+    of that size, so a conflicted rebase could sit inside a single round
+    for over ten times the ceiling with the operator watching a frozen
+    run.
+    """
+    _install_seams(monkeypatch, tmp_path)
+    clock = _FakeClock()
+    session = _RetryingSession(clock)
+    _install_session(monkeypatch, session)
+
+    assert _run(tmp_path, clock=clock) is False
+    assert clock.now - 1_000.0 <= _CEILING_SECONDS

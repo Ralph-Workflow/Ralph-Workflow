@@ -1042,6 +1042,13 @@ ralph.pipeline.conflict_resolution.driver
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.hard_stop
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.hard_stop
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.rebase_loop
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

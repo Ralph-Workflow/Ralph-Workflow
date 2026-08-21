@@ -11,8 +11,8 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
-    identity_on_transport,
-    profile_for_caller,
+    caller_identity_for,
+    caller_profile_for,
     resolve_capability_profile,
 )
 from ralph.mcp.multimodal.resources import MediaManifest
@@ -297,34 +297,21 @@ class AgentSession:
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        """Return the delegate model identity when set, otherwise the parent identity.
+        """Return the identity a delegated call is judged against.
 
-        A delegate names a different MODEL, never a different CLI: the
-        transport describes the process on the other end of this
-        session. A delegate that omits it inherits the session's, so a
-        delegated call cannot slip past the guards that key on the CLI.
+        The rule itself lives in :func:`caller_identity_for` so this
+        class, ``FileBackedSession``, and the test double cannot drift.
         """
-        delegated = self.delegated_model_identity
-        if delegated is None:
-            return self.model_identity
-        # The session's transport WINS, it is not merely a fallback: a
-        # delegate names a different model, and cannot change which CLI
-        # is on the other end of this session. Letting a delegate state
-        # its own transport was a way to declare the guards away.
-        return identity_on_transport(delegated, self.model_identity.transport)
+        return caller_identity_for(self.model_identity, self.delegated_model_identity)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
         """Resolve a fresh caller-specific profile for every ledgered tool call."""
-        return profile_for_caller(
-            self.delegated_capability_profile
-            if self.delegated_capability_profile is not None
-            else (
-                None
-                if self.delegated_model_identity is not None
-                else self.capability_profile
-            ),
-            self.caller_model_identity,
+        return caller_profile_for(
+            self.model_identity,
+            self.delegated_model_identity,
+            self.capability_profile,
+            self.delegated_capability_profile,
         )
 
     def check_capability(self, capability: str) -> object:

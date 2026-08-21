@@ -156,6 +156,14 @@ def build_standalone_http_server(
     restricted CLI at a manually started server would be handed content
     that kills its turn. There is no way to infer this, so it is
     declared -- and omitted, the server keeps the permissive default.
+
+    SCOPE: the declaration reaches the session this function MINTS. A
+    caller that supplies its own session in ``extras`` is stating who it
+    is talking to, and that session's identity is used as given --
+    ``agent_transport`` does not override it. ``run_standalone_server``
+    is the path that always honours the declaration: it threads it into
+    ``session_from_env``, which applies it to both the file-backed and
+    the JSON handshake shapes.
     """
     _extras = extras or McpServerExtras()
     effective_session = _extras.session or AgentSession(
