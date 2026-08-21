@@ -150,3 +150,36 @@ def test_a_text_block_that_decodes_to_media_is_not_served_as_a_payload() -> None
     assert carries_upstream_media_blocks("not a list") is True
     # A tuple is a block sequence: the server serialises one like a list.
     assert carries_upstream_media_blocks((dict(_IMAGE_BLOCK),)) is True
+
+
+def test_a_content_field_that_is_not_a_list_is_refused() -> None:
+    """The registry route must fail closed on it, not pass it through.
+
+    ``_get_content_list`` returned ``None`` for a non-sequence
+    ``content``, which the normaliser reads as "nothing to normalise" --
+    so ``{"content": {"type": "image", "data": ...}}`` was forwarded
+    with its base64 intact. The guard added for the text-smuggling route
+    never sees this one: it has a single caller, in the server's
+    JSON-in-text decoder. Hardening that route left the registry route,
+    which is the one the incident's payload actually travels.
+    """
+    from ralph.mcp.upstream.models import UpstreamCallError
+
+    session = MockSessionWithManifest("media.read")
+
+    for label, raw in (
+        ("an object where a block list belongs", {"content": dict(_IMAGE_BLOCK)}),
+        ("the same, nested in an envelope", {"result": {"content": dict(_IMAGE_BLOCK)}}),
+        ("a string where a block list belongs", {"content": "not blocks"}),
+    ):
+        with pytest.raises(UpstreamCallError, match="not a list of blocks") as refused:
+            _normalise(raw, session=session)
+        assert "content" in str(refused.value), label
+
+    # Not vacuous: the conforming shape still normalises, and a result
+    # with no content at all is simply left alone.
+    normalised = repr(_normalise({"content": [dict(_IMAGE_BLOCK)]}, session=session))
+    assert _B64 not in normalised
+    assert _normalise({"structuredContent": {"ok": True}}, session=session) == {
+        "structuredContent": {"ok": True}
+    }

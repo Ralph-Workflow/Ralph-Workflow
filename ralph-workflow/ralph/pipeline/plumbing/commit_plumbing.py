@@ -81,6 +81,7 @@ from ralph.mcp.multimodal.capabilities import (
     transport_inline_image_roundtrip_unsafe,
 )
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
+from ralph.pipeline.chain_identity import chain_disagrees_on_model
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
@@ -1341,9 +1342,20 @@ def commit_chain_is_ambiguous(chain_config: CommitChainConfig) -> bool:
     which this delegates to) and left in place here -- one rule, two
     call sites, one of them still guessing.
     """
-    return session_transport_is_ambiguous(
-        [transport.value for transport in _commit_chain_transports(chain_config)]
-    )
+    transports: list[str] = []
+    model_flags: list[str] = []
+    for agent_name in chain_config.agents:
+        cfg = chain_config.registry.get(agent_name)
+        if cfg is None or cfg.transport is None:
+            continue
+        transports.append(cfg.transport.value)
+        model_flags.append((cfg.model_flag or "").strip())
+    # The MODEL half too. Delegating to the transport rule alone left
+    # this the "one rule, two call sites, one of them still guessing"
+    # that this function's own docstring criticises: two agents sharing
+    # a CLI and naming different models are just as unable to agree on a
+    # provider as two naming different CLIs.
+    return session_transport_is_ambiguous(transports) or chain_disagrees_on_model(model_flags)
 
 
 def _start_commit_bridge(

@@ -117,7 +117,7 @@ def test_the_phase_plan_passes_the_RESOLVED_chain_transport(
     monkeypatch.setattr(fan_out, "phase_session_identity", recording_identity)
     monkeypatch.setattr(
         fan_out,
-        "_phase_session_transport",
+        "resolve_phase_session_transport",
         lambda _agents, _config: (AgentTransport.CODEX, True),
     )
 
@@ -191,7 +191,7 @@ def test_a_chain_that_disagrees_on_MODEL_is_ambiguous_too(
     from unittest.mock import MagicMock
 
     from ralph.config.enums import AgentTransport
-    from ralph.pipeline import fan_out
+    from ralph.pipeline import chain_identity, fan_out
 
     def config_for(transport: AgentTransport, model_flag: str | None) -> object:
         return SimpleNamespace(transport=transport, model_flag=model_flag)
@@ -205,11 +205,11 @@ def test_a_chain_that_disagrees_on_MODEL_is_ambiguous_too(
 
     def resolve(mapping: dict[str, object], names: list[str]) -> tuple[object, bool]:
         monkeypatch.setattr(
-            fan_out,
+            chain_identity,
             "AgentRegistry",
             SimpleNamespace(from_config=lambda _config: _Registry(mapping)),
         )
-        return fan_out._phase_session_transport(names, MagicMock())
+        return fan_out.resolve_phase_session_transport(names, MagicMock())
 
     mixed_models = {
         "gem": config_for(AgentTransport.CLAUDE, "--model gemini/gemini-2.5-pro"),

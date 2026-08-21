@@ -1182,6 +1182,13 @@ ralph.pipeline.effect_router
    :members:
    :show-inheritance:
 
+ralph.pipeline.chain_identity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.chain_identity
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.fan_out
 ~~~~~~~~~~~~~~~~~~~~~~
 

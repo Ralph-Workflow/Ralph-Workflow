@@ -83,18 +83,24 @@ def reconcile_declared_transport(declared: str | None, persisted: object) -> str
     capable CLI to a resource reference is harmless, while handing a
     restricted one an inline image kills its turn.
 
-    Neither source can simply outrank the other. Reading the payload
-    first (``payload_transport(raw) or declared``) let a stale or
-    hand-written session file naming another CLI defeat an operator's
-    ``--agent-transport``, which is the one thing that flag exists to do
-    and what its help text promises. Reading the declaration first would
-    invert a case that was deliberate: a payload written by a parent
-    Ralph process genuinely does know which agent it launched, and the
-    declaration on a standalone server is a guess beside it.
+    Order, and why:
 
-    Preferring whichever side is restricted honours both: a declared
-    ``codex`` is not overridden by a stale ``claude`` payload, and a
-    payload that knows better still wins whenever nothing is at stake.
+    1. A RESTRICTED side wins whichever side it is. Degrading a capable
+       CLI costs a resource reference; handing a restricted one an
+       inline image kills its turn.
+    2. Otherwise the DECLARATION wins. It names the process an operator
+       started this server for, and reading the payload first let a
+       stale or hand-written file defeat ``--agent-transport`` -- the
+       one thing that flag exists to do.
+    3. With no declaration the payload stands, because it is all there
+       is.
+
+    Rule 2 replaced an earlier "the payload knows better" reading. That
+    reading is defensible for a payload a parent Ralph process wrote,
+    and no production path passes ``--agent-transport`` alongside one;
+    it is indefensible for the stale file this rule is about. The
+    payload's PROVIDER does not travel with a transport it did not
+    state -- see :func:`session_identity_from_payload`.
     """
     stated = payload_transport(persisted)
     declared_clean = payload_transport(declared)
@@ -114,6 +120,46 @@ def reconcile_declared_transport(declared: str | None, persisted: object) -> str
     #    described a different CLI.
     # 3. With no declaration, the payload stands -- it is all there is.
     return declared_clean or stated
+
+
+def session_identity_from_payload(
+    raw_identity: Mapping[str, object],
+    declared: str | None,
+) -> MultimodalModelIdentity:
+    """Build the session identity a payload and a declaration agree on.
+
+    A payload's PROVIDER describes the CLI that payload named. It is
+    only trustworthy for the CLI we end up tagging if the payload named
+    that same CLI -- so a payload carrying ``{"provider": "gemini"}``
+    and NO transport cannot vouch for a session an operator declared as
+    ``claude``, and keeping it there resolved gemini's capabilities and
+    minted an AudioContent the claude CLI cannot take.
+
+    ``identity_on_transport`` alone does not cover this: it preserves
+    the provider when the stated transport is blank, deliberately, so a
+    DELEGATE that names a different model on the same CLI keeps its
+    provider. That is right for a delegate and wrong for a session
+    payload, which is a different question asked of the same function.
+
+    With no declaration the payload stands as written -- there is
+    nothing to contradict it.
+    """
+    provider = str(raw_identity.get("provider", UNKNOWN_IDENTITY.provider))
+    model_id_raw = raw_identity.get("model_id")
+    stated_transport = payload_transport(raw_identity.get("transport"))
+    resolved = reconcile_declared_transport(declared, raw_identity.get("transport"))
+    stated = MultimodalModelIdentity(
+        provider=provider,
+        model_id=str(model_id_raw) if model_id_raw is not None else None,
+        transport=stated_transport,
+    )
+    if resolved is None or stated_transport == resolved:
+        return identity_on_transport(stated, resolved)
+    # The payload did not name the CLI being tagged, so nothing it says
+    # about the provider applies to it.
+    return MultimodalModelIdentity(
+        provider=UNKNOWN_IDENTITY.provider, model_id=None, transport=resolved
+    )
 
 
 class FileBackedSession:
@@ -434,24 +480,7 @@ class FileBackedSession:
                 model_id=None,
                 transport=self._declared_agent_transport,
             )
-        provider = str(raw.get("provider", "unknown"))
-        model_id = raw.get("model_id")
-        stated = MultimodalModelIdentity(
-            provider=provider,
-            model_id=str(model_id) if model_id is not None else None,
-            transport=payload_transport(raw.get("transport")),
-        )
-        # Through ``identity_on_transport``, NOT by pairing the payload's
-        # provider with whichever transport won. That provider described
-        # the CLI the payload named; carrying it onto a different one is
-        # the thing that function exists to prevent, and skipping it let
-        # a stale ``{"provider": "gemini", "transport": "agy"}`` payload
-        # mint an AudioContent for a declared ``claude`` session -- a
-        # modality Ralph's own matrix says that CLI cannot take.
-        return identity_on_transport(
-            stated,
-            reconcile_declared_transport(self._declared_agent_transport, raw.get("transport")),
-        )
+        return session_identity_from_payload(raw, self._declared_agent_transport)
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile | None:
@@ -669,21 +698,9 @@ def session_from_env(
     )
     raw_identity = payload.get("model_identity")
     if isinstance(raw_identity, dict):
-        provider = str(raw_identity.get("provider", "unknown"))
-        model_id_raw = raw_identity.get("model_id")
-        # Re-based exactly as the file-backed twin is: the payload's
-        # provider described the CLI the payload named, so it must not
-        # ride along onto a different one.
-        model_identity = identity_on_transport(
-            MultimodalModelIdentity(
-                provider=provider,
-                model_id=str(model_id_raw) if model_id_raw is not None else None,
-                transport=payload_transport(raw_identity.get("transport")),
-            ),
-            reconcile_declared_transport(
-                declared_agent_transport, raw_identity.get("transport")
-            ),
-        )
+        # The same seam as the file-backed twin, so the two cannot
+        # answer this differently.
+        model_identity = session_identity_from_payload(raw_identity, declared_agent_transport)
     else:
         model_identity = MultimodalModelIdentity(
             provider=UNKNOWN_IDENTITY.provider,

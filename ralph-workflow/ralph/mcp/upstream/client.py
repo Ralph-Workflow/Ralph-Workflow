@@ -359,7 +359,7 @@ def _normalize_media_block(
     }
 
 
-def _get_content_list(result: JsonObject) -> list[object] | None:
+def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> list[object] | None:
     """Extract the content blocks from a result, or ``None`` if there are none.
 
     Accepts a TUPLE as well as a list, because the server layer does:
@@ -370,8 +370,21 @@ def _get_content_list(result: JsonObject) -> list[object] | None:
     that the top-level tuple had one round earlier.
     """
     content = result.get("content")
-    if not isinstance(content, (list, tuple)):
+    if content is None:
         return None
+    if not isinstance(content, (list, tuple)):
+        # FAIL CLOSED, like every other shape this contract does not
+        # recognise. Returning ``None`` here meant "nothing to
+        # normalise", so ``{"content": {"type": "image", "data": ...}}``
+        # was passed through with its base64 intact -- and the guard
+        # added for the text-smuggling route never sees this one, so the
+        # registry route shipped the bytes the contract exists to stop.
+        msg = (
+            f"upstream server {server_name!r} tool {tool_name!r} returned a 'content' "
+            f"field that is not a list of blocks (got {type(content).__name__}); "
+            "Ralph cannot normalize it, so it is refused rather than forwarded"
+        )
+        raise UpstreamCallError(msg)
     return list(cast("Sequence[object]", content))
 
 
@@ -438,7 +451,7 @@ def normalize_upstream_content_blocks(
 
     Modifies the result dict in place.
     """
-    content_blocks = _get_content_list(result)
+    content_blocks = _get_content_list(result, server_name, tool_name)
     if content_blocks is None:
         return
 

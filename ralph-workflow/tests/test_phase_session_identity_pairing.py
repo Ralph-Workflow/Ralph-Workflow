@@ -137,7 +137,9 @@ def test_the_commit_chain_uses_the_same_ambiguity_rule() -> None:
             transport = self._transports.get(name)
             if transport is None:
                 return None
-            return SimpleNamespace(transport=transport)
+            # ``model_flag`` too: the commit rule reads it now, the same
+            # way the fan-out rule always did.
+            return SimpleNamespace(transport=transport, model_flag=None)
 
     def chain(*names: str) -> object:
         registry = _Registry(
@@ -148,6 +150,20 @@ def test_the_commit_chain_uses_the_same_ambiguity_rule() -> None:
             }
         )
         return SimpleNamespace(agents=list(names), registry=registry)
+
+    class _ModelRegistry:
+        def __init__(self, mapping: dict[str, str | None]) -> None:
+            self._mapping = mapping
+
+        def get(self, name: str) -> object:
+            if name not in self._mapping:
+                return None
+            return SimpleNamespace(
+                transport=AgentTransport.CLAUDE, model_flag=self._mapping[name]
+            )
+
+    def model_chain(mapping: dict[str, str | None]) -> object:
+        return SimpleNamespace(agents=list(mapping), registry=_ModelRegistry(mapping))
 
     mixed = chain("claude", "opencode")
     assert commit_chain_transport(mixed) is None
@@ -166,6 +182,17 @@ def test_the_commit_chain_uses_the_same_ambiguity_rule() -> None:
     empty = chain()
     assert commit_chain_transport(empty) is None
     assert commit_chain_is_ambiguous(empty) is False
+
+    # The MODEL half. Delegating to the transport rule alone left the
+    # commit path with the same gap the fan-out path had fixed: agents
+    # sharing a CLI but naming different models cannot agree on a
+    # provider either.
+    disagreeing_models = model_chain({"gem": "--model gemini/gemini-2.5-pro", "plain": None})
+    assert commit_chain_transport(disagreeing_models) is AgentTransport.CLAUDE
+    assert commit_chain_is_ambiguous(disagreeing_models) is True
+
+    agreeing_models = model_chain({"a": "--model x", "b": "--model x"})
+    assert commit_chain_is_ambiguous(agreeing_models) is False
 
 
 def test_a_model_disagreement_drops_the_flag_even_when_the_cli_agrees() -> None:

@@ -488,3 +488,39 @@ def test_a_blank_provider_is_unknown_not_a_resolved_one() -> None:
         assert identity.is_known() is False, blank
 
     assert MultimodalModelIdentity(provider="claude").is_known() is True
+
+
+def test_a_padded_model_id_does_not_change_the_digest() -> None:
+    """The ELEVENTH field, between the two already canonicalised.
+
+    ``model_id`` sits between ``provider`` and ``transport`` and was
+    copied verbatim into every verdict ``reason`` and the wire-ledger
+    capability digest, so one padded character produced three digests
+    for a single run -- the same defect the previous rounds fixed for
+    its two neighbours.
+
+    Stripped, never lowered: a model id is a vendor's name for a
+    specific model and its case can be significant.
+    """
+    import json
+
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        resolve_capability_profile,
+    )
+
+    digests = {
+        json.dumps(
+            resolve_capability_profile(
+                MultimodalModelIdentity(provider="openai", model_id=spelling, transport="codex")
+            ).to_payload(),
+            sort_keys=True,
+        )
+        for spelling in ("gpt-5", "  gpt-5 ", "\tgpt-5\n")
+    }
+
+    assert len(digests) == 1, "padding changed the capability digest"
+
+    # Case IS significant for a model id, unlike a provider or transport.
+    assert MultimodalModelIdentity(provider="openai", model_id="GPT-5").model_id == "GPT-5"
+    assert MultimodalModelIdentity(provider="openai", model_id="   ").model_id is None
