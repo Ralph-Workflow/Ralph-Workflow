@@ -20,6 +20,7 @@ path.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -140,7 +141,7 @@ class _FakeManagedProcess:
         pass
 
 
-def _make_subprocess_ctx() -> ProcessReaderCtx:
+def _make_subprocess_ctx(*, workspace_path: Path | None = None) -> ProcessReaderCtx:
     return ProcessReaderCtx(
         config=AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC),
         policy=TimeoutPolicy(idle_timeout_seconds=300.0),
@@ -148,7 +149,7 @@ def _make_subprocess_ctx() -> ProcessReaderCtx:
         liveness_probe=None,
         waiting_listener=None,
         monitor=None,
-        workspace_path=None,
+        workspace_path=workspace_path,
     )
 
 

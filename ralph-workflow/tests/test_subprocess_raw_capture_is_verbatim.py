@@ -157,10 +157,40 @@ def test_agent_stdout_decodes_with_replacement() -> None:
     Under strict decoding the reader thread raised mid-chunk, losing the
     bad line, everything buffered with it, and the rest of the turn --
     silently, because a short-but-parseable file reports no corruption.
-    """
-    from ralph.process.manager._spawn_options import SpawnOptions
 
-    assert SpawnOptions().errors == "replace"
+    This spawns a real process that emits an invalid UTF-8 byte between
+    two good lines and reads it back through the production factory.
+    Asserting ``SpawnOptions().errors == "replace"`` instead proved only
+    that a dataclass default equals its own literal: the factory could
+    stop forwarding the option entirely and that assertion still passed.
+    """
+    import subprocess
+    import sys
+
+    from ralph.process.manager import SpawnOptions, get_process_manager
+
+    emit_bad_byte = (
+        "import sys;"
+        "sys.stdout.buffer.write(b'before\\n\\xff\\nafter\\n');"
+        "sys.stdout.buffer.flush()"
+    )
+    manager = get_process_manager()
+    handle = manager.spawn(
+        [sys.executable, "-c", emit_bad_byte],
+        SpawnOptions(stdout=subprocess.PIPE, text=True, label="test:decode-replacement"),
+    )
+    try:
+        stdout = handle.stdout
+        assert stdout is not None
+        lines = [line.rstrip("\n") for line in stdout]
+    finally:
+        manager.shutdown_all(grace_period_s=0)
+
+    # The undecodable byte survives as U+FFFD, and -- the point -- the
+    # lines on either side of it are both still delivered.
+    assert lines[0] == "before"
+    assert lines[-1] == "after"
+    assert "\ufffd" in lines[1]
 
 
 @pytest.mark.asyncio

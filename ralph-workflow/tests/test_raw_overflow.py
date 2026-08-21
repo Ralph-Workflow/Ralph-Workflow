@@ -768,15 +768,31 @@ def test_two_agents_never_share_one_graded_capture() -> None:
         output_flag="--output-format=stream-json",
         transport=AgentTransport.GENERIC,
     )
+    # The registry SYNTHESIZES this shape for every ``ccs/<alias>`` name
+    # (``registry._resolve_dynamic_ccs_agent`` builds ``f"ccs {alias}"``).
+    # A bare ``cmd="glm"`` is a shape it never produces, and asserting on
+    # it hid the fact that all these aliases shared one ``ccs.log``.
     ccs_alias = AgentConfig(
-        cmd="glm",
+        cmd="ccs glm",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.GENERIC,
+    )
+    other_ccs_alias = AgentConfig(
+        cmd="ccs mm",
         output_flag="--output-format=stream-json",
         transport=AgentTransport.GENERIC,
     )
 
     assert raw_log_unit_id_for(headless_claude) == "claude-headless"
     assert raw_log_unit_id_for(kimi) == "kimi"
-    assert raw_log_unit_id_for(ccs_alias) == "glm"
+    assert raw_log_unit_id_for(ccs_alias) == "ccs-glm"
+    assert raw_log_unit_id_for(other_ccs_alias) == "ccs-mm"
+    # The point of all of it: no two of these may share a capture.
+    identities = {
+        raw_log_unit_id_for(config)
+        for config in (headless_claude, kimi, ccs_alias, other_ccs_alias)
+    }
+    assert len(identities) == 4
 
 
 def test_an_evicted_queue_line_still_reaches_the_capture() -> None:
@@ -802,3 +818,48 @@ def test_an_evicted_queue_line_still_reaches_the_capture() -> None:
     assert evicted == ["one", "two", "three"]
     assert queue.snapshot() == ["four", "five"]
     assert len(evicted) + len(queue.snapshot()) == 5, "no line may vanish"
+
+
+def test_an_agent_invoked_by_path_keeps_its_identity() -> None:
+    """The identity is keyed on the executable BASENAME.
+
+    Agents are commonly invoked by absolute path or through a version
+    manager's shim. Keying on the raw command token made those miss
+    every executable-gated clause -- a path-invoked headless Claude was
+    filed as plain ``claude``, i.e. into the INTERACTIVE agent's
+    capture, which is the collision this identity exists to prevent --
+    and it put path separators into a filename.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_unit_id_for
+
+    by_path = AgentConfig(
+        cmd="/opt/homebrew/bin/claude -p",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.CLAUDE,
+    )
+    ccs_by_path = AgentConfig(
+        cmd="/usr/local/bin/ccs glm",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.GENERIC,
+    )
+
+    assert raw_log_unit_id_for(by_path) == "claude-headless"
+    assert raw_log_unit_id_for(ccs_by_path) == "ccs-glm"
+
+
+def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
+    """``exec`` is a subcommand of one runtime, not a choice of runtime.
+
+    Only a multiplexer's first positional names a different agent. Folding
+    every subcommand into the identity would rename existing captures for
+    no gain.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_unit_id_for
+
+    codex = AgentConfig(cmd="codex exec", output_flag="--json", transport=AgentTransport.CODEX)
+
+    assert raw_log_unit_id_for(codex) == "codex"

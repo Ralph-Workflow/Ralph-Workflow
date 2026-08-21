@@ -209,12 +209,15 @@ byte size, and `.agent/raw/<id>.overflow.log` recovery destination.
 
 ### Canonical activity presentation
 
-Providers first write every original line to verbatim `.agent/raw/<id>.log`.
-That file holds agent output plus, for interactive PTY transports, the
-reader's own session and turn-boundary markers; bodies the display condenses out
-of the live view are written to the `.agent/raw/<id>.overflow.log` sibling
+Providers first write each original line to one of two sibling captures.
+The verbatim `.agent/raw/<id>.log` holds agent output plus, for interactive
+PTY transports, the reader's own session and turn-boundary markers; bodies
+the display condenses out of the live view go to `.agent/raw/<id>.overflow.log`
 instead, so the verbatim capture stays parseable as the transcript that
-Ralph Workflow grades for corruption. They then normalize each logical event once before the live display
+Ralph Workflow grades for corruption. The identity `<id>` distinguishes agents
+that share an executable — headless Claude from interactive Claude, and each
+`ccs/<alias>` from every other — so two agents can never write one capture and
+grade each other's bytes. They then normalize each logical event once before the live display
 and the ANSI-free `.agent/raw/<id>.rendered.log` record consume it. A phase header
 carries readable phase words, cycle/iteration position, and identity once;
 its indented event rows carry their timestamp, role, body, and only a
