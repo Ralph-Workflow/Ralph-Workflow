@@ -28,7 +28,12 @@ from ralph.pipeline.conflict_resolution.driver import (
     RESOLVE_TIMEOUT_SECONDS,
     run_conflict_resolution_pipeline,
 )
-from ralph.pipeline.conflict_resolution.hard_stop import call_with_hard_stop
+from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
+from ralph.pipeline.conflict_resolution.hard_stop import (
+    call_with_hard_stop,
+    live_agent_pids,
+    reap_agents_started_since,
+)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -46,16 +51,61 @@ def _policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
-class _RecordingHardStop:
-    """Stands in for the driver's hard stop; every attempt is abandoned."""
+class _FakeClock:
+    """A monotonic clock the test advances by hand."""
 
     def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class _RecordingHardStop:
+    """Stands in for the driver's hard stop; every attempt is abandoned.
+
+    An abandoned attempt costs its whole share -- the driver waited out
+    the timeout before giving up -- so the clock is advanced by it. A
+    fake that abandons for free would let a share of the WHOLE remaining
+    deadline look bounded, because nothing would ever be spent.
+    """
+
+    def __init__(self, clock: _FakeClock) -> None:
+        self.clock = clock
         self.timeouts: list[float] = []
 
     def __call__(self, call: object, timeout_seconds: float) -> bool | None:
         del call
         self.timeouts.append(timeout_seconds)
+        self.clock.now += timeout_seconds
         return None
+
+
+class _FakeRecord:
+    """The fields :func:`reap_agents_started_since` reads off a record."""
+
+    def __init__(self, pid: int, label: str | None) -> None:
+        self.pid = pid
+        self.pgid = pid
+        self.label = label
+
+
+class _FakeProcessManager:
+    """A process manager whose live set the test controls."""
+
+    def __init__(self, records: list[_FakeRecord]) -> None:
+        self.records = records
+
+    def list_active(self) -> list[_FakeRecord]:
+        return list(self.records)
+
+
+class _ExplodingProcessManager:
+    """A process manager that fails the way a racing one does."""
+
+    def list_active(self) -> list[_FakeRecord]:
+        msg = "dictionary changed size during iteration"
+        raise RuntimeError(msg)
 
 
 def _install_seams(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -76,7 +126,8 @@ def test_an_attempt_that_never_returns_fails_its_round(
 ) -> None:
     """The driver reports failure instead of blocking on a wedged agent."""
     _install_seams(monkeypatch, tmp_path)
-    hard_stop = _RecordingHardStop()
+    clock = _FakeClock()
+    hard_stop = _RecordingHardStop(clock)
 
     resolved = run_conflict_resolution_pipeline(
         root=tmp_path,
@@ -87,6 +138,7 @@ def test_an_attempt_that_never_returns_fails_its_round(
         policy_bundle=_policy_bundle(),
         display=None,
         display_context=None,
+        clock=clock,
         hard_stop=hard_stop,
     )
 
@@ -99,7 +151,8 @@ def test_every_hard_stop_is_a_bounded_share_of_the_deadline(
 ) -> None:
     """No attempt may be given an unbounded, zero, or whole-ceiling stop."""
     _install_seams(monkeypatch, tmp_path)
-    hard_stop = _RecordingHardStop()
+    clock = _FakeClock()
+    hard_stop = _RecordingHardStop(clock)
 
     run_conflict_resolution_pipeline(
         root=tmp_path,
@@ -110,11 +163,20 @@ def test_every_hard_stop_is_a_bounded_share_of_the_deadline(
         policy_bundle=_policy_bundle(),
         display=None,
         display_context=None,
+        clock=clock,
         hard_stop=hard_stop,
     )
 
+    assert hard_stop.timeouts, "the driver never applied a hard stop"
     for timeout in hard_stop.timeouts:
-        assert 0.0 < timeout <= RESOLVE_TIMEOUT_SECONDS
+        assert timeout > 0.0
+    # The share must leave room for the rounds the driver still promises
+    # to run. Handing the first attempt everything that is left satisfies
+    # "no attempt exceeded the ceiling" while starving every retry, which
+    # is the arithmetic this bound exists to forbid.
+    assert hard_stop.timeouts[0] <= RESOLVE_TIMEOUT_SECONDS / MAX_RESOLUTION_ROUNDS
+    assert sum(hard_stop.timeouts) <= RESOLVE_TIMEOUT_SECONDS
+    assert clock.now - 1_000.0 <= RESOLVE_TIMEOUT_SECONDS
 
 
 def test_a_call_that_returns_in_time_yields_its_value() -> None:
@@ -144,3 +206,110 @@ def test_a_raising_call_is_reported_as_a_failed_attempt() -> None:
         raise RuntimeError(msg)
 
     assert call_with_hard_stop(_raises, 5.0) is False
+
+
+def test_only_processes_the_attempt_started_are_reaped() -> None:
+    """A reap must not touch what was already running."""
+    already_running = _FakeRecord(101, "invoke:claude")
+    started_by_the_attempt = _FakeRecord(202, "invoke:claude")
+    manager = _FakeProcessManager([already_running, started_by_the_attempt])
+    killed: list[int] = []
+
+    reaped = reap_agents_started_since(
+        frozenset({already_running.pid}),
+        manager=manager,
+        teardown=killed.append,
+    )
+
+    assert reaped == (started_by_the_attempt.pid,)
+    assert killed == [started_by_the_attempt.pid]
+
+
+def test_the_reap_covers_the_tool_subprocesses_that_write_files() -> None:
+    """The agent is not the only thing an abandoned attempt leaves running.
+
+    The MCP server the session runs on, and the tool subprocesses IT
+    spawns, are what actually rewrite files. Reaping the agent alone
+    leaves a formatter or a codemod running into the caller's
+    ``git rebase --abort``.
+    """
+    manager = _FakeProcessManager(
+        [
+            _FakeRecord(11, "invoke:claude"),
+            _FakeRecord(12, "mcp-exec:make"),
+            _FakeRecord(13, "phase:rebase_conflict_resolution:mcp-server"),
+            _FakeRecord(14, "some-unrelated-thing"),
+            _FakeRecord(15, None),
+        ]
+    )
+    killed: list[int] = []
+
+    reaped = reap_agents_started_since(frozenset(), manager=manager, teardown=killed.append)
+
+    assert set(reaped) == {11, 12, 13}
+    assert 14 not in killed
+    assert 15 not in killed
+
+
+def test_a_failing_reap_never_escapes_the_abandon_path() -> None:
+    """The abandonment must survive a process manager that raises.
+
+    ``list_active`` walks a dict other threads mutate, so it can raise
+    ``RuntimeError`` on its own. Letting that escape would lose the
+    abandonment entirely: no verdict, no phase line, and the driver back
+    to waiting on a wedged layer.
+    """
+    manager = _ExplodingProcessManager()
+
+    assert reap_agents_started_since(frozenset(), manager=manager, teardown=lambda pid: None) == ()
+    assert live_agent_pids(manager=manager) == frozenset()
+
+
+def test_a_reaped_process_that_will_not_die_does_not_block_the_others() -> None:
+    """One unkillable process may not strand its siblings."""
+    manager = _FakeProcessManager(
+        [_FakeRecord(21, "invoke:claude"), _FakeRecord(22, "mcp-exec:go")]
+    )
+    killed: list[int] = []
+
+    def _teardown(pid: int) -> None:
+        if pid == 21:
+            msg = "no such process"
+            raise OSError(msg)
+        killed.append(pid)
+
+    reaped = reap_agents_started_since(frozenset(), manager=manager, teardown=_teardown)
+
+    assert killed == [22]
+    assert reaped == (22,)
+
+
+def test_an_abandoned_attempt_ends_the_pipeline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One wedge is enough; the driver does not go back for another.
+
+    An abandoned attempt leaves a thread the interpreter cannot reclaim
+    and a session whose Python-side objects are stranded on it. Starting
+    the next candidate against a layer that has just proven it does not
+    return spends another share of the deadline to strand another one.
+    """
+    _install_seams(monkeypatch, tmp_path)
+    clock = _FakeClock()
+    hard_stop = _RecordingHardStop(clock)
+
+    resolved = run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        clock=clock,
+        hard_stop=hard_stop,
+    )
+
+    assert resolved is False
+    assert len(hard_stop.timeouts) == 1

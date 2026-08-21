@@ -33,7 +33,10 @@ from ralph.pipeline.conflict_resolution.graph import (
     TERMINAL_RESOLVED,
     route_after_round,
 )
-from ralph.pipeline.conflict_resolution.hard_stop import call_with_hard_stop
+from ralph.pipeline.conflict_resolution.hard_stop import (
+    ResolutionAbandonedError,
+    call_with_hard_stop,
+)
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.session import (
     invoke_resolution_agent,
@@ -76,7 +79,13 @@ _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 #: integration seam; two is enough to survive a single unavailable agent.
 _MAX_RESOLVER_AGENTS = 2
 
-#: Wall-clock ceiling for the whole conflict-resolution pipeline.
+#: Wall-clock ceiling for the AGENT time of a whole conflict resolution
+#: -- every round, every chain candidate, and (for a rebase) every stop,
+#: measured against one shared deadline. It does NOT cover the git and
+#: prompt work between attempts: those are bounded separately, per call,
+#: by ``ralph.git.subprocess_runner``'s own timeout, so a resolution's
+#: total elapsed time is this ceiling plus that bounded overhead rather
+#: than this ceiling alone. Both are bounded; only this one is shared.
 RESOLVE_TIMEOUT_SECONDS = 900.0
 
 #: Shortest share worth spending on one attempt. Below it the remaining
@@ -362,7 +371,10 @@ def _run_rounds(
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
 
-            succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
+            try:
+                succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
+            except ResolutionAbandonedError:
+                return False
             # The hard gate: what the repository says, not what the agent
             # says. ``git add`` clears a file's unmerged bit even with
             # markers intact, so this textual re-scan is the only proof.
@@ -426,6 +438,8 @@ def _run_one_round(
         try:
             if runner(agent_name, prompt_path, round_index):
                 return True
+        except ResolutionAbandonedError:
+            raise
         except Exception as exc:
             logger.warning(
                 "conflict_resolution: round {} with '{}' raised: {}",
@@ -499,15 +513,18 @@ def _default_invoker(
 
         outcome = hard_stop(_attempt, budget)
         if outcome is None:
-            # The layer below did not come back. Its agent processes have
-            # been reaped by the stop, so the round is simply failed and
-            # the caller keeps its own path to abort the rebase.
-            emit_conflict_phase_line(
-                display,
-                f"round {round_index}: '{agent_name}' did not return within its "
-                f"{round(budget)}s share; abandoning it",
+            # Deliberately NOT a phase line. The abandoned attempt may be
+            # wedged inside a terminal write, holding the display's own
+            # lock; rendering here would hand the freeze straight back.
+            # The logger's sink is not that lock.
+            logger.error(
+                "conflict_resolution: '{}' did not return within its {}s share "
+                "in round {}; abandoning the resolution",
+                agent_name,
+                round(budget),
+                round_index,
             )
-            return False
+            raise ResolutionAbandonedError(agent_name)
         return outcome
 
     return _invoke
