@@ -17,7 +17,11 @@ from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _SESSION_SOURCE_PATH = "agents/invoke/_session.py"
-_RAW_OVERFLOW_SOURCE_PATH = "display/raw_overflow.py"
+#: The corruption detector, which owns the interactive-PTY exemption.
+#: Split out of ``display/raw_overflow.py`` (which owns WRITING a
+#: capture) when that module outgrew the size limit; this audit parses
+#: the source, so it has to follow the constant rather than the name.
+_RAW_LOG_BREAKS_SOURCE_PATH = "display/raw_log_breaks.py"
 
 _CANONICAL_SESSION_TEXT_PATTERN_SOURCES: tuple[str, ...] = (
     r"^Claude session ready\. Session ID:\s*([A-Za-z0-9._:-]+)$",
@@ -115,13 +119,13 @@ def _check_canonical_session_text_patterns() -> list[str]:
 def _check_interactive_pty_transports() -> list[str]:
     """Pin the exact AST-scoped interactive PTY transport exemption set."""
     try:
-        source = _read(_RAW_OVERFLOW_SOURCE_PATH)
+        source = _read(_RAW_LOG_BREAKS_SOURCE_PATH)
     except FileNotFoundError:
-        return [f"  {_RAW_OVERFLOW_SOURCE_PATH}: file not found"]
+        return [f"  {_RAW_LOG_BREAKS_SOURCE_PATH}: file not found"]
     transports = _transport_names(_assignment_value(source, "_INTERACTIVE_PTY_TRANSPORTS"))
     if transports != _INTERACTIVE_PTY_TRANSPORT_NAMES:
         return [
-            f"  {_RAW_OVERFLOW_SOURCE_PATH}: interactive PTY transports mismatch "
+            f"  {_RAW_LOG_BREAKS_SOURCE_PATH}: interactive PTY transports mismatch "
             f"(expected {sorted(_INTERACTIVE_PTY_TRANSPORT_NAMES)})"
         ]
     return []

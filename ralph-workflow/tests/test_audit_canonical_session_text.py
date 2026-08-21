@@ -62,7 +62,7 @@ def test_audit_blocks_regression_when_interactive_transport_is_removed(
 
     def _read_with_transport_removed(rel_path: str) -> str:
         content = real_read(rel_path)
-        if rel_path == audit_module._RAW_OVERFLOW_SOURCE_PATH:
+        if rel_path == audit_module._RAW_LOG_BREAKS_SOURCE_PATH:
             return content.replace("AgentTransport.CLAUDE_INTERACTIVE, ", "")
         return content
 

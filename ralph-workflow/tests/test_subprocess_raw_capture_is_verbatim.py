@@ -206,3 +206,53 @@ async def test_a_frame_at_the_buffer_limit_is_still_delivered() -> None:
     lines = [line async for line in drain_agent_lines(stream, "unit-1")]
 
     assert lines == [exact]
+
+
+@pytest.mark.asyncio
+async def test_every_dropped_oversized_frame_leaves_a_marker() -> None:
+    """A frame too large to buffer is dropped; the gap must not be silent.
+
+    Without a marker the capture skipped from the frame before the gap to
+    the frame after it and read back as COMPLETE, so the corruption
+    detector reported it clean while a whole frame was missing.
+
+    The EOF case matters most and was the one that had no marker: the
+    notify call sat after the early return, so a frame truncated by the
+    agent dying mid-line -- the stall whose capture tail gets read to
+    explain it -- was exactly the case that recorded nothing.
+    """
+    import json
+
+    from ralph.agents.subprocess_executor import drain_agent_lines
+    from ralph.process.manager import AGENT_STREAM_BUFFER_BYTES
+
+    oversized = b"X" * (AGENT_STREAM_BUFFER_BYTES + 10)
+    cases = {
+        "middle": ([b"a\n", oversized + b"\n", b"c\n"], [b"a\n", b"c\n"], [False]),
+        "at_eof_no_newline": ([b"a\n", oversized], [b"a\n"], [True]),
+        "last_with_newline": ([b"a\n", oversized + b"\n"], [b"a\n"], [False]),
+        "two_in_a_row": (
+            [b"a\n", oversized + b"\n", oversized + b"\n", b"z\n"],
+            [b"a\n", b"z\n"],
+            [False, False],
+        ),
+    }
+
+    for label, (chunks, expected_lines, expected_eof_flags) in cases.items():
+        stream = asyncio.StreamReader(limit=AGENT_STREAM_BUFFER_BYTES)
+        for chunk in chunks:
+            stream.feed_data(chunk)
+        stream.feed_eof()
+
+        markers: list[str] = []
+        lines = [
+            line
+            async for line in drain_agent_lines(stream, "unit-1", on_dropped_frame=markers.append)
+        ]
+
+        assert lines == expected_lines, label
+        parsed = [json.loads(marker) for marker in markers]
+        assert [m["at_eof"] for m in parsed] == expected_eof_flags, label
+        # A JSON OBJECT, so the detector grades Ralph's own note clean
+        # rather than reporting it as the agent's corruption.
+        assert all(m["type"] == "ralph.capture.dropped_frame" for m in parsed), label

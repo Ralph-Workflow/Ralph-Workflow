@@ -187,8 +187,13 @@ class SubprocessAgentExecutor:
         A frame too large for the stream buffer is dropped whole; without
         this the capture skipped straight from the frame before the gap
         to the one after it and read back as complete.
+
+        Suppressed like every other capture write on this path
+        (``_capture_evicted_line`` does the same): a capture that cannot
+        be written must not take the agent's output stream down with it.
         """
-        self._get_raw_log(unit_id).append(marker)
+        with contextlib.suppress(Exception):
+            self._get_raw_log(unit_id).append(marker)
 
     async def run(
         self,
@@ -238,8 +243,14 @@ class SubprocessAgentExecutor:
             async for raw_line in drain_agent_lines(
                 handle.stdout,
                 unit.unit_id,
-                on_dropped_frame=lambda marker: self._record_dropped_frame(
-                    unit.unit_id, marker
+                # Only where lines are captured at all. On the
+                # ``on_output`` branch nothing else is written to a raw
+                # log, so passing this would create a file holding
+                # markers and no agent output.
+                on_dropped_frame=(
+                    (lambda marker: self._record_dropped_frame(unit.unit_id, marker))
+                    if self.activity_router is not None
+                    else None
                 ),
             ):
                 stripped_bytes = raw_line.rstrip(b"\n")
@@ -356,23 +367,36 @@ async def drain_agent_lines(
             return
         except asyncio.LimitOverrunError as exc:
             dropped_bytes = exc.consumed
-            if not await _discard_oversized_frame(stream, dropped_bytes, unit_id):
-                return
+            completed = await _discard_oversized_frame(stream, dropped_bytes, unit_id)
+            # NOTED BEFORE the EOF check. The frame is gone either way,
+            # and the EOF case is the one that most needs saying: the
+            # agent died mid-frame, which is exactly the stall whose
+            # capture tail gets read to explain it. Returning first left
+            # that case -- and only that case -- a silent gap that read
+            # back as a complete capture.
             if on_dropped_frame is not None:
-                on_dropped_frame(_dropped_frame_marker(unit_id, dropped_bytes))
+                on_dropped_frame(
+                    _dropped_frame_marker(unit_id, dropped_bytes, at_eof=not completed)
+                )
+            if not completed:
+                return
             continue
         yield line
 
 
-def _dropped_frame_marker(unit_id: str, dropped_bytes: int) -> str:
+def _dropped_frame_marker(unit_id: str, dropped_bytes: int, *, at_eof: bool) -> str:
     """Return the JSON-object line recording a dropped oversized frame."""
-    payload: dict[str, str | int] = {
+    payload: dict[str, str | int | bool] = {
         "type": "ralph.capture.dropped_frame",
         "unit_id": unit_id,
         "at_least_bytes": dropped_bytes,
         "limit_bytes": AGENT_STREAM_BUFFER_BYTES,
+        "at_eof": at_eof,
         "reason": (
-            "one line exceeded the stream buffer and was dropped whole; "
+            "the agent's output ended inside a line that exceeded the stream "
+            "buffer; the frame is incomplete and nothing follows it"
+            if at_eof
+            else "one line exceeded the stream buffer and was dropped whole; "
             "the capture resumes at the next frame"
         ),
     }

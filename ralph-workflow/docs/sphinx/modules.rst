@@ -3493,6 +3493,13 @@ ralph.display.presented_entry
    :members:
    :show-inheritance:
 
+ralph.display.raw_log_breaks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.raw_log_breaks
+   :members:
+   :show-inheritance:
+
 ralph.display.raw_overflow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

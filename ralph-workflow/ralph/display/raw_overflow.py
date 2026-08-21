@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import json
+import hashlib
+import re
 import shlex
 import threading
 import time
@@ -14,16 +15,35 @@ from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
 from loguru import logger
 
-from ralph.config.agent_transport import AgentTransport
 from ralph.display._raw_log_break import RawLogBreak
+
+# Re-exported so the split of this module into writer + detector is not
+# a breaking change for the callers that grade a capture they wrote.
+from ralph.display.raw_log_breaks import (
+    HARNESS_PTY_INPUT_ECHO_LINES,
+    MAX_REPORTED_BREAKS,
+    PTY_EXIT_COMMAND,
+    TURN_BOUNDARY_MARKER,
+    detect_raw_log_breaks,
+    is_harness_input_echo,
+    is_interactive_pty_transport,
+    iter_capture_lines,
+    nul_separated_chunks,
+)
 from ralph.display.record_writer import safe_id_for
-from ralph.display.vt_normalizer import normalize_vt_text
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import AgentConfig
+
+#: Hex characters of the model-flag digest appended to an identity.
+_ID_DIGEST_CHARS: Final = 6
+
+#: Runs of anything that has no place in a filename component. Collapsed
+#: to a single dash so two different flags cannot fold onto one identity.
+_UNSAFE_ID_RUN: Final = re.compile(r"[^0-9A-Za-z._-]+")
 
 DEFAULT_MAX_OVERFLOW_FILE_BYTES = 50 * 1024 * 1024
 #: Userspace buffer for the persistent handle. Amortizes write syscalls
@@ -135,74 +155,6 @@ def reset_raw_overflow_path_state() -> None:
         _CAP_WARNED.clear()
 
 
-#: Canonical harness-authored input lines that can appear verbatim in a
-#: PTY transport's raw capture (measured live 2026-08-14, AGY smoke).
-#: ``[claude turn boundary]`` is injected into the reader's line queue by
-#: ``_pty_line_reader._request_interactive_exit`` / ``_sentinel_thread``
-#: to delimit turns; ``/exit`` is typed into the agent's PTY stdin and
-#: echoed back by the terminal line discipline. Both are Ralph-authored
-#: harness input, not agent wire output — but they belong in the verbatim
-#: capture, so the corruption detector must recognize them instead of
-#: reporting a NON_JSONL break for every interactive-transport run.
-TURN_BOUNDARY_MARKER: Final = "[claude turn boundary]"
-
-#: The interactive-exit command the PTY line reader types into the agent
-#: stdin at completion/stop time (echoed back into the capture).
-PTY_EXIT_COMMAND: Final = "/exit"
-
-#: Exact-match vocabulary of harness input lines tolerated by
-#: :func:`detect_raw_log_breaks`. Exact match only: a line that merely
-#: *contains* a marker is still graded, so an agent wire frame embedding
-#: the marker text cannot smuggle a corrupted line past the detector.
-HARNESS_PTY_INPUT_ECHO_LINES: frozenset[str] = frozenset(
-    {TURN_BOUNDARY_MARKER, PTY_EXIT_COMMAND}
-)
-
-
-def is_harness_input_echo(line: str) -> bool:
-    """Return True when ``line`` is a Ralph-authored harness input line.
-
-    Exact (stripped) match against
-    :data:`HARNESS_PTY_INPUT_ECHO_LINES`; never a substring test.
-    """
-    return line.strip() in HARNESS_PTY_INPUT_ECHO_LINES
-
-
-def _is_canonical_transport_session_line(line: str) -> bool:
-    """Return True when ``line`` is canonical PTY/session metadata.
-
-    Interactive Claude emits human-readable session/resume/completion
-    lines into the raw PTY capture (e.g. ``Session ID: <uuid>``).  They
-    are not JSONL, but they are expected verbatim content -- not
-    corruption.  ANSI/VT control codes are stripped before matching so
-    TUI-styled banners are recognized.
-
-    The canonical pattern vocabulary lives in
-    ``ralph.agents.invoke._session`` and is imported here lazily to
-    avoid an import-time cycle with ``ralph.agents.invoke`` (which
-    imports this module for ``RawOverflowLog``).
-    """
-    from ralph.agents.invoke import is_canonical_session_text_line
-
-    return is_canonical_session_text_line(normalize_vt_text(line).strip())
-
-
-#: Transports whose raw capture is an interactive PTY stream rather than a
-#: machine-readable JSONL protocol. For these transports visible tool
-#: output, file contents, ANSI TUI redraws, and other human-readable text
-#: are expected verbatim capture content, not corruption. NUL-byte
-#: detection is still enforced (it signals the cross-writer truncation
-#: hazard), but NON_JSONL grading is skipped so a healthy interactive run
-#: is not mislabeled ``raw transcript corrupted``.
-_INTERACTIVE_PTY_TRANSPORTS: frozenset[AgentTransport] = frozenset(
-    {AgentTransport.CLAUDE_INTERACTIVE, AgentTransport.NANOCODER, AgentTransport.AGY}
-)
-
-
-def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
-    """Return True when ``transport`` emits visible PTY output rather than JSONL."""
-    return transport in _INTERACTIVE_PTY_TRANSPORTS
-
 
 # Executables whose FIRST POSITIONAL argument selects the agent runtime
 # rather than a subcommand of one. ``ccs`` is a multiplexer: the registry
@@ -216,12 +168,17 @@ def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
 _DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
 
 
-def _model_from_flag(config: AgentConfig) -> str:
-    """Return a filename-safe token for the model named in ``model_flag``.
+def _model_from_flag(config: AgentConfig, model: str | None) -> str:
+    """Return a filename-safe token for what ``model_flag`` adds to ``model``.
 
     ``model_flag`` is argv, not a value: ``--model anthropic/claude-4``,
-    ``-m kimi-code/k3-256k``, ``--provider ollama --model llama3``. The
-    non-flag tokens are what distinguish two aliases of one executable.
+    ``-m kimi-code/k3-256k``, ``--provider ollama --model llama3``,
+    ``--model gpt-5.4 -c 'model_reasoning_effort = "high"'``. Its VALUE
+    tokens are what distinguish two aliases of one executable.
+
+    Values already carried by ``model`` are dropped, because the path
+    appends that separately -- so an agent whose flag says only what
+    ``model`` already says keeps the filename it had.
     """
     raw = cast("object", getattr(config, "model_flag", None))
     if not isinstance(raw, str) or not raw.strip():
@@ -230,8 +187,30 @@ def _model_from_flag(config: AgentConfig) -> str:
         tokens = shlex.split(raw)
     except ValueError:
         return ""
-    values = [token for token in tokens if not token.startswith("-")]
-    return "-".join(values)
+    values: list[str] = []
+    for token in tokens:
+        if token.startswith("-"):
+            # ``--model=x`` carries its value in the same token. Skipping
+            # every dash-led token dropped it, and the identity fell back
+            # to the bare executable.
+            _, separator, tail = token.partition("=")
+            if separator and tail:
+                values.append(tail)
+            continue
+        values.append(token)
+    distinguishing = [value for value in values if value != model]
+    if not distinguishing:
+        return ""
+    readable = _UNSAFE_ID_RUN.sub("-", "-".join(distinguishing)).strip("-")
+    # Readable token PLUS a digest of the exact flag. ``safe_id_for``
+    # keeps only ``[0-9A-Za-z._-]`` and collapses runs, so distinct flags
+    # fold onto one token -- ``--provider ollama --model llama3`` and
+    # ``--provider ollama-llama3`` both read ``ollama-llama3``, and that
+    # is two agents sharing a capture again. The digest restores
+    # injectivity without costing an operator the ability to recognise
+    # the file; it is taken over the raw flag, before any folding.
+    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:_ID_DIGEST_CHARS]
+    return f"{readable}-{digest}" if readable else digest
 
 
 def raw_log_unit_id_for(config: AgentConfig) -> str:
@@ -274,9 +253,9 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
         alias = next((token for token in tokens[1:] if not token.startswith("-")), "")
         if alias:
             return f"{executable}-{alias}"
-    # Last resort: the model named on the COMMAND LINE. The capture path
-    # is keyed ``(unit_id, config.model)``, but only some dynamic-alias
-    # resolvers set ``model`` -- ``pi/``, ``cursor/``, ``kimi/``,
+    # Whatever the COMMAND LINE says beyond ``config.model``. The capture
+    # path is keyed ``(unit_id, config.model)``, but only some
+    # dynamic-alias resolvers set ``model`` -- ``pi/``, ``cursor/``, ``kimi/``,
     # ``opencode/`` and ``nanocoder/`` set ``model_flag`` alone and leave
     # ``model`` as None. The key silently degenerated to
     # ``(executable,)``, so ``pi/anthropic/claude-sonnet-4-5`` and
@@ -289,10 +268,15 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # Reading the flag here rather than fixing each resolver keeps the
     # rule in the layer that owns capture identity, and covers alias
     # families added later that forget ``model`` the same way.
-    if model is None:
-        flag_model = _model_from_flag(config)
-        if flag_model:
-            return f"{executable}-{flag_model}"
+    #
+    # It is NOT gated on ``model`` being absent. ``codex/<model>[effort=
+    # high]`` sets ``model``, so a gated fallback never ran for it and
+    # every effort variant of one codex model shared a capture -- a form
+    # the shipped ralph-workflow.toml prints as an example. The flag is
+    # consulted whenever it says something ``model`` does not.
+    flag_model = _model_from_flag(config, model)
+    if flag_model:
+        return f"{executable}-{flag_model}"
     return executable
 
 
@@ -426,305 +410,6 @@ def close_all_raw_overflow_logs() -> None:
 #: at interpreter shutdown, instead of triggering a ``ResourceWarning``
 #: at finalization time (DA-001).
 atexit.register(close_all_raw_overflow_logs)
-
-
-def detect_raw_log_breaks(
-    raw_path: Path, *, transport: AgentTransport | None = None
-) -> list[RawLogBreak]:
-    """Read ``raw_path`` back as JSONL and return every corruption break.
-
-    S-8 / C4 / DoD 15: a corrupted or truncated transcript is a reported
-    break, not a silent skip. Two break shapes are detected:
-
-    - ``NUL_BYTES``: any NUL byte anywhere in the file. The parser
-      cannot recover the next JSON frame's start (it cannot tell where
-      the JSON ends, since JSON itself permits ``\\u0000`` as an
-      escaped sequence inside a string but a bare NUL cannot appear in
-      a well-formed JSON document on the wire).
-    - ``NON_JSONL``: a line that is not a parseable JSON object. This
-      catches the shape where rendered text reaches the verbatim
-      capture -- historically the display layer wrote its condensed
-      bodies to this same path, which is why a rendered
-      ``\u2713 PASS\u2026`` row or a markdown ``---`` front-matter line
-      could appear mid-stream. The display now owns a separate file
-      (see :data:`CONDENSED_LOG_SUFFIX`), so a break here means the
-      agent's own output is damaged.
-
-    For interactive PTY transports (``claude_interactive``, ``nanocoder``,
-    ``agy``)
-    the raw capture is expected human-visible output rather than JSONL,
-    so only ``NUL_BYTES`` and ``READ_ERROR`` breaks are reported. Other
-    streams (headless Claude, Codex, etc.) keep strict JSON-object
-    validation for every line, with an allowlist for canonical
-    session/resume/completion metadata lines emitted by the PTY/session
-    layer.
-
-    The exemption is keyed on the TRANSPORT, and there is exactly one
-    ``AgentTransport.AGY`` -- so an AGY run in print mode is exempt too,
-    despite emitting JSONL. This paragraph previously claimed the
-    opposite ("AGY print mode ... keeps strict JSON-object validation"),
-    which no code path did. Stated as it is rather than as it reads
-    better: AGY print-mode captures are NOT graded for ``NON_JSONL``,
-    and a corrupt frame there is reported by nothing. Splitting the
-    transport is the fix if that matters; narrowing the exemption
-    without splitting it would make every interactive AGY run report
-    its ordinary human-visible output as corruption.
-
-    The function reads the file in binary mode so a NUL-byte break is
-    observable. ``read_text(errors='replace')`` would silently swallow
-    the NUL bytes; the binary read keeps the byte-level fingerprint
-    visible.
-
-    An absent file returns an empty break list (no break observed, no
-    break reported). A read error (locked file, missing parent) is
-    reported as a break with detail naming the OSError so the operator
-    sees the I/O failure rather than a silent empty result.
-    """
-    breaks: list[RawLogBreak] = []
-    if not raw_path.exists():
-        return breaks
-    try:
-        payload = raw_path.read_bytes()
-    except OSError as exc:
-        return [
-            RawLogBreak(
-                kind="READ_ERROR",
-                offset=0,
-                detail=f"failed to read raw log: {exc}",
-            )
-        ]
-    nul_offset = payload.find(b"\x00")
-    if nul_offset >= 0:
-        breaks.append(
-            RawLogBreak(
-                kind="NUL_BYTES",
-                offset=nul_offset,
-                detail=(
-                    f"NUL-byte run begins at byte {nul_offset}; the "
-                    "transcript is unparseable as JSONL past this point"
-                ),
-            )
-        )
-    if is_interactive_pty_transport(transport):
-        return breaks
-    return breaks + _detect_non_jsonl_breaks(payload)
-
-
-#: Most breaks any one detection reports.
-#:
-#: Every caller uses ``breaks[0]`` -- the report names the first break
-#: and its offset. Collecting the rest is pure cost, and on a badly
-#: corrupted capture it is enormous: measured, a 10 MB file of short
-#: non-JSON lines produced 5.2 million break objects in 119 s and 1.5 GB
-#: of memory, at the 50 MB cap roughly ten minutes and 7 GB -- inside
-#: the phase-close verdict, in exactly the case the detector exists for.
-MAX_REPORTED_BREAKS: Final = 32
-
-
-#: Window used to walk a NUL run at C speed rather than byte by byte.
-_NUL_SKIP_WINDOW: Final = 1 << 16
-
-
-def _skip_nul_run(payload: bytes, start: int) -> int:
-    """Return the offset of the first non-NUL byte at or after ``start``.
-
-    Walks in windows so the scan runs inside ``bytes.lstrip`` rather than
-    a Python loop: a hole is millions of consecutive NULs, and stepping
-    one byte at a time cost seconds on a capture at the file cap.
-    """
-    total = len(payload)
-    while start < total:
-        window = payload[start : start + _NUL_SKIP_WINDOW]
-        stripped = window.lstrip(b"\x00")
-        start += len(window) - len(stripped)
-        if stripped:
-            return start
-    return total
-
-
-def _iter_lines(chunk: bytes) -> Iterator[bytes]:
-    """Yield ``chunk``'s lines lazily, keeping their terminators.
-
-    ``bytes.splitlines`` materialises every line before the caller can
-    stop, so the break cap could not bound it: 50 MB of short non-JSON
-    lines allocated ~5.8 million objects and 356 MB before reporting its
-    32 breaks -- inside the phase-close verdict, in the case the
-    detector exists for.
-
-    Splits on BOTH terminators, exactly as ``splitlines`` does. Matching
-    only ``\n`` joined a bare-CR-separated line to its neighbour, and
-    ``normalize_vt_text``'s carriage-return-overwrite semantics then
-    erased the garbage before it could be graded -- so a corrupt line
-    the old code reported went unseen. Measured on the field payload
-    itself, one break became none: a perf change had silently blinded
-    the detector this module exists to make trustworthy.
-    """
-    start = 0
-    total = len(chunk)
-    # Both terminator positions are CARRIED, not re-searched per line.
-    # ``find`` scans to EOF when the byte is absent, and a healthy JSONL
-    # capture contains no ``\r`` at all -- so searching for one on every
-    # line made the scan O(lines x bytes). Measured on well-formed
-    # stream-json frames: 2.9 s at 4 MB, 11.8 s at 8 MB, 38.1 s at 16 MB,
-    # four times worse per doubling, extrapolating to minutes at the
-    # 50 MB file cap. ``MAX_REPORTED_BREAKS`` cannot bound that, because
-    # a healthy file has no breaks and the early return never fires --
-    # and this runs on EVERY phase close, for every verdict label. A
-    # carried position re-searches only after it is passed, so each byte
-    # is visited once for each terminator.
-    next_newline = chunk.find(b"\n")
-    next_carriage = chunk.find(b"\r")
-    while start < total:
-        if 0 <= next_newline < start:
-            next_newline = chunk.find(b"\n", start)
-        if 0 <= next_carriage < start:
-            next_carriage = chunk.find(b"\r", start)
-        if next_newline < 0 and next_carriage < 0:
-            yield chunk[start:]
-            return
-        if next_carriage < 0 or (0 <= next_newline < next_carriage):
-            end = next_newline
-        else:
-            end = next_carriage
-            # CRLF is ONE terminator, not two.
-            if chunk[end + 1 : end + 2] == b"\n":
-                end += 1
-        yield chunk[start : end + 1]
-        start = end + 1
-
-
-def nul_separated_chunks(payload: bytes) -> Iterator[tuple[int, bytes]]:
-    """Yield ``(offset, chunk)`` for each NUL-delimited run in ``payload``.
-
-    Splits LAZILY. ``payload.split(b"\\x00")`` materialises one bytes
-    object per NUL byte before any grading happens, so a NUL hole -- the
-    measured 2026-08-06 corruption shape, and precisely what this
-    detector exists to find -- cost 7.9 s and 517 MB at the 50 MB file
-    cap, none of it bounded by :data:`MAX_REPORTED_BREAKS` because the
-    allocation ran first. Yielding slices lets the caller stop at the
-    cap.
-    """
-    start = 0
-    total = len(payload)
-    while start <= total:
-        nul_at = payload.find(b"\x00", start)
-        if nul_at < 0:
-            yield start, payload[start:]
-            return
-        if nul_at > start:
-            yield start, payload[start:nul_at]
-        # Skip the whole NUL RUN, not one byte of it. A hole is millions
-        # of consecutive NULs, and stepping through it one at a time
-        # yielded one empty chunk per byte.
-        start = _skip_nul_run(payload, nul_at)
-
-
-#: How much of a NON-JSON line the expensive grading path inspects.
-#: Generous next to any marker it matches (the longest is a few dozen
-#: bytes) and next to the 60 characters quoted in a break's detail.
-_MAX_LINE_INSPECT_BYTES: Final = 64 * 1024
-
-
-def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
-    """Return one ``NON_JSONL`` break per unparseable line.
-
-    Splits the payload on NUL bytes first so a measured NUL-hole run
-    does not silently swallow rendered text that follows the hole on
-    the same line. Each chunk between NUL runs is then parsed as
-    JSONL: lines that parse as JSON objects are skipped, and every
-    other non-empty line (rendered ``\u2713 PASS\u2026`` text, control
-    codes, malformed JSON) is a break.
-
-    Canonical interactive-transport session/resume/completion metadata
-    lines (see :func:`_is_canonical_transport_session_line`) are expected
-    verbatim capture content, not corruption. They are recognized after
-    VT/ANSI normalization so TUI-wrapped session lines are not misgraded.
-    """
-    breaks: list[RawLogBreak] = []
-    for chunk_start, chunk in nul_separated_chunks(payload):
-        if len(breaks) >= MAX_REPORTED_BREAKS:
-            return breaks
-        line_offset = chunk_start
-        for raw_line in _iter_lines(chunk):
-            if len(breaks) >= MAX_REPORTED_BREAKS:
-                return breaks
-            this_line_offset = line_offset
-            line_offset += len(raw_line)
-            # ONE copy, and no decode on the healthy path. Each of
-            # ``rstrip`` / ``rstrip`` / ``decode`` / ``strip`` allocated
-            # a full-size copy of the line before anything was graded,
-            # so a single long frame cost roughly twenty times its own
-            # size -- 490 MB transient on a 24 MB line, and 24 MB single
-            # frames are measured real (see AGENT_STREAM_BUFFER_BYTES).
-            # ``MAX_REPORTED_BREAKS`` bounds the NUMBER of lines graded,
-            # never the cost of grading one.
-            line_bytes = raw_line.strip()
-            if not line_bytes:
-                continue
-            # Cheapest discriminator first. A healthy capture is almost
-            # entirely well-formed frames, and VT normalisation plus the
-            # canonical-session regex are far dearer than a parse that
-            # succeeds -- running them on every line cost seconds per
-            # call on a multi-megabyte healthy capture.
-            try:
-                # ``json.loads`` takes bytes directly, so a well-formed
-                # frame -- almost every line of a healthy capture -- is
-                # graded without ever materialising a decoded copy.
-                parsed_fast: object = json.loads(line_bytes)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
-            else:
-                if isinstance(parsed_fast, dict):
-                    continue
-            # Only a line that is NOT well-formed JSON reaches the dear
-            # path, and only its head is inspected: the remaining checks
-            # match short markers, and the detail text quotes 60
-            # characters. The whole line was already offered to the
-            # parser above, so truncating here cannot turn a valid frame
-            # into a reported break.
-            decoded = line_bytes[:_MAX_LINE_INSPECT_BYTES].decode("utf-8", errors="replace").strip()
-            if not decoded:
-                continue
-            line_text = normalize_vt_text(decoded).strip()
-            if not line_text:
-                continue
-            if is_harness_input_echo(line_text):
-                # Ralph-authored harness input (see
-                # :data:`HARNESS_PTY_INPUT_ECHO_LINES`): expected verbatim
-                # capture content, not a corrupted or truncated frame.
-                continue
-            if _is_canonical_transport_session_line(line_text):
-                # Canonical interactive-transport session/resume/completion
-                # metadata (see :func:`_is_canonical_transport_session_line`):
-                # emitted by the PTY/session layer, parsed by the session
-                # extractor, and expected verbatim in the raw capture.
-                continue
-            try:
-                parsed: object = json.loads(line_text)
-            except json.JSONDecodeError:
-                breaks.append(
-                    RawLogBreak(
-                        kind="NON_JSONL",
-                        offset=this_line_offset,
-                        detail=(
-                            f"line at byte {this_line_offset} is not parseable "
-                            f"JSON (first 60 chars: {line_text[:60]!r})"
-                        ),
-                    )
-                )
-                continue
-            if not isinstance(parsed, dict):
-                breaks.append(
-                    RawLogBreak(
-                        kind="NON_JSONL",
-                        offset=this_line_offset,
-                        detail=(
-                            f"line at byte {this_line_offset} parses as JSON but "
-                            f"is not a JSON object (type={type(parsed).__name__})"
-                        ),
-                    )
-                )
-    return breaks
 
 
 class RawOverflowLog:
@@ -943,6 +628,7 @@ __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "DEFAULT_MAX_OVERFLOW_FILE_BYTES",
     "HARNESS_PTY_INPUT_ECHO_LINES",
+    "MAX_REPORTED_BREAKS",
     "PTY_EXIT_COMMAND",
     "TURN_BOUNDARY_MARKER",
     "RawLogBreak",
@@ -950,6 +636,8 @@ __all__ = [
     "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
     "is_harness_input_echo",
+    "is_interactive_pty_transport",
+    "iter_capture_lines",
     "nul_separated_chunks",
     "raw_log_path_for",
 ]
