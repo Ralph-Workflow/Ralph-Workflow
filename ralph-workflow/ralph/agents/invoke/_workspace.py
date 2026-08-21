@@ -20,6 +20,7 @@ from ralph.agents.invoke._has_src_path import _HasSrcPath
 from ralph.agents.invoke._watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
     DirectoryCounter,
+    call_within_budget,
     watch_capacity_is_predicted,
 )
 from ralph.workspace._cross_process_watch_lock import (
@@ -415,15 +416,22 @@ class WorkspaceMonitor:
             if self._observer is None:
                 msg = "prepared workspace watch lost its lifecycle-owned observer"
                 raise RuntimeError(msg)
+            # The canonical recursive watch: ONE schedule call, on the
+            # lifecycle-owned observer, statically here. Scheduling is
+            # cheap on both backends -- what can take unbounded time is
+            # the observer START below, where watchdog's inotify emitter
+            # builds the whole watch tree inline.
+            scheduled = True
             try:
                 self._observer.schedule(handler, str(self._workspace), recursive=True)
-                self._observer.start()
             except OSError as exc:
                 self._abort_start_on_oserror(exc, observer)
-                return
+                scheduled = False
             except BaseException:
                 self._abort_unexpected_watch_start(observer)
                 raise
+            if not scheduled or not self._start_observer_within_budget(observer):
+                return
             self._register_new_shared_watch(key, observer, handler)
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
@@ -469,6 +477,73 @@ class WorkspaceMonitor:
         self._observer = observer
         self._handler = _make_change_tracker(self._workspace, key)
         return True
+
+    def _start_observer_within_budget(self, observer: _ObserverProtocol) -> bool:
+        """Start the scheduled watch, giving up if it takes too long.
+
+        Bounding the capacity ESTIMATE is not bounding the walk it
+        estimates. When the estimate says there is room -- the common
+        case -- this is what runs next, and on Linux it is where the
+        whole recursive inotify tree is built, inline on this thread
+        (watchdog's ``BaseObserver.start`` -> ``InotifyEmitter.
+        on_thread_start`` -> ``Inotify`` -> ``_add_dir_watch`` ->
+        ``os.walk``). One hung mount inside the workspace parks it
+        there, still before the agent process exists and still holding
+        the class-wide lock.
+
+        Nothing about the monitor is captured by the worker: a strong
+        reference to ``self`` from a thread that outlives this call
+        would keep a lease alive in the class-wide watch table that
+        every later monitor for this workspace would attach to.
+
+        Args:
+            observer: The scheduled, not-yet-started observer.
+
+        Returns:
+            Whether the watch started and may be registered.
+        """
+        failure: list[OSError] = []
+        unexpected: list[BaseException] = []
+
+        def _start_observer() -> bool:
+            try:
+                observer.start()
+            except OSError as exc:
+                failure.append(exc)
+                return False
+            except BaseException as exc:
+                unexpected.append(exc)
+                return False
+            return True
+
+        started: bool | None = call_within_budget(
+            _start_observer, fallback=None, budget_seconds=self._probe_budget_seconds
+        )
+        if started is None:
+            self._abandon_slow_watch_start()
+            return False
+        if unexpected:
+            self._abort_unexpected_watch_start(observer)
+            raise unexpected[0]
+        if failure:
+            self._abort_start_on_oserror(failure[0], observer)
+            return False
+        return started
+
+    def _abandon_slow_watch_start(self) -> None:
+        """Give up on a watch that is taking longer than the launch can wait.
+
+        The observer is deliberately NOT stopped: stopping it means
+        waiting on the very thread that has not come back. It was never
+        registered, so nothing will look for it again -- it is left to
+        finish its walk against a watch this process has forgotten,
+        which costs one thread and one watch tree against parking the
+        run.
+        """
+        self._observer = None
+        self._handler = None
+        self._release_cross_process_watch_lock()
+        self._activate_live_fallback("watch_start_timed_out")
 
     def _abort_unexpected_watch_start(self, observer: _ObserverProtocol) -> None:
         """Release partially started watch resources before propagating an error."""

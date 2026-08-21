@@ -35,6 +35,7 @@ _PROC_PATH = Path("/proc")
 __all__ = [
     "CAPACITY_PROBE_BUDGET_SECONDS",
     "DirectoryCounter",
+    "call_within_budget",
     "watch_capacity_is_predicted",
 ]
 
@@ -108,7 +109,7 @@ def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
 CAPACITY_PROBE_BUDGET_SECONDS = 10.0
 
 
-def _probe_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
+def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
     """Run ``probe``, returning ``fallback`` if it does not answer in time.
 
     The abandoned probe is a read-only filesystem walk holding no lock,
@@ -149,7 +150,7 @@ def watch_capacity_is_predicted(
     answer inside ``budget_seconds``. Not watching costs the idle
     watchdog one evidence channel; not returning costs the run.
     """
-    return _probe_within_budget(
+    return call_within_budget(
         lambda: _predict_watch_capacity(
             workspace, host_budget, directory_counter, live_watch_total
         ),

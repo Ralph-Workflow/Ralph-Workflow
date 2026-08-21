@@ -21,9 +21,14 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ralph.agents.invoke._watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+
+if TYPE_CHECKING:
+    import pytest
 
 #: The probe budget these tests give the monitor. Production's default
 #: is far larger; what is under test is that SOME bound exists and that
@@ -35,6 +40,11 @@ _PROBE_BUDGET_SECONDS = 0.05
 #: does not return slowly, it does not return, and the test times out
 #: exactly as the run does.
 _HUNG_PROBE_SECONDS = 20.0
+
+#: How long the slow watch start walks for. Deliberately UNDER the
+#: per-test ceiling: a step that blocks past it is rescued by the
+#: harness's own alarm, and a rescued test proves nothing about a bound.
+_SLOW_WATCH_SECONDS = 0.5
 
 
 def _hung_counter(workspace: Path, cap: int) -> int | None:
@@ -83,3 +93,85 @@ def test_a_probe_that_answers_is_still_believed(tmp_path: Path) -> None:
         release_workspace_awareness(tmp_path)
 
     assert status["mode"] != "live_fallback"
+
+
+class _SlowObserver:
+    """A watchdog observer whose recursive walk takes its time.
+
+    On Linux, ``Observer.start()`` builds the whole inotify watch tree
+        inline on the CALLER's thread -- watchdog runs
+        ``InotifyEmitter.on_thread_start`` synchronously there, which
+        constructs ``Inotify`` -> ``_add_dir_watch`` -> ``os.walk``. So the
+        step the capacity estimate clears the way for does the very same
+        recursive walk the estimate was bounded for. Scheduling is cheap on
+        both backends; starting is where the tree is built.
+
+        It blocks for less than the suite's per-test ceiling on purpose: a
+        fake that blocks forever is rescued by that ceiling's own alarm,
+        which makes an unbounded start look bounded. What proves the bound
+        is that ``start()`` came back while this was still walking.
+    """
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.finished = threading.Event()
+
+    def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None:
+        del path
+
+    def start(self) -> None:
+        self.entered.set()
+        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.finished.set()
+
+    def stop(self) -> None:
+        return
+
+    def join(self, timeout: float | None = None) -> None:
+        del timeout
+
+    def is_alive(self) -> bool:
+        return False
+
+
+def test_a_slow_watch_start_does_not_park_the_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bounding the ESTIMATE is not bounding the walk it estimates.
+
+    The capacity probe answering "there is room" is the common case, and
+    it hands control straight to a step that walks the same tree with no
+    bound of its own -- holding the monitor's process-global lock, still
+    before any agent process exists.
+    """
+    observer = _SlowObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
+    )
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+        still_walking = not observer.finished.is_set()
+        status = awareness_for_workspace(tmp_path).snapshot()
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+    assert observer.entered.is_set(), "the watch start was never reached"
+    assert still_walking, "the launch waited for the whole recursive walk"
+    assert status["mode"] == "live_fallback"
+
+
+def test_the_shipped_probe_budget_is_finite_and_small() -> None:
+    """The bound tests inject is not the bound production runs with.
+
+    Both tests above pass their own budget, so nothing else pins the
+    value a real launch is exposed to.
+    """
+    assert 0.0 < CAPACITY_PROBE_BUDGET_SECONDS <= 30.0
