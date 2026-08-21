@@ -132,7 +132,7 @@ def _json_rpc_result(raw: object, context: str) -> JsonObject:
     return {}
 
 
-_UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset(
+UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset(
     {"image", "audio", "video", "pdf", "document"}
 )
 
@@ -361,6 +361,26 @@ def _get_content_list(result: JsonObject) -> list[object] | None:
     return list(content)
 
 
+def carries_upstream_media_blocks(content: object) -> bool:
+    """True when ``content`` holds a block this contract would normalise.
+
+    Public because it answers a question OUTSIDE this module: the server
+    layer replaces a whole tool payload with JSON decoded out of a text
+    block, and that JSON can carry media that never passed through the
+    contract. Keeping the predicate beside the vocabulary it tests is
+    what stops the two drifting -- the same lesson as every other
+    "two questions, one function" defect in this area.
+    """
+    if not isinstance(content, list):
+        return False
+    for block in cast("list[object]", content):
+        if isinstance(block, Mapping):
+            block_type = cast("Mapping[str, object]", block).get("type")
+            if isinstance(block_type, str) and block_type in UPSTREAM_MEDIA_BLOCK_TYPES:
+                return True
+    return False
+
+
 def normalize_upstream_content_blocks(
     result: JsonObject,
     server_name: str,
@@ -400,7 +420,7 @@ def normalize_upstream_content_blocks(
         block_type = str(block.get("type"))
         if block_type in ("text", "resource_reference"):
             normalized.append(block)
-        elif block_type in _UPSTREAM_MEDIA_BLOCK_TYPES:
+        elif block_type in UPSTREAM_MEDIA_BLOCK_TYPES:
             normalized.append(
                 _normalize_media_block(
                     block, block_type, idx, server_name, tool_name, session, workspace
@@ -449,6 +469,7 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
 
 
 __all__ = [
+    "UPSTREAM_MEDIA_BLOCK_TYPES",
     "HasMediaManifest",
     "HttpUpstreamClient",
     "JsonObject",
@@ -456,6 +477,7 @@ __all__ = [
     "StdioUpstreamClient",
     "UpstreamCallError",
     "UpstreamMcpClient",
+    "carries_upstream_media_blocks",
     "make_upstream_client",
     "normalize_upstream_content_blocks",
 ]

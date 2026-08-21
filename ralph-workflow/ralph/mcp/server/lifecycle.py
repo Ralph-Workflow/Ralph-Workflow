@@ -41,6 +41,7 @@ from ralph.mcp.server._mcp_server_extras import McpServerExtras
 from ralph.mcp.server._process_like import ProcessLike
 from ralph.mcp.server._spawn_process import SpawnProcess
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
+from ralph.mcp.server.runtime_session import payload_transport
 from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
@@ -863,10 +864,18 @@ def session_payload_json(session: SessionLike) -> str:
     # decisions on the transport, so those guards died at this boundary
     # even though the parent session had the information.
     if isinstance(raw_identity, MultimodalModelIdentity) and identity_is_serialisable(raw_identity):
+        # Canonicalised on the way OUT, like every other seam that
+        # writes a transport spelling. This one writes what it was
+        # handed, so a hand-constructed parent identity of ``'CODEX'``
+        # or ``'  codex  '`` was recorded verbatim and carried into the
+        # verdict ``reason`` strings, giving one run several different
+        # capability digests. Every production constructor normalises
+        # upstream, so this changes no delivery decision -- it makes the
+        # last seam agree with the claim the others already meet.
         session_payload["model_identity"] = {
             "provider": raw_identity.provider,
             "model_id": raw_identity.model_id,
-            "transport": raw_identity.transport,
+            "transport": payload_transport(raw_identity.transport),
         }
     raw_profile: object = getattr(session, "capability_profile", None)
     if isinstance(raw_profile, ResolvedCapabilityProfile):

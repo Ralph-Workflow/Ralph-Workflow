@@ -314,3 +314,37 @@ def test_a_blank_transport_is_normalised_at_the_reconciling_seam() -> None:
         )
 
         assert reconciled.transport is None, blank
+
+
+def test_the_payload_writer_canonicalises_the_transport_it_records() -> None:
+    """The SEVENTH seam. It wrote whatever it was handed.
+
+    ``session_payload_json`` records the identity that crosses to the
+    child, and it copied the transport spelling verbatim -- so a
+    hand-constructed parent identity of ``'CODEX'`` or ``'  codex  '``
+    was carried into the child payload and into the verdict ``reason``
+    strings, giving one run several different capability digests. Every
+    production constructor normalises upstream, so this changes no
+    delivery decision; it makes the last seam meet the claim the other
+    six already do.
+    """
+    import json
+
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+
+    for spelling in ("CODEX", "  codex  ", "\tCoDeX\n", "codex"):
+        session = AgentSession(
+            session_id="s",
+            run_id="r",
+            drain="development",
+            capabilities=frozenset({"media.read"}),
+            model_identity=MultimodalModelIdentity(
+                provider="openai", model_id="gpt-5", transport=spelling
+            ),
+        )
+
+        payload = json.loads(session_payload_json(session))
+
+        assert payload["model_identity"]["transport"] == "codex", spelling

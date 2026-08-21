@@ -29,6 +29,8 @@ from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.workspace.protocol import Workspace
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
@@ -151,9 +153,10 @@ class UpstreamRegistry:
     ) -> object:
         """Normalise an upstream result WHATEVER shape it arrives in.
 
-        Normalising only a ``dict`` left two shapes untouched, and both
-        reach the agent verbatim: a BARE LIST of content blocks, and a
-        result nested under ``{"result": {...}}`` -- which the server
+        Normalising only a ``dict`` left other shapes untouched, and
+        they reach the agent verbatim: a bare LIST or TUPLE of content
+        blocks (the server layer accepts either), and a result nested
+        under ``{"result": {...}}`` -- which the server
         layer unwraps AFTER this runs, so normalisation had inspected an
         outer dict with no ``content`` key and found nothing to do.
 
@@ -163,8 +166,8 @@ class UpstreamRegistry:
         contract. An upstream server has to be non-conforming to produce
         them, which is precisely when a guard has to hold.
         """
-        if isinstance(raw_result, list):
-            blocks: list[object] = cast("list[object]", raw_result)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if isinstance(raw_result, (list, tuple)):
+            blocks: list[object] = list(cast("Sequence[object]", raw_result))  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(
                 wrapper, proxied.server_name, proxied.tool.name, session, workspace
@@ -174,10 +177,17 @@ class UpstreamRegistry:
         if not isinstance(raw_result, dict):
             return raw_result
         result: JsonObject = raw_result
-        # Unwrapped BEFORE normalising, in the same order the server
-        # layer reads it back out.
+        # Normalised UNCONDITIONALLY when present. The previous guard
+        # was ``and "content" not in result``, the exact OPPOSITE of the
+        # server layer's rule: ``_build_tools_call_payload`` unwraps
+        # ``result`` whenever it is a dict and DISCARDS the outer
+        # content. So a payload carrying both -- an outer text block
+        # beside a nested image -- was declined here and served there,
+        # putting raw base64 image bytes in front of a codex agent by
+        # the one route that skips this contract. The comment claimed
+        # the two orders matched; they did not.
         nested: object = result.get("result")
-        if isinstance(nested, dict) and "content" not in result:
+        if isinstance(nested, dict):
             normalize_upstream_content_blocks(
                 nested, proxied.server_name, proxied.tool.name, session, workspace
             )

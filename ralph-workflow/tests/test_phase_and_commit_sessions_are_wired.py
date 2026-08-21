@@ -172,3 +172,59 @@ def test_the_commit_call_site_asks_whether_the_chain_is_ambiguous(
 
     assert recorded["drop_injected_identity"] is True
     assert asked, "the chain was never consulted"
+
+
+def test_a_chain_that_disagrees_on_MODEL_is_ambiguous_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agreeing on the CLI is not agreeing on the provider.
+
+    Two agents can share a transport and name different models: two
+    ``claude``-transport candidates where only the first carries
+    ``--model gemini/...``. Comparing transports alone called that
+    unambiguous, so the phase session kept the first candidate's flag,
+    resolved GEMINI's capabilities for the whole phase, and minted
+    AudioContent and VideoContent that the agent which actually ran
+    cannot carry. It was order-dependent in exactly the way the
+    ambiguity rule was written to stop.
+    """
+    from unittest.mock import MagicMock
+
+    from ralph.config.enums import AgentTransport
+    from ralph.pipeline import fan_out
+
+    def config_for(transport: AgentTransport, model_flag: str | None) -> object:
+        return SimpleNamespace(transport=transport, model_flag=model_flag)
+
+    class _Registry:
+        def __init__(self, mapping: dict[str, object]) -> None:
+            self._mapping = mapping
+
+        def get(self, name: str) -> object:
+            return self._mapping.get(name)
+
+    def resolve(mapping: dict[str, object], names: list[str]) -> tuple[object, bool]:
+        monkeypatch.setattr(
+            fan_out,
+            "AgentRegistry",
+            SimpleNamespace(from_config=lambda _config: _Registry(mapping)),
+        )
+        return fan_out._phase_session_transport(names, MagicMock())
+
+    mixed_models = {
+        "gem": config_for(AgentTransport.CLAUDE, "--model gemini/gemini-2.5-pro"),
+        "plain": config_for(AgentTransport.CLAUDE, None),
+    }
+    transport, ambiguous = resolve(mixed_models, ["gem", "plain"])
+    assert transport is AgentTransport.CLAUDE
+    assert ambiguous is True
+
+    # Not vacuous: agreeing on both is still unambiguous, so a
+    # homogeneous chain keeps the provider it can honestly resolve.
+    same = {
+        "a": config_for(AgentTransport.CLAUDE, "--model x"),
+        "b": config_for(AgentTransport.CLAUDE, "--model x"),
+    }
+    transport, ambiguous = resolve(same, ["a", "b"])
+    assert transport is AgentTransport.CLAUDE
+    assert ambiguous is False

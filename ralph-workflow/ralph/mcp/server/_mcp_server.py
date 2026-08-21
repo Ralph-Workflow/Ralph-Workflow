@@ -34,6 +34,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
 )
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
+from ralph.mcp.upstream.client import carries_upstream_media_blocks
 from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 
 if TYPE_CHECKING:
@@ -126,7 +127,18 @@ def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]
     return serialized
 
 
-def _decode_json_payload_from_content(content_blocks: object) -> dict[str, object] | None:
+def decode_json_payload_from_content(content_blocks: object) -> dict[str, object] | None:
+    """Return the JSON payload a tool encoded inside its first text block.
+
+    Public because of what it can do: it REPLACES the whole tool payload
+    with JSON decoded out of a text block, after the upstream contract
+    has already inspected that block and found nothing to normalise. A
+    media block smuggled inside the text would re-enter the payload
+    having never been through the contract -- the incident's wire shape,
+    by a route that skips the guard. The refusal below is the guard, and
+    a guard nothing can reach from outside the module is a guard nothing
+    can test.
+    """
     serialized = _serialize_content_blocks(content_blocks)
     if not serialized:
         return None
@@ -138,9 +150,17 @@ def _decode_json_payload_from_content(content_blocks: object) -> dict[str, objec
         decoded = cast("object", json.loads(text))
     except json.JSONDecodeError:
         return None
-    if not isinstance(decoded, dict):
+    if not isinstance(decoded, dict) or "content" not in decoded:
         return None
-    if "content" not in decoded:
+    if carries_upstream_media_blocks(decoded.get("content")):
+        # REFUSED. This path replaces the whole tool payload with JSON
+        # decoded out of a TEXT block, after the upstream contract has
+        # already inspected that text block and found nothing to
+        # normalise. A media block smuggled inside the text therefore
+        # re-entered the payload having never been through the
+        # contract, which is how the incident's wire shape reaches an
+        # agent. A text block that decodes to media is not a payload
+        # this server will serve; the text is still delivered as text.
         return None
     return cast("dict[str, object]", decoded)
 
@@ -853,7 +873,7 @@ class McpServer:
                 payload["content"] = _serialize_content_blocks(payload_source)
             return payload
 
-        decoded_payload = _decode_json_payload_from_content(payload_source)
+        decoded_payload = decode_json_payload_from_content(payload_source)
         if decoded_payload is not None:
             return decoded_payload
         return {"content": _serialize_content_blocks(payload_source)}

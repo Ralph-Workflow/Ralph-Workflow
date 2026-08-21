@@ -40,6 +40,21 @@ def _normalise(raw: object, *, session: object | None = None) -> object:
         ("text beside an image", [{"type": "text", "text": "x"}, dict(_IMAGE_BLOCK)]),
         ("a nested result envelope", {"result": {"content": [dict(_IMAGE_BLOCK)]}}),
         ("the spec-shaped result", {"content": [dict(_IMAGE_BLOCK)]}),
+        # The shape that survived the first fix: an outer content array
+        # BESIDE a nested envelope. The registry declined to normalise
+        # the nested one whenever an outer ``content`` existed, while
+        # the server unwraps ``result`` UNCONDITIONALLY and discards the
+        # outer -- so the two rules were exact opposites and the payload
+        # the registry skipped was the payload the server served.
+        (
+            "an outer array beside a nested envelope",
+            {
+                "content": [{"type": "text", "text": "ok"}],
+                "result": {"content": [dict(_IMAGE_BLOCK)]},
+            },
+        ),
+        # The server layer accepts a tuple wherever it accepts a list.
+        ("a tuple of blocks", ({"type": "text", "text": "ok"}, dict(_IMAGE_BLOCK))),
     ],
 )
 def test_no_result_shape_carries_embedded_media_through(label: str, raw: object) -> None:
@@ -67,3 +82,40 @@ def test_a_bare_list_without_a_session_fails_closed() -> None:
     """
     with pytest.raises(UpstreamCallError, match="no active session"):
         _normalise([dict(_IMAGE_BLOCK)], session=None)
+
+
+def test_a_text_block_that_decodes_to_media_is_not_served_as_a_payload() -> None:
+    """The JSON-in-text decoder must not re-enter media past the contract.
+
+    ``decode_json_payload_from_content`` replaces the whole tool payload
+    with JSON decoded out of a TEXT block -- after the upstream contract
+    has already inspected that text block and found nothing to
+    normalise. Media smuggled inside the text therefore reached the
+    agent having never been through the contract at all.
+    """
+    import json
+
+    from ralph.mcp.server._mcp_server import decode_json_payload_from_content
+    from ralph.mcp.upstream.client import carries_upstream_media_blocks
+
+    smuggled = [{"type": "text", "text": json.dumps({"content": [dict(_IMAGE_BLOCK)]})}]
+    ordinary = [
+        {"type": "text", "text": json.dumps({"content": [{"type": "text", "text": "ok"}]})}
+    ]
+
+    assert decode_json_payload_from_content(smuggled) is None
+    # Not vacuous: an ordinary JSON-in-text payload still decodes.
+    assert decode_json_payload_from_content(ordinary) == {
+        "content": [{"type": "text", "text": "ok"}]
+    }
+
+    assert carries_upstream_media_blocks([dict(_IMAGE_BLOCK)]) is True
+    assert carries_upstream_media_blocks([{"type": "text", "text": "ok"}]) is False
+    # Every media type the contract normalises, so the decoder's refusal
+    # cannot be narrower than the contract itself.
+    for media_type in ("image", "audio", "video", "pdf", "document"):
+        assert carries_upstream_media_blocks([{"type": media_type}]) is True, media_type
+    # Shapes that are not a block list at all must not raise.
+    assert carries_upstream_media_blocks(None) is False
+    assert carries_upstream_media_blocks("not a list") is False
+    assert carries_upstream_media_blocks([None, 5, "x"]) is False

@@ -469,6 +469,25 @@ def build_session_mcp_plan_for_phase(
         ), drain
 
 
+def _chain_disagrees_on_model(model_flags: list[str]) -> bool:
+    """True when the chain's candidates do not all name the same model.
+
+    A phase session carries ONE model flag, read from the first
+    candidate. If the candidates disagree, that flag describes an agent
+    that may not be the one that runs, and pairing it with the session
+    resolves that agent's provider for every delivery decision in the
+    phase.
+    """
+    if len(model_flags) < _MIN_CANDIDATES_TO_DISAGREE:
+        return False
+    first = model_flags[0]
+    return any(flag != first for flag in model_flags)
+
+
+#: Two candidates are the fewest that can disagree about anything.
+_MIN_CANDIDATES_TO_DISAGREE = 2
+
+
 def _phase_session_transport(
     candidate_agents: list[str],
     config: UnifiedConfig | None,
@@ -492,14 +511,24 @@ def _phase_session_transport(
     registry = AgentRegistry.from_config(config)
     by_value: dict[str, AgentTransport] = {}
     ordered: list[str] = []
+    model_flags: list[str] = []
     for name in candidate_agents:
         cfg = registry.get(name)
         if cfg is None or cfg.transport is None:
             continue
         ordered.append(cfg.transport.value)
         by_value[cfg.transport.value] = cfg.transport
+        model_flags.append((cfg.model_flag or "").strip())
     selected = select_session_transport(ordered)
-    ambiguous = session_transport_is_ambiguous(ordered)
+    # Disagreement about the MODEL counts too. Comparing transports
+    # alone called a chain unambiguous when its candidates shared a CLI
+    # but named different providers -- two ``claude``-transport agents
+    # where only the first carries ``--model gemini/...`` -- so the
+    # session resolved GEMINI's capabilities for the whole phase and
+    # minted AudioContent and VideoContent that the agent which
+    # actually ran cannot carry. That is the hazard this flag exists
+    # for, and it was order-dependent in exactly the way it criticises.
+    ambiguous = session_transport_is_ambiguous(ordered) or _chain_disagrees_on_model(model_flags)
     if selected is None:
         return None, ambiguous
     return by_value.get(selected), ambiguous
