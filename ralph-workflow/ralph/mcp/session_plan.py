@@ -288,6 +288,17 @@ def _reconcile_injected_transport(
     if not stated:
         return replace(identity, transport=transport.value)
     if not transport_inline_image_roundtrip_unsafe(transport.value):
+        # The stated transport is kept, but the provider beside it
+        # described a CLI that is not the one being launched -- and a
+        # stale ``openai`` next to a Claude launch turns PDFs into a hard
+        # error for a CLI that accepts them. Same hazard as the branch
+        # below, opposite direction.
+        if transport_inline_image_roundtrip_unsafe(identity.transport):
+            return MultimodalModelIdentity(
+                provider=UNKNOWN_IDENTITY.provider,
+                model_id=None,
+                transport=transport.value,
+            )
         return identity
     # Overriding the stated transport means the provider beside it
     # described a different CLI, and keeping it inverts this rule for

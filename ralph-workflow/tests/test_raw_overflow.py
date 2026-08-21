@@ -685,3 +685,61 @@ def test_dropping_a_log_emits_no_resource_warning(tmp_path: Path) -> None:
         log.append("payload")
         del log
         gc.collect()
+
+
+def test_detection_is_bounded_on_a_badly_corrupted_capture(tmp_path: Path) -> None:
+    """A corrupt capture must not cost more than the run it is grading.
+
+    Unbounded, this measured 5.2 million break objects in 119 s and
+    1.5 GB for a 10 MB file -- inside phase close, in exactly the case
+    the detector exists for. Every consumer reads the first break; the
+    rest was pure cost.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.display.raw_overflow import MAX_REPORTED_BREAKS, detect_raw_log_breaks
+
+    raw_path = tmp_path / ".agent" / "raw" / "codex.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(b"not json\n" * 50_000)
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CODEX)
+
+    assert len(breaks) == MAX_REPORTED_BREAKS
+    assert breaks[0].kind == "NON_JSONL"
+
+
+def test_a_nul_hole_yields_one_chunk_not_one_per_byte(tmp_path: Path) -> None:
+    """A NUL hole is the measured corruption shape; it must stay cheap.
+
+    Splitting the payload on every NUL allocated one object per byte
+    before any grading ran, so the break cap could not bound it -- 7.9 s
+    and 517 MB at the file cap, inside phase close. The invariant is
+    structural, not timing: a run of NULs is ONE step, however long it
+    is.
+    """
+    del tmp_path
+    from ralph.display.raw_overflow import nul_separated_chunks
+
+    payload = b'{"ok":1}\n' + b"\x00" * 100_000 + b'{"after":1}\n'
+
+    chunks = list(nul_separated_chunks(payload))
+
+    assert len(chunks) == 2, f"a NUL run must not yield a chunk per byte: {len(chunks)}"
+    assert chunks[0][1] == b'{"ok":1}\n'
+    assert chunks[1][1] == b'{"after":1}\n'
+    # Offsets stay absolute so a reported break names a real byte.
+    assert chunks[1][0] == len(b'{"ok":1}\n') + 100_000
+
+
+def test_a_nul_hole_is_still_reported_as_corruption(tmp_path: Path) -> None:
+    """Cheapness must not cost detection."""
+    from ralph.config.enums import AgentTransport
+    from ralph.display.raw_overflow import detect_raw_log_breaks
+
+    raw_path = tmp_path / ".agent" / "raw" / "codex.log"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_bytes(b'{"ok":1}\n' + b"\x00" * 4096)
+
+    breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CODEX)
+
+    assert breaks[0].kind == "NUL_BYTES"

@@ -25,6 +25,7 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    profile_for_caller,
     profile_from_payload,
     resolve_capability_profile,
 )
@@ -69,7 +70,10 @@ class FileBackedSession:
         # dropped -- and some delivery guards key on the CLI. Only fills
         # a gap: a payload that names a transport already came from a
         # handshake that knew better.
-        self._declared_agent_transport = declared_agent_transport
+        # Normalised: an empty string is no declaration, and storing it
+        # verbatim would make the identity look transport-bearing and
+        # write ``"transport": ""`` into every downstream payload.
+        self._declared_agent_transport = (declared_agent_transport or "").strip() or None
         self._path = path
         self._loader = loader or _load_session_payload
         self._session_id_factory = session_id_factory or (
@@ -425,10 +429,20 @@ class FileBackedSession:
         raw = self._load().get("delegated_model_identity")
         if not isinstance(raw, dict):
             return None
+        # A delegate names a different MODEL, never a different CLI --
+        # the transport is a property of the process on the other end of
+        # this session. Inheriting it when the delegate payload omits it
+        # keeps a delegated call from silently escaping the guards that
+        # key on the CLI.
+        raw_transport = raw.get("transport")
         return MultimodalModelIdentity(
             provider=str(raw.get("provider", "unknown")),
             model_id=str(raw["model_id"]) if raw.get("model_id") is not None else None,
-            transport=str(raw["transport"]) if raw.get("transport") is not None else None,
+            transport=(
+                str(raw_transport)
+                if raw_transport is not None
+                else self.model_identity.transport
+            ),
         )
 
     @property
@@ -446,11 +460,16 @@ class FileBackedSession:
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
-        if self.delegated_capability_profile is not None:
-            return self.delegated_capability_profile
-        if self.delegated_model_identity is not None:
-            return resolve_capability_profile(self.delegated_model_identity)
-        return self.capability_profile or resolve_capability_profile(self.model_identity)
+        return profile_for_caller(
+            self.delegated_capability_profile
+            if self.delegated_capability_profile is not None
+            else (
+                None
+                if self.delegated_model_identity is not None
+                else self.capability_profile
+            ),
+            self.caller_model_identity,
+        )
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
@@ -562,6 +581,9 @@ def session_from_env(
     raw = env_map.get(SESSION_ENV)
     if not raw:
         return None
+    # The declaration applies to this branch too: an ``AgentSession``
+    # rebuilt from a JSON payload is just as blind to the CLI on the
+    # other end as a file-backed one.
     payload_obj: object = json.loads(raw)
     if not isinstance(payload_obj, dict):
         raise ValueError(f"{SESSION_ENV} must encode an object")
@@ -574,6 +596,8 @@ def session_from_env(
         else set()
     )
     raw_identity = payload.get("model_identity")
+    if isinstance(raw_identity, dict) and raw_identity.get("transport") is None:
+        raw_identity = {**raw_identity, "transport": declared_agent_transport}
     if isinstance(raw_identity, dict):
         provider = str(raw_identity.get("provider", "unknown"))
         model_id_raw = raw_identity.get("model_id")
@@ -584,7 +608,11 @@ def session_from_env(
             transport=str(transport_raw) if transport_raw is not None else None,
         )
     else:
-        model_identity = UNKNOWN_IDENTITY
+        model_identity = MultimodalModelIdentity(
+            provider=UNKNOWN_IDENTITY.provider,
+            model_id=None,
+            transport=declared_agent_transport,
+        )
     raw_profile = payload.get("capability_profile")
     stored_profile = profile_from_payload(raw_profile) if isinstance(raw_profile, dict) else None
     if stored_profile is None and model_identity.is_known():

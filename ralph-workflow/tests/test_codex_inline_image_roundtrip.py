@@ -32,6 +32,7 @@ import pytest
 from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE, ResourceReferenceContent
 from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
     DeliveryMode,
     MultimodalModelIdentity,
     get_delivery_mode,
@@ -779,14 +780,33 @@ def test_upstream_block_without_a_readable_type_is_rejected() -> None:
 
 
 def _write_session_file(tmp_path: Path, identity: dict[str, object] | None) -> Path:
-    payload: dict[str, object] = {
-        "session_id": "s",
-        "run_id": "r",
-        "drain": "standalone",
-        "capabilities": [MEDIA_READ_CAPABILITY],
-    }
-    if identity is not None:
-        payload["model_identity"] = identity
+    """Write a session file using the REAL payload writer.
+
+    Hand-rolling the payload is what let a leak survive a round: the
+    hand-written shape omitted the ``capability_profile`` key, which
+    ``session_payload_json`` always writes -- and the media guards read
+    the identity embedded in THAT, not the top-level one.
+    """
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+
+    parent = AgentSession(
+        session_id="s",
+        run_id="r",
+        drain="standalone",
+        capabilities={MEDIA_READ_CAPABILITY},
+        model_identity=(
+            MultimodalModelIdentity(
+                provider=str(identity["provider"]),
+                model_id=str(identity["model_id"]),
+                transport=str(identity["transport"]),
+            )
+            if identity is not None
+            else UNKNOWN_IDENTITY
+        ),
+    )
+    payload = json.loads(session_payload_json(parent))
+    assert "capability_profile" in payload, "the real writer always emits this key"
     session_file = tmp_path / "session.json"
     session_file.write_text(json.dumps(payload), encoding="utf-8")
     return session_file
@@ -814,6 +834,9 @@ def test_declared_cli_reaches_a_file_backed_session(
     assert session is not None
     assert session.caller_model_identity.transport == "codex"
     assert inline_image_roundtrip_unsafe(session.caller_model_identity)
+    # The media guards read the PROFILE's identity, not the session's.
+    # Correcting only the latter closed nothing.
+    assert session.caller_capability_profile.identity.transport == "codex"
     assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
         DeliveryMode.RESOURCE_REFERENCE_REPLAY
     )
@@ -917,3 +940,55 @@ def test_the_commit_chain_rule_matches_the_shared_rule() -> None:
             [registry[name].transport.value for name in agents]
         )
         assert (chain_answer.value if chain_answer else None) == shared_answer, agents
+
+
+def test_declared_cli_reaches_a_json_env_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The JSON handshake shape is as blind to the CLI as the file one."""
+    from ralph.mcp.protocol.env import MCP_SESSION_ENV, MCP_SESSION_FILE_ENV
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+    from ralph.mcp.server.runtime_session import session_from_env
+
+    del tmp_path
+    parent = AgentSession(
+        session_id="s", run_id="r", drain="standalone", capabilities={MEDIA_READ_CAPABILITY}
+    )
+    monkeypatch.delenv(str(MCP_SESSION_FILE_ENV), raising=False)
+    monkeypatch.setenv(str(MCP_SESSION_ENV), session_payload_json(parent))
+
+    session = session_from_env(declared_agent_transport="codex")
+
+    assert session is not None
+    assert session.caller_capability_profile.identity.transport == "codex"
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_a_delegate_inherits_the_sessions_transport() -> None:
+    """A delegate names a different model, never a different CLI.
+
+    The transport describes the process on the other end of this
+    session, so a delegate payload that omits it must not escape the
+    guards that key on it.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.protocol.session import AgentSession
+
+    session = AgentSession(
+        session_id="s",
+        run_id="r",
+        drain="standalone",
+        capabilities={MEDIA_READ_CAPABILITY},
+        model_identity=_CODEX_IDENTITY,
+    )
+    session.delegated_model_identity = MultimodalModelIdentity(
+        provider="claude", model_id="claude-opus-5"
+    )
+
+    assert inline_image_roundtrip_unsafe(session.caller_model_identity)
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )

@@ -986,6 +986,22 @@ class PtyLineReader:
                 return
             self._monitor_stop.wait(0.05)
 
+    def _capture_pending(self, pending_lines: list[str]) -> list[str]:
+        """Write drained queue lines to the raw capture before yielding them.
+
+        A watchdog fire drains the pending queue straight to the parser.
+        Those lines are agent output like any other, so skipping the
+        capture left the verbatim transcript missing exactly the lines
+        written just before a stall -- and losing whole lines leaves the
+        file parseable, so the corruption detector reports nothing and
+        the loss is silent.
+        """
+        for line in pending_lines:
+            with contextlib.suppress(Exception):
+                if self._raw_overflow is not None:
+                    self._raw_overflow.append(line)
+        return pending_lines
+
     def _request_interactive_exit(self) -> None:
         if self._completion_exit_sent:
             return
@@ -1433,7 +1449,7 @@ class PtyLineReader:
         )
         if fire_result is not None:
             pending_lines, exc = fire_result
-            yield from pending_lines
+            yield from self._capture_pending(pending_lines)
             raise exc
 
     def _record_non_echo_activity(
@@ -1473,7 +1489,7 @@ class PtyLineReader:
         drain_result = self._run_drain_window(watchdog, drain_deadline)
         if drain_result is not None:
             pending_lines, exc = drain_result
-            yield from pending_lines
+            yield from self._capture_pending(pending_lines)
             raise exc
 
     def _idle_check_and_wait(self, watchdog: IdleWatchdog) -> Iterator[str]:
@@ -1483,7 +1499,7 @@ class PtyLineReader:
         )
         if fire_result is not None:
             pending_lines, exc = fire_result
-            yield from pending_lines
+            yield from self._capture_pending(pending_lines)
             raise exc
         check_broken_agent_timer(self._handle, watchdog, self._agent_name)
         self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)

@@ -19,7 +19,7 @@ from ralph.display.record_writer import safe_id_for
 from ralph.display.vt_normalizer import normalize_vt_text
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
     from ralph.config.models import AgentConfig
@@ -438,6 +438,53 @@ def detect_raw_log_breaks(
 MAX_REPORTED_BREAKS: Final = 32
 
 
+#: Window used to walk a NUL run at C speed rather than byte by byte.
+_NUL_SKIP_WINDOW: Final = 1 << 16
+
+
+def _skip_nul_run(payload: bytes, start: int) -> int:
+    """Return the offset of the first non-NUL byte at or after ``start``.
+
+    Walks in windows so the scan runs inside ``bytes.lstrip`` rather than
+    a Python loop: a hole is millions of consecutive NULs, and stepping
+    one byte at a time cost seconds on a capture at the file cap.
+    """
+    total = len(payload)
+    while start < total:
+        window = payload[start : start + _NUL_SKIP_WINDOW]
+        stripped = window.lstrip(b"\x00")
+        start += len(window) - len(stripped)
+        if stripped:
+            return start
+    return total
+
+
+def nul_separated_chunks(payload: bytes) -> Iterator[tuple[int, bytes]]:
+    """Yield ``(offset, chunk)`` for each NUL-delimited run in ``payload``.
+
+    Splits LAZILY. ``payload.split(b"\\x00")`` materialises one bytes
+    object per NUL byte before any grading happens, so a NUL hole -- the
+    measured 2026-08-06 corruption shape, and precisely what this
+    detector exists to find -- cost 7.9 s and 517 MB at the 50 MB file
+    cap, none of it bounded by :data:`MAX_REPORTED_BREAKS` because the
+    allocation ran first. Yielding slices lets the caller stop at the
+    cap.
+    """
+    start = 0
+    total = len(payload)
+    while start <= total:
+        nul_at = payload.find(b"\x00", start)
+        if nul_at < 0:
+            yield start, payload[start:]
+            return
+        if nul_at > start:
+            yield start, payload[start:nul_at]
+        # Skip the whole NUL RUN, not one byte of it. A hole is millions
+        # of consecutive NULs, and stepping through it one at a time
+        # yielded one empty chunk per byte.
+        start = _skip_nul_run(payload, nul_at)
+
+
 def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
     """Return one ``NON_JSONL`` break per unparseable line.
 
@@ -454,20 +501,15 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
     VT/ANSI normalization so TUI-wrapped session lines are not misgraded.
     """
     breaks: list[RawLogBreak] = []
-    offset = 0
-    nul_chunks = payload.split(b"\x00")
-    for chunk_index, chunk in enumerate(nul_chunks):
-        # Advance offset past the chunk and (if not the last chunk)
-        # past the NUL byte that terminated it.
-        chunk_offset = offset
-        offset += len(chunk)
-        if chunk_index < len(nul_chunks) - 1:
-            offset += 1  # the NUL byte itself
+    for chunk_start, chunk in nul_separated_chunks(payload):
+        if len(breaks) >= MAX_REPORTED_BREAKS:
+            return breaks
+        line_offset = chunk_start
         for raw_line in chunk.splitlines(keepends=True):
             if len(breaks) >= MAX_REPORTED_BREAKS:
                 return breaks
-            line_offset = chunk_offset
-            chunk_offset += len(raw_line)
+            this_line_offset = line_offset
+            line_offset += len(raw_line)
             line_bytes = raw_line.rstrip(b"\n").rstrip(b"\r")
             decoded = line_bytes.decode("utf-8", errors="replace").strip()
             if not decoded:
@@ -504,9 +546,9 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
                 breaks.append(
                     RawLogBreak(
                         kind="NON_JSONL",
-                        offset=line_offset,
+                        offset=this_line_offset,
                         detail=(
-                            f"line at byte {line_offset} is not parseable "
+                            f"line at byte {this_line_offset} is not parseable "
                             f"JSON (first 60 chars: {line_text[:60]!r})"
                         ),
                     )
@@ -516,9 +558,9 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
                 breaks.append(
                     RawLogBreak(
                         kind="NON_JSONL",
-                        offset=line_offset,
+                        offset=this_line_offset,
                         detail=(
-                            f"line at byte {line_offset} parses as JSON but "
+                            f"line at byte {this_line_offset} parses as JSON but "
                             f"is not a JSON object (type={type(parsed).__name__})"
                         ),
                     )
@@ -734,5 +776,6 @@ __all__ = [
     "close_all_raw_overflow_logs",
     "detect_raw_log_breaks",
     "is_harness_input_echo",
+    "nul_separated_chunks",
     "raw_log_path_for",
 ]

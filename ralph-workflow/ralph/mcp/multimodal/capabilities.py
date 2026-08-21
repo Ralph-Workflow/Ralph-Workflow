@@ -140,6 +140,35 @@ def inline_image_requires_text_handle(identity: MultimodalModelIdentity) -> bool
     return identity.provider.lower() in _INLINE_IMAGE_HANDLE_ONLY_PROVIDERS
 
 
+def profile_for_caller(
+    profile: ResolvedCapabilityProfile | None,
+    identity: MultimodalModelIdentity,
+) -> ResolvedCapabilityProfile:
+    """Return ``profile`` re-based on the caller's authoritative identity.
+
+    A session carries two notions of who it is talking to: the resolved
+    identity, and the identity embedded in a stored capability profile.
+    They can disagree -- a profile serialised by a parent that did not
+    know the agent CLI, next to an identity an operator declared -- and
+    the delivery guards read the PROFILE'S. Correcting only the identity
+    therefore closed nothing, which is exactly how a declared transport
+    kept failing to reach the media surface.
+
+    Re-basing here makes the divergence unrepresentable: the profile a
+    caller sees always carries the identity the session resolved, and
+    its verdicts are re-derived when that identity has moved on.
+    """
+    if profile is None:
+        return resolve_capability_profile(identity)
+    if profile.identity == identity:
+        return profile
+    if profile.identity.transport == identity.transport:
+        # Same CLI, richer provider detail in one of them: keep the
+        # stored verdicts and just carry the authoritative identity.
+        return ResolvedCapabilityProfile(identity=identity, verdicts=profile.verdicts)
+    return resolve_capability_profile(identity)
+
+
 def select_session_transport(transports: Sequence[str]) -> str | None:
     """Pick the transport to tag a session serving several candidate agents.
 
@@ -384,6 +413,7 @@ __all__ = [
     "get_delivery_mode",
     "inline_image_requires_text_handle",
     "inline_image_roundtrip_unsafe",
+    "profile_for_caller",
     "profile_from_payload",
     "resolve_capability_profile",
     "select_session_transport",

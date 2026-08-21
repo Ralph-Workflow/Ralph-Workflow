@@ -52,6 +52,7 @@ def _default_sync_process_factory(
             stderr=opts.stderr,
             start_new_session=opts.start_new_session,
             text=opts.text,
+            errors=opts.errors if opts.text else None,
         ),
     )
 

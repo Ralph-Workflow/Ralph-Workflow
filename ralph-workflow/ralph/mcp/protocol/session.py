@@ -11,6 +11,7 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    profile_for_caller,
     resolve_capability_profile,
 )
 from ralph.mcp.multimodal.resources import MediaManifest
@@ -295,17 +296,37 @@ class AgentSession:
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        """Return the delegate model identity when set, otherwise the parent identity."""
-        return self.delegated_model_identity or self.model_identity
+        """Return the delegate model identity when set, otherwise the parent identity.
+
+        A delegate names a different MODEL, never a different CLI: the
+        transport describes the process on the other end of this
+        session. A delegate that omits it inherits the session's, so a
+        delegated call cannot slip past the guards that key on the CLI.
+        """
+        delegated = self.delegated_model_identity
+        if delegated is None:
+            return self.model_identity
+        if delegated.transport is not None:
+            return delegated
+        return MultimodalModelIdentity(
+            provider=delegated.provider,
+            model_id=delegated.model_id,
+            transport=self.model_identity.transport,
+        )
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
         """Resolve a fresh caller-specific profile for every ledgered tool call."""
-        if self.delegated_capability_profile is not None:
-            return self.delegated_capability_profile
-        if self.delegated_model_identity is not None:
-            return resolve_capability_profile(self.delegated_model_identity)
-        return self.capability_profile
+        return profile_for_caller(
+            self.delegated_capability_profile
+            if self.delegated_capability_profile is not None
+            else (
+                None
+                if self.delegated_model_identity is not None
+                else self.capability_profile
+            ),
+            self.caller_model_identity,
+        )
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

@@ -304,3 +304,55 @@ def test_a_respawned_unit_does_not_erase_the_earlier_wave(tmp_path: Path) -> Non
 
     assert "type: development_result" in body, "wave one was erased"
     assert "second wave body" in body
+
+
+def test_a_dropped_units_writer_cannot_reopen_its_path(tmp_path: Path) -> None:
+    """``drop_unit`` must leave its writer unable to write again.
+
+    Forgetting the registry entry lets a later acquisition build a
+    SECOND writer for the same path. Closing the first one is not
+    enough -- ``append`` reopens -- so two buffered writers would append
+    to one file, tearing each other's lines and racing the byte total.
+    """
+    display = _display(tmp_path)
+    try:
+        first = display._get_condensed_log("codex")
+        first.append("wave one")
+        display.drop_unit("codex")
+
+        assert first.is_disabled, "the dropped writer can still reopen the file"
+        assert first.append("must not land") is False
+    finally:
+        display.stop()
+
+
+def test_watchdog_drained_lines_reach_the_capture(tmp_path: Path) -> None:
+    """Lines drained straight to the parser are still agent output.
+
+    A watchdog fire empties the pending queue to the parser. Skipping
+    the capture for those lines left the verbatim transcript missing
+    exactly what was written just before a stall -- and losing whole
+    lines leaves the file parseable, so nothing reported the loss.
+    """
+    from ralph.display.raw_overflow import RawOverflowLog
+
+    log = RawOverflowLog(tmp_path, "codex")
+    captured: list[str] = []
+
+    class _Reader:
+        _raw_overflow = log
+
+        def _capture_pending(self, pending_lines: list[str]) -> list[str]:
+            from ralph.agents.invoke._process_reader import ProcessLineReader
+
+            return ProcessLineReader._capture_pending(self, pending_lines)
+
+    try:
+        result = _Reader()._capture_pending(['{"a":1}', '{"b":2}'])
+        log.flush()
+        captured = log.path.read_text(encoding="utf-8").splitlines()
+    finally:
+        log.close()
+
+    assert result == ['{"a":1}', '{"b":2}'], "the lines must still reach the parser"
+    assert captured == ['{"a":1}', '{"b":2}'], "and must also reach the capture"

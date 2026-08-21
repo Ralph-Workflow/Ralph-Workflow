@@ -34,3 +34,12 @@ class SpawnOptions:
     start_new_session: bool = True
     label: str | None = None
     text: bool = False
+    #: Decode error policy for ``text`` mode.
+    #:
+    #: ``"replace"``, not Python's strict default: agent stdout is a byte
+    #: stream we do not control, and one undecodable byte under strict
+    #: decoding raises inside the reader thread -- killing the capture
+    #: and the parse stream mid-turn, and taking the whole buffered chunk
+    #: with it. The async reader already decodes with ``errors=
+    #: "replace"``; this makes the sync reader agree.
+    errors: str = "replace"
