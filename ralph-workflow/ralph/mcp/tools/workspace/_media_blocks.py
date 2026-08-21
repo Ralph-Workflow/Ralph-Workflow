@@ -126,6 +126,22 @@ def _build_image_withheld_block(
     return ToolContent.text_content(f"WARNING: {message}")
 
 
+def _reference_delivery(delivery: DeliveryMode) -> DeliveryMode:
+    """Return the delivery mode to stamp on a resource-reference block.
+
+    A block being emitted AS a reference must say so. When an
+    ``INLINE_IMAGE`` verdict is refused -- a non-image, or an image whose
+    mime type is not inline-capable -- the reference used to carry the
+    verdict's own ``inline_image`` value, which contradicts
+    ``ResourceReferenceContent``'s contract and, more concretely, makes
+    the artifact invisible to the handoff extractors that filter on the
+    two reference values.
+    """
+    if delivery in (DeliveryMode.RESOURCE_REFERENCE_REPLAY, DeliveryMode.TYPED_BLOCK):
+        return delivery
+    return DeliveryMode.RESOURCE_REFERENCE_REPLAY
+
+
 def _inline_image_deliverable(
     verdict: CapabilityVerdict,
     modality: str,
@@ -248,7 +264,7 @@ def _replay_from_manifest_entry(
         mime_type=entry.mime_type,
         title=entry.title,
         modality=entry.modality,
-        delivery=verdict.delivery,
+        delivery=_reference_delivery(verdict.delivery),
     )
     return ToolResult(content=[ref], is_error=False)
 
@@ -316,7 +332,7 @@ def _replay_from_persisted_entry(
         mime_type=mime_type,
         title=title,
         modality=modality,
-        delivery=verdict.delivery,
+        delivery=_reference_delivery(verdict.delivery),
     )
     return ToolResult(content=[ref], is_error=False)
 

@@ -148,3 +148,31 @@ async def test_trailing_output_without_a_newline_is_still_captured() -> None:
     lines = [line async for line in drain_agent_lines(stream, "unit-1")]
 
     assert lines == [b'{"type":"first"}\n', b'{"type":"truncated"}']
+
+
+def test_agent_stdout_decodes_with_replacement() -> None:
+    """One undecodable byte must not end a capture.
+
+    Agent stdout is a byte stream Ralph Workflow does not control.
+    Under strict decoding the reader thread raised mid-chunk, losing the
+    bad line, everything buffered with it, and the rest of the turn --
+    silently, because a short-but-parseable file reports no corruption.
+    """
+    from ralph.process.manager._spawn_options import SpawnOptions
+
+    assert SpawnOptions().errors == "replace"
+
+
+@pytest.mark.asyncio
+async def test_a_frame_at_the_buffer_limit_is_still_delivered() -> None:
+    """The drop path must not claim a frame that actually fits."""
+    from ralph.agents.subprocess_executor import drain_agent_lines
+
+    stream = asyncio.StreamReader(limit=64)
+    exact = b"y" * 63 + b"\n"
+    stream.feed_data(exact)
+    stream.feed_eof()
+
+    lines = [line async for line in drain_agent_lines(stream, "unit-1")]
+
+    assert lines == [exact]

@@ -218,10 +218,18 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
         return ""
     if not tokens:
         return ""
+    executable = tokens[0]
     flags = set(tokens[1:]) | set((config.output_flag or "").split())
-    if (tokens[0].lower() == "claude" and "-p" in flags) or "--output-format=stream-json" in flags:
+    # BOTH clauses are gated on the executable. ``--output-format=
+    # stream-json`` is not unique to Claude -- kimi ships it as its
+    # default output flag, and every ccs alias inherits it -- so an
+    # ungated check filed those agents' transcripts under
+    # ``claude-headless``, the same path headless Claude is graded on.
+    # Two agents sharing one capture means one grades the other's
+    # corruption and quotes the other's transport failures.
+    if executable.lower() == "claude" and ("-p" in flags or "--output-format=stream-json" in flags):
         return "claude-headless"
-    return tokens[0]
+    return executable
 
 
 def raw_log_path_for(
@@ -459,6 +467,26 @@ def _skip_nul_run(payload: bytes, start: int) -> int:
     return total
 
 
+def _iter_lines(chunk: bytes) -> Iterator[bytes]:
+    """Yield ``chunk``'s lines lazily, keeping their terminators.
+
+    ``bytes.splitlines`` materialises every line before the caller can
+    stop, so the break cap could not bound it: 50 MB of short non-JSON
+    lines allocated ~5.8 million objects and 356 MB before reporting its
+    32 breaks -- inside the phase-close verdict, in the case the
+    detector exists for.
+    """
+    start = 0
+    total = len(chunk)
+    while start < total:
+        end = chunk.find(b"\n", start)
+        if end < 0:
+            yield chunk[start:]
+            return
+        yield chunk[start : end + 1]
+        start = end + 1
+
+
 def nul_separated_chunks(payload: bytes) -> Iterator[tuple[int, bytes]]:
     """Yield ``(offset, chunk)`` for each NUL-delimited run in ``payload``.
 
@@ -505,7 +533,7 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
         if len(breaks) >= MAX_REPORTED_BREAKS:
             return breaks
         line_offset = chunk_start
-        for raw_line in chunk.splitlines(keepends=True):
+        for raw_line in _iter_lines(chunk):
             if len(breaks) >= MAX_REPORTED_BREAKS:
                 return breaks
             this_line_offset = line_offset

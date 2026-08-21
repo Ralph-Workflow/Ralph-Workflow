@@ -100,8 +100,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # side-effecting implementations are assembled in exactly one place —
     # the composition root." The line numbers shift with docstring edits;
     # the audit must be re-pointed whenever the docstring changes.
-    "mcp/server/runtime.py:203",
-    "mcp/server/runtime.py:246",
+    "mcp/server/runtime.py:205",
+    "mcp/server/runtime.py:248",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live

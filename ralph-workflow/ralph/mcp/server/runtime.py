@@ -129,12 +129,13 @@ def standalone_session_identity(agent_transport: str | None) -> MultimodalModelI
     delivery guards that key on the CLI. Omitted, the identity stays
     fully unknown, which "unresolvable -> capable" treats as permissive.
     """
-    if not agent_transport:
+    declared = (agent_transport or "").strip()
+    if not declared:
         return UNKNOWN_IDENTITY
     return MultimodalModelIdentity(
         provider=UNKNOWN_IDENTITY.provider,
         model_id=None,
-        transport=agent_transport,
+        transport=declared,
     )
 
 
@@ -144,14 +145,15 @@ def _apply_declared_agent_transport(session: object, agent_transport: str | None
     Only fills a gap: an identity that already names a transport came
     from a handshake that knew better than the command line.
     """
-    if not agent_transport:
+    declared = (agent_transport or "").strip()
+    if not declared:
         return
     identity: object = getattr(session, "model_identity", None)
     if not isinstance(identity, MultimodalModelIdentity) or identity.transport:
         return
     if not isinstance(session, AgentSession):
         return
-    session.model_identity = replace(identity, transport=agent_transport)
+    session.model_identity = replace(identity, transport=declared)
 
 
 def build_standalone_http_server(

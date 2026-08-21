@@ -156,11 +156,22 @@ def identity_on_transport(
     ``transport`` of ``None`` means the caller knows no better, so the
     identity is returned untouched.
     """
-    if transport is None or identity.transport == transport:
-        return identity
-    if identity.transport is None:
-        return replace(identity, transport=transport)
-    return MultimodalModelIdentity(provider="unknown", model_id=None, transport=transport)
+    # Normalise both sides first. A whitespace-only transport is not a
+    # transport: treating one as authoritative let ``--agent-transport
+    # "  "`` override a delegate's genuine restricted CLI and then strip
+    # to nothing, reopening the incident at the one seam the payload
+    # readers' normalisation did not cover. Comparing raw also made a
+    # difference in case alone look like a different CLI and cost the
+    # identity its provider and model id.
+    stated = (identity.transport or "").strip()
+    launched = (transport or "").strip()
+    if not launched or stated.lower() == launched.lower():
+        return identity if identity.transport == stated or not stated else replace(
+            identity, transport=stated
+        )
+    if not stated:
+        return replace(identity, transport=launched)
+    return MultimodalModelIdentity(provider="unknown", model_id=None, transport=launched)
 
 
 def profile_for_caller(
@@ -185,6 +196,13 @@ def profile_for_caller(
         return resolve_capability_profile(identity)
     if profile.identity == identity:
         return profile
+    if identity.transport is None and profile.identity.transport is not None:
+        # The profile knows which CLI this is and the identity does not.
+        # Re-resolving here would answer a strictly less-informed
+        # question and could relax a restricted profile.
+        identity = replace(identity, transport=profile.identity.transport)
+        if profile.identity == identity:
+            return profile
     if (
         profile.identity.transport == identity.transport
         and profile.identity.provider == identity.provider

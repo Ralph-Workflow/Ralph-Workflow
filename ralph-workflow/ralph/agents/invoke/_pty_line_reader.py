@@ -324,7 +324,7 @@ class PtyLineReader:
             getattr(ctx, "required_artifact", None),
         )
         self._completion_exit_sent = False
-        self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=256)
+        self._lines_queue: BoundedLinesQueue = self._build_lines_queue()
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
         self._monitor_stop = threading.Event()
@@ -1001,6 +1001,27 @@ class PtyLineReader:
                 if self._raw_overflow is not None:
                     self._raw_overflow.append(line)
         return pending_lines
+
+    def _build_lines_queue(self) -> BoundedLinesQueue:
+        """Build the pre-parse queue with its capture-on-eviction sink."""
+        queue = BoundedLinesQueue(maxlen=256)
+        # Anything the queue evicts still reaches the raw capture; see
+        # ``_capture_evicted_line``.
+        queue.set_eviction_sink(self._capture_evicted_line)
+        return queue
+
+    def _capture_evicted_line(self, line: str) -> None:
+        """Write a queue-evicted line to the raw capture.
+
+        The queue drops its oldest entry when the producer outruns the
+        consumer, and the capture is written consumer-side -- so a
+        dropped line never reached the transcript. Losing whole lines
+        leaves the file parseable, so nothing reported it.
+        """
+        if self._raw_overflow is None:
+            return
+        with contextlib.suppress(Exception):
+            self._raw_overflow.append(line)
 
     def _request_interactive_exit(self) -> None:
         if self._completion_exit_sent:

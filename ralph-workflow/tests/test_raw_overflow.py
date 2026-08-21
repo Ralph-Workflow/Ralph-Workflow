@@ -743,3 +743,62 @@ def test_a_nul_hole_is_still_reported_as_corruption(tmp_path: Path) -> None:
     breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CODEX)
 
     assert breaks[0].kind == "NUL_BYTES"
+
+
+def test_two_agents_never_share_one_graded_capture() -> None:
+    """``--output-format=stream-json`` is not unique to Claude.
+
+    kimi ships it as its default output flag and every ccs alias
+    inherits it, so an ungated check filed those transcripts under
+    ``claude-headless`` -- the same path headless Claude is graded on.
+    One agent then grades another's corruption and quotes another's
+    transport failures into its own verdict.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_unit_id_for
+
+    headless_claude = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.CLAUDE,
+    )
+    kimi = AgentConfig(
+        cmd="kimi",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.GENERIC,
+    )
+    ccs_alias = AgentConfig(
+        cmd="glm",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.GENERIC,
+    )
+
+    assert raw_log_unit_id_for(headless_claude) == "claude-headless"
+    assert raw_log_unit_id_for(kimi) == "kimi"
+    assert raw_log_unit_id_for(ccs_alias) == "glm"
+
+
+def test_an_evicted_queue_line_still_reaches_the_capture() -> None:
+    """The bounded queue must not be able to lose agent output silently.
+
+    It drops its oldest entry when the producer outruns the consumer,
+    and the capture is written consumer-side -- so a dropped line never
+    reached the transcript. Measured before the sink: a 1000-line burst
+    reached the consumer as 256, and the missing 744 left a file that
+    still parsed, so nothing reported the loss.
+    """
+    from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
+
+    evicted: list[str] = []
+    queue = BoundedLinesQueue(maxlen=2)
+    queue.set_eviction_sink(evicted.append)
+
+    queue.append("one")
+    queue.append("two")
+    queue.append("three")
+    queue.extend(["four", "five"])
+
+    assert evicted == ["one", "two", "three"]
+    assert queue.snapshot() == ["four", "five"]
+    assert len(evicted) + len(queue.snapshot()) == 5, "no line may vanish"

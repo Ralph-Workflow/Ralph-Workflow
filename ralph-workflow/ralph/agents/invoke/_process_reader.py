@@ -352,6 +352,9 @@ class ProcessLineReader:
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
+        # Anything the bounded queue evicts still reaches the raw
+        # capture; see ``_capture_evicted_line``.
+        self._lines_queue.set_eviction_sink(self._capture_evicted_line)
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
         self._terminal_counter: list[int] = [0]
@@ -634,6 +637,17 @@ class ProcessLineReader:
             alive_by=alive_by,
         )
 
+    def _capture_evicted_line(self, line: str) -> None:
+        """Write a queue-evicted line to the raw capture.
+
+        The queue drops its oldest entry when the producer outruns the
+        consumer, and the capture is written consumer-side -- so a
+        dropped line never reached the transcript. Losing whole lines
+        leaves the file parseable, so nothing reported it.
+        """
+        with contextlib.suppress(Exception):
+            self._raw_overflow.append(line)
+
     def _start_read_thread(self) -> threading.Thread:
         """Start the stdout reader thread."""
         reader = threading.Thread(target=self._read_thread, daemon=True)
@@ -679,13 +693,22 @@ class ProcessLineReader:
                     watchdog: IdleWatchdog | None = getattr(self, "_watchdog", None)
                     if watchdog is not None:
                         watchdog.record_session_id_capture(session_id)
+        except ValueError:
+            # Ordinary teardown, not truncation: the watchdog-fire path
+            # closes stdout under this still-iterating daemon thread, so
+            # "I/O operation on closed file" is expected there. Warning
+            # about it would tell the operator the opposite of the truth.
+            logger.debug(
+                "output reader for {cmd} stopped at stream close",
+                cmd=_agent_command_name(self._config),
+            )
         except Exception:
-            # Reported, not swallowed. The pipe decodes strict UTF-8, so
-            # a single undecodable byte ends both the capture and the
-            # parse stream here -- silently, which is the same failure
-            # class as an oversized frame killing the async drain loop.
-            # An operator seeing a truncated transcript needs to know it
-            # was truncated by the reader, not by the agent.
+            # Reported, not swallowed. The reader ending early truncates
+            # both the capture and the parse stream, and an operator
+            # seeing a short transcript needs to know it was cut here
+            # rather than by the agent. Decode errors no longer reach
+            # this path -- ``SpawnOptions.errors`` is ``"replace"`` --
+            # but anything else that stops the thread still should.
             logger.warning(
                 "output reader for {cmd} stopped early: {err}",
                 cmd=_agent_command_name(self._config),
