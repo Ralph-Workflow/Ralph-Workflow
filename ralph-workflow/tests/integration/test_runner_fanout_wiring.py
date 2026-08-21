@@ -194,7 +194,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     ctx = coordinator_calls[0]["ctx"]
     assert ctx.same_workspace is not None
     # Verify session contract fields are properly threaded from the runner's
-    # _build_session_mcp_plan_for_phase into SameWorkspaceContext.
+    # build_session_mcp_plan_for_phase into SameWorkspaceContext.
     assert ctx.same_workspace.session_drain == "development"
     assert "media.read" in ctx.same_workspace.session_capabilities
     assert ctx.same_workspace.session_model_identity is not None

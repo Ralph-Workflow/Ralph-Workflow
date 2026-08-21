@@ -262,3 +262,55 @@ def test_a_blank_transport_is_not_serialised_as_known() -> None:
 
         assert rebased.transport is None
         assert identity_is_serialisable(rebased) is False
+
+
+def test_the_persisted_and_declared_seams_normalise_too() -> None:
+    """All SIX seams, not the three the last test reached.
+
+    A transport spelling is written by ``payload_transport``, the
+    ``FileBackedSession`` declaration, ``session_from_env``'s JSON
+    branch, ``standalone_session_identity``, ``identity_on_transport``
+    and ``profile_from_payload``. The previous test said "four seams"
+    and exercised three, and mutation confirmed two of the others could
+    drop their normalisation with the whole suite green.
+    """
+    import json
+    from pathlib import Path
+
+    from ralph.mcp.multimodal.capabilities import profile_from_payload
+    from ralph.mcp.server.runtime_session import FileBackedSession
+
+    for raw in ("CODEX", "  codex  ", "codex"):
+        # A profile rehydrated from a payload.
+        profile = profile_from_payload({"provider": "openai", "model_id": "m", "transport": raw})
+        assert profile.identity.transport == "codex", raw
+
+        # A file-backed session's declared transport, with no identity
+        # in the payload at all -- the shape session_from_env produces
+        # when the identity is unresolvable.
+        session = FileBackedSession(
+            Path("/nonexistent/session.json"),
+            loader=lambda _path: json.loads('{"session_id":"s","run_id":"r","drain":"d"}'),
+            declared_agent_transport=raw,
+        )
+        assert session.model_identity.transport == "codex", raw
+
+
+def test_a_blank_transport_is_normalised_at_the_reconciling_seam() -> None:
+    """The seam that short-circuits must normalise before it returns.
+
+    ``_reconcile_injected_transport`` returns early when nothing is
+    being launched, and that early return kept ``""`` -- which
+    ``identity_is_serialisable`` reads as known, so a blank transport
+    was written into the child payload and the capability digest by the
+    one path that never reached ``identity_on_transport``.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import reconcile_injected_transport
+
+    for blank in ("", "   "):
+        reconciled = reconcile_injected_transport(
+            MultimodalModelIdentity(provider="openai", model_id="m", transport=blank), None
+        )
+
+        assert reconciled.transport is None, blank

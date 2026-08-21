@@ -369,13 +369,22 @@ def phase_session_identity(
     return first_agent_transport, first_agent_model_flag
 
 
-def _build_session_mcp_plan_for_phase(
+def build_session_mcp_plan_for_phase(
     effect: FanOutEffect,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None,
 ) -> tuple[SessionMcpPlan, str]:
-    """Build session MCP plan for fan-out workers matching the serial execution contract."""
+    """Build session MCP plan for fan-out workers matching the serial execution contract.
+
+    Public because the chain-transport decision it makes is the whole
+    multimodal guard for a phase: which CLI the one shared session is
+    tagged with, and whether a provider is resolved for it at all. As a
+    private function that decision could only be tested through its
+    parts -- and a mutation sweep confirmed both wirings could be
+    reverted with the entire suite green, including one that restored
+    the defect this resolution exists to prevent.
+    """
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
     _effect_drain = cast(
@@ -745,7 +754,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             )
             return recovered
 
-        session_mcp_plan, session_drain = _build_session_mcp_plan_for_phase(
+        session_mcp_plan, session_drain = build_session_mcp_plan_for_phase(
             effect=ctx.effect,
             policy_bundle=ctx.policy_bundle,
             workspace_scope=ctx.workspace_scope,

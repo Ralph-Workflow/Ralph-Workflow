@@ -9,7 +9,7 @@ use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immedia
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
@@ -140,13 +140,51 @@ class UpstreamRegistry:
         proxied = self._alias_map[alias]
         client = self._clients[proxied.server_name]
         raw_result = client.call_tool(proxied.tool.name, arguments)
-        if isinstance(raw_result, dict):
-            result: JsonObject = raw_result
+        return self._normalized_result(raw_result, proxied, session, workspace)
+
+    def _normalized_result(
+        self,
+        raw_result: object,
+        proxied: ProxiedTool,
+        session: HasMediaManifest | None,
+        workspace: Workspace | None,
+    ) -> object:
+        """Normalise an upstream result WHATEVER shape it arrives in.
+
+        Normalising only a ``dict`` left two shapes untouched, and both
+        reach the agent verbatim: a BARE LIST of content blocks, and a
+        result nested under ``{"result": {...}}`` -- which the server
+        layer unwraps AFTER this runs, so normalisation had inspected an
+        outer dict with no ``content`` key and found nothing to do.
+
+        Either one delivered a raw base64 ``image`` block to a codex
+        caller: the exact wire shape of the incident this contract
+        exists to prevent, arriving by the one route that skipped the
+        contract. An upstream server has to be non-conforming to produce
+        them, which is precisely when a guard has to hold.
+        """
+        if isinstance(raw_result, list):
+            blocks: list[object] = cast("list[object]", raw_result)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(
-                result, proxied.server_name, proxied.tool.name, session, workspace
+                wrapper, proxied.server_name, proxied.tool.name, session, workspace
             )
-            return result
-        return raw_result
+            normalised: object = wrapper["content"]
+            return normalised
+        if not isinstance(raw_result, dict):
+            return raw_result
+        result: JsonObject = raw_result
+        # Unwrapped BEFORE normalising, in the same order the server
+        # layer reads it back out.
+        nested: object = result.get("result")
+        if isinstance(nested, dict) and "content" not in result:
+            normalize_upstream_content_blocks(
+                nested, proxied.server_name, proxied.tool.name, session, workspace
+            )
+        normalize_upstream_content_blocks(
+            result, proxied.server_name, proxied.tool.name, session, workspace
+        )
+        return result
 
 
 __all__ = [

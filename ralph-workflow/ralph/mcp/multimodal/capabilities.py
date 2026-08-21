@@ -581,15 +581,31 @@ def resolve_capability_profile(identity: MultimodalModelIdentity) -> ResolvedCap
     return ResolvedCapabilityProfile(identity=identity, verdicts=verdicts)
 
 
+def _normalised_transport(raw: object) -> str | None:
+    """Return the canonical spelling of a persisted transport value.
+
+    Blank is not a transport, and case and padding are not part of one.
+    """
+    if not isinstance(raw, str):
+        return None
+    return raw.strip().lower() or None
+
+
 def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
     """Rehydrate a ResolvedCapabilityProfile from a serialized session payload dict."""
     provider = str(raw.get("provider", "unknown"))
     model_id_raw = raw.get("model_id")
     transport_raw = raw.get("transport")
+    # Normalised on the way IN. A persisted profile is untrusted input
+    # like any other, and its transport was copied verbatim onto the
+    # caller identity and re-serialised to the grandchild -- so one
+    # hand-edited ``'CODEX'`` or ``'  codex  '`` propagated a spelling
+    # every matcher then had to strip and lower again, and produced a
+    # different capability digest for the same run.
     identity = MultimodalModelIdentity(
         provider=provider,
         model_id=str(model_id_raw) if model_id_raw is not None else None,
-        transport=str(transport_raw) if transport_raw is not None else None,
+        transport=_normalised_transport(transport_raw),
     )
     raw_verdicts = raw.get("verdicts")
     if not isinstance(raw_verdicts, dict):

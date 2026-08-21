@@ -71,7 +71,7 @@ def _setup_patches(
         _seed_worker_artifact(workers_root, uid)
     monkeypatch.setattr(
         _fan_out_module,
-        "_build_session_mcp_plan_for_phase",
+        "build_session_mcp_plan_for_phase",
         lambda **kwargs: (MagicMock(), "development"),
     )
 

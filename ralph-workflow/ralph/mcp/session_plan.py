@@ -257,7 +257,7 @@ def effective_session_mcp_plan_from_servers(
     )
 
 
-def _reconcile_injected_transport(
+def reconcile_injected_transport(
     identity: MultimodalModelIdentity,
     transport: AgentTransport | None,
 ) -> MultimodalModelIdentity:
@@ -274,15 +274,29 @@ def _reconcile_injected_transport(
     other CLI, and keeping it mints a typed PDF block for a CLI that
     cannot take one, or a hard unsupported error for one that can. The
     two seams that reconcile a transport now apply the same rule.
+
+    Public because it is one of the six places a transport spelling gets
+    written, and the only one that can return WITHOUT normalising --
+    which is exactly how a blank transport kept reaching the child
+    payload after the other five were fixed.
     """
     # Normalise FIRST: a padded or differently-cased value from a
     # hand-edited payload reaches the session file and the wire-ledger
     # digest verbatim, and the early return below is exactly the case
     # that comment was describing.
     stated = (identity.transport or "").strip().lower()
-    normalised = identity if identity.transport == stated or not stated else replace(
-        identity, transport=stated
-    )
+    if not stated:
+        # A BLANK transport is an unknown one, and unknown is ``None``.
+        # This branch kept ``""`` and ``"  "`` verbatim, and
+        # ``identity_is_serialisable`` reads a non-``None`` transport as
+        # known -- so ``"transport": ""`` was written into the child's
+        # payload and its capability digest by the one seam that
+        # short-circuits before ``identity_on_transport`` normalises it.
+        normalised = identity if identity.transport is None else replace(identity, transport=None)
+    else:
+        normalised = (
+            identity if identity.transport == stated else replace(identity, transport=stated)
+        )
     if transport is None:
         return normalised
     return identity_on_transport(normalised, transport.value)
@@ -359,7 +373,7 @@ def build_session_mcp_plan(
 
     _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:
-        resolved_identity = _reconcile_injected_transport(_model_opts.model_identity, transport)
+        resolved_identity = reconcile_injected_transport(_model_opts.model_identity, transport)
     elif _model_opts.model_flag is not None:
         resolved_identity = resolve_model_identity(transport, _model_opts.model_flag)
     elif transport is not None:
