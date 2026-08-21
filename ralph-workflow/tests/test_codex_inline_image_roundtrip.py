@@ -754,3 +754,25 @@ def test_standalone_server_without_a_declared_cli_stays_permissive() -> None:
     assert parse_args([]).agent_transport is None
 
     assert not inline_image_roundtrip_unsafe(standalone_session_identity(None))
+
+
+def test_upstream_block_without_a_readable_type_is_rejected() -> None:
+    """A typeless upstream block must not carry base64 past the contract.
+
+    Unknown *string* types were already fail-closed, but a block with no
+    ``type`` -- or a non-string one -- passed through verbatim, which is
+    the one route by which an unnormalized media payload could reach a
+    tool result.
+    """
+    from ralph.mcp.upstream.client import (
+        UpstreamCallError,
+        normalize_upstream_content_blocks,
+    )
+
+    for bad_type in ({}, {"type": 7}):
+        block = dict(bad_type)
+        block.update({"data": "iVBORw0KGgo=", "mimeType": "image/png"})
+        result: dict[str, object] = {"content": [block]}
+
+        with pytest.raises(UpstreamCallError):
+            normalize_upstream_content_blocks(result, "srv", "tool")

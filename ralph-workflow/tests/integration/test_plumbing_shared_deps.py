@@ -922,3 +922,44 @@ def test_commit_bridge_factory_omits_arguments_a_narrow_starter_rejects(
     )
 
     assert seen["repo_root"] == Path("/workspace")
+
+
+def test_commit_bridge_factory_reads_wrapped_and_partial_starters(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Signature inspection must survive the shapes this seam actually sees.
+
+    The starter is late-bound so tests can patch it, which is exactly
+    where partials, decorated functions and callable objects live.
+    Reading ``__code__.co_varnames`` instead listed every local and
+    nested name, so a starter with a local named like an argument was
+    handed one it cannot take.
+    """
+    import functools
+
+    from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
+
+    def _narrow(repo_root: Path, *, agents_policy: object) -> object:
+        # A local sharing a candidate argument's name: this is what made
+        # the co_varnames reading hand it an argument it cannot accept.
+        transport = None
+        del transport
+        return object()
+
+    @functools.wraps(_narrow)
+    def _decorated(repo_root: Path, *, agents_policy: object) -> object:
+        return _narrow(repo_root, agents_policy=agents_policy)
+
+    for starter in (_narrow, _decorated, functools.partial(_narrow)):
+        monkeypatch.setattr(
+            commit_plumbing_module,
+            "_resolve_commit_start_commit_bridge",
+            lambda starter=starter: starter,
+        )
+        # Must not raise "unexpected keyword argument".
+        commit_plumbing_module._default_commit_bridge_factory(
+            workspace_root=Path("/workspace"),
+            drain="commit",
+            agents_policy=None,
+            transport=AgentTransport.CODEX,
+        )

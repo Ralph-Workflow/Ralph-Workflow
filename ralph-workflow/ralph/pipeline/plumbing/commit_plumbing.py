@@ -41,6 +41,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from rich.text import Text
 
+import inspect
+
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
@@ -1249,30 +1251,35 @@ def _default_commit_bridge_factory(
     return bridge_fn(workspace_root, **_supported_kwargs(bridge_fn, optional_kwargs))
 
 
-#: ``CO_VARKEYWORDS`` -- the code-object flag marking a ``**kwargs``
-#: parameter. Named here rather than imported so the check below stays
-#: readable without pulling in the ``inspect`` constant namespace.
-_CO_VARKEYWORDS = 0x08
-
-
 def _supported_kwargs(
-    func: object,
+    func: _CommitStartBridgeProto,
     candidates: dict[str, object],
 ) -> dict[str, object]:
     """Return the subset of ``candidates`` that ``func`` accepts.
 
-    A callable taking ``**kwargs`` accepts everything, and so does one
-    whose parameters cannot be read (a C callable, an exotic mock) --
-    guessing narrower there would silently drop arguments.
+    Uses :func:`inspect.signature`, which understands the shapes this
+    late-bound seam actually sees -- ``functools.partial``, bound
+    methods, ``__call__`` objects, decorated functions, positional-only
+    parameters. Reading ``__code__.co_varnames`` instead looked simpler
+    and was wrong in both directions: it lists every local and nested
+    function name, so a starter with a local named like an argument was
+    handed one it cannot take, and a wrapped or partial-ed starter was
+    handed everything.
+
+    A callable taking ``**kwargs`` accepts everything. One whose
+    signature cannot be read (a C callable) also gets everything, since
+    guessing narrower would silently drop arguments.
     """
-    raw_code: object = getattr(func, "__code__", None)
-    raw_names: object = getattr(raw_code, "co_varnames", None)
-    raw_flags: object = getattr(raw_code, "co_flags", None)
-    if not isinstance(raw_names, tuple) or not isinstance(raw_flags, int):
+    try:
+        parameters = inspect.signature(func).parameters
+    except (TypeError, ValueError):
         return dict(candidates)
-    if raw_flags & _CO_VARKEYWORDS:
-        return dict(candidates)
-    accepted = {name for name in raw_names if isinstance(name, str)}
+    accepted: set[str] = set()
+    for name, parameter in parameters.items():
+        if str(parameter.kind) == "VAR_KEYWORD":
+            return dict(candidates)
+        if str(parameter.kind) in {"POSITIONAL_OR_KEYWORD", "KEYWORD_ONLY"}:
+            accepted.add(name)
     return {name: value for name, value in candidates.items() if name in accepted}
 
 

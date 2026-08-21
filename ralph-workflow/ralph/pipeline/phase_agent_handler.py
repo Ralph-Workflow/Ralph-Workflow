@@ -119,6 +119,7 @@ def _phase_event_after_agent_run(
     state: PipelineState | None = None,
     handle_phase_fn: _HandlePhaseFn | None = None,
     run_id: str | None = None,
+    shared_capture: bool = False,
 ) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
@@ -167,6 +168,7 @@ def _phase_event_after_agent_run(
             # phase-verdict seam can name the exact raw log the real
             # writer used for this phase's agent.
             agent_config=ctx.registry.get(effect.agent_name),
+            shared_capture=shared_capture,
         )
 
     if (
@@ -204,6 +206,7 @@ def _render_phase_artifact_handoff(
     state: PipelineState | None = None,
     run_id: str | None = None,
     agent_config: AgentConfig | None = None,
+    shared_capture: bool = False,
 ) -> None:
     ctx = get_display_context(display, display_context)
     effective_drain = drain or phase
@@ -250,6 +253,7 @@ def _render_phase_artifact_handoff(
             required_artifact,
             run_id=run_id,
             agent_config=agent_config,
+            shared_capture=shared_capture,
         )
 
 
@@ -500,6 +504,7 @@ def _render_success_artifact(
     *,
     run_id: str | None = None,
     agent_config: AgentConfig | None = None,
+    shared_capture: bool = False,
 ) -> None:
     def _emit_close(produced: str) -> None:
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
@@ -516,7 +521,11 @@ def _render_success_artifact(
         # already rendered successfully.
         with suppress(Exception):
             label, weakest, detail = _compute_graded_phase_verdict(
-                workspace_root, ra, run_id, agent_config
+                workspace_root,
+                ra,
+                run_id,
+                agent_config,
+                shared_capture=shared_capture,
             )
             return f"{produced} — {_format_graded_phase_verdict(label, weakest, detail)}"
         return produced

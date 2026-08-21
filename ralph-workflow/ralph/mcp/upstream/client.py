@@ -385,12 +385,20 @@ def normalize_upstream_content_blocks(
 
     normalized: list[object] = []
     for idx, block in enumerate(content_blocks):
-        if not isinstance(block, Mapping):
-            normalized.append(block)
-            continue
+        # A block whose type cannot be read is rejected, not passed
+        # through. An unknown STRING type is already fail-closed below,
+        # so letting a missing or non-string one through was the one way
+        # to get an unnormalized block -- base64 media included -- past
+        # this contract and into a tool result.
+        if not isinstance(block, Mapping) or not isinstance(block.get("type"), str):
+            raise UpstreamCallError(
+                f"upstream server '{server_name}' tool '{tool_name}' returned a "
+                f"content block with no readable 'type' at index {idx}. Every "
+                f"block must declare one of: text, resource_reference, image, "
+                f"audio, video, pdf, document."
+            )
         block_type = block.get("type")
-        if not isinstance(block_type, str):
-            normalized.append(block)
+        if not isinstance(block_type, str):  # pragma: no cover - narrowed above
             continue
         if block_type in ("text", "resource_reference"):
             normalized.append(block)

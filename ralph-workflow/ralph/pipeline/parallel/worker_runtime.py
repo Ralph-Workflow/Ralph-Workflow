@@ -481,6 +481,10 @@ def run_parallel_worker_from_manifest(
                 assigned_work_unit_id=manifest.unit_id,
             ),
             run_id=run_id,
+            # Parallel workers share one raw capture per (executable,
+            # model), so a transport-failure frame in it cannot be
+            # attributed to this worker.
+            shared_capture=True,
         )
     else:
         # F6 / DoD 12: mirror runner.py's failure-path render so a

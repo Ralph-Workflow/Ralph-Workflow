@@ -85,15 +85,66 @@ def test_the_stream_buffer_admits_a_realistic_agent_frame() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_oversized_frame_does_not_end_the_capture() -> None:
-    """A frame past even the raised buffer must not take the rest with it."""
+async def test_an_oversized_frame_is_dropped_whole(tmp_path: Path) -> None:
+    """A frame past the buffer must not take the rest of the unit with it."""
+    del tmp_path
     from ralph.agents.subprocess_executor import drain_agent_lines
 
     stream = asyncio.StreamReader(limit=64)
     stream.feed_data(b"x" * 512 + b"\n")
-    stream.feed_data(b'{"type":"item.completed"}\n')
+    stream.feed_data(b'{"type":"next"}\n')
     stream.feed_eof()
 
     lines = [line async for line in drain_agent_lines(stream, "unit-1")]
 
-    assert b'{"type":"item.completed"}\n' in lines
+    # Exact: the oversized frame is dropped WHOLE and the following one
+    # survives. A partial tail here would land in the verbatim capture
+    # and be graded as damage the agent did.
+    assert lines == [b'{"type":"next"}\n']
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_frame_arriving_in_chunks_leaks_no_tail() -> None:
+    """The streaming order is where a partial tail could leak.
+
+    With the whole line buffered, the overflowing bytes are consumed in
+    one go. Arriving in chunks, the reader is still mid-frame after the
+    first overflow, and the remainder must be consumed rather than
+    yielded.
+    """
+    from ralph.agents.subprocess_executor import drain_agent_lines
+
+    stream = asyncio.StreamReader(limit=64)
+    drained: list[bytes] = []
+
+    async def _consume() -> None:
+        async for line in drain_agent_lines(stream, "unit-1"):
+            drained.append(line)
+
+    task = asyncio.get_running_loop().create_task(_consume())
+    for _ in range(4):
+        stream.feed_data(b"x" * 64)
+        await asyncio.sleep(0)
+    stream.feed_data(b'tail-of-oversized-frame"}\n')
+    await asyncio.sleep(0)
+    stream.feed_data(b'{"type":"next"}\n')
+    stream.feed_eof()
+    await task
+
+    assert not any(b"tail-of-oversized-frame" in line for line in drained), drained
+    assert drained == [b'{"type":"next"}\n']
+
+
+@pytest.mark.asyncio
+async def test_trailing_output_without_a_newline_is_still_captured() -> None:
+    """An agent that exits mid-line must not lose its last bytes."""
+    from ralph.agents.subprocess_executor import drain_agent_lines
+
+    stream = asyncio.StreamReader(limit=64)
+    stream.feed_data(b'{"type":"first"}\n')
+    stream.feed_data(b'{"type":"truncated"}')
+    stream.feed_eof()
+
+    lines = [line async for line in drain_agent_lines(stream, "unit-1")]
+
+    assert lines == [b'{"type":"first"}\n', b'{"type":"truncated"}']

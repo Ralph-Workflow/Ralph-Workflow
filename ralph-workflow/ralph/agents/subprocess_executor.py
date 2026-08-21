@@ -309,28 +309,74 @@ class SubprocessAgentExecutor:
 async def drain_agent_lines(stream: asyncio.StreamReader, unit_id: str) -> AsyncIterator[bytes]:
     """Yield stdout lines, surviving a frame larger than the stream buffer.
 
-    ``StreamReader.readline`` raises ``ValueError`` for a line longer
-    than its buffer AND clears the buffer, so iterating the stream
-    directly loses the oversized frame, loses everything queued behind
-    it, and kills the reading loop with an error that explains none of
+    Iterating the stream directly is not safe: ``readline`` raises
+    ``ValueError`` for a line past its buffer AND discards what it
+    buffered, so the oversized frame and everything queued behind it are
+    lost and the reading loop dies with an error that explains none of
     that. The buffer is sized for real agent frames
     (``AGENT_STREAM_BUFFER_BYTES``); this keeps a still-larger one from
     taking the rest of the unit's output with it.
+
+    The oversized frame is dropped WHOLE. ``readuntil`` reports how many
+    bytes reach the separator, so the overflowing bytes are consumed
+    deliberately and the drop can be told apart from a resume that is
+    still mid-frame -- the fragment a mid-frame resume returns is not a
+    wire frame, and letting it into the verbatim capture would have the
+    corruption detector report it as damage the agent did.
     """
     while True:
         try:
-            line = await stream.readline()
-        except ValueError:
-            logger.warning(
-                "unit {unit} emitted a line larger than the {cap}-byte stream "
-                "buffer; that frame is lost and capture continues from the next one",
-                unit=unit_id,
-                cap=AGENT_STREAM_BUFFER_BYTES,
-            )
-            continue
-        if not line:
+            line = await stream.readuntil(b"\n")
+        except asyncio.IncompleteReadError as exc:
+            # EOF. Trailing bytes without a newline are still the
+            # agent's own output.
+            if exc.partial:
+                yield exc.partial
             return
+        except asyncio.LimitOverrunError as exc:
+            if not await _discard_oversized_frame(stream, exc.consumed, unit_id):
+                return
+            continue
         yield line
+
+
+async def _discard_oversized_frame(
+    stream: asyncio.StreamReader,
+    consumed: int,
+    unit_id: str,
+) -> bool:
+    """Drop one frame too large for the stream buffer. False at EOF.
+
+    ``consumed`` is how many buffered bytes reach the separator, or the
+    buffer length when no separator has arrived yet. Consuming exactly
+    that much and checking whether it ended at a newline is what tells a
+    completed drop apart from one still mid-frame.
+    """
+    logger.warning(
+        "unit {unit} emitted a line larger than the {cap}-byte stream buffer; "
+        "that frame is dropped and capture resumes at the next one",
+        unit=unit_id,
+        cap=AGENT_STREAM_BUFFER_BYTES,
+    )
+    try:
+        chunk = await stream.readexactly(consumed)
+    except asyncio.IncompleteReadError:
+        return False
+    if chunk.endswith(b"\n"):
+        return True
+    # Still inside the frame: consume the remainder up to its newline.
+    while True:
+        try:
+            await stream.readuntil(b"\n")
+        except asyncio.IncompleteReadError:
+            return False
+        except asyncio.LimitOverrunError as exc:
+            try:
+                await stream.readexactly(exc.consumed)
+            except asyncio.IncompleteReadError:
+                return False
+            continue
+        return True
 
 
 __all__ = ["SubprocessAgentExecutor", "drain_agent_lines"]
