@@ -519,3 +519,28 @@ def test_parallel_display_wrap_close_body_wide_chrome_prefix_with_trailer() -> N
     assert all(len(r) >= 5 for r in rows)
 
 
+
+
+def test_a_dropped_unit_cannot_write_again_through_a_retained_handle(tmp_path: Path) -> None:
+    """``drop_unit`` DISABLES the unit's writer; closing it is not enough.
+
+    The registry hands out one ``RawOverflowLog`` per path, and anything
+    that grabbed the instance before the drop still holds it. A merely
+    closed writer reopens on its next append and truncates or re-extends
+    a capture that a later wave has already claimed, so a dropped unit's
+    late line lands in another unit's transcript. Disabling makes every
+    later append a no-op on that instance.
+    """
+    console, _buf = _make_wide_console()
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
+
+    pd._emit_activity_event("unit-dropped", ActivityEventKind.TEXT, "B" * 5000, None, {})
+    retained = pd._condensed_logs["unit-dropped"]
+    pd.drop_unit("unit-dropped")
+
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-dropped.overflow.log"
+    before = overflow_log.read_text(encoding="utf-8")
+
+    assert retained.is_disabled
+    assert retained.append("a line written after the drop") is False
+    assert overflow_log.read_text(encoding="utf-8") == before

@@ -863,3 +863,58 @@ def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
     codex = AgentConfig(cmd="codex exec", output_flag="--json", transport=AgentTransport.CODEX)
 
     assert raw_log_unit_id_for(codex) == "codex"
+
+
+def test_the_nul_scan_is_lazy_by_construction() -> None:
+    """The scan must yield, not materialise.
+
+    The point of replacing ``payload.split(b"\x00")`` was that the split
+    allocated one object per NUL BEFORE any grading ran, so
+    ``MAX_REPORTED_BREAKS`` could not bound the work. A version that
+    collects its chunks into a list and returns it produces identical
+    output for every payload -- and reintroduces exactly the cost the
+    replacement removed. Laziness is the contract, so it is asserted
+    directly rather than inferred from a wall clock.
+    """
+    import inspect
+
+    from ralph.display.raw_overflow import nul_separated_chunks
+
+    assert inspect.isgenerator(nul_separated_chunks(b'{"ok":1}\n'))
+
+
+def test_a_nul_run_spanning_window_boundaries_keeps_offsets_absolute() -> None:
+    """The run is skipped in windows; the arithmetic must not drift.
+
+    ``_skip_nul_run`` advances through a hole in 64 KiB windows so the
+    scan runs inside ``bytes.lstrip`` instead of a Python loop. Each
+    window boundary is a place for an off-by-one to hide, and the offset
+    it corrupts is the byte number quoted to an operator.
+    """
+    from ralph.display.raw_overflow import nul_separated_chunks
+
+    window = 1 << 16
+    head = b'{"ok":1}\n'
+    for hole in (window - 1, window, window + 1, window * 2, window * 2 + 7):
+        payload = head + b"\x00" * hole + b'{"after":1}\n'
+
+        chunks = list(nul_separated_chunks(payload))
+
+        assert [chunk for _, chunk in chunks] == [head, b'{"after":1}\n']
+        assert chunks[1][0] == len(head) + hole, f"offset drifted for a {hole}-byte hole"
+
+
+def test_a_payload_that_is_entirely_nul_yields_no_content() -> None:
+    """The degenerate hole must terminate, and must not invent content.
+
+    Two ways this went wrong before: stepping one byte at a time turned
+    a 128 KiB hole into 128 Ki empty chunks, and a bad terminator left
+    the scan looping. A single empty tail chunk is fine -- it grades as
+    nothing -- but no chunk may carry bytes that are not in the payload.
+    """
+    from ralph.display.raw_overflow import nul_separated_chunks
+
+    chunks = list(nul_separated_chunks(b"\x00" * (1 << 17)))
+
+    assert not any(chunk for _, chunk in chunks)
+    assert len(chunks) <= 1, f"a NUL run must not yield a chunk per byte: {len(chunks)}"
