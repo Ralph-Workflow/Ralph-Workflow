@@ -72,7 +72,7 @@ Ralph-managed same-workspace parallel workers are dormant in the bundled default
 Same-workspace parallel workers inherit the parent phase's session contract verbatim. The contract includes the drain, capabilities, resolved `MultimodalModelIdentity`, and `ResolvedCapabilityProfile`. This ensures that parallel workers expose the same multimodal capability surface as serial execution:
 
 - `read_media` and `read_image` are available by default when the parent phase has `media.read` capability
-- Delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path
+- Delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are resolved from the provider AND the transport, and are consistent with the serial path. A CLI that calls exactly one vendor's API (`claude`, `claude_interactive`, `codex`, `agy`) also bounds delivery to what that vendor accepts, so a worker carrying a model flag from another vendor is never promised more than the CLI on the other end can carry; a router CLI reaches the provider its model names and is bounded by that provider alone
 - Worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path, not a standalone fallback
 
 The session contract is propagated via `SameWorkspaceContext` fields (`session_drain`, `session_capabilities`, `session_model_identity`, `session_capability_profile`) from the runner's `build_session_mcp_plan` call into `_fan_out_worker_context`, then into `build_worker_session` where it constructs the worker `AgentSession`.
