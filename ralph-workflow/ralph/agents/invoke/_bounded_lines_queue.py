@@ -14,15 +14,40 @@ The class is intentionally minimal: no locking, no logging, no
 metrics. Locking is provided by the surrounding reader's
 ``_lines_lock`` (a ``threading.Lock``); logging and metrics live
 in the readers' production paths.
+
+The one addition to that surface is the optional eviction sink
+(:meth:`BoundedLinesQueue.set_eviction_sink`). Dropping an entry
+silently lost it from the raw capture too -- the capture is written
+consumer-side, so a line the consumer never saw was never recorded,
+and losing whole lines leaves the file parseable, so the corruption
+detector reported nothing. The sink hands every dropped line to the
+reader's capture instead. That is still not logging or metrics: the
+queue calls one caller-supplied function and never interprets,
+formats, or counts anything itself.
 """
 
 from __future__ import annotations
 
 from collections import deque
+from contextlib import suppress
+from itertools import chain, islice
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator, Sequence
+
+
+def _notify(sink: Callable[[str], None], line: str) -> None:
+    """Hand one displaced line to the sink; never let it break the queue.
+
+    The sink writes to a file. A failing capture must cost the caller
+    that one line's RECORD, not the line itself: an exception raised
+    here propagated out of ``append``/``extend`` and dropped the
+    INCOMING line before it was ever queued, turning a capture problem
+    into data loss on the live path.
+    """
+    with suppress(Exception):
+        sink(line)
 
 
 class BoundedLinesQueue:
@@ -75,25 +100,38 @@ class BoundedLinesQueue:
         """
         self._eviction_sink = sink
 
-    def _evict_for(self, incoming: int) -> None:
-        """Hand the sink whatever ``incoming`` new lines will displace."""
-        if self._eviction_sink is None or incoming <= 0:
+    def _evict_for(self, incoming: Sequence[str]) -> None:
+        """Hand the sink every line ``incoming`` will displace.
+
+        What survives is the LAST ``maxlen`` entries of (queued +
+        incoming), so what is displaced is the FIRST ``overflow`` of
+        that same sequence -- which, for a batch larger than the queue,
+        includes incoming lines that never land at all. Reading only
+        from the deque missed exactly those: one ``extend`` of 1000
+        lines into a 256-slot queue handed the sink nothing and lost
+        744 lines, in the burst case the sink exists for.
+
+        ``islice`` over a chained view keeps this O(overflow) with no
+        copy of the deque; it runs under the reader's ``_lines_lock``.
+        """
+        sink = self._eviction_sink
+        if sink is None or not incoming:
             return
-        overflow = len(self._deque) + incoming - self.maxlen
+        overflow = len(self._deque) + len(incoming) - self.maxlen
         if overflow <= 0:
             return
-        for line in list(self._deque)[:overflow]:
-            self._eviction_sink(line)
+        for line in islice(chain(self._deque, incoming), overflow):
+            _notify(sink, line)
 
     def append(self, line: str) -> None:
         """Append a single line, dropping the oldest when at capacity."""
-        self._evict_for(1)
+        self._evict_for((line,))
         self._deque.append(line)
 
     def extend(self, lines: Iterable[str]) -> None:
         """Append multiple lines, dropping the oldest as needed."""
         materialised = list(lines)
-        self._evict_for(len(materialised))
+        self._evict_for(materialised)
         self._deque.extend(materialised)
 
     def popleft(self) -> str:
@@ -105,7 +143,16 @@ class BoundedLinesQueue:
         return list(self._deque)
 
     def clear(self) -> None:
-        """Drop every item from the queue."""
+        """Drop every item from the queue, routing them to the sink.
+
+        A ``clear()`` discards queued lines exactly as an overflow does,
+        so the same rule applies: whatever the consumer will never see
+        still belongs in the raw capture.
+        """
+        sink = self._eviction_sink
+        if sink is not None:
+            for line in self._deque:
+                _notify(sink, line)
         self._deque.clear()
 
     def __iter__(self) -> Iterator[str]:

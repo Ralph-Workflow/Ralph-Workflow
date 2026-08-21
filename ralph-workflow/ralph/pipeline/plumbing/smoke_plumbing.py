@@ -12,6 +12,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import sqlite3
 from collections import deque
 from collections.abc import Callable, Mapping
@@ -380,6 +381,7 @@ _MAX_VISIBLE_OUTPUT_LINES_BY_AGENT: dict[str, int] = {  # bounded-accumulator-ok
     "claude-headless": 250,
 }
 _MAX_VISIBLE_OUTPUT_LINES = 80
+_STREAM_JSON_OUTPUT_FLAG: Final = "--output-format=stream-json"
 _SUBAGENT_TOOL_NAMES = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
 _DEFAULT_SUBAGENT_PROMPT = (
     "Inspect the requested todo-list API and return two concise edge cases "
@@ -2129,8 +2131,30 @@ def _resolve_visible_output_agent_prefix(config: AgentConfig) -> str:
     ``--output-format=stream-json`` flag is the invariant that puts the
     run in the headless stream bucket, so any command carrying it is
     classified as ``claude-headless`` for the visible-output ceiling.
+
+    This classification is deliberately NOT ``raw_log_unit_id_for``.
+    That function answers a different question -- which file may this
+    agent's bytes be written to -- so it must keep agents APART
+    (``ccs-glm`` and ``kimi`` each own a capture) exactly where this
+    ceiling has to group them TOGETHER: all three speak the same
+    headless stream wire, so they share an output shape. Sharing one
+    function across both questions silently re-tuned this ceiling from
+    250 to 80 for every ccs and kimi run the moment that identity
+    gained a per-agent gate.
     """
-    return raw_log_unit_id_for(config).lower()
+    tokens = _command_tokens(config)
+    if _STREAM_JSON_OUTPUT_FLAG in tokens:
+        return "claude-headless"
+    return tokens[0].lower() if tokens else ""
+
+
+def _command_tokens(config: AgentConfig) -> list[str]:
+    """Return cmd + output-flag tokens, preserving the readers' quiet failure."""
+    try:
+        tokens = shlex.split(config.cmd)
+    except ValueError:
+        return []
+    return tokens + (config.output_flag or "").split()
 
 
 def _artifact_submission_evidence(

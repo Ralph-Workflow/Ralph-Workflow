@@ -646,7 +646,9 @@ class ProcessLineReader:
         leaves the file parseable, so nothing reported it.
         """
         with contextlib.suppress(Exception):
-            self._raw_overflow.append(line)
+            # NOT liveness: this write means the consumer fell behind,
+            # not that it made progress. See ``RawOverflowLog.append``.
+            self._raw_overflow.append(line, counts_as_liveness=False)
 
     def _start_read_thread(self) -> threading.Thread:
         """Start the stdout reader thread."""
@@ -693,6 +695,22 @@ class ProcessLineReader:
                     watchdog: IdleWatchdog | None = getattr(self, "_watchdog", None)
                     if watchdog is not None:
                         watchdog.record_session_id_capture(session_id)
+        except UnicodeDecodeError:
+            # LISTED FIRST, deliberately: ``UnicodeDecodeError`` is a
+            # SUBCLASS of ``ValueError``, so the stream-close clause
+            # below swallowed it at DEBUG and told the operator the
+            # reader "stopped at stream close". A decode error means the
+            # opposite -- the transcript is truncated mid-run, the exact
+            # failure this reader is instrumented to report.
+            # ``SpawnOptions.errors="replace"`` should prevent it; if one
+            # still arrives, some spawn path is not forwarding that
+            # option and the operator needs to see it.
+            logger.warning(
+                "output reader for {cmd} stopped on an undecodable byte; "
+                "the transcript is truncated here: {err}",
+                cmd=_agent_command_name(self._config),
+                err=traceback.format_exc(limit=1).strip(),
+            )
         except ValueError:
             # Ordinary teardown, not truncation: the watchdog-fire path
             # closes stdout under this still-iterating daemon thread, so

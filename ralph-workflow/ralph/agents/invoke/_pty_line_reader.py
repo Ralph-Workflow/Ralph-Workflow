@@ -1021,7 +1021,9 @@ class PtyLineReader:
         if self._raw_overflow is None:
             return
         with contextlib.suppress(Exception):
-            self._raw_overflow.append(line)
+            # NOT liveness: this write means the consumer fell behind,
+            # not that it made progress. See ``RawOverflowLog.append``.
+            self._raw_overflow.append(line, counts_as_liveness=False)
 
     def _request_interactive_exit(self) -> None:
         if self._completion_exit_sent:
@@ -1605,6 +1607,18 @@ class PtyLineReader:
             yield from self._idle_check_and_wait(watchdog)
 
     def _setup_read_loop(self) -> _ReadLoopSetup:
+        # OPENED BEFORE ANY THREAD STARTS. ``_read_thread`` fills the
+        # bounded queue, and the queue's eviction sink drops a line on
+        # the floor while ``_raw_overflow`` is still None -- so a burst
+        # arriving in the window between starting the reader and opening
+        # the capture was lost in exactly the way the sink exists to
+        # prevent. The capture is cheap to open and is closed in
+        # ``_teardown_read_loop`` regardless of which thread failed.
+        self._raw_overflow = get_or_create_raw_overflow_log(
+            self._workspace_path or Path.cwd(),
+            raw_log_unit_id_for(self._config),
+            model=self._config.model,
+        )
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
@@ -1636,11 +1650,6 @@ class PtyLineReader:
         # is reset in the ``finally`` block so a stale monitor never
         # leaks across invocations.
         self._process_monitor = process_monitor
-        self._raw_overflow = get_or_create_raw_overflow_log(
-            self._workspace_path or Path.cwd(),
-            raw_log_unit_id_for(self._config),
-            model=self._config.model,
-        )
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,

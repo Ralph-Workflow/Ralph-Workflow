@@ -9,6 +9,7 @@ import shlex
 import threading
 import time
 import weakref
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
 from loguru import logger
@@ -203,12 +204,26 @@ def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
     return transport in _INTERACTIVE_PTY_TRANSPORTS
 
 
+# Executables whose FIRST POSITIONAL argument selects the agent runtime
+# rather than a subcommand of one. ``ccs`` is a multiplexer: the registry
+# synthesizes ``cmd="ccs <alias>"`` for every ``ccs/<alias>`` name (see
+# ``registry._resolve_dynamic_ccs_agent``), so keying on the executable
+# alone filed every alias under a single ``ccs.log`` -- the same
+# two-agents-one-capture collision that gating the headless clause on
+# ``claude`` was meant to close, moved rather than fixed. ``codex exec``
+# is deliberately NOT here: ``exec`` is a subcommand of one runtime, so
+# the executable already identifies it.
+_DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
+
+
 def raw_log_unit_id_for(config: AgentConfig) -> str:
     """Return the canonical raw-capture identity for an agent configuration.
 
     Headless Claude's ``-p`` / stream-JSON transport shares the ``claude``
-    executable with interactive Claude. Its capture must retain the alias in
-    its filename so the two independently-written transcripts cannot collide.
+    executable with interactive Claude, and every ``ccs/<alias>`` agent
+    shares the ``ccs`` executable with every other. Both keep a
+    distinguishing token in the identity so independently-written
+    transcripts cannot collide on one file.
     Malformed commands preserve the readers' quiet failure behavior by
     returning an empty identity rather than raising.
     """
@@ -218,7 +233,13 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
         return ""
     if not tokens:
         return ""
-    executable = tokens[0]
+    # The BASENAME, not the raw token. Agents are commonly invoked by
+    # absolute path (``/opt/homebrew/bin/claude -p``) or through a
+    # version manager's shim; keying on the raw token made those miss
+    # every executable-gated clause below -- a path-invoked headless
+    # Claude was filed as plain ``claude``, back into the interactive
+    # agent's capture -- and put path separators into a filename.
+    executable = PurePosixPath(tokens[0]).name or tokens[0]
     flags = set(tokens[1:]) | set((config.output_flag or "").split())
     # BOTH clauses are gated on the executable. ``--output-format=
     # stream-json`` is not unique to Claude -- kimi ships it as its
@@ -229,6 +250,10 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # corruption and quotes the other's transport failures.
     if executable.lower() == "claude" and ("-p" in flags or "--output-format=stream-json" in flags):
         return "claude-headless"
+    if executable.lower() in _DISPATCHER_EXECUTABLES:
+        alias = next((token for token in tokens[1:] if not token.startswith("-")), "")
+        if alias:
+            return f"{executable}-{alias}"
     return executable
 
 
@@ -475,14 +500,30 @@ def _iter_lines(chunk: bytes) -> Iterator[bytes]:
     lines allocated ~5.8 million objects and 356 MB before reporting its
     32 breaks -- inside the phase-close verdict, in the case the
     detector exists for.
+
+    Splits on BOTH terminators, exactly as ``splitlines`` does. Matching
+    only ``\n`` joined a bare-CR-separated line to its neighbour, and
+    ``normalize_vt_text``'s carriage-return-overwrite semantics then
+    erased the garbage before it could be graded -- so a corrupt line
+    the old code reported went unseen. Measured on the field payload
+    itself, one break became none: a perf change had silently blinded
+    the detector this module exists to make trustworthy.
     """
     start = 0
     total = len(chunk)
     while start < total:
-        end = chunk.find(b"\n", start)
-        if end < 0:
+        newline = chunk.find(b"\n", start)
+        carriage = chunk.find(b"\r", start)
+        if newline < 0 and carriage < 0:
             yield chunk[start:]
             return
+        if carriage < 0 or (0 <= newline < carriage):
+            end = newline
+        else:
+            end = carriage
+            # CRLF is ONE terminator, not two.
+            if chunk[end + 1 : end + 2] == b"\n":
+                end += 1
         yield chunk[start : end + 1]
         start = end + 1
 
@@ -681,11 +722,23 @@ class RawOverflowLog:
             self._close_locked()
             self._disabled = True
 
-    def append(self, line: str) -> bool:
+    def append(self, line: str, *, counts_as_liveness: bool = True) -> bool:
         """Write *line* to the overflow log.
 
         Returns True when the line was written. Returns False when the log is
         disabled, the byte cap has been reached, or an I/O error occurs.
+
+        ``counts_as_liveness=False`` writes the bytes but does NOT advance
+        ``size_bytes``. The idle watchdog's log-growth probe reads
+        ``size_bytes`` to answer "is this unit still making progress",
+        and every other append happens on the CONSUMER side -- one per
+        line the reader actually handed on. Queue-eviction writes come
+        from the PRODUCER thread and mean the opposite: the consumer has
+        fallen behind far enough to lose lines. Counting them would let
+        a wedged consumer look alive for as long as the agent keeps
+        talking, silencing the watchdog in precisely the stall it exists
+        to catch. The transcript still gets the line; only the liveness
+        claim is withheld.
         """
         with self._lock:
             if self._disabled:
@@ -730,7 +783,10 @@ class RawOverflowLog:
                 if fh is None:
                     return False
                 fh.write(encoded)
-                self._bytes_written += len(encoded)
+                if counts_as_liveness:
+                    self._bytes_written += len(encoded)
+                # The byte cap always counts these: they are real bytes
+                # on the file regardless of what they prove.
                 self._file_bytes += len(encoded)
                 _record_path_bytes(self._path_key, self._file_bytes)
                 if self._now() - self._last_flush >= self._flush_interval:
