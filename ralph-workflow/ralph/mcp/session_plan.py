@@ -285,9 +285,22 @@ def _reconcile_injected_transport(
         return identity if identity.transport == transport.value else replace(
             identity, transport=transport.value
         )
-    if not stated or transport_inline_image_roundtrip_unsafe(transport.value):
+    if not stated:
         return replace(identity, transport=transport.value)
-    return identity
+    if not transport_inline_image_roundtrip_unsafe(transport.value):
+        return identity
+    # Overriding the stated transport means the provider beside it
+    # described a different CLI, and keeping it inverts this rule for
+    # every non-image modality: a stale ``claude`` provider mints a typed
+    # PDF block for a CLI that cannot take one, and a stale ``openai``
+    # one turns PDFs into a hard error for a CLI that can. Drop to
+    # unresolved and let the safe defaults apply, the same way fan-out
+    # drops a model flag that no longer describes the tagged CLI.
+    return MultimodalModelIdentity(
+        provider=UNKNOWN_IDENTITY.provider,
+        model_id=None,
+        transport=transport.value,
+    )
 
 
 def build_session_mcp_plan(

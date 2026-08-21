@@ -776,3 +776,144 @@ def test_upstream_block_without_a_readable_type_is_rejected() -> None:
 
         with pytest.raises(UpstreamCallError):
             normalize_upstream_content_blocks(result, "srv", "tool")
+
+
+def _write_session_file(tmp_path: Path, identity: dict[str, object] | None) -> Path:
+    payload: dict[str, object] = {
+        "session_id": "s",
+        "run_id": "r",
+        "drain": "standalone",
+        "capabilities": [MEDIA_READ_CAPABILITY],
+    }
+    if identity is not None:
+        payload["model_identity"] = identity
+    session_file = tmp_path / "session.json"
+    session_file.write_text(json.dumps(payload), encoding="utf-8")
+    return session_file
+
+
+def test_declared_cli_reaches_a_file_backed_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--agent-transport`` must survive the production session shape.
+
+    ``RALPH_MCP_SESSION_FILE`` is what every managed subprocess and
+    resumed shell inherits, and it yields a ``FileBackedSession`` whose
+    identity comes from a payload the parent wrote -- a payload that
+    cannot know which CLI an operator pointed at a standalone server.
+    Applying the declaration only to a minted session left the flag a
+    silent no-op on exactly the shape that matters, and the guards read
+    ``caller_model_identity``, so every one of them was defeated at once.
+    """
+    from ralph.mcp.server.runtime_session import session_from_env
+
+    monkeypatch.setenv("RALPH_MCP_SESSION_FILE", str(_write_session_file(tmp_path, None)))
+
+    session = session_from_env(declared_agent_transport="codex")
+
+    assert session is not None
+    assert session.caller_model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(session.caller_model_identity)
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_a_handshake_transport_outranks_the_declared_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A payload that names a CLI came from something that knew better."""
+    from ralph.mcp.server.runtime_session import session_from_env
+
+    monkeypatch.setenv(
+        "RALPH_MCP_SESSION_FILE",
+        str(
+            _write_session_file(
+                tmp_path,
+                {"provider": "claude", "model_id": "claude-opus-5", "transport": "claude"},
+            )
+        ),
+    )
+
+    session = session_from_env(declared_agent_transport="codex")
+
+    assert session is not None
+    assert session.caller_model_identity.transport == "claude"
+
+
+def test_overriding_the_transport_also_drops_the_stale_provider(
+    tmp_path: Path,
+) -> None:
+    """A provider beside an overridden transport described a different CLI.
+
+    Keeping it inverted the rule for every non-image modality: a stale
+    ``claude`` provider minted a typed PDF block for a CLI that cannot
+    take one. Dropping to unresolved lets the safe defaults apply --
+    the same move fan-out makes with a model flag that no longer
+    describes the tagged CLI.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.mcp.multimodal.artifacts import MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-5", transport="claude"
+            )
+        ),
+    )
+
+    assert plan.model_identity.transport == "codex"
+    assert plan.model_identity.provider == "unknown"
+    assert plan.capability_profile is not None
+    # Not a typed block minted for a CLI that cannot carry it.
+    assert plan.capability_profile.verdict_for(MODALITY_PDF).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_the_commit_chain_rule_matches_the_shared_rule() -> None:
+    """The two implementations of "which transport tags this session" agree.
+
+    The commit chain expresses the rule over ``AgentTransport`` and the
+    shared helper over its string values. They are supposed to be the
+    same rule; pinning them against each other means a change to one
+    that is not mirrored fails here rather than diverging silently.
+    """
+    from types import SimpleNamespace
+
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+    from ralph.pipeline.plumbing.commit_plumbing import commit_chain_transport
+
+    shapes = [
+        ["claude"],
+        ["codex"],
+        ["claude", "codex"],
+        ["codex", "claude"],
+        ["claude", "opencode"],
+        ["claude", "claude"],
+        ["codex", "codex"],
+        ["claude", "opencode", "codex"],
+        [],
+    ]
+    registry = {
+        "claude": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE),
+        "codex": AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
+        "opencode": AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE),
+    }
+
+    for agents in shapes:
+        chain = SimpleNamespace(agents=agents, registry=SimpleNamespace(get=registry.get))
+        chain_answer = commit_chain_transport(chain)
+        shared_answer = select_session_transport(
+            [registry[name].transport.value for name in agents]
+        )
+        assert (chain_answer.value if chain_answer else None) == shared_answer, agents

@@ -61,7 +61,15 @@ class FileBackedSession:
         broker_secret: str | None = None,
         exec_resource_resolver: ExecResourceResolverLike | None = None,
         exec_spill_roots: tuple[Path, ...] | None = None,
+        declared_agent_transport: str | None = None,
     ) -> None:
+        # The agent CLI an operator named on the command line. The
+        # payload is written by the parent process and cannot know it,
+        # so a standalone server's declaration would otherwise be
+        # dropped -- and some delivery guards key on the CLI. Only fills
+        # a gap: a payload that names a transport already came from a
+        # handshake that knew better.
+        self._declared_agent_transport = declared_agent_transport
         self._path = path
         self._loader = loader or _load_session_payload
         self._session_id_factory = session_id_factory or (
@@ -349,14 +357,22 @@ class FileBackedSession:
     def model_identity(self) -> MultimodalModelIdentity:
         raw = self._load().get("model_identity")
         if not isinstance(raw, dict):
-            return UNKNOWN_IDENTITY
+            return MultimodalModelIdentity(
+                provider=UNKNOWN_IDENTITY.provider,
+                model_id=None,
+                transport=self._declared_agent_transport,
+            )
         provider = str(raw.get("provider", "unknown"))
         model_id = raw.get("model_id")
         transport = raw.get("transport")
         return MultimodalModelIdentity(
             provider=provider,
             model_id=str(model_id) if model_id is not None else None,
-            transport=str(transport) if transport is not None else None,
+            transport=(
+                str(transport)
+                if transport is not None
+                else self._declared_agent_transport
+            ),
         )
 
     @property
@@ -509,6 +525,7 @@ def session_from_env(
     *,
     session_id_factory: Callable[[], str] | None = None,
     run_id_factory: Callable[[], str] | None = None,
+    declared_agent_transport: str | None = None,
 ) -> McpSession | None:
     """Load optional session metadata from the environment.
 
@@ -539,6 +556,7 @@ def session_from_env(
             session_id_factory=session_id_factory,
             run_id_factory=run_id_factory,
             broker_secret=broker_secret_value,
+            declared_agent_transport=declared_agent_transport,
         )
 
     raw = env_map.get(SESSION_ENV)

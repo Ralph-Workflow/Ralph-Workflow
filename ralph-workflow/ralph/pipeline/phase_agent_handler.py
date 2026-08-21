@@ -471,6 +471,10 @@ def _compute_graded_phase_verdict(
         transport_detail = _transport_failure_detail(workspace_root, agent_config)
         if transport_detail is not None:
             detail = f"{detail}; {transport_detail}" if detail else transport_detail
+    # Deliberately NOT gated on ``shared_capture``. A transport failure
+    # is a fact about one unit's turn, so a shared capture cannot
+    # attribute it; corruption is a fact about the FILE, which every
+    # unit sharing it is equally entitled to report.
     break_detail = _raw_transcript_break_detail(workspace_root, agent_config)
     if break_detail is not None:
         detail = f"{detail}; {break_detail}" if detail else break_detail

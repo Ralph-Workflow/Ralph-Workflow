@@ -312,7 +312,9 @@ def run_standalone_server(
         workspace_root,
         host=host,
         port=port,
-        extras=McpServerExtras(session=session_from_env()),
+        extras=McpServerExtras(
+            session=session_from_env(declared_agent_transport=agent_transport)
+        ),
         agent_transport=agent_transport,
     )
     print(f"Ralph MCP server listening on http://{host}:{port}{DEFAULT_MOUNT_PATH}")

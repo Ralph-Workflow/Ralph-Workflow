@@ -119,7 +119,10 @@ def _build_image_withheld_block(
         "Use read_media with format='metadata' for the file's size, sha256, and "
         "pixel dimensions, or work from the file path directly."
     )
-    logger.warning(message)
+    # INFO, not WARNING: for a restricted transport this is the designed
+    # delivery path, not a degradation. Logging every withheld image at
+    # WARNING made a correctly-working run look alarming.
+    logger.info(message)
     return ToolContent.text_content(f"WARNING: {message}")
 
 

@@ -371,7 +371,7 @@ def _build_session_mcp_plan_for_phase(
     # MUST come after the model flag is read: the flag belongs to the
     # first candidate, and once the tag names a different CLI the two no
     # longer describe the same agent.
-    chain_transport = _phase_session_transport(candidate_agents, config, transport)
+    chain_transport = _phase_session_transport(candidate_agents, config)
     if chain_transport is not transport:
         # Pairing them would resolve a provider for a model the tagged
         # CLI is not running -- which turns pdf/document delivery into a
@@ -410,11 +410,17 @@ def _build_session_mcp_plan_for_phase(
 def _phase_session_transport(
     candidate_agents: list[str],
     config: UnifiedConfig | None,
-    fallback: AgentTransport | None,
 ) -> AgentTransport | None:
-    """Return the transport to tag a phase session serving ``candidate_agents``."""
+    """Return the transport to tag a phase session serving ``candidate_agents``.
+
+    ``None`` when there is no honest answer -- no candidates, no config,
+    or a mixed chain of unrestricted agents. Falling back to the first
+    candidate would reinstate the guess this helper replaces, and on the
+    no-candidate paths the caller's own transport is provably ``None``
+    anyway.
+    """
     if config is None or not candidate_agents:
-        return fallback
+        return None
     registry = AgentRegistry.from_config(config)
     by_value: dict[str, AgentTransport] = {}
     ordered: list[str] = []
@@ -425,12 +431,7 @@ def _phase_session_transport(
         ordered.append(cfg.transport.value)
         by_value[cfg.transport.value] = cfg.transport
     selected = select_session_transport(ordered)
-    if selected is None:
-        # A mixed chain of unrestricted agents has no honest tag. Falling
-        # back to the first candidate would reinstate exactly the
-        # first-agent-wins guess this helper replaces.
-        return None
-    return by_value.get(selected, fallback)
+    return by_value.get(selected) if selected is not None else None
 
 
 def _fan_out_worker_context(

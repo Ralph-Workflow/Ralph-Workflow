@@ -325,7 +325,7 @@ def run_commit_plumbing(
         drain="commit",
         session_id_prefix="commit",
         agents_policy=chain_config.agents_policy,
-        transport=_commit_chain_transport(chain_config),
+        transport=commit_chain_transport(chain_config),
     ) as bridge:
         extra_env = _commit_bridge_env(bridge)
         # Normalize the key set so downstream consumers (and tests)
@@ -1276,14 +1276,15 @@ def _supported_kwargs(
         return dict(candidates)
     accepted: set[str] = set()
     for name, parameter in parameters.items():
-        if str(parameter.kind) == "VAR_KEYWORD":
+        kind_name = parameter.kind.name
+        if kind_name == "VAR_KEYWORD":
             return dict(candidates)
-        if str(parameter.kind) in {"POSITIONAL_OR_KEYWORD", "KEYWORD_ONLY"}:
+        if kind_name in {"POSITIONAL_OR_KEYWORD", "KEYWORD_ONLY"}:
             accepted.add(name)
     return {name: value for name, value in candidates.items() if name in accepted}
 
 
-def _commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | None:
+def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | None:
     """Return the transport this commit session should be tagged with.
 
     One bridge serves the whole commit chain, but the chain is walked
@@ -1292,7 +1293,13 @@ def _commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport |
     the chain is one the multimodal layer must restrict, tag the session
     with that transport, because degrading a capable agent to a resource
     reference is harmless while handing a restricted one an inline image
-    kills its turn. A homogeneous chain uses its own transport; a mixed
+    kills its turn. Deliberately the same rule as
+    :func:`ralph.mcp.multimodal.capabilities.select_session_transport`,
+    expressed over ``AgentTransport`` rather than its string values;
+    ``tests/test_codex_inline_image_roundtrip.py`` pins the two against
+    each other so a change to one that is not mirrored fails.
+
+    A homogeneous chain uses its own transport; a mixed
     chain of unrestricted agents stays untagged.
     """
     transports: list[AgentTransport] = []
