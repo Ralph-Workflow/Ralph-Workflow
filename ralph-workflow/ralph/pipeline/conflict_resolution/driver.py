@@ -194,6 +194,10 @@ def run_rebase_conflict_resolution_pipeline(
             stop=stop,
             hard_stop=hard_stop,
         )
+    except ResolutionAbandonedError:
+        # Silent by design; see ``_default_invoker``. The stop announced
+        # it on a thread that is allowed to block on the display lock.
+        return False
     except Exception as exc:
         logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
         emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
@@ -238,6 +242,7 @@ def run_conflict_resolution_pipeline(
         so the caller aborts the merge and records a resolution failure.
     """
     previous_model = capture_status_bar_model(display)
+    abandoned = False
     try:
         return _run_rounds(
             root=root,
@@ -254,6 +259,9 @@ def run_conflict_resolution_pipeline(
             stop=None,
             hard_stop=hard_stop,
         )
+    except ResolutionAbandonedError:
+        abandoned = True
+        return False
     except Exception as exc:
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
         emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
@@ -263,16 +271,30 @@ def run_conflict_resolution_pipeline(
         # capture, the footer would otherwise keep claiming a running
         # resolution until the run loop's next push -- which, at the
         # startup seam, can be a whole phase away.
-        if previous_model is None:
-            clear_conflict_status_bar(
-                display,
-                root,
-                run_started_monotonic=(
-                    display.run_started_monotonic if isinstance(display, ParallelDisplay) else None
-                ),
-            )
-        else:
-            restore_status_bar(display, previous_model)
+        #
+        # Unless the attempt was ABANDONED: the footer is painted through
+        # the lock the abandoned thread may be holding, so leaving a
+        # stale footer is the lesser harm against never returning at all.
+        if not abandoned:
+            _restore_footer(display, root, previous_model)
+
+
+def _restore_footer(
+    display: ParallelDisplay | None,
+    root: Path,
+    previous_model: object | None,
+) -> None:
+    """Put the footer back the way the resolution found it."""
+    if previous_model is None:
+        clear_conflict_status_bar(
+            display,
+            root,
+            run_started_monotonic=(
+                display.run_started_monotonic if isinstance(display, ParallelDisplay) else None
+            ),
+        )
+        return
+    restore_status_bar(display, previous_model)
 
 
 def _run_rounds(
@@ -371,10 +393,7 @@ def _run_rounds(
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
 
-            try:
-                succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
-            except ResolutionAbandonedError:
-                return False
+            succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
             # The hard gate: what the repository says, not what the agent
             # says. ``git add`` clears a file's unmerged bit even with
             # markers intact, so this textual re-scan is the only proof.
@@ -513,17 +532,13 @@ def _default_invoker(
 
         outcome = hard_stop(_attempt, budget)
         if outcome is None:
-            # Deliberately NOT a phase line. The abandoned attempt may be
-            # wedged inside a terminal write, holding the display's own
-            # lock; rendering here would hand the freeze straight back.
-            # The logger's sink is not that lock.
-            logger.error(
-                "conflict_resolution: '{}' did not return within its {}s share "
-                "in round {}; abandoning the resolution",
-                agent_name,
-                round(budget),
-                round_index,
-            )
+            # Nothing is said here, by either channel. The abandoned
+            # attempt may be wedged inside a display write, and Ralph's
+            # log sink paints through the SAME rich Console the status
+            # bar does -- so a phase line and a log line are the same
+            # lock, and taking it would hand the freeze straight back.
+            # The stop has already announced the abandonment on a thread
+            # that is allowed to block forever.
             raise ResolutionAbandonedError(agent_name)
         return outcome
 

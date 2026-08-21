@@ -225,18 +225,19 @@ def test_only_processes_the_attempt_started_are_reaped() -> None:
     assert killed == [started_by_the_attempt.pid]
 
 
-def test_the_reap_covers_the_tool_subprocesses_that_write_files() -> None:
+def test_the_reap_covers_the_session_mcp_server_not_just_the_agent() -> None:
     """The agent is not the only thing an abandoned attempt leaves running.
 
-    The MCP server the session runs on, and the tool subprocesses IT
-    spawns, are what actually rewrite files. Reaping the agent alone
-    leaves a formatter or a codemod running into the caller's
+    The MCP server the session runs on is what spawns the tool
+    subprocesses that rewrite files -- a formatter, a codemod, a test
+    run. Those live in the SERVER's process registry, not this one, so
+    reaping them means reaping the server, whose subtree they are in.
+    Reaping the agent alone leaves them running into the caller's
     ``git rebase --abort``.
     """
     manager = _FakeProcessManager(
         [
             _FakeRecord(11, "invoke:claude"),
-            _FakeRecord(12, "mcp-exec:make"),
             _FakeRecord(13, "phase:rebase_conflict_resolution:mcp-server"),
             _FakeRecord(14, "some-unrelated-thing"),
             _FakeRecord(15, None),
@@ -246,7 +247,7 @@ def test_the_reap_covers_the_tool_subprocesses_that_write_files() -> None:
 
     reaped = reap_agents_started_since(frozenset(), manager=manager, teardown=killed.append)
 
-    assert set(reaped) == {11, 12, 13}
+    assert set(reaped) == {11, 13}
     assert 14 not in killed
     assert 15 not in killed
 
@@ -262,13 +263,13 @@ def test_a_failing_reap_never_escapes_the_abandon_path() -> None:
     manager = _ExplodingProcessManager()
 
     assert reap_agents_started_since(frozenset(), manager=manager, teardown=lambda pid: None) == ()
-    assert live_agent_pids(manager=manager) == frozenset()
+    assert live_agent_pids(manager=manager) is None
 
 
 def test_a_reaped_process_that_will_not_die_does_not_block_the_others() -> None:
     """One unkillable process may not strand its siblings."""
     manager = _FakeProcessManager(
-        [_FakeRecord(21, "invoke:claude"), _FakeRecord(22, "mcp-exec:go")]
+        [_FakeRecord(21, "invoke:claude"), _FakeRecord(22, "invoke:codex")]
     )
     killed: list[int] = []
 
@@ -313,3 +314,86 @@ def test_an_abandoned_attempt_ends_the_pipeline(
 
     assert resolved is False
     assert len(hard_stop.timeouts) == 1
+
+
+def test_an_unreadable_snapshot_disables_the_reap() -> None:
+    """Not knowing what was already running must not mean killing it.
+
+    The snapshot and the reap read the same registry, and that registry
+    raises under exactly the race the reap exists to survive. Treating a
+    failed snapshot as "nothing was running" makes every live agent and
+    every live MCP server in the process -- the parent run's included --
+    look like something this attempt started.
+    """
+    manager = _FakeProcessManager([_FakeRecord(31, "invoke:claude")])
+    killed: list[int] = []
+
+    reaped = reap_agents_started_since(None, manager=manager, teardown=killed.append)
+
+    assert reaped == ()
+    assert killed == []
+
+
+def test_abandoning_an_attempt_actually_reaps_what_it_started() -> None:
+    """The stop's second promise, wired end to end.
+
+    Bounding the wait is half of it; the other half is that nothing the
+    abandoned attempt started is still able to write to the repository
+    the caller is about to `git rebase --abort`.
+    """
+    release = threading.Event()
+    manager = _FakeProcessManager([])
+    killed: list[int] = []
+
+    def _never_returns_in_time() -> bool:
+        # The agent this attempt starts, appearing only after the stop's
+        # own snapshot was taken -- which is what marks it as this
+        # attempt's to reap.
+        manager.records.append(_FakeRecord(41, "invoke:claude"))
+        return release.wait(timeout=20.0)
+
+    try:
+        outcome = call_with_hard_stop(
+            _never_returns_in_time,
+            0.05,
+            manager=manager,
+            teardown=killed.append,
+        )
+    finally:
+        release.set()
+
+    assert outcome is None
+    assert killed == [41]
+
+
+def test_reporting_an_abandonment_cannot_block_the_abandonment() -> None:
+    """Saying so must not cost what saying it was supposed to save.
+
+    Ralph's log sink prints through the SAME rich Console the status bar
+    paints with, so a worker wedged inside a display write holds the
+    lock the abandonment's own diagnostics need. Reporting on the
+    caller's thread hands the freeze straight back.
+    """
+    release = threading.Event()
+    reporting = threading.Event()
+
+    def _blocking_report(timeout_seconds: float, reaped: tuple[int, ...]) -> None:
+        del timeout_seconds, reaped
+        reporting.set()
+        release.wait(timeout=20.0)
+
+    def _never_returns_in_time() -> bool:
+        return release.wait(timeout=20.0)
+
+    try:
+        outcome = call_with_hard_stop(
+            _never_returns_in_time,
+            0.05,
+            manager=_FakeProcessManager([]),
+            teardown=lambda pid: None,
+            report=_blocking_report,
+        )
+    finally:
+        release.set()
+
+    assert outcome is None
