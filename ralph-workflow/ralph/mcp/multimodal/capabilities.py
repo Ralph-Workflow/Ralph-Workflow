@@ -320,7 +320,18 @@ def get_delivery_mode(
         )
 
     # Typed-block or resource_reference_replay for remaining known-provider modalities.
-    typed_blocks = _TYPED_BLOCK_SUPPORT.get(provider_lower, {})
+    #
+    # A round-trip-unsafe transport gets NO Ralph-minted typed block
+    # either. The measured failure is the CLI re-serialising a
+    # non-standard content block into its own API request, and a
+    # ``pdf`` / ``document`` block is the same construct as the image
+    # one -- the modality differs, the hazard does not. This is an
+    # inference from the measured image case rather than a second
+    # measurement, and it is the conservative direction: the artifact
+    # still arrives as a resource reference.
+    typed_blocks = (
+        {} if inline_image_roundtrip_unsafe(identity) else _TYPED_BLOCK_SUPPORT.get(provider_lower, {})
+    )
     block_type: str | None = typed_blocks.get(modality)
     delivery = DeliveryMode.TYPED_BLOCK if block_type else DeliveryMode.RESOURCE_REFERENCE_REPLAY
     reason = (

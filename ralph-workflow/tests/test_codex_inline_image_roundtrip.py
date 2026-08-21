@@ -303,3 +303,37 @@ def test_codex_receives_a_warning_explaining_the_withheld_image(
 # ---------------------------------------------------------------------------
 # Runtime plumbing — the guard is worthless if the transport never arrives
 # ---------------------------------------------------------------------------
+
+
+def test_a_restricted_transport_gets_no_typed_blocks_either() -> None:
+    """A typed PDF block is the same construct as the image block.
+
+    The measured failure is the CLI re-serialising a Ralph-minted
+    non-standard content block into its own API request. The modality
+    differs between an image block and a pdf block; the hazard does not.
+    Inference from the measured case, in the conservative direction --
+    the artifact still arrives as a resource reference.
+    """
+    from ralph.mcp.multimodal.artifacts import MODALITY_DOCUMENT, MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity, get_delivery_mode
+
+    codex_with_claude_model = MultimodalModelIdentity(
+        provider="anthropic", model_id="claude-opus-5", transport="codex"
+    )
+
+    for modality in (MODALITY_PDF, MODALITY_DOCUMENT):
+        assert get_delivery_mode(codex_with_claude_model, modality).delivery is (
+            DeliveryMode.RESOURCE_REFERENCE_REPLAY
+        ), modality
+
+
+def test_an_unrestricted_transport_still_gets_typed_blocks() -> None:
+    """The withholding is transport-scoped, not a blanket downgrade."""
+    from ralph.mcp.multimodal.artifacts import MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity, get_delivery_mode
+
+    claude = MultimodalModelIdentity(
+        provider="anthropic", model_id="claude-opus-5", transport="claude"
+    )
+
+    assert get_delivery_mode(claude, MODALITY_PDF).delivery is DeliveryMode.TYPED_BLOCK

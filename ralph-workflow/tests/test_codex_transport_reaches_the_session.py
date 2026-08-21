@@ -868,3 +868,46 @@ def test_a_replayed_pdf_is_never_wrapped_in_an_image_block(tmp_path: Path) -> No
     replayed = handle_read_media(session, workspace, {"path": refs[0].uri})
 
     assert not any(isinstance(b, ImageContent) for b in replayed.content), replayed.content
+
+
+def test_the_child_payload_records_the_verdicts_the_runtime_acts_on(
+    tmp_path: Path,
+) -> None:
+    """The session file is the audit record; it must not disagree.
+
+    A profile whose own identity predates a declared transport recorded
+    ``inline_image`` for a session the runtime served a resource
+    reference -- so the payload the child inherits, and the wire ledger's
+    capability digest, both described a delivery that never happened.
+    """
+    import json as _json
+
+    from ralph.mcp.multimodal.capabilities import (
+        UNKNOWN_IDENTITY,
+        MultimodalModelIdentity,
+        resolve_capability_profile,
+    )
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+
+    del tmp_path
+    session = AgentSession(
+        session_id="s",
+        run_id="r",
+        drain="standalone",
+        capabilities={MEDIA_READ_CAPABILITY},
+        model_identity=MultimodalModelIdentity(
+            provider="unknown", model_id=None, transport="codex"
+        ),
+        # Resolved before the transport was known -- the shape a parent
+        # that could not know the agent CLI writes.
+        stored_capability_profile=resolve_capability_profile(UNKNOWN_IDENTITY),
+    )
+
+    payload = _json.loads(session_payload_json(session))
+    profile = payload["capability_profile"]
+
+    assert profile["transport"] == "codex"
+    assert profile["verdicts"][MODALITY_IMAGE]["delivery"] == (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY.value
+    )

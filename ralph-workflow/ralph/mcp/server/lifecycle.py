@@ -19,6 +19,7 @@ from loguru import logger
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    profile_for_caller,
     resolve_capability_profile,
 )
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
@@ -923,7 +924,19 @@ def session_payload_json(session: SessionLike) -> str:
         }
     raw_profile: object = getattr(session, "capability_profile", None)
     if isinstance(raw_profile, ResolvedCapabilityProfile):
-        session_payload["capability_profile"] = raw_profile.to_payload()
+        # Re-based on the identity being serialised beside it. A profile
+        # whose own identity predates a declared transport would
+        # otherwise record verdicts the runtime does not act on, so the
+        # child's payload and the wire ledger disagreed with what was
+        # actually delivered.
+        identity_for_profile = (
+            raw_identity
+            if isinstance(raw_identity, MultimodalModelIdentity)
+            else raw_profile.identity
+        )
+        session_payload["capability_profile"] = profile_for_caller(
+            raw_profile, identity_for_profile
+        ).to_payload()
     elif isinstance(raw_identity, MultimodalModelIdentity) and _identity_is_serialisable(
         raw_identity
     ):

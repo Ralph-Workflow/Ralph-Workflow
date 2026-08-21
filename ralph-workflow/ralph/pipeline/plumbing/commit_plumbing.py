@@ -1296,8 +1296,8 @@ def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | 
     kills its turn. Deliberately the same rule as
     :func:`ralph.mcp.multimodal.capabilities.select_session_transport`,
     expressed over ``AgentTransport`` rather than its string values;
-    ``tests/test_codex_inline_image_roundtrip.py`` pins the two against
-    each other so a change to one that is not mirrored fails.
+    ``tests/test_codex_transport_reaches_the_session.py`` pins the two
+    against each other so a change to one that is not mirrored fails.
 
     A homogeneous chain uses its own transport; a mixed
     chain of unrestricted agents stays untagged.
