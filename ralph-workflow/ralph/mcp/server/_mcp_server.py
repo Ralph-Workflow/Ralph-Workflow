@@ -605,7 +605,18 @@ class McpServer:
         by a side door and make the tool-side explanation ("cannot accept
         the bytes by any route") untrue.
         """
-        identity = self._session.caller_model_identity
+        # THE PROFILE'S identity, which is what every media tool gates
+        # on. These two are not the same value: ``profile_for_caller``
+        # adopts a stored profile's transport when the identity itself
+        # has none, so a session whose payload carries
+        # ``capability_profile.transport = "codex"`` but no serialisable
+        # ``model_identity`` -- a shape ``session_payload_json`` emits
+        # verbatim, because an unresolvable identity is not written --
+        # knew the CLI on the tool surface and did not know it here. The
+        # tool then withheld the image and this side door served the
+        # bytes, making the tool's own explanation ("cannot accept the
+        # bytes by any route") false.
+        identity = self._session.caller_capability_profile.identity
         if modality != "image" or not inline_image_roundtrip_unsafe(identity):
             return None
         return {

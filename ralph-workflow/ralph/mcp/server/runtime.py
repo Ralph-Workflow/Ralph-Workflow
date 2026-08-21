@@ -129,7 +129,13 @@ def standalone_session_identity(agent_transport: str | None) -> MultimodalModelI
     delivery guards that key on the CLI. Omitted, the identity stays
     fully unknown, which "unresolvable -> capable" treats as permissive.
     """
-    declared = (agent_transport or "").strip()
+    # Lowercased as well as stripped: this is the THIRD seam that writes
+    # a transport spelling into an identity, and the other two
+    # canonicalise. The guards all strip and lower before matching, so a
+    # shouted value still works -- but the spelling reaches the session
+    # file and the wire-ledger capability digest, and two spellings of
+    # one CLI produced two different digests for the same run.
+    declared = (agent_transport or "").strip().lower()
     if not declared:
         return UNKNOWN_IDENTITY
     return MultimodalModelIdentity(

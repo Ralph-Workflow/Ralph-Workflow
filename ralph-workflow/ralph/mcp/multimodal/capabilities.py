@@ -174,6 +174,14 @@ def identity_on_transport(
     # onto the launched ``codex``.
     stated = (identity.transport or "").strip().lower()
     launched = (transport or "").strip().lower()
+    if not stated and not launched:
+        # Neither side knows the CLI. Returned UNTOUCHED, as documented:
+        # canonicalising here rewrote a ``None`` transport to ``""``,
+        # which reads as "known to be nothing" and flips
+        # ``lifecycle.identity_is_serialisable`` (it tests
+        # ``transport is not None``) -- so an identity nothing knew
+        # anything about started being written to the session file.
+        return identity
     if not launched or stated == launched:
         return identity if identity.transport == stated else replace(identity, transport=stated)
     if not stated:
@@ -314,6 +322,34 @@ def select_session_transport(transports: Sequence[str]) -> str | None:
             return transport
     first = transports[0]
     return first if all(t == first for t in transports) else None
+
+
+#: Two candidates are the fewest that can name different CLIs.
+_MIN_TRANSPORTS_TO_DISAGREE = 2
+
+
+def session_transport_is_ambiguous(transports: Sequence[str]) -> bool:
+    """True when candidates name different CLIs and none is restricted.
+
+    :func:`select_session_transport` answers ``None`` both when there is
+    nothing to go on (no candidates) and when the candidates genuinely
+    DISAGREE. Those need different handling downstream, and collapsing
+    them let a phase session keep the first agent's model flag for a
+    mixed chain: the session then resolved that agent's PROVIDER and
+    minted typed blocks -- ``PdfContent`` for a chain whose fallback is
+    an opencode CLI, ``AudioContent``/``VideoContent`` for one whose
+    fallback is claude -- none of which the agent that actually ran can
+    carry. Restricting only the round-trip-unsafe case left this
+    order-dependent: the same chain behaved differently depending on
+    which agent was listed first.
+    """
+    if len(transports) < _MIN_TRANSPORTS_TO_DISAGREE:
+        return False
+    for transport in transports:
+        if transport_inline_image_roundtrip_unsafe(transport):
+            return False
+    first = transports[0]
+    return any(transport != first for transport in transports)
 
 
 def get_delivery_mode(
@@ -482,6 +518,19 @@ class ResolvedCapabilityProfile:
         fresh = get_delivery_mode(self.identity, modality)
         if _DELIVERY_DEMAND[stored.delivery] > _DELIVERY_DEMAND[fresh.delivery]:
             return fresh
+        if stored.delivery is not fresh.delivery and _PERCEPTIBLE_DELIVERIES.issuperset(
+            {stored.delivery, fresh.delivery}
+        ):
+            # Same rung, different SHAPE. ``INLINE_IMAGE`` and
+            # ``TYPED_BLOCK`` ask no more of a CLI than one another, so
+            # the demand check passes them both -- but they are not
+            # interchangeable, and a stored ``pdf -> inline_image``
+            # survived to cost a capable identity its typed PDF block:
+            # the artifact silently degraded to a bare resource
+            # reference because nothing can build an image block for a
+            # PDF. Not a safety hole; the delivery paths catch it. It is
+            # the stored verdict quietly reducing what the caller gets.
+            return fresh
         if stored.delivery is DeliveryMode.TYPED_BLOCK and stored.block_type != fresh.block_type:
             return fresh
         return stored
@@ -577,5 +626,6 @@ __all__ = [
     "profile_from_payload",
     "resolve_capability_profile",
     "select_session_transport",
+    "session_transport_is_ambiguous",
     "transport_inline_image_roundtrip_unsafe",
 ]

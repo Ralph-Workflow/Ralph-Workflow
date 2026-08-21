@@ -831,6 +831,15 @@ def test_a_replayed_pdf_is_never_wrapped_in_an_image_block(tmp_path: Path) -> No
     ``pdf -> inline_image`` sent a PDF's bytes inside ``ImageContent`` --
     a malformed request that kills the turn exactly like the incident
     this guard exists for.
+
+    The stored verdict no longer merely fails to be honoured: it is
+    CORRECTED. ``INLINE_IMAGE`` and ``TYPED_BLOCK`` ask no more of a CLI
+    than one another, so a rank comparison passes them both, but they
+    are not interchangeable -- and letting the stored one stand cost
+    this capable identity the typed PDF block it actually accepts,
+    degrading the artifact to a bare resource reference. Both the safety
+    property (never an image block) and the delivery it should get are
+    asserted below.
     """
     from ralph.mcp.multimodal.artifacts import MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import (
@@ -862,12 +871,15 @@ def test_a_replayed_pdf_is_never_wrapped_in_an_image_block(tmp_path: Path) -> No
     workspace = FsWorkspace(tmp_path)
 
     first = handle_read_media(session, workspace, {"path": "doc.pdf"})
-    refs = [b for b in first.content if isinstance(b, ResourceReferenceContent)]
-    assert refs, first.content
 
-    replayed = handle_read_media(session, workspace, {"path": refs[0].uri})
+    assert not any(isinstance(b, ImageContent) for b in first.content), first.content
+    typed = [b for b in first.content if getattr(b, "type", None) == "pdf"]
+    assert typed, first.content
+
+    replayed = handle_read_media(session, workspace, {"path": typed[0].uri})
 
     assert not any(isinstance(b, ImageContent) for b in replayed.content), replayed.content
+    assert [getattr(b, "type", None) for b in replayed.content] == ["pdf"], replayed.content
 
 
 def test_the_child_payload_records_the_verdicts_the_runtime_acts_on(

@@ -878,11 +878,16 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
         raise
 
 
-def _identity_is_serialisable(identity: MultimodalModelIdentity) -> bool:
+def identity_is_serialisable(identity: MultimodalModelIdentity) -> bool:
     """Return True when an identity carries information worth handing on.
 
     A resolved provider or a known transport each independently affect
     downstream delivery decisions, so either one is enough.
+
+    Public because it decides what crosses the subprocess boundary: an
+    identity that fails here is simply absent from the child's payload,
+    and the child then resolves as though nothing was known. A rule with
+    that reach needs to be assertable from outside this module.
     """
     return identity.is_known() or identity.transport is not None
 
@@ -931,7 +936,7 @@ def session_payload_json(session: SessionLike) -> str:
     # the subprocess -- and the multimodal layer keys some delivery
     # decisions on the transport, so those guards died at this boundary
     # even though the parent session had the information.
-    if isinstance(raw_identity, MultimodalModelIdentity) and _identity_is_serialisable(
+    if isinstance(raw_identity, MultimodalModelIdentity) and identity_is_serialisable(
         raw_identity
     ):
         session_payload["model_identity"] = {
@@ -954,7 +959,7 @@ def session_payload_json(session: SessionLike) -> str:
         session_payload["capability_profile"] = profile_for_caller(
             raw_profile, identity_for_profile
         ).to_payload()
-    elif isinstance(raw_identity, MultimodalModelIdentity) and _identity_is_serialisable(
+    elif isinstance(raw_identity, MultimodalModelIdentity) and identity_is_serialisable(
         raw_identity
     ):
         session_payload["capability_profile"] = resolve_capability_profile(

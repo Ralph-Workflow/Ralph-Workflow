@@ -22,7 +22,7 @@ PASS 1 — env+open ambient reads
     - ``ralph/mcp/protocol/env.py`` — defines constants; no actual env read.
     - ``ralph/mcp/server/_timing_safety.py`` — imports constants; one-line
       justification.
-    - ``ralph/mcp/server/runtime.py:193`` and ``:236`` — composition root
+    - ``ralph/mcp/server/runtime.py:199`` and ``:242`` — composition root
       that reads ``MCP_*_ENV`` / ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` to wire
       the factory.
     - ``ralph/mcp/websearch/secrets.py:17`` — ``os.getenv`` is used as a
@@ -100,8 +100,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # side-effecting implementations are assembled in exactly one place —
     # the composition root." The line numbers shift with docstring edits;
     # the audit must be re-pointed whenever the docstring changes.
-    "mcp/server/runtime.py:193",
-    "mcp/server/runtime.py:236",
+    "mcp/server/runtime.py:199",
+    "mcp/server/runtime.py:242",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live

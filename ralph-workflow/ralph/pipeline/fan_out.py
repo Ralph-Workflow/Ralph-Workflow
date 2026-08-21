@@ -28,6 +28,7 @@ from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.multimodal.capabilities import (
     select_session_transport,
+    session_transport_is_ambiguous,
     transport_inline_image_roundtrip_unsafe,
 )
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
@@ -319,6 +320,8 @@ def phase_session_identity(
     first_agent_transport: AgentTransport | None,
     first_agent_model_flag: str | None,
     chain_transport: AgentTransport | None,
+    *,
+    chain_is_ambiguous: bool = False,
 ) -> tuple[AgentTransport | None, str | None]:
     """Return the (transport, model_flag) pair to tag a phase session with.
 
@@ -346,6 +349,18 @@ def phase_session_identity(
     the plan builder it could be reverted with the suite green.
     """
     if chain_transport is None:
+        if chain_is_ambiguous:
+            # The candidates name different CLIs and none is restricted,
+            # so there is no honest provider for the phase. Keeping the
+            # first agent's model flag resolved ITS provider for the
+            # whole chain and minted typed blocks -- a PdfContent for a
+            # chain whose fallback is opencode, Audio/VideoContent for
+            # one whose fallback is claude -- that the agent which
+            # actually ran cannot carry. The transport is kept because
+            # it also selects the native upstream MCP loaders; only the
+            # provider claim is dropped, which degrades delivery to
+            # resource references every candidate can accept.
+            return first_agent_transport, None
         return first_agent_transport, first_agent_model_flag
     if chain_transport is not first_agent_transport or transport_inline_image_roundtrip_unsafe(
         chain_transport.value
@@ -413,8 +428,10 @@ def _build_session_mcp_plan_for_phase(
     # MUST come after the model flag is read: the flag belongs to the
     # first candidate, and once the tag names a different CLI the two no
     # longer describe the same agent.
-    chain_transport = _phase_session_transport(candidate_agents, config)
-    transport, model_flag = phase_session_identity(transport, model_flag, chain_transport)
+    chain_transport, chain_is_ambiguous = _phase_session_transport(candidate_agents, config)
+    transport, model_flag = phase_session_identity(
+        transport, model_flag, chain_transport, chain_is_ambiguous=chain_is_ambiguous
+    )
 
     effective_agents_policy = (
         policy_bundle.agents
@@ -446,17 +463,23 @@ def _build_session_mcp_plan_for_phase(
 def _phase_session_transport(
     candidate_agents: list[str],
     config: UnifiedConfig | None,
-) -> AgentTransport | None:
+) -> tuple[AgentTransport | None, bool]:
     """Return the transport to tag a phase session serving ``candidate_agents``.
 
-    ``None`` when there is no honest answer -- no candidates, no config,
-    or a mixed chain of unrestricted agents. Falling back to the first
-    candidate would reinstate the guess this helper replaces, and on the
+    Returns ``(transport, ambiguous)``. The transport is ``None`` when
+    there is no honest answer -- no candidates, no config, or a mixed
+    chain of unrestricted agents. Falling back to the first candidate
+    would reinstate the guess this helper replaces, and on the
     no-candidate paths the caller's own transport is provably ``None``
     anyway.
+
+    ``ambiguous`` separates "the candidates DISAGREE" from "there was
+    nothing to go on". Both produce no transport, but only the first
+    means the first agent's model flag describes a CLI that may not be
+    the one that runs.
     """
     if config is None or not candidate_agents:
-        return None
+        return None, False
     registry = AgentRegistry.from_config(config)
     by_value: dict[str, AgentTransport] = {}
     ordered: list[str] = []
@@ -467,7 +490,10 @@ def _phase_session_transport(
         ordered.append(cfg.transport.value)
         by_value[cfg.transport.value] = cfg.transport
     selected = select_session_transport(ordered)
-    return by_value.get(selected) if selected is not None else None
+    ambiguous = session_transport_is_ambiguous(ordered)
+    if selected is None:
+        return None, ambiguous
+    return by_value.get(selected), ambiguous
 
 
 def _fan_out_worker_context(

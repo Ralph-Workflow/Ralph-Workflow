@@ -170,3 +170,40 @@ def test_a_blank_stated_transport_takes_the_launched_one() -> None:
     assert identity_on_transport(blank, "codex").transport == "codex"
     # A blank LAUNCHED value must not clear a real stated transport.
     assert identity_on_transport(stated, "   ").transport == "codex"
+
+
+def test_an_identity_nobody_can_place_is_returned_untouched() -> None:
+    """``None`` transport means unknown, and must not become ``""``.
+
+    Canonicalising unconditionally rewrote an unknown transport to the
+    empty string, which reads as "known to be nothing" and flips
+    ``lifecycle.identity_is_serialisable`` (it tests ``is not None``) --
+    so an identity nothing knew anything about started being written
+    into the session file and the wire-ledger digest.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        UNKNOWN_IDENTITY,
+        identity_on_transport,
+    )
+    from ralph.mcp.server.lifecycle import identity_is_serialisable
+
+    rebased = identity_on_transport(UNKNOWN_IDENTITY, None)
+
+    assert rebased.transport is None
+    assert identity_is_serialisable(rebased) is False
+
+
+def test_the_standalone_seam_canonicalises_like_the_others() -> None:
+    """Three seams write a transport spelling; all three must agree.
+
+    The guards strip and lower before matching, so a shouted value still
+    works -- but the spelling reaches the session file and the
+    wire-ledger capability digest, and two spellings of one CLI produced
+    two different digests for the same run.
+    """
+    from ralph.mcp.server.runtime import standalone_session_identity
+
+    assert standalone_session_identity("CODEX").transport == "codex"
+    assert standalone_session_identity("  Codex  ").transport == "codex"
+    assert standalone_session_identity("codex").transport == "codex"
+    assert standalone_session_identity("   ").transport is None

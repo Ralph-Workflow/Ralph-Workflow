@@ -67,3 +67,46 @@ def test_an_unresolved_chain_keeps_the_original_transport() -> None:
 
     assert transport is AgentTransport.CLAUDE
     assert model_flag == _FLAG
+
+
+def test_a_mixed_unrestricted_chain_drops_the_model_flag_too() -> None:
+    """Disagreement is not the same as knowing nothing.
+
+    ``select_session_transport`` answers ``None`` both when there is
+    nothing to go on and when the candidates DISAGREE. Collapsing the
+    two kept the first agent's model flag for a mixed chain, so the
+    phase session resolved THAT agent's provider and minted typed blocks
+    -- a PdfContent for a chain whose fallback is opencode, Audio and
+    VideoContent for one whose fallback is claude -- that the agent
+    which actually ran cannot carry. The transport is still kept,
+    because it also selects the native upstream MCP loaders.
+    """
+    transport, model_flag = phase_session_identity(
+        AgentTransport.CLAUDE, _FLAG, None, chain_is_ambiguous=True
+    )
+
+    assert transport is AgentTransport.CLAUDE
+    assert model_flag is None
+
+
+def test_ambiguity_is_computed_from_the_candidates() -> None:
+    """The predicate the fan-out passes must agree with the chains it sees.
+
+    Both chains below are documented verbatim in the shipped
+    ``ralph-workflow.toml`` as fallback examples.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        select_session_transport,
+        session_transport_is_ambiguous,
+    )
+
+    assert session_transport_is_ambiguous(["claude", "opencode"]) is True
+    assert session_transport_is_ambiguous(["agy", "claude"]) is True
+    # A homogeneous chain has an honest answer, so it is not ambiguous.
+    assert session_transport_is_ambiguous(["claude", "claude"]) is False
+    assert session_transport_is_ambiguous(["claude"]) is False
+    assert session_transport_is_ambiguous([]) is False
+    # A restricted candidate RESOLVES the chain; that is not ambiguity,
+    # and treating it as such would drop the tag the guards need.
+    assert session_transport_is_ambiguous(["claude", "codex"]) is False
+    assert select_session_transport(["claude", "codex"]) == "codex"
