@@ -29,6 +29,7 @@ from ralph.mcp.multimodal.capabilities import (
     caller_profile_for,
     profile_from_payload,
     resolve_capability_profile,
+    transport_inline_image_roundtrip_unsafe,
 )
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.protocol.env import (
@@ -70,6 +71,36 @@ def payload_transport(raw: object) -> str | None:
     if not isinstance(raw, str):
         return None
     return raw.strip().lower() or None
+
+
+def reconcile_declared_transport(declared: str | None, persisted: object) -> str | None:
+    """Reconcile an operator's declaration with a session payload.
+
+    THE RESTRICTED SIDE WINS -- the same conservative rule
+    :func:`ralph.mcp.multimodal.capabilities.select_session_transport`
+    applies to a mixed chain, and for the same reason: degrading a
+    capable CLI to a resource reference is harmless, while handing a
+    restricted one an inline image kills its turn.
+
+    Neither source can simply outrank the other. Reading the payload
+    first (``payload_transport(raw) or declared``) let a stale or
+    hand-written session file naming another CLI defeat an operator's
+    ``--agent-transport``, which is the one thing that flag exists to do
+    and what its help text promises. Reading the declaration first would
+    invert a case that was deliberate: a payload written by a parent
+    Ralph process genuinely does know which agent it launched, and the
+    declaration on a standalone server is a guess beside it.
+
+    Preferring whichever side is restricted honours both: a declared
+    ``codex`` is not overridden by a stale ``claude`` payload, and a
+    payload that knows better still wins whenever nothing is at stake.
+    """
+    stated = payload_transport(persisted)
+    declared_clean = payload_transport(declared)
+    for candidate in (declared_clean, stated):
+        if candidate is not None and transport_inline_image_roundtrip_unsafe(candidate):
+            return candidate
+    return stated or declared_clean
 
 
 class FileBackedSession:
@@ -395,8 +426,8 @@ class FileBackedSession:
         return MultimodalModelIdentity(
             provider=provider,
             model_id=str(model_id) if model_id is not None else None,
-            transport=(
-                payload_transport(raw.get("transport")) or self._declared_agent_transport
+            transport=reconcile_declared_transport(
+                self._declared_agent_transport, raw.get("transport")
             ),
         )
 
@@ -615,8 +646,13 @@ def session_from_env(
         else set()
     )
     raw_identity = payload.get("model_identity")
-    if isinstance(raw_identity, dict) and payload_transport(raw_identity.get("transport")) is None:
-        raw_identity = {**raw_identity, "transport": declared_agent_transport}
+    if isinstance(raw_identity, dict):
+        raw_identity = {
+            **raw_identity,
+            "transport": reconcile_declared_transport(
+                declared_agent_transport, raw_identity.get("transport")
+            ),
+        }
     if isinstance(raw_identity, dict):
         provider = str(raw_identity.get("provider", "unknown"))
         model_id_raw = raw_identity.get("model_id")

@@ -552,11 +552,19 @@ class ResolvedCapabilityProfile:
         through every re-serialisation and record it in the session file
         and the wire-ledger capability digest, an audit trail that
         disagrees with what the runtime actually did.
+
+        The transport is canonicalised on the way out for the same
+        reason. ``session_payload_json`` canonicalises the identity it
+        writes, but this profile is written BESIDE it in the same JSON
+        object and copied its spelling verbatim -- and the wire-ledger
+        digest is taken over this payload, so one run still produced a
+        different digest per spelling. Seven seams normalised; this was
+        the eighth, hiding in the same object as the seventh.
         """
         return {
             "provider": self.identity.provider,
             "model_id": self.identity.model_id,
-            "transport": self.identity.transport,
+            "transport": _normalised_transport(self.identity.transport),
             "verdicts": {
                 modality: {
                     "delivery": corrected.delivery.value,
@@ -574,11 +582,28 @@ UNKNOWN_IDENTITY = MultimodalModelIdentity(provider="unknown")
 
 
 def resolve_capability_profile(identity: MultimodalModelIdentity) -> ResolvedCapabilityProfile:
-    """Build a pre-computed capability profile for all supported modalities."""
+    """Build a pre-computed capability profile for all supported modalities.
+
+    Resolves against a CANONICAL identity. Every verdict quotes the
+    transport in its ``reason`` -- text this layer prints and the
+    wire-ledger digest is taken over -- so resolving from a raw spelling
+    embedded it in five reason strings per profile. Canonicalising the
+    transport field alone left those untouched, and one run still
+    produced a different digest per spelling.
+    """
+    canonical = _canonical_identity(identity)
     verdicts = {
-        modality: get_delivery_mode(identity, modality) for modality in SUPPORTED_MODALITIES
+        modality: get_delivery_mode(canonical, modality) for modality in SUPPORTED_MODALITIES
     }
-    return ResolvedCapabilityProfile(identity=identity, verdicts=verdicts)
+    return ResolvedCapabilityProfile(identity=canonical, verdicts=verdicts)
+
+
+def _canonical_identity(identity: MultimodalModelIdentity) -> MultimodalModelIdentity:
+    """Return ``identity`` with its transport in canonical spelling."""
+    canonical = _normalised_transport(identity.transport)
+    if canonical == identity.transport:
+        return identity
+    return replace(identity, transport=canonical)
 
 
 def _normalised_transport(raw: object) -> str | None:

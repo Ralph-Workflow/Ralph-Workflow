@@ -9,7 +9,12 @@ rather than only through the paths that consume them.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ralph.mcp.multimodal.capabilities import DeliveryMode
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_a_whitespace_transport_is_not_a_transport() -> None:
@@ -348,3 +353,93 @@ def test_the_payload_writer_canonicalises_the_transport_it_records() -> None:
         payload = json.loads(session_payload_json(session))
 
         assert payload["model_identity"]["transport"] == "codex", spelling
+
+
+def test_a_stale_payload_cannot_defeat_a_declared_restricted_cli(tmp_path: Path) -> None:
+    """Between a declaration and a payload, the RESTRICTED side wins.
+
+    ``--agent-transport`` exists so an operator can tell a manually
+    started server which CLI it serves, and its help text promises the
+    server will then withhold content that CLI cannot carry. Reading the
+    payload first (``payload_transport(raw) or declared``) meant a stale
+    or hand-written session file naming another CLI defeated it
+    outright, putting inline image bytes in front of the restricted CLI
+    the operator had named.
+
+    Reading the declaration first would have inverted a case that was
+    deliberate — a payload written by a parent Ralph process does know
+    which agent it launched. Preferring whichever side is restricted
+    keeps both right, and is the rule ``select_session_transport``
+    already applies to a mixed chain.
+    """
+    import json
+
+    from ralph.mcp.server.runtime_session import FileBackedSession, reconcile_declared_transport
+
+    payload = {
+        "session_id": "s",
+        "run_id": "r",
+        "drain": "development",
+        "model_identity": {
+            "provider": "claude",
+            "model_id": "claude-opus-5",
+            "transport": "claude",
+        },
+    }
+    session = FileBackedSession(
+        tmp_path / "session.json",
+        loader=lambda _path: json.loads(json.dumps(payload)),
+        declared_agent_transport="codex",
+    )
+
+    assert session.model_identity.transport == "codex"
+    assert session.caller_model_identity.transport == "codex"
+
+    # Both directions, and the cases where nothing is at stake.
+    assert reconcile_declared_transport("claude", "codex") == "codex"
+    assert reconcile_declared_transport(None, "claude") == "claude"
+    assert reconcile_declared_transport("codex", None) == "codex"
+    assert reconcile_declared_transport("claude", "claude") == "claude"
+    assert reconcile_declared_transport(None, None) is None
+
+
+def test_the_capability_profile_beside_the_identity_is_canonicalised_too() -> None:
+    """The EIGHTH seam, in the same JSON object as the seventh.
+
+    ``session_payload_json`` canonicalises ``model_identity.transport``,
+    but the ``capability_profile`` written beside it is built from the
+    raw identity and ``to_payload`` copied its spelling verbatim. The
+    wire-ledger digest is taken over that payload, so one run still
+    produced several digests -- the defect the previous round reported
+    as closed, closed on one of its two halves.
+    """
+    import json
+
+    from ralph.mcp.multimodal.capabilities import (
+        MultimodalModelIdentity,
+        resolve_capability_profile,
+    )
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+
+    digests = set()
+    for spelling in ("codex", "CODEX", "  Codex  "):
+        identity = MultimodalModelIdentity(
+            provider="openai", model_id="gpt-5", transport=spelling
+        )
+        session = AgentSession(
+            session_id="s",
+            run_id="r",
+            drain="development",
+            capabilities=frozenset({"media.read"}),
+            model_identity=identity,
+            stored_capability_profile=resolve_capability_profile(identity),
+        )
+
+        payload = json.loads(session_payload_json(session))
+
+        assert payload["model_identity"]["transport"] == "codex", spelling
+        assert payload["capability_profile"]["transport"] == "codex", spelling
+        digests.add(json.dumps(payload["capability_profile"], sort_keys=True))
+
+    assert len(digests) == 1, "one run must produce one capability digest"

@@ -55,6 +55,11 @@ def _normalise(raw: object, *, session: object | None = None) -> object:
         ),
         # The server layer accepts a tuple wherever it accepts a list.
         ("a tuple of blocks", ({"type": "text", "text": "ok"}, dict(_IMAGE_BLOCK))),
+        # A tuple UNDER content: the top-level tuple was fixed one round
+        # earlier while this one still took the dict branch, where the
+        # content extractor required a list and found nothing to do.
+        ("a tuple under content", {"content": (dict(_IMAGE_BLOCK),)}),
+        ("a tuple under a nested envelope", {"result": {"content": (dict(_IMAGE_BLOCK),)}}),
     ],
 )
 def test_no_result_shape_carries_embedded_media_through(label: str, raw: object) -> None:
@@ -109,13 +114,32 @@ def test_a_text_block_that_decodes_to_media_is_not_served_as_a_payload() -> None
         "content": [{"type": "text", "text": "ok"}]
     }
 
-    assert carries_upstream_media_blocks([dict(_IMAGE_BLOCK)]) is True
+    # FAIL-CLOSED, matching the contract it defends: only the two block
+    # types that pass through unchanged are safe. An exact-match
+    # allowlist of the five media NAMES was narrower than the contract,
+    # so a standard MCP EmbeddedResource carrying base64 image bytes --
+    # or a block typed "Image" rather than "image" -- was waved through
+    # as "not media" and served to a codex caller.
     assert carries_upstream_media_blocks([{"type": "text", "text": "ok"}]) is False
-    # Every media type the contract normalises, so the decoder's refusal
-    # cannot be narrower than the contract itself.
+    assert carries_upstream_media_blocks([{"type": "resource_reference", "uri": "x"}]) is False
+
+    refused = (
+        [dict(_IMAGE_BLOCK)],
+        [{"type": "resource", "resource": {"mimeType": "image/png", "blob": _B64}}],
+        [{"type": "Image", "data": _B64}],
+        [{"type": "whatever"}],
+        [{"data": _B64}],
+        [["not", "a", "mapping"]],
+        [None, 5, "x"],
+    )
+    for content in refused:
+        assert carries_upstream_media_blocks(content) is True, content
     for media_type in ("image", "audio", "video", "pdf", "document"):
         assert carries_upstream_media_blocks([{"type": media_type}]) is True, media_type
-    # Shapes that are not a block list at all must not raise.
+
+    # Shapes that are not a block sequence at all must not raise, and
+    # are not something to refuse -- there is nothing there to serve.
     assert carries_upstream_media_blocks(None) is False
     assert carries_upstream_media_blocks("not a list") is False
-    assert carries_upstream_media_blocks([None, 5, "x"]) is False
+    # A tuple is a block sequence: the server serialises one like a list.
+    assert carries_upstream_media_blocks((dict(_IMAGE_BLOCK),)) is True

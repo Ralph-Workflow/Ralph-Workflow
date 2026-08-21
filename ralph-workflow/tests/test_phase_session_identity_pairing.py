@@ -166,3 +166,37 @@ def test_the_commit_chain_uses_the_same_ambiguity_rule() -> None:
     empty = chain()
     assert commit_chain_transport(empty) is None
     assert commit_chain_is_ambiguous(empty) is False
+
+
+def test_a_model_disagreement_drops_the_flag_even_when_the_cli_agrees() -> None:
+    """Detecting the disagreement is not the same as ACTING on it.
+
+    ``_chain_disagrees_on_model`` was added, computed, and then never
+    consulted for the case it was written for: the ambiguity test lived
+    inside the ``chain_transport is None`` branch, and candidates that
+    AGREE on the CLI resolve a non-None transport. So the flag was
+    calculated and discarded, and a chain of two claude agents where
+    only the first carries ``--model gemini/...`` still resolved
+    gemini's capabilities for the whole phase -- minting AudioContent
+    and VideoContent that a plain claude CLI cannot carry.
+
+    The previous test asserted only that the resolver RETURNS
+    ``ambiguous is True``. That is why the inert wiring shipped, so this
+    asserts the outcome instead: the provider claim is gone.
+    """
+    transport, model_flag = phase_session_identity(
+        AgentTransport.CLAUDE, _FLAG, AgentTransport.CLAUDE, chain_is_ambiguous=True
+    )
+
+    assert transport is AgentTransport.CLAUDE, "the tag still selects the upstream loaders"
+    assert model_flag is None, "an ambiguous chain must not resolve a provider"
+
+
+def test_ambiguity_drops_the_flag_whatever_the_chain_transport_is() -> None:
+    """The rule holds in every branch, which is where it failed before."""
+    for chain_transport in (None, AgentTransport.CLAUDE, AgentTransport.CODEX):
+        _transport, model_flag = phase_session_identity(
+            AgentTransport.CLAUDE, _FLAG, chain_transport, chain_is_ambiguous=True
+        )
+
+        assert model_flag is None, chain_transport

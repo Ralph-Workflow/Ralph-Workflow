@@ -348,19 +348,25 @@ def phase_session_identity(
     Public because it is the whole decision: as a private branch inside
     the plan builder it could be reverted with the suite green.
     """
+    if chain_is_ambiguous:
+        # CHECKED FIRST, before anything looks at the transport. This
+        # test used to live inside the ``chain_transport is None``
+        # branch alone -- so the case it was written for never reached
+        # it: candidates that AGREE on the CLI and disagree on the model
+        # resolve a non-None transport, fell past it, and kept the first
+        # agent's flag verbatim. The flag was computed and discarded,
+        # which is worse than not having added it, because the commit
+        # said the hole was closed.
+        #
+        # The transport is still carried (it also selects the native
+        # upstream MCP loaders); only the provider claim is dropped,
+        # degrading delivery to resource references every candidate can
+        # accept.
+        return chain_transport or first_agent_transport, None
     if chain_transport is None:
-        if chain_is_ambiguous:
-            # The candidates name different CLIs and none is restricted,
-            # so there is no honest provider for the phase. Keeping the
-            # first agent's model flag resolved ITS provider for the
-            # whole chain and minted typed blocks -- a PdfContent for a
-            # chain whose fallback is opencode, Audio/VideoContent for
-            # one whose fallback is claude -- that the agent which
-            # actually ran cannot carry. The transport is kept because
-            # it also selects the native upstream MCP loaders; only the
-            # provider claim is dropped, which degrades delivery to
-            # resource references every candidate can accept.
-            return first_agent_transport, None
+        # Nothing was resolved and the candidates do not disagree (that
+        # case returned above): there is no restricted candidate, so the
+        # first agent's own pairing stands.
         return first_agent_transport, first_agent_model_flag
     if chain_transport is not first_agent_transport or transport_inline_image_roundtrip_unsafe(
         chain_transport.value

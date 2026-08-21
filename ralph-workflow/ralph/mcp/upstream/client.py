@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import base64
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -131,6 +131,12 @@ def _json_rpc_result(raw: object, context: str) -> JsonObject:
         return dict(cast("Mapping[str, object]", result))
     return {}
 
+
+#: Block types the contract passes through UNCHANGED. Everything else
+#: -- media, an unknown name, a malformed block -- is either normalised
+#: or refused, so anything outside this set must not be waved past a
+#: guard on the grounds that it is not one of the five media names.
+_UPSTREAM_PASSTHROUGH_BLOCK_TYPES: frozenset[str] = frozenset({"text", "resource_reference"})
 
 UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset(
     {"image", "audio", "video", "pdf", "document"}
@@ -354,15 +360,32 @@ def _normalize_media_block(
 
 
 def _get_content_list(result: JsonObject) -> list[object] | None:
-    """Extract content list from result, returning None if not a valid list of blocks."""
+    """Extract the content blocks from a result, or ``None`` if there are none.
+
+    Accepts a TUPLE as well as a list, because the server layer does:
+    ``_serialize_content_blocks`` serialises either. Requiring a list
+    here while the server accepted both meant ``{"content": (image,)}``
+    was never normalised and served verbatim -- raw base64 image bytes
+    to a codex caller, by the same route and the same one-word mismatch
+    that the top-level tuple had one round earlier.
+    """
     content = result.get("content")
-    if not isinstance(content, list):
+    if not isinstance(content, (list, tuple)):
         return None
-    return list(content)
+    return list(cast("Sequence[object]", content))
 
 
 def carries_upstream_media_blocks(content: object) -> bool:
-    """True when ``content`` holds a block this contract would normalise.
+    """True when ``content`` holds a block this contract would not pass.
+
+    FAIL-CLOSED, matching :func:`normalize_upstream_content_blocks`
+    itself: that function raises on anything outside ``text`` /
+    ``resource_reference`` / the media types. An exact-match allowlist
+    of the five media names was NARROWER than the contract it defends,
+    so a standard MCP ``EmbeddedResource`` carrying a base64 image --
+    or a block typed ``Image`` rather than ``image`` -- was waved
+    through as "not media" and served to a codex caller. Anything this
+    contract would not pass unchanged counts as media here.
 
     Public because it answers a question OUTSIDE this module: the server
     layer replaces a whole tool payload with JSON decoded out of a text
@@ -371,13 +394,19 @@ def carries_upstream_media_blocks(content: object) -> bool:
     what stops the two drifting -- the same lesson as every other
     "two questions, one function" defect in this area.
     """
-    if not isinstance(content, list):
+    if not isinstance(content, (list, tuple)):
         return False
-    for block in cast("list[object]", content):
-        if isinstance(block, Mapping):
-            block_type = cast("Mapping[str, object]", block).get("type")
-            if isinstance(block_type, str) and block_type in UPSTREAM_MEDIA_BLOCK_TYPES:
-                return True
+    for block in cast("Sequence[object]", content):
+        if not isinstance(block, Mapping):
+            # A block whose shape the contract rejects is not something
+            # to pass through on the grounds that it is "not media".
+            return True
+        typed_block: Mapping[str, object] = cast("Mapping[str, object]", block)
+        raw_type: object = typed_block.get("type")
+        if not isinstance(raw_type, str):
+            return True
+        if raw_type.strip().lower() not in _UPSTREAM_PASSTHROUGH_BLOCK_TYPES:
+            return True
     return False
 
 

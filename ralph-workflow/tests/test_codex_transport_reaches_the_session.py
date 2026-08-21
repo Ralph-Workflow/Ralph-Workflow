@@ -645,10 +645,23 @@ def test_declared_cli_reaches_a_file_backed_session(
     )
 
 
-def test_a_handshake_transport_outranks_the_declared_one(
+def test_the_restricted_side_wins_between_payload_and_declaration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A payload that names a CLI came from something that knew better."""
+    """Neither source outranks the other; the RESTRICTED one does.
+
+    This test used to assert the payload simply wins, on the grounds
+    that "a payload that names a CLI came from something that knew
+    better". That holds for a payload a parent Ralph process wrote --
+    and fails for a stale or hand-written session file, which then
+    defeated an operator's ``--agent-transport`` and put inline image
+    bytes in front of the restricted CLI that flag exists to protect.
+
+    Preferring whichever side is restricted keeps both cases right, and
+    is the same conservative rule ``select_session_transport`` applies
+    to a mixed chain: degrading a capable CLI to a resource reference is
+    harmless, handing a restricted one an inline image is not.
+    """
     from ralph.mcp.server.runtime_session import session_from_env
 
     monkeypatch.setenv(
@@ -664,7 +677,7 @@ def test_a_handshake_transport_outranks_the_declared_one(
     session = session_from_env(declared_agent_transport="codex")
 
     assert session is not None
-    assert session.caller_model_identity.transport == "claude"
+    assert session.caller_model_identity.transport == "codex"
 
 
 def test_overriding_the_transport_also_drops_the_stale_provider(
