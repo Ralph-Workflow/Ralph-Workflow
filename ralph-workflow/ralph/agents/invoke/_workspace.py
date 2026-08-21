@@ -816,10 +816,15 @@ class WorkspaceMonitor:
         """Poll the owning process's sidecar instead of registering an observer.
 
         Owner-published paths are claimed into the PROCESS-LOCAL
-        awareness, not durably: the reindex enqueue this leans on cannot
-        run (``dirty_paths._workspace_index_handle`` returns ``None``
-        unconditionally). A crash between the poll and the next publish
-        CAN drop them, costing an activity signal, not correctness.
+        awareness, and that is the whole claim. A crash between the poll
+        and the next publish CAN drop them, costing an activity signal,
+        not correctness.
+
+        This used to call a durable reindex enqueue that could never
+        enqueue anything -- the handle it asked for was a stub returning
+        ``None`` from the commit that introduced it, so the call was
+        removed along with the stub rather than left here reading as
+        durability.
 
         A sidecar that is unreadable, corrupt, or carries an owner-side
         error yields explicit ``live_fallback`` (S-2).
@@ -855,14 +860,6 @@ class WorkspaceMonitor:
         if paths or state.overflowed:
             for path in paths:
                 awareness.record_relative(path)
-            try:
-                from ralph.mcp.explore.dirty_paths import (
-                    enqueue_workspace_dirty_paths,
-                )
-
-                enqueue_workspace_dirty_paths(self._workspace, paths)
-            except (ImportError, OSError):
-                pass
         # The sidecar's own lock is held across its file I/O, so this
         # is an unbounded acquisition on the launch thread whenever
         # another lease's abandoned worker still holds it.
