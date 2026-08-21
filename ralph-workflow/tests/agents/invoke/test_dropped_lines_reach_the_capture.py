@@ -129,3 +129,53 @@ def test_an_eviction_write_does_not_claim_the_unit_is_progressing(tmp_path: Path
     written = raw_log_path_for(tmp_path, "liveness-unit").read_text(encoding="utf-8")
     # Withheld from the liveness claim, NOT from the transcript.
     assert "displaced-by-the-producer" in written
+
+
+def test_a_watchdog_fire_captures_the_pending_tail_exactly_once(tmp_path: Path) -> None:
+    """The verbatim capture must not invent repetition.
+
+    The drain path snapshots the queue and clears it, then writes that
+    snapshot to the capture. When ``clear()`` ALSO routed its contents
+    to the eviction sink, every line was written twice -- up to 256
+    duplicated lines per fire, in exactly the region the transport
+    failure message reads to explain a stall. A capture claiming the
+    agent said something twice is not verbatim, and nothing downstream
+    de-duplicates it.
+    """
+    from ralph.agents.execution_state import AgentExecutionState
+    from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
+
+    reset_raw_overflow_path_state()
+    clock = FakeClock()
+    ctx = _make_subprocess_ctx(workspace_path=tmp_path)
+    reader = ProcessLineReader(_FakeManagedProcess(), ctx, clock)
+
+    tail = [f"tail-{index}" for index in range(5)]
+    reader._lines_queue.extend(tail)
+
+    watchdog = IdleWatchdog(TimeoutPolicy(idle_timeout_seconds=1.0), clock)
+    watchdog.record_invocation_start()
+    watchdog.record_any_output()
+    # The watchdog opens a drain window before it fires, so step the
+    # clock until it actually reaches FIRE rather than assuming one tick.
+    verdict = WatchdogVerdict.CONTINUE
+    for _ in range(20):
+        clock.advance(120.0)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.RESUMABLE_CONTINUE)
+        if verdict == WatchdogVerdict.FIRE:
+            break
+    assert verdict == WatchdogVerdict.FIRE, verdict
+
+    # Production shape: the drain snapshots and clears the queue, and
+    # the consumer generator then writes that snapshot to the capture
+    # (``_process_reader`` lines 1105 / 1113 / 1125). Both halves must
+    # run, because the duplication only shows when they are combined.
+    fired = reader._check_fire(watchdog, verdict)
+    assert fired is not None
+    pending, _error = fired
+    list(reader._capture_pending(pending))
+    reader._raw_overflow.close()
+
+    captured = _captured_lines(tmp_path, ctx.config)
+
+    assert captured == tail

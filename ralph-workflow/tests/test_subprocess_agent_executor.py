@@ -2,9 +2,11 @@
 
 import asyncio
 import inspect
+import json
 import sys
 from collections.abc import Iterator
 from contextlib import suppress
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +14,7 @@ import ralph.process.manager as _mgr
 from ralph.agents.executor import AgentExecutor
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.raw_overflow import close_all_raw_overflow_logs
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.work_units import WorkUnit
 from ralph.process import get_process_manager, reset_process_manager
@@ -398,3 +401,45 @@ async def test_drop_unit_does_not_affect_other_units(tmp_path: object) -> None:
     assert units[0].unit_id in executor._raw_logs
     assert units[1].unit_id not in executor._raw_logs
     assert units[2].unit_id in executor._raw_logs
+
+
+@pytest.mark.asyncio
+async def test_verbatim_capture_receives_the_undecorated_wire_frame(
+    tmp_path: Path,
+) -> None:
+    """The capture gets the raw bytes, NOT the display-sanitized text.
+
+    ``sanitize_display_line`` strips control sequences and truncates at
+    200 characters with an ellipsis. Writing its output to the capture
+    severed every wire frame longer than that into unparseable JSON, and
+    Ralph Workflow then read the file back and graded the run "raw
+    transcript corrupted" — the incident this whole capture path exists
+    to prevent.
+
+    The existing coverage constructed a ``RawOverflowLog`` directly and
+    never ran the executor, so it asserted on the helper rather than on
+    the wiring: swapping the capture write to the sanitized line left it
+    green.
+    """
+    frame = json.dumps({"type": "item.completed", "text": "y" * 400})
+    assert len(frame) > 200, "the frame must exceed the display truncation point"
+
+    executor = SubprocessAgentExecutor(
+        [sys.executable, "-c", f"print({frame!r})"],
+        activity_router=ActivityRouter(),
+        raw_overflow_root=tmp_path,
+    )
+
+    await executor.run(
+        make_unit("verbatim-unit"),
+        on_output=ignore_output,
+        on_status=ignore_status,
+    )
+    close_all_raw_overflow_logs()
+
+    captured = (tmp_path / ".agent" / "raw" / "verbatim-unit.log").read_text(encoding="utf-8")
+
+    assert frame in captured, "the capture must hold the whole frame"
+    assert "…" not in captured, "the capture must not hold display-truncated text"
+    # The point of verbatim: it still parses as the frame the agent sent.
+    assert json.loads(captured.strip()) == json.loads(frame)

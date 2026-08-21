@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import time
 from pathlib import Path
@@ -180,6 +181,15 @@ class SubprocessAgentExecutor:
             await wait_task
         await handle.terminate(grace_period_s=0)
 
+    def _record_dropped_frame(self, unit_id: str, marker: str) -> None:
+        """Note a dropped oversized frame in the unit's verbatim capture.
+
+        A frame too large for the stream buffer is dropped whole; without
+        this the capture skipped straight from the frame before the gap
+        to the one after it and read back as complete.
+        """
+        self._get_raw_log(unit_id).append(marker)
+
     async def run(
         self,
         unit: WorkUnit,
@@ -225,7 +235,13 @@ class SubprocessAgentExecutor:
             nonlocal last_line
             assert handle is not None
             assert handle.stdout is not None
-            async for raw_line in drain_agent_lines(handle.stdout, unit.unit_id):
+            async for raw_line in drain_agent_lines(
+                handle.stdout,
+                unit.unit_id,
+                on_dropped_frame=lambda marker: self._record_dropped_frame(
+                    unit.unit_id, marker
+                ),
+            ):
                 stripped_bytes = raw_line.rstrip(b"\n")
                 line = sanitize_display_line(stripped_bytes)
 
@@ -306,7 +322,12 @@ class SubprocessAgentExecutor:
         )
 
 
-async def drain_agent_lines(stream: asyncio.StreamReader, unit_id: str) -> AsyncIterator[bytes]:
+async def drain_agent_lines(
+    stream: asyncio.StreamReader,
+    unit_id: str,
+    *,
+    on_dropped_frame: Callable[[str], None] | None = None,
+) -> AsyncIterator[bytes]:
     """Yield stdout lines, surviving a frame larger than the stream buffer.
 
     Iterating the stream directly is not safe: ``readline`` raises
@@ -334,10 +355,28 @@ async def drain_agent_lines(stream: asyncio.StreamReader, unit_id: str) -> Async
                 yield exc.partial
             return
         except asyncio.LimitOverrunError as exc:
-            if not await _discard_oversized_frame(stream, exc.consumed, unit_id):
+            dropped_bytes = exc.consumed
+            if not await _discard_oversized_frame(stream, dropped_bytes, unit_id):
                 return
+            if on_dropped_frame is not None:
+                on_dropped_frame(_dropped_frame_marker(unit_id, dropped_bytes))
             continue
         yield line
+
+
+def _dropped_frame_marker(unit_id: str, dropped_bytes: int) -> str:
+    """Return the JSON-object line recording a dropped oversized frame."""
+    payload: dict[str, str | int] = {
+        "type": "ralph.capture.dropped_frame",
+        "unit_id": unit_id,
+        "at_least_bytes": dropped_bytes,
+        "limit_bytes": AGENT_STREAM_BUFFER_BYTES,
+        "reason": (
+            "one line exceeded the stream buffer and was dropped whole; "
+            "the capture resumes at the next frame"
+        ),
+    }
+    return json.dumps(payload)
 
 
 async def _discard_oversized_frame(

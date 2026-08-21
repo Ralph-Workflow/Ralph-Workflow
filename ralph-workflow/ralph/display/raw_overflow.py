@@ -216,6 +216,24 @@ def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
 _DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
 
 
+def _model_from_flag(config: AgentConfig) -> str:
+    """Return a filename-safe token for the model named in ``model_flag``.
+
+    ``model_flag`` is argv, not a value: ``--model anthropic/claude-4``,
+    ``-m kimi-code/k3-256k``, ``--provider ollama --model llama3``. The
+    non-flag tokens are what distinguish two aliases of one executable.
+    """
+    raw = cast("object", getattr(config, "model_flag", None))
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    try:
+        tokens = shlex.split(raw)
+    except ValueError:
+        return ""
+    values = [token for token in tokens if not token.startswith("-")]
+    return "-".join(values)
+
+
 def raw_log_unit_id_for(config: AgentConfig) -> str:
     """Return the canonical raw-capture identity for an agent configuration.
 
@@ -233,6 +251,8 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
         return ""
     if not tokens:
         return ""
+    raw_model = cast("object", getattr(config, "model", None))
+    model = raw_model if isinstance(raw_model, str) and raw_model.strip() else None
     # The BASENAME, not the raw token. Agents are commonly invoked by
     # absolute path (``/opt/homebrew/bin/claude -p``) or through a
     # version manager's shim; keying on the raw token made those miss
@@ -254,6 +274,25 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
         alias = next((token for token in tokens[1:] if not token.startswith("-")), "")
         if alias:
             return f"{executable}-{alias}"
+    # Last resort: the model named on the COMMAND LINE. The capture path
+    # is keyed ``(unit_id, config.model)``, but only some dynamic-alias
+    # resolvers set ``model`` -- ``pi/``, ``cursor/``, ``kimi/``,
+    # ``opencode/`` and ``nanocoder/`` set ``model_flag`` alone and leave
+    # ``model`` as None. The key silently degenerated to
+    # ``(executable,)``, so ``pi/anthropic/claude-sonnet-4-5`` and
+    # ``pi/openai/gpt-5-codex`` both wrote ``pi.log``: one phase's
+    # verdict grading another phase's bytes and quoting its transport
+    # failures. The shipped ``ralph-workflow.toml`` documents exactly
+    # these forms in ``[agent_chains]``, so this is the documented
+    # configuration rather than an exotic one.
+    #
+    # Reading the flag here rather than fixing each resolver keeps the
+    # rule in the layer that owns capture identity, and covers alias
+    # families added later that forget ``model`` the same way.
+    if model is None:
+        flag_model = _model_from_flag(config)
+        if flag_model:
+            return f"{executable}-{flag_model}"
     return executable
 
 
@@ -414,11 +453,22 @@ def detect_raw_log_breaks(
     For interactive PTY transports (``claude_interactive``, ``nanocoder``,
     ``agy``)
     the raw capture is expected human-visible output rather than JSONL,
-    so only ``NUL_BYTES`` and ``READ_ERROR`` breaks are reported. JSONL
-    streams (headless Claude, AGY print mode, Codex, etc.) keep strict
-    JSON-object validation for every line, with an allowlist for canonical
+    so only ``NUL_BYTES`` and ``READ_ERROR`` breaks are reported. Other
+    streams (headless Claude, Codex, etc.) keep strict JSON-object
+    validation for every line, with an allowlist for canonical
     session/resume/completion metadata lines emitted by the PTY/session
     layer.
+
+    The exemption is keyed on the TRANSPORT, and there is exactly one
+    ``AgentTransport.AGY`` -- so an AGY run in print mode is exempt too,
+    despite emitting JSONL. This paragraph previously claimed the
+    opposite ("AGY print mode ... keeps strict JSON-object validation"),
+    which no code path did. Stated as it is rather than as it reads
+    better: AGY print-mode captures are NOT graded for ``NON_JSONL``,
+    and a corrupt frame there is reported by nothing. Splitting the
+    transport is the fix if that matters; narrowing the exemption
+    without splitting it would make every interactive AGY run report
+    its ordinary human-visible output as corruption.
 
     The function reads the file in binary mode so a NUL-byte break is
     observable. ``read_text(errors='replace')`` would silently swallow
@@ -511,16 +561,31 @@ def _iter_lines(chunk: bytes) -> Iterator[bytes]:
     """
     start = 0
     total = len(chunk)
+    # Both terminator positions are CARRIED, not re-searched per line.
+    # ``find`` scans to EOF when the byte is absent, and a healthy JSONL
+    # capture contains no ``\r`` at all -- so searching for one on every
+    # line made the scan O(lines x bytes). Measured on well-formed
+    # stream-json frames: 2.9 s at 4 MB, 11.8 s at 8 MB, 38.1 s at 16 MB,
+    # four times worse per doubling, extrapolating to minutes at the
+    # 50 MB file cap. ``MAX_REPORTED_BREAKS`` cannot bound that, because
+    # a healthy file has no breaks and the early return never fires --
+    # and this runs on EVERY phase close, for every verdict label. A
+    # carried position re-searches only after it is passed, so each byte
+    # is visited once for each terminator.
+    next_newline = chunk.find(b"\n")
+    next_carriage = chunk.find(b"\r")
     while start < total:
-        newline = chunk.find(b"\n", start)
-        carriage = chunk.find(b"\r", start)
-        if newline < 0 and carriage < 0:
+        if 0 <= next_newline < start:
+            next_newline = chunk.find(b"\n", start)
+        if 0 <= next_carriage < start:
+            next_carriage = chunk.find(b"\r", start)
+        if next_newline < 0 and next_carriage < 0:
             yield chunk[start:]
             return
-        if carriage < 0 or (0 <= newline < carriage):
-            end = newline
+        if next_carriage < 0 or (0 <= next_newline < next_carriage):
+            end = next_newline
         else:
-            end = carriage
+            end = next_carriage
             # CRLF is ONE terminator, not two.
             if chunk[end + 1 : end + 2] == b"\n":
                 end += 1
@@ -554,6 +619,12 @@ def nul_separated_chunks(payload: bytes) -> Iterator[tuple[int, bytes]]:
         start = _skip_nul_run(payload, nul_at)
 
 
+#: How much of a NON-JSON line the expensive grading path inspects.
+#: Generous next to any marker it matches (the longest is a few dozen
+#: bytes) and next to the 60 characters quoted in a break's detail.
+_MAX_LINE_INSPECT_BYTES: Final = 64 * 1024
+
+
 def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
     """Return one ``NON_JSONL`` break per unparseable line.
 
@@ -579,9 +650,16 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
                 return breaks
             this_line_offset = line_offset
             line_offset += len(raw_line)
-            line_bytes = raw_line.rstrip(b"\n").rstrip(b"\r")
-            decoded = line_bytes.decode("utf-8", errors="replace").strip()
-            if not decoded:
+            # ONE copy, and no decode on the healthy path. Each of
+            # ``rstrip`` / ``rstrip`` / ``decode`` / ``strip`` allocated
+            # a full-size copy of the line before anything was graded,
+            # so a single long frame cost roughly twenty times its own
+            # size -- 490 MB transient on a 24 MB line, and 24 MB single
+            # frames are measured real (see AGENT_STREAM_BUFFER_BYTES).
+            # ``MAX_REPORTED_BREAKS`` bounds the NUMBER of lines graded,
+            # never the cost of grading one.
+            line_bytes = raw_line.strip()
+            if not line_bytes:
                 continue
             # Cheapest discriminator first. A healthy capture is almost
             # entirely well-formed frames, and VT normalisation plus the
@@ -589,12 +667,24 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
             # succeeds -- running them on every line cost seconds per
             # call on a multi-megabyte healthy capture.
             try:
-                parsed_fast: object = json.loads(decoded)
-            except json.JSONDecodeError:
+                # ``json.loads`` takes bytes directly, so a well-formed
+                # frame -- almost every line of a healthy capture -- is
+                # graded without ever materialising a decoded copy.
+                parsed_fast: object = json.loads(line_bytes)
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
             else:
                 if isinstance(parsed_fast, dict):
                     continue
+            # Only a line that is NOT well-formed JSON reaches the dear
+            # path, and only its head is inspected: the remaining checks
+            # match short markers, and the detail text quotes 60
+            # characters. The whole line was already offered to the
+            # parser above, so truncating here cannot turn a valid frame
+            # into a reported break.
+            decoded = line_bytes[:_MAX_LINE_INSPECT_BYTES].decode("utf-8", errors="replace").strip()
+            if not decoded:
+                continue
             line_text = normalize_vt_text(decoded).strip()
             if not line_text:
                 continue

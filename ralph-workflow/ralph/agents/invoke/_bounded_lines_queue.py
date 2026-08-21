@@ -143,16 +143,22 @@ class BoundedLinesQueue:
         return list(self._deque)
 
     def clear(self) -> None:
-        """Drop every item from the queue, routing them to the sink.
+        """Drop every item from the queue. The sink is NOT notified.
 
-        A ``clear()`` discards queued lines exactly as an overflow does,
-        so the same rule applies: whatever the consumer will never see
-        still belongs in the raw capture.
+        This looks like an overflow -- lines the consumer will never see
+        -- and it was briefly treated as one. It is not. Both production
+        callers are the watchdog drain paths, and each SNAPSHOTS the
+        queue immediately before clearing it and writes that snapshot to
+        the capture itself (``_capture_pending``). Notifying the sink
+        here wrote the same lines a second time, so the file said the
+        agent emitted its last words twice -- up to 256 duplicated lines
+        per watchdog fire, in the region ``_transport_failure_detail``
+        reads to explain the stall. A capture that invents repetition is
+        not verbatim.
+
+        A caller that clears WITHOUT capturing first must capture the
+        snapshot itself, as those two do.
         """
-        sink = self._eviction_sink
-        if sink is not None:
-            for line in self._deque:
-                _notify(sink, line)
         self._deque.clear()
 
     def __iter__(self) -> Iterator[str]:
