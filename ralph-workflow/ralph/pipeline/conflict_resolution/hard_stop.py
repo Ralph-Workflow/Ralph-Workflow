@@ -21,9 +21,12 @@ resolution is ``git rebase --abort``, so anything still running that can
 write to the worktree is a corruption risk, and the agent process is not
 the whole of it. The MCP server the session runs on spawns the tool
 subprocesses the agent asked for -- a formatter, a codemod, a test run
--- under their own labels, and those are what actually rewrite files.
-All three label families are reaped, and only for processes that were
-NOT already running when the attempt started.
+-- and those are what actually rewrite files. Two label families are
+reaped, the agent and that server, and only for processes that were NOT
+already running when the attempt started. The tool subprocesses are not
+reaped BY LABEL at all: they are registered in the server's own process
+manager, not this one, and are reached as live children of the server
+whose subtree is torn down.
 
 WHAT IT CANNOT CLEAN UP. An attempt abandoned before it reaches its
 spawn can still spawn afterwards, because Python cannot interrupt the
@@ -50,6 +53,8 @@ from ralph.process.manager import get_process_manager
 from ralph.process.teardown import teardown_subtree
 
 __all__ = [
+    "REAP_WAIT_SECONDS",
+    "SPAWN_SETTLE_SECONDS",
     "HardStop",
     "ProcessRegistry",
     "ResolutionAbandonedError",
@@ -81,7 +86,7 @@ _MCP_SERVER_LABEL_SUFFIX = "mcp-server"
 #: already in flight, before the second reap sweep. Bounded and small:
 #: it is added to the attempt's share, not to the pipeline deadline, and
 #: a spawn already in flight lands in milliseconds.
-_SPAWN_SETTLE_SECONDS = 0.25
+SPAWN_SETTLE_SECONDS = 0.25
 
 #: Names the worker so an abandoned attempt is identifiable in a stack
 #: dump taken from a run that survived one.
@@ -93,7 +98,7 @@ _ABANDON_CLEANUP_THREAD_NAME = "ralph-conflict-resolution-abandoned"
 #: How long the caller waits for that cleanup before returning without
 #: it. The kill should normally land before the caller aborts the
 #: rebase; a teardown that will not finish may not hold the driver.
-_REAP_WAIT_SECONDS = 5.0
+REAP_WAIT_SECONDS = 5.0
 
 
 class _AttemptProcessRecord(Protocol):
@@ -122,7 +127,7 @@ def call_with_hard_stop(
     manager: ProcessRegistry | None = None,
     teardown: Callable[[int], None] | None = None,
     report: Callable[[float, tuple[int, ...]], None] | None = None,
-    reap_wait_seconds: float = _REAP_WAIT_SECONDS,
+    reap_wait_seconds: float = REAP_WAIT_SECONDS,
 ) -> bool | None:
     """Run ``attempt``, abandoning it if it outlives ``timeout_seconds``.
 
@@ -223,7 +228,7 @@ def _clean_up_after_abandoning(
             # sweep could not see yet. What the first sweep took is
             # added to what it already knew about, so the second sweep
             # reaps only what is genuinely new.
-            finished.wait(_SPAWN_SETTLE_SECONDS)
+            finished.wait(SPAWN_SETTLE_SECONDS)
             already_seen = None if live_before is None else live_before | frozenset(reaped)
             reaped += reap_agents_started_since(already_seen, manager=manager, teardown=teardown)
         finally:
@@ -232,7 +237,17 @@ def _clean_up_after_abandoning(
         with contextlib.suppress(Exception):
             announce(timeout_seconds, reaped)
 
-    threading.Thread(target=_clean_up, name=_ABANDON_CLEANUP_THREAD_NAME, daemon=True).start()
+    try:
+        threading.Thread(target=_clean_up, name=_ABANDON_CLEANUP_THREAD_NAME, daemon=True).start()
+    except RuntimeError:
+        # Out of threads. The abandonment still stands -- losing it here
+        # would send the caller back to the layer it just gave up on --
+        # so the cleanup is simply skipped, and said so.
+        logger.opt(exception=True).error(
+            "conflict_resolution: could not start the cleanup thread for an "
+            "abandoned attempt; its processes were NOT reaped"
+        )
+        return
     done.wait(reap_wait_seconds)
 
 

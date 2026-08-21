@@ -26,10 +26,13 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import (
     RESOLVE_TIMEOUT_SECONDS,
+    SESSION_CEILING_FRACTION,
     run_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
 from ralph.pipeline.conflict_resolution.hard_stop import (
+    REAP_WAIT_SECONDS,
+    SPAWN_SETTLE_SECONDS,
     call_with_hard_stop,
     live_agent_pids,
     reap_agents_started_since,
@@ -545,3 +548,58 @@ def test_an_ordinary_run_still_restores_the_footer(
     assert _run_pipeline(tmp_path, clock, lambda call, timeout: False) is False
 
     assert painted, "an ordinary run must leave the footer as it found it"
+
+
+def test_the_shipped_abandonment_bounds_are_finite_and_small() -> None:
+    """The bounds tests inject are not the bounds production runs with.
+
+    Every test above passes its own wait and its own settle window, so
+    nothing else pins the values a real abandonment is exposed to. An
+    hour-long reap wait would hold the driver for an hour with this
+    suite green.
+    """
+    assert 0.0 < REAP_WAIT_SECONDS <= 30.0
+    assert 0.0 < SPAWN_SETTLE_SECONDS <= 5.0
+
+
+def test_the_agent_layer_is_cut_before_the_hard_stop_fires() -> None:
+    """The two bounds may never expire at the same instant.
+
+    The agent layer is meant to cut its own session and unwind first,
+    with the driver's stop as the backstop. At parity a healthy
+    force-cut races the stop, and a resolution that was merely slow gets
+    abandoned and reaped as a wedge.
+    """
+    assert 0.0 < SESSION_CEILING_FRACTION < 1.0
+
+
+def test_an_abandonment_is_always_announced() -> None:
+    """Silence is not an acceptable way to give up.
+
+    An abandonment that reports nothing leaves an operator staring at a
+    run that stopped explaining itself -- the exact experience the stop
+    exists to end.
+    """
+    release = threading.Event()
+    announced: list[tuple[float, tuple[int, ...]]] = []
+
+    def _record(timeout_seconds: float, reaped: tuple[int, ...]) -> None:
+        announced.append((timeout_seconds, reaped))
+
+    def _never_returns_in_time() -> bool:
+        return release.wait(timeout=20.0)
+
+    try:
+        call_with_hard_stop(
+            _never_returns_in_time,
+            0.05,
+            manager=_FakeProcessManager([]),
+            teardown=lambda pid: None,
+            report=_record,
+            reap_wait_seconds=1.0,
+        )
+    finally:
+        release.set()
+
+    assert announced, "the abandonment was never announced"
+    assert announced[0][0] == 0.05

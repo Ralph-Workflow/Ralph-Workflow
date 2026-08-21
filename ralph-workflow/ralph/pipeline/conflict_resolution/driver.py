@@ -81,11 +81,17 @@ _MAX_RESOLVER_AGENTS = 2
 
 #: Wall-clock ceiling for the AGENT time of a whole conflict resolution
 #: -- every round, every chain candidate, and (for a rebase) every stop,
-#: measured against one shared deadline. It does NOT cover the git and
-#: prompt work between attempts: those are bounded separately, per call,
-#: by ``ralph.git.subprocess_runner``'s own timeout, so a resolution's
-#: total elapsed time is this ceiling plus that bounded overhead rather
-#: than this ceiling alone. Both are bounded; only this one is shared.
+#: measured against one shared deadline.
+#:
+#: It does NOT cover the work BETWEEN attempts, and that work is not all
+#: bounded. ``unmerged_paths`` goes through ``ralph.git.subprocess_runner``
+#: and inherits its timeout, but the marker rescan that gates every round
+#: (:func:`ralph.git.merge.paths_with_conflict_markers`) reads each
+#: conflicted file directly, and rendering and unlinking the prompt are
+#: plain file I/O. On a healthy filesystem all of it is fast; on a hung
+#: mount none of it is bounded by anything here. Nor does the ceiling
+#: cover the wait an ABANDONED attempt spends being cleaned up -- see
+#: ``hard_stop._REAP_WAIT_SECONDS``, which is charged to neither.
 RESOLVE_TIMEOUT_SECONDS = 900.0
 
 #: Shortest share worth spending on one attempt. Below it the remaining
@@ -99,9 +105,10 @@ _MIN_ATTEMPT_SECONDS = 1.0
 #: is what happens when it does not. Strictly < 1.0, so the two bounds
 #: can never expire at the same instant and a healthy force-cut is never
 #: mistaken for a wedge.
-_SESSION_CEILING_FRACTION = 0.9
+SESSION_CEILING_FRACTION = 0.9
 
 __all__ = [
+    "SESSION_CEILING_FRACTION",
     "MonotonicClock",
     "ResolutionInvoker",
     "resolution_deadline",
@@ -500,7 +507,7 @@ def _default_invoker(
     is blocked inside an attempt, because every watchdog that would end
     that attempt runs BELOW it. ``hard_stop`` is what makes the share an
     enforcement rather than a request: the agent layer is given
-    ``_SESSION_CEILING_FRACTION`` of the share to cut and unwind its own
+    ``SESSION_CEILING_FRACTION`` of the share to cut and unwind its own
     session, and the driver takes the round back when the whole share is
     gone -- whatever state the layer below is in.
     """
@@ -527,7 +534,7 @@ def _default_invoker(
                 policy_bundle=policy_bundle,
                 display=display,
                 display_context=display_context,
-                max_session_seconds=budget * _SESSION_CEILING_FRACTION,
+                max_session_seconds=budget * SESSION_CEILING_FRACTION,
             )
 
         outcome = hard_stop(_attempt, budget)
