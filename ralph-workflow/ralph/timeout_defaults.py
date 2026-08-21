@@ -324,6 +324,25 @@ NO_OUTPUT_AT_START_SECONDS: float = 15.0
 #: channel evidence but never meaningful output.
 BROKEN_AGENT_OUTPUT_GRACE_SECONDS: float = 12.0
 
+#: How long an EXITED process keeps the benefit of the doubt before
+#: "it produced nothing" is treated as evidence rather than as a race.
+#:
+#: The broken-agent timer's fast path reads two facts sampled at one
+#: instant: the process is dead, and no meaningful output has been
+#: RECORDED. Those are not the same instant for the output -- a line the
+#: agent wrote is recorded only once the reader thread has been
+#: scheduled, pushed it onto the queue and had it classified. On a
+#: loaded host a healthy agent that writes one line and exits promptly
+#: loses that race, and the run fails over with "no meaningful LLM
+#: output; check credentials" against an agent that did its job.
+#:
+#: Small on purpose: it delays failover for a genuinely broken agent by
+#: this much and no more, and it is bounded well below
+#: ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS``. It matches the reader's own
+#: ``drain_window_seconds`` default, which exists to answer the same
+#: question at the other end of the loop.
+BROKEN_AGENT_EXIT_SETTLE_SECONDS: float = 0.5
+
 #: Default per-(fire_reason, deferred_kind) log throttle for ``_gate_fire``.
 #: The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949`` while a
 #: fire was deferred (SILENT_SUBAGENT or generic non-STUCK kind); that per-tick

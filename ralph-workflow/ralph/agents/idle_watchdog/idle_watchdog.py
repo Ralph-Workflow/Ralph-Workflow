@@ -291,6 +291,9 @@ class IdleWatchdog:
     _observed_output_bytes: int = field(default=0, init=False)
     _captured_session_id: str | None = field(default=None, init=False)
     _process_alive: bool = field(default=True, init=False)
+    #: When the process was FIRST observed dead, so a caller can tell a
+    #: settled exit from one sampled the instant it happened.
+    _process_exit_observed_at: float | None = field(default=None, init=False)
     _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
@@ -519,6 +522,7 @@ class IdleWatchdog:
         self._observed_output_bytes = 0
         self._captured_session_id = None
         self._process_alive = True
+        self._process_exit_observed_at = None
         self._waiting_on_child_started_at = None
         self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
@@ -803,6 +807,18 @@ class IdleWatchdog:
         return self._clock.monotonic() - self._invocation_started_at
 
     @property
+    def seconds_since_process_exit(self) -> float | None:
+        """Seconds since the process was first observed dead, or ``None``.
+
+        ``None`` means it has not been observed dead at all -- distinct
+        from ``0.0``, which means it was observed dead just now and its
+        remaining output may still be in flight.
+        """
+        if self._process_exit_observed_at is None:
+            return None
+        return self._clock.monotonic() - self._process_exit_observed_at
+
+    @property
     def no_output_at_start_seconds(self) -> float | None:
         """Configured startup grace for the NO_OUTPUT_AT_START watchdog reason.
 
@@ -826,8 +842,20 @@ class IdleWatchdog:
         )
 
     def record_process_liveness(self, is_alive: bool) -> None:
-        """Record the current liveness of the agent process for the next snapshot."""
+        """Record the current liveness of the agent process for the next snapshot.
+
+        The FIRST observation of a dead process is stamped, so a caller
+        can distinguish "exited a moment ago" from "exited and has since
+        stayed silent". An agent's last line is recorded only once the
+        reader thread has been scheduled, so the two facts a
+        just-exited-with-no-output verdict rests on are not observable at
+        the same instant.
+        """
         self._process_alive = is_alive
+        if is_alive:
+            self._process_exit_observed_at = None
+        elif self._process_exit_observed_at is None:
+            self._process_exit_observed_at = self._clock.monotonic()
 
     def record_session_id_capture(self, session_id: str) -> None:
         """Record the transport session id that proves a session was established."""

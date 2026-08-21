@@ -7,6 +7,10 @@ import pytest
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
 from ralph.agents.invoke import BrokenAgentExitError, check_broken_agent_timer
 from ralph.agents.timeout_clock import FakeClock
+from ralph.timeout_defaults import (
+    BROKEN_AGENT_EXIT_SETTLE_SECONDS,
+    BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+)
 
 
 class _ManagedHandle:
@@ -31,17 +35,29 @@ def _watchdog(clock: FakeClock) -> IdleWatchdog:
 
 
 def test_quick_clean_exit_without_evidence_falls_over_before_grace_window() -> None:
-    """S-6: an exited process with no output or session proof fails on the next poll."""
+    """S-6: an exited process with no output or session proof fails over fast.
+
+    "On the next poll" was too fast to be true. The exit and the absence
+    of output are read at one instant, and a line the agent wrote is
+    recorded only once the reader thread has been scheduled -- so the
+    next poll after the exit condemned agents whose output was still in
+    flight. The verdict now waits one settle window, which is still an
+    order of magnitude inside the grace window this test is named for.
+    """
     clock = FakeClock(start=0.0)
     handle = _ManagedHandle(returncode=0)
     watchdog = _watchdog(clock)
     clock.advance(2.0)
 
+    check_broken_agent_timer(handle, watchdog, "opencode")
+    clock.advance(BROKEN_AGENT_EXIT_SETTLE_SECONDS)
+
     with pytest.raises(BrokenAgentExitError, match="no meaningful LLM output") as excinfo:
         check_broken_agent_timer(handle, watchdog, "opencode")
 
     assert excinfo.value.reason == "no_output"
-    assert excinfo.value.elapsed_seconds == 2.0
+    assert excinfo.value.elapsed_seconds == 2.0 + BROKEN_AGENT_EXIT_SETTLE_SECONDS
+    assert excinfo.value.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
 
 def test_live_silent_process_keeps_startup_grace_window() -> None:

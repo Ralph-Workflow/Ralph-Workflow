@@ -85,7 +85,10 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.teardown import teardown_subtree
-from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+from ralph.timeout_defaults import (
+    BROKEN_AGENT_EXIT_SETTLE_SECONDS,
+    BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+)
 
 from ._monitor_factory import _make_process_monitor
 
@@ -136,6 +139,25 @@ def _effective_broken_agent_grace_seconds(watchdog: IdleWatchdog) -> float:
     return max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, configured - 3.0)
 
 
+def _exit_evidence_has_settled(watchdog: IdleWatchdog) -> bool:
+    """True once an exited process's remaining output must have arrived.
+
+    "Dead" and "produced nothing" are read at one instant, but they are
+    not true at the same instant: the process is dead as soon as
+    ``poll()`` says so, while its last line is recorded only after the
+    reader thread has been scheduled and the line classified. Reading
+    both at once let a loaded host fail a healthy agent that wrote its
+    output and exited promptly -- the shard run diagnosed "no meaningful
+    LLM output; check credentials" against ``echo``.
+
+    The reader has an idle poll of its own and re-checks the queue
+    before returning here, so this window costs a genuinely broken agent
+    ``BROKEN_AGENT_EXIT_SETTLE_SECONDS`` of failover and nothing else.
+    """
+    settled_for = watchdog.seconds_since_process_exit
+    return settled_for is not None and settled_for >= BROKEN_AGENT_EXIT_SETTLE_SECONDS
+
+
 def check_broken_agent_timer(
     handle: ManagedProcess | ManagedPtyProcess,
     watchdog: IdleWatchdog,
@@ -156,6 +178,7 @@ def check_broken_agent_timer(
     if (
         elapsed_seconds > 0.0
         and not evidence.process_alive
+        and _exit_evidence_has_settled(watchdog)
         and not evidence.has_meaningful_output
         and not evidence.has_session_id_captured
         and watchdog.observed_output_is_structurally_small()
