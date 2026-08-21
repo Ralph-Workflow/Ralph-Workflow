@@ -68,6 +68,13 @@ def _default_sync_process_factory(
 #:
 #: Sized to admit those frames while staying well under the raw log's own
 #: 50 MB ceiling.
+#:
+#: Memory: this is a high-water mark, not an allocation -- the buffer
+#: grows only with data actually queued. ``asyncio`` pauses the transport
+#: at twice the limit, so the worst case is 64 MiB per stream, per
+#: concurrently-reading unit, and only while a single frame that large is
+#: mid-flight. Lower it if fan-out width times that ceiling matters more
+#: than admitting the largest frames measured.
 AGENT_STREAM_BUFFER_BYTES: Final = 32 * 1024 * 1024
 
 

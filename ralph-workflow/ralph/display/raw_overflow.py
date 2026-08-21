@@ -73,6 +73,12 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 #: ``drop_unit`` / ``stop()`` reached interpreter finalization with
 #: the file handle still open, triggering a ``ResourceWarning`` on
 #: every affected test.
+_REGISTRY_LOCK = threading.Lock()
+_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
+    weakref.WeakValueDictionary()
+)  # bounded-accumulator-ok: weak-keyed by definition; entries auto-evict when no strong references remain
+
+
 #: Bytes already written to each raw-log path in THIS process, surviving
 #: the writer instance that wrote them.
 #:
@@ -126,12 +132,6 @@ def reset_raw_overflow_path_state() -> None:
     with _PATH_STATE_LOCK:
         _PATH_STATE.clear()
         _CAP_WARNED.clear()
-
-
-_REGISTRY_LOCK = threading.Lock()
-_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
-    weakref.WeakValueDictionary()
-)  # bounded-accumulator-ok: weak-keyed by definition; entries auto-evict when no strong references remain
 
 
 #: Canonical harness-authored input lines that can appear verbatim in a
@@ -271,6 +271,12 @@ def get_or_create_raw_overflow_log(
     ``append()`` from one caller cannot truncate another caller's
     already-written bytes (S-8 / C4 / DoD 15). Returns the existing
     instance on a repeat call -- not a fresh one.
+
+    Because a repeat call returns the existing instance, ``max_bytes``,
+    ``flush_interval_seconds`` and ``now`` take effect only on the call
+    that CREATES the writer; a later caller passing different values
+    (a test injecting a fake clock, say) silently gets the first
+    caller's.
     """
     key_path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
     key = str(key_path.resolve(strict=False))
@@ -297,23 +303,27 @@ def _forget_raw_overflow_log(key_path: str) -> None:
         _REGISTRY.pop(key_path, None)
 
 
-def _finalize_close_raw_overflow_log(
-    weak_self: weakref.ref[RawOverflowLog],
-) -> None:
+def _finalize_close_raw_overflow_log(handle_box: list[BinaryIO | None]) -> None:
     """Module-level ``weakref.finalize`` callback (DA-001).
 
     Closes the buffered file handle when the owning ``RawOverflowLog``
-    is garbage-collected. Receives a weak reference to ``self`` rather
-    than capturing ``self`` via closure (which would create a strong
-    reference cycle and defeat ``weakref.finalize``).
+    is garbage-collected.
+
+    Receives the one-element list the instance keeps its handle in --
+    NOT a weak reference to the instance. ``weakref.finalize`` runs
+    AFTER the referent is cleared, so a weakref argument always resolves
+    to ``None`` and the callback did nothing at all: the handle stayed
+    open until CPython's buffered-writer destructor got to it, and the
+    ``ResourceWarning`` this hook exists to prevent came back. The box is
+    shared with the instance rather than closed over it, so the callback
+    holds no strong reference to the owner.
     """
-    instance = weak_self()
-    if instance is None:
+    handle = handle_box[0]
+    if handle is None:
         return
-    with contextlib.suppress(Exception):
-        instance.close()
-    with contextlib.suppress(Exception):
-        instance.disable()
+    handle_box[0] = None
+    with contextlib.suppress(OSError, ValueError):
+        handle.close()
 
 
 def close_all_raw_overflow_logs() -> None:
@@ -342,10 +352,8 @@ def close_all_raw_overflow_logs() -> None:
 #: display/run ended without an explicit ``close()`` /
 #: ``drop_unit`` / ``stop()`` still gets its buffered handle closed
 #: at interpreter shutdown, instead of triggering a ``ResourceWarning``
-#: at finalization time (DA-001). Wrapped in ``contextlib.suppress``
-#: so re-imports in test harnesses do not re-register the same hook.
-with contextlib.suppress(ValueError):
-    atexit.register(close_all_raw_overflow_logs)
+#: at finalization time (DA-001).
+atexit.register(close_all_raw_overflow_logs)
 
 
 def detect_raw_log_breaks(
@@ -370,7 +378,8 @@ def detect_raw_log_breaks(
       (see :data:`CONDENSED_LOG_SUFFIX`), so a break here means the
       agent's own output is damaged.
 
-    For interactive PTY transports (``claude_interactive``, ``nanocoder``)
+    For interactive PTY transports (``claude_interactive``, ``nanocoder``,
+    ``agy``)
     the raw capture is expected human-visible output rather than JSONL,
     so only ``NUL_BYTES`` and ``READ_ERROR`` breaks are reported. JSONL
     streams (headless Claude, AGY print mode, Codex, etc.) keep strict
@@ -418,6 +427,17 @@ def detect_raw_log_breaks(
     return breaks + _detect_non_jsonl_breaks(payload)
 
 
+#: Most breaks any one detection reports.
+#:
+#: Every caller uses ``breaks[0]`` -- the report names the first break
+#: and its offset. Collecting the rest is pure cost, and on a badly
+#: corrupted capture it is enormous: measured, a 10 MB file of short
+#: non-JSON lines produced 5.2 million break objects in 119 s and 1.5 GB
+#: of memory, at the 50 MB cap roughly ten minutes and 7 GB -- inside
+#: the phase-close verdict, in exactly the case the detector exists for.
+MAX_REPORTED_BREAKS: Final = 32
+
+
 def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
     """Return one ``NON_JSONL`` break per unparseable line.
 
@@ -444,12 +464,27 @@ def _detect_non_jsonl_breaks(payload: bytes) -> list[RawLogBreak]:
         if chunk_index < len(nul_chunks) - 1:
             offset += 1  # the NUL byte itself
         for raw_line in chunk.splitlines(keepends=True):
+            if len(breaks) >= MAX_REPORTED_BREAKS:
+                return breaks
             line_offset = chunk_offset
             chunk_offset += len(raw_line)
             line_bytes = raw_line.rstrip(b"\n").rstrip(b"\r")
-            line_text = normalize_vt_text(
-                line_bytes.decode("utf-8", errors="replace")
-            ).strip()
+            decoded = line_bytes.decode("utf-8", errors="replace").strip()
+            if not decoded:
+                continue
+            # Cheapest discriminator first. A healthy capture is almost
+            # entirely well-formed frames, and VT normalisation plus the
+            # canonical-session regex are far dearer than a parse that
+            # succeeds -- running them on every line cost seconds per
+            # call on a multi-megabyte healthy capture.
+            try:
+                parsed_fast: object = json.loads(decoded)
+            except json.JSONDecodeError:
+                pass
+            else:
+                if isinstance(parsed_fast, dict):
+                    continue
+            line_text = normalize_vt_text(decoded).strip()
             if not line_text:
                 continue
             if is_harness_input_echo(line_text):
@@ -541,7 +576,10 @@ class RawOverflowLog:
         self._file_bytes = already_written
         self._flush_interval = max(flush_interval_seconds, 0.0)
         self._now = now
-        self._fh: BinaryIO | None = None
+        # One-element box shared with the ``weakref.finalize`` callback,
+        # which cannot reach ``self`` (see
+        # :func:`_finalize_close_raw_overflow_log`).
+        self._handle_box: list[BinaryIO | None] = [None]
         self._last_flush = now()
         # DA-001: register a finalizer that closes the buffered file
         # handle when this instance is garbage-collected. The callback
@@ -556,8 +594,16 @@ class RawOverflowLog:
         weakref.finalize(
             self,
             _finalize_close_raw_overflow_log,
-            weakref.ref(self),
+            self._handle_box,
         )
+
+    @property
+    def _fh(self) -> BinaryIO | None:
+        return self._handle_box[0]
+
+    @_fh.setter
+    def _fh(self, handle: BinaryIO | None) -> None:
+        self._handle_box[0] = handle
 
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""

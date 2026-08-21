@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import traceback
 from collections import deque
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
@@ -679,7 +680,17 @@ class ProcessLineReader:
                     if watchdog is not None:
                         watchdog.record_session_id_capture(session_id)
         except Exception:
-            pass
+            # Reported, not swallowed. The pipe decodes strict UTF-8, so
+            # a single undecodable byte ends both the capture and the
+            # parse stream here -- silently, which is the same failure
+            # class as an oversized frame killing the async drain loop.
+            # An operator seeing a truncated transcript needs to know it
+            # was truncated by the reader, not by the agent.
+            logger.warning(
+                "output reader for {cmd} stopped early: {err}",
+                cmd=_agent_command_name(self._config),
+                err=traceback.format_exc(limit=1).strip(),
+            )
         finally:
             with self._lines_lock:
                 self._reader_done[0] = True
@@ -867,6 +878,22 @@ class ProcessLineReader:
         wrapper.__cause__ = typed_exc
         return pending, wrapper
 
+    def _capture_pending(self, pending_lines: list[str]) -> list[str]:
+        """Write drained queue lines to the raw capture before yielding them.
+
+        A watchdog fire drains the pending queue straight to the parser.
+        Those lines are agent output like any other, so skipping the
+        capture left the "verbatim" transcript missing exactly the lines
+        written just before a stall -- and losing whole lines leaves the
+        file parseable, so the corruption detector reports nothing and
+        the loss is silent. The transport-failure scan reads that same
+        tail for the frame naming a cause.
+        """
+        for line in pending_lines:
+            with contextlib.suppress(Exception):
+                self._raw_overflow.append(line)
+        return pending_lines
+
     def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
         """Classify a line and route it to the matching watchdog activity sink.
 
@@ -1034,7 +1061,7 @@ class ProcessLineReader:
                     )
                     if result is not None:
                         pending_lines, exc = result
-                        yield from pending_lines
+                        yield from self._capture_pending(pending_lines)
                         raise exc
                     continue
 
@@ -1042,7 +1069,7 @@ class ProcessLineReader:
                     result = self._finish_reader_done(watchdog)
                     if result is not None:
                         pending_lines, exc = result
-                        yield from pending_lines
+                        yield from self._capture_pending(pending_lines)
                         raise exc
                     break
 
@@ -1054,7 +1081,7 @@ class ProcessLineReader:
                 )
                 if result is not None:
                     pending_lines, exc = result
-                    yield from pending_lines
+                    yield from self._capture_pending(pending_lines)
                     raise exc
 
                 check_broken_agent_timer(

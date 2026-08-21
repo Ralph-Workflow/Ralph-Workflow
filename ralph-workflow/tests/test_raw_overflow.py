@@ -645,3 +645,43 @@ def test_cap_warning_is_emitted_once_per_file(tmp_path: Path) -> None:
 
     capped = [m for m in messages if "reached its" in m]
     assert len(capped) == 1, capped
+
+
+def test_gc_actually_closes_the_buffered_handle(tmp_path: Path) -> None:
+    """The finalizer must close the handle, not merely be registered.
+
+    It used to receive a weak reference to its owner. ``weakref.finalize``
+    runs AFTER the referent is cleared, so that reference always resolved
+    to ``None`` and the callback did nothing -- the handle stayed open
+    until CPython's buffered-writer destructor reached it, and the
+    ``ResourceWarning`` the hook exists to prevent came back.
+
+    Asserting on the handle itself is the point: the previous tests
+    checked only that GC had run and that flushed bytes were on disk,
+    both of which stay true with the hook completely broken.
+    """
+    import gc
+
+    log = RawOverflowLog(tmp_path, "unit-finalize")
+    log.append("payload")
+    handle_box = log._handle_box
+    assert handle_box[0] is not None, "precondition: the handle is open"
+    assert not handle_box[0].closed
+
+    del log
+    gc.collect()
+
+    assert handle_box[0] is None, "the finalizer left the handle open"
+
+
+def test_dropping_a_log_emits_no_resource_warning(tmp_path: Path) -> None:
+    """The DA-001 contract, stated as the warning it exists to prevent."""
+    import gc
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ResourceWarning)
+        log = RawOverflowLog(tmp_path, "unit-warn")
+        log.append("payload")
+        del log
+        gc.collect()

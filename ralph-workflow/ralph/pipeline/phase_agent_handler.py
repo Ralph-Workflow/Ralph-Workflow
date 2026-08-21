@@ -518,8 +518,12 @@ def _render_success_artifact(
         # (<rung>) / FAILED (no artifact) text alongside the existing
         # step/risk-count string, never replacing it. Best-effort -- a
         # grading failure must not blank out the artifact summary that
-        # already rendered successfully.
-        with suppress(Exception):
+        # already rendered successfully -- but the failure is LOGGED. A
+        # bare suppression here dropped the whole PASS/DEGRADED/FAILED
+        # label and any corruption detail with no trace, leaving an
+        # operator (and an investigator) a bare artifact summary and no
+        # way to learn that grading had raised at all.
+        try:
             label, weakest, detail = _compute_graded_phase_verdict(
                 workspace_root,
                 ra,
@@ -527,8 +531,12 @@ def _render_success_artifact(
                 agent_config,
                 shared_capture=shared_capture,
             )
-            return f"{produced} — {_format_graded_phase_verdict(label, weakest, detail)}"
-        return produced
+        except Exception:
+            logger.debug(
+                "graded phase verdict failed for {artifact}", artifact=artifact_type, exc_info=True
+            )
+            return produced
+        return f"{produced} — {_format_graded_phase_verdict(label, weakest, detail)}"
 
     if artifact_type == "plan":
         _emit_via_display(display_context, "emit_plan_artifact", workspace_root)

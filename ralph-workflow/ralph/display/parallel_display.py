@@ -5771,7 +5771,12 @@ class ParallelDisplay:
             with contextlib.suppress(Exception):
                 overflow.flush()
             with contextlib.suppress(Exception):
-                overflow.close()
+                # ``disable``, not ``close``: forgetting the registry
+                # entry lets a later acquisition build a SECOND writer
+                # for this path, and ``close`` alone leaves this one able
+                # to reopen it. Two buffered writers appending to one
+                # file tear each other's lines and race the byte total.
+                overflow.disable()
             with contextlib.suppress(Exception):
                 from ralph.display.raw_overflow import _forget_raw_overflow_log
 
