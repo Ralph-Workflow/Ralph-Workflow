@@ -499,3 +499,41 @@ def test_a_nul_hole_is_skipped_in_windows_not_byte_by_byte() -> None:
     assert [chunk for _, chunk in chunks] == [b'{"ok":1}\n', b'{"after":1}\n']
     # One search per chunk boundary -- not one per NUL byte.
     assert payload.counts.get(b"\x00", 0) <= 4, payload.counts
+
+
+def test_the_normaliser_skips_its_walk_when_there_is_nothing_to_rewrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fast path is behaviour-neutral, so only structure can pin it.
+
+    ``normalize_vt_text``'s per-character walk reacts to ``\r``, ``\n``
+    and ``\b`` alone; with none of them present it appends every
+    character and rejoins, which is the identity. Detecting that and
+    returning early is what keeps grading a multi-megabyte line off a
+    Python loop -- 7.5 s and 900 MB of transient memory before, inside
+    phase close, from a single non-ASCII byte.
+
+    Removing the early return changes no output at all, so no assertion
+    on a RESULT can catch it, and the repo forbids asserting on a clock.
+    Asserting that the guard is consulted is what is left.
+    """
+    import ralph.display.vt_normalizer as vt
+
+    consulted: list[int] = []
+    real = vt._REWRITE_CONTROLS
+
+    class _CountingPredicate:
+        def search(self, text: str) -> object:
+            consulted.append(len(text))
+            return real.search(text)
+
+    monkeypatch.setattr(vt, "_REWRITE_CONTROLS", _CountingPredicate())
+
+    assert vt.normalize_vt_text("\x1b[32m" + "z" * 4096 + "\x1b[0m") == "z" * 4096
+
+    assert consulted == [4096], "the early-return guard was not consulted"
+
+    # And the walk still runs where it must.
+    assert vt.normalize_vt_text("abc\rdef") == "def"
+    assert vt.normalize_vt_text("ab\bc") == "ac"
+    assert vt.normalize_vt_text("a\nb") == "a\nb"

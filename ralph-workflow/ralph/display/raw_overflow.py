@@ -30,7 +30,7 @@ from ralph.display.raw_log_breaks import (
     iter_capture_lines,
     nul_separated_chunks,
 )
-from ralph.display.record_writer import safe_id_for
+from ralph.display.record_writer import safe_id_for, safe_id_is_lossless
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -172,10 +172,19 @@ def _disambiguated(unit_id: str, model: str | None) -> str:
     """Append a digest when the filename sanitiser would fold this identity.
 
     ``safe_id_for`` builds the filename from ``unit_id`` and ``model``,
-    keeping only ``[0-9A-Za-z._-]`` and collapsing every unsafe run to a
-    single ``_``. So ``codex/a@b``, ``codex/a_b`` and ``codex/a:b`` all
-    became ``codex_a_b.log`` -- three agents writing one capture, each
-    grading the others' bytes and quoting their transport failures.
+    folding everything that is not alphanumeric, ``.`` or ``-`` into a
+    single ``_`` and stripping ``_`` from the edges. So ``codex/a@b``,
+    ``codex/a_b`` and ``codex/a:b`` all became ``codex_a_b.log`` --
+    three agents writing one capture, each grading the others' bytes and
+    quoting their transport failures.
+
+    The test for "would this fold" comes FROM the sanitiser
+    (:func:`safe_id_is_lossless`). Restating it as a second character
+    class here is what let the defect survive a fifth time: that class
+    counted ``_`` as safe, while the sanitiser collapses and strips it,
+    so ``codex/gpt5`` and ``codex/_gpt5`` were judged distinct and
+    landed in one file. It also called every non-ASCII letter unsafe and
+    appended a digest to identities that never needed one.
 
     Applied at EVERY branch, not just the last one. Adding it only where
     the model-flag fallback runs left the headless-Claude and ``ccs``
@@ -186,10 +195,9 @@ def _disambiguated(unit_id: str, model: str | None) -> str:
     an identity made of safe characters keeps the filename an operator
     already knows.
     """
-    raw = f"{unit_id}\x00{model or ''}"
-    if _UNSAFE_ID_RUN.search(raw.replace("\x00", "")) is None:
+    if safe_id_is_lossless(unit_id) and (model is None or safe_id_is_lossless(model)):
         return unit_id
-    return f"{unit_id}-{_digest_of(raw)}"
+    return f"{unit_id}-{_digest_of(f'{unit_id}\x00{model or ""}')}"
 
 
 def _digest_of(raw: str) -> str:
@@ -526,6 +534,20 @@ class RawOverflowLog:
             self._close_locked()
             self._disabled = True
 
+    def append_bytes(self, raw: bytes, *, counts_as_liveness: bool = True) -> bool:
+        """Write *raw* to the overflow log without decoding it.
+
+        The byte-faithful entry point. ``append`` takes ``str``, so a
+        caller holding the agent's actual bytes had to decode them
+        first, and every reader did that with ``errors="replace"`` --
+        which rewrites a torn multi-byte sequence to U+FFFD before the
+        capture ever sees it. A torn sequence is a byte-level
+        fingerprint of the interleaved-write hazard this capture exists
+        to make visible, and erasing it at write time left the detector
+        grading a file that had already been cleaned up.
+        """
+        return self._write(raw.rstrip(b"\n") + b"\n", counts_as_liveness=counts_as_liveness)
+
     def append(self, line: str, *, counts_as_liveness: bool = True) -> bool:
         """Write *line* to the overflow log.
 
@@ -547,9 +569,17 @@ class RawOverflowLog:
         with self._lock:
             if self._disabled:
                 return False
+        return self._write(
+            (line.rstrip("\n") + "\n").encode("utf-8"),
+            counts_as_liveness=counts_as_liveness,
+        )
+
+    def _write(self, encoded: bytes, *, counts_as_liveness: bool) -> bool:
+        """Append already-encoded bytes. Shared by both entry points."""
+        with self._lock:
+            if self._disabled:
+                return False
             try:
-                text = line.rstrip("\n") + "\n"
-                encoded = text.encode("utf-8")
                 if self._file_bytes + len(encoded) > self._max_bytes:
                     self._close_locked()
                     self._disabled = True

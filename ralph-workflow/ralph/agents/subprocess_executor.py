@@ -267,7 +267,15 @@ class SubprocessAgentExecutor:
                     # the file back and graded the run
                     # ``raw transcript corrupted``. The display below
                     # still receives the sanitized text.
-                    raw_log.append(stripped_bytes.decode("utf-8", errors="replace"))
+                    # The agent's BYTES, undecoded. Decoding here with
+                    # ``errors="replace"`` rewrote a torn multi-byte
+                    # sequence to U+FFFD before the capture saw it --
+                    # and a torn sequence is a byte-level fingerprint of
+                    # the interleaved-write hazard the capture exists to
+                    # expose, so the detector was grading a file that
+                    # had already been tidied up. The display below
+                    # still receives decoded, sanitized text.
+                    raw_log.append_bytes(stripped_bytes)
                     raw_ref = raw_log.relative_reference(
                         self._raw_overflow_root or self._cwd or Path.cwd()
                     )

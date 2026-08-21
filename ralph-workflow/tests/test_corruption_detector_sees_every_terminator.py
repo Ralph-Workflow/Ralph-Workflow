@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 
 from ralph.config.enums import AgentTransport
-from ralph.display.raw_overflow import detect_raw_log_breaks
+from ralph.display.raw_log_breaks import detect_raw_log_breaks
 
 # The exact payload shape from the field incident: a codex frame, a bare
 # carriage return, then the next frame. Nothing here contains a newline
@@ -124,6 +124,14 @@ def test_a_line_that_merely_mentions_a_marker_is_still_graded(tmp_path: Path) ->
             b'{"type":"item","text":"Task declared complete: session_id=abc, summary='
         ),
         "binary junk then a marker": b"\x01\x02junk Task declared complete: sessionId=1",
+        # The mirror image: anchoring only the FRONT excused a line that
+        # opened with the marker however it ended, so a whole frame
+        # concatenated onto one -- the classic lost-newline interleave --
+        # was graded as expected content.
+        "a frame concatenated after": (
+            b'Task declared complete: session_id=1{"type":"assistant","text":"lost frame"}'
+        ),
+        "the marker then junk": b"Task declared complete: session_id=1 " + b"x" * 200,
     }
 
     for label, line in smuggled.items():
@@ -132,11 +140,13 @@ def test_a_line_that_merely_mentions_a_marker_is_still_graded(tmp_path: Path) ->
 
 def test_a_genuine_canonical_line_is_still_expected_content(tmp_path: Path) -> None:
     """Not vacuous: the lines the PTY layer really emits stay clean."""
+    # The completion line as ``mcp/tools/coordination.py`` actually
+    # emits it: marker, id, free-text summary, terminal timestamp.
     canonical = (
         b"Session ID: 0f0f-abcd",
         b"Claude session ready. Session ID: 0f0f-abcd",
         b"Resume this session with --resume 0f0f-abcd",
-        b"Task declared complete: session_id=abc123",
+        b"Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999",
     )
 
     for line in canonical:
@@ -153,7 +163,11 @@ def test_a_canonical_line_grades_the_same_however_long_it_is(tmp_path: Path) -> 
     clean when short and corrupt when long.
     """
     for pad in (40, 71_680):
-        line = b"Task declared complete: session_id=abc123 " + b"x" * pad
+        line = (
+            b"Task declared complete: session_id=abc123, summary='"
+            + b"x" * pad
+            + b"', timestamp=1699999999"
+        )
 
         assert _breaks(tmp_path, line + b"\n") == [], pad
 
@@ -177,3 +191,41 @@ def test_an_oversized_number_does_not_take_the_grader_down(tmp_path: Path) -> No
 
     # Just under the limit is ordinary, well-formed JSONL.
     assert _breaks(tmp_path, b'{"n":' + b"9" * 4300 + b"}\n") == []
+
+
+def test_a_long_json_scalar_is_reported_for_what_it_is(tmp_path: Path) -> None:
+    """The detail text must not accuse a valid JSON value of being unparseable.
+
+    A line that parses but is not an OBJECT is a break -- the capture is
+    JSONL -- but calling a 70 KB JSON string "not parseable JSON" sends
+    an operator looking for damage that is not there. The cost-skip path
+    reported every long line that way, whether it had parsed or not.
+    """
+    log = tmp_path / "scalar.log"
+    log.write_bytes(b'"' + b"x" * 70_000 + b'"\n')
+
+    breaks = detect_raw_log_breaks(log, transport=AgentTransport.CODEX)
+
+    assert [b.kind for b in breaks] == ["NON_JSONL"]
+    assert "parses as JSON but is not a JSON object" in breaks[0].detail
+    assert "type=str" in breaks[0].detail
+
+
+def test_deep_nesting_does_not_take_the_grader_down(tmp_path: Path) -> None:
+    """``RecursionError`` is not a ``ValueError``, and must not escape either.
+
+    ``json.loads`` exhausts its stack on a long run of ``[`` and raises
+    ``RecursionError``, which the widened ``ValueError`` clause does not
+    catch. A capture full of ``[`` is exactly what a truncated or
+    interleaved write looks like, so the input that breaks the parser is
+    the input the grader exists to judge -- and both callers document
+    that it never raises, then swallow at DEBUG, so the phase's whole
+    verdict line vanished silently.
+    """
+    log = tmp_path / "deep.log"
+    log.write_bytes(b'{"ok":1}\n' + b"[" * 200_000 + b"\n")
+
+    breaks = detect_raw_log_breaks(log, transport=AgentTransport.CODEX)
+
+    assert [b.kind for b in breaks] == ["NON_JSONL"]
+    assert breaks[0].offset == 9

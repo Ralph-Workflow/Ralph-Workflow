@@ -96,6 +96,29 @@ class _SafeId:
         return safe or "unknown"
 
 
+def safe_id_is_lossless(raw: str) -> bool:
+    """True when ``raw`` survives :func:`safe_id_for` unchanged.
+
+    The INVERSE of the sanitiser above, and deliberately derived from
+    its own rule rather than restated. A caller that needs to know
+    whether two identities can collide in a filename was using a
+    separately-worded character class, and the two disagreed: it counted
+    ``_`` as safe, while the sanitiser treats ``_`` as the fold target,
+    collapses runs of it and strips it from the edges. So ``codex/gpt5``
+    and ``codex/_gpt5`` were judged distinct and both wrote
+    ``codex_gpt5.log`` -- two agents on one capture, each grading the
+    other's bytes.
+
+    Anything that is not alphanumeric, ``.`` or ``-`` is lossy, and so
+    is surrounding whitespace or an empty string (which becomes
+    ``unknown``). Note that alphanumeric is Unicode-aware, exactly as
+    the sanitiser is: ``модель`` survives and needs no disambiguation.
+    """
+    if not raw or raw != raw.strip():
+        return False
+    return all(ch.isalnum() or ch in ".-" for ch in raw)
+
+
 def safe_id_for(agent: str, model: str | None = None) -> str:
     """Return the safe filename component for an ``(agent, model)`` pair.
 
@@ -460,6 +483,7 @@ __all__ = [
     "RenderedRecordWriter",
     "rendered_record_path",
     "safe_id_for",
+    "safe_id_is_lossless",
     "utc_now_iso",
 ]
 

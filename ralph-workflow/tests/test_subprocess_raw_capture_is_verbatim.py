@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.raw_overflow import RawOverflowLog, detect_raw_log_breaks
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -256,3 +257,50 @@ async def test_every_dropped_oversized_frame_leaves_a_marker() -> None:
         # A JSON OBJECT, so the detector grades Ralph's own note clean
         # rather than reporting it as the agent's corruption.
         assert all(m["type"] == "ralph.capture.dropped_frame" for m in parsed), label
+
+
+@pytest.mark.asyncio
+async def test_the_capture_keeps_bytes_that_are_not_valid_utf8(tmp_path: Path) -> None:
+    """"Verbatim" has to mean the agent's BYTES, not a cleaned-up decoding.
+
+    The capture wrote ``stripped_bytes.decode("utf-8", errors="replace")``,
+    which rewrites a torn multi-byte sequence to U+FFFD before the file
+    ever sees it. A torn sequence is a byte-level fingerprint of the
+    interleaved-write hazard this capture exists to expose, so the
+    detector was grading a transcript that had already been tidied up --
+    while the module's own tests claimed byte-faithfulness.
+
+    Note what this does NOT claim: the line below still grades clean,
+    because after replacement it is a well-formed JSON object. Making
+    invalid UTF-8 a break in its own right is a separate decision. The
+    point here is that the evidence survives on disk to be looked at.
+    """
+    import sys
+
+    from ralph.display.activity_router import ActivityRouter
+    from ralph.display.raw_overflow import close_all_raw_overflow_logs
+    from ralph.pipeline.work_units import WorkUnit
+
+    torn = rb'{"bin":"\xff\xfe"}'
+    executor = SubprocessAgentExecutor(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.buffer.write(b'{\"bin\":\"\\xff\\xfe\"}\\n')",
+        ],
+        activity_router=ActivityRouter(),
+        raw_overflow_root=tmp_path,
+    )
+
+    await executor.run(
+        WorkUnit(unit_id="byte-faithful", description="a unit"),
+        on_output=lambda _line: None,
+        on_status=lambda *_args, **_kwargs: None,
+    )
+    close_all_raw_overflow_logs()
+
+    written = (tmp_path / ".agent" / "raw" / "byte-faithful.log").read_bytes()
+
+    assert b"\xff\xfe" in written, written
+    assert "�".encode() not in written, "the torn bytes were replaced before capture"
+    assert written.strip() == torn.replace(rb"\xff\xfe", b"\xff\xfe")

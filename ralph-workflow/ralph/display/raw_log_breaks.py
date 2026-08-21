@@ -358,17 +358,26 @@ def _parse_json_line(raw: bytes | str) -> tuple[object, bool]:
     line of a healthy capture. ``json.loads`` takes bytes directly, so a
     well-formed frame costs no decoded copy at all.
 
-    Catches ``ValueError``, not just ``JSONDecodeError``. CPython caps
-    integer literals at 4300 digits and raises a BARE ``ValueError``
-    past it, so a line of five thousand digits -- or any frame carrying
-    one -- propagated out of a grader two callers document as "never
-    raises", taking the corruption verdict AND the phase's own verdict
-    line with it. ``UnicodeDecodeError`` is a ``ValueError`` too, so
-    both are covered by the one clause.
+    Catches ``ValueError`` AND ``RecursionError``, not just
+    ``JSONDecodeError``. Two ways a line of bytes takes a parser down:
+    CPython caps integer literals at 4300 digits and raises a BARE
+    ``ValueError`` past it, and deep nesting (a run of ``[``) exhausts
+    the parser's stack and raises ``RecursionError``, which is not a
+    ``ValueError`` at all. Either one propagated out of a grader two
+    callers document as "never raises", taking the corruption verdict
+    AND the phase's own verdict line with it -- silently, because both
+    call sites swallow at DEBUG.
+
+    A capture full of ``[`` is precisely what a truncated or interleaved
+    write looks like, so the input that breaks the parser is the input
+    the grader exists to judge. The recursion threshold is
+    stack-dependent (~149,000 bytes on a main thread here, but between
+    2,000 and 10,000 on a 512 KB thread), so it is not a shape that can
+    be ruled out by size.
     """
     try:
         parsed: object = json.loads(raw)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None, False
     return parsed, True
 

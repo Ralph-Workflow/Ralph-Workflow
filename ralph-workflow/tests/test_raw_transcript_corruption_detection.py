@@ -608,11 +608,22 @@ def test_ansi_wrapped_resume_line_is_not_a_break(isolated_workspace: Path) -> No
 def test_ansi_wrapped_explicit_completion_marker_is_not_a_break(
     isolated_workspace: Path,
 ) -> None:
-    """ANSI-styled completion markers are canonical metadata."""
+    """ANSI-styled completion markers are canonical metadata.
+
+    Uses the line ``mcp/tools/coordination.py`` actually emits, which
+    always closes with ``timestamp=``. The grader requires that now: a
+    line that merely OPENS with the marker was excused however it ended,
+    so a whole frame concatenated onto one -- the classic lost-newline
+    interleave -- graded as expected content. Recognising the emitted
+    shape rather than a prefix of it is what closes that, and a
+    completion line that has lost its tail is itself evidence of the
+    truncation this grader reports.
+    """
     raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
     _write_claude_raw_log(
         raw_path,
-        "\x1b[1mTask declared complete: session_id=pty-session-1, summary=done\x1b[22m",
+        "\x1b[1mTask declared complete: session_id=pty-session-1, "
+        "summary='done', timestamp=1699999999\x1b[22m",
     )
 
     assert detect_raw_log_breaks(raw_path) == []

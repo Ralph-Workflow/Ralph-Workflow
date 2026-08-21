@@ -62,6 +62,15 @@ def extract_transport_text_session_id(stripped: str) -> str | None:
     return None
 
 
+#: The WHOLE shape of an emitted completion line: the marker, a session
+#: id, a free-text summary, and a terminal timestamp. Kept beside the
+#: loose extraction patterns above so the two cannot drift.
+_WHOLE_COMPLETION_LINE_PATTERN: re.Pattern[str] = re.compile(
+    r"^Task declared complete:\s*session_?id\s*[:=]\s*[A-Za-z0-9._:-]+"
+    r".*\btimestamp\s*[:=]\s*\S+$",
+    re.IGNORECASE,
+)
+
 #: The literal openings of every canonical session/completion line.
 #:
 #: Derived from the same vocabulary as the patterns above, and used for
@@ -108,15 +117,19 @@ def is_whole_canonical_session_line(stripped: str) -> bool:
     mid-write was graded CLEAN whenever the surviving bytes happened to
     contain that sentence, which is precisely the corruption the grader
     exists to catch.
+
+    Anchored at BOTH ends. Anchoring only the front left the mirror
+    image: a line opening with the marker was excused however it ended,
+    so ``Task declared complete: session_id=1`` followed by a whole
+    concatenated frame -- the classic lost-newline interleave -- still
+    graded clean. The emitted line always closes with ``timestamp=``
+    (``mcp/tools/coordination.py``), so requiring that closes the tail
+    without constraining the free-text summary between them.
     """
     for pattern in _TRANSPORT_SESSION_TEXT_PATTERNS:
         if pattern.match(stripped) is not None:
             return True
-    if not stripped.startswith(_EXPLICIT_COMPLETION_MARKER):
-        return False
-    return any(
-        pattern.search(stripped) is not None for pattern in _COMPLETION_SESSION_ID_PATTERNS
-    )
+    return _WHOLE_COMPLETION_LINE_PATTERN.match(stripped) is not None
 
 
 def is_canonical_session_text_line(stripped: str) -> bool:
