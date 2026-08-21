@@ -55,6 +55,38 @@ class _NoSplitBytes(bytes):
         raise AssertionError(msg)
 
 
+class _SliceCountingBytes(bytes):
+    """``bytes`` that counts how it is read: by slice, by index, by search."""
+
+    slice_reads: int
+    index_reads: int
+    searches: int
+
+    def __new__(cls, payload: bytes) -> _SliceCountingBytes:
+        self = super().__new__(cls, payload)
+        self.slice_reads = 0
+        self.index_reads = 0
+        self.searches = 0
+        return self
+
+    def find(
+        self,
+        sub: ReadableBuffer | SupportsIndex,
+        start: SupportsIndex | None = None,
+        end: SupportsIndex | None = None,
+        /,
+    ) -> int:
+        self.searches += 1
+        return bytes(self).find(sub, start, end)
+
+    def __getitem__(self, key: SupportsIndex | slice, /) -> int | bytes:
+        if isinstance(key, slice):
+            self.slice_reads += 1
+        else:
+            self.index_reads += 1
+        return bytes(self)[key]
+
+
 def test_the_nul_scan_never_splits_the_whole_payload() -> None:
     """Laziness pinned by forbidding the call, not by timing it."""
     payload = _NoSplitBytes(b'{"ok":1}\n' + b"\x00" * 100_000 + b'{"after":1}\n')
@@ -492,13 +524,24 @@ def test_a_nul_hole_is_skipped_in_windows_not_byte_by_byte() -> None:
     from ralph.display.raw_log_breaks import nul_separated_chunks
 
     hole = 1 << 18
-    payload = _FindCountingBytes(b'{"ok":1}\n' + b"\x00" * hole + b'{"after":1}\n')
+    payload = _SliceCountingBytes(b'{"ok":1}\n' + b"\x00" * hole + b'{"after":1}\n')
 
     chunks = list(nul_separated_chunks(payload))
 
     assert [chunk for _, chunk in chunks] == [b'{"ok":1}\n', b'{"after":1}\n']
-    # One search per chunk boundary -- not one per NUL byte.
-    assert payload.counts.get(b"\x00", 0) <= 4, payload.counts
+    # ``_skip_nul_run`` walks the hole in 64 KiB WINDOWS, so it takes a
+    # handful of slices. A byte-by-byte loop indexes once per NUL --
+    # 262144 times for this hole. Counting ``find`` calls, as this test
+    # first did, measured nothing at all: ``_skip_nul_run`` never calls
+    # ``find``, so replacing it with a per-byte loop left the counts
+    # identical and the whole suite green.
+    assert payload.index_reads == 0, "the walk must not read single bytes"
+    assert payload.slice_reads <= 32, payload.slice_reads
+    # And it must not RE-SEARCH per NUL either: dropping the window walk
+    # for ``start = nul_at + 1`` reads no single bytes and takes few
+    # slices, so only the search count catches it. 262144 NULs, a
+    # handful of searches.
+    assert payload.searches <= 8, payload.searches
 
 
 def test_the_normaliser_skips_its_walk_when_there_is_nothing_to_rewrite(

@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.agents.registry import default_catalog
+from ralph.agents.catalog import AgentCatalog
+from ralph.agents.registry import builtin_supports, register_agent_support_to_catalog
 from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
 
 # Built by CROSSING the alias families with several models each, rather
@@ -57,8 +58,24 @@ def _agent_names() -> list[str]:
     return names
 
 
+def _seeded_catalog() -> AgentCatalog:
+    """Return a catalog of the built-in agents, owned by this module.
+
+    NOT ``default_catalog()``. That is a process-wide singleton other
+    tests replace and do not restore, so these assertions passed alone
+    and failed in a full run with "pi/anthropic/... did not resolve" --
+    a test that cannot resolve an agent proves nothing about whether two
+    agents collide. Seeding a private catalog makes the census depend on
+    the registry's real shapes and on nothing else.
+    """
+    catalog = AgentCatalog()
+    for support in builtin_supports():
+        register_agent_support_to_catalog(support.name, support, catalog)
+    return catalog
+
+
 def _capture_name(name: str) -> str:
-    support = default_catalog().get(name)
+    support = _seeded_catalog().get(name)
     config = getattr(support, "config", support)
     assert config is not None, f"{name} did not resolve"
     unit_id = raw_log_unit_id_for(config)
@@ -166,7 +183,7 @@ def test_names_that_differ_only_in_unsafe_characters_stay_apart() -> None:
     names = [f"{family}/{variant}" for family in families for variant in variants]
     by_path: dict[str, list[str]] = {}
     for name in names:
-        support = default_catalog().get(name)
+        support = _seeded_catalog().get(name)
         if getattr(support, "config", support) is None:
             continue
         by_path.setdefault(_capture_name(name), []).append(name)
@@ -208,3 +225,90 @@ def test_a_model_flag_using_equals_still_distinguishes_agents() -> None:
     # Readable, not just distinct: an operator has to find the file.
     assert "alpha" in raw_log_unit_id_for(alpha)
     assert "beta" in raw_log_unit_id_for(beta)
+
+
+def test_two_names_that_are_both_digest_free_under_the_old_rule_stay_apart() -> None:
+    """The pair the previous test structurally could not catch.
+
+    ``test_names_that_differ_only_in_unsafe_characters_stay_apart`` uses
+    ``a@b`` / ``a_b`` / ``a:b``. Under the OLD character-class rule only
+    ``a_b`` escaped the digest while the other two received one, so the
+    paths still differed and reverting the rule left that test green --
+    the headline fix of its own commit was unpinned.
+
+    ``gpt5`` and ``_gpt5`` are both digest-free under the old rule and
+    both fold to ``codex_gpt5.log``, so this pair fails the moment the
+    predicate stops being the sanitiser's true inverse.
+    """
+    assert _capture_name("codex/gpt5") != _capture_name("codex/_gpt5")
+    assert _capture_name("codex/gpt5") != _capture_name("codex/gpt5_")
+    assert _capture_name("codex/a_b") != _capture_name("codex/a__b")
+
+
+def test_an_identity_the_sanitiser_leaves_alone_gets_no_digest() -> None:
+    """No churn for names that survive sanitisation untouched.
+
+    ``_`` is legal in a filename component; the sanitiser only collapses
+    RUNS of it and strips it from the edges. Testing "every character is
+    alphanumeric, ``.`` or ``-``" therefore called ``gpt_5`` lossy and
+    renamed a capture that never needed renaming -- the same churn the
+    previous round removed for non-Latin letters, reappearing on
+    underscores because the rule was restated instead of derived.
+    """
+    from ralph.display.record_writer import safe_id_for, safe_id_is_lossless
+
+    for survives in ("gpt_5", "a_b", "minimax_M3", "модель", "gpt-5.4", "claude"):
+        assert safe_id_is_lossless(survives) is True, survives
+        assert safe_id_for(survives) == survives, survives
+
+    for folds in ("_gpt5", "gpt5_", "a__b", "a@b", "a b", ""):
+        assert safe_id_is_lossless(folds) is False, folds
+
+
+def test_the_model_flag_branch_disambiguates_its_model_too() -> None:
+    """EVERY branch means every branch, including the one that returns early.
+
+    The model-flag branch returned its own string directly and never
+    reached the disambiguation step. Its digest covers ``model_flag``
+    alone, and the path appends ``config.model`` separately -- so four
+    agents differing only in a model that folds shared one capture.
+    """
+    from pathlib import Path
+
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    def capture_for(model: str) -> str:
+        config = AgentConfig(cmd="mytool", model_flag="--provider acme turbo", model=model)
+        return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=model).name
+
+    folding_models = ("anthropic/sonnet", "anthropic:sonnet", "anthropic@sonnet", "anthropic sonnet")
+    captures = {capture_for(model) for model in folding_models}
+
+    assert len(captures) == len(folding_models), captures
+
+
+def test_a_unit_id_carrying_the_join_separator_is_disambiguated() -> None:
+    """``safe_id_for`` joins unit id and model with ``_``.
+
+    So an underscore INSIDE the unit id makes the decomposition
+    ambiguous even though every character survives sanitisation:
+    ``ccs-a_b`` with no model and ``ccs-a`` with model ``b`` both read
+    ``ccs-a_b``. Losslessness of the parts is necessary and not
+    sufficient; the join has to stay readable too.
+    """
+    from pathlib import Path
+
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    def capture_for(cmd: str, model: str | None) -> str:
+        config = AgentConfig(cmd=cmd, model=model)
+        return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=model).name
+
+    # ``ccs <alias>`` resolves to unit id ``ccs-<alias>``, so an alias
+    # carrying an underscore puts one inside the unit id.
+    joined = capture_for("ccs a_b", None)
+    split = capture_for("ccs a", "b")
+
+    assert joined != split, (joined, split)

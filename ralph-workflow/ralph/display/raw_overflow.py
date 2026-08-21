@@ -195,7 +195,15 @@ def _disambiguated(unit_id: str, model: str | None) -> str:
     an identity made of safe characters keeps the filename an operator
     already knows.
     """
-    if safe_id_is_lossless(unit_id) and (model is None or safe_id_is_lossless(model)):
+    # ``_`` in the UNIT ID is lossy for a second reason: ``safe_id_for``
+    # joins the two halves with it, so ``ccs-a_b`` with no model and
+    # ``ccs-a`` with model ``b`` both read ``ccs-a_b``. With no ``_`` in
+    # the unit id the first one is unambiguously the join.
+    if (
+        safe_id_is_lossless(unit_id)
+        and "_" not in unit_id
+        and (model is None or safe_id_is_lossless(model))
+    ):
         return unit_id
     return f"{unit_id}-{_digest_of(f'{unit_id}\x00{model or ""}')}"
 
@@ -313,7 +321,13 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # consulted whenever it says something ``model`` does not.
     flag_model = _model_from_flag(config, model)
     if flag_model:
-        return f"{executable}-{flag_model}"
+        # Through the SAME disambiguation as every other branch. This
+        # one returned directly, and its digest covers ``model_flag``
+        # only -- so two agents differing solely in a ``model`` that
+        # folds (``anthropic/sonnet`` vs ``anthropic@sonnet``) shared a
+        # capture. "Applied at EVERY branch" was written about the code
+        # while this branch bypassed it.
+        return _disambiguated(f"{executable}-{flag_model}", model)
     return _disambiguated(executable, model)
 
 

@@ -62,14 +62,23 @@ def extract_transport_text_session_id(stripped: str) -> str | None:
     return None
 
 
-#: The WHOLE shape of an emitted completion line: the marker, a session
-#: id, a free-text summary, and a terminal timestamp. Kept beside the
-#: loose extraction patterns above so the two cannot drift.
-_WHOLE_COMPLETION_LINE_PATTERN: re.Pattern[str] = re.compile(
-    r"^Task declared complete:\s*session_?id\s*[:=]\s*[A-Za-z0-9._:-]+"
-    r".*\btimestamp\s*[:=]\s*\S+$",
+#: The HEAD of an emitted completion line: the marker and a session id.
+#: Anchored at the start, with a bounded id, so matching cannot backtrack.
+_COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
+    r"^Task declared complete:\s*session_?id\s*[:=]\s*[A-Za-z0-9._:-]+",
     re.IGNORECASE,
 )
+
+#: The TAIL: ``timestamp=<value>`` closing the line. The value is bounded
+#: to characters a timestamp can contain -- ``coordination.py`` emits an
+#: int -- so a concatenated wire frame cannot satisfy it.
+_COMPLETION_TAIL_PATTERN: re.Pattern[str] = re.compile(
+    r"timestamp\s*[:=]\s*[0-9A-Za-z._:+-]+$",
+    re.IGNORECASE,
+)
+
+#: The literal the tail search looks for, lowercased for a bounded scan.
+_TIMESTAMP_FIELD = "timestamp"
 
 #: The literal openings of every canonical session/completion line.
 #:
@@ -129,7 +138,32 @@ def is_whole_canonical_session_line(stripped: str) -> bool:
     for pattern in _TRANSPORT_SESSION_TEXT_PATTERNS:
         if pattern.match(stripped) is not None:
             return True
-    return _WHOLE_COMPLETION_LINE_PATTERN.match(stripped) is not None
+    return _is_whole_completion_line(stripped)
+
+
+def _is_whole_completion_line(stripped: str) -> bool:
+    """Match a completion line head-then-tail, without backtracking.
+
+    Two separate anchored matches joined by ``rfind``, NOT one pattern.
+    Writing it as ``^head.*\btimestamp...$`` made the ``.*`` backtrack
+    across the whole line looking for the tail: 28.8 seconds to grade a
+    single 508 KB line, inside the phase-close verdict, with no timeout
+    and a caller documented as never raising. Head match, tail search,
+    tail match: each bounded, the whole thing linear.
+
+    The tail's value is a bounded character class rather than ``\\S+``.
+    ``\\S+`` swallowed a concatenated wire frame whenever that frame
+    happened to contain no whitespace -- and real frames are compact --
+    so the very interleave this anchor was added to catch graded CLEAN
+    or CORRUPT depending on whether the lost frame had a space in it.
+    """
+    head = _COMPLETION_HEAD_PATTERN.match(stripped)
+    if head is None:
+        return False
+    marker = stripped.lower().rfind(_TIMESTAMP_FIELD)
+    if marker < head.end():
+        return False
+    return _COMPLETION_TAIL_PATTERN.match(stripped, marker) is not None
 
 
 def is_canonical_session_text_line(stripped: str) -> bool:

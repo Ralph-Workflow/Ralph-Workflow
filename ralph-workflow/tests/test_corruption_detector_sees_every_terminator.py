@@ -131,6 +131,16 @@ def test_a_line_that_merely_mentions_a_marker_is_still_graded(tmp_path: Path) ->
         "a frame concatenated after": (
             b'Task declared complete: session_id=1{"type":"assistant","text":"lost frame"}'
         ),
+        # The SAME interleave with no whitespace in the lost frame, on a
+        # head that carries a real terminal timestamp. A ``\S+`` tail
+        # value swallowed the entire frame here, so the verdict turned
+        # on whether the lost frame happened to contain a space -- and
+        # real wire frames are compact. Every recorded fixture in this
+        # repo graded CLEAN this way.
+        "a compact frame after a complete line": (
+            b"Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999"
+            b'{"type":"item.completed","id":"x"}'
+        ),
         "the marker then junk": b"Task declared complete: session_id=1 " + b"x" * 200,
     }
 

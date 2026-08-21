@@ -109,14 +109,20 @@ def safe_id_is_lossless(raw: str) -> bool:
     ``codex_gpt5.log`` -- two agents on one capture, each grading the
     other's bytes.
 
-    Anything that is not alphanumeric, ``.`` or ``-`` is lossy, and so
-    is surrounding whitespace or an empty string (which becomes
-    ``unknown``). Note that alphanumeric is Unicode-aware, exactly as
-    the sanitiser is: ``модель`` survives and needs no disambiguation.
+    Derived by RUNNING the sanitiser, not by restating its rule a
+    second time. Restating it is what produced the defect: the previous
+    version tested "every character is alphanumeric, ``.`` or ``-``",
+    which calls ``gpt_5`` lossy even though it survives untouched -- so
+    every model or alias containing an underscore got a digest it did
+    not need. The check "does it come back unchanged" cannot drift from
+    the thing it is checking.
+
+    Note that alphanumeric is Unicode-aware, exactly as the sanitiser
+    is: ``модель`` survives and needs no disambiguation.
     """
-    if not raw or raw != raw.strip():
+    if not raw:
         return False
-    return all(ch.isalnum() or ch in ".-" for ch in raw)
+    return _SafeId(raw).value == raw
 
 
 def safe_id_for(agent: str, model: str | None = None) -> str:
