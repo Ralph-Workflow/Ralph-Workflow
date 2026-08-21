@@ -174,6 +174,14 @@ def identity_on_transport(
     return MultimodalModelIdentity(provider="unknown", model_id=None, transport=launched)
 
 
+#: Deliveries that actually put the artifact in front of the model.
+#: A stored verdict promising one of these when the identity does not is
+#: the shape that hands a restricted CLI a block it cannot carry.
+_PERCEPTIBLE_DELIVERIES: frozenset[DeliveryMode] = frozenset(
+    {DeliveryMode.INLINE_IMAGE, DeliveryMode.TYPED_BLOCK}
+)
+
+
 def profile_for_caller(
     profile: ResolvedCapabilityProfile | None,
     identity: MultimodalModelIdentity,
@@ -196,7 +204,7 @@ def profile_for_caller(
         return resolve_capability_profile(identity)
     if profile.identity == identity:
         return profile
-    if identity.transport is None and profile.identity.transport is not None:
+    if not (identity.transport or "").strip() and profile.identity.transport is not None:
         # The profile knows which CLI this is and the identity does not.
         # Re-resolving here would answer a strictly less-informed
         # question and could relax a restricted profile.
@@ -362,31 +370,30 @@ class ResolvedCapabilityProfile:
     verdicts: dict[str, CapabilityVerdict]
 
     def verdict_for(self, modality: str) -> CapabilityVerdict:
-        """Return the pre-computed verdict, or compute fresh for unlisted modalities.
+        """Return the verdict for ``modality``, corrected against the identity.
 
-        A STORED verdict is corrected against the identity before it is
-        returned. ``profile_from_payload`` trusts a persisted verdict
-        string verbatim, so a session written before a delivery guard
-        existed -- or by a different transport -- can carry
-        ``inline_image`` for an identity that provably cannot accept one.
-        Correcting here means every consumer sees the same answer instead
-        of each one re-deriving the guard (and some forgetting to).
+        A STORED verdict is untrusted input. ``profile_from_payload``
+        takes a persisted ``delivery`` and ``block_type`` verbatim, so a
+        session written before a guard existed -- or by a different
+        transport, or by hand -- can name a delivery this identity must
+        not be given. Correcting only ``inline_image`` left the same hole
+        one modality over: a stored ``pdf -> typed_block`` handed a
+        Ralph-minted typed block to a CLI that cannot carry one.
+
+        The correction runs in ONE direction: a stored verdict may not
+        promise a delivery more perceptible than this identity allows.
+        A stored verdict that is more conservative than the fresh answer
+        is kept, so a payload sanitised to a safe value stays safe and a
+        parent's deliberate restraint is not undone.
         """
         if modality not in self.verdicts:
             return get_delivery_mode(self.identity, modality)
         stored = self.verdicts[modality]
-        if stored.delivery == DeliveryMode.INLINE_IMAGE and inline_image_roundtrip_unsafe(
-            self.identity
+        fresh = get_delivery_mode(self.identity, modality)
+        if _PERCEPTIBLE_DELIVERIES & {stored.delivery} and fresh.delivery not in (
+            _PERCEPTIBLE_DELIVERIES
         ):
-            return replace(
-                stored,
-                delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
-                reason=(
-                    f"stored verdict says inline, but transport "
-                    f"'{self.identity.transport}' cannot round-trip an inline image "
-                    f"block into its provider API request"
-                ),
-            )
+            return fresh
         return stored
 
     def to_payload(self) -> dict[str, object]:

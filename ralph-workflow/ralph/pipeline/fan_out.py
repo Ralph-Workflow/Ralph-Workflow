@@ -26,7 +26,10 @@ from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.mcp.multimodal.capabilities import select_session_transport
+from ralph.mcp.multimodal.capabilities import (
+    select_session_transport,
+    transport_inline_image_roundtrip_unsafe,
+)
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
 from ralph.pipeline import checkpoint as ckpt
@@ -372,7 +375,15 @@ def _build_session_mcp_plan_for_phase(
     # first candidate, and once the tag names a different CLI the two no
     # longer describe the same agent.
     chain_transport = _phase_session_transport(candidate_agents, config)
-    if chain_transport is not None and chain_transport is not transport:
+    # Also when the restricted candidate happens to be FIRST: the tag
+    # then equals the flag's own agent, so an `is not` test skipped the
+    # reset and resolved a provider for the whole chain -- making the
+    # same mixed chain give a capable agent a usable reference or a hard
+    # error depending only on chain order.
+    if chain_transport is not None and (
+        chain_transport is not transport
+        or transport_inline_image_roundtrip_unsafe(chain_transport.value)
+    ):
         # Pairing them would resolve a provider for a model the tagged
         # CLI is not running -- which turns pdf/document delivery into a
         # hard unsupported error for the very agent the flag came from.

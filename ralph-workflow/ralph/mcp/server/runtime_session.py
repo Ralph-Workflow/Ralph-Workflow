@@ -49,7 +49,7 @@ from ralph.mcp.protocol.session import (
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
 
-def _payload_transport(raw: object) -> str | None:
+def payload_transport(raw: object) -> str | None:
     """Return a usable transport from a payload field, or ``None``.
 
     An empty or whitespace-only value is NOT a transport. Treating it as
@@ -386,7 +386,7 @@ class FileBackedSession:
             provider=provider,
             model_id=str(model_id) if model_id is not None else None,
             transport=(
-                _payload_transport(raw.get("transport")) or self._declared_agent_transport
+                payload_transport(raw.get("transport")) or self._declared_agent_transport
             ),
         )
 
@@ -445,7 +445,7 @@ class FileBackedSession:
         # this session. Inheriting it when the delegate payload omits it
         # keeps a delegated call from silently escaping the guards that
         # key on the CLI.
-        raw_transport = _payload_transport(raw.get("transport"))
+        raw_transport = payload_transport(raw.get("transport"))
         return MultimodalModelIdentity(
             provider=str(raw.get("provider", "unknown")),
             model_id=str(raw["model_id"]) if raw.get("model_id") is not None else None,
@@ -609,7 +609,7 @@ def session_from_env(
         else set()
     )
     raw_identity = payload.get("model_identity")
-    if isinstance(raw_identity, dict) and _payload_transport(raw_identity.get("transport")) is None:
+    if isinstance(raw_identity, dict) and payload_transport(raw_identity.get("transport")) is None:
         raw_identity = {**raw_identity, "transport": declared_agent_transport}
     if isinstance(raw_identity, dict):
         provider = str(raw_identity.get("provider", "unknown"))
@@ -617,7 +617,7 @@ def session_from_env(
         model_identity = MultimodalModelIdentity(
             provider=provider,
             model_id=str(model_id_raw) if model_id_raw is not None else None,
-            transport=_payload_transport(raw_identity.get("transport")),
+            transport=payload_transport(raw_identity.get("transport")),
         )
     else:
         model_identity = MultimodalModelIdentity(

@@ -337,3 +337,116 @@ def test_an_unrestricted_transport_still_gets_typed_blocks() -> None:
     )
 
     assert get_delivery_mode(claude, MODALITY_PDF).delivery is DeliveryMode.TYPED_BLOCK
+
+
+def test_a_reference_block_never_claims_a_typed_delivery(tmp_path: Path) -> None:
+    """A reference block must carry a reference delivery.
+
+    A verdict can name a block type nothing knows how to build --
+    ``profile_from_payload`` never validates it -- and that falls
+    through to a resource reference. Stamping the verdict's own
+    ``typed_block`` on it contradicts the block's contract and makes the
+    artifact invisible to both handoff extractors, which filter on the
+    two reference values.
+    """
+    from ralph.mcp.multimodal.artifacts import MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        MultimodalModelIdentity,
+        ResolvedCapabilityProfile,
+    )
+
+    (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    claude = MultimodalModelIdentity(
+        provider="claude", model_id="claude-opus-5", transport="claude"
+    )
+    session = MockSessionWithManifest(MEDIA_READ_CAPABILITY, model_identity=claude)
+    _set_profile(
+        session,
+        ResolvedCapabilityProfile(
+            identity=claude,
+            verdicts={
+                MODALITY_PDF: CapabilityVerdict(
+                    modality=MODALITY_PDF,
+                    delivery=DeliveryMode.TYPED_BLOCK,
+                    provider="claude",
+                    model_id="claude-opus-5",
+                    reason="fresh",
+                    block_type="a-block-type-nothing-builds",
+                )
+            },
+        ),
+    )
+
+    result = handle_read_media(session, FsWorkspace(tmp_path), {"path": "doc.pdf"})
+
+    refs = [b for b in result.content if isinstance(b, ResourceReferenceContent)]
+    assert refs, result.content
+    assert refs[0].delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY
+
+
+def test_a_stored_typed_block_verdict_cannot_outrank_the_transport() -> None:
+    """A persisted verdict may not promise more than the identity allows.
+
+    Correcting only ``inline_image`` left the same hole one modality
+    over: a stored ``pdf -> typed_block`` handed a Ralph-minted typed
+    block to a CLI that cannot carry one.
+    """
+    from ralph.mcp.multimodal.artifacts import MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        MultimodalModelIdentity,
+        ResolvedCapabilityProfile,
+    )
+
+    codex_with_claude_model = MultimodalModelIdentity(
+        provider="anthropic", model_id="claude-opus-5", transport="codex"
+    )
+    profile = ResolvedCapabilityProfile(
+        identity=codex_with_claude_model,
+        verdicts={
+            MODALITY_PDF: CapabilityVerdict(
+                modality=MODALITY_PDF,
+                delivery=DeliveryMode.TYPED_BLOCK,
+                provider="anthropic",
+                model_id="claude-opus-5",
+                reason="stored before the guard existed",
+                block_type="pdf",
+            )
+        },
+    )
+
+    assert profile.verdict_for(MODALITY_PDF).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+    # ...and the correction survives re-serialisation.
+    verdicts = profile.to_payload()["verdicts"]
+    assert isinstance(verdicts, dict)
+    assert verdicts[MODALITY_PDF]["delivery"] == DeliveryMode.RESOURCE_REFERENCE_REPLAY.value
+
+
+def test_a_more_conservative_stored_verdict_is_respected() -> None:
+    """The correction runs one way only; deliberate restraint is kept."""
+    from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE
+    from ralph.mcp.multimodal.capabilities import (
+        UNKNOWN_IDENTITY,
+        CapabilityVerdict,
+        ResolvedCapabilityProfile,
+    )
+
+    profile = ResolvedCapabilityProfile(
+        identity=UNKNOWN_IDENTITY,
+        verdicts={
+            MODALITY_IMAGE: CapabilityVerdict(
+                modality=MODALITY_IMAGE,
+                delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
+                provider="unknown",
+                model_id=None,
+                reason="a payload value sanitised to something safe",
+            )
+        },
+    )
+
+    assert profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )

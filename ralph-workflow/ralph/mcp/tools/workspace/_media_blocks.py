@@ -137,8 +137,13 @@ def _reference_delivery(delivery: DeliveryMode) -> DeliveryMode:
     the artifact invisible to the handoff extractors that filter on the
     two reference values.
     """
-    if delivery in (DeliveryMode.RESOURCE_REFERENCE_REPLAY, DeliveryMode.TYPED_BLOCK):
+    if delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY:
         return delivery
+    # Including TYPED_BLOCK here reproduced the very bug this helper
+    # exists to stop: a verdict naming a block type nothing can build
+    # falls through to a reference, and stamping ``typed_block`` on it
+    # left both handoff extractors -- which filter on the reference
+    # values -- unable to see the artifact at all.
     return DeliveryMode.RESOURCE_REFERENCE_REPLAY
 
 

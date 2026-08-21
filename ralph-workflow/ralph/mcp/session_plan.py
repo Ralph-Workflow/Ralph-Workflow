@@ -275,15 +275,16 @@ def _reconcile_injected_transport(
     cannot take one, or a hard unsupported error for one that can. The
     two seams that reconcile a transport now apply the same rule.
     """
-    if transport is None:
-        return identity
-    # Normalise in passing: a padded or differently-cased value from a
-    # hand-edited payload otherwise reaches the session file and the
-    # wire-ledger digest verbatim.
+    # Normalise FIRST: a padded or differently-cased value from a
+    # hand-edited payload reaches the session file and the wire-ledger
+    # digest verbatim, and the early return below is exactly the case
+    # that comment was describing.
     stated = (identity.transport or "").strip().lower()
     normalised = identity if identity.transport == stated or not stated else replace(
         identity, transport=stated
     )
+    if transport is None:
+        return normalised
     return identity_on_transport(normalised, transport.value)
 
 

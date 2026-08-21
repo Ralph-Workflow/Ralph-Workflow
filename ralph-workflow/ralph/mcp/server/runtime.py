@@ -35,7 +35,7 @@ from __future__ import annotations
 import argparse
 import os
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -139,23 +139,6 @@ def standalone_session_identity(agent_transport: str | None) -> MultimodalModelI
     )
 
 
-def _apply_declared_agent_transport(session: object, agent_transport: str | None) -> None:
-    """Tag ``session``'s identity with the operator-declared agent CLI.
-
-    Only fills a gap: an identity that already names a transport came
-    from a handshake that knew better than the command line.
-    """
-    declared = (agent_transport or "").strip()
-    if not declared:
-        return
-    identity: object = getattr(session, "model_identity", None)
-    if not isinstance(identity, MultimodalModelIdentity) or identity.transport:
-        return
-    if not isinstance(session, AgentSession):
-        return
-    session.model_identity = replace(identity, transport=declared)
-
-
 def build_standalone_http_server(
     workspace_root: Path,
     *,
@@ -182,13 +165,10 @@ def build_standalone_http_server(
         capabilities=_all_capability_values(),
         model_identity=standalone_session_identity(agent_transport),
     )
-    # A session handed in from the environment handshake takes priority
-    # over the minted one, so applying the declared CLI only to the
-    # fallback made ``--agent-transport`` a silent no-op for anyone with
-    # ``RALPH_MCP_SESSION`` set -- which is every wrapper and resumed
-    # shell. The operator's declaration is applied either way; an
-    # identity that already names a transport keeps it.
-    _apply_declared_agent_transport(effective_session, agent_transport)
+    # An environment-handshake session gets the declaration inside
+    # ``session_from_env``, which applies it to both the file-backed and
+    # the JSON shape; the minted fallback above gets it from
+    # ``standalone_session_identity``. Nothing is needed here.
     allowed_roots = cast(
         "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)

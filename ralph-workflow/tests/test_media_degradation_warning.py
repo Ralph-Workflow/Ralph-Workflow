@@ -52,11 +52,14 @@ _build_warning_block = media_blocks_module._build_warning_block
 def _set_profile(session: object, profile) -> None:
     """Inject a capability profile onto a mock session.
 
-    The production path stores the profile on the session at
-    :class:`CoordinationSession`-level; the mock session exposes
-    the same attribute so the production helper can be reused.
+    Sets the session's identity to the profile's as well. A real session
+    derives both from one plan, so they always agree; leaving them
+    disagreeing made the fixture exercise a shape production cannot
+    produce, and the delivery layer legitimately re-resolves such a
+    profile against the identity it is actually serving.
     """
     session.capability_profile = profile
+    session.model_identity = profile.identity
 
 
 if TYPE_CHECKING:
