@@ -992,8 +992,28 @@ class ProcessLineReader:
         watchdog: IdleWatchdog,
         sink_token: Token[Callable[[str], None] | None],
         subagent_token: Token[Callable[[str], None] | None],
+        reader: threading.Thread,
     ) -> None:
         """Release everything ``read_lines`` acquired, in reverse order."""
+        # The join lives HERE, not at the end of the loop. Sitting there
+        # it was reached only via ``break``: every ``raise`` path -- a
+        # watchdog fire, a broken-agent verdict -- and ``GeneratorExit``
+        # went straight to this teardown with the reader thread still
+        # running, so the drain below ran against a queue the reader was
+        # still filling and the frame it was mid-push was lost. The
+        # comment claiming "after the reader thread is joined" was true
+        # of one exit out of five.
+        #
+        # BOUNDED by the drain window, not the old ten seconds. Those
+        # raise paths exist to fail over PROMPTLY, and the reader they
+        # are abandoning is usually blocked on a read that will never
+        # return -- so waiting ten seconds for it turned every watchdog
+        # fire into a ten-second stall. A reader about to deliver its
+        # last frame finishes well inside this; a wedged one is not
+        # waited for, and the frame it was holding is lost. That is the
+        # honest limit of this guarantee.
+        with contextlib.suppress(RuntimeError):
+            reader.join(timeout=max(self._policy.drain_window_seconds, 0.5))
         # BEFORE the capture is closed and AFTER the reader thread is
         # joined: the reader may append while the loop is breaking out,
         # so draining any earlier would leave exactly the lines this
@@ -1233,9 +1253,8 @@ class ProcessLineReader:
                     self._lines_event, self._policy.idle_poll_interval_seconds
                 )
 
-            reader.join(timeout=10)
         finally:
-            self._teardown_read_lines(watchdog, sink_token, subagent_token)
+            self._teardown_read_lines(watchdog, sink_token, subagent_token, reader)
 
 
 def _run_subprocess_and_read_lines(

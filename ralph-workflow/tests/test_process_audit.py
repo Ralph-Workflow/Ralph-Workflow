@@ -106,6 +106,7 @@ TESTS_ALLOWLIST: set[str] = {
     # child. The test must own the host process directly so the
     # ProcessManager fake cannot mask the bug it pins.
     "test_git_merge.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_a_live_capture_is_never_truncated.py",  # two real processes are the only way to show a cross-process capture truncation (subprocess_e2e)
     "test_auto_integrate.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
     "test_auto_integrate_resolution.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; conflict-resolution + ff-retry tests)
     "test_auto_integrate_race.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)

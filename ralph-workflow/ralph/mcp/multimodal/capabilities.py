@@ -806,7 +806,7 @@ def _canonical_identity(identity: MultimodalModelIdentity) -> MultimodalModelIde
 
 
 def payload_block_type(raw: object) -> str | None:
-    """Return a block type from an untrusted payload field, or ``None``.
+    r"""Return a block type from an untrusted payload field, or ``None``.
 
     A CLOSED vocabulary, not merely a string. Checking the type and not
     the content left the hazard exactly one field over from the one the

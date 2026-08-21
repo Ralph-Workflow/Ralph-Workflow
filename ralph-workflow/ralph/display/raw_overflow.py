@@ -128,6 +128,69 @@ def _resume_path_state(key: str) -> tuple[bool, int]:
         return False, _PATH_STATE[key]
 
 
+#: When this process started. A capture modified after this cannot be a
+#: leftover from an earlier run, so it belongs to somebody still using
+#: it -- unless it is one of ours.
+_PROCESS_STARTED_AT: Final = time.time()
+
+#: Every capture path THIS process has opened for writing. Deliberately
+#: NOT cleared by :func:`reset_raw_overflow_path_state`: that helper
+#: starts a new RUN inside one process, and a file this process wrote is
+#: ours to truncate however many runs ago it was. Without this the
+#: liveness check below could not tell our own fresh bytes from a
+#: sibling's, and refused to truncate anything.
+_OUR_PATHS: set[str] = set()  # bounded-accumulator-ok: one entry per capture path per process
+_OUR_PATHS_LOCK = threading.Lock()
+
+
+def _claim_path_for_this_process(key: str) -> bool:
+    """Record ``key`` as ours, returning whether it already was."""
+    with _OUR_PATHS_LOCK:
+        seen = key in _OUR_PATHS
+        _OUR_PATHS.add(key)
+        return seen
+
+
+def _another_process_is_writing(path: Path) -> bool:
+    """True when ``path`` is being written by a run this process cannot see.
+
+    ``_PATH_STATE`` is process-local, so a second Ralph process opening
+    the same capture always believed it was the first and truncated the
+    file. Same-workspace parallel workers are separate OS processes
+    sharing one workspace root, and workers of one phase resolve the
+    same agent -- so the same unit id, the same path. One worker's
+    entire transcript was replaced by another's, and because the
+    survivor's bytes are well-formed JSONL, ``detect_raw_log_breaks``
+    reported nothing: the silent-loss shape these captures exist to make
+    impossible.
+
+    Truncation is right for a STALE file (a previous run's leftovers)
+    and wrong for a LIVE one. Modification time separates them: a
+    capture touched since this process started is somebody's current
+    transcript.
+
+    This closes the destruction, NOT the sharing. Two workers still
+    interleave into one file -- whole lines, since the handle is opened
+    ``"ab"`` and POSIX appends atomically, so the result stays parseable
+    and gradeable rather than corrupt. The complete fix is a
+    worker-scoped capture path, which needs the grader to derive the
+    same scope; ``worker_runtime`` grades in the writer's own process,
+    so it is reachable, but it is a second rename of every capture file
+    and wants its own change.
+    """
+    try:
+        return path.stat().st_mtime >= _PROCESS_STARTED_AT
+    except OSError:
+        return False
+
+
+def _is_live_foreign_capture(path: Path, key: str) -> bool:
+    """True when ``path`` is a capture some OTHER process is writing."""
+    if _claim_path_for_this_process(key):
+        return False
+    return _another_process_is_writing(path)
+
+
 def _record_path_bytes(key: str, total: int) -> None:
     """Record the running byte total for ``key``."""
     with _PATH_STATE_LOCK:
@@ -549,7 +612,9 @@ class RawOverflowLog:
         first_open, already_written = _resume_path_state(self._path_key)
         # The first write of a RUN truncates; a later writer for the same
         # path continues it. See :data:`_PATH_STATE`.
-        self._first_write = first_open
+        self._first_write = first_open and not _is_live_foreign_capture(
+            self.path, self._path_key
+        )
         self._disabled = False
         self._max_bytes = max(max_bytes, 0)
         # Bytes THIS writer has appended. The idle watchdog's log-growth
