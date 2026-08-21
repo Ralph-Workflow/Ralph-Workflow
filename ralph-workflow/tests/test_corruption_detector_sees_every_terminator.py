@@ -137,6 +137,36 @@ def test_a_line_that_merely_mentions_a_marker_is_still_graded(tmp_path: Path) ->
         # on whether the lost frame happened to contain a space -- and
         # real wire frames are compact. Every recorded fixture in this
         # repo graded CLEAN this way.
+        # TWO canonical lines run together. ``rfind`` walked to the LAST
+        # timestamp, leaving everything before it unconstrained, so a
+        # completion line followed by a coordination line -- both
+        # emitted by mcp/tools/coordination.py, both ending in a
+        # timestamp -- graded CLEAN. One line carries one timestamp
+        # field; two means two lines.
+        "a coordination line run together with it": (
+            b"Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999"
+            b"Coordination action 'checkpoint' processed: session_id=zzz999, timestamp=1700000000"
+        ),
+        "two completion lines run together": (
+            b"Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999"
+            b"Task declared complete: session_id=def456, summary='and again', timestamp=1700000000"
+        ),
+        # Trailing junk riding on the timestamp VALUE. A looser class
+        # than digits (``[0-9A-Za-z._:+-]+``) matched
+        # ``timestamp=1699999999abc`` right to the end of the line, so
+        # whatever followed the value came along for free -- the emitter
+        # interpolates ``now_fn() -> int``, so digits are the whole
+        # vocabulary.
+        "junk riding on the timestamp value": (
+            b"Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999"
+            b"trailingjunk"
+        ),
+        # The timestamp field INSIDE the head, with nothing after it.
+        # Dropping the "tail must come after the head" ordering check
+        # let this match: the id itself contains the field name.
+        "a timestamp field inside the session id": (
+            b"Task declared complete: session_id=timestamp=1"
+        ),
         "a compact frame after a complete line": (
             b"Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999"
             b'{"type":"item.completed","id":"x"}'

@@ -576,7 +576,24 @@ def test_the_normaliser_skips_its_walk_when_there_is_nothing_to_rewrite(
 
     assert consulted == [4096], "the early-return guard was not consulted"
 
-    # And the walk still runs where it must.
+    # Consulting it is not the same as RETURNING on it. With a predicate
+    # that always answers "nothing to rewrite", the early return hands
+    # back the escape-stripped text untouched, while the walk would go
+    # on to apply the carriage return. Asserting only that the guard was
+    # called left "delete the return, keep the check" alive -- a mutant
+    # that changes no output and costs 0.07s -> 0.84s on 4 MB.
+    # The walk still runs where it must, with the real predicate.
+    monkeypatch.setattr(vt, "_REWRITE_CONTROLS", real)
     assert vt.normalize_vt_text("abc\rdef") == "def"
     assert vt.normalize_vt_text("ab\bc") == "ac"
     assert vt.normalize_vt_text("a\nb") == "a\nb"
+
+    class _NeverRewrites:
+        def search(self, text: str) -> object:
+            return None
+
+    monkeypatch.setattr(vt, "_REWRITE_CONTROLS", _NeverRewrites())
+
+    assert vt.normalize_vt_text("abc\rdef") == "abc\rdef", (
+        "the guard was consulted but not returned on"
+    )

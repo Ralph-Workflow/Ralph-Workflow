@@ -69,16 +69,23 @@ _COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
-#: The TAIL: ``timestamp=<value>`` closing the line. The value is bounded
-#: to characters a timestamp can contain -- ``coordination.py`` emits an
-#: int -- so a concatenated wire frame cannot satisfy it.
+#: The TAIL: ``timestamp=<int>`` closing the line, and nothing after it.
+#: ``coordination.py`` interpolates ``now_fn() -> int``, so digits are the
+#: whole vocabulary. A looser class let a concatenated tail ride along:
+#: ``timestamp=1699999999abc`` satisfied ``[0-9A-Za-z._:+-]+$``.
 _COMPLETION_TAIL_PATTERN: re.Pattern[str] = re.compile(
-    r"timestamp\s*[:=]\s*[0-9A-Za-z._:+-]+$",
+    r"timestamp\s*[:=]\s*\d+$",
     re.IGNORECASE,
 )
 
-#: The literal the tail search looks for, lowercased for a bounded scan.
-_TIMESTAMP_FIELD = "timestamp"
+#: A timestamp FIELD, not the bare word: an agent summary may mention
+#: "timestamp" in prose without it being one. Matched over the ORIGINAL
+#: string so the offsets are usable -- ``str.lower()`` is not
+#: length-preserving (U+0130 lowers to two code points), so taking an
+#: index from a lowered copy and applying it to the original shifted the
+#: tail match by one per such character and reported a genuine line as
+#: corrupt.
+_TIMESTAMP_FIELD_PATTERN: re.Pattern[str] = re.compile(r"\btimestamp\s*[:=]", re.IGNORECASE)
 
 #: The literal openings of every canonical session/completion line.
 #:
@@ -160,10 +167,16 @@ def _is_whole_completion_line(stripped: str) -> bool:
     head = _COMPLETION_HEAD_PATTERN.match(stripped)
     if head is None:
         return False
-    marker = stripped.lower().rfind(_TIMESTAMP_FIELD)
-    if marker < head.end():
+    # The FIRST timestamp field, not the last. ``rfind`` walked to the
+    # last one and left everything before it unconstrained, so a
+    # completion line followed by a coordination line -- both emitted by
+    # ``mcp/tools/coordination.py``, both ending in a timestamp -- graded
+    # CLEAN. Anchoring on the first, and requiring digits to end of line,
+    # means anything between the two is what fails the match.
+    marker = _TIMESTAMP_FIELD_PATTERN.search(stripped)
+    if marker is None or marker.start() < head.end():
         return False
-    return _COMPLETION_TAIL_PATTERN.match(stripped, marker) is not None
+    return _COMPLETION_TAIL_PATTERN.match(stripped, marker.start()) is not None
 
 
 def is_canonical_session_text_line(stripped: str) -> bool:

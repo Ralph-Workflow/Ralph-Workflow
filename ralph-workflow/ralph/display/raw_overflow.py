@@ -149,7 +149,19 @@ def _claim_cap_warning(key: str) -> bool:
 
 
 def reset_raw_overflow_path_state() -> None:
-    """Forget every path's write state. For tests that simulate a new run."""
+    """Forget every path's write state. For tests that simulate a new run.
+
+    Clears the per-path REGISTRY too. Clearing only ``_PATH_STATE`` left
+    the outcome depending on garbage collection: whether the next
+    ``get_or_create_raw_overflow_log`` returned a fresh writer (which
+    truncates, being the run's first write) or the previous one still
+    held in the weak registry (which appends) turned on whether anything
+    still referenced it. Same code, two outcomes -- and that is a
+    mechanism by which a capture test passes alone and behaves
+    differently in a full run.
+    """
+    with _REGISTRY_LOCK:
+        _REGISTRY.clear()
     with _PATH_STATE_LOCK:
         _PATH_STATE.clear()
         _CAP_WARNED.clear()

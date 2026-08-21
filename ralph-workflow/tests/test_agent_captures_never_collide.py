@@ -312,3 +312,25 @@ def test_a_unit_id_carrying_the_join_separator_is_disambiguated() -> None:
     split = capture_for("ccs a", "b")
 
     assert joined != split, (joined, split)
+
+
+def test_the_digest_is_wide_enough_to_be_a_disambiguator() -> None:
+    """The digest carries the whole no-shared-capture property.
+
+    Every identity that folds under the sanitiser is kept apart by these
+    hex characters and nothing else, so their number IS the collision
+    resistance. Shrinking the constant to 1 leaves 16 buckets and
+    survives every behavioural test, because no fixed set of names
+    happens to collide in 16 buckets.
+    """
+    # Read off the produced name rather than the constant, so this
+    # asserts what an operator's directory actually gets.
+    left = _capture_name("codex/_gpt5")
+    right = _capture_name("codex/gpt5_")
+
+    assert left != right
+    assert len(left) == len(right), (left, right)
+
+    digest = left.removeprefix("codex-").removesuffix("_gpt5.log")
+    assert len(digest) >= 6, f"fewer than 24 bits is not a disambiguator: {digest!r}"
+    assert digest.isalnum(), digest
