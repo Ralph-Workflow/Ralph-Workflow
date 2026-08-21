@@ -9,11 +9,15 @@ from this module rather than re-declaring provider knowledge elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from ralph.mcp.multimodal._capability_verdict import CapabilityVerdict
 from ralph.mcp.multimodal._delivery_mode import DeliveryMode
 from ralph.mcp.multimodal._multimodal_model_identity import MultimodalModelIdentity
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Typed-block support per provider and modality.
 # Maps (provider, modality) -> block_type string for TYPED_BLOCK delivery.
@@ -134,6 +138,28 @@ def inline_image_requires_text_handle(identity: MultimodalModelIdentity) -> bool
     emitted block changes.
     """
     return identity.provider.lower() in _INLINE_IMAGE_HANDLE_ONLY_PROVIDERS
+
+
+def select_session_transport(transports: Sequence[str]) -> str | None:
+    """Pick the transport to tag a session serving several candidate agents.
+
+    A session is built before anyone knows which agent in a chain will
+    actually run, so a mixed chain has no single correct answer. Resolve
+    it conservatively: if ANY candidate is one the delivery guards must
+    restrict, tag the session with that, because degrading a capable
+    agent to a resource reference is harmless while handing a restricted
+    agent an inline image kills its turn.
+
+    A homogeneous chain uses its own transport. A mixed chain of
+    unrestricted agents has no honest answer, so it gets ``None``.
+    """
+    if not transports:
+        return None
+    for transport in transports:
+        if transport_inline_image_roundtrip_unsafe(transport):
+            return transport
+    first = transports[0]
+    return first if all(t == first for t in transports) else None
 
 
 def get_delivery_mode(
@@ -360,5 +386,6 @@ __all__ = [
     "inline_image_roundtrip_unsafe",
     "profile_from_payload",
     "resolve_capability_profile",
+    "select_session_transport",
     "transport_inline_image_roundtrip_unsafe",
 ]

@@ -26,6 +26,7 @@ from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.multimodal.capabilities import select_session_transport
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
 from ralph.pipeline import checkpoint as ckpt
@@ -332,21 +333,22 @@ def _build_session_mcp_plan_for_phase(
         or "development"
     )
 
-    agent_name: str | None = None
+    candidate_agents: list[str] = []
     if phase_def is not None:
-        config_agents = _config_agents_for_phase(
-            config,
-            phase=effect.phase,
-            policy_drain=drain,
+        candidate_agents = list(
+            _config_agents_for_phase(
+                config,
+                phase=effect.phase,
+                policy_drain=drain,
+            )
         )
-        if config_agents:
-            agent_name = config_agents[0]
-        else:
+        if not candidate_agents:
             drain_binding = policy_bundle.agents.agent_drains.get(drain)
             if drain_binding is not None:
                 chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
                 if chain_config is not None and chain_config.agents:
-                    agent_name = chain_config.agents[0]
+                    candidate_agents = list(chain_config.agents)
+    agent_name: str | None = candidate_agents[0] if candidate_agents else None
 
     agent_config = None
     if isinstance(agent_name, str) and agent_name and config is not None:
@@ -357,6 +359,11 @@ def _build_session_mcp_plan_for_phase(
     transport = (
         cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    # One phase session can serve any agent in the chain, but it is built
+    # before the chain is walked. Tagging it with the FIRST agent's
+    # transport hands a restricted later agent an inline image; resolve
+    # across all candidates with the shared conservative rule instead.
+    transport = _phase_session_transport(candidate_agents, config, transport)
     _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
     model_flag = (
         cast("str | None", _model_flag_raw) if agent_config is not None else None
@@ -387,6 +394,27 @@ def _build_session_mcp_plan_for_phase(
             agents_policy=fallback_agents_policy,
             model_opts=SessionModelOpts(model_flag=model_flag),
         ), drain
+
+
+def _phase_session_transport(
+    candidate_agents: list[str],
+    config: UnifiedConfig | None,
+    fallback: AgentTransport | None,
+) -> AgentTransport | None:
+    """Return the transport to tag a phase session serving ``candidate_agents``."""
+    if config is None or not candidate_agents:
+        return fallback
+    registry = AgentRegistry.from_config(config)
+    by_value: dict[str, AgentTransport] = {}
+    ordered: list[str] = []
+    for name in candidate_agents:
+        cfg = registry.get(name)
+        if cfg is None or cfg.transport is None:
+            continue
+        ordered.append(cfg.transport.value)
+        by_value[cfg.transport.value] = cfg.transport
+    selected = select_session_transport(ordered)
+    return by_value.get(selected, fallback) if selected is not None else fallback
 
 
 def _fan_out_worker_context(

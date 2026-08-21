@@ -699,3 +699,31 @@ def test_a_restricted_launched_transport_overrides_an_injected_one(
 
     assert plan.model_identity.transport == "codex"
     assert inline_image_roundtrip_unsafe(plan.model_identity)
+
+
+def test_session_transport_selection_prefers_the_restricted_candidate() -> None:
+    """A session serving several candidate agents takes the safe tag.
+
+    A session is built before anyone knows which agent in a chain will
+    run. Degrading a capable agent to a resource reference is harmless;
+    handing a restricted agent an inline image kills its turn.
+    """
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+
+    assert select_session_transport(["claude", "codex"]) == "codex"
+    assert select_session_transport(["codex", "claude"]) == "codex"
+
+
+def test_session_transport_selection_keeps_a_homogeneous_chain() -> None:
+    """A single-transport chain is tagged with its own transport."""
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+
+    assert select_session_transport(["claude", "claude"]) == "claude"
+
+
+def test_session_transport_selection_declines_a_mixed_capable_chain() -> None:
+    """With nothing restricted and no agreement there is no honest tag."""
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+
+    assert select_session_transport(["claude", "opencode"]) is None
+    assert select_session_transport([]) is None
