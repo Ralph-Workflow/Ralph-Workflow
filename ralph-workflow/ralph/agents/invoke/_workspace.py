@@ -5,8 +5,6 @@ from __future__ import annotations
 import errno
 import importlib
 import inspect
-import os
-import platform
 import threading
 import time
 import weakref
@@ -19,6 +17,11 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._has_src_path import _HasSrcPath
+from ralph.agents.invoke._watch_capacity import (
+    CAPACITY_PROBE_BUDGET_SECONDS,
+    DirectoryCounter,
+    watch_capacity_is_predicted,
+)
 from ralph.workspace._cross_process_watch_lock import (
     CrossProcessWatchLock,
     WatchLockIOError,
@@ -73,12 +76,6 @@ class _HasDestPath(Protocol):
     dest_path: str
 
 
-class _DirectoryCounter(Protocol):
-    """Structural contract for bounded recursive directory counters."""
-
-    def __call__(self, workspace: Path, *, cap: int) -> int | None: ...
-
-
 class _HandlerWithDispatch(Protocol):
     """Structural type of the per-monitor watchdog handler.
 
@@ -115,74 +112,6 @@ def _make_change_tracker(workspace: Path, key: str) -> object:
                 WorkspaceMonitor._record_event_for_key(key, event.dest_path)
 
     return _ChangeTrackerHandler()
-
-
-def _is_linux_host() -> bool:
-    """Return whether the running host exposes Linux's procfs inotify data."""
-    return platform.system() == "Linux"
-
-
-def _read_inotify_watch_limit() -> int | None:
-    """Return Linux's per-real-user inotify-watch ceiling when available."""
-    if _is_linux_host():
-        try:
-            return int(Path("/proc/sys/fs/inotify/max_user_watches").read_text().strip())  # filesystem-read-ok: Linux kernel sysctl, not workspace content
-        except OSError:
-            return None
-    return None
-
-
-def _read_inotify_watch_user_total() -> int | None:
-    """Return the current real user's live inotify-watch count on Linux."""
-    if _is_linux_host():
-        try:
-            user_id = os.getuid()
-            watch_total = 0
-            for process in Path("/proc").iterdir():  # filesystem-read-ok: Linux /proc kernel tree, not workspace content
-                if not process.name.isdigit() or process.stat().st_uid != user_id:
-                    continue
-                for fdinfo in (process / "fdinfo").iterdir():
-                    with fdinfo.open() as stream:
-                        watch_total += sum(line.startswith("wd:") for line in stream)
-        except OSError:
-            return None
-        return watch_total
-    return None
-
-
-def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
-    """Count workspace directories, returning None once ``cap`` is reached."""
-    directory_count = 0
-    try:
-        for _root, directories, _files in os.walk(workspace):  # filesystem-read-ok: bounded capacity counter before Workspace exists
-            directory_count += 1
-            if directory_count >= cap:
-                return None
-            directories.sort()
-    except OSError:
-        return None
-    return directory_count
-
-
-def _watch_capacity_is_predicted(
-    workspace: Path,
-    host_budget: int | None,
-    directory_counter: _DirectoryCounter | None,
-    live_watch_total: int | None,
-) -> bool:
-    """Return whether another recursive workspace watch would exhaust the budget."""
-    budget = host_budget if host_budget is not None else _read_inotify_watch_limit()
-    if budget is None:
-        return False
-    wd_total = (
-        live_watch_total
-        if live_watch_total is not None
-        else (_read_inotify_watch_user_total() or 0)
-    )
-    counter = directory_counter or _count_watchable_directories
-    counted_directories = counter(workspace, cap=budget + 1)
-    workspace_dir_count = budget + 1 if counted_directories is None else counted_directories
-    return wd_total + workspace_dir_count >= budget
 
 
 def _create_watchdog_observer() -> _ObserverProtocol | None:
@@ -343,8 +272,9 @@ class WorkspaceMonitor:
         on_event: WorkspaceEventCallback | None = None,
         classifier: WorkspaceChangeClassifier | None = None,
         host_budget: int | None = None,
-        directory_counter: _DirectoryCounter | None = None,
+        directory_counter: DirectoryCounter | None = None,
         live_watch_total: int | None = None,
+        probe_budget_seconds: float | None = None,
     ) -> None:
         """Initialize workspace monitor.
 
@@ -430,6 +360,11 @@ class WorkspaceMonitor:
         self._host_budget = host_budget
         self._directory_counter = directory_counter
         self._live_watch_total = live_watch_total
+        self._probe_budget_seconds = (
+            probe_budget_seconds
+            if probe_budget_seconds is not None
+            else CAPACITY_PROBE_BUDGET_SECONDS
+        )
         self._handler: object | None = None
         self._cross_process_owner_id: str | None = None
         self._owns_shared_awareness = False
@@ -511,11 +446,12 @@ class WorkspaceMonitor:
 
     def _watch_capacity_is_predicted(self) -> bool:
         """Return whether starting another recursive watch would exceed capacity."""
-        return _watch_capacity_is_predicted(
+        return watch_capacity_is_predicted(
             self._workspace,
             self._host_budget,
             self._directory_counter,
             self._live_watch_total,
+            self._probe_budget_seconds,
         )
 
     def _activate_live_fallback(self, reason: str) -> None:
@@ -724,9 +660,7 @@ class WorkspaceMonitor:
         finally:
             observer.join(5)
 
-    def _abort_start_on_oserror(
-        self, exc: OSError, observer: _ObserverProtocol
-    ) -> None:
+    def _abort_start_on_oserror(self, exc: OSError, observer: _ObserverProtocol) -> None:
         """Clean up after an OSError during observer start.
 
         Tears down the partially-started observer, releases the
@@ -747,9 +681,7 @@ class WorkspaceMonitor:
             return
         if exc.errno is None:
             self._awareness_status = _live_fallback_status("observer_start_failed")
-            awareness_for_workspace(self._workspace).set_live_fallback(
-                "observer_start_failed"
-            )
+            awareness_for_workspace(self._workspace).set_live_fallback("observer_start_failed")
             logger.opt(exception=True).warning(
                 "Workspace watch registration failed; falling back to live reads"
             )
@@ -789,15 +721,11 @@ class WorkspaceMonitor:
         if holder is not None:
             self._enter_shared_awareness_consumer(holder)
             return False
-        self._cross_process_owner_id = CrossProcessWatchLock.claimed_owner_id(
-            self._workspace
-        )
+        self._cross_process_owner_id = CrossProcessWatchLock.claimed_owner_id(self._workspace)
         if self._cross_process_owner_id is None:
             self._activate_live_fallback("cross_process_holder")
             return False
-        self._prior_lock_holder = CrossProcessWatchLock.last_released_holder(
-            self._workspace
-        )
+        self._prior_lock_holder = CrossProcessWatchLock.last_released_holder(self._workspace)
         try:
             shared_awareness_for_workspace(self._workspace).begin_ownership(
                 self._cross_process_owner_id,
