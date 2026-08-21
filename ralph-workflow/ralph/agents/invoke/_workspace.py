@@ -676,15 +676,12 @@ class WorkspaceMonitor:
         finally:
             observer.join(5)
         if failed:
-            # A FRESH exception, never the captured one. Holding the
-            # original keeps its traceback, the traceback keeps the
-            # frames that were live when the teardown blew up, and one
-            # of those frames holds the monitor. Leases are held weakly,
-            # so a monitor that outlives refcounting until the next
-            # cyclic collection leaves a live-looking lease behind and
-            # the next monitor for that workspace attaches to a watch
-            # that should have been gone. The type and the message are
-            # what callers act on.
+            # A FRESH exception, never the captured one: its traceback
+            # pins the frames live when the teardown blew up, one of
+            # which holds the monitor. Leases are weak, so a monitor
+            # that outlives refcounting leaves a live-looking lease and
+            # the next monitor for this workspace attaches to a watch
+            # that should have been gone.
             kind, message = failed[0]
             raise kind(message)
 
@@ -818,9 +815,12 @@ class WorkspaceMonitor:
     def _enter_shared_awareness_consumer(self, holder: str) -> None:
         """Poll the owning process's sidecar instead of registering an observer.
 
-        Owner-published change paths are durably claimed into the
-        process-local awareness before the lease reports a non-current
-        freshness, so a crash cannot silently drop owner-published changes.
+        Owner-published paths are claimed into the PROCESS-LOCAL
+        awareness, not durably: the reindex enqueue this leans on cannot
+        run (``dirty_paths._workspace_index_handle`` returns ``None``
+        unconditionally). A crash between the poll and the next publish
+        CAN drop them, costing an activity signal, not correctness.
+
         A sidecar that is unreadable, corrupt, or carries an owner-side
         error yields explicit ``live_fallback`` (S-2).
         """
