@@ -62,20 +62,39 @@ def extract_transport_text_session_id(stripped: str) -> str | None:
     return None
 
 
-#: The HEAD of an emitted completion line: the marker and a session id.
-#: Anchored at the start, with a bounded id, so matching cannot backtrack.
+#: The HEAD of an emitted completion line: the marker, a session id, and
+#: the opening of the summary field. Anchored at the start with a bounded
+#: id, so matching cannot backtrack.
+#:
+#: It reaches ``summary=`` deliberately. A head, an unconstrained middle
+#: and a tail cannot decide "is this ONE line" -- the emitter's own
+#: structure (``mcp/tools/coordination.py``) is the only thing that can,
+#: and it is ``session_id=<id>, summary='<free text>', timestamp=<int>``.
 _COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
-    r"^Task declared complete:\s*session_?id\s*[:=]\s*[A-Za-z0-9._:-]+",
+    r"^Task declared complete:\s*session_?id\s*[:=]\s*[A-Za-z0-9._:-]+\s*,\s*summary\s*=",
     re.IGNORECASE,
 )
 
-#: The TAIL: ``timestamp=<int>`` closing the line, and nothing after it.
-#: ``coordination.py`` interpolates ``now_fn() -> int``, so digits are the
-#: whole vocabulary. A looser class let a concatenated tail ride along:
-#: ``timestamp=1699999999abc`` satisfied ``[0-9A-Za-z._:+-]+$``.
+#: The TAIL: the summary's closing delimiter, then ``timestamp=<int>``
+#: and the end of the line. ``coordination.py`` interpolates
+#: ``now_fn() -> int``, so digits are the whole vocabulary.
 _COMPLETION_TAIL_PATTERN: re.Pattern[str] = re.compile(
-    r"timestamp\s*[:=]\s*\d+$",
+    r",\s*timestamp\s*[:=]\s*\d+$",
     re.IGNORECASE,
+)
+
+#: Text that cannot appear inside one agent's summary without the line
+#: being TWO lines glued together: the opening of another canonical
+#: message, or the start of a JSON wire frame. A severed write plus the
+#: next writer's output is the characteristic corruption here, and it
+#: leaves one of these in the middle of what would otherwise parse as a
+#: well-formed completion line.
+_INTERLEAVE_SIGNALS: tuple[str, ...] = (
+    "task declared complete:",
+    "coordination action ",
+    "progress reported:",
+    "session id:",
+    '{"',
 )
 
 #: A timestamp FIELD, not the bare word: an agent summary may mention
@@ -148,6 +167,20 @@ def is_whole_canonical_session_line(stripped: str) -> bool:
     return _is_whole_completion_line(stripped)
 
 
+def _carries_interleave_signal(summary: str) -> bool:
+    """True when a summary carries text only a second line could supply.
+
+    A summary is free text, so it cannot be validated -- but it also
+    cannot legitimately contain the opening of another canonical message
+    or the start of a JSON wire frame. Those appear when a write was
+    severed mid-line and the next writer's output landed on the same
+    line, which is the corruption this predicate exists to catch and the
+    one shape both previous anchorings excused.
+    """
+    lowered = summary.lower()
+    return any(signal in lowered for signal in _INTERLEAVE_SIGNALS)
+
+
 def _is_whole_completion_line(stripped: str) -> bool:
     """Match a completion line head-then-tail, without backtracking.
 
@@ -167,16 +200,22 @@ def _is_whole_completion_line(stripped: str) -> bool:
     head = _COMPLETION_HEAD_PATTERN.match(stripped)
     if head is None:
         return False
-    # The FIRST timestamp field, not the last. ``rfind`` walked to the
-    # last one and left everything before it unconstrained, so a
-    # completion line followed by a coordination line -- both emitted by
-    # ``mcp/tools/coordination.py``, both ending in a timestamp -- graded
-    # CLEAN. Anchoring on the first, and requiring digits to end of line,
-    # means anything between the two is what fails the match.
-    marker = _TIMESTAMP_FIELD_PATTERN.search(stripped)
-    if marker is None or marker.start() < head.end():
+    # Neither the FIRST timestamp field nor the LAST. Both were wrong,
+    # in opposite directions, and for the same reason: an unconstrained
+    # middle. Anchoring on the last excused a coordination line glued to
+    # a completion line; anchoring on the first graded a GENUINE line
+    # corrupt whenever the agent's own summary mentioned a field-shaped
+    # ``timestamp:`` -- and that summary is interpolated raw, unbounded
+    # and unsanitised.
+    #
+    # The delimiters decide it instead. The tail is anchored to the end
+    # of the line, so it identifies the summary's closing boundary
+    # rather than any mention inside it, and what lies between the two
+    # delimiters is the summary -- free text, and allowed to be.
+    tail = _COMPLETION_TAIL_PATTERN.search(stripped)
+    if tail is None or tail.start() < head.end():
         return False
-    return _COMPLETION_TAIL_PATTERN.match(stripped, marker.start()) is not None
+    return not _carries_interleave_signal(stripped[head.end() : tail.start()])
 
 
 def is_canonical_session_text_line(stripped: str) -> bool:

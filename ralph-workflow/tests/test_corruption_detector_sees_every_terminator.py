@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 
 from ralph.config.enums import AgentTransport
-from ralph.display.raw_log_breaks import detect_raw_log_breaks
+from ralph.display.raw_log_breaks import detect_raw_log_breaks, iter_capture_lines
 
 # The exact payload shape from the field incident: a codex frame, a bare
 # carriage return, then the next frame. Nothing here contains a newline
@@ -46,11 +46,21 @@ def test_a_bare_carriage_return_still_separates_a_corrupt_line(tmp_path: Path) -
 def test_crlf_is_one_terminator_and_not_a_break(tmp_path: Path) -> None:
     """Windows-style framing is well-formed JSONL, not corruption.
 
-    Counting ``\r`` and ``\n`` separately would emit an empty line
-    between every pair of frames and report a clean file as corrupt.
+    Asserted on ``iter_capture_lines`` directly, not only through the
+    verdict. The docstring here used to claim that counting ``\r`` and
+    ``\n`` separately would "report a clean file as corrupt" -- it would
+    not: the extra empty line is dropped before grading and the byte
+    offsets are identical, so disabling the CRLF join changed no verdict
+    and the test passed for a reason it did not state. The line
+    boundaries are the thing this guard actually decides, and the
+    contract is that they match ``bytes.splitlines``.
     """
     payload = b'{"type":"a"}\r\n{"type":"b"}\r\n{"type":"c"}\r\n'
+
     assert _breaks(tmp_path, payload) == []
+    assert list(iter_capture_lines(payload)) == payload.splitlines(keepends=True)
+    # CRLF is ONE terminator: three frames, three lines, no empty one.
+    assert len(list(iter_capture_lines(payload))) == 3
 
 
 def test_the_scan_agrees_with_the_splitlines_oracle_it_replaced(tmp_path: Path) -> None:
@@ -175,6 +185,68 @@ def test_a_line_that_merely_mentions_a_marker_is_still_graded(tmp_path: Path) ->
     }
 
     for label, line in smuggled.items():
+        assert _breaks(tmp_path, line + b"\n") == [("NON_JSONL", 0)], label
+
+
+def test_a_summary_may_talk_about_timestamps(tmp_path: Path) -> None:
+    """The summary is free text and cannot be second-guessed.
+
+    It is interpolated raw, unbounded and unsanitised, so an agent may
+    write anything in it -- including the word ``timestamp`` in field
+    shape. Anchoring the tail on the FIRST timestamp field put that
+    match inside the summary, failed the digits-to-end test there, and
+    reported a byte-perfect emitted line as raw transcript corrupted.
+    """
+    genuine = (
+        b"Task declared complete: session_id=abc123, summary='fixed timestamp: bug', "
+        b"timestamp=1699999999",
+        b"Task declared complete: session_id=abc123, summary='changed timestamp=0 to "
+        b"timestamp=now', timestamp=1699999999",
+        b"Task declared complete: session_id=abc123, summary='it's fine', timestamp=17",
+    )
+
+    for line in genuine:
+        assert _breaks(tmp_path, line + b"\n") == [], line
+
+
+def test_a_severed_write_glued_to_the_next_line_is_graded(tmp_path: Path) -> None:
+    """The characteristic corruption: a torn write plus the next writer.
+
+    Only the INTACT completion-plus-coordination pair was pinned, and
+    the strictly more corrupt severed variant -- which is what a torn
+    write actually produces -- was excused, because the only surviving
+    timestamp belonged to the following line and closed it neatly.
+
+    A summary cannot be validated, but it cannot legitimately contain
+    the opening of another canonical message or the start of a JSON wire
+    frame either. Those are what a second line leaves behind.
+    """
+    head = b"Task declared complete: session_id=abc123"
+    coordination = (
+        b"Coordination action 'checkpoint' processed: session_id=zzz999, timestamp=1700000000"
+    )
+    progress = b"Progress reported: status='x', note='y', timestamp=1700000001"
+
+    severed = {
+        "mid-summary, then a coordination line": head + b", summary='did" + coordination,
+        "after the id, then a coordination line": head + b", " + coordination,
+        "head only, then a coordination line": head + coordination,
+        "mid-summary, then a progress line": head + b", summary='oo" + progress,
+        # No closing delimiter: the surviving text merely ENDS in a
+        # timestamp field. The tail must identify the summary's closing
+        # boundary (``', timestamp=``), not any trailing mention -- a
+        # tail that matched a bare ``timestamp=<int>`` anywhere at the
+        # end let a severed line close itself on the next writer's
+        # fragment.
+        "a bare timestamp fragment appended": (
+            head + b", summary='did" + b" partial-frame timestamp=99"
+        ),
+        "a wire frame inside the summary quotes": (
+            head + b", summary='x{\"type\":\"item.completed\"}', timestamp=17"
+        ),
+    }
+
+    for label, line in severed.items():
         assert _breaks(tmp_path, line + b"\n") == [("NON_JSONL", 0)], label
 
 

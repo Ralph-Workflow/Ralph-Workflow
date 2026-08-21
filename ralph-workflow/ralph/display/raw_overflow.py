@@ -160,8 +160,20 @@ def reset_raw_overflow_path_state() -> None:
     mechanism by which a capture test passes alone and behaves
     differently in a full run.
     """
+    # CLOSED AND DISABLED before the registry forgets them. Clearing the
+    # registry alone dropped the entries without touching the writers,
+    # so any caller still holding one kept a live buffered handle open
+    # on a path the next acquisition would re-create -- and with
+    # ``_PATH_STATE`` cleared beside it, that new writer opened ``"wb"``
+    # and truncated the file the first was still positioned inside.
+    # That is the cross-writer NUL hole this registry exists to prevent,
+    # manufactured by the helper meant to reset it.
     with _REGISTRY_LOCK:
+        stale = list(_REGISTRY.values())
         _REGISTRY.clear()
+    for writer in stale:
+        with contextlib.suppress(Exception):
+            writer.disable()
     with _PATH_STATE_LOCK:
         _PATH_STATE.clear()
         _CAP_WARNED.clear()

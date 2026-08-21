@@ -22,6 +22,7 @@ from ralph.display.raw_overflow import (
     RawOverflowLog,
     get_or_create_raw_overflow_log,
     nul_separated_chunks,
+    raw_log_path_for,
     reset_raw_overflow_path_state,
 )
 from tests.agents.invoke.test_line_reader_queue_bound import (
@@ -597,3 +598,32 @@ def test_the_normaliser_skips_its_walk_when_there_is_nothing_to_rewrite(
     assert vt.normalize_vt_text("abc\rdef") == "abc\rdef", (
         "the guard was consulted but not returned on"
     )
+
+
+def test_the_stale_writer_cannot_truncate_the_next_run(tmp_path: Path) -> None:
+    """``reset_raw_overflow_path_state`` must close what it forgets.
+
+    Clearing the registry without closing its writers left any caller
+    still holding one with a live buffered handle on a path the next
+    acquisition re-creates -- and with the path state cleared beside it,
+    that new writer opens for WRITING and truncates the file the first
+    is still positioned inside. The result is the cross-writer NUL hole
+    the registry exists to prevent, manufactured by the reset helper.
+    """
+    reset_raw_overflow_path_state()
+    first = get_or_create_raw_overflow_log(tmp_path, "shared")
+    first.append("B" * 10)
+
+    reset_raw_overflow_path_state()
+    second = get_or_create_raw_overflow_log(tmp_path, "shared")
+    second.append("written after the reset")
+    # The stale writer must be refused, not allowed to write into a file
+    # another writer now owns.
+    first.append("a late write from the forgotten writer")
+    second.close()
+
+    written = raw_log_path_for(tmp_path, "shared").read_bytes()
+
+    assert b"\x00" not in written, "a stale writer punched a hole in the new run's capture"
+    assert written == b"written after the reset\n", written
+    assert first.is_disabled
