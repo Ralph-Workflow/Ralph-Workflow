@@ -397,3 +397,151 @@ def test_reporting_an_abandonment_cannot_block_the_abandonment() -> None:
         release.set()
 
     assert outcome is None
+
+
+class _LateSpawnManager:
+    """A registry whose new record only appears after the first sweep."""
+
+    def __init__(self, late: _FakeRecord) -> None:
+        self.late = late
+        self.reads = 0
+
+    def list_active(self) -> list[_FakeRecord]:
+        self.reads += 1
+        # The snapshot and the first sweep see nothing; the process the
+        # attempt was mid-spawn on appears only afterwards.
+        return [] if self.reads <= 2 else [self.late]
+
+
+def test_a_process_that_appears_after_the_first_sweep_is_still_reaped() -> None:
+    """The settle window's whole reason to exist, pinned.
+
+    An attempt abandoned mid-spawn has a process the first sweep cannot
+    see. Without the second sweep it is never reaped, and it writes into
+    the worktree the caller is about to `git rebase --abort`.
+    """
+    manager = _LateSpawnManager(_FakeRecord(51, "invoke:claude"))
+    killed: list[int] = []
+    release = threading.Event()
+
+    def _never_returns_in_time() -> bool:
+        return release.wait(timeout=20.0)
+
+    try:
+        call_with_hard_stop(
+            _never_returns_in_time,
+            0.05,
+            manager=manager,
+            teardown=killed.append,
+        )
+    finally:
+        release.set()
+
+    assert killed == [51]
+
+
+def test_a_teardown_that_blocks_does_not_hold_the_abandonment() -> None:
+    """Reaping is bounded too, and it is bounded on the caller's thread.
+
+    ``teardown_subtree`` escalates SIGTERM to SIGKILL with waits in
+    between -- seconds per process, serially, twice over -- and it runs
+    after the deadline has already expired. The driver may spend a
+    bounded amount of its own time on that and no more.
+    """
+    release = threading.Event()
+    reaping = threading.Event()
+    finished_reaping = threading.Event()
+
+    def _slow_teardown(pid: int) -> None:
+        del pid
+        reaping.set()
+        release.wait(timeout=20.0)
+        finished_reaping.set()
+
+    def _never_returns_in_time() -> bool:
+        return release.wait(timeout=20.0)
+
+    manager = _FakeProcessManager([])
+
+    def _attempt() -> bool:
+        manager.records.append(_FakeRecord(61, "invoke:claude"))
+        return _never_returns_in_time()
+
+    try:
+        outcome = call_with_hard_stop(
+            _attempt,
+            0.05,
+            manager=manager,
+            teardown=_slow_teardown,
+            reap_wait_seconds=0.05,
+        )
+        still_reaping = not finished_reaping.is_set()
+    finally:
+        release.set()
+
+    assert outcome is None
+    assert reaping.is_set(), "the reap never started"
+    assert still_reaping, "the caller waited for the whole teardown"
+
+
+def _run_pipeline(
+    tmp_path: Path,
+    clock: _FakeClock,
+    hard_stop: object,
+) -> bool:
+    """Drive the real pipeline with an injected stop."""
+    return run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        clock=clock,
+        hard_stop=hard_stop,
+    )
+
+
+def test_an_abandoned_run_does_not_repaint_the_footer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The way out must not touch the lock the way in gave up on.
+
+    The footer is painted through the same rich Console a wedged worker
+    may be holding, and the pipeline restores it on EVERY exit path. A
+    stale footer is the lesser harm against a run that never returns.
+    """
+    _install_seams(monkeypatch, tmp_path)
+    painted: list[str] = []
+    monkeypatch.setattr(
+        driver_module, "clear_conflict_status_bar", lambda *a, **k: painted.append("clear")
+    )
+    monkeypatch.setattr(
+        driver_module, "restore_status_bar", lambda *a, **k: painted.append("restore")
+    )
+    clock = _FakeClock()
+
+    assert _run_pipeline(tmp_path, clock, _RecordingHardStop(clock)) is False
+
+    assert painted == []
+
+
+def test_an_ordinary_run_still_restores_the_footer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The guard must cost nothing when the attempt came back."""
+    _install_seams(monkeypatch, tmp_path)
+    painted: list[str] = []
+    monkeypatch.setattr(
+        driver_module, "clear_conflict_status_bar", lambda *a, **k: painted.append("clear")
+    )
+    monkeypatch.setattr(
+        driver_module, "restore_status_bar", lambda *a, **k: painted.append("restore")
+    )
+    clock = _FakeClock()
+
+    assert _run_pipeline(tmp_path, clock, lambda call, timeout: False) is False
+
+    assert painted, "an ordinary run must leave the footer as it found it"

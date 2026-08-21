@@ -36,6 +36,7 @@ ask for one.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections.abc import Callable, Sequence
 from typing import Protocol
@@ -86,8 +87,13 @@ _SPAWN_SETTLE_SECONDS = 0.25
 #: dump taken from a run that survived one.
 _ATTEMPT_THREAD_NAME = "ralph-conflict-resolution-attempt"
 
-#: Names the thread the abandonment is announced on.
-_ABANDON_REPORT_THREAD_NAME = "ralph-conflict-resolution-abandoned"
+#: Names the thread an abandoned attempt is cleaned up and announced on.
+_ABANDON_CLEANUP_THREAD_NAME = "ralph-conflict-resolution-abandoned"
+
+#: How long the caller waits for that cleanup before returning without
+#: it. The kill should normally land before the caller aborts the
+#: rebase; a teardown that will not finish may not hold the driver.
+_REAP_WAIT_SECONDS = 5.0
 
 
 class _AttemptProcessRecord(Protocol):
@@ -116,6 +122,7 @@ def call_with_hard_stop(
     manager: ProcessRegistry | None = None,
     teardown: Callable[[int], None] | None = None,
     report: Callable[[float, tuple[int, ...]], None] | None = None,
+    reap_wait_seconds: float = _REAP_WAIT_SECONDS,
 ) -> bool | None:
     """Run ``attempt``, abandoning it if it outlives ``timeout_seconds``.
 
@@ -129,8 +136,9 @@ def call_with_hard_stop(
         teardown: Reaps one process subtree by pid; defaults to
             :func:`~ralph.process.teardown.teardown_subtree`.
         report: Announces an abandonment; defaults to a log line. Always
-            called on a thread of its own -- see
-            :func:`_report_abandonment`.
+            called on the cleanup thread, never this one.
+        reap_wait_seconds: How long the caller will wait for the reap to
+            finish before returning without it.
 
     Returns:
         What ``attempt`` returned, ``False`` if it raised, or ``None``
@@ -162,40 +170,70 @@ def call_with_hard_stop(
     if finished.wait(timeout_seconds):
         return outcome[0] if outcome else False
 
-    reaped = reap_agents_started_since(live_before, manager=manager, teardown=teardown)
-    # An attempt abandoned mid-spawn has a process the first sweep could
-    # not see yet. The settle window is bounded and is spent only on an
-    # attempt that has already been given up on. What the first sweep
-    # took is added to what it already knew about, so the second sweep
-    # reaps only what is genuinely new.
-    finished.wait(_SPAWN_SETTLE_SECONDS)
-    already_seen = None if live_before is None else live_before | frozenset(reaped)
-    reaped += reap_agents_started_since(already_seen, manager=manager, teardown=teardown)
-    _report_abandonment(timeout_seconds, reaped, report)
+    _clean_up_after_abandoning(
+        live_before,
+        finished,
+        timeout_seconds,
+        manager=manager,
+        teardown=teardown,
+        report=report,
+        reap_wait_seconds=reap_wait_seconds,
+    )
     return None
 
 
-def _report_abandonment(
+def _clean_up_after_abandoning(
+    live_before: frozenset[int] | None,
+    finished: threading.Event,
     timeout_seconds: float,
-    reaped: tuple[int, ...],
+    *,
+    manager: ProcessRegistry | None,
+    teardown: Callable[[int], None] | None,
     report: Callable[[float, tuple[int, ...]], None] | None,
+    reap_wait_seconds: float,
 ) -> None:
-    """Announce an abandonment WITHOUT waiting for the announcement.
+    """Reap and announce on a thread of their own, waited on for a bounded time.
 
-    Ralph's log sink prints through the same ``rich.Console`` the status
-    bar paints with (``ralph.display.log_sink``), and loguru takes a
-    per-handler lock around the write. A worker wedged inside a display
-    write is therefore holding the very lock this line needs, so saying
-    "I gave up on that thread" on the caller's thread hands the freeze
-    straight back. It is said on a thread that may block forever
-    instead; the caller returns either way.
+    NONE of this may run on the caller's thread. Two reasons, both of
+    them the reason the caller is here at all:
+
+    * Every diagnostic in the reap goes through loguru, whose sink
+      prints via the same ``rich.Console`` the status bar paints with
+      (``ralph.display.log_sink``), under a per-handler lock and the
+      Console's own. A worker wedged inside a display write holds
+      exactly that, so saying "I gave up on that thread" on this thread
+      hands the freeze straight back -- and the conditions that produce
+      those lines (a registry that raises, a teardown that fails) are
+      the ones the abandon path exists for.
+    * ``teardown_subtree`` escalates SIGTERM to SIGKILL with waits in
+      between: seconds per process, serially, over two sweeps, all of it
+      after the deadline has already expired.
+
+    The caller still waits ``reap_wait_seconds`` for it, because the
+    next thing it does is abort a rebase and the kill should normally
+    land first. It waits on an Event, which no wedged thread can hold.
     """
-    announce = report if report is not None else _log_abandonment
-    threading.Thread(
-        target=lambda: announce(timeout_seconds, reaped),
-        name=_ABANDON_REPORT_THREAD_NAME,
-        daemon=True,
-    ).start()
+    done = threading.Event()
+
+    def _clean_up() -> None:
+        reaped: tuple[int, ...] = ()
+        try:
+            reaped = reap_agents_started_since(live_before, manager=manager, teardown=teardown)
+            # An attempt abandoned mid-spawn has a process the first
+            # sweep could not see yet. What the first sweep took is
+            # added to what it already knew about, so the second sweep
+            # reaps only what is genuinely new.
+            finished.wait(_SPAWN_SETTLE_SECONDS)
+            already_seen = None if live_before is None else live_before | frozenset(reaped)
+            reaped += reap_agents_started_since(already_seen, manager=manager, teardown=teardown)
+        finally:
+            done.set()
+        announce = report if report is not None else _log_abandonment
+        with contextlib.suppress(Exception):
+            announce(timeout_seconds, reaped)
+
+    threading.Thread(target=_clean_up, name=_ABANDON_CLEANUP_THREAD_NAME, daemon=True).start()
+    done.wait(reap_wait_seconds)
 
 
 def _log_abandonment(timeout_seconds: float, reaped: tuple[int, ...]) -> None:
