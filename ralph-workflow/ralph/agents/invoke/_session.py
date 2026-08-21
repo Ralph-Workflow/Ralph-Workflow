@@ -79,32 +79,16 @@ _COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
 #: and the end of the line. ``coordination.py`` interpolates
 #: ``now_fn() -> int``, so digits are the whole vocabulary.
 _COMPLETION_TAIL_PATTERN: re.Pattern[str] = re.compile(
-    r",\s*timestamp\s*[:=]\s*\d+$",
+    r"'\s*,\s*timestamp\s*[:=]\s*\d+$",
     re.IGNORECASE,
 )
 
-#: Text that cannot appear inside one agent's summary without the line
-#: being TWO lines glued together: the opening of another canonical
-#: message, or the start of a JSON wire frame. A severed write plus the
-#: next writer's output is the characteristic corruption here, and it
-#: leaves one of these in the middle of what would otherwise parse as a
-#: well-formed completion line.
-_INTERLEAVE_SIGNALS: tuple[str, ...] = (
-    "task declared complete:",
-    "coordination action ",
-    "progress reported:",
-    "session id:",
-    '{"',
-)
+#: The delimiter that closes the summary field. The emitter guarantees
+#: the summary contains no single quote of its own
+#: (``coordination.py._quotable_summary``), so the FIRST one after
+#: ``summary='`` is the closing delimiter and nothing else can be.
+_SUMMARY_DELIMITER = "'"
 
-#: A timestamp FIELD, not the bare word: an agent summary may mention
-#: "timestamp" in prose without it being one. Matched over the ORIGINAL
-#: string so the offsets are usable -- ``str.lower()`` is not
-#: length-preserving (U+0130 lowers to two code points), so taking an
-#: index from a lowered copy and applying it to the original shifted the
-#: tail match by one per such character and reported a genuine line as
-#: corrupt.
-_TIMESTAMP_FIELD_PATTERN: re.Pattern[str] = re.compile(r"\btimestamp\s*[:=]", re.IGNORECASE)
 
 #: The literal openings of every canonical session/completion line.
 #:
@@ -167,20 +151,6 @@ def is_whole_canonical_session_line(stripped: str) -> bool:
     return _is_whole_completion_line(stripped)
 
 
-def _carries_interleave_signal(summary: str) -> bool:
-    """True when a summary carries text only a second line could supply.
-
-    A summary is free text, so it cannot be validated -- but it also
-    cannot legitimately contain the opening of another canonical message
-    or the start of a JSON wire frame. Those appear when a write was
-    severed mid-line and the next writer's output landed on the same
-    line, which is the corruption this predicate exists to catch and the
-    one shape both previous anchorings excused.
-    """
-    lowered = summary.lower()
-    return any(signal in lowered for signal in _INTERLEAVE_SIGNALS)
-
-
 def _is_whole_completion_line(stripped: str) -> bool:
     """Match a completion line head-then-tail, without backtracking.
 
@@ -215,7 +185,18 @@ def _is_whole_completion_line(stripped: str) -> bool:
     tail = _COMPLETION_TAIL_PATTERN.search(stripped)
     if tail is None or tail.start() < head.end():
         return False
-    return not _carries_interleave_signal(stripped[head.end() : tail.start()])
+    # The summary must be QUOTED, and its quote must be the one the tail
+    # closes on. Nothing else about it is inspected.
+    #
+    # Two rounds were spent trying to judge the summary's CONTENT -- a
+    # blacklist of things a second line might contribute. That is both
+    # too narrow and too broad at once: a torn write severs the second
+    # line at an arbitrary byte, so its distinguishing opening is
+    # usually gone, while a legitimate summary describing JSON work was
+    # graded "raw transcript corrupted". Free text cannot be judged;
+    # only a delimiter can, so the emitter now guarantees one.
+    summary = stripped[head.end() : tail.start()]
+    return summary.startswith(_SUMMARY_DELIMITER) and _SUMMARY_DELIMITER not in summary[1:]
 
 
 def is_canonical_session_text_line(stripped: str) -> bool:

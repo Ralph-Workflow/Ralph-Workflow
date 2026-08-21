@@ -513,7 +513,7 @@ def test_claude_explicit_completion_marker_is_not_a_break(isolated_workspace: Pa
     raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
     _write_claude_raw_log(
         raw_path,
-        "Task declared complete: session_id=pty-session-1, summary=done, timestamp=1",
+        "Task declared complete: session_id=pty-session-1, summary='done', timestamp=1",
     )
 
     assert detect_raw_log_breaks(raw_path) == []
@@ -534,7 +534,7 @@ def test_valid_claude_transcript_with_tool_activity_is_not_corrupted(
         '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_read","name":"mcp__ralph__read_file","input":{"path":"PROMPT.md"}}]}}',
         '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_read","content":[{"type":"text","text":"prompt contents"}]}]}}',
         "[claude turn boundary]",
-        "Task declared complete: session_id=28ee58c0-0614-474f-b609-80cc6c252f90, summary=done, timestamp=1",
+        "Task declared complete: session_id=28ee58c0-0614-474f-b609-80cc6c252f90, summary='done', timestamp=1",
     )
 
     assert detect_raw_log_breaks(raw_path) == []

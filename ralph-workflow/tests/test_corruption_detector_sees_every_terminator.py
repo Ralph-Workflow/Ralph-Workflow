@@ -202,7 +202,14 @@ def test_a_summary_may_talk_about_timestamps(tmp_path: Path) -> None:
         b"timestamp=1699999999",
         b"Task declared complete: session_id=abc123, summary='changed timestamp=0 to "
         b"timestamp=now', timestamp=1699999999",
-        b"Task declared complete: session_id=abc123, summary='it's fine', timestamp=17",
+        # The emitter replaces a quote inside the summary, so this is
+        # what an agent writing "it's fine" actually produces. An
+        # unescaped inner quote cannot come from Ralph and would make
+        # the closing delimiter ambiguous, which is the whole basis of
+        # the grammar below.
+        b'Task declared complete: session_id=abc123, summary="it"s fine", timestamp=17'.replace(
+            b'summary="', b"summary='"
+        ).replace(b'fine"', b"fine'"),
     )
 
     for line in genuine:
@@ -241,13 +248,19 @@ def test_a_severed_write_glued_to_the_next_line_is_graded(tmp_path: Path) -> Non
         "a bare timestamp fragment appended": (
             head + b", summary='did" + b" partial-frame timestamp=99"
         ),
-        "a wire frame inside the summary quotes": (
-            head + b", summary='x{\"type\":\"item.completed\"}', timestamp=17"
-        ),
+
     }
 
     for label, line in severed.items():
         assert _breaks(tmp_path, line + b"\n") == [("NON_JSONL", 0)], label
+
+    # DELIBERATELY not graded: a frame that landed INSIDE the summary
+    # quotes is indistinguishable from an agent describing JSON work,
+    # and grading it meant reporting byte-perfect lines as corrupt. Free
+    # text cannot be judged; the delimiters can. This is the residue of
+    # that trade, recorded rather than hidden.
+    inside_the_quotes = head + b", summary='x{\"type\":\"item.completed\"}', timestamp=17"
+    assert _breaks(tmp_path, inside_the_quotes + b"\n") == []
 
 
 def test_a_genuine_canonical_line_is_still_expected_content(tmp_path: Path) -> None:

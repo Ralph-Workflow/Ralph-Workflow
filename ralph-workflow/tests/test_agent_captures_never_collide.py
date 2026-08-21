@@ -334,3 +334,53 @@ def test_the_digest_is_wide_enough_to_be_a_disambiguator() -> None:
     digest = left.removeprefix("codex-").removesuffix("_gpt5.log")
     assert len(digest) >= 6, f"fewer than 24 bits is not a disambiguator: {digest!r}"
     assert digest.isalnum(), digest
+
+
+def test_ccs_alias_tables_do_not_share_the_headless_claude_capture() -> None:
+    """The ``[ccs_aliases]`` TABLE form, which the shipped toml prints.
+
+    Those entries set ``cmd = "claude"`` and a ``model_flag`` and leave
+    ``model`` unset, so they take the headless-Claude branch -- which
+    returned before the model flag was consulted. Every alias, and the
+    builtin ``claude-headless`` beside them, wrote one file: four agents
+    in one capture, each grading the others' bytes.
+
+    The census above cannot catch this. It enumerates built-in names and
+    documented ``family/model`` forms; an alias table is neither, and
+    never enters the seeded catalog.
+    """
+    from pathlib import Path
+
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    def capture_for(cmd: str, model_flag: str | None) -> str:
+        config = AgentConfig(
+            cmd=cmd, model_flag=model_flag, output_flag="--output-format=stream-json"
+        )
+        return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=None).name
+
+    captures = {
+        capture_for("claude", "--model claude-sonnet-4"),
+        capture_for("claude", "--model claude-opus-4"),
+        capture_for("claude", "--model claude-haiku-4"),
+        capture_for("claude -p", None),
+    }
+
+    assert len(captures) == 4, captures
+    # Readable, not just distinct: an operator has to find the file.
+    assert any("sonnet" in name for name in captures), captures
+
+
+def test_a_dispatcher_alias_with_a_model_flag_is_distinguished() -> None:
+    """The other branch that returned before the flag was read."""
+    from pathlib import Path
+
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    def capture_for(model_flag: str) -> str:
+        config = AgentConfig(cmd="ccs glm", model_flag=model_flag)
+        return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=None).name
+
+    assert capture_for("--model a") != capture_for("--model b")

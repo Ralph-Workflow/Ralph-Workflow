@@ -48,6 +48,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -379,10 +380,34 @@ def handle_declare_complete(
         )
     message = (
         "Task declared complete: "
-        f"session_id={session.session_id}, summary='{summary}', timestamp={now_fn()}\n"
+        f"session_id={session.session_id}, summary='{_quotable_summary(summary)}', "
+        f"timestamp={now_fn()}\n"
         "[Completion event emitted to pipeline]"
     )
     return ToolResult(content=[ToolContent.text_content(message)], is_error=False)
+
+
+def _quotable_summary(summary: str) -> str:
+    """Return ``summary`` safe to place inside the emitted quoted field.
+
+    The summary is agent-authored free text and was interpolated raw, so
+    the emitted line had no grammar: a reader could not tell where the
+    summary ended, and the raw-transcript grader spent several rounds
+    guessing -- rejecting legitimate summaries that mentioned JSON while
+    still excusing a torn write glued to the next line.
+
+    A single quote inside the field is what makes it ambiguous, and a
+    newline would split one message into two lines. Both are replaced
+    rather than dropped, so nothing the agent wrote is lost: the reader
+    keeps every word and gains an unambiguous closing delimiter.
+    """
+    flattened = _CONTROL_RUN.sub(" ", summary)
+    return flattened.replace("'", '"')
+
+
+#: Newlines, tabs and other control characters, which would break the
+#: one-message-one-line contract this text is read back under.
+_CONTROL_RUN = re.compile(r"[\x00-\x1f\x7f]+")
 
 
 def format_coordination_text(

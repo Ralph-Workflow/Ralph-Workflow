@@ -316,12 +316,28 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # ``claude-headless``, the same path headless Claude is graded on.
     # Two agents sharing one capture means one grades the other's
     # corruption and quotes the other's transport failures.
+    # Computed ONCE, before any branch returns. Two branches used to
+    # return ahead of it, and both are reachable by a ``[ccs_aliases]``
+    # table -- the form the shipped ralph-workflow.toml prints -- whose
+    # entries set ``cmd = "claude"`` and a ``model_flag`` and leave
+    # ``model`` unset. Every such alias, and the builtin
+    # ``claude-headless`` beside them, wrote ``claude-headless.log``:
+    # four agents, one capture, each grading the others' bytes.
+    #
+    # "Applied at EVERY branch" was written about ``_disambiguated``,
+    # which was true -- and about the wrong function. What separates
+    # agents that set only ``model_flag`` is the flag.
+    flag_model = _model_from_flag(config, model)
+
+    def identified(base: str) -> str:
+        return _disambiguated(f"{base}-{flag_model}" if flag_model else base, model)
+
     if executable.lower() == "claude" and ("-p" in flags or "--output-format=stream-json" in flags):
-        return _disambiguated("claude-headless", model)
+        return identified("claude-headless")
     if executable.lower() in _DISPATCHER_EXECUTABLES:
         alias = next((token for token in tokens[1:] if not token.startswith("-")), "")
         if alias:
-            return _disambiguated(f"{executable}-{alias}", model)
+            return identified(f"{executable}-{alias}")
     # Whatever the COMMAND LINE says beyond ``config.model``. The capture
     # path is keyed ``(unit_id, config.model)``, but only some
     # dynamic-alias resolvers set ``model`` -- ``pi/``, ``cursor/``, ``kimi/``,
@@ -343,16 +359,7 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # every effort variant of one codex model shared a capture -- a form
     # the shipped ralph-workflow.toml prints as an example. The flag is
     # consulted whenever it says something ``model`` does not.
-    flag_model = _model_from_flag(config, model)
-    if flag_model:
-        # Through the SAME disambiguation as every other branch. This
-        # one returned directly, and its digest covers ``model_flag``
-        # only -- so two agents differing solely in a ``model`` that
-        # folds (``anthropic/sonnet`` vs ``anthropic@sonnet``) shared a
-        # capture. "Applied at EVERY branch" was written about the code
-        # while this branch bypassed it.
-        return _disambiguated(f"{executable}-{flag_model}", model)
-    return _disambiguated(executable, model)
+    return identified(executable)
 
 
 def raw_log_path_for(
