@@ -10,7 +10,7 @@ import weakref
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from loguru import logger
 
@@ -21,6 +21,7 @@ from ralph.agents.invoke._callback_arity import (
     VALID_CALLBACK_ARITIES,
     callback_arity,
 )
+from ralph.agents.invoke._has_dest_path import _HasDestPath
 from ralph.agents.invoke._has_src_path import _HasSrcPath
 from ralph.agents.invoke._watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
@@ -41,6 +42,7 @@ from ralph.workspace._shared_awareness import (
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
+    from ralph.agents.invoke._handler_with_dispatch import _HandlerWithDispatch
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 
     class _HasStop(Protocol):
@@ -77,27 +79,6 @@ _MAX_WORKSPACE_CHANGED_FILES = 512
 #: real classifications. The ``__post_init__`` arity check rejects
 #: any other arity at construction time.
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
-
-
-@runtime_checkable
-class _HasDestPath(Protocol):
-    """Structural watchdog event protocol for move destinations."""
-
-    dest_path: str
-
-
-class _HandlerWithDispatch(Protocol):
-    """Structural type of the per-monitor watchdog handler.
-
-    ``_make_change_tracker`` returns a class with a public
-    ``dispatch(event)`` method; ``WorkspaceMonitor.dispatch_event``
-    routes test-supplied events through that method. Defined as a
-    Protocol so the ``cast`` in ``dispatch_event`` does not need an
-    ``attr-defined`` suppression (test files must have zero
-    suppressions).
-    """
-
-    def dispatch(self, event: object) -> None: ...
 
 
 def _is_within_workspace(workspace: Path, src_path: str) -> bool:
@@ -346,9 +327,10 @@ class WorkspaceMonitor:
             # that shape. It is the one step in this method left
             # unbounded: the fsevents emitter resolves the workspace
             # path here (``realpath``), so a mount hung on the ROOT
-            # itself can still park it. Everything reachable past a
-            # readable root -- the tree walk in the observer START
-            # below, the lock, the sidecar -- is bounded.
+            # itself can still park it. Every other step this method
+            # reaches -- the tree walk in the observer START below, the
+            # lock's claim AND release, the sidecar's write, read and
+            # epoch claim, the teardown -- runs under a budget.
             scheduled = True
             try:
                 self._observer.schedule(handler, str(self._workspace), recursive=True)
@@ -746,7 +728,17 @@ class WorkspaceMonitor:
             return
         owner_id = self._cross_process_owner_id
         self._cross_process_owner_id = None
-        CrossProcessWatchLock.release(self._workspace, owner_id)
+        workspace = self._workspace
+        # Bounded like the claim it undoes. Releasing unlocks and closes
+        # a file under ``<workspace>/.agent/``, and this runs on the
+        # GIVE-UP path -- so a mount that hung after the claim would
+        # park the launch inside the very release it performed because
+        # it was giving up.
+        call_within_budget(
+            lambda: CrossProcessWatchLock.release(workspace, owner_id),
+            fallback=None,
+            budget_seconds=self._probe_budget_seconds,
+        )
 
     def _acquire_cross_process_watch_lock(self) -> bool:
         """Try to claim the cross-process watch lock for this lease (S-2/S-10).
@@ -871,7 +863,15 @@ class WorkspaceMonitor:
                 enqueue_workspace_dirty_paths(self._workspace, paths)
             except (ImportError, OSError):
                 pass
-        sidecar.claim_epoch(state.epoch)
+        # The sidecar's own lock is held across its file I/O, so this
+        # is an unbounded acquisition on the launch thread whenever
+        # another lease's abandoned worker still holds it.
+        epoch = state.epoch
+        call_within_budget(
+            lambda: sidecar.claim_epoch(epoch),
+            fallback=None,
+            budget_seconds=self._probe_budget_seconds,
+        )
         self._awareness_status = {
             "mode": "shared_awareness",
             "freshness": awareness.snapshot()["freshness"],

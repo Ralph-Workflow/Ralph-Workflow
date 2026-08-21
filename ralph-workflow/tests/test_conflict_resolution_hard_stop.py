@@ -29,6 +29,7 @@ from ralph.pipeline.conflict_resolution.driver import (
     RESOLVE_TIMEOUT_SECONDS,
     SESSION_CEILING_FRACTION,
     run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
 from ralph.pipeline.conflict_resolution.hard_stop import (
@@ -38,6 +39,7 @@ from ralph.pipeline.conflict_resolution.hard_stop import (
     live_agent_pids,
     reap_agents_started_since,
 )
+from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -48,6 +50,14 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["src/alpha.py"]
+
+#: How long a fake blocks for. Deliberately UNDER the suite's per-test
+#: ceiling: a fake that blocks past it is interrupted by the harness's
+#: own alarm, and production suppresses that exception on the very paths
+#: these tests exercise -- so a blocked caller would look like a passing
+#: test. What proves the bound is that the caller came back while the
+#: fake was still blocked.
+_SLOW_CALL_SECONDS = 0.5
 
 
 @lru_cache(maxsize=1)
@@ -400,7 +410,7 @@ def test_reporting_an_abandonment_cannot_block_the_abandonment() -> None:
     def _blocking_report(timeout_seconds: float, reaped: tuple[int, ...]) -> None:
         del timeout_seconds, reaped
         reporting.set()
-        release.wait(timeout=20.0)
+        release.wait(timeout=_SLOW_CALL_SECONDS)
         reported.set()
 
     def _never_returns_in_time() -> bool:
@@ -485,7 +495,7 @@ def test_a_teardown_that_blocks_does_not_hold_the_abandonment() -> None:
     def _slow_teardown(pid: int) -> None:
         del pid
         reaping.set()
-        release.wait(timeout=20.0)
+        release.wait(timeout=_SLOW_CALL_SECONDS)
         finished_reaping.set()
 
     def _never_returns_in_time() -> bool:
@@ -688,3 +698,143 @@ def test_an_abandonment_survives_having_no_thread_to_clean_up_with(
 
     assert outcome is None
     assert starved.threads_made > 1, "the cleanup thread was never attempted"
+
+
+class _ImmortalThreading:
+    """``threading``, whose threads never admit to having finished.
+
+    A thread that has returned its value is not yet a thread that has
+    died. Deciding an abandonment on ``is_alive()`` therefore throws
+    away resolutions that actually succeeded, right on the boundary
+    where the stop is most likely to land -- and reaps their processes.
+    """
+
+    def __init__(self) -> None:
+        self.daemon_flags: list[bool] = []
+        self.Event = threading.Event
+
+    def Thread(
+        self,
+        *,
+        target: Callable[[], None],
+        name: str,
+        daemon: bool,
+    ) -> _ImmortalThread:
+        self.daemon_flags.append(daemon)
+        return _ImmortalThread(threading.Thread(target=target, name=name, daemon=daemon))
+
+
+class _ImmortalThread:
+    """A real thread that always reports itself alive."""
+
+    def __init__(self, thread: threading.Thread) -> None:
+        self._thread = thread
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def join(self, timeout: float | None = None) -> None:
+        self._thread.join(timeout)
+
+    def is_alive(self) -> bool:
+        return True
+
+
+def test_an_attempt_that_answered_is_not_abandoned_for_still_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The attempt's own completion decides, not the thread's liveness."""
+    threads = _ImmortalThreading()
+    monkeypatch.setattr(hard_stop_module, "threading", threads)
+
+    outcome = call_with_hard_stop(
+        lambda: True,
+        5.0,
+        manager=_FakeProcessManager([]),
+        teardown=lambda pid: None,
+    )
+
+    assert outcome is True
+
+
+def test_every_thread_the_stop_starts_is_a_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wedged attempt may not hold the interpreter open at exit.
+
+    The whole design accepts leaving threads behind. A non-daemon one
+    turns that into a run that cannot finish -- the same hang, moved to
+    shutdown.
+    """
+    release = threading.Event()
+    threads = _ImmortalThreading()
+    monkeypatch.setattr(hard_stop_module, "threading", threads)
+
+    def _never_returns_in_time() -> bool:
+        return release.wait(timeout=_SLOW_CALL_SECONDS)
+
+    try:
+        call_with_hard_stop(
+            _never_returns_in_time,
+            0.05,
+            manager=_FakeProcessManager([]),
+            teardown=lambda pid: None,
+            reap_wait_seconds=0.05,
+        )
+    finally:
+        release.set()
+
+    assert threads.daemon_flags, "the stop started no threads at all"
+    assert all(threads.daemon_flags), "a thread the stop started was not a daemon"
+
+
+def test_an_abandoned_rebase_stop_paints_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The rebase entry point owes the same silence as the merge one.
+
+    Its footer belongs to the caller's multi-stop session, so it paints
+    nothing itself -- but it still has to swallow the abandonment rather
+    than let it reach a handler that emits a phase line on the thread
+    that just gave up.
+    """
+    _install_seams(monkeypatch, tmp_path)
+    painted: list[str] = []
+    monkeypatch.setattr(
+        driver_module, "emit_conflict_phase_line", lambda *a, **k: painted.append("line")
+    )
+    clock = _FakeClock()
+    painted_when_abandoned: list[int] = []
+
+    def _abandon(call: object, timeout_seconds: float) -> None:
+        del call, timeout_seconds
+        # How much had been said by the time the attempt was given up on.
+        painted_when_abandoned.append(len(painted))
+
+    stop = RebaseStop(
+        sha="d66d3e64d66d3e64",
+        subject="safeguard context changes",
+        conflicted_files=tuple(_CONFLICTED),
+        stop_index=1,
+        stop_cap=10,
+    )
+
+    resolved = run_rebase_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        stop=stop,
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        clock=clock,
+        hard_stop=_abandon,
+    )
+
+    assert resolved is False
+    assert painted_when_abandoned, "the stop was never applied"
+    assert len(painted) == painted_when_abandoned[0], (
+        "an abandoned rebase stop painted through the display on its way out"
+    )

@@ -108,6 +108,12 @@ def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
 #: repository; finite is the point.
 CAPACITY_PROBE_BUDGET_SECONDS = 10.0
 
+#: Names the worker so an abandoned step is identifiable in a stack dump.
+_PROBE_THREAD_NAME = "ralph-watch-capacity-probe"
+
+#: Names the thread a timeout is reported on.
+_TIMEOUT_REPORT_THREAD_NAME = "ralph-watch-step-timed-out"
+
 
 def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
     """Run ``probe``, returning ``fallback`` if it does not answer in time.
@@ -133,17 +139,39 @@ def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: f
         except Exception:
             logger.opt(exception=True).debug("workspace watch capacity probe failed")
 
-    worker = threading.Thread(target=_run_probe, name="ralph-watch-capacity-probe", daemon=True)
+    worker = threading.Thread(target=_run_probe, name=_PROBE_THREAD_NAME, daemon=True)
     worker.start()
     worker.join(budget_seconds)
     if answer:
         return answer[0]
-    logger.warning(
-        "Workspace watch capacity probe did not answer within {}s; "
-        "starting the agent without workspace monitoring",
-        budget_seconds,
-    )
+    _say_it_timed_out(budget_seconds)
     return fallback
+
+
+def _say_it_timed_out(budget_seconds: float) -> None:
+    """Report a timeout WITHOUT waiting to be able to report it.
+
+    Ralph's log sink prints through the same ``rich.Console`` the status
+    bar paints with, under loguru's per-handler lock and the Console's
+    own. This line runs on the launch thread at the exact moment
+    something has been detected as wedged, so taking that lock here can
+    park the launch on the way out of the step that was giving up.
+    Saying it costs a thread; not returning costs the run.
+    """
+    try:
+        threading.Thread(
+            target=lambda: logger.warning(
+                "Workspace watch step did not answer within {}s; "
+                "starting the agent without workspace monitoring",
+                budget_seconds,
+            ),
+            name=_TIMEOUT_REPORT_THREAD_NAME,
+            daemon=True,
+        ).start()
+    except RuntimeError:
+        # Out of threads, so there is nothing left to say it on. The
+        # launch still proceeds, which is the point.
+        return
 
 
 def watch_capacity_is_predicted(

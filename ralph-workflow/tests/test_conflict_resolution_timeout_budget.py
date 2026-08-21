@@ -36,11 +36,14 @@ from ralph.pipeline.conflict_resolution.driver import (
     run_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
+from ralph.pipeline.conflict_resolution.hard_stop import call_with_hard_stop
 from ralph.pipeline.conflict_resolution.session import with_session_ceiling
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pytest
 
     from ralph.policy.models import PolicyBundle
@@ -117,6 +120,33 @@ def _install_seams(
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **kwargs: prompt_path)
 
 
+class _InertProcessRegistry:
+    """A process registry with nothing in it, for the hard stop to read.
+
+    The real ``call_with_hard_stop`` runs here, and left to its defaults
+    it reads the LIVE process-manager singleton and reaps through the
+    real ``teardown_subtree`` -- which kills by process group. No attempt
+    is abandoned today, because the stubbed session returns instantly,
+    so nothing fires. That is a property of the stub, not of the test:
+    any change that lets an attempt outlive its share would reach the
+    live registry from inside a pytest shard and reap whatever that
+    shard is running.
+    """
+
+    def list_active(self) -> list[object]:
+        return []
+
+
+def _bounded_hard_stop(attempt: Callable[[], bool], timeout_seconds: float) -> bool | None:
+    """The real stop, pointed at a registry that owns nothing."""
+    return call_with_hard_stop(
+        attempt,
+        timeout_seconds,
+        manager=_InertProcessRegistry(),
+        teardown=lambda pid: None,
+    )
+
+
 def _run(tmp_path: Path, *, clock: _FakeClock, config: UnifiedConfig | None = None) -> bool:
     """Drive the pipeline through its REAL default invoker."""
     return run_conflict_resolution_pipeline(
@@ -129,6 +159,7 @@ def _run(tmp_path: Path, *, clock: _FakeClock, config: UnifiedConfig | None = No
         display=None,
         display_context=None,
         clock=clock,
+        hard_stop=_bounded_hard_stop,
     )
 
 

@@ -115,6 +115,7 @@ class _SlowObserver:
     def __init__(self) -> None:
         self.entered = threading.Event()
         self.finished = threading.Event()
+        self.join_timeouts: list[float | None] = []
 
     def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None:
         del path
@@ -128,7 +129,7 @@ class _SlowObserver:
         return
 
     def join(self, timeout: float | None = None) -> None:
-        del timeout
+        self.join_timeouts.append(timeout)
 
     def is_alive(self) -> bool:
         return False
@@ -430,3 +431,38 @@ def test_a_slow_owner_sidecar_read_does_not_park_the_launch(
     assert sidecar.polling.is_set(), "the owner sidecar was never polled"
     assert still_polling, "the launch waited for the whole sidecar read"
     assert status["mode"] == "live_fallback"
+
+
+def test_the_watch_teardown_joins_with_a_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both halves of a teardown are bounded, not just the stop.
+
+    ``observer.stop()`` runs under a budget; the ``join`` that follows it
+    is the other half, and a join without a timeout waits on the same
+    emitter thread the stop just failed to reach.
+    """
+    observer = _SlowStoppingObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.STOP_OBSERVER_BUDGET_SECONDS", _PROBE_BUDGET_SECONDS
+    )
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+        monitor.stop()
+    finally:
+        release_workspace_awareness(tmp_path)
+
+    assert observer.join_timeouts, "the teardown never joined the observer"
+    assert all(timeout is not None for timeout in observer.join_timeouts), (
+        "the teardown joined the observer with no timeout"
+    )
