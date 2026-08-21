@@ -175,3 +175,105 @@ def test_the_shipped_probe_budget_is_finite_and_small() -> None:
     value a real launch is exposed to.
     """
     assert 0.0 < CAPACITY_PROBE_BUDGET_SECONDS <= 30.0
+
+
+class _SlowWatchLock:
+    """A cross-process watch lock whose sidecar I/O takes its time.
+
+    ``try_acquire`` creates ``<workspace>/.agent/`` and opens the lock
+    file there, and the ownership record is written to the same place.
+    That is workspace filesystem I/O, in the same pre-spawn window and
+    under the same process-global lock as the walk -- so the hung mount
+    that parks one parks the other.
+    """
+
+    def __init__(self, *, stall: bool = True) -> None:
+        self.entered = threading.Event()
+        self.finished = threading.Event()
+        self.released = False
+        self.stall = stall
+
+    def try_acquire(self, workspace: Path) -> str | None:
+        del workspace
+        self.entered.set()
+        if self.stall:
+            threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.finished.set()
+        return None
+
+    def claimed_owner_id(self, workspace: Path) -> str | None:
+        del workspace
+        return "owner-1"
+
+    def last_released_holder(self, workspace: Path) -> str | None:
+        del workspace
+        return None
+
+    def release(self, workspace: Path, owner_id: str) -> None:
+        del workspace, owner_id
+        self.released = True
+
+
+def test_slow_watch_lock_io_does_not_park_the_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lock the watch is claimed under is workspace I/O too.
+
+    Bounding the capacity probe and the observer start leaves the step
+    BETWEEN them -- claiming the cross-process watch lock and writing
+    the ownership sidecar, both under ``<workspace>/.agent/`` -- free to
+    park the launch for as long as the filesystem takes.
+    """
+    lock = _SlowWatchLock()
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", lock)
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+        still_waiting = not lock.finished.is_set()
+        status = awareness_for_workspace(tmp_path).snapshot()
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+    assert lock.entered.is_set(), "the watch lock was never reached"
+    assert still_waiting, "the launch waited for the whole lock acquisition"
+    assert status["mode"] == "live_fallback"
+
+
+def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Giving up on the watch must give up the claim to it.
+
+    The cross-process lock is what stops a second process registering an
+    overlapping recursive observer on the same workspace. Holding it
+    after abandoning the watch keeps that guarantee's cost -- no one
+    else may watch -- with none of its benefit, until the process exits.
+    """
+    lock = _SlowWatchLock(stall=False)
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", lock)
+    observer = _SlowObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
+    )
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        host_budget=8192,
+        directory_counter=lambda workspace, cap: 1,
+        live_watch_total=0,
+        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+    try:
+        monitor.start()
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+    assert observer.entered.is_set(), "the watch start was never reached"
+    assert lock.released, "the abandoned watch kept its cross-process claim"

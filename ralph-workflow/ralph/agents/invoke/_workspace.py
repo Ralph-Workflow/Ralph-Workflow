@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import errno
 import importlib
-import inspect
 import threading
 import time
 import weakref
@@ -16,6 +15,11 @@ from typing import TYPE_CHECKING, ClassVar, Protocol, cast, runtime_checkable
 from loguru import logger
 
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
+from ralph.agents.invoke._callback_arity import (
+    TWO_ARG_ARITY,
+    VALID_CALLBACK_ARITIES,
+    callback_arity,
+)
 from ralph.agents.invoke._has_src_path import _HasSrcPath
 from ralph.agents.invoke._watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
@@ -29,6 +33,7 @@ from ralph.workspace._cross_process_watch_lock import (
 )
 from ralph.workspace._shared_awareness import (
     SharedAwarenessError,
+    SharedAwarenessState,
     remove_shared_awareness_sidecar,
     shared_awareness_for_workspace,
 )
@@ -56,8 +61,6 @@ if TYPE_CHECKING:
 
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
-_VALID_CALLBACK_ARITIES: frozenset[int] = frozenset({0, 2})
-_TWO_ARG_ARITY: int = 2
 
 
 #: Union of the two valid on_event callback signatures. A callback
@@ -125,69 +128,6 @@ def _create_watchdog_observer() -> _ObserverProtocol | None:
     except ImportError:
         return None
     return observers_module.Observer()
-
-
-def _callback_arity(callback: WorkspaceEventCallback) -> int:
-    """Return the number of required positional parameters of ``callback``.
-
-    Used by ``WorkspaceMonitor.__post_init__`` to enforce the 0-arg
-    or 2-arg contract. ``inspect.signature`` already follows
-    ``functools.partial`` and ``functools.wraps`` chains, and
-    automatically excludes the bound ``self`` parameter for bound
-    methods, so the returned ``signature.parameters`` map is
-    authoritative for the effective positional arity. A callback
-    with ``*args`` or ``**kwargs`` has a non-finite arity; the
-    classifier counts the explicit positional slots before ``*args``
-    and treats the result as the effective arity.
-
-    Returns:
-        Number of required positional parameters as observed by the
-        caller (excluding ``self`` for bound methods).
-    """
-    try:
-        signature_obj: inspect.Signature = inspect.signature(callback)
-    except (TypeError, ValueError):
-        msg = (
-            f"WorkspaceMonitor on_event callback has an uninspectable signature;"
-            f" expected 0 or 2 required positional args, got callback of type"
-            f" {type(callback).__name__}"
-        )
-        raise ValueError(msg) from None
-    can_bind_zero = _can_bind_n(signature_obj, 0)
-    can_bind_two = _can_bind_n(signature_obj, 2)
-    if can_bind_zero and not can_bind_two:
-        return 0
-    if can_bind_two and not can_bind_zero:
-        return 2
-    msg = (
-        f"WorkspaceMonitor on_event callback has the wrong arity;"
-        f" expected exactly 0 or 2 required positional args, got"
-        f" callback of type {type(callback).__name__}"
-    )
-    raise ValueError(msg)
-
-
-def _can_bind_n(signature_obj: inspect.Signature, n: int) -> bool:
-    """Return True iff ``signature_obj`` accepts exactly ``n`` positional args.
-
-    A variadic-only signature (e.g. ``*args, **kwargs``) accepts any
-    number of args, so both ``n=0`` and ``n=2`` return True. The
-    arity check in ``_callback_arity`` rejects signatures where
-    both bind successfully, so a variadic-only callback is not
-    mistakenly classified as 0-arg or 2-arg.
-
-    Used to avoid touching ``Parameter.kind`` (which is typed as
-    ``Any`` in the upstream typeshed stub) and the
-    ``Parameter.empty`` sentinel (also ``Any``-typed) so the
-    mypy ``disallow_any_expr`` check does not flag the
-    ``inspect.Parameter``-typed expressions.
-    """
-    args: tuple[object, ...] = tuple(object() for _ in range(n))
-    try:
-        signature_obj.bind(*args)
-    except TypeError:
-        return False
-    return True
 
 
 class _SharedWorkspaceWatch:
@@ -335,8 +275,8 @@ class WorkspaceMonitor:
         self._now: Callable[[], float] = now if now is not None else time.monotonic
         self._last_event_at: float | None = None
         if on_event is not None:
-            arity = _callback_arity(on_event)
-            if arity not in _VALID_CALLBACK_ARITIES:
+            arity = callback_arity(on_event)
+            if arity not in VALID_CALLBACK_ARITIES:
                 msg = (
                     f"WorkspaceMonitor on_event callback has arity {arity};"
                     f" expected 0 (legacy) or 2 (production-style forwarding of"
@@ -534,11 +474,18 @@ class WorkspaceMonitor:
         """Give up on a watch that is taking longer than the launch can wait.
 
         The observer is deliberately NOT stopped: stopping it means
-        waiting on the very thread that has not come back. It was never
-        registered, so nothing will look for it again -- it is left to
+        waiting on the very thread that has not come back. It is left to
         finish its walk against a watch this process has forgotten,
-        which costs one thread and one watch tree against parking the
-        run.
+        which costs one thread and one live watch tree against parking
+        the run.
+
+        Forgotten is not silent. The orphan's handler still dispatches
+        by scope key, so a LATER monitor registering that key can be
+        handed the orphan's events, and the watches it holds still count
+        against the host's inotify budget for every later capacity
+        probe. Both inflate an activity signal rather than corrupt
+        anything, which is why they are accepted here; a run that never
+        returns is not.
         """
         self._observer = None
         self._handler = None
@@ -608,8 +555,8 @@ class WorkspaceMonitor:
         self._last_event_at = self._now()
         if self._on_event is not None:
             try:
-                arity = _callback_arity(self._on_event)
-                if arity == _TWO_ARG_ARITY:
+                arity = callback_arity(self._on_event)
+                if arity == TWO_ARG_ARITY:
                     two_arg = cast(
                         "Callable[[WorkspaceChangeKind, float], None]",
                         self._on_event,
@@ -788,11 +735,35 @@ class WorkspaceMonitor:
         failure yields explicit ``live_fallback`` rather than a standalone
         duplicate observer.
         """
-        try:
-            holder = CrossProcessWatchLock.try_acquire(self._workspace)
-        except WatchLockIOError:
+        # Every call in this method is workspace filesystem I/O --
+        # ``<workspace>/.agent/`` is created, the lock file opened, the
+        # ownership sidecar written -- in the same pre-spawn window, and
+        # under the same class-wide lock, as the walk the capacity probe
+        # and the observer start are bounded for. A hung mount parks it
+        # here just as readily, so it is bounded on the same terms and
+        # fails the same way: no watch, launch proceeds.
+        workspace = self._workspace
+        acquired: list[str | None] = []
+        lock_io_failed: list[bool] = []
+
+        def _try_acquire() -> bool:
+            try:
+                acquired.append(CrossProcessWatchLock.try_acquire(workspace))
+            except WatchLockIOError:
+                lock_io_failed.append(True)
+                return False
+            return True
+
+        answered = call_within_budget(
+            _try_acquire, fallback=None, budget_seconds=self._probe_budget_seconds
+        )
+        if lock_io_failed:
             self._activate_live_fallback("shared_awareness_io_failed")
             return False
+        if answered is None or not acquired:
+            self._activate_live_fallback("watch_lock_io_timed_out")
+            return False
+        holder = acquired[0]
         if holder is not None:
             self._enter_shared_awareness_consumer(holder)
             return False
@@ -801,13 +772,24 @@ class WorkspaceMonitor:
             self._activate_live_fallback("cross_process_holder")
             return False
         self._prior_lock_holder = CrossProcessWatchLock.last_released_holder(self._workspace)
-        try:
-            shared_awareness_for_workspace(self._workspace).begin_ownership(
-                self._cross_process_owner_id,
-                prior_holder=self._prior_lock_holder,
-            )
-        except SharedAwarenessError as exc:
-            self._shared_awareness_io_error = exc
+        owner_id = self._cross_process_owner_id
+        prior_holder = self._prior_lock_holder
+        ownership_error: list[SharedAwarenessError] = []
+
+        def _begin_ownership() -> bool:
+            try:
+                shared_awareness_for_workspace(workspace).begin_ownership(
+                    owner_id, prior_holder=prior_holder
+                )
+            except SharedAwarenessError as exc:
+                ownership_error.append(exc)
+            return True
+
+        call_within_budget(
+            _begin_ownership, fallback=None, budget_seconds=self._probe_budget_seconds
+        )
+        if ownership_error:
+            self._shared_awareness_io_error = ownership_error[0]
         self._owns_shared_awareness = True
         return True
 
@@ -821,11 +803,29 @@ class WorkspaceMonitor:
         error yields explicit ``live_fallback`` (S-2).
         """
         sidecar = shared_awareness_for_workspace(self._workspace)
-        try:
-            state = sidecar.poll()
-        except SharedAwarenessError:
+        polled: list[SharedAwarenessState] = []
+        poll_failed: list[bool] = []
+
+        def _poll() -> bool:
+            try:
+                polled.append(sidecar.poll())
+            except SharedAwarenessError:
+                poll_failed.append(True)
+                return False
+            return True
+
+        # Reading the owner's sidecar is workspace I/O on the launch
+        # thread, exactly like claiming the lock above.
+        answered = call_within_budget(
+            _poll, fallback=None, budget_seconds=self._probe_budget_seconds
+        )
+        if poll_failed:
             self._activate_live_fallback("shared_awareness_io_failed")
             return
+        if answered is None or not polled:
+            self._activate_live_fallback("watch_lock_io_timed_out")
+            return
+        state = polled[0]
         self._shared_consumer = True
         self._started = True
         awareness = awareness_for_workspace(self._workspace)
@@ -953,8 +953,8 @@ class WorkspaceMonitor:
                 so a buggy callback cannot break the file-event path.
         """
         if on_event is not None:
-            arity = _callback_arity(on_event)
-            if arity not in _VALID_CALLBACK_ARITIES:
+            arity = callback_arity(on_event)
+            if arity not in VALID_CALLBACK_ARITIES:
                 msg = (
                     f"WorkspaceMonitor on_event callback has arity {arity};"
                     f" expected 0 (legacy) or 2 (production-style forwarding of"
