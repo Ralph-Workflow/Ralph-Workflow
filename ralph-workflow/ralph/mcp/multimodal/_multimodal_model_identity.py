@@ -8,7 +8,17 @@ _UNKNOWN_PROVIDER = "unknown"
 
 
 def _canonical_provider(raw: str) -> str:
-    """Return the canonical spelling of a provider name."""
+    """Return the canonical spelling of a provider name.
+
+    The field is typed ``str``, so the JSON readers are where a
+    non-string has to be caught -- and they coerced with ``str(...)``,
+    turning a payload ``{"provider": null}`` into the literal provider
+    ``"none"``. That reads as RESOLVED and suppresses the
+    identity-unknown degradation warning; ``null`` is the natural
+    serialisation of "no provider". Fixed at the seam that reads JSON
+    (``session_identity_from_payload``) rather than duplicated here,
+    where the type makes it unreachable and untestable.
+    """
     return raw.strip().lower() or _UNKNOWN_PROVIDER
 
 

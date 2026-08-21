@@ -360,11 +360,33 @@ def session_transport_is_ambiguous(transports: Sequence[str]) -> bool:
     return any(transport != first for transport in transports)
 
 
+#: The provider a transport is FIXED to, where the CLI determines it.
+#: Mirrors ``session_plan._TRANSPORT_FIXED_PROVIDER``, which resolves an
+#: identity; this decides what that identity may be DELIVERED.
+_TRANSPORT_CANONICAL_PROVIDER: dict[str, str] = {
+    "claude": "claude",
+    "claude_interactive": "claude",
+    "codex": "openai",
+    "agy": "gemini",
+}
+
+
 def get_delivery_mode(
     identity: MultimodalModelIdentity,
     modality: str,
 ) -> CapabilityVerdict:
     """Determine how to deliver a modality for the given model identity.
+
+    Bounded by BOTH the model's provider and the CLI's own. A model flag
+    naming a qualified ``provider/model`` deliberately overrides the
+    transport's canonical provider -- a router CLI really can front
+    another vendor's model -- but the block still has to travel through
+    that CLI. Taking only the model's provider let a ``claude``-transport
+    agent carrying ``--model gemini/...`` mint AudioContent and
+    VideoContent, which Ralph's own matrix says the claude CLI does not
+    accept. Neither side may be exceeded, so the LESS demanding of the
+    two answers wins -- the same conservative rule a mixed chain and a
+    declared-vs-persisted transport already use.
 
     Returns a CapabilityVerdict indicating the delivery mode:
 
@@ -377,6 +399,39 @@ def get_delivery_mode(
     Unknown providers default to RESOURCE_REFERENCE_REPLAY (safe, keeps multimodal
     surface available without false typed-delivery promises).
     """
+    verdict = _delivery_for_provider(identity, modality)
+    canonical = _TRANSPORT_CANONICAL_PROVIDER.get(identity.transport or "")
+    if canonical is None or canonical == identity.provider:
+        return verdict
+    through_the_cli = _delivery_for_provider(replace(identity, provider=canonical), modality)
+    if _DELIVERY_DEMAND[through_the_cli.delivery] >= _DELIVERY_DEMAND[verdict.delivery]:
+        return verdict
+    # Resolved as an UNRESOLVED provider, not as the CLI's own verdict.
+    # That is what this pairing actually is -- Ralph cannot confirm what
+    # a router CLI fronting another vendor accepts -- and it lands on a
+    # replay handle rather than the CLI's ``unsupported``. Adopting the
+    # CLI's answer wholesale would turn a reachable artifact into a hard
+    # error, which is a bigger loss than the typed block it withholds:
+    # a reference is strictly more than nothing.
+    unresolved = _delivery_for_provider(
+        replace(identity, provider=UNKNOWN_IDENTITY.provider), modality
+    )
+    return replace(
+        unresolved,
+        provider=identity.provider,
+        model_id=identity.model_id,
+        reason=(
+            f"{unresolved.reason} (Ralph cannot confirm the {canonical!r} CLI "
+            f"carries {identity.provider!r} media, so delivery stays replayable)"
+        ),
+    )
+
+
+def _delivery_for_provider(
+    identity: MultimodalModelIdentity,
+    modality: str,
+) -> CapabilityVerdict:
+    """Resolve the verdict for this identity's PROVIDER alone."""
     if modality not in SUPPORTED_MODALITIES:
         return CapabilityVerdict(
             modality=modality,

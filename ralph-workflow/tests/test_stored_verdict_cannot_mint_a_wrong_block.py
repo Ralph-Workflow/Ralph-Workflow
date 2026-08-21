@@ -130,3 +130,51 @@ def test_a_matching_stored_block_type_is_left_alone() -> None:
     kept = profile.verdict_for(MODALITY_PDF)
 
     assert kept.reason == "a value read verbatim out of a session payload"
+
+
+def test_a_model_flag_cannot_outrun_the_cli_it_travels_through() -> None:
+    """Delivery is bounded by BOTH the model's provider and the CLI's.
+
+    A qualified ``provider/model`` flag deliberately overrides the
+    transport's canonical provider -- a router CLI really can front
+    another vendor's model. But the block still has to travel through
+    that CLI, and taking only the model's provider let an ordinary agent
+    config
+
+        [agents.foo]
+        transport  = "claude"
+        model_flag = "--model gemini/gemini-2.5-pro"
+
+    mint AudioContent and VideoContent, which Ralph's own matrix says
+    the claude CLI does not accept. No persisted or hand-written state
+    is involved, and the chain-ambiguity rule cannot see it: one agent
+    agrees with itself.
+    """
+    gemini_on_claude = MultimodalModelIdentity(
+        provider="gemini", model_id="gemini-2.5-pro", transport="claude"
+    )
+    gemini_on_its_own_cli = MultimodalModelIdentity(
+        provider="gemini", model_id="gemini-2.5-pro", transport="agy"
+    )
+
+    for modality in ("audio", "video"):
+        bounded = get_delivery_mode(gemini_on_claude, modality)
+        native = get_delivery_mode(gemini_on_its_own_cli, modality)
+
+        assert native.delivery is DeliveryMode.TYPED_BLOCK, modality
+        assert bounded.delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY, modality
+
+    # The floor is a REPLAY HANDLE, not the CLI's own "unsupported":
+    # Ralph cannot confirm what a router carries, and a reference is
+    # strictly more than nothing. Adopting the CLI's verdict wholesale
+    # turned a reachable artifact into a hard error.
+    on_codex = MultimodalModelIdentity(
+        provider="anthropic", model_id="claude-opus-5", transport="codex"
+    )
+    assert get_delivery_mode(on_codex, "pdf").delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+    # Where the two agree, nothing changes.
+    native_pair = MultimodalModelIdentity(provider="claude", model_id="opus", transport="claude")
+    assert get_delivery_mode(native_pair, "pdf").delivery is DeliveryMode.TYPED_BLOCK

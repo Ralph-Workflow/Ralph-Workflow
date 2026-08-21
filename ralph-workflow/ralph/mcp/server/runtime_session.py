@@ -144,7 +144,9 @@ def session_identity_from_payload(
     With no declaration the payload stands as written -- there is
     nothing to contradict it.
     """
-    provider = str(raw_identity.get("provider", UNKNOWN_IDENTITY.provider))
+    # NOT ``str(...)``: that turns a JSON ``null`` into "none".
+    raw_provider = raw_identity.get("provider", UNKNOWN_IDENTITY.provider)
+    provider = raw_provider if isinstance(raw_provider, str) else UNKNOWN_IDENTITY.provider
     model_id_raw = raw_identity.get("model_id")
     stated_transport = payload_transport(raw_identity.get("transport"))
     resolved = reconcile_declared_transport(declared, raw_identity.get("transport"))

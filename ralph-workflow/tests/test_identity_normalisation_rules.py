@@ -84,14 +84,18 @@ def test_a_profile_from_another_provider_is_re_resolved() -> None:
         resolve_capability_profile,
     )
 
+    # On gemini's OWN CLI. Pairing a gemini model with a claude
+    # transport now bounds delivery by what that CLI can carry, which
+    # would make this fixture assert the bound rather than the
+    # re-resolution it is about.
     gemini = resolve_capability_profile(
-        MultimodalModelIdentity(provider="gemini", model_id="g", transport="claude")
+        MultimodalModelIdentity(provider="gemini", model_id="g", transport="agy")
     )
     assert gemini.verdict_for("audio").delivery is DeliveryMode.TYPED_BLOCK
 
     rebased = profile_for_caller(
         gemini,
-        MultimodalModelIdentity(provider="openai", model_id="gpt-5", transport="claude"),
+        MultimodalModelIdentity(provider="openai", model_id="gpt-5", transport="agy"),
     )
 
     # OpenAI accepts none of these; carrying gemini's verdicts promised
@@ -524,3 +528,29 @@ def test_a_padded_model_id_does_not_change_the_digest() -> None:
     # Case IS significant for a model id, unlike a provider or transport.
     assert MultimodalModelIdentity(provider="openai", model_id="GPT-5").model_id == "GPT-5"
     assert MultimodalModelIdentity(provider="openai", model_id="   ").model_id is None
+
+
+def test_a_json_null_provider_reads_as_unknown() -> None:
+    """``null`` is the natural serialisation of "no provider".
+
+    The readers coerced with ``str(...)`` before canonicalisation saw
+    the value, so ``{"provider": null}`` became the literal provider
+    ``"none"`` -- resolved by every test in the codebase, which
+    suppresses the identity-unknown degradation warning that tells an
+    operator delivery is running on defaults. ``0``, ``[]`` and ``{}``
+    were no better.
+    """
+    import json
+
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.server.runtime_session import session_identity_from_payload
+
+    for raw in (None, 0, [], {"a": 1}, True, ""):
+        identity = session_identity_from_payload({"provider": raw}, None)
+
+        assert identity.provider == "unknown", raw
+        assert identity.is_known() is False, raw
+
+    # Direct construction agrees, and a real provider still resolves.
+    assert MultimodalModelIdentity(provider="claude").is_known() is True
+    assert json.loads('{"provider": null}')["provider"] is None
