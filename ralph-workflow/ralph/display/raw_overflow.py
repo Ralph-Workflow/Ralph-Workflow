@@ -232,6 +232,35 @@ def _disambiguated(unit_id: str, model: str | None) -> str:
     return f"{unit_id}-{_digest_of(f'{unit_id}\x00{model or ""}')}"
 
 
+def _invocation_signature(config: AgentConfig, model: str | None) -> str:
+    """Return everything that distinguishes one agent's invocation.
+
+    The WHOLE invocation, not the parts the readable identity happens to
+    use. Keying on those parts closed this defect family by family for
+    six rounds and never closed the class:
+
+    * ``[ccs_aliases]`` in its STRING form leaves ``model_flag`` unset,
+      so ``ccs/claude`` and the builtin ``claude-headless`` differed
+      only in their ``cmd`` text and shared a file.
+    * ``ccs/nano`` and the builtin ``nanocoder`` differ only in
+      TRANSPORT -- and the corruption grader exempts interactive-PTY
+      transports, so the same bytes graded clean or corrupt depending on
+      which agent closed the phase.
+    * Two ``[agents.X]`` entries differing only in a cmd flag
+      (``--permission-mode plan`` vs ``--dangerously-skip-permissions``)
+      shared a file, because only the executable was ever read.
+
+    Two agents that are genuinely the same invocation still share one
+    capture, which is correct: there is nothing to tell apart.
+    """
+    raw_transport = cast("object", getattr(config, "transport", None))
+    raw_value = cast("object", getattr(raw_transport, "value", None))
+    transport = raw_value if isinstance(raw_value, str) else ""
+    raw_flag = cast("object", getattr(config, "model_flag", None))
+    flag = raw_flag if isinstance(raw_flag, str) else ""
+    return "\x00".join((config.cmd, flag, model or "", transport))
+
+
 def _digest_of(raw: str) -> str:
     """Return the short digest that keeps two folded identities apart."""
     return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:_ID_DIGEST_CHARS]
@@ -329,8 +358,11 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # agents that set only ``model_flag`` is the flag.
     flag_model = _model_from_flag(config, model)
 
+    signature = _invocation_signature(config, model)
+
     def identified(base: str) -> str:
-        return _disambiguated(f"{base}-{flag_model}" if flag_model else base, model)
+        readable = f"{base}-{flag_model}" if flag_model else base
+        return f"{readable}-{_digest_of(signature)}"
 
     if executable.lower() == "claude" and ("-p" in flags or "--output-format=stream-json" in flags):
         return identified("claude-headless")

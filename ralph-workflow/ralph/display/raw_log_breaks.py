@@ -44,8 +44,15 @@ PTY_EXIT_COMMAND: Final = "/exit"
 #: :func:`detect_raw_log_breaks`. Exact match only: a line that merely
 #: *contains* a marker is still graded, so an agent wire frame embedding
 #: the marker text cannot smuggle a corrupted line past the detector.
+#: The second line of the completion tool's own result
+#: (``mcp/tools/coordination.py``). The first line was allowlisted and
+#: this one was not, so a byte-perfect Ralph-authored message graded
+#: corrupt on its second half -- the grader accepting half of what its
+#: own emitter writes.
+COMPLETION_EVENT_LINE: Final = "[Completion event emitted to pipeline]"
+
 HARNESS_PTY_INPUT_ECHO_LINES: frozenset[str] = frozenset(
-    {TURN_BOUNDARY_MARKER, PTY_EXIT_COMMAND}
+    {TURN_BOUNDARY_MARKER, PTY_EXIT_COMMAND, COMPLETION_EVENT_LINE}
 )
 
 

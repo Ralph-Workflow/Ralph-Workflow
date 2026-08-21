@@ -143,17 +143,6 @@ def test_two_flags_that_sanitise_alike_stay_apart() -> None:
     )
 
 
-def test_an_agent_whose_flag_adds_nothing_keeps_its_plain_name() -> None:
-    """No churn where the flag only repeats what ``model`` already says.
-
-    The path appends ``model`` separately, so ``codex/gpt-5.4`` -- whose
-    flag is exactly ``--model gpt-5.4`` -- must keep the filename an
-    operator already knows.
-    """
-    assert _capture_name("codex/gpt-5.4") == "codex_gpt-5.4.log"
-    assert _capture_name("claude") == "claude.log"
-
-
 def test_the_model_still_reaches_the_filename() -> None:
     """Not vacuous: the distinguishing token is the model, not a counter."""
     assert "claude-sonnet-4-5" in _capture_name("pi/anthropic/claude-sonnet-4-5")
@@ -191,19 +180,6 @@ def test_names_that_differ_only_in_unsafe_characters_stay_apart() -> None:
     collisions = {path: shared for path, shared in by_path.items() if len(shared) > 1}
 
     assert not collisions, f"agents sharing one capture file: {collisions}"
-
-
-def test_a_safe_identity_is_not_given_a_digest() -> None:
-    """No churn where nothing folds.
-
-    The digest exists to restore what the sanitiser destroys. Adding it
-    unconditionally would rename every capture an operator knows for no
-    gain, so it is added only when folding would actually occur.
-    """
-    assert _capture_name("codex/gpt-5.4") == "codex_gpt-5.4.log"
-    assert _capture_name("codex/gpt-5-codex") == "codex_gpt-5-codex.log"
-    assert _capture_name("claude") == "claude.log"
-    assert _capture_name("ccs/glm") == "ccs-glm.log"
 
 
 def test_a_model_flag_using_equals_still_distinguishes_agents() -> None:
@@ -384,3 +360,105 @@ def test_a_dispatcher_alias_with_a_model_flag_is_distinguished() -> None:
         return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=None).name
 
     assert capture_for("--model a") != capture_for("--model b")
+
+
+def test_agents_differing_only_outside_the_readable_name_stay_apart() -> None:
+    """The capture is keyed on the WHOLE invocation.
+
+    Keying on the parts the readable name happens to use closed this
+    defect one family at a time for six rounds and never closed the
+    class. Three shapes it missed, all reachable from shipped or
+    ordinary config:
+
+    * ``[ccs_aliases]`` in its STRING form leaves ``model_flag`` unset,
+      so ``ccs/claude`` differed from the builtin ``claude-headless``
+      only in its ``cmd`` text.
+    * ``ccs/nano`` and the builtin ``nanocoder`` differ only in
+      TRANSPORT -- and since the grader exempts interactive-PTY
+      transports, the same bytes graded clean or corrupt depending on
+      which agent closed the phase. A verdict that depends on anything
+      but the bytes is the thing this subsystem promises not to do.
+    * Two ``[agents.X]`` entries differing only in a cmd flag.
+    """
+    from pathlib import Path
+
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    def capture_for(config: AgentConfig) -> str:
+        return raw_log_path_for(
+            Path("/w"), raw_log_unit_id_for(config), model=config.model
+        ).name
+
+    stream_json = "--output-format=stream-json"
+    agents = {
+        "builtin claude-headless": AgentConfig(
+            cmd="claude -p", output_flag=stream_json, transport=AgentTransport.CLAUDE
+        ),
+        "ccs/claude string form": AgentConfig(
+            cmd="claude", output_flag=stream_json, transport=AgentTransport.CLAUDE
+        ),
+        "builtin nanocoder": AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER),
+        "ccs/nano string form": AgentConfig(cmd="nanocoder", transport=AgentTransport.CLAUDE),
+        "claude --permission-mode plan": AgentConfig(
+            cmd="claude --permission-mode plan", transport=AgentTransport.CLAUDE_INTERACTIVE
+        ),
+        "claude --dangerously-skip": AgentConfig(
+            cmd="claude --dangerously-skip-permissions",
+            transport=AgentTransport.CLAUDE_INTERACTIVE,
+        ),
+        "builtin claude": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+    }
+
+    by_capture: dict[str, list[str]] = {}
+    for label, config in agents.items():
+        by_capture.setdefault(capture_for(config), []).append(label)
+
+    collisions = {path: shared for path, shared in by_capture.items() if len(shared) > 1}
+    assert not collisions, collisions
+
+    # Two agents that ARE the same invocation still share one capture:
+    # there is nothing to tell apart, and inventing a difference would
+    # split one agent's transcript across two files.
+    same = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
+    assert capture_for(same) == capture_for(
+        AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
+    )
+
+
+def test_a_capture_name_is_readable_and_stable() -> None:
+    """Every identity now carries a digest of its whole invocation.
+
+    That is a deliberate trade, and it costs a one-time rename of every
+    capture file. Keying on only the parts the readable name uses closed
+    this defect family by family for six rounds -- headless Claude, then
+    ccs aliases, then dynamic families, then effort suffixes, then the
+    alias TABLE form, then the alias STRING form -- while the class
+    stayed open. The digest closes the class.
+
+    What must survive the trade: an operator can still recognise the
+    file, and the same agent always writes the same one.
+    """
+    from pathlib import Path
+
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    def capture_for() -> str:
+        config = AgentConfig(
+            cmd="codex exec",
+            model="gpt-5.4",
+            output_flag="--json",
+            transport=AgentTransport.CODEX,
+        )
+        return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model="gpt-5.4").name
+
+    name = capture_for()
+
+    assert name.startswith("codex-"), name
+    assert "gpt-5.4" in name, name
+    assert name.endswith(".log"), name
+    # Stable: the same invocation, twice, is the same file.
+    assert capture_for() == name

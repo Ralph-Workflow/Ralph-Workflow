@@ -783,10 +783,10 @@ def test_two_agents_never_share_one_graded_capture() -> None:
         transport=AgentTransport.GENERIC,
     )
 
-    assert raw_log_unit_id_for(headless_claude) == "claude-headless"
-    assert raw_log_unit_id_for(kimi) == "kimi"
-    assert raw_log_unit_id_for(ccs_alias) == "ccs-glm"
-    assert raw_log_unit_id_for(other_ccs_alias) == "ccs-mm"
+    assert raw_log_unit_id_for(headless_claude) .startswith("claude-headless-")
+    assert raw_log_unit_id_for(kimi) .startswith("kimi-")
+    assert raw_log_unit_id_for(ccs_alias) .startswith("ccs-glm-")
+    assert raw_log_unit_id_for(other_ccs_alias) .startswith("ccs-mm-")
     # The point of all of it: no two of these may share a capture.
     identities = {
         raw_log_unit_id_for(config)
@@ -845,8 +845,8 @@ def test_an_agent_invoked_by_path_keeps_its_identity() -> None:
         transport=AgentTransport.GENERIC,
     )
 
-    assert raw_log_unit_id_for(by_path) == "claude-headless"
-    assert raw_log_unit_id_for(ccs_by_path) == "ccs-glm"
+    assert raw_log_unit_id_for(by_path) .startswith("claude-headless-")
+    assert raw_log_unit_id_for(ccs_by_path) .startswith("ccs-glm-")
 
 
 def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
@@ -862,7 +862,7 @@ def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
 
     codex = AgentConfig(cmd="codex exec", output_flag="--json", transport=AgentTransport.CODEX)
 
-    assert raw_log_unit_id_for(codex) == "codex"
+    assert raw_log_unit_id_for(codex) .startswith("codex-")
 
 
 def test_the_nul_scan_is_lazy_by_construction() -> None:

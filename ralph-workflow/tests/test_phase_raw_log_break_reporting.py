@@ -38,16 +38,30 @@ def _claude_interactive_config() -> AgentConfig:
     return AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
 
 
+def _capture_path(workspace_root: Path, config: AgentConfig) -> Path:
+    """Return the path the production writer and grader both derive.
+
+    DERIVED, not spelled out. The capture identity is keyed on the whole
+    invocation now -- it has to be, or two agents differing only in a
+    cmd flag or a transport share one file -- so a hardcoded filename
+    here writes somewhere the code under test never looks, and the test
+    passes or fails for the wrong reason.
+    """
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    return raw_log_path_for(workspace_root, raw_log_unit_id_for(config), model=config.model)
+
+
 def _write_corrupted_raw_log(workspace_root: Path) -> None:
     """Write a raw log at the exact path ``AgentConfig(cmd="agy")`` resolves to."""
-    raw_path = workspace_root / ".agent" / "raw" / "agy.log"
+    raw_path = _capture_path(workspace_root, AgentConfig(cmd="agy", transport=AgentTransport.AGY))
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(b'{"event":"init","tools":["call_mcp_tool"]}\n' + (b"\x00" * 512))
 
 
 def _write_valid_claude_raw_log(workspace_root: Path) -> None:
     """Write a valid Claude interactive raw log at the path for ``cmd="claude"``."""
-    raw_path = workspace_root / ".agent" / "raw" / "claude.log"
+    raw_path = _capture_path(workspace_root, _claude_interactive_config())
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
         b"Session ID: 28ee58c0-0614-474f-b609-80cc6c252f90\n"
@@ -239,7 +253,7 @@ def test_render_success_artifact_names_raw_log_corruption(tmp_path: Path) -> Non
 
 def _write_clean_claude_session_raw_log(workspace_root: Path, alias: str) -> None:
     """Write a raw log containing only canonical Claude session metadata."""
-    raw_path = workspace_root / ".agent" / "raw" / "claude.log"
+    raw_path = _capture_path(workspace_root, _claude_interactive_config())
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
         b'{"event":"init","tools":["call_mcp_tool"]}\n'

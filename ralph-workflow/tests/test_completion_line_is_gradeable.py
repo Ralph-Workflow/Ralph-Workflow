@@ -63,3 +63,52 @@ def test_the_grader_accepts_what_the_emitter_writes(
     # Nothing the agent wrote is lost -- the escaping substitutes, it
     # does not drop.
     assert len(line) >= len(summary)
+
+
+#: The lines ``mcp/tools/coordination.py`` emits beside a completion.
+_OTHER_EMITTED_LINES = {
+    "coordination": (
+        "Coordination action 'checkpoint' processed: session_id=zzz999, timestamp=1700000000"
+    ),
+    "progress": "Progress reported: status='x', note='y', timestamp=1700000001",
+    "completion": (
+        "Task declared complete: session_id=def, summary='and again', timestamp=1700000002"
+    ),
+}
+_GENUINE = "Task declared complete: session_id=abc123, summary='did it', timestamp=1699999999"
+
+
+@pytest.mark.parametrize("name", sorted(_OTHER_EMITTED_LINES))
+def test_a_torn_write_is_graded_at_every_cut_but_a_measured_residue(name: str) -> None:
+    """Sweep EVERY cut point, not the one a fixture happens to pick.
+
+    A torn write severs the following line at an arbitrary byte, so
+    pinning cut=0 measured almost nothing: an earlier grader excused 61
+    of 83 cuts with the suite green, and a commit message of mine
+    reported a residue of "0 of 83" that was measured on a different
+    sweep and was simply wrong for this one.
+
+    What survives is exactly one shape: a remainder that is ALL DIGITS
+    welds onto this line's timestamp instead of breaking it. Bounding
+    the field to a plausible epoch length (an epoch second needs ten
+    digits, eleven until the year 5138) reduces that to the one or two
+    digits that keep the total inside the bound. That cannot be closed
+    without knowing the timestamp itself, so it is measured here rather
+    than described.
+    """
+    second = _OTHER_EMITTED_LINES[name]
+    clean = [
+        second[cut:]
+        # Stops before the empty remainder: consuming the whole second
+        # line leaves the genuine first line alone, which is not a torn
+        # write and is correctly clean.
+        for cut in range(1, len(second))
+        if is_whole_canonical_session_line(_GENUINE + second[cut:])
+    ]
+
+    assert all(remainder.isdigit() for remainder in clean), clean
+    assert len(clean) <= 2, clean
+    # Not vacuous: an untorn genuine line is still recognised, and the
+    # untruncated pair is still graded.
+    assert is_whole_canonical_session_line(_GENUINE)
+    assert not is_whole_canonical_session_line(_GENUINE + second)

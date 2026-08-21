@@ -46,9 +46,22 @@ def _codex_config() -> AgentConfig:
     return AgentConfig(cmd="codex", transport=AgentTransport.CODEX)
 
 
+def _capture_path(root: Path, config: AgentConfig | None = None) -> Path:
+    """Return the path the production writer and grader both derive.
+
+    DERIVED, not spelled out: the capture identity is keyed on the whole
+    invocation, so a hardcoded filename writes somewhere the code under
+    test never looks.
+    """
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    resolved = config or _codex_config()
+    return raw_log_path_for(root, raw_log_unit_id_for(resolved), model=resolved.model)
+
+
 def _write_turn_failed_raw_log(workspace_root: Path) -> None:
     """Write the measured Codex shape at the path ``cmd="codex"`` resolves to."""
-    raw_path = workspace_root / ".agent" / "raw" / "codex.log"
+    raw_path = _capture_path(workspace_root)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         json.dumps({"type": "item.completed", "item": {"id": "item_57"}}),
@@ -63,7 +76,7 @@ def _write_turn_failed_raw_log(workspace_root: Path) -> None:
 
 
 def _write_clean_raw_log(workspace_root: Path) -> None:
-    raw_path = workspace_root / ".agent" / "raw" / "codex.log"
+    raw_path = _capture_path(workspace_root)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_text(
         json.dumps({"type": "item.completed", "item": {"id": "item_57"}}) + "\n",
@@ -181,7 +194,7 @@ def test_phase_verdict_omits_transport_failure_when_raw_log_absent(
 
 def _write_recovered_turn_raw_log(workspace_root: Path) -> None:
     """A turn that failed and was followed by a successful one."""
-    raw_path = workspace_root / ".agent" / "raw" / "codex.log"
+    raw_path = _capture_path(workspace_root)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         json.dumps({"type": "turn.failed", "error": {"message": _API_REJECTION}}),
@@ -215,7 +228,7 @@ def test_transport_failure_detail_contains_terminal_escapes(
     the operator's terminal, so control sequences have to be stripped at
     this boundary like every other agent-origin string.
     """
-    raw_path = tmp_path / ".agent" / "raw" / "codex.log"
+    raw_path = _capture_path(tmp_path)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_text(
         json.dumps(
@@ -244,7 +257,7 @@ def test_a_later_phases_verdict_does_not_inherit_an_earlier_failure(
     using that agent. A failure from an earlier turn must not be
     presented as this phase's cause.
     """
-    raw_path = tmp_path / ".agent" / "raw" / "codex.log"
+    raw_path = _capture_path(tmp_path)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_text(
         "\n".join(

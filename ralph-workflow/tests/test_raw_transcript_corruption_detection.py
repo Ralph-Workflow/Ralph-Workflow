@@ -104,8 +104,9 @@ def test_headless_claude_uses_a_distinct_raw_log_identity(
         isolated_workspace, raw_log_unit_id_for(headless), model=headless.model
     )
     assert interactive_path != headless_path
-    assert headless_path.name == "claude-headless_haiku.log"
-    assert raw_log_unit_id_for(non_claude) == "agy"
+    assert headless_path.name.startswith("claude-headless-")
+    assert headless_path.name.endswith("_haiku.log")
+    assert raw_log_unit_id_for(non_claude).startswith("agy-")
 
 
 def test_first_writer_bytes_survive_late_first_writer(isolated_workspace: Path) -> None:
@@ -270,7 +271,15 @@ def test_detect_smoke_errors_surfaces_corrupted_raw_transcript(
 
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
 
-    raw_path = isolated_workspace / ".agent" / "raw" / "agy.log"
+    # DERIVED from the config, exactly as the writer and the grader
+    # both do. Spelling the filename out wrote somewhere the code under
+    # test never looks, so the test would report "no corruption found"
+    # for a capture that was never read.
+    from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
+
+    raw_path = raw_log_path_for(
+        isolated_workspace, raw_log_unit_id_for(config), model=config.model
+    )
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
         b'{"event":"init","tools":["call_mcp_tool"]}\n' + (b"\x00" * 512)

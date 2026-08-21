@@ -75,11 +75,18 @@ _COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+#: An epoch second needs ten digits today and eleven until the year
+#: 5138, so a longer run is not a timestamp -- it is this line's
+#: timestamp with another line's digits welded onto it. That was the
+#: whole residue of the delimiter grammar: a torn write whose surviving
+#: remainder is all digits extends the field instead of breaking it.
+_MAX_TIMESTAMP_DIGITS = 12
+
 #: The TAIL: the summary's closing delimiter, then ``timestamp=<int>``
 #: and the end of the line. ``coordination.py`` interpolates
 #: ``now_fn() -> int``, so digits are the whole vocabulary.
 _COMPLETION_TAIL_PATTERN: re.Pattern[str] = re.compile(
-    r"'\s*,\s*timestamp\s*[:=]\s*\d+$",
+    rf"'\s*,\s*timestamp\s*[:=]\s*\d{{1,{_MAX_TIMESTAMP_DIGITS}}}$",
     re.IGNORECASE,
 )
 
