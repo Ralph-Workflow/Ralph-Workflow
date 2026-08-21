@@ -20,6 +20,7 @@ original bytes.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -65,3 +66,34 @@ def test_verbatim_capture_keeps_the_full_wire_frame(tmp_path: Path) -> None:
 
     assert json.loads(written)["item"]["result"] == "Z" * 600
     assert detect_raw_log_breaks(log.path) == []
+
+
+def test_the_stream_buffer_admits_a_realistic_agent_frame() -> None:
+    """The default 64 KiB asyncio buffer is far below real frame sizes.
+
+    ``StreamReader.readline`` raises ``ValueError`` past its buffer and
+    then CLEARS the buffer, so an oversized frame takes everything queued
+    behind it and kills the reading loop. Measured captures hold single
+    lines of 503 KB, 693 KB and 24 MB, because one JSON frame carries a
+    whole tool result.
+    """
+    from ralph.process.manager import AGENT_STREAM_BUFFER_BYTES
+
+    largest_measured_frame_bytes = 24 * 1024 * 1024
+
+    assert largest_measured_frame_bytes < AGENT_STREAM_BUFFER_BYTES
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_frame_does_not_end_the_capture() -> None:
+    """A frame past even the raised buffer must not take the rest with it."""
+    from ralph.agents.subprocess_executor import drain_agent_lines
+
+    stream = asyncio.StreamReader(limit=64)
+    stream.feed_data(b"x" * 512 + b"\n")
+    stream.feed_data(b'{"type":"item.completed"}\n')
+    stream.feed_eof()
+
+    lines = [line async for line in drain_agent_lines(stream, "unit-1")]
+
+    assert b'{"type":"item.completed"}\n' in lines

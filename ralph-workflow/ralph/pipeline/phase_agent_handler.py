@@ -426,6 +426,8 @@ def _compute_graded_phase_verdict(
     required_artifact: RequiredArtifact,
     run_id: str | None,
     agent_config: AgentConfig | None = None,
+    *,
+    shared_capture: bool = False,
 ) -> tuple[str, Provenance, str]:
     """Recompute graded completion evidence at the phase-close render boundary.
 
@@ -457,7 +459,11 @@ def _compute_graded_phase_verdict(
     # folded in. A PASS or DEGRADED phase produced its artifact, so a
     # failure frame in its transcript was recovered from and naming it
     # would read as an alarm about a run that worked.
-    if label == "FAILED":
+    # ``shared_capture``: several concurrent units write one capture, so a
+    # failure frame in it cannot be attributed to this unit. Quoting a
+    # sibling's rejection here would be materially wrong, not merely
+    # unhelpful.
+    if label == "FAILED" and not shared_capture:
         transport_detail = _transport_failure_detail(workspace_root, agent_config)
         if transport_detail is not None:
             detail = f"{detail}; {transport_detail}" if detail else transport_detail
@@ -575,9 +581,18 @@ def _render_phase_failure_report(
     verbosity: Verbosity = Verbosity.VERBOSE,
     run_id: str | None = None,
     config: UnifiedConfig | None = None,
+    shared_capture: bool = False,
 ) -> None:
     """Render ``Verdict: FAILED (no artifact)`` when an agent invocation did
     not succeed for a required-artifact phase (F6 / DoD 12).
+
+    ``shared_capture`` marks a caller whose raw capture is shared with
+    other concurrently-running units -- parallel workers key the capture
+    by ``(executable, model)``, so several of them interleave frames in
+    one file. Transport-failure attribution is suppressed for those
+    callers: no ordering heuristic can tell which unit a failure frame
+    belongs to, and quoting a sibling unit's API rejection in this unit's
+    verdict is worse than reporting no cause at all.
 
     ``config`` (S-4 / G4 / DoD 15) is optional and additive: when supplied,
     ``effect.agent_name``'s :class:`AgentConfig` is resolved from it so the
@@ -616,7 +631,11 @@ def _render_phase_failure_report(
             else None
         )
         label, weakest, detail = _compute_graded_phase_verdict(
-            workspace_root, required_artifact, run_id, agent_config
+            workspace_root,
+            required_artifact,
+            run_id,
+            agent_config,
+            shared_capture=shared_capture,
         )
         if label != "FAILED":
             return

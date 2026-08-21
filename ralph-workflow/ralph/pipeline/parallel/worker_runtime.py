@@ -496,6 +496,10 @@ def run_parallel_worker_from_manifest(
             verbosity=Verbosity.VERBOSE,
             run_id=run_id,
             config=config,
+            # Parallel workers share one raw capture per (executable,
+            # model), so a transport-failure frame in it cannot be
+            # attributed to this worker.
+            shared_capture=True,
         )
     if isinstance(event, ExecutionResultEvent) and event.status == "completed":
         event = PipelineEvent.AGENT_SUCCESS

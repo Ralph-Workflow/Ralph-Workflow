@@ -64,7 +64,7 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 #:
 #: ``WeakValueDictionary`` (DA-001) keeps only a weak reference to the
 #: stored instance, so when every strong reference (the
-#: ``ParallelDisplay._overflow_logs`` slot, the reader's
+#: ``ParallelDisplay._condensed_logs`` slot, the reader's
 #: ``self._raw_overflow`` slot, etc.) is dropped, the entry vanishes
 #: automatically and the buffered file handle is closed via the
 #: ``weakref.finalize`` hook registered in ``__init__``. A strong
@@ -89,6 +89,8 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 #: instance locks are per-writer and two paths can be opened at once.
 _PATH_STATE_LOCK = threading.Lock()
 _PATH_STATE: dict[str, int] = {}  # bounded-accumulator-ok: one entry per unit log per process
+#: Paths whose byte-cap warning has already been emitted this process.
+_CAP_WARNED: set[str] = set()  # bounded-accumulator-ok: one entry per unit log per process
 
 
 def _resume_path_state(key: str) -> tuple[bool, int]:
@@ -105,10 +107,25 @@ def _record_path_bytes(key: str, total: int) -> None:
         _PATH_STATE[key] = total
 
 
+def _claim_cap_warning(key: str) -> bool:
+    """Return True the first time ``key`` reaches its cap in this process.
+
+    The warning belongs to the FILE. Emitting it per writer meant one
+    WARNING per agent invocation for the rest of a run once a capture
+    filled up.
+    """
+    with _PATH_STATE_LOCK:
+        if key in _CAP_WARNED:
+            return False
+        _CAP_WARNED.add(key)
+        return True
+
+
 def reset_raw_overflow_path_state() -> None:
     """Forget every path's write state. For tests that simulate a new run."""
     with _PATH_STATE_LOCK:
         _PATH_STATE.clear()
+        _CAP_WARNED.clear()
 
 
 _REGISTRY_LOCK = threading.Lock()
@@ -503,14 +520,25 @@ class RawOverflowLog:
         # markers from the verbatim capture they point at.
         self.path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
         self._lock = threading.Lock()
-        self._path_key = str(self.path)
+        # Resolved, matching the registry's key. Keying the raw spelling
+        # made the same file look like two files whenever the workspace
+        # root arrived via a symlink or a relative path -- re-arming the
+        # truncation and cap-reset this state exists to prevent.
+        self._path_key = str(self.path.resolve(strict=False))
         first_open, already_written = _resume_path_state(self._path_key)
         # The first write of a RUN truncates; a later writer for the same
         # path continues it. See :data:`_PATH_STATE`.
         self._first_write = first_open
         self._disabled = False
         self._max_bytes = max(max_bytes, 0)
-        self._bytes_written = already_written
+        # Bytes THIS writer has appended. The idle watchdog's log-growth
+        # probe reads ``size_bytes`` and treats nonzero as "this
+        # invocation has produced output", so it must start at zero even
+        # when the file already holds an earlier invocation's bytes.
+        self._bytes_written = 0
+        # Bytes on the FILE, carried across writers so the byte cap
+        # cannot be reset by re-acquiring the log.
+        self._file_bytes = already_written
         self._flush_interval = max(flush_interval_seconds, 0.0)
         self._now = now
         self._fh: BinaryIO | None = None
@@ -549,7 +577,7 @@ class RawOverflowLog:
             try:
                 text = line.rstrip("\n") + "\n"
                 encoded = text.encode("utf-8")
-                if self._bytes_written + len(encoded) > self._max_bytes:
+                if self._file_bytes + len(encoded) > self._max_bytes:
                     self._close_locked()
                     self._disabled = True
                     # Surfaced from the writer, not the display: the
@@ -559,17 +587,22 @@ class RawOverflowLog:
                     # with no operator signal at all -- and the idle
                     # watchdog's log-growth probe reads ``is_disabled``,
                     # so it goes quiet at the same moment.
-                    logger.warning(
-                        "raw log {path} reached its {cap}-byte cap and is no longer "
-                        "being written; the remainder of this unit's output is not "
-                        "captured",
-                        path=self.path,
-                        cap=self._max_bytes,
-                    )
+                    if _claim_cap_warning(self._path_key):
+                        logger.warning(
+                            "raw log {path} reached its {cap}-byte cap and is no "
+                            "longer being written; the remainder of this unit's "
+                            "output is not captured",
+                            path=self.path,
+                            cap=self._max_bytes,
+                        )
                     return False
                 if self._fh is None:
                     # filesystem-write-ok: bounded binary overflow stream directory creation
                     self.path.parent.mkdir(parents=True, exist_ok=True)
+                    if not self._first_write and not self.path.exists():
+                        # The file went away between writers; the carried
+                        # total describes bytes that no longer exist.
+                        self._file_bytes = 0
                     mode = "wb" if self._first_write else "ab"
                     # filesystem-write-ok: bounded binary overflow stream remains live until byte cap
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
@@ -582,7 +615,8 @@ class RawOverflowLog:
                     return False
                 fh.write(encoded)
                 self._bytes_written += len(encoded)
-                _record_path_bytes(self._path_key, self._bytes_written)
+                self._file_bytes += len(encoded)
+                _record_path_bytes(self._path_key, self._file_bytes)
                 if self._now() - self._last_flush >= self._flush_interval:
                     fh.flush()
                     self._last_flush = self._now()

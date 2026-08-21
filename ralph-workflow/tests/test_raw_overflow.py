@@ -81,7 +81,9 @@ def test_the_byte_cap_survives_a_new_writer(tmp_path: Path) -> None:
 
     log2 = RawOverflowLog(tmp_path, "unit-1", max_bytes=40)
 
-    assert log2.size_bytes == 31
+    # ``size_bytes`` is this writer's own count, not the file's.
+    assert log2.size_bytes == 0
+    # ...but the cap still knows about the 31 bytes already on disk.
     assert log2.append("y" * 30) is False
     assert log2.is_disabled
 
@@ -239,16 +241,18 @@ def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
 
 
 def test_size_bytes_returns_zero_when_prior_run_file_exists(tmp_path: Path) -> None:
-    from ralph.display.raw_overflow import reset_raw_overflow_path_state
+    """``size_bytes`` counts what THIS writer wrote, never the file.
 
+    The idle watchdog's log-growth probe reads this and treats a nonzero
+    value as "this invocation has produced output", so a writer that
+    inherits an earlier invocation's bytes must still start at zero.
+    """
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("prior run content")
     log1.flush()
     prior_size = log1.path.stat().st_size
     assert prior_size > 0
     log1.close()
-
-    reset_raw_overflow_path_state()  # a new run
 
     log2 = RawOverflowLog(tmp_path, "unit-1")
     assert log2.size_bytes == 0
@@ -615,3 +619,29 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
         )
     finally:
         fresh.close()
+
+
+def test_cap_warning_is_emitted_once_per_file(tmp_path: Path) -> None:
+    """The 'log full' warning belongs to the file, not to each writer.
+
+    A writer is per agent invocation, so a per-instance warning meant one
+    WARNING per invocation for the rest of a run once a capture filled.
+    """
+    from loguru import logger
+
+    from ralph.display.raw_overflow import reset_raw_overflow_path_state
+
+    reset_raw_overflow_path_state()
+    messages: list[str] = []
+    sink_id = logger.add(lambda record: messages.append(str(record)), level="WARNING")
+    try:
+        for _ in range(3):
+            log = RawOverflowLog(tmp_path, "unit-cap", max_bytes=8)
+            log.append("x" * 32)
+            log.close()
+    finally:
+        logger.remove(sink_id)
+        reset_raw_overflow_path_state()
+
+    capped = [m for m in messages if "reached its" in m]
+    assert len(capped) == 1, capped

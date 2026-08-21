@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
@@ -56,6 +56,21 @@ def _default_sync_process_factory(
     )
 
 
+#: Per-stream buffer for an agent subprocess's stdout/stderr.
+#:
+#: ``asyncio``'s default is 64 KiB, and ``readline()`` RAISES
+#: ``ValueError`` when a line exceeds it -- then CLEARS the buffer, so
+#: the oversized frame and everything queued behind it are lost and the
+#: reading loop dies with an error that names none of that. Agent wire
+#: frames routinely pass that: measured captures hold single lines of
+#: 503 KB (codex), 693 KB (claude) and 24 MB (pi), because one JSON frame
+#: carries a whole tool result.
+#:
+#: Sized to admit those frames while staying well under the raw log's own
+#: 50 MB ceiling.
+AGENT_STREAM_BUFFER_BYTES: Final = 32 * 1024 * 1024
+
+
 async def _default_async_process_factory(
     command: Sequence[str],
     *,
@@ -74,6 +89,7 @@ async def _default_async_process_factory(
         stdout=stdout,
         stderr=stderr,
         start_new_session=start_new_session,
+        limit=AGENT_STREAM_BUFFER_BYTES,
     )
 
 

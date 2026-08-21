@@ -1232,29 +1232,48 @@ def _default_commit_bridge_factory(
     policy = agents_policy or AgentsPolicy()
     # ``transport`` must reach the session identity: the multimodal layer
     # keys some delivery decisions on the agent CLI, and dropping it here
-    # left those guards blind for the whole commit session. Forwarded
-    # through the same widening-fallback ladder as ``model_identity`` so
-    # a patched starter with a narrower signature still works.
-    try:
-        return bridge_fn(
-            workspace_root,
-            agents_policy=policy,
-            model_identity=model_identity,
-            transport=transport,
-        )
-    except TypeError:
-        pass
-    try:
-        return bridge_fn(
-            workspace_root,
-            agents_policy=policy,
-            model_identity=model_identity,
-        )
-    except TypeError:
-        try:
-            return bridge_fn(workspace_root, agents_policy=policy)
-        except TypeError:
-            return bridge_fn(workspace_root)
+    # left those guards blind for the whole commit session.
+    #
+    # The starter is late-bound so tests can patch it, and older patches
+    # have narrower signatures. Which keyword arguments it accepts is
+    # decided by INSPECTING it, not by calling and catching TypeError: a
+    # TypeError raised from inside the starter is indistinguishable from
+    # a signature mismatch, and retrying on one started the bridge twice
+    # and silently dropped the transport -- exactly the blind-guard
+    # session this argument exists to prevent.
+    optional_kwargs: dict[str, object] = {
+        "agents_policy": policy,
+        "model_identity": model_identity,
+        "transport": transport,
+    }
+    return bridge_fn(workspace_root, **_supported_kwargs(bridge_fn, optional_kwargs))
+
+
+#: ``CO_VARKEYWORDS`` -- the code-object flag marking a ``**kwargs``
+#: parameter. Named here rather than imported so the check below stays
+#: readable without pulling in the ``inspect`` constant namespace.
+_CO_VARKEYWORDS = 0x08
+
+
+def _supported_kwargs(
+    func: object,
+    candidates: dict[str, object],
+) -> dict[str, object]:
+    """Return the subset of ``candidates`` that ``func`` accepts.
+
+    A callable taking ``**kwargs`` accepts everything, and so does one
+    whose parameters cannot be read (a C callable, an exotic mock) --
+    guessing narrower there would silently drop arguments.
+    """
+    raw_code: object = getattr(func, "__code__", None)
+    raw_names: object = getattr(raw_code, "co_varnames", None)
+    raw_flags: object = getattr(raw_code, "co_flags", None)
+    if not isinstance(raw_names, tuple) or not isinstance(raw_flags, int):
+        return dict(candidates)
+    if raw_flags & _CO_VARKEYWORDS:
+        return dict(candidates)
+    accepted = {name for name in raw_names if isinstance(name, str)}
+    return {name: value for name, value in candidates.items() if name in accepted}
 
 
 def _commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | None:

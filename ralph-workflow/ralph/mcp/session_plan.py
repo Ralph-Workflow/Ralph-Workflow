@@ -275,9 +275,17 @@ def _reconcile_injected_transport(
     inline image kills its turn. Same rule the commit chain applies when
     it cannot know which of its agents will run.
     """
-    if transport is None or identity.transport == transport.value:
+    if transport is None:
         return identity
-    if identity.transport is None or transport_inline_image_roundtrip_unsafe(transport.value):
+    stated = (identity.transport or "").strip().lower()
+    if stated == transport.value:
+        # Normalise in passing: a padded or differently-cased value from
+        # a hand-edited payload otherwise reaches the session file and
+        # the wire-ledger digest verbatim.
+        return identity if identity.transport == transport.value else replace(
+            identity, transport=transport.value
+        )
+    if not stated or transport_inline_image_roundtrip_unsafe(transport.value):
         return replace(identity, transport=transport.value)
     return identity
 

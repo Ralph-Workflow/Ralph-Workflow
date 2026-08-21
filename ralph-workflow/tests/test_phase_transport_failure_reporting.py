@@ -79,6 +79,8 @@ class _StubPolicyBundle:
 def _render_and_capture(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
+    *,
+    shared_capture: bool = False,
 ) -> str:
     """Render the FAILED phase report and return the verdict line."""
     captured: list[tuple[str, tuple[object, ...]]] = []
@@ -125,6 +127,7 @@ def _render_and_capture(
         verbosity=Verbosity.VERBOSE,
         run_id="transport-failure-run",
         config=unified_config,
+        shared_capture=shared_capture,
     )
 
     assert len(captured) == 1, f"expected exactly one rendered verdict line, got {captured}"
@@ -277,3 +280,21 @@ def test_transport_failure_text_is_attributed_to_the_transcript(
 
     assert "transcript reports:" in message
     assert f'"{_API_REJECTION}"' in message
+
+
+def test_a_shared_capture_suppresses_transport_attribution(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Concurrent units share one capture, so no frame can be attributed.
+
+    Parallel workers key the capture by ``(executable, model)``, so
+    several interleave frames in one file. Quoting a sibling unit's API
+    rejection in this unit's verdict is materially wrong -- worse than
+    reporting no cause -- so attribution is suppressed for those callers.
+    """
+    _write_turn_failed_raw_log(tmp_path)
+
+    message = _render_and_capture(tmp_path, monkeypatch, shared_capture=True)
+
+    assert "FAILED (no artifact)" in message, message
+    assert "agent turn failed at the transport" not in message, message

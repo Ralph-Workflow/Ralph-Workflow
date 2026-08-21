@@ -727,3 +727,30 @@ def test_session_transport_selection_declines_a_mixed_capable_chain() -> None:
 
     assert select_session_transport(["claude", "opencode"]) is None
     assert select_session_transport([]) is None
+
+
+def test_standalone_server_can_declare_the_agent_cli_it_serves() -> None:
+    """A manually started server must be able to know what it serves.
+
+    The delivery guard is transport-keyed, and a standalone server with
+    no session handshake had no way to learn the CLI on the other end --
+    so pointing a restricted CLI at one reproduced the field incident in
+    full. There is nothing to infer it from, so it is declared.
+    """
+    from ralph.mcp.server.runtime import parse_args, standalone_session_identity
+
+    assert parse_args(["--agent-transport", "codex"]).agent_transport == "codex"
+
+    identity = standalone_session_identity("codex")
+
+    assert identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(identity)
+
+
+def test_standalone_server_without_a_declared_cli_stays_permissive() -> None:
+    """Undeclared means unresolved, which criterion 14 treats as capable."""
+    from ralph.mcp.server.runtime import parse_args, standalone_session_identity
+
+    assert parse_args([]).agent_transport is None
+
+    assert not inline_image_roundtrip_unsafe(standalone_session_identity(None))

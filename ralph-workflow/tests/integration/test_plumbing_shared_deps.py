@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands._commit_chain_config import CommitChainConfig
@@ -848,3 +850,75 @@ def test_default_commit_bridge_factory_forwards_transport(
     )
 
     assert captured["transport"] is AgentTransport.CODEX
+
+
+def test_commit_bridge_factory_does_not_retry_a_failing_starter(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A starter that raises internally must not be called twice.
+
+    The factory used to widen its call by catching TypeError, which
+    cannot tell a signature mismatch from a TypeError raised inside the
+    starter. Retrying on the latter started the bridge a second time and
+    silently dropped the transport -- producing exactly the blind-guard
+    session the argument exists to prevent.
+    """
+    from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
+
+    calls: list[object] = []
+
+    def _failing_start_commit_bridge(
+        repo_root: Path,
+        *,
+        agents_policy: object,
+        model_identity: object = None,
+        transport: object = None,
+    ) -> object:
+        del repo_root, agents_policy, model_identity
+        calls.append(transport)
+        raise TypeError("failure from inside the starter")
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "_resolve_commit_start_commit_bridge",
+        lambda: _failing_start_commit_bridge,
+    )
+
+    with pytest.raises(TypeError):
+        commit_plumbing_module._default_commit_bridge_factory(
+            workspace_root=Path("/workspace"),
+            drain="commit",
+            agents_policy=None,
+            transport=AgentTransport.CODEX,
+        )
+
+    assert calls == [AgentTransport.CODEX], "the starter must be called exactly once"
+
+
+def test_commit_bridge_factory_omits_arguments_a_narrow_starter_rejects(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """An older patched starter with a narrower signature still works."""
+    from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
+
+    seen: dict[str, object] = {}
+
+    def _narrow_start_commit_bridge(repo_root: Path, *, agents_policy: object) -> object:
+        seen["repo_root"] = repo_root
+        seen["agents_policy"] = agents_policy
+        return object()
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "_resolve_commit_start_commit_bridge",
+        lambda: _narrow_start_commit_bridge,
+    )
+
+    commit_plumbing_module._default_commit_bridge_factory(
+        workspace_root=Path("/workspace"),
+        drain="commit",
+        agents_policy=None,
+        transport=AgentTransport.CODEX,
+    )
+
+    assert seen["repo_root"] == Path("/workspace")

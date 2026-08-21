@@ -363,7 +363,15 @@ def _build_session_mcp_plan_for_phase(
     # before the chain is walked. Tagging it with the FIRST agent's
     # transport hands a restricted later agent an inline image; resolve
     # across all candidates with the shared conservative rule instead.
-    transport = _phase_session_transport(candidate_agents, config, transport)
+    chain_transport = _phase_session_transport(candidate_agents, config, transport)
+    if chain_transport is not transport:
+        # The tag no longer describes the agent whose model flag we hold.
+        # Pairing them would resolve a provider for a model the tagged
+        # CLI is not running -- which turns pdf/document delivery into a
+        # hard unsupported error for the very agent the flag came from.
+        # Leave the provider unresolved and carry only the safe tag.
+        model_flag = None
+    transport = chain_transport
     _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
     model_flag = (
         cast("str | None", _model_flag_raw) if agent_config is not None else None

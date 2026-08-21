@@ -487,6 +487,7 @@ def test_runtime_main_launches_streamable_http_server(
         transport: str,
         host: str,
         port: int,
+        agent_transport: str | None = None,
     ) -> None:
         observed.update(
             {
@@ -494,6 +495,7 @@ def test_runtime_main_launches_streamable_http_server(
                 "transport": transport,
                 "host": host,
                 "port": port,
+                "agent_transport": agent_transport,
             }
         )
 
@@ -506,6 +508,9 @@ def test_runtime_main_launches_streamable_http_server(
         "transport": "streamable-http",
         "host": "0.0.0.0",
         "port": 8123,
+        # The agent CLI being served is declared, not inferred; omitted
+        # here, so the server keeps the permissive default.
+        "agent_transport": None,
     }
 
 

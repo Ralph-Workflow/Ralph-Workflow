@@ -12,6 +12,8 @@ from subprocess import PIPE as _PIPE
 from subprocess import STDOUT as _STDOUT
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
@@ -27,11 +29,16 @@ from ralph.mcp.server._activity_sink import (
     set_subagent_sink,
 )
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    AGENT_STREAM_BUFFER_BYTES,
+    ProcessManager,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
     from contextvars import Token
 
     from ralph.display.activity_model import ActivityProvider
@@ -218,7 +225,7 @@ class SubprocessAgentExecutor:
             nonlocal last_line
             assert handle is not None
             assert handle.stdout is not None
-            async for raw_line in handle.stdout:
+            async for raw_line in drain_agent_lines(handle.stdout, unit.unit_id):
                 stripped_bytes = raw_line.rstrip(b"\n")
                 line = sanitize_display_line(stripped_bytes)
 
@@ -299,4 +306,31 @@ class SubprocessAgentExecutor:
         )
 
 
-__all__ = ["SubprocessAgentExecutor"]
+async def drain_agent_lines(stream: asyncio.StreamReader, unit_id: str) -> AsyncIterator[bytes]:
+    """Yield stdout lines, surviving a frame larger than the stream buffer.
+
+    ``StreamReader.readline`` raises ``ValueError`` for a line longer
+    than its buffer AND clears the buffer, so iterating the stream
+    directly loses the oversized frame, loses everything queued behind
+    it, and kills the reading loop with an error that explains none of
+    that. The buffer is sized for real agent frames
+    (``AGENT_STREAM_BUFFER_BYTES``); this keeps a still-larger one from
+    taking the rest of the unit's output with it.
+    """
+    while True:
+        try:
+            line = await stream.readline()
+        except ValueError:
+            logger.warning(
+                "unit {unit} emitted a line larger than the {cap}-byte stream "
+                "buffer; that frame is lost and capture continues from the next one",
+                unit=unit_id,
+                cap=AGENT_STREAM_BUFFER_BYTES,
+            )
+            continue
+        if not line:
+            return
+        yield line
+
+
+__all__ = ["SubprocessAgentExecutor", "drain_agent_lines"]

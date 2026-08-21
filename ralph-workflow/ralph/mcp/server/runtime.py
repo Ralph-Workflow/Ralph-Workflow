@@ -43,7 +43,12 @@ from loguru import logger
 
 from ralph import __version__
 from ralph.agents.system_clock import SystemClock
+from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+)
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
@@ -115,20 +120,49 @@ class McpServerExtras:
 FallbackStandaloneServer = _FallbackStandaloneServer
 
 
+def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
+    """Return the model identity for a standalone server's own session.
+
+    ``agent_transport`` names the agent CLI on the other end. The
+    provider stays unresolved -- a standalone server genuinely does not
+    know which model will be used -- but the transport is enough for the
+    delivery guards that key on the CLI. Omitted, the identity stays
+    fully unknown, which "unresolvable -> capable" treats as permissive.
+    """
+    if not agent_transport:
+        return UNKNOWN_IDENTITY
+    return MultimodalModelIdentity(
+        provider=UNKNOWN_IDENTITY.provider,
+        model_id=None,
+        transport=agent_transport,
+    )
+
+
 def build_standalone_http_server(
     workspace_root: Path,
     *,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     extras: McpServerExtras | None = None,
+    agent_transport: str | None = None,
 ) -> _StandaloneHttpServer:
-    """Build a standalone HTTP MCP server backed by the Ralph tool registry."""
+    """Build a standalone HTTP MCP server backed by the Ralph tool registry.
+
+    ``agent_transport`` names the agent CLI this server will be serving
+    (distinct from the MCP wire transport). Some delivery decisions key
+    on the CLI rather than on the provider, so a server that does not
+    know what it serves cannot make them: an operator pointing a
+    restricted CLI at a manually started server would be handed content
+    that kills its turn. There is no way to infer this, so it is
+    declared -- and omitted, the server keeps the permissive default.
+    """
     _extras = extras or McpServerExtras()
     effective_session = _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
         drain="standalone",
         capabilities=_all_capability_values(),
+        model_identity=standalone_session_identity(agent_transport),
     )
     allowed_roots = cast(
         "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
@@ -241,8 +275,13 @@ def run_standalone_server(
     transport: str = DEFAULT_TRANSPORT,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
+    agent_transport: str | None = None,
 ) -> None:
-    """Run the standalone Ralph MCP server over HTTP."""
+    """Run the standalone Ralph MCP server over HTTP.
+
+    ``transport`` is the MCP wire transport; ``agent_transport`` names
+    the agent CLI being served.
+    """
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
@@ -251,9 +290,16 @@ def run_standalone_server(
         host=host,
         port=port,
         extras=McpServerExtras(session=session_from_env()),
+        agent_transport=agent_transport,
     )
     print(f"Ralph MCP server listening on http://{host}:{port}{DEFAULT_MOUNT_PATH}")
     server.run(transport=DEFAULT_TRANSPORT)
+
+
+def _agent_transport_choices() -> list[str]:
+    """Return the agent-CLI values accepted by ``--agent-transport``."""
+    values: list[str] = [transport.value for transport in AgentTransport]
+    return sorted(values)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -264,6 +310,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path.cwd(),
         help="Workspace root exposed to Ralph MCP tools",
+    )
+    parser.add_argument(
+        "--agent-transport",
+        default=None,
+        choices=_agent_transport_choices(),
+        help=(
+            "Agent CLI this server will serve. Some media-delivery decisions "
+            "key on the CLI rather than the provider; declaring it lets the "
+            "server withhold content that CLI cannot carry."
+        ),
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help="HTTP bind host")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="HTTP bind port")
@@ -312,6 +368,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         port=cast(
             "int", args.port
         ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        agent_transport=cast(
+            "str | None", args.agent_transport
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 
@@ -333,4 +392,5 @@ __all__ = [
     "parse_args",
     "run_standalone_server",
     "session_from_env",
+    "standalone_session_identity",
 ]
