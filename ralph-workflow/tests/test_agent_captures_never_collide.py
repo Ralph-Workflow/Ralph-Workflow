@@ -144,3 +144,67 @@ def test_the_model_still_reaches_the_filename() -> None:
     assert "glm" in _capture_name("ccs/glm")
     # Readable, not just unique: an operator has to find their transcript.
     assert "gpt-5.4" in _capture_name("codex/gpt-5.4[effort=high]")
+
+
+def test_names_that_differ_only_in_unsafe_characters_stay_apart() -> None:
+    """The filename sanitiser folds; the identity must not.
+
+    ``safe_id_for`` keeps only ``[0-9A-Za-z._-]`` and collapses every
+    unsafe run to one ``_``, so ``codex/a@b``, ``codex/a_b`` and
+    ``codex/a:b`` all became ``codex_a_b.log``. The codex resolver
+    accepts any non-space characters, so all three resolve.
+
+    Every branch of the identity has to disambiguate, not just the
+    model-flag one: covering that branch alone left headless Claude and
+    ``ccs`` folding exactly as before. This defect has now been closed
+    four times, each time for the family in front of it, which is why
+    this asserts across families rather than within one.
+    """
+    families = ("codex", "claude", "claude-headless", "ccs")
+    variants = ("a@b", "a_b", "a:b")
+
+    names = [f"{family}/{variant}" for family in families for variant in variants]
+    by_path: dict[str, list[str]] = {}
+    for name in names:
+        support = default_catalog().get(name)
+        if getattr(support, "config", support) is None:
+            continue
+        by_path.setdefault(_capture_name(name), []).append(name)
+
+    collisions = {path: shared for path, shared in by_path.items() if len(shared) > 1}
+
+    assert not collisions, f"agents sharing one capture file: {collisions}"
+
+
+def test_a_safe_identity_is_not_given_a_digest() -> None:
+    """No churn where nothing folds.
+
+    The digest exists to restore what the sanitiser destroys. Adding it
+    unconditionally would rename every capture an operator knows for no
+    gain, so it is added only when folding would actually occur.
+    """
+    assert _capture_name("codex/gpt-5.4") == "codex_gpt-5.4.log"
+    assert _capture_name("codex/gpt-5-codex") == "codex_gpt-5-codex.log"
+    assert _capture_name("claude") == "claude.log"
+    assert _capture_name("ccs/glm") == "ccs-glm.log"
+
+
+def test_a_model_flag_using_equals_still_distinguishes_agents() -> None:
+    """``--model=x`` carries its value in the SAME token.
+
+    The registry's own resolvers emit ``--model x``, but an operator's
+    ``ralph-workflow.toml`` sets ``model_flag`` verbatim, and the equals
+    form is ordinary argv. Skipping every dash-led token dropped the
+    value with it, so two agents differing only in their model fell back
+    to the bare executable and shared one capture.
+    """
+    from ralph.config.models import AgentConfig
+    from ralph.display.raw_overflow import raw_log_unit_id_for
+
+    alpha = AgentConfig(cmd="pi", model_flag="--model=alpha")
+    beta = AgentConfig(cmd="pi", model_flag="--model=beta")
+
+    assert raw_log_unit_id_for(alpha) != raw_log_unit_id_for(beta)
+    # Readable, not just distinct: an operator has to find the file.
+    assert "alpha" in raw_log_unit_id_for(alpha)
+    assert "beta" in raw_log_unit_id_for(beta)

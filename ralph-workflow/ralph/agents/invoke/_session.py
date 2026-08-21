@@ -62,6 +62,63 @@ def extract_transport_text_session_id(stripped: str) -> str | None:
     return None
 
 
+#: The literal openings of every canonical session/completion line.
+#:
+#: Derived from the same vocabulary as the patterns above, and used for
+#: two things that both need to be CHEAP: deciding whether a line could
+#: possibly be canonical before matching it, and letting a grader skip
+#: expensive work on a line that provably is not.
+_CANONICAL_LINE_OPENINGS: tuple[str, ...] = (
+    "claude session ready.",
+    "session id:",
+    "resume this session with --resume",
+    "--resume",
+    "--session",
+    _EXPLICIT_COMPLETION_MARKER.lower(),
+)
+
+#: Longest opening above, plus room for leading whitespace. Bounds how
+#: much of a line has to be examined to rule it out.
+_MAX_CANONICAL_OPENING_CHARS = 64
+
+
+def starts_with_canonical_session_marker(stripped: str) -> bool:
+    """Return True when ``stripped`` OPENS with a canonical marker.
+
+    A cheap necessary condition, not a sufficient one. A grader uses it
+    to decide whether a line is worth examining closely; a line that
+    fails it cannot be canonical however long it is.
+    """
+    opening = stripped[:_MAX_CANONICAL_OPENING_CHARS].lower()
+    return any(opening.startswith(marker) for marker in _CANONICAL_LINE_OPENINGS)
+
+
+def is_whole_canonical_session_line(stripped: str) -> bool:
+    """Return True when the WHOLE line is canonical session metadata.
+
+    Strict counterpart to :func:`is_canonical_session_text_line`. The two
+    answer different questions and a grader needs this one.
+
+    Extraction is deliberately permissive: it must find a session id
+    inside a TUI-wrapped, decorated line, so it tests the completion
+    marker as a SUBSTRING and searches for the id UNANCHORED. Reusing it
+    to decide "is this line expected content" therefore excused any line
+    that merely mentioned the marker text -- and agents routinely echo a
+    ``declare_complete`` result into their own prose. A frame severed
+    mid-write was graded CLEAN whenever the surviving bytes happened to
+    contain that sentence, which is precisely the corruption the grader
+    exists to catch.
+    """
+    for pattern in _TRANSPORT_SESSION_TEXT_PATTERNS:
+        if pattern.match(stripped) is not None:
+            return True
+    if not stripped.startswith(_EXPLICIT_COMPLETION_MARKER):
+        return False
+    return any(
+        pattern.search(stripped) is not None for pattern in _COMPLETION_SESSION_ID_PATTERNS
+    )
+
+
 def is_canonical_session_text_line(stripped: str) -> bool:
     """Return True when ``stripped`` is a canonical transport session/completion line.
 

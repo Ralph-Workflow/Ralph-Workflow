@@ -23,6 +23,11 @@ _ANSI_ESCAPE_RE = re.compile(
 )
 
 
+#: The only characters the rewrite walk reacts to. Their absence makes
+#: that walk the identity, which is what lets it be skipped wholesale.
+_REWRITE_CONTROLS = re.compile(r"[\r\n\b]")
+
+
 def normalize_vt_text(raw: str) -> str:
     """Strip ANSI control noise and collapse carriage-return repaints.
 
@@ -37,6 +42,21 @@ def normalize_vt_text(raw: str) -> str:
     """
 
     ansi_free = _ANSI_ESCAPE_RE.sub("", raw)
+    if _REWRITE_CONTROLS.search(ansi_free) is None:
+        # Nothing for the walk below to DO. It rewrites only on ``\r``,
+        # ``\n`` and ``\b``; with none of them present every character
+        # is appended and rejoined unchanged, so this returns exactly
+        # what the loop would -- at C speed instead of one Python
+        # iteration per character.
+        #
+        # That loop is the whole cost of grading a raw capture. A single
+        # multi-megabyte line took 7.5 s and 900 MB of transient memory,
+        # inside the phase-close verdict, and a capture of pure-ANSI
+        # lines could not be bounded by the break cap at all because
+        # such lines normalise to nothing and are never counted as
+        # breaks. Agent output is overwhelmingly free of these three
+        # bytes once the escapes are gone.
+        return ansi_free
     current_line: list[str] = []
     output: list[str] = []
     index = 0

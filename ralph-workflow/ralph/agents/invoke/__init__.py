@@ -87,6 +87,8 @@ from ralph.agents.invoke._session import (
     extract_transport_text_session_id,
     extract_visible_tui_transport_session_id,
     is_canonical_session_text_line,
+    is_whole_canonical_session_line,
+    starts_with_canonical_session_marker,
 )
 from ralph.agents.invoke._session_resume import (
     fresh_session_options,
@@ -821,6 +823,7 @@ __all__ = [
     "invoke_agent",
     "is_canonical_session_text_line",
     "is_permission_prompt_line",
+    "is_whole_canonical_session_line",
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",
     "load_existing_cursor_upstream_servers",
@@ -839,6 +842,7 @@ __all__ = [
     "run_pty_and_read_lines",
     "run_subprocess_and_read_lines",
     "shutil",
+    "starts_with_canonical_session_marker",
     "subprocess",
     "wait_for_descendants_then_recheck",
 ]

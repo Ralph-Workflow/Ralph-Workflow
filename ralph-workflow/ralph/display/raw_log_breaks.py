@@ -72,9 +72,14 @@ def _is_canonical_transport_session_line(line: str) -> bool:
     avoid an import-time cycle with ``ralph.agents.invoke`` (which
     imports this module for ``RawOverflowLog``).
     """
-    from ralph.agents.invoke import is_canonical_session_text_line
+    from ralph.agents.invoke import is_whole_canonical_session_line
 
-    return is_canonical_session_text_line(normalize_vt_text(line).strip())
+    # The STRICT predicate. The permissive one is for EXTRACTING an id
+    # out of a decorated TUI line; using it here excused any line that
+    # merely mentioned the completion sentence, so a frame severed
+    # mid-write graded CLEAN whenever its surviving bytes contained
+    # text the agent had echoed from a ``declare_complete`` result.
+    return is_whole_canonical_session_line(normalize_vt_text(line).strip())
 
 
 #: Transports whose raw capture is an interactive PTY stream rather than a
@@ -296,8 +301,9 @@ _MAX_LINE_INSPECT_BYTES: Final = 64 * 1024
 #: skipping the normalise pass safe.
 _NON_PRINTABLE_ASCII: Final = re.compile(rb"[^\x20-\x7e]")
 
-#: Hex characters of the model-flag digest appended to an identity.
-_ID_DIGEST_CHARS: Final = 6
+#: How much of a line has to be read to rule out a canonical
+#: opening. Matches the bound the marker vocabulary itself uses.
+_MAX_CANONICAL_OPENING_BYTES: Final = 64
 
 #: Runs of anything that has no place in a filename component.
 #: Collapsed to a single dash so two different flags cannot fold
@@ -313,10 +319,26 @@ def _is_gradeable_without_normalising(line_bytes: bytes) -> bool:
     allowlisted markers -- so the answer is already known, and the pass
     would only cost several full-size copies of a multi-megabyte line.
     """
-    return (
-        len(line_bytes) > _MAX_LINE_INSPECT_BYTES
-        and _NON_PRINTABLE_ASCII.search(line_bytes) is None
-    )
+    from ralph.agents.invoke import starts_with_canonical_session_marker
+
+    if len(line_bytes) <= _MAX_LINE_INSPECT_BYTES:
+        return False
+    if _NON_PRINTABLE_ASCII.search(line_bytes) is not None:
+        return False
+    # "No line longer than the cap can be one of the short allowlisted
+    # markers" was WRONG, and it was the load-bearing half of the claim
+    # that skipping is safe: the completion-marker branch matched a
+    # marker as a SUBSTRING with an unanchored id search, so a canonical
+    # line of any length was possible. The same text then graded clean
+    # when short and corrupt when long -- the exact length-dependence
+    # this guard was rewritten to remove.
+    #
+    # Both halves are fixed: the allowlist is anchored now, and a line
+    # is only skipped when it does not OPEN with a canonical marker, so
+    # the skip cannot decide the verdict for a line the allowlist would
+    # have claimed.
+    opening = line_bytes[:_MAX_CANONICAL_OPENING_BYTES].decode("ascii", errors="replace")
+    return not starts_with_canonical_session_marker(opening)
 
 
 def _non_jsonl_break(offset: int, line_bytes: bytes) -> RawLogBreak:
@@ -329,18 +351,26 @@ def _non_jsonl_break(offset: int, line_bytes: bytes) -> RawLogBreak:
     )
 
 
-def _parses_as_json_object(raw: bytes) -> bool:
-    """True when the RAW bytes already parse as a JSON object.
+def _parse_json_line(raw: bytes | str) -> tuple[object, bool]:
+    """Return ``(value, parsed)`` for one line of a capture.
 
     The cheapest discriminator, and the one that answers almost every
-    line of a healthy capture. ``json.loads`` takes bytes directly, so
-    this costs no decoded copy at all.
+    line of a healthy capture. ``json.loads`` takes bytes directly, so a
+    well-formed frame costs no decoded copy at all.
+
+    Catches ``ValueError``, not just ``JSONDecodeError``. CPython caps
+    integer literals at 4300 digits and raises a BARE ``ValueError``
+    past it, so a line of five thousand digits -- or any frame carrying
+    one -- propagated out of a grader two callers document as "never
+    raises", taking the corruption verdict AND the phase's own verdict
+    line with it. ``UnicodeDecodeError`` is a ``ValueError`` too, so
+    both are covered by the one clause.
     """
     try:
         parsed: object = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return False
-    return isinstance(parsed, dict)
+    except ValueError:
+        return None, False
+    return parsed, True
 
 
 def _grade_normalised_line(line_bytes: bytes, offset: int) -> RawLogBreak | None:
@@ -364,12 +394,16 @@ def _grade_normalised_line(line_bytes: bytes, offset: int) -> RawLogBreak | None
         or _is_canonical_transport_session_line(line_text)
     ):
         return None
-    try:
-        parsed: object = json.loads(line_text)
-    except json.JSONDecodeError:
+    parsed, parsed_ok = _parse_json_line(line_text)
+    if not parsed_ok:
         return _non_jsonl_break(offset, line_text.encode("utf-8", errors="replace"))
     if isinstance(parsed, dict):
         return None
+    return _non_object_break(offset, parsed)
+
+
+def _non_object_break(offset: int, parsed: object) -> RawLogBreak:
+    """Build the break for a line that is JSON but not a JSON object."""
     return RawLogBreak(
         kind="NON_JSONL",
         offset=offset,
@@ -382,8 +416,15 @@ def _grade_normalised_line(line_bytes: bytes, offset: int) -> RawLogBreak | None
 
 def _grade_line(line_bytes: bytes, offset: int) -> RawLogBreak | None:
     """Return the break for one non-empty line, or ``None`` when it is fine."""
-    if _parses_as_json_object(line_bytes):
-        return None
+    parsed_raw, parsed_ok = _parse_json_line(line_bytes)
+    if parsed_ok:
+        if isinstance(parsed_raw, dict):
+            return None
+        # Reported for what it IS. The skip path below would otherwise
+        # call a 70 KB JSON string "not parseable JSON", which is the
+        # opposite of true and sends an operator looking for damage
+        # that is not there.
+        return _non_object_break(offset, parsed_raw)
     # Cost is bounded by SKIPPING the normalise pass rather than
     # shortening its input; see :func:`_is_gradeable_without_normalising`
     # for why that cannot change the answer.

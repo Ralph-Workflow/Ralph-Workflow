@@ -104,3 +104,76 @@ def test_the_scan_agrees_with_the_splitlines_oracle_it_replaced(tmp_path: Path) 
 def test_a_trailing_fragment_with_no_terminator_is_still_graded(tmp_path: Path) -> None:
     """A capture cut mid-line is the truncation case; it must not vanish."""
     assert _breaks(tmp_path, b'{"type":"a"}\ntruncated-garbage') == [("NON_JSONL", 13)]
+
+
+def test_a_line_that_merely_mentions_a_marker_is_still_graded(tmp_path: Path) -> None:
+    """The allowlist recognises canonical lines, not lines containing one.
+
+    Extraction is deliberately permissive -- it must find a session id
+    inside a decorated TUI line, so it tests the completion marker as a
+    SUBSTRING and searches for the id UNANCHORED. Reusing it to decide
+    "is this expected content" excused any line that mentioned the
+    marker text, and agents routinely echo a ``declare_complete`` result
+    into their own prose. A frame severed mid-write then graded CLEAN
+    whenever its surviving bytes happened to carry that sentence, which
+    is exactly the corruption this detector exists to catch.
+    """
+    smuggled = {
+        "garbage before the marker": b"HELLO GARBAGE Task declared complete: session_id=x",
+        "a frame severed mid-write": (
+            b'{"type":"item","text":"Task declared complete: session_id=abc, summary='
+        ),
+        "binary junk then a marker": b"\x01\x02junk Task declared complete: sessionId=1",
+    }
+
+    for label, line in smuggled.items():
+        assert _breaks(tmp_path, line + b"\n") == [("NON_JSONL", 0)], label
+
+
+def test_a_genuine_canonical_line_is_still_expected_content(tmp_path: Path) -> None:
+    """Not vacuous: the lines the PTY layer really emits stay clean."""
+    canonical = (
+        b"Session ID: 0f0f-abcd",
+        b"Claude session ready. Session ID: 0f0f-abcd",
+        b"Resume this session with --resume 0f0f-abcd",
+        b"Task declared complete: session_id=abc123",
+    )
+
+    for line in canonical:
+        assert _breaks(tmp_path, line + b"\n") == [], line
+
+
+def test_a_canonical_line_grades_the_same_however_long_it_is(tmp_path: Path) -> None:
+    """The verdict must not depend on length, for canonical lines either.
+
+    The cost guard skips the normalise pass for a long line, and its
+    justification was that no line past the cap could be an allowlisted
+    marker. That was false -- the completion branch matched a substring
+    with an unanchored id search -- so the same canonical text graded
+    clean when short and corrupt when long.
+    """
+    for pad in (40, 71_680):
+        line = b"Task declared complete: session_id=abc123 " + b"x" * pad
+
+        assert _breaks(tmp_path, line + b"\n") == [], pad
+
+
+def test_an_oversized_number_does_not_take_the_grader_down(tmp_path: Path) -> None:
+    """A bare ``ValueError`` must not escape a grader documented as safe.
+
+    CPython caps integer literals at 4300 digits and raises ``ValueError``
+    -- not ``JSONDecodeError`` -- past it. That propagated out of two
+    callers whose docstrings promise they never raise, taking the
+    corruption verdict AND the phase's own verdict line with it.
+    """
+    oversized = {
+        "a bare long integer": b"9" * 5000,
+        "a frame carrying one": b'{"type":"item","n":' + b"9" * 5000 + b"}",
+        "one nested in an array": b'{"a":[' + b"1" * 4301 + b"]}",
+    }
+
+    for label, line in oversized.items():
+        assert _breaks(tmp_path, line + b"\n") == [("NON_JSONL", 0)], label
+
+    # Just under the limit is ordinary, well-formed JSONL.
+    assert _breaks(tmp_path, b'{"n":' + b"9" * 4300 + b"}\n") == []

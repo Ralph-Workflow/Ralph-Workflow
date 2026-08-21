@@ -168,6 +168,35 @@ def reset_raw_overflow_path_state() -> None:
 _DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
 
 
+def _disambiguated(unit_id: str, model: str | None) -> str:
+    """Append a digest when the filename sanitiser would fold this identity.
+
+    ``safe_id_for`` builds the filename from ``unit_id`` and ``model``,
+    keeping only ``[0-9A-Za-z._-]`` and collapsing every unsafe run to a
+    single ``_``. So ``codex/a@b``, ``codex/a_b`` and ``codex/a:b`` all
+    became ``codex_a_b.log`` -- three agents writing one capture, each
+    grading the others' bytes and quoting their transport failures.
+
+    Applied at EVERY branch, not just the last one. Adding it only where
+    the model-flag fallback runs left the headless-Claude and ``ccs``
+    branches folding exactly as before, which is how this defect has
+    survived four rounds of being "closed": each fix covered the family
+    in front of it. The digest is taken over the raw pair, before any
+    folding, and is added ONLY when folding would actually occur -- so
+    an identity made of safe characters keeps the filename an operator
+    already knows.
+    """
+    raw = f"{unit_id}\x00{model or ''}"
+    if _UNSAFE_ID_RUN.search(raw.replace("\x00", "")) is None:
+        return unit_id
+    return f"{unit_id}-{_digest_of(raw)}"
+
+
+def _digest_of(raw: str) -> str:
+    """Return the short digest that keeps two folded identities apart."""
+    return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:_ID_DIGEST_CHARS]
+
+
 def _model_from_flag(config: AgentConfig, model: str | None) -> str:
     """Return a filename-safe token for what ``model_flag`` adds to ``model``.
 
@@ -209,7 +238,7 @@ def _model_from_flag(config: AgentConfig, model: str | None) -> str:
     # is two agents sharing a capture again. The digest restores
     # injectivity without costing an operator the ability to recognise
     # the file; it is taken over the raw flag, before any folding.
-    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:_ID_DIGEST_CHARS]
+    digest = _digest_of(raw)
     return f"{readable}-{digest}" if readable else digest
 
 
@@ -248,11 +277,11 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     # Two agents sharing one capture means one grades the other's
     # corruption and quotes the other's transport failures.
     if executable.lower() == "claude" and ("-p" in flags or "--output-format=stream-json" in flags):
-        return "claude-headless"
+        return _disambiguated("claude-headless", model)
     if executable.lower() in _DISPATCHER_EXECUTABLES:
         alias = next((token for token in tokens[1:] if not token.startswith("-")), "")
         if alias:
-            return f"{executable}-{alias}"
+            return _disambiguated(f"{executable}-{alias}", model)
     # Whatever the COMMAND LINE says beyond ``config.model``. The capture
     # path is keyed ``(unit_id, config.model)``, but only some
     # dynamic-alias resolvers set ``model`` -- ``pi/``, ``cursor/``, ``kimi/``,
@@ -277,7 +306,7 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
     flag_model = _model_from_flag(config, model)
     if flag_model:
         return f"{executable}-{flag_model}"
-    return executable
+    return _disambiguated(executable, model)
 
 
 def raw_log_path_for(

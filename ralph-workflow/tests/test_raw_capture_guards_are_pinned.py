@@ -436,3 +436,66 @@ def test_a_long_plain_line_is_graded_without_the_normalise_pass(
     )
     assert detect_raw_log_breaks(escaped, transport=AgentTransport.CODEX) == []
     assert calls, "a line carrying escapes must still be normalised"
+
+
+def test_two_roots_for_one_file_get_one_writer(tmp_path: Path) -> None:
+    """The REGISTRY key resolves too, not just the path state.
+
+    Two spellings of one workspace root -- ``/tmp`` vs ``/private/tmp``,
+    a symlink, a relative path -- must yield ONE writer. Keying the
+    registry on the raw spelling handed out two: the first opened the
+    file for writing at offset 0 and the second appended, so each
+    overwrote the other's bytes as it went. Measured on the unpinned
+    version: 60 frames produced 30 lines on disk, and the corruption
+    detector called the result CLEAN, because losing whole lines leaves
+    a file that still parses.
+
+    ``_PATH_STATE``'s own resolve is pinned separately; this is the
+    registry's, and reverting it alone lost half the transcript.
+    """
+    from ralph.config.enums import AgentTransport
+    from ralph.display.raw_log_breaks import detect_raw_log_breaks
+
+    reset_raw_overflow_path_state()
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    linked_root = tmp_path / "linked"
+    linked_root.symlink_to(real_root, target_is_directory=True)
+
+    direct = get_or_create_raw_overflow_log(real_root, "shared-unit")
+    through_link = get_or_create_raw_overflow_log(linked_root, "shared-unit")
+
+    assert direct is through_link, "two roots for one file must share the writer"
+
+    frames = [f'{{"type":"item","seq":{index}}}' for index in range(60)]
+    for index, frame in enumerate(frames):
+        (direct if index % 2 == 0 else through_link).append(frame)
+    direct.close()
+
+    written = (real_root / ".agent" / "raw" / "shared-unit.log").read_text(encoding="utf-8")
+
+    assert written.splitlines() == frames
+    assert detect_raw_log_breaks(
+        real_root / ".agent" / "raw" / "shared-unit.log", transport=AgentTransport.CODEX
+    ) == []
+
+
+def test_a_nul_hole_is_skipped_in_windows_not_byte_by_byte() -> None:
+    """``_skip_nul_run`` must stay the thing that walks a hole.
+
+    A hole is millions of consecutive NULs. Stepping one byte at a time
+    turned a 20 MB run from 0.036 s into 1.465 s -- ~3.7 s at the file
+    cap, on every phase close -- and the function became dead code with
+    nothing noticing. Pinned by counting the scans, because the repo
+    forbids asserting on a clock.
+    """
+    from ralph.display.raw_log_breaks import nul_separated_chunks
+
+    hole = 1 << 18
+    payload = _FindCountingBytes(b'{"ok":1}\n' + b"\x00" * hole + b'{"after":1}\n')
+
+    chunks = list(nul_separated_chunks(payload))
+
+    assert [chunk for _, chunk in chunks] == [b'{"ok":1}\n', b'{"after":1}\n']
+    # One search per chunk boundary -- not one per NUL byte.
+    assert payload.counts.get(b"\x00", 0) <= 4, payload.counts
