@@ -18,6 +18,26 @@ class CapabilityVerdict:
     reason: str = ""
     block_type: str | None = None
 
+    def __post_init__(self) -> None:
+        """Drop a block type from a verdict that delivers no typed block.
+
+        ``block_type`` names the MCP block the delivery path builds, so
+        it means nothing on a verdict that builds no block -- and
+        ``verdict_for`` only corrects it when the stored delivery is
+        ``TYPED_BLOCK``, which left a rehydrated
+        ``resource_reference_replay`` verdict carrying whatever its
+        payload said. That string is persisted into the media session
+        index and rendered into the NEXT phase's prompt appendix, so a
+        session file could put arbitrary text, newlines intact, into the
+        instructions handed to an agent.
+
+        Made unrepresentable here rather than filtered at each reader:
+        the field is only ever meaningful in one state, so the other
+        states should not be constructible.
+        """
+        if self.delivery is not DeliveryMode.TYPED_BLOCK and self.block_type is not None:
+            object.__setattr__(self, "block_type", None)
+
     def is_inline(self) -> bool:
         """Return True if inline image delivery is used."""
         return self.delivery == DeliveryMode.INLINE_IMAGE

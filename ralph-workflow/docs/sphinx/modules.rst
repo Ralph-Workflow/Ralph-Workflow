@@ -2250,6 +2250,13 @@ ralph.mcp.multimodal.errors
    :members:
    :show-inheritance:
 
+ralph.mcp.multimodal.payload_fields
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal.payload_fields
+   :members:
+   :show-inheritance:
+
 ralph.mcp.multimodal.resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

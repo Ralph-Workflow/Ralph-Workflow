@@ -16,6 +16,13 @@ from ralph.mcp.multimodal._capability_verdict import CapabilityVerdict
 from ralph.mcp.multimodal._delivery_mode import DeliveryMode
 from ralph.mcp.multimodal._multimodal_model_identity import MultimodalModelIdentity
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
+from ralph.mcp.multimodal.payload_fields import (
+    payload_delivery,
+    payload_identity,
+    payload_model_id,
+    payload_provider,
+    payload_transport,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -27,6 +34,16 @@ _TYPED_BLOCK_SUPPORT: dict[str, dict[str, str]] = {
     "anthropic": {"pdf": "pdf", "document": "document"},
     "gemini": {"pdf": "pdf", "document": "document", "audio": "audio", "video": "video"},
 }
+
+
+#: Every block type Ralph knows how to build, derived from the matrix
+#: above so the two cannot drift. A persisted verdict may name one of
+#: these and nothing else.
+_MINTED_BLOCK_TYPES: frozenset[str] = frozenset(
+    block_type
+    for modalities in _TYPED_BLOCK_SUPPORT.values()
+    for block_type in modalities.values()
+)
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +469,13 @@ def cli_bound_provider(transport: str | None) -> str | None:
       transport's own name -- so it has no basis for promising typed
       delivery through them and says so instead of guessing.
 
+    An identity with NO transport is not bounded here, deliberately:
+    this function answers "what does this identity accept", and a
+    transport-less identity is a fair question about a provider. What a
+    SESSION may be served is a narrower question, and
+    :func:`caller_identity_for` answers it -- a session that cannot name
+    its own CLI does not get to keep a provider.
+
     That default costs nothing Ralph resolves for itself: none of those
     transports' provider slugs appears in ``_TYPED_BLOCK_SUPPORT``, so
     the two answers agree and the verdict stands. What it closes is the
@@ -781,83 +805,21 @@ def _canonical_identity(identity: MultimodalModelIdentity) -> MultimodalModelIde
     return replace(identity, transport=canonical)
 
 
-def payload_transport(raw: object) -> str | None:
-    """Return a usable transport from an untrusted payload field, or ``None``.
-
-    An empty or whitespace-only value is NOT a transport. Treating it as
-    one made ``"transport": ""`` outrank an operator's
-    ``--agent-transport`` declaration and left the guards blind.
-
-    Lowercased as well as stripped, so every seam that writes a transport
-    spelling agrees: each matcher strips and lowercases before comparing,
-    so this changes no guard -- it makes the session file and the
-    wire-ledger capability digest agree with themselves.
-
-    THE definition, re-exported by
-    :mod:`ralph.mcp.server.runtime_session` for its historical callers.
-    Two copies of this rule existed, one per package, and the packages
-    they served hand identities to each other.
-    """
-    if not isinstance(raw, str):
-        return None
-    return raw.strip().lower() or None
-
-
-def payload_provider(raw: object) -> str:
-    """Return a provider name from an untrusted payload field.
-
-    ``str(...)`` is the wrong coercion for a JSON field: it turns a
-    payload ``{"provider": null}`` into the literal provider ``'none'``,
-    which :meth:`MultimodalModelIdentity.is_known` reads as RESOLVED --
-    so the identity-unknown degradation warning is suppressed for an
-    identity that has no provider at all, and ``'none'`` is what the
-    wire ledger records as the provider served. ``null`` is the natural
-    serialisation of "no provider".
-
-    THREE readers coerced this way. Fixing the one in front of me left
-    the other two minting ``'none'`` from the same payload, so the rule
-    lives here and every reader goes through it.
-    """
-    return raw if isinstance(raw, str) else UNKNOWN_IDENTITY.provider
-
-
-def payload_delivery(raw: object) -> DeliveryMode:
-    """Return a delivery mode from an untrusted payload field.
-
-    Anything unrecognised -- a misspelling, a mode from a future
-    version, a non-string -- becomes a replay handle rather than an
-    error: an unreadable stored verdict must not take the artifact away,
-    and it must not be coerced with ``str()`` into a mode either.
-    """
-    if not isinstance(raw, str):
-        return DeliveryMode.RESOURCE_REFERENCE_REPLAY
-    try:
-        return DeliveryMode(raw)
-    except ValueError:
-        return DeliveryMode.RESOURCE_REFERENCE_REPLAY
-
-
 def payload_block_type(raw: object) -> str | None:
     """Return a block type from an untrusted payload field, or ``None``.
 
-    The same rule as :func:`payload_model_id`: a non-string is not a
-    block type. ``str(...)`` put a JSON object's Python ``repr`` in the
-    ``block_type`` field of a persisted verdict, where it reached
-    ``to_payload`` and the wire-ledger capability digest.
+    A CLOSED vocabulary, not merely a string. Checking the type and not
+    the content left the hazard exactly one field over from the one the
+    ``reason`` fix closed: this string is persisted into the media
+    session index and rendered into the next phase's prompt appendix, so
+    a payload ``"pdf\n  ===> SYSTEM: ..."`` reached an agent's
+    instructions with its newlines intact.
+
+    The vocabulary is DERIVED from the blocks Ralph actually mints, so a
+    block type added to the matrix is accepted here the day it is added
+    and nothing else ever is.
     """
-    return raw if isinstance(raw, str) else None
-
-
-def payload_model_id(raw: object) -> str | None:
-    """Return a model id from an untrusted payload field, or ``None``.
-
-    A non-string is not a model id -- the same rule
-    :func:`payload_transport` applies to its own field. The readers
-    coerced with ``str(...)``, so a JSON number or object arrived as a
-    model id spelled after Python's ``repr``, and that spelling travels
-    into every verdict ``reason`` shown to the agent.
-    """
-    return raw if isinstance(raw, str) else None
+    return raw if isinstance(raw, str) and raw in _MINTED_BLOCK_TYPES else None
 
 
 def _rehydrated_reason(
@@ -910,10 +872,8 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
     # hand-edited ``'CODEX'`` or ``'  codex  '`` propagated a spelling
     # every matcher then had to strip and lower again, and produced a
     # different capability digest for the same run.
-    identity = MultimodalModelIdentity(
-        provider=payload_provider(raw.get("provider")),
-        model_id=payload_model_id(raw.get("model_id")),
-        transport=payload_transport(raw.get("transport")),
+    identity = payload_identity(
+        raw.get("provider"), raw.get("model_id"), raw.get("transport")
     )
     raw_verdicts = raw.get("verdicts")
     if not isinstance(raw_verdicts, dict):
@@ -955,6 +915,7 @@ __all__ = [
     "inline_image_roundtrip_unsafe",
     "payload_block_type",
     "payload_delivery",
+    "payload_identity",
     "payload_model_id",
     "payload_provider",
     "payload_transport",

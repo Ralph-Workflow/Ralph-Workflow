@@ -28,8 +28,7 @@ from ralph.mcp.multimodal.capabilities import (
     caller_identity_for,
     caller_profile_for,
     identity_on_transport,
-    payload_model_id,
-    payload_provider,
+    payload_identity,
     payload_transport,
     profile_from_payload,
     resolve_capability_profile,
@@ -128,10 +127,8 @@ def session_identity_from_payload(
     # JSON ``null`` provider into the literal provider "none".
     stated_transport = payload_transport(raw_identity.get("transport"))
     resolved = reconcile_declared_transport(declared, raw_identity.get("transport"))
-    stated = MultimodalModelIdentity(
-        provider=payload_provider(raw_identity.get("provider")),
-        model_id=payload_model_id(raw_identity.get("model_id")),
-        transport=stated_transport,
+    stated = payload_identity(
+        raw_identity.get("provider"), raw_identity.get("model_id"), stated_transport
     )
     if resolved is None or stated_transport == resolved:
         return identity_on_transport(stated, resolved)
@@ -518,11 +515,7 @@ class FileBackedSession:
         # keeps a delegated call from silently escaping the guards that
         # key on the CLI.
         raw_transport = payload_transport(raw.get("transport"))
-        return MultimodalModelIdentity(
-            provider=payload_provider(raw.get("provider")),
-            model_id=payload_model_id(raw.get("model_id")),
-            transport=raw_transport,
-        )
+        return payload_identity(raw.get("provider"), raw.get("model_id"), raw_transport)
 
     @property
     def delegated_capability_profile(self) -> ResolvedCapabilityProfile | None:
