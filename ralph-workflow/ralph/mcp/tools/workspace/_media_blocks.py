@@ -126,6 +126,28 @@ def _build_image_withheld_block(
     return ToolContent.text_content(f"WARNING: {message}")
 
 
+def _inline_image_deliverable(
+    verdict: CapabilityVerdict,
+    modality: str,
+    mime_type: str,
+) -> bool:
+    """Return True when this artifact may be emitted as an inline image.
+
+    An ``INLINE_IMAGE`` verdict alone is not enough. The verdict can come
+    from a persisted profile, which is untrusted input -- and a stored
+    ``pdf -> inline_image`` sent a PDF's bytes inside an ``ImageContent``
+    block, a malformed request that kills the turn exactly like the
+    incident this guard exists for. The artifact must actually BE an
+    inline-capable image, the same pair of checks the fresh-read path
+    makes.
+    """
+    return (
+        verdict.delivery == DeliveryMode.INLINE_IMAGE
+        and modality == "image"
+        and mime_type in INLINE_IMAGE_MIME_TYPES
+    )
+
+
 def _make_typed_block(
     block_type: str,
     *,
@@ -180,7 +202,7 @@ def _replay_from_manifest_entry(
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(entry.modality)
     raw_bytes = entry.load_bytes()
-    if verdict.delivery == DeliveryMode.INLINE_IMAGE:
+    if _inline_image_deliverable(verdict, entry.modality, entry.mime_type):
         if raw_bytes is None:
             return ToolResult(
                 content=[
@@ -263,7 +285,7 @@ def _replay_from_persisted_entry(
 
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(modality)
-    if verdict.delivery == DeliveryMode.INLINE_IMAGE:
+    if _inline_image_deliverable(verdict, modality, mime_type):
         if inline_image_requires_text_handle(profile.identity):
             return ToolResult(
                 content=[ToolContent.text_content(f"Replay handle: {uri}")],

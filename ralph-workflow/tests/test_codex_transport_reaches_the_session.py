@@ -1,0 +1,870 @@
+"""Regression: the transport must survive every session-construction path.
+
+Field evidence (2026-08-20, ``codex/gpt-5.6-terra`` dev loop): Ralph
+answered a ``read_media`` call with a base64 ``ImageContent`` block.
+The Codex CLI re-serialised that MCP tool result into its next
+Responses API request using the part type ``output_text``, which the
+API rejects::
+
+    [400]: Invalid value: 'output_text'. Supported values are:
+    'input_text', 'input_image', 'input_file', and 'scoped_content'.
+    (param: input[101].output[1])
+
+The turn died (``turn.failed``), the process was killed, and the run
+was graded ``FAILED (no artifact)`` because ``development_result.md``
+was never written. Ralph cannot fix the Codex CLI's serialisation, so
+it must not hand that transport an inline image in the first place.
+
+The guard in ``test_codex_inline_image_roundtrip`` is worthless if the
+transport never reaches the identity the guards read. Every session
+shape -- flagless plan, injected identity, handshake payload, file-backed
+payload, delegate, standalone declaration -- is pinned here, because each
+one of them has silently dropped it at least once.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from ralph.config.enums import AgentTransport
+from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE, ResourceReferenceContent
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    DeliveryMode,
+    MultimodalModelIdentity,
+    inline_image_roundtrip_unsafe,
+)
+from ralph.mcp.tools.coordination import ImageContent
+from ralph.mcp.tools.workspace._media_handlers import (
+    handle_read_media,
+)
+from ralph.workspace.fs import FsWorkspace
+from tests.mock_session_with_manifest import MockSessionWithManifest
+
+MEDIA_READ_CAPABILITY = "media.read"
+
+pytestmark = pytest.mark.timeout_seconds(5)
+
+# Minimal valid PNG: 1x1 transparent pixel, generated inline so the
+# test stays hermetic (no file fixtures).
+_PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR"
+    b"\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00"
+    b"\x1f\x15\xc4\x89"
+    b"\x00\x00\x00\nIDAT"
+    b"\x78\x9c\x62\x00\x01\x00\x00\x05\x00\x01"
+    b"\x0d\x0a\x2d\xb4"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+_CODEX_IDENTITY = MultimodalModelIdentity(
+    provider="openai",
+    model_id="gpt-5.6-terra",
+    transport="codex",
+)
+
+
+def _write_png(tmp_path: Path, name: str = "tiny.png") -> Path:
+    file_path = tmp_path / name
+    file_path.write_bytes(_PNG_BYTES)
+    return file_path
+
+
+def _set_profile(session: object, profile: object) -> None:
+    """Inject a capability profile onto a mock session.
+
+    The production path stores the profile on the session; the mock
+    exposes the same attribute so the production helper reads it.
+    """
+    session.capability_profile = profile
+
+
+def _codex_session() -> MockSessionWithManifest:
+    return MockSessionWithManifest(
+        MEDIA_READ_CAPABILITY,
+        model_identity=_CODEX_IDENTITY,
+    )
+
+
+def _minimal_agents_policy() -> object:
+    """Smallest policy that lets ``build_session_mcp_plan`` resolve a drain."""
+    from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
+
+    return AgentsPolicy(
+        agent_chains={
+            "development": AgentChainConfig(
+                agents=["codex"], max_retries=1, retry_delay_ms=1000
+            )
+        },
+        agent_drains={
+            "development": AgentDrainConfig(chain="development", drain_class="development")
+        },
+    )
+
+def test_flagless_codex_plan_still_carries_the_transport(tmp_path: Path) -> None:
+    """A guard keyed on a value the runtime discards is not a fix.
+
+    ``ralph run`` builds most sessions with no ``--model`` flag. The plan
+    builder used to fall straight through to ``UNKNOWN_IDENTITY`` in that
+    case, dropping the transport it had been handed -- so the identity
+    reaching the MCP server had ``transport=None`` and every Codex image
+    took the inline path regardless of the capability guard.
+    """
+    from ralph.mcp.session_plan import build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+    )
+
+    assert plan.model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(plan.model_identity)
+
+
+def test_flagless_codex_plan_withholds_inline_image_delivery(tmp_path: Path) -> None:
+    """End of the same chain: the resolved profile must not say inline."""
+    from ralph.mcp.session_plan import build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+    )
+
+    assert plan.capability_profile is not None
+    verdict = plan.capability_profile.verdict_for(MODALITY_IMAGE)
+    assert verdict.delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY
+
+
+def test_flagless_non_codex_plan_keeps_unknown_provider(tmp_path: Path) -> None:
+    """Tagging the transport must not silently promote the provider.
+
+    Resolving a canonical provider here would flip other modalities from
+    resource-reference to UNSUPPORTED for every flagless run. The fix adds
+    the transport tag only.
+    """
+    from ralph.mcp.session_plan import build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+    )
+
+    assert plan.model_identity.provider == "unknown"
+    assert plan.model_identity.transport == "claude"
+    assert not inline_image_roundtrip_unsafe(plan.model_identity)
+
+
+def test_transport_only_identity_survives_the_session_handshake() -> None:
+    """The subprocess must receive the transport too.
+
+    ``lifecycle`` serialized ``model_identity`` only when the provider
+    resolved, so a transport-tagged unknown identity was dropped on the
+    way to the MCP server and the guard died at the boundary.
+    """
+    import json as _json
+
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.server.lifecycle import session_payload_json
+
+    class _Session:
+        session_id = "s-1"
+        run_id = "r-1"
+        drain = "development"
+        capabilities: frozenset[str] = frozenset()
+        model_identity = MultimodalModelIdentity(
+            provider="unknown", model_id=None, transport="codex"
+        )
+
+    payload = _json.loads(session_payload_json(_Session()))
+
+    assert payload.get("model_identity", {}).get("transport") == "codex"
+
+
+def test_codex_replay_ignores_a_stale_inline_image_verdict(tmp_path: Path) -> None:
+    """A rehydrated profile must not reopen the inline path.
+
+    ``profile_from_payload`` trusts a stored verdict string verbatim, so a
+    session payload written by a pre-fix Ralph carries
+    ``image -> inline_image``. The replay sites keyed on that verdict
+    rather than on the identity, so dereferencing a handle handed back by
+    the (correctly guarded) first read returned the ImageContent that
+    kills the turn.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        ResolvedCapabilityProfile,
+    )
+
+    _write_png(tmp_path)
+    session = _codex_session()
+    stale_profile = ResolvedCapabilityProfile(
+        identity=_CODEX_IDENTITY,
+        verdicts={
+            MODALITY_IMAGE: CapabilityVerdict(
+                modality=MODALITY_IMAGE,
+                delivery=DeliveryMode.INLINE_IMAGE,
+                provider=_CODEX_IDENTITY.provider,
+                model_id=_CODEX_IDENTITY.model_id,
+                reason="stored by a pre-fix Ralph Workflow session",
+            )
+        },
+    )
+    _set_profile(session, stale_profile)
+    workspace = FsWorkspace(tmp_path)
+
+    first = handle_read_media(session, workspace, {"path": "tiny.png"})
+    handles = [
+        block.uri for block in first.content if isinstance(block, ResourceReferenceContent)
+    ]
+    assert handles, f"expected a replay handle, got {first.content}"
+
+    replayed = handle_read_media(session, workspace, {"path": handles[0]})
+
+    assert not any(isinstance(block, ImageContent) for block in replayed.content)
+
+
+def test_codex_pdf_delivery_gets_no_spurious_degradation_warning(
+    tmp_path: Path,
+) -> None:
+    """The inline-image guard must not warn about unrelated modalities.
+
+    A Codex CLI pointed at an image-incapable-but-PDF-capable provider
+    delivers a PDF as a healthy typed block; prepending a
+    "multimodal degraded" warning to that would be simply false.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+
+    (tmp_path / "report.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    result = handle_read_media(
+        MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(
+                provider="claude",
+                model_id="claude-opus-5",
+                transport="codex",
+            ),
+        ),
+        FsWorkspace(tmp_path),
+        {"path": "report.pdf"},
+    )
+
+    warnings = [
+        block
+        for block in result.content
+        if getattr(block, "type", None) == "text" and "WARNING" in getattr(block, "text", "")
+    ]
+    assert warnings == [], f"unexpected degradation warning: {warnings}"
+
+
+def test_capability_helpers_are_exported() -> None:
+    """Both guards are imported by name across modules; export them."""
+    from ralph.mcp.multimodal import capabilities
+
+    assert "inline_image_roundtrip_unsafe" in capabilities.__all__
+    assert "inline_image_requires_text_handle" in capabilities.__all__
+
+
+def test_injected_identity_gets_the_transport_backfilled(tmp_path: Path) -> None:
+    """A caller-supplied identity must not smuggle the transport away.
+
+    ``SessionModelOpts(model_identity=...)`` is taken verbatim. A caller
+    that knows the provider but leaves ``transport`` unset (the pro-hooks
+    and public ``run_pipeline`` shape) therefore produced an untagged
+    identity and reopened the inline path.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(provider="openai", model_id="gpt-5.6-terra")
+        ),
+    )
+
+    assert plan.model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(plan.model_identity)
+
+
+def test_the_launched_transport_outranks_a_stale_injected_one(tmp_path: Path) -> None:
+    """Only one CLI is on the other end, and it is the one being launched.
+
+    Keeping a stated transport that disagreed left the identity
+    describing a different CLI: an ``agy`` tag on a Claude launch
+    promised typed audio and video blocks Claude cannot accept. The
+    provider goes with it, because it described that other CLI too.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(
+                provider="opencode", model_id="minimax", transport="opencode"
+            )
+        ),
+    )
+
+    assert plan.model_identity.transport == "claude"
+    assert plan.model_identity.provider == "unknown"
+
+
+def test_an_injected_identity_agreeing_on_the_transport_is_untouched(
+    tmp_path: Path,
+) -> None:
+    """Reconciliation exists to close a hazard, not to second-guess a caller."""
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-5", transport="claude"
+            )
+        ),
+    )
+
+    assert plan.model_identity.provider == "claude"
+    assert plan.model_identity.model_id == "claude-opus-5"
+
+
+def test_prebuilt_capability_plan_keeps_the_agent_identity(tmp_path: Path) -> None:
+    """Pre-supplied capabilities must not discard the resolved identity.
+
+    Exercised through the public managed-session runtime: that branch
+    returned a bare plan built from dataclass defaults, so the agent's
+    transport never reached the session and the delivery guards were
+    blind on this path.
+    """
+    from importlib import import_module
+    from types import SimpleNamespace
+
+    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.workspace.memory import MemoryWorkspace
+
+    session_runtime = import_module("ralph.session_runtime")
+    agent_config = AgentConfig(cmd="codex", transport=AgentTransport.CODEX)
+    config = UnifiedConfig(general=GeneralConfig(), agents={"codex": agent_config})
+    captured: dict[str, object] = {}
+
+    def _fake_start_mcp_server(*args: object) -> object:
+        captured["session"] = args[0]
+        return SimpleNamespace(
+            agent_endpoint_uri=lambda: "http://127.0.0.1:9999/mcp",
+            shutdown=lambda: None,
+        )
+
+    deps = session_runtime.ManagedAgentSessionDeps(
+        start_mcp_server=_fake_start_mcp_server,
+        invoke_agent=lambda *_a: iter(()),
+        materialize_master_prompt=lambda *_a: str(tmp_path / "system.md"),
+        workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
+    )
+
+    with session_runtime.ManagedAgentSessionRuntime.open(
+        config=config,
+        workspace_root=tmp_path,
+        agent_config=agent_config,
+        request=session_runtime.ManagedAgentSessionRequest(
+            session_id_prefix="managed-agent",
+            drain="standalone",
+            capabilities=frozenset({"media.read"}),
+        ),
+        deps=deps,
+    ):
+        pass
+
+    session = captured["session"]
+
+    assert session.model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(session.model_identity)
+
+
+def test_codex_metadata_handle_survives_a_stale_inline_verdict(tmp_path: Path) -> None:
+    """The metadata envelope must not hand back a handle-less dead end.
+
+    The envelope registers a replayable handle only for a
+    resource-reference delivery. Under a stale stored ``inline_image``
+    verdict that test failed, so a codex agent got
+    ``resource_handle: null`` pointing at nothing -- the exact failure
+    the registration branch exists to prevent.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        ResolvedCapabilityProfile,
+    )
+
+    _write_png(tmp_path)
+    session = _codex_session()
+    _set_profile(
+        session,
+        ResolvedCapabilityProfile(
+            identity=_CODEX_IDENTITY,
+            verdicts={
+                MODALITY_IMAGE: CapabilityVerdict(
+                    modality=MODALITY_IMAGE,
+                    delivery=DeliveryMode.INLINE_IMAGE,
+                    provider=_CODEX_IDENTITY.provider,
+                    model_id=_CODEX_IDENTITY.model_id,
+                    reason="stored by a pre-guard session",
+                )
+            },
+        ),
+    )
+
+    result = handle_read_media(
+        session, FsWorkspace(tmp_path), {"path": "tiny.png", "format": "metadata"}
+    )
+    envelope = json.loads(result.content[0].text)
+
+    assert envelope["resource_handle"] is not None
+    assert envelope["inline_only"] is False
+
+
+def test_serialised_profile_does_not_carry_a_stale_inline_verdict() -> None:
+    """Re-serialisation must not propagate a verdict the runtime overrode.
+
+    The session payload and the wire-ledger capability digest are the
+    audit record of what was delivered. Emitting the raw stored verdict
+    made that record disagree with the runtime on every re-save.
+    """
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        ResolvedCapabilityProfile,
+    )
+
+    profile = ResolvedCapabilityProfile(
+        identity=_CODEX_IDENTITY,
+        verdicts={
+            MODALITY_IMAGE: CapabilityVerdict(
+                modality=MODALITY_IMAGE,
+                delivery=DeliveryMode.INLINE_IMAGE,
+                provider=_CODEX_IDENTITY.provider,
+                model_id=_CODEX_IDENTITY.model_id,
+                reason="stored by a pre-guard session",
+            )
+        },
+    )
+
+    payload = profile.to_payload()
+    verdicts = payload["verdicts"]
+    assert isinstance(verdicts, dict)
+
+    assert verdicts[MODALITY_IMAGE]["delivery"] == DeliveryMode.RESOURCE_REFERENCE_REPLAY.value
+
+
+def test_a_restricted_launched_transport_overrides_an_injected_one(
+    tmp_path: Path,
+) -> None:
+    """When the two disagree, the restricted transport wins.
+
+    The bridge lifetime primitive passes BOTH an injected identity and
+    the transport the chain resolved. While a stated transport was always
+    kept, a stale injected tag silently discarded the chain's answer and
+    handed a restricted agent the inline image that kills its turn.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-5", transport="claude"
+            )
+        ),
+    )
+
+    assert plan.model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(plan.model_identity)
+
+
+def test_session_transport_selection_prefers_the_restricted_candidate() -> None:
+    """A session serving several candidate agents takes the safe tag.
+
+    A session is built before anyone knows which agent in a chain will
+    run. Degrading a capable agent to a resource reference is harmless;
+    handing a restricted agent an inline image kills its turn.
+    """
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+
+    assert select_session_transport(["claude", "codex"]) == "codex"
+    assert select_session_transport(["codex", "claude"]) == "codex"
+
+
+def test_session_transport_selection_keeps_a_homogeneous_chain() -> None:
+    """A single-transport chain is tagged with its own transport."""
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+
+    assert select_session_transport(["claude", "claude"]) == "claude"
+
+
+def test_session_transport_selection_declines_a_mixed_capable_chain() -> None:
+    """With nothing restricted and no agreement there is no honest tag."""
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+
+    assert select_session_transport(["claude", "opencode"]) is None
+    assert select_session_transport([]) is None
+
+
+def test_standalone_server_can_declare_the_agent_cli_it_serves() -> None:
+    """A manually started server must be able to know what it serves.
+
+    The delivery guard is transport-keyed, and a standalone server with
+    no session handshake had no way to learn the CLI on the other end --
+    so pointing a restricted CLI at one reproduced the field incident in
+    full. There is nothing to infer it from, so it is declared.
+    """
+    from ralph.mcp.server.runtime import parse_args, standalone_session_identity
+
+    assert parse_args(["--agent-transport", "codex"]).agent_transport == "codex"
+
+    identity = standalone_session_identity("codex")
+
+    assert identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(identity)
+
+
+def test_standalone_server_without_a_declared_cli_stays_permissive() -> None:
+    """Undeclared means unresolved, which criterion 14 treats as capable."""
+    from ralph.mcp.server.runtime import parse_args, standalone_session_identity
+
+    assert parse_args([]).agent_transport is None
+
+    assert not inline_image_roundtrip_unsafe(standalone_session_identity(None))
+
+
+def test_upstream_block_without_a_readable_type_is_rejected() -> None:
+    """A typeless upstream block must not carry base64 past the contract.
+
+    Unknown *string* types were already fail-closed, but a block with no
+    ``type`` -- or a non-string one -- passed through verbatim, which is
+    the one route by which an unnormalized media payload could reach a
+    tool result.
+    """
+    from ralph.mcp.upstream.client import (
+        UpstreamCallError,
+        normalize_upstream_content_blocks,
+    )
+
+    for bad_type in ({}, {"type": 7}):
+        block = dict(bad_type)
+        block.update({"data": "iVBORw0KGgo=", "mimeType": "image/png"})
+        result: dict[str, object] = {"content": [block]}
+
+        with pytest.raises(UpstreamCallError):
+            normalize_upstream_content_blocks(result, "srv", "tool")
+
+
+def _write_session_file(tmp_path: Path, identity: dict[str, object] | None) -> Path:
+    """Write a session file using the REAL payload writer.
+
+    Hand-rolling the payload is what let a leak survive a round: the
+    hand-written shape omitted the ``capability_profile`` key, which
+    ``session_payload_json`` always writes -- and the media guards read
+    the identity embedded in THAT, not the top-level one.
+    """
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+
+    parent = AgentSession(
+        session_id="s",
+        run_id="r",
+        drain="standalone",
+        capabilities={MEDIA_READ_CAPABILITY},
+        model_identity=(
+            MultimodalModelIdentity(
+                provider=str(identity["provider"]),
+                model_id=str(identity["model_id"]),
+                transport=str(identity["transport"]),
+            )
+            if identity is not None
+            else UNKNOWN_IDENTITY
+        ),
+    )
+    payload = json.loads(session_payload_json(parent))
+    assert "capability_profile" in payload, "the real writer always emits this key"
+    session_file = tmp_path / "session.json"
+    session_file.write_text(json.dumps(payload), encoding="utf-8")
+    return session_file
+
+
+def test_declared_cli_reaches_a_file_backed_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--agent-transport`` must survive the production session shape.
+
+    ``RALPH_MCP_SESSION_FILE`` is what every managed subprocess and
+    resumed shell inherits, and it yields a ``FileBackedSession`` whose
+    identity comes from a payload the parent wrote -- a payload that
+    cannot know which CLI an operator pointed at a standalone server.
+    Applying the declaration only to a minted session left the flag a
+    silent no-op on exactly the shape that matters, and the guards read
+    ``caller_model_identity``, so every one of them was defeated at once.
+    """
+    from ralph.mcp.server.runtime_session import session_from_env
+
+    monkeypatch.setenv("RALPH_MCP_SESSION_FILE", str(_write_session_file(tmp_path, None)))
+
+    session = session_from_env(declared_agent_transport="codex")
+
+    assert session is not None
+    assert session.caller_model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(session.caller_model_identity)
+    # The media guards read the PROFILE's identity, not the session's.
+    # Correcting only the latter closed nothing.
+    assert session.caller_capability_profile.identity.transport == "codex"
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_a_handshake_transport_outranks_the_declared_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A payload that names a CLI came from something that knew better."""
+    from ralph.mcp.server.runtime_session import session_from_env
+
+    monkeypatch.setenv(
+        "RALPH_MCP_SESSION_FILE",
+        str(
+            _write_session_file(
+                tmp_path,
+                {"provider": "claude", "model_id": "claude-opus-5", "transport": "claude"},
+            )
+        ),
+    )
+
+    session = session_from_env(declared_agent_transport="codex")
+
+    assert session is not None
+    assert session.caller_model_identity.transport == "claude"
+
+
+def test_overriding_the_transport_also_drops_the_stale_provider(
+    tmp_path: Path,
+) -> None:
+    """A provider beside an overridden transport described a different CLI.
+
+    Keeping it inverted the rule for every non-image modality: a stale
+    ``claude`` provider minted a typed PDF block for a CLI that cannot
+    take one. Dropping to unresolved lets the safe defaults apply --
+    the same move fan-out makes with a model flag that no longer
+    describes the tagged CLI.
+    """
+    from ralph.mcp.multimodal.artifacts import MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CODEX,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_minimal_agents_policy(),
+        model_opts=SessionModelOpts(
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-5", transport="claude"
+            )
+        ),
+    )
+
+    assert plan.model_identity.transport == "codex"
+    assert plan.model_identity.provider == "unknown"
+    assert plan.capability_profile is not None
+    # Not a typed block minted for a CLI that cannot carry it.
+    assert plan.capability_profile.verdict_for(MODALITY_PDF).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_the_commit_chain_rule_matches_the_shared_rule() -> None:
+    """The two implementations of "which transport tags this session" agree.
+
+    The commit chain expresses the rule over ``AgentTransport`` and the
+    shared helper over its string values. They are supposed to be the
+    same rule; pinning them against each other means a change to one
+    that is not mirrored fails here rather than diverging silently.
+    """
+    from types import SimpleNamespace
+
+    from ralph.config.models import AgentConfig
+    from ralph.mcp.multimodal.capabilities import select_session_transport
+    from ralph.pipeline.plumbing.commit_plumbing import commit_chain_transport
+
+    shapes = [
+        ["claude"],
+        ["codex"],
+        ["claude", "codex"],
+        ["codex", "claude"],
+        ["claude", "opencode"],
+        ["claude", "claude"],
+        ["codex", "codex"],
+        ["claude", "opencode", "codex"],
+        [],
+    ]
+    registry = {
+        "claude": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE),
+        "codex": AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
+        "opencode": AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE),
+    }
+
+    for agents in shapes:
+        chain = SimpleNamespace(agents=agents, registry=SimpleNamespace(get=registry.get))
+        chain_answer = commit_chain_transport(chain)
+        shared_answer = select_session_transport(
+            [registry[name].transport.value for name in agents]
+        )
+        assert (chain_answer.value if chain_answer else None) == shared_answer, agents
+
+
+def test_declared_cli_reaches_a_json_env_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The JSON handshake shape is as blind to the CLI as the file one."""
+    from ralph.mcp.protocol.env import MCP_SESSION_ENV, MCP_SESSION_FILE_ENV
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server.lifecycle import session_payload_json
+    from ralph.mcp.server.runtime_session import session_from_env
+
+    del tmp_path
+    parent = AgentSession(
+        session_id="s", run_id="r", drain="standalone", capabilities={MEDIA_READ_CAPABILITY}
+    )
+    monkeypatch.delenv(str(MCP_SESSION_FILE_ENV), raising=False)
+    monkeypatch.setenv(str(MCP_SESSION_ENV), session_payload_json(parent))
+
+    session = session_from_env(declared_agent_transport="codex")
+
+    assert session is not None
+    assert session.caller_capability_profile.identity.transport == "codex"
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_a_delegate_inherits_the_sessions_transport() -> None:
+    """A delegate names a different model, never a different CLI.
+
+    The transport describes the process on the other end of this
+    session, so a delegate payload that omits it must not escape the
+    guards that key on it.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.protocol.session import AgentSession
+
+    session = AgentSession(
+        session_id="s",
+        run_id="r",
+        drain="standalone",
+        capabilities={MEDIA_READ_CAPABILITY},
+        model_identity=_CODEX_IDENTITY,
+    )
+    session.delegated_model_identity = MultimodalModelIdentity(
+        provider="claude", model_id="claude-opus-5"
+    )
+
+    assert inline_image_roundtrip_unsafe(session.caller_model_identity)
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_a_delegate_cannot_declare_the_guard_away() -> None:
+    """A delegate stating its own transport must not outrank the session's.
+
+    The transport describes the process on the other end, which a
+    delegate does not change. Treating a delegate's claim as
+    authoritative turned the whole guard into something a payload could
+    opt out of.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.protocol.session import AgentSession
+
+    session = AgentSession(
+        session_id="s",
+        run_id="r",
+        drain="standalone",
+        capabilities={MEDIA_READ_CAPABILITY},
+        model_identity=_CODEX_IDENTITY,
+    )
+    session.delegated_model_identity = MultimodalModelIdentity(
+        provider="claude", model_id="claude-opus-5", transport="claude"
+    )
+
+    assert session.caller_model_identity.transport == "codex"
+    assert inline_image_roundtrip_unsafe(session.caller_model_identity)
+    assert session.caller_capability_profile.verdict_for(MODALITY_IMAGE).delivery is (
+        DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    )
+
+
+def test_a_replayed_pdf_is_never_wrapped_in_an_image_block(tmp_path: Path) -> None:
+    """An INLINE_IMAGE verdict alone must not make a PDF an image block.
+
+    Persisted verdicts are untrusted input, and a stored
+    ``pdf -> inline_image`` sent a PDF's bytes inside ``ImageContent`` --
+    a malformed request that kills the turn exactly like the incident
+    this guard exists for.
+    """
+    from ralph.mcp.multimodal.artifacts import MODALITY_PDF
+    from ralph.mcp.multimodal.capabilities import (
+        CapabilityVerdict,
+        MultimodalModelIdentity,
+        ResolvedCapabilityProfile,
+    )
+
+    (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    claude = MultimodalModelIdentity(
+        provider="claude", model_id="claude-opus-5", transport="claude"
+    )
+    session = MockSessionWithManifest(MEDIA_READ_CAPABILITY, model_identity=claude)
+    _set_profile(
+        session,
+        ResolvedCapabilityProfile(
+            identity=claude,
+            verdicts={
+                MODALITY_PDF: CapabilityVerdict(
+                    modality=MODALITY_PDF,
+                    delivery=DeliveryMode.INLINE_IMAGE,
+                    provider="claude",
+                    model_id="claude-opus-5",
+                    reason="stored by something that should not have",
+                )
+            },
+        ),
+    )
+    workspace = FsWorkspace(tmp_path)
+
+    first = handle_read_media(session, workspace, {"path": "doc.pdf"})
+    refs = [b for b in first.content if isinstance(b, ResourceReferenceContent)]
+    assert refs, first.content
+
+    replayed = handle_read_media(session, workspace, {"path": refs[0].uri})
+
+    assert not any(isinstance(b, ImageContent) for b in replayed.content), replayed.content

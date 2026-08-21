@@ -11,6 +11,7 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    identity_on_transport,
     profile_for_caller,
     resolve_capability_profile,
 )
@@ -306,13 +307,11 @@ class AgentSession:
         delegated = self.delegated_model_identity
         if delegated is None:
             return self.model_identity
-        if delegated.transport is not None:
-            return delegated
-        return MultimodalModelIdentity(
-            provider=delegated.provider,
-            model_id=delegated.model_id,
-            transport=self.model_identity.transport,
-        )
+        # The session's transport WINS, it is not merely a fallback: a
+        # delegate names a different model, and cannot change which CLI
+        # is on the other end of this session. Letting a delegate state
+        # its own transport was a way to declare the guards away.
+        return identity_on_transport(delegated, self.model_identity.transport)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:

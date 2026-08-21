@@ -397,9 +397,7 @@ def normalize_upstream_content_blocks(
                 f"block must declare one of: text, resource_reference, image, "
                 f"audio, video, pdf, document."
             )
-        block_type = block.get("type")
-        if not isinstance(block_type, str):  # pragma: no cover - narrowed above
-            continue
+        block_type = str(block.get("type"))
         if block_type in ("text", "resource_reference"):
             normalized.append(block)
         elif block_type in _UPSTREAM_MEDIA_BLOCK_TYPES:

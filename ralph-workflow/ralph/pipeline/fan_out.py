@@ -372,13 +372,19 @@ def _build_session_mcp_plan_for_phase(
     # first candidate, and once the tag names a different CLI the two no
     # longer describe the same agent.
     chain_transport = _phase_session_transport(candidate_agents, config)
-    if chain_transport is not transport:
+    if chain_transport is not None and chain_transport is not transport:
         # Pairing them would resolve a provider for a model the tagged
         # CLI is not running -- which turns pdf/document delivery into a
         # hard unsupported error for the very agent the flag came from.
         # Leave the provider unresolved and carry only the safe tag.
         model_flag = None
-    transport = chain_transport
+        transport = chain_transport
+    # A ``None`` answer means "no restricted candidate and no agreement".
+    # The original transport is KEPT in that case: it also selects the
+    # native upstream MCP loaders, and clearing it silently dropped a
+    # mixed chain's upstream server discovery for the whole session. No
+    # candidate is restricted there, so the delivery guard does not care
+    # which of the agreeing-on-nothing transports the tag names.
 
     effective_agents_policy = (
         policy_bundle.agents

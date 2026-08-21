@@ -22,8 +22,8 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    identity_on_transport,
     resolve_capability_profile,
-    transport_inline_image_roundtrip_unsafe,
 )
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain, drain_class_for_session
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
@@ -263,55 +263,28 @@ def _reconcile_injected_transport(
 ) -> MultimodalModelIdentity:
     """Reconcile a caller-supplied identity with the transport being launched.
 
-    Two facts can disagree here: the identity a caller injected (which
-    may carry a transport of its own, possibly stale) and the transport
-    this session is actually being built for. Delivery guards key on the
-    transport, so picking wrong in either direction is a live hazard --
-    and a caller that supplies both, like the bridge lifetime primitive,
-    would otherwise silently discard the transport the chain resolved.
+    Two facts can disagree: the identity a caller injected, which may
+    carry a transport of its own, and the transport this session is
+    actually being built for. Only one CLI is ever on the other end, and
+    that is the one being launched -- a stated transport that disagrees
+    is stale, whichever of the two is the restricted one.
 
-    The MORE RESTRICTED one wins. Degrading a capable agent to a resource
-    reference costs it an inline image; handing a restricted agent an
-    inline image kills its turn. Same rule the commit chain applies when
-    it cannot know which of its agents will run.
+    Delegated to :func:`identity_on_transport`, which also drops the
+    provider beside a transport it replaces: that provider described the
+    other CLI, and keeping it mints a typed PDF block for a CLI that
+    cannot take one, or a hard unsupported error for one that can. The
+    two seams that reconcile a transport now apply the same rule.
     """
     if transport is None:
         return identity
+    # Normalise in passing: a padded or differently-cased value from a
+    # hand-edited payload otherwise reaches the session file and the
+    # wire-ledger digest verbatim.
     stated = (identity.transport or "").strip().lower()
-    if stated == transport.value:
-        # Normalise in passing: a padded or differently-cased value from
-        # a hand-edited payload otherwise reaches the session file and
-        # the wire-ledger digest verbatim.
-        return identity if identity.transport == transport.value else replace(
-            identity, transport=transport.value
-        )
-    if not stated:
-        return replace(identity, transport=transport.value)
-    if not transport_inline_image_roundtrip_unsafe(transport.value):
-        # The stated transport is kept, but the provider beside it
-        # described a CLI that is not the one being launched -- and a
-        # stale ``openai`` next to a Claude launch turns PDFs into a hard
-        # error for a CLI that accepts them. Same hazard as the branch
-        # below, opposite direction.
-        if transport_inline_image_roundtrip_unsafe(identity.transport):
-            return MultimodalModelIdentity(
-                provider=UNKNOWN_IDENTITY.provider,
-                model_id=None,
-                transport=transport.value,
-            )
-        return identity
-    # Overriding the stated transport means the provider beside it
-    # described a different CLI, and keeping it inverts this rule for
-    # every non-image modality: a stale ``claude`` provider mints a typed
-    # PDF block for a CLI that cannot take one, and a stale ``openai``
-    # one turns PDFs into a hard error for a CLI that can. Drop to
-    # unresolved and let the safe defaults apply, the same way fan-out
-    # drops a model flag that no longer describes the tagged CLI.
-    return MultimodalModelIdentity(
-        provider=UNKNOWN_IDENTITY.provider,
-        model_id=None,
-        transport=transport.value,
+    normalised = identity if identity.transport == stated or not stated else replace(
+        identity, transport=stated
     )
+    return identity_on_transport(normalised, transport.value)
 
 
 def build_session_mcp_plan(

@@ -25,6 +25,7 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
+    identity_on_transport,
     profile_for_caller,
     profile_from_payload,
     resolve_capability_profile,
@@ -46,6 +47,19 @@ from ralph.mcp.protocol.session import (
     session_has_capability,
 )
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
+
+
+def _payload_transport(raw: object) -> str | None:
+    """Return a usable transport from a payload field, or ``None``.
+
+    An empty or whitespace-only value is NOT a transport. Treating it as
+    one made ``"transport": ""`` outrank an operator's
+    ``--agent-transport`` declaration and left the guards blind, so the
+    field is normalised at the single point every reader goes through.
+    """
+    if not isinstance(raw, str):
+        return None
+    return raw.strip() or None
 
 
 class FileBackedSession:
@@ -368,14 +382,11 @@ class FileBackedSession:
             )
         provider = str(raw.get("provider", "unknown"))
         model_id = raw.get("model_id")
-        transport = raw.get("transport")
         return MultimodalModelIdentity(
             provider=provider,
             model_id=str(model_id) if model_id is not None else None,
             transport=(
-                str(transport)
-                if transport is not None
-                else self._declared_agent_transport
+                _payload_transport(raw.get("transport")) or self._declared_agent_transport
             ),
         )
 
@@ -434,15 +445,11 @@ class FileBackedSession:
         # this session. Inheriting it when the delegate payload omits it
         # keeps a delegated call from silently escaping the guards that
         # key on the CLI.
-        raw_transport = raw.get("transport")
+        raw_transport = _payload_transport(raw.get("transport"))
         return MultimodalModelIdentity(
             provider=str(raw.get("provider", "unknown")),
             model_id=str(raw["model_id"]) if raw.get("model_id") is not None else None,
-            transport=(
-                str(raw_transport)
-                if raw_transport is not None
-                else self.model_identity.transport
-            ),
+            transport=raw_transport,
         )
 
     @property
@@ -456,7 +463,13 @@ class FileBackedSession:
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        return self.delegated_model_identity or self.model_identity
+        delegated = self.delegated_model_identity
+        if delegated is None:
+            return self.model_identity
+        # The session's transport WINS, it is not merely a fallback: a
+        # delegate names a different model and cannot change which CLI
+        # is on the other end of this session.
+        return identity_on_transport(delegated, self.model_identity.transport)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
@@ -596,16 +609,15 @@ def session_from_env(
         else set()
     )
     raw_identity = payload.get("model_identity")
-    if isinstance(raw_identity, dict) and raw_identity.get("transport") is None:
+    if isinstance(raw_identity, dict) and _payload_transport(raw_identity.get("transport")) is None:
         raw_identity = {**raw_identity, "transport": declared_agent_transport}
     if isinstance(raw_identity, dict):
         provider = str(raw_identity.get("provider", "unknown"))
         model_id_raw = raw_identity.get("model_id")
-        transport_raw = raw_identity.get("transport")
         model_identity = MultimodalModelIdentity(
             provider=provider,
             model_id=str(model_id_raw) if model_id_raw is not None else None,
-            transport=str(transport_raw) if transport_raw is not None else None,
+            transport=_payload_transport(raw_identity.get("transport")),
         )
     else:
         model_identity = MultimodalModelIdentity(

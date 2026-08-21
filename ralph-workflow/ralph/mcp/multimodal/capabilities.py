@@ -140,6 +140,29 @@ def inline_image_requires_text_handle(identity: MultimodalModelIdentity) -> bool
     return identity.provider.lower() in _INLINE_IMAGE_HANDLE_ONLY_PROVIDERS
 
 
+def identity_on_transport(
+    identity: MultimodalModelIdentity,
+    transport: str | None,
+) -> MultimodalModelIdentity:
+    """Re-base ``identity`` onto the CLI actually on the other end.
+
+    The transport describes the PROCESS, and only one process is ever on
+    the other end of a session. A stated transport that disagrees with it
+    is stale, so it is replaced -- and the provider beside it is dropped,
+    because it described that other CLI: keeping it mints a typed PDF
+    block for a CLI that cannot take one, or a hard unsupported error for
+    one that can. Same reasoning either way round.
+
+    ``transport`` of ``None`` means the caller knows no better, so the
+    identity is returned untouched.
+    """
+    if transport is None or identity.transport == transport:
+        return identity
+    if identity.transport is None:
+        return replace(identity, transport=transport)
+    return MultimodalModelIdentity(provider="unknown", model_id=None, transport=transport)
+
+
 def profile_for_caller(
     profile: ResolvedCapabilityProfile | None,
     identity: MultimodalModelIdentity,
@@ -162,10 +185,18 @@ def profile_for_caller(
         return resolve_capability_profile(identity)
     if profile.identity == identity:
         return profile
-    if profile.identity.transport == identity.transport:
-        # Same CLI, richer provider detail in one of them: keep the
-        # stored verdicts and just carry the authoritative identity.
+    if (
+        profile.identity.transport == identity.transport
+        and profile.identity.provider == identity.provider
+    ):
+        # Same CLI and same provider -- only the model id differs, which
+        # no verdict keys on. Keep the stored verdicts and carry the
+        # authoritative identity.
         return ResolvedCapabilityProfile(identity=identity, verdicts=profile.verdicts)
+    # A different provider's verdicts describe a different API. Keeping
+    # them promised typed PDF blocks a provider does not accept, and left
+    # each verdict's own ``provider`` and ``reason`` naming the old one
+    # -- text this layer prints, and the wire ledger records.
     return resolve_capability_profile(identity)
 
 
@@ -411,6 +442,7 @@ __all__ = [
     "MultimodalModelIdentity",
     "ResolvedCapabilityProfile",
     "get_delivery_mode",
+    "identity_on_transport",
     "inline_image_requires_text_handle",
     "inline_image_roundtrip_unsafe",
     "profile_for_caller",
