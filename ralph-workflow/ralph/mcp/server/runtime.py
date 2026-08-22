@@ -199,7 +199,11 @@ def build_standalone_http_server(
         if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
-    upstream_servers = load_runtime_upstream_servers(mcp_cfg, env_map)
+    # Keep this composition seam unary: callers and test doubles can replace
+    # it without knowing which environment source the standalone runtime uses.
+    # The production loader defaults to ``os.environ``; ``env_map`` remains
+    # the explicit source for the adjacent cached-catalog lookup below.
+    upstream_servers = load_runtime_upstream_servers(mcp_cfg)
     tool_catalog = load_upstream_tool_catalog(env_map.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
     if tool_catalog:
         upstream_servers = tuple(

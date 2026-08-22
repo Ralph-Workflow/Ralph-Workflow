@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
-
 from ralph.agents.idle_watchdog._workspace_change_kind import (
     DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     WorkspaceChangeKind,
 )
+from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
     CPU_IDLE_SECONDS,
@@ -47,13 +46,6 @@ _VALID_WORKSPACE_CHANGE_WEIGHT_KEYS: frozenset[str] = frozenset(
     {kind.value for kind in WorkspaceChangeKind}
 )
 _VALID_WORKSPACE_CHANGE_WEIGHT_VALUES: frozenset[float] = frozenset({0.0, 1.0})
-
-
-class TimeoutProfile(StrEnum):
-    """The timeout verdict family an invocation is allowed to use."""
-
-    STANDARD = "standard"
-    ACTIVITY_ONLY = "activity_only"
 
 
 @dataclass(frozen=True)

@@ -75,12 +75,12 @@ class ActivityRelay:
         self._sink: Callable[[str], None] | None = None
         self._active = False
         self._registered_once = False
-        self._pending_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)
+        self._pending_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)  # bounded-accumulator-ok: FIFO cap
         self._receiver_error: str | None = None
         self._sender_error: str | None = None
         self._next_sequence = 1
         self._delivered_events = 0
-        self._recent_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)
+        self._recent_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)  # bounded-accumulator-ok: FIFO cap
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
 

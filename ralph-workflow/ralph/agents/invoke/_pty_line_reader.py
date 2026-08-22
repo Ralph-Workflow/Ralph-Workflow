@@ -39,6 +39,7 @@ from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import completion_run_id_from_extra_env
 from ralph.agents.invoke._errors import (
     AgentInvocationError,
+    SupervisionInfrastructureError,
     _IdleStreamTimeoutError,
 )
 from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
@@ -1099,6 +1100,13 @@ class PtyLineReader:
         watchdog: IdleWatchdog,
         verdict: WatchdogVerdict,
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        relay_health_error = cast(
+            "Callable[[], str | None] | None", getattr(self, "_relay_health_error", None)
+        )
+        if relay_health_error is not None:
+            detail = relay_health_error()
+            if detail:
+                raise SupervisionInfrastructureError(self._agent_name, detail)
         if verdict != WatchdogVerdict.FIRE:
             return None
         assert (
@@ -1743,8 +1751,8 @@ class PtyLineReader:
 
         self._monitor.set_on_event(_forward_event)
 
-    @staticmethod
     def _register_active_sinks(
+        self,
         watchdog: IdleWatchdog,
     ) -> tuple[Token[Callable[[str], None] | None], Token[Callable[[str], None] | None], Callable[[str], None]]:
         # Register the watchdog's MCP activity recorder as the active sink
@@ -1764,10 +1772,22 @@ class PtyLineReader:
 
         sink_token = set_active_sink(_mcp_sink)
         subagent_token = set_subagent_sink(_subagent_sink)
+        relay_register = cast(
+            "Callable[[Callable[[str], None]], Callable[[], None]] | None",
+            getattr(self, "_relay_activity_sink_register", None),
+        )
+        if relay_register is not None:
+            self._remove_relay_sink = relay_register(_mcp_sink)
         return sink_token, subagent_token, _subagent_sink
 
     def _teardown_read_loop(self, setup: _ReadLoopSetup, interrupted: bool) -> None:
         setup.watchdog.record_invocation_end()
+        remove_relay_sink = cast(
+            "Callable[[], None] | None", getattr(self, "_remove_relay_sink", None)
+        )
+        if remove_relay_sink is not None:
+            remove_relay_sink()
+            del self._remove_relay_sink
         reset_active_sink(setup.sink_token)
         reset_subagent_sink(setup.subagent_token)
         if self._monitor is not None:

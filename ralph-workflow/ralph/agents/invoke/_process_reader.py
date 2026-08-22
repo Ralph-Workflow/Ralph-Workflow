@@ -192,6 +192,13 @@ def check_broken_agent_timer(
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
     """Fail over promptly when a silent agent exits, or after a live-startup grace window."""
+    # Conflict resolution has exactly one default termination clock: the
+    # activity-only watchdog's fixed inactivity window.  The broken-agent
+    # heuristic is an elapsed startup timer, so invoking it here would let a
+    # silent resolver die before ``CONFLICT_INACTIVITY`` and would kill an
+    # MCP-only resolver despite fresh recognised liveness.
+    if watchdog._config.profile.value == "activity_only":
+        return
     grace_seconds = _effective_broken_agent_grace_seconds(watchdog)
     elapsed_seconds = watchdog.invocation_elapsed_seconds
     liveness_observed = True
