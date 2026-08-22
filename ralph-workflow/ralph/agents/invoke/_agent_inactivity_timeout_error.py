@@ -20,9 +20,13 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         _opts = opts or InactivityTimeoutOpts()
         self.timeout_seconds = timeout_seconds
         self.reason = _opts.reason
+        self.diagnostic = dict(_opts.diagnostic) if _opts.diagnostic is not None else {}
         self.session_resume_safe = _opts.session_resume_safe
         self.resumable_session_id = _opts.resumable_session_id
-        if _opts.reason == WatchdogFireReason.CONFLICT_INACTIVITY:
+        if _opts.reason == WatchdogFireReason.OPERATOR_CAP_REACHED:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = f"OPERATOR_CAP_REACHED after {duration}; active resolution stopped by configured cap"
+        elif _opts.reason == WatchdogFireReason.CONFLICT_INACTIVITY:
             duration = f"{timeout_seconds:.0f}s"
             diagnostic = _opts.diagnostic or {}
             kind = diagnostic.get("last_activity_kind", "none")

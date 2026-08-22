@@ -15,10 +15,13 @@ import secrets
 import socket
 import threading
 from collections import deque
-from collections.abc import MutableMapping
 from contextlib import suppress
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+
+from ralph.mcp.server._activity_relay_error import ActivityRelayError
+from ralph.mcp.server._activity_relay_protocol import decode_json_object, receive_bounded_line
+from ralph.mcp.server._activity_relay_sender import ActivityRelaySender
+from ralph.mcp.server._activity_relay_snapshot import ActivityRelaySnapshot
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -26,29 +29,11 @@ if TYPE_CHECKING:
 _RELAY_HOST = "127.0.0.1"
 _RELAY_ACCEPT_TIMEOUT_SECONDS = 0.1
 _RELAY_IO_TIMEOUT_SECONDS = 1.0
-_RELAY_MAX_MESSAGE_BYTES = 4096
 _RELAY_PENDING_EVENTS = 64
 _MAX_TOOL_NAME_LENGTH = 512
-_MAX_PORT = 65_535
+_SOCKET_ADDRESS_PARTS = 2
 _ACTIVITY_RELAY_ENDPOINT_ENV = "RALPH_MCP_ACTIVITY_RELAY_ENDPOINT"
 _ACTIVITY_RELAY_CREDENTIAL_ENV = "RALPH_MCP_ACTIVITY_RELAY_CREDENTIAL"
-RELAY_CONTROL_ENV_NAMES: frozenset[str] = frozenset(
-    {_ACTIVITY_RELAY_ENDPOINT_ENV, _ACTIVITY_RELAY_CREDENTIAL_ENV}
-)
-
-
-class ActivityRelayError(RuntimeError):
-    """A typed failure in the conflict-resolution liveness relay."""
-
-
-@dataclass(frozen=True)
-class ActivityRelaySnapshot:
-    """Bounded relay health and delivery evidence for diagnostics."""
-
-    running: bool
-    receiver_error: str | None
-    sender_error: str | None
-    delivered_events: int
 
 
 class ActivityRelay:
@@ -67,7 +52,14 @@ class ActivityRelay:
         self._listener.bind((_RELAY_HOST, 0))
         self._listener.listen(_RELAY_PENDING_EVENTS)
         self._listener.settimeout(_RELAY_ACCEPT_TIMEOUT_SECONDS)
-        bound_address = cast("tuple[str, int]", self._listener.getsockname())
+        bound_address = self._listener.getsockname()
+        if (
+            not isinstance(bound_address, tuple)
+            or len(bound_address) != _SOCKET_ADDRESS_PARTS
+            or not isinstance(bound_address[0], str)
+            or not isinstance(bound_address[1], int)
+        ):
+            raise RuntimeError("activity relay listener must bind an IPv4 host and port")
         host, port = bound_address
         self._endpoint = f"{host}:{port}"
         self._stop = threading.Event()
@@ -157,7 +149,7 @@ class ActivityRelay:
 
     def _receive_one(self, connection: socket.socket) -> None:
         try:
-            raw = _recv_bounded_line(connection)
+            raw = receive_bounded_line(connection)
             event = _parse_event(raw)
             self._validate_event(event)
             tool_name = event["tool_name"]
@@ -202,121 +194,11 @@ class ActivityRelay:
                 self._receiver_error = message
 
 
-class ActivityRelaySender:
-    """Server-side sender which must receive a parent acknowledgement per event."""
-
-    def __init__(self, endpoint: str, credential: str) -> None:
-        self._host, self._port = _parse_endpoint(endpoint)
-        self._credential = credential
-        self._sequence = 1
-        self._error: str | None = None
-
-    @classmethod
-    def from_environment(cls, env: Mapping[str, str]) -> ActivityRelaySender | None:
-        """Build a sender from bootstrap controls, or return None outside conflict mode."""
-        endpoint = env.get(_ACTIVITY_RELAY_ENDPOINT_ENV)
-        credential = env.get(_ACTIVITY_RELAY_CREDENTIAL_ENV)
-        if endpoint is None and credential is None:
-            return None
-        if not endpoint or not credential:
-            raise ActivityRelayError("incomplete relay bootstrap controls")
-        return cls(endpoint, credential)
-
-    def emit(self, tool_name: str) -> None:
-        """Send one authenticated event and require the bounded acknowledgement."""
-        if self._error is not None:
-            raise ActivityRelayError(self._error)
-        event = {
-            "credential": self._credential,
-            "sequence": self._sequence,
-            "tool_name": tool_name,
-        }
-        try:
-            with socket.create_connection((self._host, self._port), timeout=_RELAY_IO_TIMEOUT_SECONDS) as connection:
-                connection.settimeout(_RELAY_IO_TIMEOUT_SECONDS)
-                connection.sendall(json.dumps(event, separators=(",", ":")).encode("utf-8") + b"\n")
-                ack = _parse_ack(_recv_bounded_line(connection))
-        except (OSError, TimeoutError, ValueError) as exc:
-            self._error = f"SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: {exc}"
-            raise ActivityRelayError(self._error) from exc
-        if ack.get("ok") is not True:
-            error = ack.get("error")
-            self._error = (
-                str(error)
-                if isinstance(error, str)
-                else "SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay acknowledgement rejected"
-            )
-            raise ActivityRelayError(self._error)
-        self._sequence += 1
-
-    @property
-    def health_error(self) -> str | None:
-        """Return the latched sender error, if delivery has failed."""
-        return self._error
-
-
-def scrub_activity_relay_environment[T: MutableMapping[str, str]](env: T) -> T:
-    """Remove relay controls from an environment map in place and return it."""
-    for name in RELAY_CONTROL_ENV_NAMES:
-        env.pop(name, None)
-    return env
-
-
-def _parse_endpoint(endpoint: str) -> tuple[str, int]:
-    host, separator, port_text = endpoint.rpartition(":")
-    if not separator or host != _RELAY_HOST:
-        raise ActivityRelayError("invalid private relay endpoint")
-    try:
-        port = int(port_text)
-    except ValueError as exc:
-        raise ActivityRelayError("invalid private relay port") from exc
-    if not 1 <= port <= _MAX_PORT:
-        raise ActivityRelayError("invalid private relay port")
-    return host, port
-
-
-def _recv_bounded_line(connection: socket.socket) -> bytes:
-    chunks = bytearray()
-    while len(chunks) <= _RELAY_MAX_MESSAGE_BYTES:
-        piece = connection.recv(min(1024, _RELAY_MAX_MESSAGE_BYTES + 1 - len(chunks)))
-        if not piece:
-            break
-        chunks.extend(piece)
-        if b"\n" in piece:
-            break
-    if not chunks or len(chunks) > _RELAY_MAX_MESSAGE_BYTES:
-        raise ActivityRelayError("missing or oversized relay message")
-    line, separator, remainder = bytes(chunks).partition(b"\n")
-    if not separator or remainder:
-        raise ActivityRelayError("malformed relay framing")
-    return line
-
-
 def _parse_event(raw: bytes) -> dict[str, object]:
     try:
-        return _decode_json_object(raw, label="relay event")
+        return decode_json_object(raw, label="relay event")
     except ValueError as exc:
         raise ActivityRelayError(str(exc)) from exc
-
-
-def _parse_ack(raw: bytes) -> dict[str, object]:
-    return _decode_json_object(raw, label="relay acknowledgement")
-
-
-def _decode_json_object(raw: bytes, *, label: str) -> dict[str, object]:
-    try:
-        decoded = cast("object", json.loads(raw.decode("utf-8")))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"malformed {label} JSON") from exc
-    value = decoded
-    if not isinstance(value, dict):
-        raise ValueError(f"{label} must be an object")
-    typed_value: dict[str, object] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            raise ValueError(f"{label} keys must be strings")
-        typed_value[key] = cast("object", item)
-    return typed_value
 
 
 def _send_ack(connection: socket.socket, payload: dict[str, object]) -> None:
@@ -324,10 +206,8 @@ def _send_ack(connection: socket.socket, payload: dict[str, object]) -> None:
 
 
 __all__ = [
-    "RELAY_CONTROL_ENV_NAMES",
     "ActivityRelay",
     "ActivityRelayError",
     "ActivityRelaySender",
     "ActivityRelaySnapshot",
-    "scrub_activity_relay_environment",
 ]

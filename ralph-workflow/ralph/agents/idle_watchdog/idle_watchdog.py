@@ -96,6 +96,8 @@ from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKin
 from ralph.process.child_liveness import AliveBy
 
 from ._active_branch import (
+    _activity_only_operator_cap_reached,
+    _emit_activity_only_status,
     build_evidence_summary_diag,
     emit,
     emit_fire_log,
@@ -193,6 +195,7 @@ _EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
         WatchdogFireReason.CONFLICT_INACTIVITY.value,
+        WatchdogFireReason.OPERATOR_CAP_REACHED.value,
         WatchdogFireReason.NO_OUTPUT_AT_START.value,
         WatchdogFireReason.STALLED_AFTER_TOOL_RESULT.value,
         WatchdogFireReason.REPEATED_ERROR_LOOP.value,
@@ -529,6 +532,7 @@ class IdleWatchdog:
         self._in_drain_window = False
         self._drain_started_at = None
         self._last_fire_reason = None
+        self._last_activity_only_status_at: float | None = None
         self._last_deferred_kind = None
         self._last_deferred_log_at = {}  # bounded-accumulator-ok: drained on removal
         self._last_any_deferred_log_at = {}  # bounded-accumulator-ok: drained on removal
@@ -1486,6 +1490,12 @@ class IdleWatchdog:
                 latest_kind = channel.channel_name.value
                 latest_at = timestamp
         return (latest_kind, latest_at)
+
+    def _activity_only_operator_cap_reached(self, now: float) -> bool:
+        return _activity_only_operator_cap_reached(self, now)
+
+    def _emit_activity_only_status(self, now: float, kind: str | None, last_at: float) -> None:
+        _emit_activity_only_status(self, now, kind, last_at)
 
     def _handle_evidence_deferral(
         self,

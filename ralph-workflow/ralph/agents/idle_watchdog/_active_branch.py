@@ -10,6 +10,7 @@ from ralph.agents.idle_watchdog._activity_methods import (
 )
 from ralph.agents.idle_watchdog._evidence_tier import ChannelName
 from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
+from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
 from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
 from ralph.agents.idle_watchdog.watchdog_verdict import WatchdogVerdict
 
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
-    from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
 
 
 def build_evidence_summary_diag(
@@ -346,16 +346,21 @@ def evaluate_inner(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distin
 
 
 def _evaluate_activity_only(self: IdleWatchdog, now: float) -> WatchdogVerdict:
-    """Evaluate the conflict-only profile with one shared liveness clock.
-
-    Unlike normal invocation supervision, conflict resolution treats every
-    recognized source as equivalent liveness and has no elapsed session,
-    child-wait, startup, repetition, or post-tool verdict.
-    """
+    """Evaluate conflict supervision with one liveness deadline and opt-in cap."""
     kind, last_at = self.activity_only_snapshot()
     if last_at is None:
         last_at = self._session_started_at
     idle_elapsed = now - last_at
+    if self._activity_only_operator_cap_reached(now):
+        self._last_fire_reason = WatchdogFireReason.OPERATOR_CAP_REACHED
+        self._emit_fire_log(
+            WatchdogFireReason.OPERATOR_CAP_REACHED,
+            now=now,
+            idle_elapsed=idle_elapsed,
+            message_suffix=f" last_activity_kind={kind or 'none'}",
+        )
+        return WatchdogVerdict.FIRE
+    self._emit_activity_only_status(now, kind, last_at)
     timeout = self._config.idle_timeout_seconds
     if timeout is None or idle_elapsed < timeout:
         return WatchdogVerdict.CONTINUE
@@ -367,6 +372,34 @@ def _evaluate_activity_only(self: IdleWatchdog, now: float) -> WatchdogVerdict:
         message_suffix=f" last_activity_kind={kind or 'none'}",
     )
     return WatchdogVerdict.FIRE
+
+
+def _activity_only_operator_cap_reached(self: IdleWatchdog, now: float) -> bool:
+    cap = self._config.activity_only_operator_cap_seconds
+    started_at = self._invocation_started_at
+    return cap is not None and started_at is not None and now - started_at >= cap
+
+
+def _emit_activity_only_status(self: IdleWatchdog, now: float, kind: str | None, last_at: float) -> None:
+    last_status_at: float | None = self._last_activity_only_status_at
+    interval = self._config.activity_only_status_interval_seconds
+    if last_status_at is not None and now - last_status_at < interval:
+        return
+    started_at: float | None = self._invocation_started_at
+    invocation_elapsed = max(0.0, now - started_at) if started_at is not None else 0.0
+    self._last_activity_only_status_at = now
+    last_age = max(0.0, now - last_at)
+    self._emit(
+        WaitingStatusKind.PROGRESS,
+        current_run_seconds=invocation_elapsed,
+        idle_elapsed=last_age,
+        ceiling_seconds=self._config.idle_timeout_seconds,
+        diagnostic={
+            "last_activity_kind": kind or "none",
+            "last_activity_age_seconds": last_age,
+            "invocation_elapsed_seconds": invocation_elapsed,
+        },
+    )
 
 
 def handle_evidence_deferral(

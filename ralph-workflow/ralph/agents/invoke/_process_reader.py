@@ -982,7 +982,7 @@ class ProcessLineReader:
         # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
-        ProcessLineReader._append_conflict_inactivity_diagnostic(
+        ProcessLineReader._append_conflict_termination_diagnostic(
             merged_diag, watchdog, fire_reason, now
         )
         typed_exc = IdleWatchdogKilledError(
@@ -1004,18 +1004,22 @@ class ProcessLineReader:
         return pending, wrapper
 
     @staticmethod
-    def _append_conflict_inactivity_diagnostic(
+    def _append_conflict_termination_diagnostic(
         diagnostic: dict[str, object],
         watchdog: IdleWatchdog,
         fire_reason: WatchdogFireReason,
         now: float,
     ) -> None:
-        """Attach last-seen liveness fields when conflict inactivity terminates an attempt."""
-        if fire_reason != WatchdogFireReason.CONFLICT_INACTIVITY:
+        """Attach activity provenance for every conflict-specific termination."""
+        if fire_reason not in {
+            WatchdogFireReason.CONFLICT_INACTIVITY,
+            WatchdogFireReason.OPERATOR_CAP_REACHED,
+        }:
             return
         snapshot = watchdog.diagnostic_snapshot(now=now)
         diagnostic["last_activity_kind"] = snapshot.get("last_activity_kind")
         diagnostic["last_activity_at"] = snapshot.get("last_activity_at")
+        diagnostic["invocation_elapsed_seconds"] = snapshot.get("invocation_elapsed_seconds")
 
     def _capture_pending(self, pending_lines: list[str]) -> list[str]:
         """Write drained queue lines to the raw capture before yielding them.
@@ -1488,6 +1492,7 @@ def _run_subprocess_and_read_lines(
                 transcript_tail=transcript_tail,
                 sentinel_secret=_parent_broker_secret(),
                 receipt_secret=_parent_broker_secret(),
+                activity_only_supervision=ctx.policy.profile.value == "activity_only",
             ),
             _clock=clock,
         )

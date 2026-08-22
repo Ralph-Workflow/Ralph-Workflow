@@ -3,27 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from typing import TYPE_CHECKING
 
-
-class ResolutionTerminationReason(StrEnum):
-    """Reason a resolver returned control to its conflict owner."""
-
-    CONFLICT_INACTIVITY = "CONFLICT_INACTIVITY"
-    OPERATOR_CAP_REACHED = "OPERATOR_CAP_REACHED"
-    SUPERVISION_INFRASTRUCTURE_FAILURE = "SUPERVISION_INFRASTRUCTURE_FAILURE"
-    CANDIDATE_DECLINED = "CANDIDATE_DECLINED"
-    EXCEPTION = "EXCEPTION"
-
-
-@dataclass(frozen=True)
-class ResolutionAttemptError(Exception):
-    """Typed unsuccessful attempt result that must bypass generic recovery."""
-
-    outcome: ResolutionOutcome
-
-    def __str__(self) -> str:
-        return self.outcome.reason.value if self.outcome.reason is not None else "resolution failed"
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
 
 
 @dataclass(frozen=True)
@@ -36,6 +21,3 @@ class ResolutionOutcome:
     last_activity_kind: str | None
     last_activity_at: float | None
     unresolved_paths: tuple[str, ...]
-
-
-__all__ = ["ResolutionAttemptError", "ResolutionOutcome", "ResolutionTerminationReason"]

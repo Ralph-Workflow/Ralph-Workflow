@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
-from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
+from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 from ralph.agents.invoke._types import InvokeOptions
 from ralph.timeout_defaults import STUCK_JOB_SUB_CEILING_SECONDS
@@ -47,6 +47,8 @@ class InvokeRuntimeOptions:
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
     activity_only_supervision: bool = False
+    activity_only_operator_cap_seconds: float | None = None
+    activity_only_status_interval_seconds: float | None = None
     relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
     relay_health_error: Callable[[], str | None] | None = None
 
@@ -73,6 +75,8 @@ def build_invoke_options_from_config(
         requires_completion_evidence=rt.requires_completion_evidence,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
         activity_only_supervision=rt.activity_only_supervision,
+        activity_only_operator_cap_seconds=rt.activity_only_operator_cap_seconds,
+        activity_only_status_interval_seconds=rt.activity_only_status_interval_seconds,
         relay_activity_sink_register=rt.relay_activity_sink_register,
         relay_health_error=rt.relay_health_error,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
@@ -164,6 +168,14 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     return TimeoutPolicy(
         idle_timeout_seconds=opts.idle_timeout_seconds,
         profile=(TimeoutProfile.ACTIVITY_ONLY if opts.activity_only_supervision else TimeoutProfile.STANDARD),
+        activity_only_operator_cap_seconds=(
+            opts.activity_only_operator_cap_seconds if opts.activity_only_supervision else None
+        ),
+        activity_only_status_interval_seconds=(
+            opts.activity_only_status_interval_seconds
+            if opts.activity_only_supervision and opts.activity_only_status_interval_seconds is not None
+            else _base.activity_only_status_interval_seconds
+        ),
         drain_window_seconds=(
             opts.drain_window_seconds
             if opts.drain_window_seconds is not None

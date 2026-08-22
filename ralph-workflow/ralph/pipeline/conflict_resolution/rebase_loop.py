@@ -132,6 +132,7 @@ def resolve_rebase_in_progress(
     resolver: RebaseStopResolver,
     *,
     stop_cap: int = 10,
+    session: object | None = None,
 ) -> bool:
     """Drive an in-progress rebase to completion through ``resolver``.
 
@@ -157,7 +158,8 @@ def resolve_rebase_in_progress(
     behaviour that shipped before this module existed.
     """
     try:
-        return _resolve_stops(root, target, resolver, stop_cap)
+        effective_cap = _configured_stop_cap(session, stop_cap)
+        return _resolve_stops(root, target, resolver, effective_cap)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: rebase resolution loop failed for '{}': {}",
@@ -165,6 +167,12 @@ def resolve_rebase_in_progress(
             exc,
         )
         return False
+
+
+def _configured_stop_cap(session: object | None, fallback: int) -> int:
+    """Use the configured stop cap when a typed resolution session carries it."""
+    raw: object = getattr(session, "max_rebase_conflict_stops", fallback)
+    return raw if isinstance(raw, int) and raw > 0 else fallback
 
 
 def _resolve_stops(

@@ -1,0 +1,93 @@
+"""Production-profile regressions for conflict-resolution supervision (S-2)."""
+
+from __future__ import annotations
+
+import pytest
+
+from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
+from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
+from ralph.agents.invoke import InvokeOptions, policy_from_options
+from ralph.agents.timeout_clock import FakeClock
+
+
+@pytest.mark.parametrize("recorder", ["record_activity", "record_mcp_tool_call", "record_subagent_work"])
+def test_conflict_resolution_regression_profile_uses_each_direct_activity_channel(
+    recorder: str,
+) -> None:
+    """S-2/R3: every direct production activity recorder resets conflict liveness."""
+    clock = FakeClock()
+    policy = policy_from_options(
+        InvokeOptions(
+            idle_timeout_seconds=900.0,
+            activity_only_supervision=True,
+            max_session_seconds=1.0,
+            max_waiting_on_child_seconds=1.0,
+        )
+    )
+    watchdog = IdleWatchdog(policy, clock)
+    watchdog.record_invocation_start()
+
+    for _ in range(4):
+        clock.advance(899.0)
+        getattr(watchdog, recorder)()
+        assert watchdog.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE
+
+
+def test_conflict_resolution_regression_workspace_activity_resets_production_profile() -> None:
+    """S-2/R3: weighted workspace-only work has the same liveness effect."""
+    clock = FakeClock()
+    policy = policy_from_options(
+        InvokeOptions(idle_timeout_seconds=900.0, activity_only_supervision=True)
+    )
+    watchdog = IdleWatchdog(policy, clock)
+    watchdog.record_invocation_start()
+
+    clock.advance(899.0)
+    watchdog.record_workspace_event()
+
+    assert watchdog.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE
+
+
+def test_conflict_resolution_regression_operator_cap_preempts_fresh_activity() -> None:
+    """S-2/R6: a configured cap has its own typed verdict while work remains active."""
+    clock = FakeClock()
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=900.0,
+        profile=TimeoutProfile.ACTIVITY_ONLY,
+        activity_only_operator_cap_seconds=60.0,
+    )
+    watchdog = IdleWatchdog(policy, clock)
+    watchdog.record_invocation_start()
+    clock.advance(60.0)
+    watchdog.record_mcp_tool_call()
+
+    assert watchdog.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason.value == "operator_cap_reached"
+
+
+def test_conflict_resolution_regression_status_is_rate_limited_with_activity_metadata() -> None:
+    """S-2/R8: activity-only supervision emits low-cadence observable status."""
+    events = []
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=900.0,
+            profile=TimeoutProfile.ACTIVITY_ONLY,
+            activity_only_status_interval_seconds=30.0,
+        ),
+        clock,
+        listener=events.append,
+    )
+    watchdog.record_invocation_start()
+    watchdog.record_mcp_tool_call()
+    watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
+    clock.advance(10.0)
+    watchdog.record_workspace_event()
+    watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
+    clock.advance(20.0)
+    watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
+
+    assert len(events) == 2
+    assert events[-1].diagnostic["last_activity_kind"] == "workspace"
+    assert events[-1].diagnostic["last_activity_age_seconds"] == 20.0

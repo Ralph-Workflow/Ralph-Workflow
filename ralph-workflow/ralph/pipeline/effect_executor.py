@@ -214,6 +214,8 @@ def execute_agent_effect(
             unit_id=effect.agent_name,
             agent_name=effect.agent_name,
         )
+        if effect.activity_status_listener is not None:
+            effect.activity_status_listener(event)
 
     show_phase_start_cb: _ShowPhaseStartFn | None = None
     if state is not None and policy_bundle is not None:
@@ -856,6 +858,8 @@ def _build_attempt_invoke_options(
             connectivity_state_provider=pipeline_deps.connectivity_state_provider,
             is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,
             activity_only_supervision=ctx.effect.activity_only_supervision,
+            activity_only_operator_cap_seconds=ctx.effect.activity_only_operator_cap_seconds,
+            activity_only_status_interval_seconds=ctx.effect.activity_only_status_interval_seconds,
             relay_activity_sink_register=(
                 bridge_ctx.bridge.register_activity_sink
                 if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)

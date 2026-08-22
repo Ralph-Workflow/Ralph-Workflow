@@ -52,7 +52,10 @@ from ralph.mcp.multimodal.capabilities import (
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
-from ralph.mcp.server._activity_relay import ActivityRelaySender, scrub_activity_relay_environment
+from ralph.mcp.server._activity_relay_sender import (
+    ActivityRelaySender,
+    scrub_activity_relay_environment,
+)
 from ralph.mcp.server._cycle_deadline import CycleDeadlineNotifier
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest

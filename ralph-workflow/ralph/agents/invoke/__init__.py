@@ -64,6 +64,7 @@ from ralph.agents.invoke._options import (
 from ralph.agents.invoke._process_reader import (
     ProcessLineReader,
     _parent_broker_secret,
+    _raise_on_relay_health_error,
     _read_lines_from_process,
     _run_subprocess_and_read_lines,
     check_broken_agent_timer,
@@ -772,6 +773,7 @@ provider_allowed_mcp_tool_names = _provider_allowed_mcp_tool_names
 discover_http_mcp_tool_names = _discover_http_mcp_tool_names
 IdleStreamTimeoutError = _IdleStreamTimeoutError
 read_lines_from_process = _read_lines_from_process
+raise_on_relay_health_error = _raise_on_relay_health_error
 wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
 merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
@@ -839,6 +841,7 @@ __all__ = [
     "policy_from_options",
     "prepare_codex_home_with_upstreams",
     "provider_allowed_mcp_tool_names",
+    "raise_on_relay_health_error",
     "read_lines_from_process",
     "recovery_action_for_failure_reason",
     "resolve_invocation_runtime",

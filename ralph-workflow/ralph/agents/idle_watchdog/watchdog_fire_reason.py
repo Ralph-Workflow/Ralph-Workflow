@@ -16,6 +16,7 @@ class WatchdogFireReason(StrEnum):
 
     NO_OUTPUT_DEADLINE = "no_output_deadline"
     CONFLICT_INACTIVITY = "conflict_inactivity"
+    OPERATOR_CAP_REACHED = "operator_cap_reached"
     NO_OUTPUT_AT_START = "no_output_at_start"
     STALLED_AFTER_TOOL_RESULT = "stalled_after_tool_result"
     REPEATED_ERROR_LOOP = "repeated_error_loop"

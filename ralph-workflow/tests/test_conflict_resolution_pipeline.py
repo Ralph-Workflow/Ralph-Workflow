@@ -404,3 +404,35 @@ def test_the_pushed_footer_carries_that_non_muted_style(tmp_path: Path) -> None:
     pushed = display.models[-1]
     assert pushed.phase_style == phase_style_for_phase(PHASE_RESOLUTION)
     assert pushed.phase_style != "theme.text.muted"
+
+
+def test_configured_operator_cap_reaches_the_active_invocation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-4/R6: the active invocation receives the remaining session cap, not idle semantics."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
+    config = UnifiedConfig.model_validate(
+        {"general": {}, "conflict_resolution": {"total_resolution_cap_seconds": 60.0}}
+    )
+    captured: list[object] = []
+
+    def _capture_default(*args: object, **kwargs: object) -> bool:
+        captured.append(kwargs["operator_cap_seconds"])
+        return False
+
+    monkeypatch.setattr(driver_module, "invoke_resolution_agent", _capture_default)
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=config,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+        )
+        is False
+    )
+    assert captured
+    assert all(isinstance(value, float) and 0.0 < value <= 60.0 for value in captured)

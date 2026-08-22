@@ -253,6 +253,7 @@ def run_pty_and_read_lines(
                 transcript_tail=transcript_tail,
                 sentinel_secret=_parent_broker_secret(),
                 receipt_secret=_parent_broker_secret(),
+                activity_only_supervision=ctx.policy.profile.value == "activity_only",
             ),
             _clock=clock,
         )

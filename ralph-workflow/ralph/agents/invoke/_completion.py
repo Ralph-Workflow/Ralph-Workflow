@@ -346,6 +346,7 @@ class CompletionCheckOptions:
     #: ``evaluate_completion`` call so a forged receipt is rejected
     #: when the broker configures HMAC enforcement.
     receipt_secret: str | None = None
+    activity_only_supervision: bool = False
     agy_cli_log_path: Path | None = None
 
 
@@ -687,7 +688,7 @@ def check_process_result(
             handle, signals, liveness_probe=opts.liveness_probe
         )
 
-        if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+        if exit_state == AgentExecutionState.RESUMABLE_CONTINUE and not opts.activity_only_supervision:
             exit_state = _wait_for_completion_grace(
                 handle,
                 opts,
@@ -695,7 +696,7 @@ def check_process_result(
                 clock=_clock,
             )
 
-        if exit_state == AgentExecutionState.WAITING_ON_CHILD:
+        if exit_state == AgentExecutionState.WAITING_ON_CHILD and not opts.activity_only_supervision:
             exit_state = _wait_for_descendants_then_recheck(
                 handle,
                 opts,

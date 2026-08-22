@@ -44,6 +44,8 @@ class InvokeOptions:
     unsafe_mode: bool = False
     idle_timeout_seconds: float | None = None
     activity_only_supervision: bool = False
+    activity_only_operator_cap_seconds: float | None = None
+    activity_only_status_interval_seconds: float | None = None
     relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
     relay_health_error: Callable[[], str | None] | None = None
     drain_window_seconds: float | None = None

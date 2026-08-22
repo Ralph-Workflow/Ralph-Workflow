@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.agents.idle_watchdog._workspace_change_kind import (
     DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     WorkspaceChangeKind,
 )
-from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
     CPU_IDLE_SECONDS,
@@ -130,6 +131,8 @@ class TimeoutPolicy:
 
     idle_timeout_seconds: float | None
     profile: TimeoutProfile = TimeoutProfile.STANDARD
+    activity_only_operator_cap_seconds: float | None = None
+    activity_only_status_interval_seconds: float = WAITING_STATUS_INTERVAL_SECONDS
     drain_window_seconds: float = DRAIN_WINDOW_SECONDS
     max_waiting_on_child_seconds: float = MAX_WAITING_ON_CHILD_SECONDS
     max_session_seconds: float | None = None
@@ -350,6 +353,15 @@ class TimeoutPolicy:
     def _validate_profile(self) -> None:
         if self.profile == TimeoutProfile.ACTIVITY_ONLY and self.idle_timeout_seconds is None:
             msg = "activity_only profile requires idle_timeout_seconds"
+            raise ValueError(msg)
+        if (
+            self.activity_only_operator_cap_seconds is not None
+            and self.activity_only_operator_cap_seconds <= 0.0
+        ):
+            msg = "activity_only_operator_cap_seconds must be positive when set"
+            raise ValueError(msg)
+        if self.activity_only_status_interval_seconds <= 0.0:
+            msg = "activity_only_status_interval_seconds must be positive"
             raise ValueError(msg)
 
     def _validate_idle_fields(self) -> None:

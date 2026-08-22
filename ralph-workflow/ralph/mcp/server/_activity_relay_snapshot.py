@@ -1,12 +1,8 @@
-"""Typed relay exceptions and snapshots for standalone MCP supervision."""
+"""Immutable diagnostic snapshot for standalone MCP activity relays."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-
-class ActivityRelayError(RuntimeError):
-    """A typed failure in the conflict-resolution liveness relay."""
 
 
 @dataclass(frozen=True)
@@ -19,4 +15,4 @@ class ActivityRelaySnapshot:
     delivered_events: int
 
 
-__all__ = ["ActivityRelayError", "ActivityRelaySnapshot"]
+__all__ = ["ActivityRelaySnapshot"]

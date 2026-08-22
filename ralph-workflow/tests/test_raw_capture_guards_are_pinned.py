@@ -51,7 +51,7 @@ class _NoSplitBytes(bytes):
     internally. This makes the forbidden call itself fail.
     """
 
-    def split(self, sep: bytes | None = None, maxsplit: int = -1) -> list[bytes]:
+    def split(self, sep: bytes | None = None, _maxsplit: int = -1) -> list[bytes]:
         msg = "nul_separated_chunks must not materialise the whole payload"
         raise AssertionError(msg)
 

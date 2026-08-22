@@ -7,6 +7,8 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.config.enums import PipelinePhase
 else:
     PipelinePhase = import_module("ralph.config.enums").PipelinePhase
@@ -39,3 +41,6 @@ class InvokeAgentEffect:
     chain_name: str = ""
     requires_completion_evidence: bool = True
     activity_only_supervision: bool = False
+    activity_only_operator_cap_seconds: float | None = None
+    activity_only_status_interval_seconds: float | None = None
+    activity_status_listener: Callable[[object], None] | None = None
