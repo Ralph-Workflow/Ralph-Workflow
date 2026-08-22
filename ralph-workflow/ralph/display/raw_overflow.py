@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import hashlib
+import os
 import re
 import shlex
 import threading
@@ -185,10 +186,29 @@ def _another_process_is_writing(path: Path) -> bool:
 
 
 def _is_live_foreign_capture(path: Path, key: str) -> bool:
-    """True when ``path`` is a capture some OTHER process is writing."""
+    """Atomically claim a fresh capture or preserve another process's live one.
+
+    The mtime predicate above distinguishes old artifacts from a live capture,
+    but it cannot arbitrate two first writers that both observe an absent path.
+    An exclusive placeholder claim makes that race deterministic: only the
+    winner may truncate; every loser opens append-only.
+    """
     if _claim_path_for_this_process(key):
         return False
-    return _another_process_is_writing(path)
+    if path.exists():
+        return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(  # resource-lifecycle-ok: bounded exclusive placeholder claim is closed immediately below; filesystem-write-ok: atomic exclusive claim preserves concurrent append-only captures
+            path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+        )
+    except FileExistsError:
+        return True
+    except OSError:
+        return False
+    else:
+        os.close(fd)
+        return False
 
 
 def _record_path_bytes(key: str, total: int) -> None:
@@ -610,11 +630,11 @@ class RawOverflowLog:
         # truncation and cap-reset this state exists to prevent.
         self._path_key = str(self.path.resolve(strict=False))
         first_open, already_written = _resume_path_state(self._path_key)
-        # The first write of a RUN truncates; a later writer for the same
-        # path continues it. See :data:`_PATH_STATE`.
-        self._first_write = first_open and not _is_live_foreign_capture(
-            self.path, self._path_key
-        )
+        # The first writer claims ownership only when it opens the file. Doing
+        # that in ``__init__`` made an untouched writer create an observable
+        # empty capture and still left two constructors racing before append.
+        self._first_write = first_open
+        self._needs_live_claim = first_open
         self._disabled = False
         self._max_bytes = max(max_bytes, 0)
         # Bytes THIS writer has appended. The idle watchdog's log-growth
@@ -728,6 +748,11 @@ class RawOverflowLog:
                         )
                     return False
                 if self._fh is None:
+                    if self._needs_live_claim:
+                        self._first_write = not _is_live_foreign_capture(
+                            self.path, self._path_key
+                        )
+                        self._needs_live_claim = False
                     # filesystem-write-ok: bounded binary overflow stream directory creation
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     if not self._first_write and not self.path.exists():

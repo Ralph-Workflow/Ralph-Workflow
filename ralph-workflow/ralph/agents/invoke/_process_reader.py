@@ -1181,7 +1181,14 @@ class ProcessLineReader:
             )
             if result is not None:
                 return result
-            if drain_deadline is None and self._handle.poll() is not None:
+            if (
+                drain_deadline is None
+                and self._handle.poll() is not None
+                and (
+                    self._policy.profile.value != "activity_only"
+                    or self._classify_quiet() != AgentExecutionState.WAITING_ON_CHILD
+                )
+            ):
                 return None
             if drain_deadline is not None and self._clock.monotonic() >= drain_deadline:
                 return None
@@ -1195,10 +1202,19 @@ class ProcessLineReader:
         """Stop on durable completion or drain remaining process shutdown evidence."""
         if self._finish_terminal_completion():
             return None
-        drain_secs = self._policy.drain_window_seconds or 0
-        if drain_secs > 0 and self._policy.idle_timeout_seconds is not None:
-            drain_secs += self._policy.idle_poll_interval_seconds
-        drain_deadline = self._clock.monotonic() + drain_secs if drain_secs > 0 else None
+        # A conflict resolver may exit its foreground parent while scoped MCP
+        # or child work continues.  Its activity-only profile must retain that
+        # work until liveness ends; an ordinary drain deadline is elapsed-time
+        # termination and would discard fresh non-stdout activity here.
+        drain_deadline = None if self._policy.profile.value == "activity_only" else (
+            self._clock.monotonic()
+            + (self._policy.drain_window_seconds or 0)
+            + (
+                self._policy.idle_poll_interval_seconds
+                if self._policy.drain_window_seconds and self._policy.idle_timeout_seconds is not None
+                else 0
+            )
+        )
         return self._run_drain_window(watchdog, drain_deadline)
 
     def _build_process_monitor(self) -> ProcessMonitor | None:
@@ -1215,7 +1231,6 @@ class ProcessLineReader:
         )
 
     def read_lines(self) -> Iterator[str]:
-        reader = self._start_read_thread()
         process_monitor = self._build_process_monitor()
         # R1 (Trustworthy Idle Watchdog spec): store the monitor so
         # ``_corroborate`` can read the FILTERED subagent count from
@@ -1250,6 +1265,10 @@ class ProcessLineReader:
             watchdog.record_session_id_capture(self._captured_session_id)
 
         sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)
+        # Establish the watchdog epoch before the producer can advance an
+        # injected clock or enqueue its first line. Starting the reader first
+        # let a fast producer make an elapsed session ceiling invisible.
+        reader = self._start_read_thread()
         try:
             while True:
                 self._lines_event.clear()

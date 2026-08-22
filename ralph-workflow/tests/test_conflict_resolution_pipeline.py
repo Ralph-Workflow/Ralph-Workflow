@@ -20,12 +20,16 @@ from typing import TYPE_CHECKING
 from ralph.config.models import UnifiedConfig
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.driver import (
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import (
     NEUTRAL_PHASE_LABEL,
     PHASE_LABEL,
@@ -404,6 +408,44 @@ def test_the_pushed_footer_carries_that_non_muted_style(tmp_path: Path) -> None:
     pushed = display.models[-1]
     assert pushed.phase_style == phase_style_for_phase(PHASE_RESOLUTION)
     assert pushed.phase_style != "theme.text.muted"
+
+
+def test_resolution_termination_keeps_typed_reason_activity_and_unresolved_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-4/DA-007: driver output preserves the invocation's typed supervision result."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
+    display = _FakeDisplay()
+    session = ResolutionSession()
+
+    def _decline(_name: str, _path: Path, _round: int) -> bool:
+        session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
+        session.last_activity_kind = "mcp_tool"
+        session.last_activity_at = 12.0
+        session.last_duration_seconds = 60.0
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=display,
+            display_context=None,
+            invoke=_decline,
+            session=session,
+        )
+        is False
+    )
+
+    termination = next(line for line in display.warn_lines if "OPERATOR_CAP_REACHED" in line)
+    assert "last_activity_kind=mcp_tool" in termination
+    assert "last_activity_at=12.0" in termination
+    assert "duration=60.0s" in termination
+    assert "src/alpha.py, docs/beta.md" in termination
 
 
 def test_configured_operator_cap_reaches_the_active_invocation(

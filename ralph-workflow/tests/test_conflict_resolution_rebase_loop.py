@@ -36,6 +36,7 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStop,
     resolve_rebase_in_progress,
 )
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 if TYPE_CHECKING:
     import pytest
@@ -446,6 +447,26 @@ def test_a_rebase_that_never_finishes_exhausts_the_stop_budget(
 
     assert resolved is False
     assert len(seen) == _STOP_CAP
+
+
+def test_configured_stop_cap_applies_to_every_rebase_stop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-4/DA-006-010: the typed session bound wins over the legacy loop fallback."""
+    repo = _FakeRepo(stops=0, never_finishes=True)
+    _install_seams(monkeypatch, repo)
+    seen: list[RebaseStop] = []
+
+    assert (
+        resolve_rebase_in_progress(
+            tmp_path,
+            _TARGET,
+            _accepting_resolver(seen),
+            session=ResolutionSession(max_rebase_conflict_stops=2),
+        )
+        is False
+    )
+    assert [stop.stop_cap for stop in seen] == [2, 2]
 
 
 def test_a_paused_rebase_with_no_conflicted_path_declines(

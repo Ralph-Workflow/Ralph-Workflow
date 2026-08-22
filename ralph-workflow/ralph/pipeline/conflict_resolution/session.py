@@ -10,6 +10,9 @@ from loguru import logger
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.pipeline import effect_executor as _effect_executor_module
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -35,6 +38,10 @@ class ResolutionSession:
     started_at: float | None = None
     unresolved_paths: tuple[str, ...] = ()
     max_rebase_conflict_stops: int | None = None
+    terminal_reason: ResolutionTerminationReason | None = None
+    last_activity_kind: str | None = None
+    last_activity_at: float | None = None
+    last_duration_seconds: float | None = None
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
@@ -62,6 +69,7 @@ def invoke_resolution_agent(
     status_interval_seconds: float | None = None,
     activity_status_listener: Callable[[object], None] | None = None,
     unresolved_paths: tuple[str, ...] = (),
+    session: ResolutionSession | None = None,
 ) -> bool:
     """Run one activity-only conflict attempt with no generic same-agent recovery."""
     effect = InvokeAgentEffect(
@@ -91,15 +99,48 @@ def invoke_resolution_agent(
             run_id=None,
         )
     except AgentInactivityTimeoutError as exc:
+        _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
         return False
     except SupervisionInfrastructureError as exc:
+        _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
         return False
     except Exception as exc:
+        _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
         return False
     return event == PipelineEvent.AGENT_SUCCESS
+
+
+def _record_resolution_termination(session: ResolutionSession | None, exc: Exception) -> None:
+    """Persist typed invocation failure metadata for the driver's outcome line."""
+    if session is None:
+        return
+    if isinstance(exc, AgentInactivityTimeoutError):
+        diagnostic = exc.diagnostic
+        reason = exc.reason
+        session.terminal_reason = (
+            ResolutionTerminationReason.OPERATOR_CAP_REACHED
+            if reason == WatchdogFireReason.OPERATOR_CAP_REACHED
+            else ResolutionTerminationReason.CONFLICT_INACTIVITY
+        )
+        raw_kind = diagnostic.get("last_activity_kind")
+        session.last_activity_kind = raw_kind if isinstance(raw_kind, str) else None
+        raw_at = diagnostic.get("last_activity_at")
+        session.last_activity_at = float(raw_at) if isinstance(raw_at, (int, float)) else None
+        raw_duration = diagnostic.get("invocation_elapsed_seconds")
+        session.last_duration_seconds = (
+            float(raw_duration) if isinstance(raw_duration, (int, float)) else exc.timeout_seconds
+        )
+        return
+    session.terminal_reason = ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
+
+
+def _record_resolution_exception(session: ResolutionSession | None) -> None:
+    """Preserve a launch failure rather than relabeling it as a declined candidate."""
+    if session is not None:
+        session.terminal_reason = ResolutionTerminationReason.EXCEPTION
 
 
 def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...]) -> None:

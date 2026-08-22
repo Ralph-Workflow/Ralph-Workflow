@@ -68,6 +68,7 @@ def run_conflict_resolution_pipeline(
     display_context: DisplayContext | None,
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
+    session: ResolutionSession | None = None,
 ) -> bool:
     """Resolve an in-progress merge through fixed-window liveness supervision."""
     previous_model = capture_status_bar_model(display)
@@ -84,7 +85,8 @@ def run_conflict_resolution_pipeline(
             invoke=invoke,
             clock=clock or time.monotonic,
             stop=None,
-            session=ResolutionSession(
+            session=session
+            or ResolutionSession(
                 max_rebase_conflict_stops=config.conflict_resolution.max_rebase_conflict_stops
             ),
         )
@@ -109,6 +111,7 @@ def run_rebase_conflict_resolution_pipeline(
     display_context: DisplayContext | None,
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
+    session: ResolutionSession | None = None,
 ) -> bool:
     """Resolve one paused rebase stop with the same fixed liveness window."""
     try:
@@ -124,7 +127,8 @@ def run_rebase_conflict_resolution_pipeline(
             invoke=invoke,
             clock=clock or time.monotonic,
             stop=stop,
-            session=ResolutionSession(
+            session=session
+            or ResolutionSession(
                 max_rebase_conflict_stops=config.conflict_resolution.max_rebase_conflict_stops
             ),
         )
@@ -170,8 +174,9 @@ def _run_rounds(
     if not candidates:
         emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
         return False
-    session.started_at = clock()
-    session.unresolved_paths = ()
+    if session.started_at is None:
+        session.started_at = clock()
+    session.unresolved_paths = conflicted
     runner = invoke or _default_invoker(
         config=config,
         pipeline_deps=pipeline_deps,
@@ -201,7 +206,9 @@ def _run_rounds(
                 conflicted_paths=conflicted,
                 round_index=round_index,
                 round_cap=limits.max_rounds_per_stop,
-                surviving_marker_paths=session.unresolved_paths,
+                surviving_marker_paths=(
+                    () if round_index == 1 else session.unresolved_paths
+                ),
                 replaying_commit_sha=stop.sha if stop is not None else None,
                 replaying_commit_subject=stop.subject if stop is not None else None,
                 stop_index=stop.stop_index if stop is not None else None,
@@ -211,6 +218,10 @@ def _run_rounds(
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
             attempt_started = clock()
+            session.terminal_reason = None
+            session.last_activity_kind = None
+            session.last_activity_at = None
+            session.last_duration_seconds = None
             succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
             session.unresolved_paths = tuple(paths_with_conflict_markers(root, conflicted))
             outcome = ResolutionOutcome(
@@ -218,11 +229,15 @@ def _run_rounds(
                 reason=(
                     None
                     if succeeded and not session.unresolved_paths
-                    else ResolutionTerminationReason.CANDIDATE_DECLINED
+                    else session.terminal_reason or ResolutionTerminationReason.CANDIDATE_DECLINED
                 ),
-                duration_seconds=max(0.0, clock() - attempt_started),
-                last_activity_kind=None,
-                last_activity_at=None,
+                duration_seconds=(
+                    session.last_duration_seconds
+                    if session.last_duration_seconds is not None
+                    else max(0.0, clock() - attempt_started)
+                ),
+                last_activity_kind=session.last_activity_kind,
+                last_activity_at=session.last_activity_at,
                 unresolved_paths=session.unresolved_paths,
             )
             _emit_attempt_outcome(display, outcome)
@@ -360,6 +375,7 @@ def _default_invoker(
             status_interval_seconds=interval,
             activity_status_listener=reporter.observe,
             unresolved_paths=session.unresolved_paths,
+            session=session,
         )
 
     return _invoke
