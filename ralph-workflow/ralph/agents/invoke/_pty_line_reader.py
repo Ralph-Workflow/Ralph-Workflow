@@ -307,10 +307,7 @@ class PtyLineReader:
             "Callable[[], bool] | None",
             getattr(ctx, "is_waiting_state_provider", None),
         )
-        self._expected_session_id = _extras.expected_session_id
-        self._input_prompt = _extras.input_prompt
-        self._stop_sentinel_path = _extras.stop_sentinel_path
-        self._permission_prompt_listener = _extras.permission_prompt_listener
+        self._configure_runtime_hooks(ctx, _extras)
         self._completion_run_id = completion_run_id_from_extra_env(
             cast(
                 "dict[str, str] | None", getattr(ctx, "extra_env", None)
@@ -389,6 +386,20 @@ class PtyLineReader:
         # attribute defaults to ``None`` so the ``_ensure_subagent_tails_for_session``
         # helper can detect a fresh construction versus a re-use.
         self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
+
+    def _configure_runtime_hooks(self, ctx: AgentRunCtx, extras: PtyExtras) -> None:
+        """Store PTY completion and standalone-MCP relay hooks for this invocation."""
+        self._expected_session_id = extras.expected_session_id
+        self._input_prompt = extras.input_prompt
+        relay_register: object = getattr(ctx, "relay_activity_sink_register", None)
+        relay_health_error: object = getattr(ctx, "relay_health_error", None)
+        self._relay_activity_sink_register = cast(
+            "Callable[[Callable[[str], None]], Callable[[], None]] | None", relay_register
+        )
+        self._relay_health_error = cast("Callable[[], str | None] | None", relay_health_error)
+        self._remove_relay_sink: Callable[[], None] | None = None
+        self._stop_sentinel_path = extras.stop_sentinel_path
+        self._permission_prompt_listener = extras.permission_prompt_listener
 
     @property
     def completion_exit_sent(self) -> bool:
@@ -1274,6 +1285,15 @@ class PtyLineReader:
             )
             if fire_result is not None:
                 return fire_result
+            if (
+                drain_deadline is None
+                and self._handle.poll() is not None
+                and (
+                    self._policy.profile.value != "activity_only"
+                    or self._classify_quiet() != AgentExecutionState.WAITING_ON_CHILD
+                )
+            ):
+                return None
             if drain_deadline is not None and self._clock.monotonic() >= drain_deadline:
                 return None
             if self._policy.idle_timeout_seconds is None:
@@ -1537,8 +1557,14 @@ class PtyLineReader:
                 overflow.append(line)
 
     def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
+        # A conflict resolver can outlive its foreground PTY parent while a
+        # scoped MCP/server child continues to produce recognised activity.
+        # An ordinary elapsed drain would cut that work off despite liveness,
+        # so the activity-only profile waits only for silence or an opt-in cap.
         drain_deadline = (
-            self._clock.monotonic() + self._policy.drain_window_seconds
+            None
+            if self._policy.profile.value == "activity_only"
+            else self._clock.monotonic() + self._policy.drain_window_seconds
             if self._policy.drain_window_seconds
             else None
         )

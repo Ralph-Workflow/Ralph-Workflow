@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
+
+import pytest
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
+from ralph.agents.invoke import AgentRunCtx
+from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
 
 
 def test_conflict_resolution_regression_parent_exit_keeps_scoped_activity_supervised() -> None:
@@ -73,6 +80,82 @@ class _CompletionClock(FakeClock):
         if self.waits == 4:
             self.strategy.active = False
         return event.is_set()
+
+
+class _AlwaysScopedChildStrategy(_ScopedChildStrategy):
+    """Keeps the PTY done path in scoped-work mode until inactivity fires."""
+
+    def classify_quiet(self, _handle: object, _probe: object) -> AgentExecutionState:
+        return AgentExecutionState.WAITING_ON_CHILD
+
+
+class _PtyCompletionClock(_CompletionClock):
+    """Feeds four live MCP events, then drives the one allowed inactivity verdict."""
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        self.waits += 1
+        if self.waits <= 4 and self.watchdog is not None:
+            self.advance(seconds)
+            self.watchdog.record_mcp_tool_call()
+            return event.is_set()
+        self.advance(10.0)
+        return event.is_set()
+
+
+class _PtyParentExitedHandle:
+    """PTY parent already exited while a scoped resolver child remains active."""
+
+    pid = 1
+
+    def __init__(self, master_fd: int) -> None:
+        self.master_fd = master_fd
+
+    def poll(self) -> int:
+        return 0
+
+    def terminate(self, grace_period_s: float = 0.5) -> None:
+        del grace_period_s
+
+    def close(self) -> None:
+        return None
+
+
+def test_conflict_resolution_regression_pty_parent_exit_has_no_elapsed_drain() -> None:
+    """S-3/R1: a PTY resolver ends only after scoped MCP liveness becomes silent."""
+    read_fd, write_fd = os.pipe()
+    reader: PtyLineReader | None = None
+    strategy = _AlwaysScopedChildStrategy()
+    clock = _PtyCompletionClock(strategy)
+    try:
+        ctx = AgentRunCtx(
+            config=AgentConfig(cmd="resolver", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            show_progress=False,
+            extra_env=None,
+            workspace_path=None,
+            policy=TimeoutPolicy(
+                idle_timeout_seconds=10.0,
+                profile=TimeoutProfile.ACTIVITY_ONLY,
+                drain_window_seconds=0.1,
+                idle_poll_interval_seconds=0.1,
+            ),
+            execution_strategy=strategy,
+        )
+        reader = PtyLineReader(_PtyParentExitedHandle(read_fd), "resolver", ctx, clock, extras=None)
+        watchdog = IdleWatchdog(ctx.policy, clock)
+        watchdog.record_invocation_start()
+        clock.watchdog = watchdog
+
+        with pytest.raises(RuntimeError) as exc_info:
+            list(reader._handle_done_path(watchdog))
+
+        assert exc_info.value.reason.value == "conflict_inactivity"
+        assert clock.waits == 5
+        assert clock.monotonic() == 10.4
+    finally:
+        os.close(write_fd)
+        if reader is not None:
+            os.close(reader._input_writer_fd)
+            os.close(reader._read_fd)
 
 
 def test_conflict_resolution_regression_parent_exit_disables_elapsed_reader_drain(

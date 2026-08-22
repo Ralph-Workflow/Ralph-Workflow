@@ -13,6 +13,7 @@ import signal
 import sys
 import termios
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,15 @@ from ralph.process.manager import SpawnOptions
 from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
+
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _subprocess_env() -> dict[str, str]:
+    """Run child Python from the same locked package tree as this test."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_PACKAGE_ROOT)
+    return env
 
 
 @pytest.mark.subprocess_e2e
@@ -44,18 +54,11 @@ def test_terminal_restore_on_normal_exit_under_pty() -> None:
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, env=_subprocess_env()),
         )
         handle.wait(timeout=5.0)
 
-        raw_chunks: list[bytes] = []
-        while wait_for_master_readable(master_fd, timeout_seconds=0.05):
-            chunk = read_master_chunk(master_fd, max_bytes=4096)
-            if not chunk:
-                break
-            raw_chunks.append(chunk)
-
-        captured = b"".join(raw_chunks)
+        captured = _drain_pty(master_fd)
         assert b"\x1b[?25h" in captured
         assert b"\x1b[?1049l" in captured
 
@@ -91,7 +94,7 @@ def test_terminal_restore_regression_sigterm_resets_input_and_display_modes() ->
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, env=_subprocess_env()),
         )
         assert handle.wait(timeout=5.0) == -signal.SIGTERM
         captured = _drain_pty(master_fd)
@@ -127,7 +130,7 @@ def test_terminal_restore_regression_sigint_resets_input_and_display_modes() -> 
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, env=_subprocess_env()),
         )
         assert handle.wait(timeout=5.0) != 0
         captured = _drain_pty(master_fd)
@@ -153,7 +156,7 @@ def test_terminal_restore_regression_redirected_stdout_uses_terminal_stderr() ->
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=write_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=write_fd, stderr=slave_fd, env=_subprocess_env()),
         )
         os.close(write_fd)
         write_fd = -1
@@ -187,7 +190,7 @@ def test_terminal_restore_regression_normal_exit_restores_raw_termios() -> None:
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, env=_subprocess_env()),
         )
         assert handle.wait(timeout=5.0) == 0
         lflag = int(termios.tcgetattr(slave_fd)[3])
@@ -200,7 +203,7 @@ def test_terminal_restore_regression_normal_exit_restores_raw_termios() -> None:
 
 def _drain_pty(master_fd: int) -> bytes:
     chunks: list[bytes] = []
-    while wait_for_master_readable(master_fd, timeout_seconds=0.05):
+    while wait_for_master_readable(master_fd, timeout_seconds=0.01):
         chunk = read_master_chunk(master_fd, max_bytes=4096)
         if not chunk:
             break
@@ -235,19 +238,12 @@ def test_terminal_restore_on_hard_exit_controller() -> None:
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, env=_subprocess_env()),
         )
         rc = handle.wait(timeout=5.0)
         assert rc == 130
 
-        raw_chunks: list[bytes] = []
-        while wait_for_master_readable(master_fd, timeout_seconds=0.05):
-            chunk = read_master_chunk(master_fd, max_bytes=4096)
-            if not chunk:
-                break
-            raw_chunks.append(chunk)
-
-        captured = b"".join(raw_chunks)
+        captured = _drain_pty(master_fd)
         assert b"\x1b[?25h" in captured
         assert b"\x1b[?1049l" in captured
     finally:
@@ -276,7 +272,7 @@ def test_terminal_restore_regression_crash_output_is_sanitized_and_restored() ->
     try:
         handle = pm.spawn(
             [sys.executable, "-c", script],
-            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd),
+            opts=SpawnOptions(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, env=_subprocess_env())
         )
         assert handle.wait(timeout=5.0) != 0
         captured = _drain_pty(master_fd)

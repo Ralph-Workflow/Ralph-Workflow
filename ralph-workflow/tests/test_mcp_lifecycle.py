@@ -13,6 +13,7 @@ from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server._activity_relay import ActivityRelay, ActivityRelayError, ActivityRelaySender
 from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -45,6 +46,7 @@ class FakeProcess:
     def terminate(self, grace_period_s: float = 5.0) -> None:
         self.terminated = True
         self.terminated_grace_period = grace_period_s
+        self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int | None:
         return 0
@@ -337,6 +339,71 @@ def test_check_mcp_bridge_health_noop_for_non_restart_bridge() -> None:
 
     fake: Any = FakeBridge()
     lifecycle.check_mcp_bridge_health(fake)  # must not raise
+
+
+def test_conflict_resolution_relay_drops_events_after_bridge_shutdown(tmp_path: Path) -> None:
+    """S-5/R9: no relay callback can refresh liveness after teardown starts."""
+    session_file = tmp_path / "relay-closure-session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    relay = ActivityRelay()
+    observed: list[str] = []
+    remove = relay.register_sink(observed.append)
+    sender = ActivityRelaySender.from_environment(relay.server_environment())
+    assert sender is not None
+    bridge = lifecycle.RestartAwareMcpBridge(
+        lifecycle.StandaloneMcpProcess(
+            endpoint="http://127.0.0.1:43123/mcp",
+            process=FakeProcess(),
+            session_file=session_file,
+        ),
+        restart_fn=_make_standalone,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
+        activity_relay=relay,
+    )
+
+    bridge.shutdown()
+
+    with pytest.raises(ActivityRelayError):
+        sender.emit("write_file")
+    assert observed == []
+    remove()
+
+
+def test_restart_aware_bridge_closes_relay_before_terminating_the_server(tmp_path: Path) -> None:
+    """S-5/R9: relay intake is closed before the MCP process can be reaped."""
+    session_file = tmp_path / "relay-order-session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    events: list[str] = []
+
+    class _Relay:
+        def close(self) -> bool:
+            events.append("relay")
+            return True
+
+    class _OrderedProcess(FakeProcess):
+        def terminate(self, grace_period_s: float = 5.0) -> None:
+            assert events == ["relay"]
+            events.append("terminate")
+            super().terminate(grace_period_s)
+            self._poll_result = 0
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        lifecycle.StandaloneMcpProcess(
+            endpoint="http://127.0.0.1:43123/mcp",
+            process=_OrderedProcess(),
+            session_file=session_file,
+        ),
+        restart_fn=_make_standalone,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
+        activity_relay=_Relay(),
+    )
+
+    bridge.shutdown()
+
+    assert events == ["relay", "terminate"]
+    assert session_file.exists() is False
 
 
 def test_standalone_mcp_process_shutdown_removes_session_file_even_if_process_exited(
