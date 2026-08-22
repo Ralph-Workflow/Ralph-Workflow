@@ -29,8 +29,10 @@ class StandaloneMcpProcess:
         return self.endpoint
 
     def shutdown(self) -> None:
+        """Stop and boundedly reap the standalone server before releasing its session file."""
         if self.process.poll() is None:
             self.process.terminate(grace_period_s=5.0)
+        self.process.wait(timeout=5.0)
         self.session_file.unlink(missing_ok=True)
 
 

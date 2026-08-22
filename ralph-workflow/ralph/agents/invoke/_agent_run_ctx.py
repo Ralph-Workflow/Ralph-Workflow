@@ -61,3 +61,5 @@ class AgentRunCtx:
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
     input_prompt: str | None = None
+    relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
+    relay_health_error: Callable[[], str | None] | None = None

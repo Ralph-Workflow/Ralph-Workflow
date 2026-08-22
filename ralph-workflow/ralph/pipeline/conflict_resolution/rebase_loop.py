@@ -49,7 +49,6 @@ from ralph.git.rebase.rebase_continuation import (
 )
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.conflict_resolution.graph import (
-    MAX_REBASE_CONFLICT_STOPS,
     TERMINAL_ABANDONED,
     TERMINAL_RESOLVED,
     route_after_stop,
@@ -131,6 +130,8 @@ def resolve_rebase_in_progress(
     root: Path,
     target: str,
     resolver: RebaseStopResolver,
+    *,
+    stop_cap: int = 10,
 ) -> bool:
     """Drive an in-progress rebase to completion through ``resolver``.
 
@@ -156,7 +157,7 @@ def resolve_rebase_in_progress(
     behaviour that shipped before this module existed.
     """
     try:
-        return _resolve_stops(root, target, resolver)
+        return _resolve_stops(root, target, resolver, stop_cap)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: rebase resolution loop failed for '{}': {}",
@@ -170,6 +171,7 @@ def _resolve_stops(
     root: Path,
     target: str,
     resolver: RebaseStopResolver,
+    stop_cap: int,
 ) -> bool:
     """Body of the bounded loop; see :func:`resolve_rebase_in_progress`."""
     # Completion is proved against the commit this replay is actually
@@ -185,10 +187,10 @@ def _resolve_stops(
     base = _rebase_base_sha(root) or target
     stops_spent = 0
     while rebase_in_progress_at(root):
-        if not _resolve_one_stop(root, target, resolver, stops_spent + 1):
+        if not _resolve_one_stop(root, target, resolver, stops_spent + 1, stop_cap):
             return False
         stops_spent += 1
-        route = route_after_stop(stops_spent, not rebase_in_progress_at(root))
+        route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
         if route == TERMINAL_RESOLVED:
             break
         if route == TERMINAL_ABANDONED:
@@ -207,6 +209,7 @@ def _resolve_one_stop(
     target: str,
     resolver: RebaseStopResolver,
     stop_index: int,
+    stop_cap: int,
 ) -> bool:
     """Resolve, prove and continue past ONE stop of the paused rebase.
 
@@ -221,7 +224,7 @@ def _resolve_one_stop(
         through it :func:`resolve_rebase_in_progress` -- to the abort and
         endpoint-merge fallback.
     """
-    stop = _read_stop(root, stop_index)
+    stop = _read_stop(root, stop_index, stop_cap)
     if stop is None:
         return False
     before = _worktree_dirty_paths(root)
@@ -467,7 +470,7 @@ def _read_rebase_state_int(
         return None
 
 
-def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
+def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
     """Describe the commit the rebase is currently stopped on.
 
     Returns ``None`` when the stopped commit's IDENTITY is unreadable,
@@ -504,7 +507,7 @@ def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
         subject=_rebase_head_subject(root),
         conflicted_files=conflicted,
         stop_index=stop_index,
-        stop_cap=MAX_REBASE_CONFLICT_STOPS,
+        stop_cap=stop_cap,
         replay_index=None if progress is None else progress[0],
         replay_total=None if progress is None else progress[1],
     )

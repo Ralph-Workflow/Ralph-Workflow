@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
+from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 from ralph.agents.invoke._types import InvokeOptions
 from ralph.timeout_defaults import STUCK_JOB_SUB_CEILING_SECONDS
@@ -45,6 +46,9 @@ class InvokeRuntimeOptions:
     # falls back to "no live signal" when they are None.
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
+    activity_only_supervision: bool = False
+    relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
+    relay_health_error: Callable[[], str | None] | None = None
 
 
 def build_invoke_options_from_config(
@@ -68,6 +72,9 @@ def build_invoke_options_from_config(
         required_artifact=rt.required_artifact,
         requires_completion_evidence=rt.requires_completion_evidence,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
+        activity_only_supervision=rt.activity_only_supervision,
+        relay_activity_sink_register=rt.relay_activity_sink_register,
+        relay_health_error=rt.relay_health_error,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
         max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
         idle_poll_interval_seconds=general_config.agent_idle_poll_interval_seconds,
@@ -156,14 +163,19 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         _os_descendant_suspect = None
     return TimeoutPolicy(
         idle_timeout_seconds=opts.idle_timeout_seconds,
+        profile=(TimeoutProfile.ACTIVITY_ONLY if opts.activity_only_supervision else TimeoutProfile.STANDARD),
         drain_window_seconds=(
             opts.drain_window_seconds
             if opts.drain_window_seconds is not None
             else _base.drain_window_seconds
         ),
-        max_waiting_on_child_seconds=_effective_max,
+        max_waiting_on_child_seconds=(
+            float("inf") if opts.activity_only_supervision else _effective_max
+        ),
         max_session_seconds=(
-            opts.max_session_seconds
+            None
+            if opts.activity_only_supervision
+            else opts.max_session_seconds
             if opts.max_session_seconds is not None
             else _base.max_session_seconds
         ),

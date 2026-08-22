@@ -168,6 +168,20 @@ commit = "commit"
 # agent_subagent_output_capture_enabled = true      # enable polling of observable subagent output streams as first-party evidence
 # agent_subagent_output_poll_interval_seconds = 1.0 # poll interval for subagent output streams (>0)
 
+# -----------------------------------------------------------------------------
+# [conflict_resolution] -- fixed liveness supervision for merge/rebase conflicts
+# -----------------------------------------------------------------------------
+# Active conflict resolution is supervised only for genuine inactivity. The
+# optional total cap is off by default; if enabled, it can stop active work and
+# Ralph Workflow reports it as an operator cap, never as an idle timeout.
+[conflict_resolution]
+# inactivity_timeout_seconds = 900.0   # fixed silence window; no round/deadline scaling
+# status_interval_seconds = 30.0       # low-cadence resolver status updates
+# max_rounds_per_stop = 3              # completed attempts per merge/rebase stop
+# max_rebase_conflict_stops = 10       # stops resolved in one rebase loop
+# max_fallback_agents = 2              # candidates tried per completed round
+# total_resolution_cap_seconds = None  # opt-in cap; active work may be stopped as OPERATOR_CAP_REACHED
+
 # Edit this only if you need to change workflow automation behavior.
 # -----------------------------------------------------------------------------
 # [general.workflow] -- Workflow automation flags

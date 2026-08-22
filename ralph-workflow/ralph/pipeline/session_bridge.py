@@ -131,6 +131,7 @@ def build_session_bridge(
     build_session_mcp_plan_fn: BuildSessionMcpPlanFn | None = None,
     start_mcp_server_fn: StartMcpServerFn | None = None,
     workspace_factory: WorkspaceFactoryFn | None = None,
+    conflict_activity_relay: bool = False,
 ) -> SessionBridgeLike:
     """Build and start a session bridge for the given workspace.
 
@@ -224,10 +225,18 @@ def build_session_bridge(
     except Exception:
         # Surface as no resolver rather than failing the bridge.
         session.exec_resource_resolver = None
+    activity_relay = None
+    if conflict_activity_relay:
+        from ralph.mcp.server._activity_relay import ActivityRelay
+
+        activity_relay = ActivityRelay()
     bridge = server_fn(
         session,
         workspace,
-        extras=McpServerExtras(extra_env=session_mcp_plan.server_env),
+        extras=McpServerExtras(
+            extra_env=session_mcp_plan.server_env,
+            activity_relay=activity_relay,
+        ),
     )
     bridge.start()
     # AC-03: attach one ExploreIndex per session/workspace so every

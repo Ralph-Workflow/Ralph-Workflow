@@ -16,6 +16,7 @@ import termios
 from typing import TYPE_CHECKING
 
 from ralph.process._pty_process import PtyProcess
+from ralph.process._spawn_env import scrub_activity_relay_controls
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -55,9 +56,10 @@ def spawn_pty_process(
                 os.close(slave_fd)
             if cwd is not None:
                 os.chdir(cwd)
-            child_env = dict(os.environ)
+            child_env = scrub_activity_relay_controls(dict(os.environ))
             if env is not None:
-                child_env.update(env)
+                child_env.update(scrub_activity_relay_controls(dict(env)))
+            scrub_activity_relay_controls(child_env)
             child_env.setdefault("TERM", "xterm-256color")
             os.execvpe(command[0], list(command), child_env)
         except BaseException:

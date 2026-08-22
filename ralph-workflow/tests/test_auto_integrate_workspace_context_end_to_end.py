@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.pipeline import auto_integrate_remote_reconcile as remote_reconcile
-from ralph.pipeline.conflict_resolution.graph import MAX_REBASE_CONFLICT_STOPS
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -238,7 +237,7 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
                 subject="feat: alpha",
                 conflicted_files=("src/alpha.py",),
                 stop_index=1,
-                stop_cap=MAX_REBASE_CONFLICT_STOPS,
+                stop_cap=10,
             )
             resolver_call_args.append((root, target_ref, stop))
             return received(root, target_ref, stop)

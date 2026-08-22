@@ -41,7 +41,6 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.pipeline.conflict_resolution import (
-    resolution_deadline,
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
@@ -215,13 +214,6 @@ def build_agent_rebase_stop_resolver(
     Returns:
         The resolver callable. It never raises.
     """
-    # ONE ceiling for the whole rebase, re-armed when a fresh loop starts.
-    # ``resolve_rebase_in_progress`` always begins at stop 1, so that index
-    # is the reliable marker of a new resolution; without the re-arm a
-    # long-lived resolver built once per run would hand the second
-    # integration of the run an already-expired budget.
-    deadline: list[float] = []
-
     def _resolver(root: Path, target: str, stop: RebaseStop) -> bool:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
@@ -236,9 +228,6 @@ def build_agent_rebase_stop_resolver(
                 f"rebase conflict resolution unavailable: {missing} not threaded to this seam",
             )
             return False
-        if stop.stop_index <= 1 or not deadline:
-            deadline.clear()
-            deadline.append(resolution_deadline(config))
         # The conflicted `root` is the target worktree (the main worktree
         # for an auto-rebase). All path-bound context -- prompt, MCP plan,
         # policy, agent registry, config -- must come from the TARGET, not
@@ -277,7 +266,6 @@ def build_agent_rebase_stop_resolver(
                     policy_bundle=target_policy,
                     display=display,
                     display_context=display_context,
-                    deadline=deadline[0],
                 )
             except Exception as exc:
                 logger.warning(

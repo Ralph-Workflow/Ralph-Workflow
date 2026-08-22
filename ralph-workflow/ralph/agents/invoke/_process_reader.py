@@ -46,6 +46,7 @@ from ralph.agents.invoke._errors import (
     AgentInvocationError,
     BrokenAgentExitError,
     InactivityTimeoutOpts,
+    SupervisionInfrastructureError,
     _IdleStreamTimeoutError,
 )
 from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
@@ -59,6 +60,7 @@ from ralph.agents.invoke._tool_call_extraction import (
 )
 from ralph.agents.invoke._types import AgentRunCtx, ProcessReaderCtx
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.config.agent_config import AgentConfig
 from ralph.display.raw_overflow import (
     get_or_create_raw_overflow_log,
     raw_log_unit_id_for,
@@ -70,6 +72,7 @@ from ralph.mcp.server._activity_sink import (
     set_active_sink,
     set_subagent_sink,
 )
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.child_liveness import (
     AliveBy,
     ChildLivenessRegistry,
@@ -97,7 +100,6 @@ if TYPE_CHECKING:
     from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-    from ralph.config.models import AgentConfig
     from ralph.mcp.server._activity_sink import ActivitySink
     from ralph.process.manager import ManagedPtyProcess
     from ralph.process.monitor import ProcessMonitor
@@ -311,6 +313,17 @@ def _is_resumable_fire_reason(reason: WatchdogFireReason) -> bool:
     return reason in _RESUMABLE_FIRE_REASONS
 
 
+def _raise_on_relay_health_error(reader: object, agent_name: str) -> None:
+    """Raise the typed conflict supervision error when the parent relay latched one."""
+    raw_provider: object = getattr(reader, "_relay_health_error", None)
+    if not callable(raw_provider):
+        return
+    provider = cast("Callable[[], str | None]", raw_provider)
+    detail = provider()
+    if isinstance(detail, str) and detail:
+        raise SupervisionInfrastructureError(agent_name, detail)
+
+
 def _convert_idle_stream_timeout_to_agent_error(
     agent_name: str,
     exc: _IdleStreamTimeoutError,
@@ -355,7 +368,7 @@ def _parent_broker_secret(getenv: Callable[[str], str | None] = os.getenv) -> st
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
-    env = os.environ.copy()
+    env = scrub_activity_relay_controls(os.environ.copy())
     # ``RALPH_BROKER_SECRET`` is the broker-owned HMAC secret used by the
     # orchestrator to bind completion sentinels / receipts to forge-proof
     # claims. It MUST NOT leak to spawned agent subprocesses — the
@@ -367,6 +380,7 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     if extra_env:
         env.update(extra_env)
     env.pop(_BROKER_SECRET_ENV, None)
+    scrub_activity_relay_controls(env)
     return env
 
 
@@ -401,6 +415,9 @@ class ProcessLineReader:
         self._completion_is_terminal = ctx.completion_is_terminal
         self._input_prompt = ctx.input_prompt
         self._expected_session_id = ctx.expected_session_id
+        self._relay_activity_sink_register = ctx.relay_activity_sink_register
+        self._relay_health_error = ctx.relay_health_error
+        self._remove_relay_sink: Callable[[], None] | None = None
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
@@ -506,6 +523,8 @@ class ProcessLineReader:
 
         sink_token = set_active_sink(_mcp_sink)
         subagent_token = set_subagent_sink(_subagent_sink)
+        if self._relay_activity_sink_register is not None:
+            self._remove_relay_sink = self._relay_activity_sink_register(_mcp_sink)
         return sink_token, subagent_token
 
     def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
@@ -820,6 +839,9 @@ class ProcessLineReader:
     def _check_fire(
         self, watchdog: IdleWatchdog, verdict: WatchdogVerdict
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        raw_config: object = getattr(self, "_config", None)
+        if isinstance(raw_config, AgentConfig):
+            _raise_on_relay_health_error(self, _agent_command_name(raw_config))
         if verdict != WatchdogVerdict.FIRE:
             return None
         assert (
@@ -953,6 +975,9 @@ class ProcessLineReader:
         # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
+        ProcessLineReader._append_conflict_inactivity_diagnostic(
+            merged_diag, watchdog, fire_reason, now
+        )
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
             signal=15,  # SIGTERM
@@ -970,6 +995,20 @@ class ProcessLineReader:
         )
         wrapper.__cause__ = typed_exc
         return pending, wrapper
+
+    @staticmethod
+    def _append_conflict_inactivity_diagnostic(
+        diagnostic: dict[str, object],
+        watchdog: IdleWatchdog,
+        fire_reason: WatchdogFireReason,
+        now: float,
+    ) -> None:
+        """Attach last-seen liveness fields when conflict inactivity terminates an attempt."""
+        if fire_reason != WatchdogFireReason.CONFLICT_INACTIVITY:
+            return
+        snapshot = watchdog.diagnostic_snapshot(now=now)
+        diagnostic["last_activity_kind"] = snapshot.get("last_activity_kind")
+        diagnostic["last_activity_at"] = snapshot.get("last_activity_at")
 
     def _capture_pending(self, pending_lines: list[str]) -> list[str]:
         """Write drained queue lines to the raw capture before yielding them.
@@ -1020,6 +1059,9 @@ class ProcessLineReader:
         # exists to save.
         self._capture_abandoned_lines()
         watchdog.record_invocation_end()
+        if self._remove_relay_sink is not None:
+            self._remove_relay_sink()
+            self._remove_relay_sink = None
         reset_active_sink(sink_token)
         reset_subagent_sink(subagent_token)
         if self._monitor is not None:
@@ -1328,6 +1370,8 @@ def _run_subprocess_and_read_lines(
             is_waiting_state_provider=ctx.is_waiting_state_provider,
             completion_is_terminal=completion_is_terminal,
             input_prompt=ctx.input_prompt,
+            relay_activity_sink_register=ctx.relay_activity_sink_register,
+            relay_health_error=ctx.relay_health_error,
         )
         reader = ProcessLineReader(handle, reader_ctx, clock)
         lines_iter = reader.read_lines()
@@ -1369,22 +1413,23 @@ def _run_subprocess_and_read_lines(
                         captured_session_id = session_id
                     yield line
 
-            post_exit = PostExitWatchdog(ctx.policy, clock)
-            verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
-            if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                handle.terminate(grace_period_s=0.5)
-                exit_pid = cast(
-                    "int | None", getattr(handle, "pid", None)
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-                if exit_pid is not None:
-                    if ctx.process_teardown is None:
-                        teardown_subtree(exit_pid)
-                    else:
-                        ctx.process_teardown.teardown_subtree(exit_pid)
-                raise _IdleStreamTimeoutError(
-                    ctx.policy.process_exit_wait_seconds,
-                    WatchdogFireReason.PROCESS_EXIT_HANG,
-                )
+            if ctx.policy.profile.value != "activity_only":
+                post_exit = PostExitWatchdog(ctx.policy, clock)
+                verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
+                if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
+                    handle.terminate(grace_period_s=0.5)
+                    exit_pid = cast(
+                        "int | None", getattr(handle, "pid", None)
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    if exit_pid is not None:
+                        if ctx.process_teardown is None:
+                            teardown_subtree(exit_pid)
+                        else:
+                            ctx.process_teardown.teardown_subtree(exit_pid)
+                    raise _IdleStreamTimeoutError(
+                        ctx.policy.process_exit_wait_seconds,
+                        WatchdogFireReason.PROCESS_EXIT_HANG,
+                    )
         except _IdleStreamTimeoutError as exc:
             raise _convert_idle_stream_timeout_to_agent_error(
                 _agent_command_name(ctx.config),

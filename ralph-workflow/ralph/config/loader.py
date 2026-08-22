@@ -32,6 +32,7 @@ from pydantic import ValidationError
 from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.config.agent_config import AgentConfig
 from ralph.config.config_error_messages import format_config_validation_error
+from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
 from ralph.pydantic_validation_errors import suggest_canonical_field
@@ -198,7 +199,7 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
         suggester=emit,
     )
 
-    # 2. Closed nested subtables (general, ccs)
+    # 2. Closed nested subtables (general, conflict_resolution, ccs)
     general = data.get("general")
     if isinstance(general, dict):
         _collect_unknown_leaves(
@@ -221,6 +222,16 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
                     prefix=f"general.{sub_name}.",
                     suggester=emit,
                 )
+
+    conflict_resolution = data.get("conflict_resolution")
+    if isinstance(conflict_resolution, dict):
+        _collect_unknown_leaves(
+            conflict_resolution,
+            known_fields=set(ConflictResolutionConfig.model_fields),
+            path=path,
+            prefix="conflict_resolution.",
+            suggester=emit,
+        )
 
     ccs = data.get("ccs")
     if isinstance(ccs, dict):
@@ -493,6 +504,11 @@ def load_config(
 
     try:
         config = UnifiedConfig.model_validate(merged)
+        if config.conflict_resolution.total_resolution_cap_seconds is not None:
+            logger.warning(
+                "conflict_resolution.total_resolution_cap_seconds is enabled: "
+                "active resolution may be stopped by the operator cap"
+            )
         logger.debug("Configuration validated successfully")
         return config
     except ValidationError as exc:
@@ -526,7 +542,13 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
         _warn_reserved_provider_fallback(general)
     warn_unknown_fields(data, config_path)
     try:
-        return UnifiedConfig.model_validate(data)
+        config = UnifiedConfig.model_validate(data)
+        if config.conflict_resolution.total_resolution_cap_seconds is not None:
+            logger.warning(
+                "conflict_resolution.total_resolution_cap_seconds is enabled: "
+                "active resolution may be stopped by the operator cap"
+            )
+        return config
     except ValidationError as exc:
         logger.error(format_config_validation_error(exc, config_path))
         raise SystemExit(1) from exc

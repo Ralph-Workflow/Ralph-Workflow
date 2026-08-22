@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -575,11 +576,14 @@ class ProcessManager:
         effective = opts or PtySpawnOptions(cwd=cwd, env=env, cols=cols, rows=rows, label=label)
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
+        child_env = (
+            None if effective.env is None else scrub_activity_relay_controls(dict(effective.env))
+        )
         try:
             proc = self._pty_process_factory(
                 cmd,
                 cwd=effective.cwd,
-                env=effective.env,
+                env=child_env,
                 cols=effective.cols,
                 rows=effective.rows,
             )
@@ -643,11 +647,14 @@ class ProcessManager:
         effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
+        child_env = (
+            None if effective.env is None else scrub_activity_relay_controls(dict(effective.env))
+        )
         try:
             proc = await self._async_process_factory(
                 cmd,
                 cwd=effective.cwd,
-                env=effective.env,
+                env=child_env,
                 stdin=effective.stdin,
                 stdout=effective.stdout,
                 stderr=effective.stderr,

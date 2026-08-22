@@ -22,7 +22,17 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         self.reason = _opts.reason
         self.session_resume_safe = _opts.session_resume_safe
         self.resumable_session_id = _opts.resumable_session_id
-        if _opts.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
+        if _opts.reason == WatchdogFireReason.CONFLICT_INACTIVITY:
+            duration = f"{timeout_seconds:.0f}s"
+            diagnostic = _opts.diagnostic or {}
+            kind = diagnostic.get("last_activity_kind", "none")
+            last_at = diagnostic.get("last_activity_at", "never")
+            unresolved = diagnostic.get("unresolved_paths", ())
+            stderr_msg = (
+                f"CONFLICT_INACTIVITY after {duration}; last_activity_kind={kind}; "
+                f"last_activity_at={last_at}; unresolved_paths={unresolved}"
+            )
+        elif _opts.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
             duration = f"{timeout_seconds:.0f}s"
             base_msg = f"Agent kept child agents alive without producing output for {duration}"
             if _opts.diagnostic:

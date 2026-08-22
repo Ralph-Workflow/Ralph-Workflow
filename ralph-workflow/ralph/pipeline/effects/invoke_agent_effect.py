@@ -38,3 +38,4 @@ class InvokeAgentEffect:
     drain: str | None = None
     chain_name: str = ""
     requires_completion_evidence: bool = True
+    activity_only_supervision: bool = False

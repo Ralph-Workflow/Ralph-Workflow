@@ -14,6 +14,7 @@ from ralph.agents.invoke._missing_credentials_error import MissingCredentialsErr
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
+from ralph.agents.invoke._supervision_infrastructure_error import SupervisionInfrastructureError
 from ralph.agents.invoke._unsupported_mcp_transport_error import UnsupportedMcpTransportError
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "OpenCodeResumableExitError",
     "PiContextExhaustedExitError",
     "PiProviderFailureExitError",
+    "SupervisionInfrastructureError",
     "UnsupportedMcpTransportError",
     "_IdleStreamTimeoutError",
 ]

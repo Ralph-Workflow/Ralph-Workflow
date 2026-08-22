@@ -15,6 +15,7 @@ from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.multimodal.capabilities import inline_image_roundtrip_unsafe
 from ralph.mcp.multimodal.resources import parse_media_uri
+from ralph.mcp.server._activity_relay import ActivityRelayError
 from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
@@ -755,7 +756,11 @@ class McpServer:
         # per-server sink takes precedence when set (tests use this
         # path); the contextvar sink is the production path so concurrent
         # agent runs do not stomp on each other.
-        self._invoke_activity_sinks(tool_name)
+        try:
+            self._invoke_activity_sinks(tool_name)
+        except ActivityRelayError as exc:
+            error = {"code": -32070, "message": str(exc)}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
         # F2 (Evidence Provenance): record this tools/call frame on the wire
         # ledger BEFORE dispatch, so the record exists even if the tool
@@ -856,6 +861,8 @@ class McpServer:
         if self._mcp_activity_sink is not None:
             try:
                 self._mcp_activity_sink(tool_name)
+            except ActivityRelayError:
+                raise
             except Exception:
                 logger.opt(exception=True).debug(
                     "MCP server: per-server activity sink raised (suppressed)"

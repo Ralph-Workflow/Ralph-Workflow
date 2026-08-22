@@ -88,7 +88,13 @@ COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
 #: ``ralph/mcp/server/runtime_session.py`` (the same canonical secret
 #: that ``session.broker_secret`` exposes). Add to this frozen set when
 #: the broker pipeline extends the HMAC envelope.
-_BROKER_SECRET_ENV_NAMES: frozenset[str] = frozenset({"RALPH_BROKER_SECRET"})
+_BROKER_SECRET_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "RALPH_BROKER_SECRET",
+        "RALPH_MCP_ACTIVITY_RELAY_ENDPOINT",
+        "RALPH_MCP_ACTIVITY_RELAY_CREDENTIAL",
+    }
+)
 
 #: Returned by ``read_env_value`` when the requested name is in
 #: ``_BROKER_SECRET_ENV_NAMES``. The actual value is never disclosed;

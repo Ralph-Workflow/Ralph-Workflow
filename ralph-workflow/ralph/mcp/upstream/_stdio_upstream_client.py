@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
@@ -116,7 +117,7 @@ def _make_stdio_caller(
             json.dumps(method_payload, separators=(",", ":")),
         ]
         payload = "\n".join(payload_lines) + "\n"
-        env: dict[str, str] = {**os.environ, **server.env}
+        env = scrub_activity_relay_controls({**os.environ, **server.env})
         handle = effective_pm.spawn(
             command,
             SpawnOptions(

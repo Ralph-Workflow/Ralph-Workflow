@@ -177,6 +177,28 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
 
+### `[conflict_resolution]`
+
+Use this section to tune **routing limits** for merge and rebase conflict resolution. It does not turn normal session ceilings into conflict limits: an active resolver is supervised only by its fixed inactivity window.
+
+| Key | Default | Valid values | Effect |
+|-----|---------|--------------|--------|
+| `inactivity_timeout_seconds` | `900.0` | finite number `> 0` | Fixed silence window for every conflict attempt. It never shrinks because earlier rounds or rebase stops took time. |
+| `status_interval_seconds` | `30.0` | finite number `> 0` | Low-cadence status interval for a long-running resolver. |
+| `max_rounds_per_stop` | `3` | integer `>= 1` | Completed resolution attempts allowed for one merge or paused rebase stop. |
+| `max_rebase_conflict_stops` | `10` | integer `>= 1` | Paused rebase stops that Ralph Workflow may route through resolution. |
+| `max_fallback_agents` | `2` | integer `>= 1` | Candidate agents considered in a resolution round. |
+| `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for the whole resolution. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
+
+For example, an operator who deliberately wants a one-hour total cap can add:
+
+```toml
+[conflict_resolution]
+total_resolution_cap_seconds = 3600.0
+```
+
+Ralph Workflow reports at configuration load time that this override may stop active resolution. Leave the setting absent to allow active conflict work to continue without an elapsed-time cap.
+
 ## Auto-integration
 
 Auto-integration keeps a feature branch and its configured local mainline in

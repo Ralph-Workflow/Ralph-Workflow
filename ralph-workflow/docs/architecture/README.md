@@ -11,6 +11,9 @@ the maintained Python package.
 - [ADR-0003: workspace awareness and storage lifecycle](adr-0003-workspace-awareness-and-storage-lifecycle.md) —
   shared bounded observation, explicit fallback freshness, incremental indexing,
   and disposable derived storage
+- [ADR-0004: conflict-resolution liveness](adr-0004-conflict-resolution-liveness.md) —
+  activity-only supervision, authenticated standalone-MCP activity relay, and
+  terminal process quiescence before integration actions
 - [Project Policy Readiness traceability](project-policy-readiness-traceability.md) —
   26-row requirements-traceability matrix binding the spec's acceptance
   criteria to implementing symbols and passing deterministic tests

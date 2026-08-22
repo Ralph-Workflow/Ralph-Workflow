@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from ralph.agents.idle_watchdog._workspace_change_kind import (
     DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
@@ -46,6 +47,13 @@ _VALID_WORKSPACE_CHANGE_WEIGHT_KEYS: frozenset[str] = frozenset(
     {kind.value for kind in WorkspaceChangeKind}
 )
 _VALID_WORKSPACE_CHANGE_WEIGHT_VALUES: frozenset[float] = frozenset({0.0, 1.0})
+
+
+class TimeoutProfile(StrEnum):
+    """The timeout verdict family an invocation is allowed to use."""
+
+    STANDARD = "standard"
+    ACTIVITY_ONLY = "activity_only"
 
 
 @dataclass(frozen=True)
@@ -129,6 +137,7 @@ class TimeoutPolicy:
     """
 
     idle_timeout_seconds: float | None
+    profile: TimeoutProfile = TimeoutProfile.STANDARD
     drain_window_seconds: float = DRAIN_WINDOW_SECONDS
     max_waiting_on_child_seconds: float = MAX_WAITING_ON_CHILD_SECONDS
     max_session_seconds: float | None = None
@@ -326,6 +335,7 @@ class TimeoutPolicy:
     stuck_job_sub_ceiling_seconds: float | None = STUCK_JOB_SUB_CEILING_SECONDS
 
     def __post_init__(self) -> None:
+        self._validate_profile()
         self._validate_idle_fields()
         self._validate_session_and_poll_fields()
         self._validate_waiting_status_fields()
@@ -344,6 +354,11 @@ class TimeoutPolicy:
         self._validate_watchdog_log_throttle_seconds()
         self._validate_watchdog_subagent_progress_interval_seconds()
         self._validate_stuck_job_sub_ceiling_seconds()
+
+    def _validate_profile(self) -> None:
+        if self.profile == TimeoutProfile.ACTIVITY_ONLY and self.idle_timeout_seconds is None:
+            msg = "activity_only profile requires idle_timeout_seconds"
+            raise ValueError(msg)
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:

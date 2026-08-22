@@ -24,10 +24,7 @@ from ralph.pipeline.conflict_resolution.driver import (
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
-from ralph.pipeline.conflict_resolution.graph import (
-    MAX_RESOLUTION_ROUNDS,
-    PHASE_RESOLUTION,
-)
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.status import (
     NEUTRAL_PHASE_LABEL,
@@ -185,7 +182,7 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    assert calls == list(range(1, MAX_RESOLUTION_ROUNDS + 1))
+    assert calls == [1, 2, 3]
 
 
 def test_invoker_exception_is_contained_and_returns_false(

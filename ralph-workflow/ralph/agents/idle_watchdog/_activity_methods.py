@@ -327,6 +327,8 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
         self._process_monitor.live_subagent_count() if self._process_monitor is not None else 0
     )
     snapshot: dict[str, object] = {
+        "last_activity_kind": _latest_activity_kind(self),
+        "last_activity_at": _latest_activity_at(self),
         "last_fire_reason": (
             self._last_fire_reason.value if self._last_fire_reason is not None else None
         ),
@@ -351,6 +353,42 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
         "resumable_session_id": None,
     }
     return snapshot
+
+
+def _latest_activity_at(self: IdleWatchdog) -> float | None:
+    """Return the latest timestamp across every recognized liveness channel."""
+    return max(
+        (
+            timestamp
+            for timestamp in (
+                self._last_activity,
+                self._last_mcp_tool_call_at,
+                self._last_subagent_progress_at,
+                self._last_subagent_output_at,
+                self._last_workspace_event_at,
+            )
+            if timestamp is not None
+        ),
+        default=None,
+    )
+
+
+def _latest_activity_kind(self: IdleWatchdog) -> str | None:
+    """Name the source of the latest recognized liveness event."""
+    candidates = (
+        ("stdout", self._last_activity),
+        ("mcp_tool", self._last_mcp_tool_call_at),
+        ("subagent", self._last_subagent_progress_at),
+        ("subagent", self._last_subagent_output_at),
+        ("workspace", self._last_workspace_event_at),
+    )
+    latest_kind: str | None = None
+    latest_at: float | None = None
+    for kind, timestamp in candidates:
+        if timestamp is not None and (latest_at is None or timestamp > latest_at):
+            latest_kind = kind
+            latest_at = timestamp
+    return latest_kind
 
 
 def record_activity(self: IdleWatchdog) -> None:

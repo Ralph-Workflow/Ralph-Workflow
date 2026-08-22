@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.mcp.protocol.startup import SessionLike, WorkspaceLike
+    from ralph.mcp.server._activity_relay import ActivityRelay
     from ralph.mcp.upstream.registry import UpstreamRegistry
 
 # Additive cap on the tool-registry-reset counter. The recovery
@@ -155,6 +156,7 @@ class RestartAwareMcpBridge:
         run_id: str,
         probe_fn: Callable[[str, timedelta], None] | None = None,
         probe_timeout_fn: Callable[[], timedelta] | None = None,
+        activity_relay: ActivityRelay | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -167,6 +169,7 @@ class RestartAwareMcpBridge:
         self._run_id = run_id
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
+        self._activity_relay = activity_relay
         self._restart_count = 0
         # Consecutive failed probes. A probe that times out proves the
         # server is slow, not dead: under load a healthy server routinely
@@ -231,7 +234,24 @@ class RestartAwareMcpBridge:
         return self._inner.endpoint
 
     def shutdown(self) -> None:
+        if self._activity_relay is not None:
+            self._activity_relay.close()
         self._inner.shutdown()
+
+    @property
+    def activity_relay(self) -> ActivityRelay | None:
+        """Conflict-only relay owned by this bridge, when one was configured."""
+        return self._activity_relay
+
+    def relay_health_error(self) -> str | None:
+        """Return a latched relay fault before an invocation can be classified as idle."""
+        return None if self._activity_relay is None else self._activity_relay.health_error()
+
+    def register_activity_sink(self, sink: Callable[[str], None]) -> Callable[[], None]:
+        """Register the parent watchdog for authenticated standalone MCP events."""
+        if self._activity_relay is None:
+            return lambda: None
+        return self._activity_relay.register_sink(sink)
 
     def check_health_and_restart_if_needed(self) -> bool:
         """Check if MCP server is alive and responsive; restart if not.
@@ -568,6 +588,7 @@ def start_mcp_server(
         effective_extras.extra_env,
         visible_tools,
         port=port,
+        activity_relay=effective_extras.activity_relay,
     )
 
     def _restart_fn() -> StandaloneMcpProcess:
@@ -579,6 +600,7 @@ def start_mcp_server(
             effective_extras.extra_env,
             visible_tools,
             port=port,
+            activity_relay=effective_extras.activity_relay,
         )
 
     return RestartAwareMcpBridge(
@@ -588,6 +610,7 @@ def start_mcp_server(
         run_id=session.run_id,
         probe_fn=lifecycle_deps.probe,
         probe_timeout_fn=lifecycle_deps.probe_timeout,
+        activity_relay=effective_extras.activity_relay,
     )
 
 
@@ -600,6 +623,7 @@ def _spawn_mcp_process(
     _visible_tools: list[str],
     *,
     port: int,
+    activity_relay: ActivityRelay | None = None,
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation."""
     endpoint = f"http://127.0.0.1:{port}/mcp"
@@ -611,6 +635,8 @@ def _spawn_mcp_process(
             # Merge extra_env so the subprocess inherits worker-specific env vars
             # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
             env.update(_extra_env)
+        if activity_relay is not None:
+            env.update(activity_relay.server_environment())
         process = deps.spawn_process(
             [
                 sys.executable,
@@ -763,6 +789,7 @@ def _spawn_process(
                 stderr=log_fd,
                 start_new_session=True,
                 label=label,
+                allow_activity_relay_controls=True,
             ),
         )
     finally:

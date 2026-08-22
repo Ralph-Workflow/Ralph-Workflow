@@ -51,6 +51,7 @@ from ralph.agents.invoke._errors import (
     OpenCodeResumableExitError,
     PiContextExhaustedExitError,
     PiProviderFailureExitError,
+    SupervisionInfrastructureError,
     UnsupportedMcpTransportError,
     _IdleStreamTimeoutError,
 )
@@ -521,6 +522,8 @@ def invoke_agent(
             connectivity_state_provider=opts.connectivity_state_provider,
             is_waiting_state_provider=opts.is_waiting_state_provider,
             input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
+            relay_activity_sink_register=opts.relay_activity_sink_register,
+            relay_health_error=opts.relay_health_error,
         )
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
@@ -796,6 +799,7 @@ __all__ = [
     "PtyExtras",
     "PtyLineReader",
     "ResolvedInvocationRuntime",
+    "SupervisionInfrastructureError",
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
     "WorkspaceMonitor",

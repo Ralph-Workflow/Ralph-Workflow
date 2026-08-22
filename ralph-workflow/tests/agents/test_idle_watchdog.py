@@ -358,6 +358,7 @@ _RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(r.value for r in _RESUMABLE
 
 _NON_RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(
     {
+        WatchdogFireReason.CONFLICT_INACTIVITY.value,
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG.value,
         WatchdogFireReason.SESSION_CEILING_EXCEEDED.value,
         WatchdogFireReason.PROCESS_EXIT_HANG.value,
@@ -369,6 +370,7 @@ _NON_RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(
 
 _NON_RESUMABLE_REASONS: frozenset[WatchdogFireReason] = frozenset(
     {
+        WatchdogFireReason.CONFLICT_INACTIVITY,
         WatchdogFireReason.PROCESS_EXIT_HANG,
         WatchdogFireReason.DESCENDANT_HANG,
         WatchdogFireReason.SESSION_CEILING_EXCEEDED,

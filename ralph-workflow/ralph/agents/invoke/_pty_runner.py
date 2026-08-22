@@ -179,7 +179,7 @@ def run_pty_and_read_lines(
             if captured_session_id is None:
                 captured_session_id = expected_session_id
 
-            if not _completion_exit_sent(pty_reader):
+            if ctx.policy.profile.value != "activity_only" and not _completion_exit_sent(pty_reader):
                 post_exit = PostExitWatchdog(ctx.policy, clock)
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:

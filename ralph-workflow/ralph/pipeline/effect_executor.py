@@ -70,7 +70,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.pipeline.phase_transition import show_phase_start_with_context
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
-from ralph.pipeline.session_bridge import reset_tool_registry_callback
+from ralph.pipeline.session_bridge import build_session_bridge, reset_tool_registry_callback
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
@@ -611,6 +611,24 @@ def _start_bridge(
                 run_id,
                 worker_namespace=worker_namespace,
             )
+    if ctx.effect.activity_only_supervision and pipeline_deps.bridge_factory is build_session_bridge:
+        return cast(
+            "RestartAwareMcpBridge",
+            build_session_bridge(
+                workspace_root=ctx.workspace_scope.root,
+                drain=ctx.effect.drain or ctx.effect.phase,
+                agents_policy=ctx.effective_agents_policy,
+                transport=ctx.agent_config.transport,
+                session_id_prefix=ctx.effect.phase,
+                run_id=run_id,
+                model_identity=pipeline_deps.model_identity,
+                parallel_worker=ctx.parallel_worker,
+                worker_namespace=ctx.worker_namespace,
+                worker_artifact_dir=ctx.worker_artifact_dir,
+                allowed_roots=ctx.workspace_scope.allowed_roots,
+                conflict_activity_relay=True,
+            ),
+        )
     return cast(
         "RestartAwareMcpBridge",
         pipeline_deps.bridge_factory(
@@ -820,7 +838,7 @@ def _build_attempt_invoke_options(
     endpoint_uri = _bridge_endpoint_uri(bridge_ctx.bridge)
     if endpoint_uri:
         env[str(MCP_ENDPOINT_ENV)] = endpoint_uri
-    return build_invoke_options_from_config(
+    invoke_options = build_invoke_options_from_config(
         ctx.config.general,
         InvokeRuntimeOptions(
             verbose=ctx.config.general.verbosity >= _VERBOSE_LOG_LEVEL,
@@ -837,8 +855,25 @@ def _build_attempt_invoke_options(
             pure=ctx.agent_config.transport == AgentTransport.OPENCODE,
             connectivity_state_provider=pipeline_deps.connectivity_state_provider,
             is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,
+            activity_only_supervision=ctx.effect.activity_only_supervision,
+            relay_activity_sink_register=(
+                bridge_ctx.bridge.register_activity_sink
+                if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
+                else None
+            ),
+            relay_health_error=(
+                bridge_ctx.bridge.relay_health_error
+                if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
+                else None
+            ),
         ),
     )
+    if ctx.effect.activity_only_supervision:
+        return replace(
+            invoke_options,
+            idle_timeout_seconds=ctx.config.conflict_resolution.inactivity_timeout_seconds,
+        )
+    return invoke_options
 
 
 def required_artifact_for_invocation(

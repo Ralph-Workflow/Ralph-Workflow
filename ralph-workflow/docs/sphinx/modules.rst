@@ -484,6 +484,13 @@ ralph.config.general_config
    :members:
    :show-inheritance:
 
+ralph.config.conflict_resolution_config
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.conflict_resolution_config
+   :members:
+   :show-inheritance:
+
 ralph.config.json_parser_type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1042,10 +1049,10 @@ ralph.pipeline.conflict_resolution.driver
    :members:
    :show-inheritance:
 
-ralph.pipeline.conflict_resolution.hard_stop
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.pipeline.conflict_resolution.resolution_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.pipeline.conflict_resolution.hard_stop
+.. automodule:: ralph.pipeline.conflict_resolution.resolution_outcome
    :members:
    :show-inheritance:
 

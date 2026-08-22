@@ -85,9 +85,7 @@ def invoke_active_sink(tool_name: str) -> None:
     try:
         sink(tool_name)
     except Exception:
-        # A buggy sink must not crash the JSON-RPC dispatch path. The
-        # watchdog already logs recorder errors at DEBUG; we keep this
-        # path equally quiet so the MCP server remains fail-soft.
+        # A buggy sink must not crash the JSON-RPC dispatch path.
         return
 
 

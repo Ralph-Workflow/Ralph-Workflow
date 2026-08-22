@@ -25,9 +25,10 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_LOCAL_FLEET,
     REFRESH_UNREACHABLE,
 )
-from ralph.pipeline.conflict_resolution.graph import MAX_REBASE_CONFLICT_STOPS
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
+
+_STOP_CAP = 10
 
 if TYPE_CHECKING:
     import pytest
@@ -679,7 +680,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             subject="feat: alpha",
             conflicted_files=("src/alpha.py",),
             stop_index=1,
-            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+            stop_cap=_STOP_CAP,
         )
 
         assert resolver(target, "main", stop) is True
@@ -736,7 +737,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             subject="feat: alpha",
             conflicted_files=("src/alpha.py",),
             stop_index=1,
-            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+            stop_cap=_STOP_CAP,
         )
 
         # Snapshot caller resources BEFORE the resolver runs.
@@ -785,7 +786,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             subject="feat: alpha",
             conflicted_files=("src/alpha.py",),
             stop_index=1,
-            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+            stop_cap=_STOP_CAP,
         )
 
         before = _snapshot_caller(caller)

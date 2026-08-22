@@ -52,6 +52,7 @@ from ralph.mcp.multimodal.capabilities import (
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
+from ralph.mcp.server._activity_relay import ActivityRelaySender, scrub_activity_relay_environment
 from ralph.mcp.server._cycle_deadline import CycleDeadlineNotifier
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -152,6 +153,8 @@ def build_standalone_http_server(
     port: int = DEFAULT_PORT,
     extras: McpServerExtras | None = None,
     agent_transport: str | None = None,
+    activity_relay_sender: ActivityRelaySender | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> _StandaloneHttpServer:
     """Build a standalone HTTP MCP server backed by the Ralph tool registry.
 
@@ -172,6 +175,7 @@ def build_standalone_http_server(
     the JSON handshake shapes.
     """
     _extras = extras or McpServerExtras()
+    env_map = os.environ if env is None else env
     effective_session = _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
@@ -195,8 +199,8 @@ def build_standalone_http_server(
         if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
-    upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    tool_catalog = load_upstream_tool_catalog(os.environ.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
+    upstream_servers = load_runtime_upstream_servers(mcp_cfg, env_map)
+    tool_catalog = load_upstream_tool_catalog(env_map.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
     if tool_catalog:
         upstream_servers = tuple(
             server for server in upstream_servers if server.name in tool_catalog
@@ -232,14 +236,15 @@ def build_standalone_http_server(
         effective_session,
         workspace,
         registry,
-        wrapup_provider=_session_wrapup_provider(),
+        wrapup_provider=_session_wrapup_provider(env_map),
         cycle_deadline_provider=CycleDeadlineNotifier().notice,
+        mcp_activity_sink=(activity_relay_sender.emit if activity_relay_sender is not None else None),
     )
     return _StandaloneHttpServer(host, port, server)
 
 
-def _env_float(name: str, default: float | None) -> float | None:
-    raw = os.environ.get(name)
+def _env_float(name: str, default: float | None, env: Mapping[str, str]) -> float | None:
+    raw = env.get(name)
     if raw is None or not raw.strip():
         return default
     try:
@@ -248,7 +253,7 @@ def _env_float(name: str, default: float | None) -> float | None:
         return default
 
 
-def _session_wrapup_provider() -> Callable[[], str | None]:
+def _session_wrapup_provider(env: Mapping[str, str]) -> Callable[[], str | None]:
     """Build the graduated-session wrap-up nag provider from env (or defaults).
 
     The standalone MCP server starts per agent invocation, so process-start is a
@@ -257,8 +262,8 @@ def _session_wrapup_provider() -> Callable[[], str | None]:
     """
     budget = SessionWrapupBudget(
         SystemClock(),
-        soft_seconds=_env_float(SESSION_SOFT_WRAPUP_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS),
-        hard_seconds=_env_float(MAX_SESSION_SECONDS_ENV, MAX_SESSION_SECONDS),
+        soft_seconds=_env_float(SESSION_SOFT_WRAPUP_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS, env),
+        hard_seconds=_env_float(MAX_SESSION_SECONDS_ENV, MAX_SESSION_SECONDS, env),
     )
     return budget.notice
 
@@ -304,6 +309,9 @@ def run_standalone_server(
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
+    sanitize_process_environment()
+    relay_sender = ActivityRelaySender.from_environment(dict(os.environ))
+    scrub_activity_relay_environment(os.environ)
     server = build_standalone_http_server(
         workspace_root,
         host=host,
@@ -312,6 +320,7 @@ def run_standalone_server(
             session=session_from_env(declared_agent_transport=agent_transport)
         ),
         agent_transport=agent_transport,
+        activity_relay_sender=relay_sender,
     )
     print(f"Ralph MCP server listening on http://{host}:{port}{DEFAULT_MOUNT_PATH}")
     server.run(transport=DEFAULT_TRANSPORT)

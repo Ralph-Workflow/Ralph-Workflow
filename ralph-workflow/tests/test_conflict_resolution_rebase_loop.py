@@ -27,7 +27,6 @@ from ralph.git.rebase.rebase_continuation import (
 from ralph.pipeline.conflict_resolution import rebase_loop as loop_module
 from ralph.pipeline.conflict_resolution import status as status_module
 from ralph.pipeline.conflict_resolution.graph import (
-    MAX_REBASE_CONFLICT_STOPS,
     PHASE_RESOLUTION,
     TERMINAL_ABANDONED,
     TERMINAL_RESOLVED,
@@ -47,6 +46,7 @@ _CONFLICTED = ["src/alpha.py"]
 #: ``rebase-merge/onto``. Completion is proved against THIS, not against
 #: the target name a fleet sibling can move mid-resolution.
 _BASE_SHA = "ba5e0000000000000000000000000000000000ba"
+_STOP_CAP = 10
 
 
 class _FakeRepo:
@@ -445,7 +445,7 @@ def test_a_rebase_that_never_finishes_exhausts_the_stop_budget(
     resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
-    assert len(seen) == MAX_REBASE_CONFLICT_STOPS
+    assert len(seen) == _STOP_CAP
 
 
 def test_a_paused_rebase_with_no_conflicted_path_declines(
@@ -549,16 +549,16 @@ def test_the_stop_carries_the_replayed_commit_and_the_conflicted_paths(
             subject="feature edit",
             conflicted_files=("src/alpha.py",),
             stop_index=1,
-            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+            stop_cap=_STOP_CAP,
         )
     ]
 
 
 def test_route_after_stop_resolves_continues_and_abandons() -> None:
     """The pure router hits all three terminals at its boundaries."""
-    assert route_after_stop(1, True) == TERMINAL_RESOLVED
-    assert route_after_stop(1, False) == PHASE_RESOLUTION
-    assert route_after_stop(MAX_REBASE_CONFLICT_STOPS, False) == TERMINAL_ABANDONED
+    assert route_after_stop(1, True, _STOP_CAP) == TERMINAL_RESOLVED
+    assert route_after_stop(1, False, _STOP_CAP) == PHASE_RESOLUTION
+    assert route_after_stop(_STOP_CAP, False, _STOP_CAP) == TERMINAL_ABANDONED
 
 
 def _install_progress_git_seam(
@@ -616,7 +616,7 @@ def test_the_merge_backend_replay_counter_is_read_and_rendered(
             round_index=1,
             round_cap=3,
             stop_index=1,
-            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+            stop_cap=_STOP_CAP,
             replay_index=2,
             replay_total=5,
         )
@@ -704,7 +704,7 @@ def test_an_unreadable_counter_falls_back_to_the_stop_counters(
             replay_index=seen[0].replay_index,
             replay_total=seen[0].replay_total,
         )
-        == f"Rebase Conflict Resolution (commit 1/{MAX_REBASE_CONFLICT_STOPS}, "
+        == f"Rebase Conflict Resolution (commit 1/{_STOP_CAP}, "
         "round 1/3)"
     )
 
@@ -738,8 +738,8 @@ def test_a_readable_replay_total_never_widens_the_stop_budget(
     resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
-    assert len(seen) == MAX_REBASE_CONFLICT_STOPS
-    assert {stop.stop_cap for stop in seen} == {MAX_REBASE_CONFLICT_STOPS}
+    assert len(seen) == _STOP_CAP
+    assert {stop.stop_cap for stop in seen} == {_STOP_CAP}
 
 
 def test_mode_only_conflict_resolved_without_invoking_resolver(

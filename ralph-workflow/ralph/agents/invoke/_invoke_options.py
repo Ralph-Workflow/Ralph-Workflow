@@ -43,6 +43,9 @@ class InvokeOptions:
     extra_env: dict[str, str] | None = None
     unsafe_mode: bool = False
     idle_timeout_seconds: float | None = None
+    activity_only_supervision: bool = False
+    relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
+    relay_health_error: Callable[[], str | None] | None = None
     drain_window_seconds: float | None = None
     max_waiting_on_child_seconds: float | None = None
     idle_poll_interval_seconds: float | None = None

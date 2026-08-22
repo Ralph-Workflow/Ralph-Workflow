@@ -327,6 +327,16 @@ Some ceilings are **absolute** — no activity can extend them: `SESSION_CEILING
 
 The timeout policy is declared in `ralph/policy/defaults/recovery.toml` and overridable per project. The runtime enforces **per-phase timeout**, **per-iteration timeout**, **MCP call timeout** (the MCP timeout contract), and **recovery budget**.
 
+### Conflict-resolution liveness
+
+Conflict resolution has a stricter interpretation of liveness than an ordinary agent phase. A merge or rebase resolver may work for a long time, but each recognised sign of work resets the same fixed `900`-second inactivity window: stdout activity, MCP `tools/call`, subagent progress, and weighted workspace changes. Standalone MCP calls cross from the MCP server process to the parent watchdog through an authenticated relay, so MCP-only work counts the same way as the other channels.
+
+The conflict profile deliberately disables normal elapsed session, child-wait, startup, repetition, post-tool, process-exit, and descendant-wait cuts. Routing caps still bound completed rounds, candidate agents, and rebase stops; they do not shorten an active attempt. An optional `total_resolution_cap_seconds` is the only elapsed-time override. It is disabled by default and surfaces as `OPERATOR_CAP_REACHED` when configured.
+
+Long resolutions publish low-cadence status with the current round or stop, latest activity kind and age, elapsed duration, and unresolved-path count. If a resolution ends, its diagnostic distinguishes `CONFLICT_INACTIVITY`, `OPERATOR_CAP_REACHED`, and `SUPERVISION_INFRASTRUCTURE_FAILURE`; it includes last activity and unresolved paths. Ralph Workflow stops relay intake and reaps the scoped agent and MCP process tree before scanning markers, continuing a rebase, committing a merge, or returning control for deterministic abort.
+
+See [Configuration](configuration.md#conflict_resolution) to tune the documented bounds and [Troubleshooting](troubleshooting.md) when a resolution terminates.
+
 ### Why bounded MCP timeouts are non-negotiable
 
 An unbounded MCP call hangs the MCP server thread and starves the agent of output. The `subprocess.run`/`.communicate`/`.wait` calls in `ralph/mcp/` MUST carry a `timeout=` parameter, as must `httpx.*`, `requests.*`, `urlopen`, and `socket.create_connection`. The only bypass is an inline `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design call. The audit (`ralph/testing/audit_mcp_timeout.py`) runs under `make verify`, so a missing timeout is a hard failure, not a warning.

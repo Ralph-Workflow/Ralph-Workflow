@@ -43,3 +43,7 @@ class SpawnOptions:
     #: with it. The async reader already decodes with ``errors=
     #: "replace"``; this makes the sync reader agree.
     errors: str = "replace"
+    # Reserved for the parent-owned standalone MCP bootstrap only. Every
+    # agent-controlled child keeps the default False, which strips private
+    # conflict-resolution activity-relay controls before spawn.
+    allow_activity_relay_controls: bool = False

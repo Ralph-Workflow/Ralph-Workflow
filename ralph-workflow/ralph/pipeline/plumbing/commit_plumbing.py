@@ -1210,6 +1210,7 @@ def _default_commit_bridge_factory(
     build_session_mcp_plan_fn: object | None = None,
     start_mcp_server_fn: object | None = None,
     workspace_factory: object | None = None,
+    conflict_activity_relay: bool = False,
 ) -> SessionBridgeLike:
     """Default commit bridge factory that honors the test-patch surface.
 
@@ -1234,6 +1235,7 @@ def _default_commit_bridge_factory(
         build_session_mcp_plan_fn,
         start_mcp_server_fn,
         workspace_factory,
+        conflict_activity_relay,
     )
     bridge_fn = _resolve_commit_start_commit_bridge()
     policy = agents_policy or AgentsPolicy()

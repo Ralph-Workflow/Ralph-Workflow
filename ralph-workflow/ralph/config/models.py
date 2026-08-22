@@ -9,6 +9,7 @@ from ralph.pydantic_compat import RalphBaseModel
 
 from .agent_config import AgentConfig
 from .ccs_config import CcsAliasConfig, CcsConfig
+from .conflict_resolution_config import ConflictResolutionConfig
 from .general_config import GeneralConfig
 
 
@@ -44,6 +45,7 @@ class UnifiedConfig(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
+    conflict_resolution: ConflictResolutionConfig = Field(default_factory=ConflictResolutionConfig)
     ccs: CcsConfig = Field(default_factory=CcsConfig)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
@@ -95,6 +97,7 @@ class UnifiedConfig(RalphBaseModel):
 __all__ = [
     "AgentConfig",
     "CcsConfig",
+    "ConflictResolutionConfig",
     "GeneralConfig",
     "UnifiedConfig",
 ]

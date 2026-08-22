@@ -192,6 +192,7 @@ if TYPE_CHECKING:
 _EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
+        WatchdogFireReason.CONFLICT_INACTIVITY.value,
         WatchdogFireReason.NO_OUTPUT_AT_START.value,
         WatchdogFireReason.STALLED_AFTER_TOOL_RESULT.value,
         WatchdogFireReason.REPEATED_ERROR_LOOP.value,
@@ -1472,6 +1473,19 @@ class IdleWatchdog:
         classify_quiet: Callable[[], AgentExecutionState],
     ) -> WatchdogVerdict:
         return evaluate_inner(self, now=now, classify_quiet=classify_quiet)
+
+    def activity_only_snapshot(self) -> tuple[str | None, float | None]:
+        """Return the latest liveness source and timestamp for conflict diagnostics."""
+        now = self._clock.monotonic()
+        summary = self.last_evidence_summary(now)
+        latest_kind: str | None = None
+        latest_at: float | None = None
+        for channel in summary.channels:
+            timestamp = channel.last_at
+            if timestamp is not None and (latest_at is None or timestamp > latest_at):
+                latest_kind = channel.channel_name.value
+                latest_at = timestamp
+        return (latest_kind, latest_at)
 
     def _handle_evidence_deferral(
         self,

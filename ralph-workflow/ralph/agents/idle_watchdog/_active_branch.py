@@ -247,6 +247,9 @@ def evaluate_inner(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distin
     # subagent output is treated as first-party activity on this tick.
     self.poll_subagent_output(now=now)
 
+    if self._config.profile.value == "activity_only":
+        return _evaluate_activity_only(self, now)
+
     fire_reason: WatchdogFireReason | None = None
     # The session ceiling is the highest-priority fire reason
     # (operator-set hard cap, absolute). It MUST be checked
@@ -340,6 +343,30 @@ def evaluate_inner(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distin
 
     verdict = self._evaluate_final_verdict(now, idle_elapsed, classify_quiet)
     return verdict
+
+
+def _evaluate_activity_only(self: IdleWatchdog, now: float) -> WatchdogVerdict:
+    """Evaluate the conflict-only profile with one shared liveness clock.
+
+    Unlike normal invocation supervision, conflict resolution treats every
+    recognized source as equivalent liveness and has no elapsed session,
+    child-wait, startup, repetition, or post-tool verdict.
+    """
+    kind, last_at = self.activity_only_snapshot()
+    if last_at is None:
+        last_at = self._session_started_at
+    idle_elapsed = now - last_at
+    timeout = self._config.idle_timeout_seconds
+    if timeout is None or idle_elapsed < timeout:
+        return WatchdogVerdict.CONTINUE
+    self._last_fire_reason = WatchdogFireReason.CONFLICT_INACTIVITY
+    self._emit_fire_log(
+        WatchdogFireReason.CONFLICT_INACTIVITY,
+        now=now,
+        idle_elapsed=idle_elapsed,
+        message_suffix=f" last_activity_kind={kind or 'none'}",
+    )
+    return WatchdogVerdict.FIRE
 
 
 def handle_evidence_deferral(

@@ -84,6 +84,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
@@ -620,9 +621,10 @@ def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
 
 
 def _child_env(cwd: Path) -> dict[str, str]:
-    env = dict(os.environ)
+    env = scrub_activity_relay_controls(dict(os.environ))
     env["PWD"] = str(cwd)
     env.pop("OLDPWD", None)
+    scrub_activity_relay_controls(env)
     return env
 
 

@@ -18,7 +18,6 @@ from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.pipeline import auto_integrate_agent
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.conflict_resolution.graph import MAX_REBASE_CONFLICT_STOPS
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect
 from ralph.pipeline.events import PipelineEvent
@@ -614,7 +613,7 @@ def test_the_rebase_stop_resolver_reports_its_declines_too(
         subject="feat: alpha",
         conflicted_files=("src/alpha.py",),
         stop_index=1,
-        stop_cap=MAX_REBASE_CONFLICT_STOPS,
+        stop_cap=10,
     )
 
     missing_deps = runner_module.build_agent_rebase_stop_resolver(
