@@ -1484,11 +1484,29 @@ class IdleWatchdog:
         summary = self.last_evidence_summary(now)
         latest_kind: str | None = None
         latest_at: float | None = None
+        latest_priority = -1
+        # The stdout baseline is initialized at invocation start, which can
+        # share a timestamp with the first real liveness signal. Tie-breaking
+        # preserves that observed signal while keeping direct subagent output
+        # ahead of its derived process-liveness summary.
+        priorities = {
+            ChannelName.STDOUT: 0,
+            ChannelName.MCP_TOOL: 1,
+            ChannelName.SUBAGENT_LIVENESS: 1,
+            ChannelName.SUBAGENT_OUTPUT: 2,
+            ChannelName.WORKSPACE: 3,
+        }
         for channel in summary.channels:
             timestamp = channel.last_at
-            if timestamp is not None and (latest_at is None or timestamp > latest_at):
+            priority = priorities[channel.channel_name]
+            if timestamp is not None and (
+                latest_at is None
+                or timestamp > latest_at
+                or (timestamp == latest_at and priority > latest_priority)
+            ):
                 latest_kind = channel.channel_name.value
                 latest_at = timestamp
+                latest_priority = priority
         return (latest_kind, latest_at)
 
     def _activity_only_operator_cap_reached(self, now: float) -> bool:

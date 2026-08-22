@@ -146,3 +146,34 @@ def test_conflict_resolution_regression_status_is_rate_limited_with_activity_met
     assert len(events) == 2
     assert events[-1].diagnostic["last_activity_kind"] == "workspace"
     assert events[-1].diagnostic["last_activity_age_seconds"] == 20.0
+
+
+@pytest.mark.parametrize(
+    ("recorder", "expected_kind"),
+    [
+        ("record_activity", "stdout"),
+        ("record_mcp_tool_call", "mcp_tool"),
+        ("record_subagent_work", "subagent_output"),
+        ("record_workspace_event", "workspace"),
+    ],
+)
+def test_conflict_resolution_regression_initial_activity_keeps_its_provenance(
+    recorder: str,
+    expected_kind: str,
+) -> None:
+    """S-2/R7: a first-tick event is not misreported as baseline stdout."""
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=10.0,
+            profile=TimeoutProfile.ACTIVITY_ONLY,
+        ),
+        clock,
+    )
+    watchdog.record_invocation_start()
+    getattr(watchdog, recorder)()
+    clock.advance(10.0)
+
+    assert watchdog.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.FIRE
+    assert watchdog.activity_only_snapshot() == (expected_kind, 0.0)
+    assert watchdog.diagnostic_snapshot(now=10.0)["last_activity_kind"] == expected_kind

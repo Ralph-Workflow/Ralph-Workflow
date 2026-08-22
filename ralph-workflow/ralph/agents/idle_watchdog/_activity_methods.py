@@ -378,14 +378,17 @@ def _latest_activity_kind(self: IdleWatchdog) -> str | None:
     candidates = (
         ("stdout", self._last_activity),
         ("mcp_tool", self._last_mcp_tool_call_at),
-        ("subagent", self._last_subagent_progress_at),
-        ("subagent", self._last_subagent_output_at),
+        ("subagent_output", self._last_subagent_progress_at),
+        ("subagent_output", self._last_subagent_output_at),
         ("workspace", self._last_workspace_event_at),
     )
     latest_kind: str | None = None
     latest_at: float | None = None
     for kind, timestamp in candidates:
-        if timestamp is not None and (latest_at is None or timestamp > latest_at):
+        # The stdout baseline and a first real activity event can share the
+        # invocation-start tick. Preserve the concrete activity provenance on
+        # ties instead of reporting synthetic stdout initialization.
+        if timestamp is not None and (latest_at is None or timestamp >= latest_at):
             latest_kind = kind
             latest_at = timestamp
     return latest_kind
