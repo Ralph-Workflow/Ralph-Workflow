@@ -37,7 +37,11 @@ class ResolutionSession:
 
     started_at: float | None = None
     unresolved_paths: tuple[str, ...] = ()
+    inactivity_timeout_seconds: float | None = None
+    max_rounds_per_stop: int | None = None
     max_rebase_conflict_stops: int | None = None
+    max_fallback_agents: int | None = None
+    total_resolution_cap_seconds: float | None = None
     terminal_reason: ResolutionTerminationReason | None = None
     last_activity_kind: str | None = None
     last_activity_at: float | None = None
@@ -66,6 +70,7 @@ def invoke_resolution_agent(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
     operator_cap_seconds: float | None = None,
+    inactivity_timeout_seconds: float | None = None,
     status_interval_seconds: float | None = None,
     activity_status_listener: Callable[[object], None] | None = None,
     unresolved_paths: tuple[str, ...] = (),
@@ -84,8 +89,20 @@ def invoke_resolution_agent(
         activity_only_status_interval_seconds=status_interval_seconds,
         activity_status_listener=activity_status_listener,
     )
+    conflict_limits = config.conflict_resolution.model_copy(
+        update={
+            "inactivity_timeout_seconds": (
+                inactivity_timeout_seconds
+                if inactivity_timeout_seconds is not None
+                else config.conflict_resolution.inactivity_timeout_seconds
+            )
+        }
+    )
     conflict_config = config.model_copy(
-        update={"general": config.general.model_copy(update={"max_same_agent_retries": 0})}
+        update={
+            "general": config.general.model_copy(update={"max_same_agent_retries": 0}),
+            "conflict_resolution": conflict_limits,
+        }
     )
     try:
         event = _effect_executor_module.execute_agent_effect(

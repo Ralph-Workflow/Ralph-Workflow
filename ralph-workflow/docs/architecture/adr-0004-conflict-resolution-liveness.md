@@ -26,8 +26,10 @@ from the completed resolver can still write to it.
    post-tool, process-exit, and descendant elapsed cuts do not apply to this
    profile.
 2. Round, rebase-stop, and fallback-agent limits are completed-attempt routing
-   limits, not time slices. The optional `total_resolution_cap_seconds` is off by
-   default. When an operator enables it, its result is explicitly
+   limits, not time slices. One typed resolution session spans every stop of a
+   paused rebase, so its optional `total_resolution_cap_seconds` is measured
+   once across the complete rebase rather than restarting at each stop. The cap
+   is off by default. When an operator enables it, its result is explicitly
    `OPERATOR_CAP_REACHED`, not an idle or hang verdict.
 3. The parent owns an authenticated loopback activity relay for an activity-only
    standalone MCP server. The child sender requires a bounded acknowledgement for
@@ -48,7 +50,10 @@ low-cadence status and termination diagnostics that name the reason, last
 activity, duration, and unresolved paths. The authenticated relay adds a local
 process boundary and bounded acknowledgement, but prevents MCP-only work from
 being invisible to supervision. A relay fault fails safely rather than granting
-an unearned liveness extension or producing a false idle diagnosis.
+an unearned liveness extension or producing a false idle diagnosis. Conflict
+sessions also suppress inherited cycle-timebox and ordinary session-wrap-up
+notices, which are normal-phase elapsed-time supervisors rather than evidence
+of resolver inactivity.
 
 ## Verification
 

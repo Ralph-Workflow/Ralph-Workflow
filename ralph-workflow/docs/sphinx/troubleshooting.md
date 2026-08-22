@@ -101,7 +101,7 @@ ralph --check-mcp
 **Cause and next action:**
 
 - **`CONFLICT_INACTIVITY`** means no recognized activity arrived for the fixed `900`-second conflict-resolution window. The output includes the last activity kind and time, total attempt duration, and unresolved paths. Inspect that path list and the resolver transcript before retrying.
-- **`OPERATOR_CAP_REACHED`** means `[conflict_resolution].total_resolution_cap_seconds` was configured and elapsed. This is not an idle or hang diagnosis. Remove the cap or increase it in `ralph-workflow.toml` if active large conflicts need more time.
+- **`OPERATOR_CAP_REACHED`** means `[conflict_resolution].total_resolution_cap_seconds` was configured and elapsed across the entire merge resolution or multi-stop rebase. This is not an idle or hang diagnosis. Remove the cap or increase it in `ralph-workflow.toml` if active large conflicts need more time.
 - **`SUPERVISION_INFRASTRUCTURE_FAILURE`** means the authenticated standalone-MCP activity relay could not deliver or acknowledge an MCP tool event. Ralph Workflow stops rather than falsely classifying the resolver as idle. Re-run after checking the local MCP process log; do not treat this as a conflict-resolution failure.
 
 Ralph Workflow reaps the resolver and MCP process tree before it scans markers, continues a rebase, commits a merge, or hands a non-success result to the existing deterministic abort path. Partial edits are deliberately discarded on non-success, so the next integration attempt starts from a known state.

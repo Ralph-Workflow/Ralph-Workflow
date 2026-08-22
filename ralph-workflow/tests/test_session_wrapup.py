@@ -56,6 +56,29 @@ def test_notice_appears_after_soft_threshold_with_remaining_minutes() -> None:
     assert "4 min" in notice
 
 
+def test_conflict_resolution_regression_excludes_normal_session_wrapup(
+    tmp_path: pathlib.Path,
+) -> None:
+    """S-1/S-4: an activity-only standalone session exposes no normal wrap-up provider."""
+    from ralph.mcp.server.runtime import McpServerExtras, build_standalone_http_server
+
+    session = AgentSession(
+        session_id="activity-only-wrapup",
+        run_id="activity-only-run",
+        drain="rebase_conflict_resolution",
+        capabilities={"WorkspaceRead"},
+        activity_only_supervision=True,
+    )
+    server = build_standalone_http_server(
+        tmp_path,
+        port=0,
+        extras=McpServerExtras(session=session),
+    )
+
+    assert server._mcp_server._wrapup_provider is None
+    assert server._mcp_server._cycle_deadline_provider is None
+
+
 def test_disabled_soft_threshold_never_notices() -> None:
     assert wrapup_notice(elapsed_seconds=10_000.0, soft_seconds=None, hard_seconds=3300.0) is None
 

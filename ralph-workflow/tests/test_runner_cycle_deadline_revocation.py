@@ -198,6 +198,40 @@ def test_the_deadline_is_readable_while_the_agents_result_is_graded(
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
 
 
+def test_conflict_resolution_regression_suspends_inherited_cycle_deadline(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """S-1/S-4: main-run auto-integration cannot pass a cycle deadline to a resolver."""
+    seen: list[bool] = []
+    state = PipelineState(phase="development")
+    config = MagicMock()
+    display_context = make_display_context()
+
+    def _integrate(*_args: object, **_kwargs: object) -> None:
+        seen.append(CYCLE_WARN_EPOCH_ENV in os.environ)
+
+    runner_module.publish_cycle_deadline_env(
+        _guarded_state(), "development", _bundle(), _ELAPSED_SECONDS
+    )
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", _integrate)
+
+    assert (
+        runner_module._integrate_on_phase_transition(
+            event=PipelineEvent.AGENT_SUCCESS,
+            config=config,
+            workspace_scope=WorkspaceScope(tmp_path),
+            state=state,
+            display=runner_module.ParallelDisplay(display_context),
+            policy_bundle=None,
+            registry=None,
+        )
+        is None
+    )
+
+    assert seen == [False]
+    assert CYCLE_WARN_EPOCH_ENV in os.environ
+
+
 def test_suspending_the_deadline_hides_it_and_restores_it_exactly() -> None:
     """A worker reconciles its siblings mid-cycle and still needs its deadline."""
     runner_module.publish_cycle_deadline_env(

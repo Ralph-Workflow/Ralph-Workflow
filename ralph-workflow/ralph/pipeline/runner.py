@@ -141,6 +141,7 @@ from ralph.pipeline.prompt_prep import (
     _materialize_prepared_prompt as _materialize_prepared_prompt_impl,
 )
 from ralph.pipeline.prompt_prep import (
+    cycle_deadline_suspended,
     materialize_agent_prompt_if_needed,
     prompt_session_drain_for_phase,
     publish_cycle_deadline_env,
@@ -988,22 +989,23 @@ def _maybe_auto_integrate(
         display_context=display_context,
     )
     try:
-        outcome = auto_integrate_after_commit(
-            config,
-            workspace_scope,
-            state.rebase,
-            conflict_resolver=conflict_resolver,
-            rebase_stop_resolver=_build_seam_rebase_stop_resolver(
-                policy_bundle=policy_bundle,
-                registry=registry,
+        with cycle_deadline_suspended():
+            outcome = auto_integrate_after_commit(
+                config,
+                workspace_scope,
+                state.rebase,
+                conflict_resolver=conflict_resolver,
+                rebase_stop_resolver=_build_seam_rebase_stop_resolver(
+                    policy_bundle=policy_bundle,
+                    registry=registry,
+                    display=display,
+                    config=config,
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=workspace_scope,
+                    display_context=display_context,
+                ),
                 display=display,
-                config=config,
-                pipeline_deps=pipeline_deps,
-                workspace_scope=workspace_scope,
-                display_context=display_context,
-            ),
-            display=display,
-        )
+            )
     except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
         # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
         logger.warning(
@@ -1159,22 +1161,23 @@ def _integrate_on_phase_transition(
         display_context=display_context,
     )
     try:
-        outcome = auto_integrate_on_phase_transition(
-            config,
-            workspace_scope,
-            state.rebase,
-            conflict_resolver=conflict_resolver,
-            rebase_stop_resolver=_build_seam_rebase_stop_resolver(
-                policy_bundle=policy_bundle,
-                registry=registry,
+        with cycle_deadline_suspended():
+            outcome = auto_integrate_on_phase_transition(
+                config,
+                workspace_scope,
+                state.rebase,
+                conflict_resolver=conflict_resolver,
+                rebase_stop_resolver=_build_seam_rebase_stop_resolver(
+                    policy_bundle=policy_bundle,
+                    registry=registry,
+                    display=display,
+                    config=config,
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=workspace_scope,
+                    display_context=display_context,
+                ),
                 display=display,
-                config=config,
-                pipeline_deps=pipeline_deps,
-                workspace_scope=workspace_scope,
-                display_context=display_context,
-            ),
-            display=display,
-        )
+            )
     except Exception as transition_exc:  # pragma: no cover -- defensive
         # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
         logger.warning(

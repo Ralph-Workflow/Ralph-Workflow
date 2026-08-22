@@ -166,6 +166,7 @@ def build_session_bridge(
         run_id=run_id or str(uuid.uuid4()),
         drain=drain,
         capabilities=effective_capabilities,
+        activity_only_supervision=conflict_activity_relay,
         model_identity=session_mcp_plan.model_identity,
         stored_capability_profile=session_mcp_plan.capability_profile,
         parallel_worker=parallel_worker,

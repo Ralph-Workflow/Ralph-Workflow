@@ -982,9 +982,7 @@ class ProcessLineReader:
         # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
-        ProcessLineReader._append_conflict_termination_diagnostic(
-            merged_diag, watchdog, fire_reason, now
-        )
+        _append_conflict_termination_diagnostic(merged_diag, watchdog, fire_reason, now)
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
             signal=15,  # SIGTERM
@@ -1002,24 +1000,6 @@ class ProcessLineReader:
         )
         wrapper.__cause__ = typed_exc
         return pending, wrapper
-
-    @staticmethod
-    def _append_conflict_termination_diagnostic(
-        diagnostic: dict[str, object],
-        watchdog: IdleWatchdog,
-        fire_reason: WatchdogFireReason,
-        now: float,
-    ) -> None:
-        """Attach activity provenance for every conflict-specific termination."""
-        if fire_reason not in {
-            WatchdogFireReason.CONFLICT_INACTIVITY,
-            WatchdogFireReason.OPERATOR_CAP_REACHED,
-        }:
-            return
-        snapshot = watchdog.diagnostic_snapshot(now=now)
-        diagnostic["last_activity_kind"] = snapshot.get("last_activity_kind")
-        diagnostic["last_activity_at"] = snapshot.get("last_activity_at")
-        diagnostic["invocation_elapsed_seconds"] = snapshot.get("invocation_elapsed_seconds")
 
     def _capture_pending(self, pending_lines: list[str]) -> list[str]:
         """Write drained queue lines to the raw capture before yielding them.
@@ -1327,6 +1307,24 @@ class ProcessLineReader:
 
         finally:
             self._teardown_read_lines(watchdog, sink_token, subagent_token, reader)
+
+
+def _append_conflict_termination_diagnostic(
+    diagnostic: dict[str, object],
+    watchdog: IdleWatchdog,
+    fire_reason: WatchdogFireReason,
+    now: float,
+) -> None:
+    """Attach direct activity provenance for both process-reader transports."""
+    if fire_reason not in {
+        WatchdogFireReason.CONFLICT_INACTIVITY,
+        WatchdogFireReason.OPERATOR_CAP_REACHED,
+    }:
+        return
+    snapshot = watchdog.diagnostic_snapshot(now=now)
+    diagnostic["last_activity_kind"] = snapshot.get("last_activity_kind")
+    diagnostic["last_activity_at"] = snapshot.get("last_activity_at")
+    diagnostic["invocation_elapsed_seconds"] = snapshot.get("invocation_elapsed_seconds")
 
 
 def _run_subprocess_and_read_lines(

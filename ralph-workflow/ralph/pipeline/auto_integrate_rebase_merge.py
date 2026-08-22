@@ -54,6 +54,7 @@ from ralph.pipeline.conflict_resolution.status import conflict_status_bar_sessio
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.git.merge import MergeResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
@@ -122,6 +123,7 @@ def run_rebase_or_merge(
     prefer_merge: bool = False,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
+    conflict_resolution_config: ConflictResolutionConfig | None = None,
 ) -> RebaseRunResult:
     """Drive rebase_onto, resolving conflicts in place before any fallback.
 
@@ -189,7 +191,13 @@ def run_rebase_or_merge(
         )
 
     if isinstance(rebase_outcome, RebaseConflicts) and rebase_stop_resolver is not None:
-        resolved = _resolve_conflicted_rebase(root, target, rebase_stop_resolver, display)
+        resolved = _resolve_conflicted_rebase(
+            root,
+            target,
+            rebase_stop_resolver,
+            display,
+            conflict_resolution_config,
+        )
         if resolved is not None:
             return resolved
 
@@ -354,6 +362,7 @@ def _resolve_conflicted_rebase(
     target: str,
     rebase_stop_resolver: RebaseStopResolver,
     display: ParallelDisplay | None,
+    conflict_resolution_config: ConflictResolutionConfig | None,
 ) -> RebaseRunResult | None:
     """Resolve the paused rebase in place, or hand it back to the fallback.
 
@@ -394,7 +403,12 @@ def _resolve_conflicted_rebase(
         return None
     try:
         with conflict_status_bar_session(display, root):
-            resolved = resolve_rebase_in_progress(root, target, rebase_stop_resolver)
+            resolved = _resolve_rebase_with_config(
+                root,
+                target,
+                rebase_stop_resolver,
+                conflict_resolution_config,
+            )
     finally:
         # The unflag cannot fail the integration -- the resolution has
         # already happened by the time it runs -- but a stale ``true``
@@ -420,6 +434,31 @@ def _resolve_conflicted_rebase(
         merge_attempted=False,
         merge_outcome=None,
         short_circuit=None,
+    )
+
+
+def _resolve_rebase_with_config(
+    root: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    config: ConflictResolutionConfig | None,
+) -> bool:
+    """Create the one typed session that spans every stop of this paused rebase."""
+    if config is None:
+        return resolve_rebase_in_progress(root, target, resolver)
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
+    return resolve_rebase_in_progress(
+        root,
+        target,
+        resolver,
+        session=ResolutionSession(
+            inactivity_timeout_seconds=config.inactivity_timeout_seconds,
+            max_rounds_per_stop=config.max_rounds_per_stop,
+            max_rebase_conflict_stops=config.max_rebase_conflict_stops,
+            max_fallback_agents=config.max_fallback_agents,
+            total_resolution_cap_seconds=config.total_resolution_cap_seconds,
+        ),
     )
 
 

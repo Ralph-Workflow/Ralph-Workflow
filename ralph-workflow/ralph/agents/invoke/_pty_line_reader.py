@@ -46,6 +46,7 @@ from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
 from ralph.agents.invoke._process_reader import (
     _NON_MEANINGFUL_ACTIVITY_KINDS,
     _TERMINAL_PROCESS_STATUSES,
+    _append_conflict_termination_diagnostic,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
     _parent_broker_secret,
@@ -1257,6 +1258,7 @@ class PtyLineReader:
         # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
+        _append_conflict_termination_diagnostic(merged_diag, watchdog, fire_reason, now)
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
             signal=15,  # SIGTERM

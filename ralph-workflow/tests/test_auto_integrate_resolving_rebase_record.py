@@ -25,6 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.git.merge import MergeResult
 from ralph.git.rebase.rebase import RebaseConflicts
 from ralph.pipeline import auto_integrate_rebase_merge as merge_module
@@ -179,6 +180,37 @@ def test_an_unrecordable_resolution_is_never_started(
     assert result.merge_attempted is True
     assert result.merge_outcome is not None
     assert result.merge_outcome.outcome == "success"
+
+
+def test_conflict_resolution_regression_normal_rebase_binds_one_session_to_all_three_argument_resolver_calls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-1/S-2: the integration path creates one rebase-wide session before its loop."""
+    resolver_calls: list[str] = []
+    _install_fallback_seams(monkeypatch, resolver_calls)
+    sessions: list[object] = []
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
+    monkeypatch.setattr(
+        merge_module,
+        "resolve_rebase_in_progress",
+        lambda _root, _target, resolver, *, session: sessions.append(session)
+        or resolver(_root, _target, object()),
+    )
+
+    def resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:
+        return True
+
+    result = merge_module.run_rebase_or_merge(
+        tmp_path,
+        _TARGET,
+        None,
+        rebase_stop_resolver=resolver,
+        conflict_resolution_config=ConflictResolutionConfig(total_resolution_cap_seconds=60.0),
+    )
+
+    assert result.merge_attempted is False
+    assert len(sessions) == 1
+    assert sessions[0].total_resolution_cap_seconds == 60.0
 
 
 def test_a_recordable_resolution_is_started(

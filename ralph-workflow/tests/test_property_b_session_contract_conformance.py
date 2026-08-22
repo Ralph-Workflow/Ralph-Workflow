@@ -66,7 +66,7 @@ Derived from typing_extensions.get_protocol_members() so adding a new
 
 
 def test_mcp_session_protocol_has_expected_member_count() -> None:
-    """The Protocol must declare 29 members (the production contract).
+    """The Protocol must declare 30 members (the production contract).
 
     Updated for RFC-013 P3: ``broker_secret`` is added to the
     surface so the broker-owned HMAC secret can be threaded through
@@ -75,10 +75,12 @@ def test_mcp_session_protocol_has_expected_member_count() -> None:
     one ExploreIndex handle per session/workspace pair. AC-11 adds
     ``exec_resource_resolver`` so the production session bridge can
     attach one ``ExecResourceResolver`` per session/workspace pair.
+    Conflict resolution adds ``activity_only_supervision`` so a standalone
+    MCP server can suppress normal elapsed-time notices for that session.
     """
     members = _all_mcp_session_members()
-    assert len(members) == 29, (
-        f"McpSession expected to declare 29 members, found {len(members)}: {members}"
+    assert len(members) == 30, (
+        f"McpSession expected to declare 30 members, found {len(members)}: {members}"
     )
 
 

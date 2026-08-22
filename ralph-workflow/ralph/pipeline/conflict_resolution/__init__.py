@@ -28,12 +28,18 @@ from ralph.pipeline.conflict_resolution.driver import (
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStop,
     RebaseStopResolver,
+    active_rebase_resolution_session,
+    bind_active_rebase_resolution_session,
+    resolution_session_from_config,
     resolve_rebase_in_progress,
 )
 
 __all__ = [
     "RebaseStop",
     "RebaseStopResolver",
+    "active_rebase_resolution_session",
+    "bind_active_rebase_resolution_session",
+    "resolution_session_from_config",
     "resolve_rebase_in_progress",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_pipeline",

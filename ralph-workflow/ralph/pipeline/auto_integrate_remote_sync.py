@@ -322,6 +322,7 @@ def _dispatch_pull_outcome(
             chosen_remote,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
             rebase_stop_resolver=rebase_stop_resolver,
+            conflict_resolution_config=config,
         )
         if reconciliation.reconciled:
             _arm_throttle(repo_root, chosen_remote, target, clock)
@@ -669,6 +670,7 @@ def _attempt_reconcile_and_push(
             remote,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
             rebase_stop_resolver=rebase_stop_resolver,
+            conflict_resolution_config=config,
         )
         if not reconciliation.reconciled:
             return _PushOutcome(

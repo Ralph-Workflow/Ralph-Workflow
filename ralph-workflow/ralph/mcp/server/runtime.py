@@ -239,12 +239,15 @@ def build_standalone_http_server(
         )
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
+    activity_only = cast(
+        "bool", getattr(effective_session, "activity_only_supervision", False)
+    )
     server = McpServer(
         effective_session,
         workspace,
         registry,
-        wrapup_provider=_session_wrapup_provider(env_map),
-        cycle_deadline_provider=CycleDeadlineNotifier().notice,
+        wrapup_provider=None if activity_only else _session_wrapup_provider(env_map),
+        cycle_deadline_provider=None if activity_only else CycleDeadlineNotifier().notice,
         mcp_activity_sink=(activity_relay_sender.emit if activity_relay_sender is not None else None),
     )
     return _StandaloneHttpServer(host, port, server)

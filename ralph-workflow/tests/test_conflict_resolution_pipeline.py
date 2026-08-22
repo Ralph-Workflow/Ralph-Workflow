@@ -448,6 +448,37 @@ def test_resolution_termination_keeps_typed_reason_activity_and_unresolved_paths
     assert "src/alpha.py, docs/beta.md" in termination
 
 
+def test_expired_operator_cap_is_reported_before_another_resolver_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-2/R6: a rebase-wide expired cap cannot be passed as an invalid zero timeout."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
+    display = _FakeDisplay()
+    session = ResolutionSession(started_at=0.0, total_resolution_cap_seconds=60.0)
+    calls: list[str] = []
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=display,
+            display_context=None,
+            invoke=lambda *_args: calls.append("invoked") or False,
+            clock=lambda: 60.0,
+            session=session,
+        )
+        is False
+    )
+
+    assert calls == []
+    assert session.terminal_reason is ResolutionTerminationReason.OPERATOR_CAP_REACHED
+    assert any("OPERATOR_CAP_REACHED" in line for line in display.warn_lines)
+
+
 def test_configured_operator_cap_reaches_the_active_invocation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -5,8 +5,21 @@ from __future__ import annotations
 from contextvars import Context
 from dataclasses import dataclass
 
+import pytest
+
+from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
+from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
+from ralph.agents.timeout_clock import FakeClock
 from ralph.mcp.server._activity_relay import ActivityRelay, ActivityRelaySender
-from ralph.mcp.server._activity_sink import invoke_active_sink, reset_active_sink, set_active_sink
+from ralph.mcp.server._activity_sink import (
+    invoke_active_sink,
+    invoke_subagent_sink,
+    reset_active_sink,
+    reset_subagent_sink,
+    set_active_sink,
+    set_subagent_sink,
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +63,105 @@ def test_conflict_resolution_liveness_path_matrix() -> None:
         "driver-deadline", "hard-stop", "post-exit-process-wait", "descendant-wait",
     }
     assert next(row for row in observations if row.source == "mcp_tool").observed_verdict == "missing across process boundary"
+
+
+class _LiveSubagentMonitor:
+    """Minimal process-monitor seam that reports one quality-filtered live child."""
+
+    def live_subagent_count(self) -> int:
+        return 1
+
+
+@pytest.mark.parametrize(
+    ("source", "recorder"),
+    [
+        ("stdout", "record_activity"),
+        ("mcp_tool", "record_mcp_tool_call"),
+        ("subagent_output", "record_subagent_work"),
+        ("subagent_liveness", "process-monitor quality-filtered liveness"),
+        ("workspace", "record_workspace_event"),
+    ],
+)
+def test_conflict_resolution_liveness_inventory_proves_standard_categories_and_conflict_transports(
+    source: str,
+    recorder: str,
+) -> None:
+    """S-1/R3: every ordinary liveness source has the same conflict deferral path.
+
+    The test drives each real recorder or its real active-sink transport rather
+    than treating a literal observation table as evidence.  A future ordinary
+    source that does not reach the conflict watchdog cannot be added to this
+    inventory without making this parity check fail.
+    """
+    standard_clock = FakeClock()
+    standard = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=10.0,
+            activity_evidence_ttl_seconds=30.0,
+            max_session_seconds=None,
+            max_waiting_on_child_seconds=1_000.0,
+            no_output_at_start_seconds=None,
+        ),
+        standard_clock,
+        process_monitor=_LiveSubagentMonitor() if source == "subagent_liveness" else None,
+    )
+    standard.record_invocation_start()
+    standard_clock.advance(9.0)
+    _produce(source, standard)
+    standard_clock.advance(1.0)
+    assert standard.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE, recorder
+
+    conflict_clock = FakeClock()
+    conflict = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=900.0,
+            profile=TimeoutProfile.ACTIVITY_ONLY,
+            max_session_seconds=900.0,
+            max_waiting_on_child_seconds=900.0,
+        ),
+        conflict_clock,
+        process_monitor=_LiveSubagentMonitor() if source == "subagent_liveness" else None,
+    )
+    conflict.record_invocation_start()
+    for _ in range(3):
+        conflict_clock.advance(899.0)
+        _produce(source, conflict)
+        assert conflict.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE, source
+
+
+def _produce(source: str, watchdog: IdleWatchdog) -> None:
+    if source == "stdout":
+        watchdog.record_activity()
+    elif source == "mcp_tool":
+        _emit_mcp_tool(watchdog)
+    elif source == "subagent_output":
+        _emit_subagent_output(watchdog)
+    elif source == "subagent_liveness":
+        _emit_subagent_liveness(watchdog)
+    elif source == "workspace":
+        watchdog.record_workspace_event()
+    else:
+        raise AssertionError(f"unrecognized liveness source: {source}")
+
+
+def _emit_mcp_tool(watchdog: IdleWatchdog) -> None:
+    token = set_active_sink(lambda _name: watchdog.record_mcp_tool_call())
+    try:
+        invoke_active_sink("read_file")
+    finally:
+        reset_active_sink(token)
+
+
+def _emit_subagent_output(watchdog: IdleWatchdog) -> None:
+    token = set_subagent_sink(lambda line: watchdog.record_subagent_work(description=line))
+    try:
+        invoke_subagent_sink("progress: delegated resolver edited a conflicted path")
+    finally:
+        reset_subagent_sink(token)
+
+
+def _emit_subagent_liveness(watchdog: IdleWatchdog) -> None:
+    del watchdog
 
 
 def test_conflict_resolution_regression_mcp_relay_crosses_the_process_boundary() -> None:

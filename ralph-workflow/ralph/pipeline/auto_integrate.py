@@ -551,6 +551,7 @@ def _integrate_once(
             prefer_merge=prefer_merge,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
+            conflict_resolution_config=config.conflict_resolution,
         )
         if rebase_result.short_circuit is not None:
             # Resolved failures clear the record; an abort that leaves a rebase

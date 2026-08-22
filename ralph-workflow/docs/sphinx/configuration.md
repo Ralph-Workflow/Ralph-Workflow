@@ -188,7 +188,7 @@ Use this section to tune **routing limits** for merge and rebase conflict resolu
 | `max_rounds_per_stop` | `3` | integer `>= 1` | Completed resolution attempts allowed for one merge or paused rebase stop. |
 | `max_rebase_conflict_stops` | `10` | integer `>= 1` | Paused rebase stops that Ralph Workflow may route through resolution. |
 | `max_fallback_agents` | `2` | integer `>= 1` | Candidate agents considered in a resolution round. |
-| `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for the whole resolution. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
+| `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for one complete merge resolution or all stops of one paused rebase. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
 
 For example, an operator who deliberately wants a one-hour total cap can add:
 

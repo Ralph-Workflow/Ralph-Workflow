@@ -24,12 +24,16 @@ from ralph.pipeline._auto_integrate_reclaim import reclaim_dirty_target_worktree
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, clear_record, write_record
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
+    resolution_session_from_config,
     resolve_rebase_in_progress,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -60,6 +64,7 @@ def reconcile_target_onto_remote(
     remote: str,
     *,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    conflict_resolution_config: UnifiedConfig | None = None,
     reclaim_target_worktree: bool = True,
 ) -> ReconciliationOutcome:
     """Rebase unpublished local target commits onto ``remote/target`` safely.
@@ -76,7 +81,15 @@ def reconcile_target_onto_remote(
             False, reason or f"target '{target}' is unavailable for reconciliation"
         )
     return _reconcile_owned_target(
-        repo_root, owner, target, remote, pre_target_sha, rebase_stop_resolver
+        repo_root,
+        owner,
+        target,
+        remote,
+        pre_target_sha,
+        rebase_stop_resolver,
+        resolution_session_from_config(conflict_resolution_config)
+        if conflict_resolution_config is not None
+        else None,
     )
 
 
@@ -87,6 +100,7 @@ def _reconcile_owned_target(
     remote: str,
     pre_target_sha: str,
     rebase_stop_resolver: RebaseStopResolver | None,
+    resolution_session: ResolutionSession | None,
 ) -> ReconciliationOutcome:
     """Reconcile an owned target while retaining recovery ownership on every failure."""
     try:
@@ -112,7 +126,12 @@ def _reconcile_owned_target(
         if (
             rebase_in_progress(owner)
             and rebase_stop_resolver is not None
-            and resolve_rebase_in_progress(owner, f"{remote}/{target}", rebase_stop_resolver)
+            and _resolve_rebase_with_session(
+                owner,
+                f"{remote}/{target}",
+                rebase_stop_resolver,
+                resolution_session,
+            )
             and not rebase_in_progress(owner)
         ):
             return _clear_successful_reconciliation_record(repo_root, target, remote)
@@ -125,6 +144,18 @@ def _reconcile_owned_target(
     return _abort_restore_or_retain_record(
         repo_root, owner, target, remote, pre_target_sha, "conflicted"
     )
+
+
+def _resolve_rebase_with_session(
+    owner: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    session: ResolutionSession | None,
+) -> bool:
+    """Preserve the legacy resolver seam when no typed config reached this caller."""
+    if session is None:
+        return resolve_rebase_in_progress(owner, target, resolver)
+    return resolve_rebase_in_progress(owner, target, resolver, session=session)
 
 
 def _clear_successful_reconciliation_record(

@@ -158,6 +158,39 @@ def test_conflict_resolution_regression_pty_parent_exit_has_no_elapsed_drain() -
             os.close(reader._read_fd)
 
 
+def test_conflict_resolution_regression_pty_termination_exposes_direct_liveness_metadata() -> None:
+    """S-3/R7: a PTY inactivity verdict carries the same direct fields as subprocess mode."""
+    read_fd, write_fd = os.pipe()
+    reader: PtyLineReader | None = None
+    try:
+        clock = FakeClock()
+        ctx = AgentRunCtx(
+            config=AgentConfig(cmd="resolver", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            show_progress=False,
+            extra_env=None,
+            workspace_path=None,
+            policy=TimeoutPolicy(idle_timeout_seconds=10.0, profile=TimeoutProfile.ACTIVITY_ONLY),
+        )
+        reader = PtyLineReader(_PtyParentExitedHandle(read_fd), "resolver", ctx, clock, extras=None)
+        watchdog = IdleWatchdog(ctx.policy, clock)
+        watchdog.record_invocation_start()
+        clock.advance(10.0)
+
+        fire_result = reader._check_fire(watchdog, watchdog.evaluate(lambda: AgentExecutionState.ACTIVE))
+        assert fire_result is not None
+        _pending, timeout_error = fire_result
+
+        diagnostic = timeout_error.diagnostic
+        assert diagnostic["last_activity_kind"] == "stdout"
+        assert diagnostic["last_activity_at"] == 0.0
+        assert diagnostic["invocation_elapsed_seconds"] == 10.0
+    finally:
+        os.close(write_fd)
+        if reader is not None:
+            os.close(reader._input_writer_fd)
+            os.close(reader._read_fd)
+
+
 def test_conflict_resolution_regression_parent_exit_disables_elapsed_reader_drain(
     tmp_path: Path,
 ) -> None:

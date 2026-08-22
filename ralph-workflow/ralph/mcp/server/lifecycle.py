@@ -871,6 +871,11 @@ def session_payload_json(session: SessionLike) -> str:
         "drain": session.drain,
         "capabilities": sorted(session.capabilities),
     }
+    activity_only_supervision = cast(
+        "bool", getattr(session, "activity_only_supervision", False)
+    )
+    if activity_only_supervision:
+        session_payload["activity_only_supervision"] = True
     raw_parallel_worker: object = getattr(session, "parallel_worker", False)
     if bool(raw_parallel_worker):
         session_payload["parallel_worker"] = True

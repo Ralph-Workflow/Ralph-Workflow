@@ -403,6 +403,10 @@ class FileBackedSession:
         return value if isinstance(value, str) else "standalone"
 
     @property
+    def activity_only_supervision(self) -> bool:
+        return bool(self._load().get("activity_only_supervision", False))
+
+    @property
     def capabilities(self) -> set[str]:
         capabilities_value: object = self._load().get("capabilities", [])
         if not isinstance(capabilities_value, list):
@@ -716,6 +720,7 @@ def session_from_env(
         run_id=run_id_value,
         drain=drain_value,
         capabilities=capabilities,
+        activity_only_supervision=bool(payload.get("activity_only_supervision", False)),
         parallel_worker=bool(payload.get("parallel_worker", False)),
         worker_artifact_dir=worker_artifact_dir,
         worker_namespace=worker_namespace,

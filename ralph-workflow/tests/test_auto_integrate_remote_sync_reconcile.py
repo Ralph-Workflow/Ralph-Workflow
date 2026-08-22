@@ -39,13 +39,16 @@ if TYPE_CHECKING:
 def _config(**overrides: object):
     from ralph.config.models import UnifiedConfig
 
-    base = {
+    base: dict[str, object] = {
         "general": {
             "auto_integrate_remote_enabled": True,
             "auto_integrate_remote": "origin",
         },
     }
+    conflict_resolution = overrides.pop("conflict_resolution", None)
     base["general"].update(overrides)
+    if conflict_resolution is not None:
+        base["conflict_resolution"] = conflict_resolution
     return UnifiedConfig.model_validate(base)
 
 
@@ -459,6 +462,45 @@ def test_target_reconciliation_regression_retains_record_when_abort_cannot_resto
     assert success is False
     assert "retained for recovery" in reason
     assert cleared == []
+
+
+def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_all_three_argument_resolver_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1/S-2: remote reconciliation owns one session for its full paused rebase."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    states = iter((True, False))
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    sessions: list[object] = []
+    monkeypatch.setattr(
+        remote_reconcile,
+        "resolve_rebase_in_progress",
+        lambda _root, _target, resolver, *, session: sessions.append(session)
+        or resolver(_root, _target, object()),
+    )
+    monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
+
+    config = _config(conflict_resolution={"total_resolution_cap_seconds": 60.0})
+    outcome = remote_reconcile.reconcile_target_onto_remote(
+        Path("/repo"),
+        "main",
+        "origin",
+        rebase_stop_resolver=lambda *_a: True,
+        conflict_resolution_config=config,
+    )
+
+    assert outcome.reconciled is True
+    assert len(sessions) == 1
+    assert sessions[0].total_resolution_cap_seconds == 60.0
 
 
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(

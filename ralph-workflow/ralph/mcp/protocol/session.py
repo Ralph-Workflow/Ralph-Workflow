@@ -103,6 +103,11 @@ class McpSession(Protocol):
         ...
 
     @property
+    def activity_only_supervision(self) -> bool:
+        """Whether this session must suppress ordinary elapsed-time MCP notices."""
+        ...
+
+    @property
     def capabilities(self) -> set[str]:
         """Set of capability identifiers granted to the session by the agent's auth contract."""
         ...
@@ -245,6 +250,7 @@ class AgentSession:
     run_id: str
     drain: str
     capabilities: set[str] = field(default_factory=set)
+    activity_only_supervision: bool = False
     policy_flags: set[str] | None = None
     created_at: float = field(default_factory=time.time)
     parallel_worker: bool = False

@@ -15,6 +15,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.graph import TERMINAL_RESOLVED, route_after_round
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
+from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -85,10 +86,7 @@ def run_conflict_resolution_pipeline(
             invoke=invoke,
             clock=clock or time.monotonic,
             stop=None,
-            session=session
-            or ResolutionSession(
-                max_rebase_conflict_stops=config.conflict_resolution.max_rebase_conflict_stops
-            ),
+            session=session or _new_resolution_session(config),
         )
     except Exception as exc:
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
@@ -127,15 +125,24 @@ def run_rebase_conflict_resolution_pipeline(
             invoke=invoke,
             clock=clock or time.monotonic,
             stop=stop,
-            session=session
-            or ResolutionSession(
-                max_rebase_conflict_stops=config.conflict_resolution.max_rebase_conflict_stops
-            ),
+            session=session or active_rebase_resolution_session() or _new_resolution_session(config),
         )
     except Exception as exc:
         logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
         emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
         return False
+
+
+def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
+    """Snapshot typed limits once when a standalone merge resolution begins."""
+    limits = config.conflict_resolution
+    return ResolutionSession(
+        inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
+        max_rounds_per_stop=limits.max_rounds_per_stop,
+        max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
+        max_fallback_agents=limits.max_fallback_agents,
+        total_resolution_cap_seconds=limits.total_resolution_cap_seconds,
+    )
 
 
 def _restore_status_bar(display: ParallelDisplay | None, root: Path, previous_model: object | None) -> None:
@@ -166,11 +173,14 @@ def _run_rounds(
 ) -> bool:
     """Execute completed-work routing while one session owns all timing context."""
     limits = config.conflict_resolution
+    round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
+    fallback_cap = session.max_fallback_agents or limits.max_fallback_agents
+    inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
     conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
     if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
         emit_conflict_phase_line(display, "no readable conflicted paths; nothing a resolver can repair")
         return False
-    candidates = resolution_chain_agents(policy_bundle)[: limits.max_fallback_agents]
+    candidates = resolution_chain_agents(policy_bundle)[:fallback_cap]
     if not candidates:
         emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
         return False
@@ -185,6 +195,8 @@ def _run_rounds(
         display=display,
         display_context=display_context,
         limits=limits,
+        round_cap=round_cap,
+        inactivity_timeout=inactivity_timeout,
         clock=clock,
         session=session,
         stop=stop,
@@ -198,14 +210,17 @@ def _run_rounds(
     )
     prompt_path: Path | None = None
     try:
-        for round_index in range(1, limits.max_rounds_per_stop + 1):
-            _push_round_status(display, root, target, round_index, limits.max_rounds_per_stop, stop)
+        for round_index in range(1, round_cap + 1):
+            if _operator_cap_expired(session, clock):
+                _emit_expired_operator_cap(display, session, conflicted, clock)
+                return False
+            _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = render_conflict_prompt(
                 root=root,
                 target=target,
                 conflicted_paths=conflicted,
                 round_index=round_index,
-                round_cap=limits.max_rounds_per_stop,
+                round_cap=round_cap,
                 surviving_marker_paths=(
                     () if round_index == 1 else session.unresolved_paths
                 ),
@@ -245,7 +260,7 @@ def _run_rounds(
                 invocation_succeeded=succeeded,
                 surviving_marker_paths=session.unresolved_paths,
                 round_index=round_index,
-                cap=limits.max_rounds_per_stop,
+                cap=round_cap,
             )
             if route == TERMINAL_RESOLVED:
                 _emit_success(display, round_index, stop)
@@ -260,6 +275,40 @@ def _run_rounds(
         + ", ".join(session.unresolved_paths or conflicted),
     )
     return False
+
+
+def _operator_cap_expired(session: ResolutionSession, clock: MonotonicClock) -> bool:
+    """Prevent a zero-second cap from reaching an invocation watchdog."""
+    cap = session.total_resolution_cap_seconds
+    return (
+        cap is not None
+        and session.started_at is not None
+        and clock() - session.started_at >= cap
+    )
+
+
+def _emit_expired_operator_cap(
+    display: ParallelDisplay | None,
+    session: ResolutionSession,
+    conflicted: tuple[str, ...],
+    clock: MonotonicClock,
+) -> None:
+    """Report a rebase-wide cap before another resolver process is launched."""
+    session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
+    session.last_activity_kind = None
+    session.last_activity_at = None
+    session.last_duration_seconds = max(0.0, clock() - (session.started_at or clock()))
+    _emit_attempt_outcome(
+        display,
+        ResolutionOutcome(
+            succeeded=False,
+            reason=session.terminal_reason,
+            duration_seconds=session.last_duration_seconds,
+            last_activity_kind=None,
+            last_activity_at=None,
+            unresolved_paths=session.unresolved_paths or conflicted,
+        ),
+    )
 
 
 def _push_round_status(
@@ -338,6 +387,8 @@ def _default_invoker(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
     limits: ConflictResolutionConfig,
+    round_cap: int,
+    inactivity_timeout: float,
     clock: MonotonicClock,
     session: ResolutionSession,
     stop: RebaseStop | None,
@@ -345,7 +396,7 @@ def _default_invoker(
     target: str,
 ) -> ResolutionInvoker:
     """Build a conflict-only invocation that shares session cap and status context."""
-    cap = limits.total_resolution_cap_seconds
+    cap = session.total_resolution_cap_seconds
     interval = limits.status_interval_seconds
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -353,7 +404,7 @@ def _default_invoker(
             display=display,
             target=target,
             round_index=round_index,
-            round_cap=limits.max_rounds_per_stop,
+            round_cap=round_cap,
             stop_index=stop.stop_index if stop is not None else None,
             stop_cap=stop.stop_cap if stop is not None else None,
             clock=clock,
@@ -372,6 +423,7 @@ def _default_invoker(
             display=display,
             display_context=display_context,
             operator_cap_seconds=_remaining_operator_cap(cap, session, clock),
+            inactivity_timeout_seconds=inactivity_timeout,
             status_interval_seconds=interval,
             activity_status_listener=reporter.observe,
             unresolved_paths=session.unresolved_paths,

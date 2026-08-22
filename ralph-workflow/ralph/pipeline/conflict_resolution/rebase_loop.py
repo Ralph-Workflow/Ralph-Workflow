@@ -26,9 +26,12 @@ not stage even if it tried.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -53,6 +56,10 @@ from ralph.pipeline.conflict_resolution.graph import (
     TERMINAL_RESOLVED,
     route_after_stop,
 )
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
+if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
 
 #: Placeholder subject used when the stopped commit's subject could not
 #: be read. The stop is still resolvable -- the conflicted paths are what
@@ -81,8 +88,16 @@ _REBASE_PROGRESS_FILES = (
 __all__ = [
     "RebaseStop",
     "RebaseStopResolver",
+    "active_rebase_resolution_session",
+    "bind_active_rebase_resolution_session",
+    "resolution_session_from_config",
     "resolve_rebase_in_progress",
 ]
+
+
+_ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = ContextVar(
+    "active_rebase_resolution_session", default=None
+)
 
 
 @dataclass(frozen=True)
@@ -126,6 +141,34 @@ class RebaseStop:
 type RebaseStopResolver = Callable[["Path", str, RebaseStop], bool]
 
 
+def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
+    """Snapshot immutable conflict-resolution limits for one complete rebase."""
+    limits = config.conflict_resolution
+    return ResolutionSession(
+        inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
+        max_rounds_per_stop=limits.max_rounds_per_stop,
+        max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
+        max_fallback_agents=limits.max_fallback_agents,
+        total_resolution_cap_seconds=limits.total_resolution_cap_seconds,
+    )
+
+
+
+@contextmanager
+def bind_active_rebase_resolution_session(session: ResolutionSession) -> Iterator[None]:
+    """Expose one complete-rebase session to unchanged three-argument resolvers."""
+    token = _ACTIVE_REBASE_RESOLUTION_SESSION.set(session)
+    try:
+        yield
+    finally:
+        _ACTIVE_REBASE_RESOLUTION_SESSION.reset(token)
+
+
+def active_rebase_resolution_session() -> ResolutionSession | None:
+    """Return the session bound by the owning rebase loop, if any."""
+    return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
+
+
 def resolve_rebase_in_progress(
     root: Path,
     target: str,
@@ -157,9 +200,13 @@ def resolve_rebase_in_progress(
     path, so an unexpected failure here degrades to exactly the
     behaviour that shipped before this module existed.
     """
+    effective_session = session if isinstance(session, ResolutionSession) else None
     try:
-        effective_cap = _configured_stop_cap(session, stop_cap)
-        return _resolve_stops(root, target, resolver, effective_cap)
+        effective_cap = _configured_stop_cap(effective_session, stop_cap)
+        if effective_session is None:
+            return _resolve_stops(root, target, resolver, effective_cap)
+        with bind_active_rebase_resolution_session(effective_session):
+            return _resolve_stops(root, target, resolver, effective_cap)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: rebase resolution loop failed for '{}': {}",
@@ -169,7 +216,7 @@ def resolve_rebase_in_progress(
         return False
 
 
-def _configured_stop_cap(session: object | None, fallback: int) -> int:
+def _configured_stop_cap(session: ResolutionSession | None, fallback: int) -> int:
     """Use the configured stop cap when a typed resolution session carries it."""
     raw: object = getattr(session, "max_rebase_conflict_stops", fallback)
     return raw if isinstance(raw, int) and raw > 0 else fallback
