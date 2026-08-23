@@ -32,6 +32,10 @@ from ralph.pipeline.conflict_resolution.graph import (
     TERMINAL_RESOLVED,
     route_after_stop,
 )
+from ralph.pipeline.conflict_resolution.progress import (
+    RebaseResolutionProgress,
+    save_progress,
+)
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStop,
     resolve_rebase_in_progress,
@@ -258,15 +262,14 @@ def test_failure_to_stage_rejects_the_stop(monkeypatch: pytest.MonkeyPatch, tmp_
     assert resolved is False
 
 
-def test_a_resolver_that_edits_an_unrequested_path_is_refused(
+def test_a_resolver_that_edits_an_unrequested_path_keeps_the_in_scope_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Scope is enforced, not merely requested.
+    """Scope rejection drops the stray path and still lands the stop.
 
     Only ``stop.conflicted_files`` is staged, so an edit anywhere else
-    cannot reach the replayed commit -- it can only linger as dirty
-    worktree state on top of a rebase that claimed to have landed. The
-    stop is refused before anything is staged.
+    cannot reach the replayed commit. The stray path is reverted; the
+    in-scope resolution still stages and continues.
     """
     repo = _FakeRepo(stops=1)
     _install_seams(
@@ -274,13 +277,21 @@ def test_a_resolver_that_edits_an_unrequested_path_is_refused(
         repo,
         dirty_after_resolution=[*_CONFLICTED, "docs/unrelated.md"],
     )
+    reverted: list[tuple[str, ...]] = []
+
+    def _revert(_root: Path, paths: tuple[str, ...]) -> bool:
+        reverted.append(paths)
+        return True
+
+    monkeypatch.setattr(loop_module, "_revert_unrequested_paths", _revert)
     seen: list[RebaseStop] = []
 
     resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
-    assert resolved is False
-    assert repo.staged == []
-    assert repo.continue_calls == 0
+    assert resolved is True
+    assert reverted == [("docs/unrelated.md",)]
+    assert repo.staged == [list(_CONFLICTED)]
+    assert repo.continue_calls == 1
 
 
 def test_a_worktree_dirty_before_the_resolver_ran_is_not_blamed_on_it(
@@ -859,3 +870,27 @@ def test_mixed_deterministic_conflict_declines_whole_stop(
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
     assert called[0].conflicted_files == ("one", "two")
+
+
+def test_resolve_skips_sidecar_landed_shas_and_starts_at_the_first_unlanded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A fresh process resumes at the first SHA that is not already landed."""
+    save_progress(
+        tmp_path,
+        RebaseResolutionProgress(landed_shas=["aaa1"], remaining_paths=list(_CONFLICTED)),
+    )
+    repo = _FakeRepo(stops=2)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(
+        loop_module,
+        "_rev_parse_rebase_head",
+        lambda _root: "aaa1" if repo.remaining == 2 else "bbb2",
+    )
+    seen: list[RebaseStop] = []
+
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
+
+    assert resolved is True
+    assert [stop.sha for stop in seen] == ["bbb2"]
+    assert repo.continue_calls == 2

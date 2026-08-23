@@ -187,7 +187,7 @@ Use this section to tune **routing limits** for merge and rebase conflict resolu
 | `status_interval_seconds` | `30.0` | finite number `> 0` | Low-cadence status interval for a long-running resolver. |
 | `max_rounds_per_stop` | `3` | integer `>= 1` | Completed resolution attempts allowed for one merge or paused rebase stop. |
 | `max_rebase_conflict_stops` | `10` | integer `>= 1` | Paused rebase stops that Ralph Workflow may route through resolution. |
-| `max_fallback_agents` | `2` | integer `>= 1` | Candidate agents considered in a resolution round. |
+| `max_fallback_agents` | `2` | integer `>= 1` | Retained for compatibility. It does **not** truncate the bound chain. How many agents run, and in what order, is the `rebase_conflict_resolution` chain in `agents.toml`. A one-agent chain is warned at load because this phase then has no fallback. |
 | `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for one complete merge resolution or all stops of one paused rebase. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
 
 For example, an operator who deliberately wants a one-hour total cap can add:

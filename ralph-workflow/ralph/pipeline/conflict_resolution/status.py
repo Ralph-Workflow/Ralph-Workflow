@@ -10,6 +10,9 @@ from loguru import logger
 
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.display.status_bar import StatusBarModel
+from ralph.pipeline.conflict_resolution.attempt_fault import (
+    ralph_origin_counts_as_liveness,
+)
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
 if TYPE_CHECKING:
@@ -46,6 +49,8 @@ class ResolutionStatusReporter:
             return
         diagnostic = _status_diagnostic(event)
         kind = diagnostic.get("last_activity_kind", "none")
+        if isinstance(kind, str) and not ralph_origin_counts_as_liveness(kind):
+            return
         age = diagnostic.get("last_activity_age_seconds", "unknown")
         self._last_emitted_at = now
         emit_conflict_phase_line(

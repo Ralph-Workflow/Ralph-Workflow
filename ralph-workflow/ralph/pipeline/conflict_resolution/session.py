@@ -13,6 +13,10 @@ from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.attempt_fault import (
+    INFRASTRUCTURE_TERMINATION_REASONS,
+    classify_ralph_origin_fault,
+)
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -30,6 +34,8 @@ if TYPE_CHECKING:
 
 __all__ = ["ResolutionSession", "invoke_resolution_agent", "resolution_chain_agents"]
 
+_MIN_FALLBACK_CHAIN_LENGTH = 2
+
 
 @dataclass
 class ResolutionSession:
@@ -46,6 +52,9 @@ class ResolutionSession:
     last_activity_kind: str | None = None
     last_activity_at: float | None = None
     last_duration_seconds: float | None = None
+    chain_cursor: int = 0
+    charge_conflict_budget: bool = True
+    dead_tool_surfaces: tuple[str, ...] = ()
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
@@ -56,7 +65,15 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
     if chain_config is None:
         return ()
-    return tuple(chain_config.agents)
+    agents = tuple(chain_config.agents)
+    if len(agents) < _MIN_FALLBACK_CHAIN_LENGTH:
+        logger.warning(
+            "conflict_resolution: drain '{}' is bound to a one-agent chain '{}'; "
+            "there is no fallback candidate if this resolver fails",
+            PHASE_RESOLUTION,
+            drain_binding.chain,
+        )
+    return agents
 
 
 def invoke_resolution_agent(
@@ -76,18 +93,29 @@ def invoke_resolution_agent(
     unresolved_paths: tuple[str, ...] = (),
     session: ResolutionSession | None = None,
 ) -> bool:
-    """Run one activity-only conflict attempt with no generic same-agent recovery."""
+    """Run one activity-only conflict attempt using the chain's retry budget."""
+    if session is not None and agent_name in session.dead_tool_surfaces:
+        logger.warning(
+            "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
+            agent_name,
+        )
+        session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        session.charge_conflict_budget = False
+        return False
+    wrapped_listener = _wrap_activity_listener(
+        activity_status_listener, session, agent_name=agent_name
+    )
     effect = InvokeAgentEffect(
         agent_name=agent_name,
         phase=PHASE_RESOLUTION,
         prompt_file=str(prompt_path),
         drain=PHASE_RESOLUTION,
         chain_name=PHASE_RESOLUTION,
-        requires_completion_evidence=True,
+        requires_completion_evidence=False,
         activity_only_supervision=True,
         activity_only_operator_cap_seconds=operator_cap_seconds,
         activity_only_status_interval_seconds=status_interval_seconds,
-        activity_status_listener=activity_status_listener,
+        activity_status_listener=wrapped_listener,
     )
     conflict_limits = config.conflict_resolution.model_copy(
         update={
@@ -100,7 +128,6 @@ def invoke_resolution_agent(
     )
     conflict_config = config.model_copy(
         update={
-            "general": config.general.model_copy(update={"max_same_agent_retries": 0}),
             "conflict_resolution": conflict_limits,
         }
     )
@@ -182,3 +209,28 @@ def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...
         fields.get("invocation_elapsed_seconds", "unknown"),
         ", ".join(unresolved_paths),
     )
+
+
+def _wrap_activity_listener(
+    listener: Callable[[object], None] | None,
+    session: ResolutionSession | None,
+    *,
+    agent_name: str,
+) -> Callable[[object], None] | None:
+    """Escalate Ralph-origin faults from activity events instead of treating them as life."""
+
+    def _observe(event: object) -> None:
+        reason = classify_ralph_origin_fault(str(event))
+        if reason is not None and session is not None:
+            session.terminal_reason = reason
+            session.charge_conflict_budget = False
+            if reason in INFRASTRUCTURE_TERMINATION_REASONS:
+                remembered = list(session.dead_tool_surfaces)
+                if agent_name not in remembered:
+                    remembered.append(agent_name)
+                session.dead_tool_surfaces = tuple(remembered)
+            return
+        if listener is not None:
+            listener(event)
+
+    return _observe

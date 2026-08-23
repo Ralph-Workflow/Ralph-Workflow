@@ -251,6 +251,14 @@ See [MCP Architecture](mcp-architecture.md#mcp-tools) for the dual-alias rule an
 
 See [Recovery](recovery.md#tool-availability-failures) for the three additive caps and the bounded recovery path.
 
+## Conflict resolution looks healthy but never finishes
+
+**Symptom:** Status shows recent activity, the unresolved file count does not fall, and the run later reports an unresolvable conflict.
+
+**Cause:** A dead tool surface or `transport_loop_detected` / supervision-relay failure was historically returned as a tool result and counted as liveness. Conflict resolution now fails that attempt on the first evidence, hands over to the next chain candidate, and does not charge the conflict budget. Elapsed child-wait time does not kill a progressing resolver. Silence still ends the session as `CONFLICT_INACTIVITY` after `inactivity_timeout_seconds` (default 900s). The optional `total_resolution_cap_seconds` is off by default and is named `OPERATOR_CAP_REACHED` when it fires.
+
+**Fix:** Read the ending line for the typed reason, last activity vs last progress, candidates tried, and unresolved paths. If the chain has a single agent, add a fallback in `[agent_chains.rebase_conflict_resolution]` — load warns when there is no fallback.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

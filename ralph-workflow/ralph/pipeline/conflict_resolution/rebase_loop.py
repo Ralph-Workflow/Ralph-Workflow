@@ -56,6 +56,11 @@ from ralph.pipeline.conflict_resolution.graph import (
     TERMINAL_RESOLVED,
     route_after_stop,
 )
+from ralph.pipeline.conflict_resolution.progress import (
+    RebaseResolutionProgress,
+    load_progress,
+    save_progress,
+)
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 if TYPE_CHECKING:
@@ -90,6 +95,7 @@ __all__ = [
     "RebaseStopResolver",
     "active_rebase_resolution_session",
     "bind_active_rebase_resolution_session",
+    "record_landed_stop",
     "resolution_session_from_config",
     "resolve_rebase_in_progress",
 ]
@@ -240,9 +246,19 @@ def _resolve_stops(
     # bounded retry loop's job (it re-observes and replays onto the new
     # tip); it is not evidence that this rebase failed.
     base = _rebase_base_sha(root) or target
+    entry_landed = frozenset(_landed_shas_at_entry(root))
+    skipped_entry_shas: set[str] = set()
     stops_spent = 0
     while rebase_in_progress_at(root):
-        if not _resolve_one_stop(root, target, resolver, stops_spent + 1, stop_cap):
+        if not _resolve_one_stop(
+            root,
+            target,
+            resolver,
+            stops_spent + 1,
+            stop_cap,
+            entry_landed,
+            skipped_entry_shas,
+        ):
             return False
         stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
@@ -265,14 +281,18 @@ def _resolve_one_stop(
     resolver: RebaseStopResolver,
     stop_index: int,
     stop_cap: int,
+    entry_landed: frozenset[str],
+    skipped_entry_shas: set[str],
 ) -> bool:
     """Resolve, prove and continue past ONE stop of the paused rebase.
 
     The order is the contract: observe the worktree BEFORE the resolver
     runs, so what it changed can be told apart from what the replay had
-    already left dirty; check the scope BEFORE staging, so a resolver
-    that strayed outside its conflicted paths is rejected rather than
-    half-applied; and only then continue.
+    already left dirty; revert out-of-scope edits BEFORE staging, so a
+    resolver that strayed outside its conflicted paths does not poison
+    the worktree, while the in-scope resolution can still land; and only
+    then continue. Stops already recorded in the progress sidecar are
+    skipped so a fresh process resumes at the first unlanded stop.
 
     Returns:
         Whether this stop landed. ``False`` routes the caller -- and
@@ -282,6 +302,13 @@ def _resolve_one_stop(
     stop = _read_stop(root, stop_index, stop_cap)
     if stop is None:
         return False
+    if stop.sha in entry_landed and stop.sha not in skipped_entry_shas:
+        skipped_entry_shas.add(stop.sha)
+        logger.info(
+            "conflict_resolution: resumed from sidecar; skipping already-landed stop {}",
+            stop.sha,
+        )
+        return _continue_past(root, stop)
     before = _worktree_dirty_paths(root)
     if before is None:
         return False
@@ -605,10 +632,9 @@ def _touched_nothing_unexpected(
 
     The prompt forbids editing any path that is not conflicted, and this
     is the enforcement that makes the prohibition real rather than
-    advisory. Without it a disobedient resolver's unrelated edit is
-    neither staged into the replayed commit -- :func:`_stage_and_prove`
-    stages only ``stop.conflicted_files`` -- nor rejected, so it survives
-    as dirty worktree state on top of a rebase that reported success.
+    advisory. A disobedient resolver's unrelated edit is reverted so it
+    cannot linger as dirty worktree state, while in-scope conflicted
+    paths still stage through :func:`_stage_and_prove`.
 
     ``before`` is subtracted so a worktree that was already dirty when
     the stop was read is not blamed on the resolver; the gate is about
@@ -620,6 +646,15 @@ def _touched_nothing_unexpected(
     unexpected = sorted(after - before - frozenset(stop.conflicted_files))
     if not unexpected:
         return True
+    unexpected_paths = tuple(unexpected)
+    if _revert_unrequested_paths(root, unexpected_paths):
+        logger.warning(
+            "conflict_resolution: resolver edited unrequested path(s) at stop {}: {}; "
+            "reverted those paths and kept the in-scope resolution",
+            stop.stop_index,
+            unexpected,
+        )
+        return True
     logger.warning(
         "conflict_resolution: resolver edited unrequested path(s) at stop {}: {}; "
         "rejecting the resolution",
@@ -627,6 +662,37 @@ def _touched_nothing_unexpected(
         unexpected,
     )
     return False
+
+
+def _revert_unrequested_paths(root: Path, paths: tuple[str, ...]) -> bool:
+    """Drop resolver edits that were outside the conflicted paths."""
+    if not paths:
+        return True
+    checkout = run_git(
+        ("checkout", "--", *paths),
+        cwd=root,
+        label="git-revert-unrequested-paths",
+    )
+    if checkout.returncode == 0:
+        return True
+    for path in paths:
+        target = root / path
+        try:
+            if target.is_file() or target.is_symlink():
+                target.unlink()
+            elif target.exists():
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
+    """Return sidecar SHAs recorded before this process started resolving."""
+    progress = load_progress(root)
+    if progress is None:
+        return ()
+    return tuple(progress.landed_shas)
 
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
@@ -715,6 +781,7 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
     try:
         continue_rebase_at(root)
     except NoRebaseInProgressError:
+        record_landed_stop(root, stop)
         return True
     except (ConflictRemainingError, RebaseContinuationError) as exc:
         if _advanced_to_a_new_stop(root, stop):
@@ -722,6 +789,7 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
                 "conflict_resolution: stop {} landed; the rebase stopped again on the next commit",
                 stop.stop_index,
             )
+            record_landed_stop(root, stop)
             return True
         logger.warning(
             "conflict_resolution: could not continue the rebase past stop {}: {}",
@@ -729,7 +797,16 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
             exc,
         )
         return False
+    record_landed_stop(root, stop)
     return True
+
+
+def record_landed_stop(root: Path, stop: RebaseStop) -> None:
+    """Persist a landed rebase stop so a later failure does not discard it."""
+    progress = load_progress(root) or RebaseResolutionProgress()
+    progress.record_landed(stop.sha)
+    progress.remaining_paths = list(stop.conflicted_files)
+    save_progress(root, progress)
 
 
 def _advanced_to_a_new_stop(root: Path, stop: RebaseStop) -> bool:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog._sanitize import _sanitize_subagent_description
+from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
 from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
 from ralph.agents.idle_watchdog.watchdog_verdict import WatchdogVerdict
@@ -90,7 +91,7 @@ def compute_effective_suspect(
     return self._config.suspect_waiting_on_child_seconds, "standard"
 
 
-def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + gate path + stuck_job_sub_ceiling
+def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated reasons + gate path + stuck_job_sub_ceiling + activity-only skip
     self: IdleWatchdog,
     now: float,
     classify_quiet: Callable[[], AgentExecutionState],
@@ -241,6 +242,8 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
         return WatchdogVerdict.FIRE
 
     if candidate_total >= effective_ceiling:
+        if self._config.profile == TimeoutProfile.ACTIVITY_ONLY:
+            return WatchdogVerdict.CONTINUE
         # Hard enforcement (R3, Trustworthy Idle Watchdog spec): the
         # CUMULATIVE waiting ceiling fires UNCONDITIONALLY when
         # ``candidate_total >= effective_ceiling``. Per PROMPT:

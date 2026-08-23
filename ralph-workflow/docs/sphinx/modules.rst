@@ -1049,6 +1049,27 @@ ralph.pipeline.conflict_resolution.driver
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.attempt_fault
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.attempt_fault
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.progress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.progress
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.sight
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.sight
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.resolution_outcome
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

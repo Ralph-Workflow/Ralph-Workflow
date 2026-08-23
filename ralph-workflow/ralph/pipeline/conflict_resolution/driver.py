@@ -13,6 +13,7 @@ from ralph.git.merge import paths_with_conflict_markers, unmerged_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.attempt_fault import INFRASTRUCTURE_TERMINATION_REASONS
 from ralph.pipeline.conflict_resolution.graph import TERMINAL_RESOLVED, route_after_round
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
@@ -21,6 +22,11 @@ from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     invoke_resolution_agent,
     resolution_chain_agents,
+)
+from ralph.pipeline.conflict_resolution.sight import (
+    classify_unmerged_conflicts,
+    out_of_reach_paths,
+    stage_mechanical_conflicts,
 )
 from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
@@ -156,6 +162,39 @@ def _restore_status_bar(display: ParallelDisplay | None, root: Path, previous_mo
         restore_status_bar(display, previous_model)
 
 
+def _prepare_conflicted_paths(
+    root: Path,
+    stop: RebaseStop | None,
+    session: ResolutionSession,
+    display: ParallelDisplay | None,
+) -> tuple[tuple[str, ...], bool | None]:
+    """Classify on sight; return remaining paths or an early pipeline verdict."""
+    conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
+    if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
+        emit_conflict_phase_line(display, "no readable conflicted paths; nothing a resolver can repair")
+        return (), False
+    kinds = classify_unmerged_conflicts(root, conflicted)
+    unreachable = out_of_reach_paths(kinds)
+    if unreachable:
+        session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        emit_conflict_phase_line(
+            display,
+            "OUT_OF_REACH: escalating on sight without spending the chain; unresolved_paths="
+            + ", ".join(unreachable),
+        )
+        return (), False
+    staged = stage_mechanical_conflicts(root, kinds)
+    if not staged:
+        return conflicted, None
+    remaining = tuple(path for path in conflicted if path not in set(staged))
+    if remaining:
+        return remaining, None
+    emit_conflict_phase_line(
+        display, "mechanical conflicts staged without spending the resolution chain"
+    )
+    return (), True
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -174,13 +213,12 @@ def _run_rounds(
     """Execute completed-work routing while one session owns all timing context."""
     limits = config.conflict_resolution
     round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
-    fallback_cap = session.max_fallback_agents or limits.max_fallback_agents
     inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
-    conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
-    if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
-        emit_conflict_phase_line(display, "no readable conflicted paths; nothing a resolver can repair")
-        return False
-    candidates = resolution_chain_agents(policy_bundle)[:fallback_cap]
+    prepared, early = _prepare_conflicted_paths(root, stop, session, display)
+    if early is not None:
+        return early
+    conflicted = prepared
+    candidates = resolution_chain_agents(policy_bundle)
     if not candidates:
         emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
         return False
@@ -233,11 +271,17 @@ def _run_rounds(
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
             attempt_started = clock()
-            session.terminal_reason = None
+            if (
+                session.terminal_reason not in INFRASTRUCTURE_TERMINATION_REASONS
+                and session.terminal_reason is not ResolutionTerminationReason.EXCEPTION
+            ):
+                session.terminal_reason = None
             session.last_activity_kind = None
             session.last_activity_at = None
             session.last_duration_seconds = None
-            succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
+            succeeded = _run_one_round(
+                runner, candidates, prompt_path, round_index, display, session
+            )
             session.unresolved_paths = tuple(paths_with_conflict_markers(root, conflicted))
             outcome = ResolutionOutcome(
                 succeeded=succeeded and not session.unresolved_paths,
@@ -347,7 +391,9 @@ def _emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOu
         f"{outcome.reason.value}: duration={outcome.duration_seconds:.1f}s; "
         f"last_activity_kind={outcome.last_activity_kind or 'none'}; "
         f"last_activity_at={outcome.last_activity_at or 'never'}; "
-        f"unresolved_paths={', '.join(outcome.unresolved_paths)}",
+        f"last_progress=unresolved_count={len(outcome.unresolved_paths)}; "
+        f"unresolved_paths={', '.join(outcome.unresolved_paths)}; "
+        f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed",
     )
 
 
@@ -367,14 +413,38 @@ def _run_one_round(
     prompt_path: Path,
     round_index: int,
     display: ParallelDisplay | None,
+    session: ResolutionSession,
 ) -> bool:
-    for agent_name in candidates:
-        emit_conflict_phase_line(display, f"round {round_index}: invoking {agent_name} to resolve the conflicts")
+    start = min(session.chain_cursor, len(candidates))
+    if start >= len(candidates):
+        if len(candidates) == 1:
+            indexed: list[tuple[int, str]] = [(0, candidates[0])]
+        else:
+            indexed = []
+    else:
+        indexed = list(enumerate(candidates[start:], start=start))
+    for offset, agent_name in indexed:
+        if agent_name in session.dead_tool_surfaces:
+            continue
+        emit_conflict_phase_line(
+            display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
+        )
         try:
             if runner(agent_name, prompt_path, round_index):
+                session.chain_cursor = offset + 1
                 return True
         except Exception as exc:
-            logger.warning("conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc)
+            logger.warning(
+                "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
+            )
+            session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        session.chain_cursor = offset + 1
+        if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
+            remembered = list(session.dead_tool_surfaces)
+            if agent_name not in remembered:
+                remembered.append(agent_name)
+            session.dead_tool_surfaces = tuple(remembered)
+            session.charge_conflict_budget = False
     return False
 
 

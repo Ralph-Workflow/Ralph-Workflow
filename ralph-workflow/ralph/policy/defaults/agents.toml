@@ -157,6 +157,10 @@ drain_class = "analysis"
 
 # Out-of-graph rebase-conflict-resolution drain. Bound only to the dedicated
 # rebase_conflict_resolution chain; not referenced by any pipeline phase.
+# drain_class = "development" is deliberate so the resolver can edit files.
+# How many agents run is this chain's `agents` list (retries included);
+# conflict resolution does not apply a second candidate cap. The shipped
+# default is a single agent, so load warns that there is no fallback.
 # drain_class = "development" is deliberate: ralph/mcp/session_plan.py's
 # development extras are what grant workspace.edit / workspace.write_tracked so
 # the agent can rewrite the conflicted files, and the base capability set grants

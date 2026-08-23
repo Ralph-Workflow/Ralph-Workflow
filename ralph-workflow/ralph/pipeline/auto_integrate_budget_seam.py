@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.merge import branch_sha
+from ralph.git.merge import branch_sha, conflict_stage_entries, unmerged_paths
 from ralph.git.operations import GitOperationError, get_head_sha
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
@@ -57,9 +57,20 @@ def observe_conflict_identity(root: Path, target: str) -> ConflictIdentity:
     except GitOperationError as exc:
         logger.debug("auto_integrate: conflict-identity HEAD read failed: {}", exc)
         feature_sha = None
+    paths = tuple(
+        path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
+    )
+    entries = conflict_stage_entries(root, paths)
+    stage_oids = tuple(
+        f"{path}:{stage}:{blob}"
+        for path in sorted(entries)
+        for stage, (_mode, blob) in sorted(entries[path].items())
+    )
     return ConflictIdentity(
         feature_sha=feature_sha,
         target_sha=branch_sha(root, target),
+        conflicted_paths=paths,
+        stage_oids=stage_oids,
     )
 
 
@@ -121,5 +132,7 @@ def charge_failed_attempt(
             "consecutive_conflicts": carried + 1 if resolver_offered else carried,
             "last_conflict_feature_sha": identity.feature_sha,
             "last_conflict_target_sha": identity.target_sha,
+            "last_conflict_paths": identity.conflicted_paths,
+            "last_conflict_stage_oids": identity.stage_oids,
         }
     )

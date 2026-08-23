@@ -95,9 +95,23 @@ class ConflictIdentity:
 
     feature_sha: str | None = None
     target_sha: str | None = None
+    conflicted_paths: tuple[str, ...] = ()
+    stage_oids: tuple[str, ...] = ()
 
     def matches(self, state: RebaseState) -> bool:
         """Whether ``state`` recorded a conflict with this same identity."""
+        if (
+            self.conflicted_paths
+            and state.last_conflict_paths
+            and self.conflicted_paths != state.last_conflict_paths
+        ):
+            return False
+        if (
+            self.stage_oids
+            and state.last_conflict_stage_oids
+            and self.stage_oids != state.last_conflict_stage_oids
+        ):
+            return False
         recorded = (state.last_conflict_feature_sha, state.last_conflict_target_sha)
         observed = (self.feature_sha, self.target_sha)
         if None in recorded or None in observed:
@@ -183,6 +197,8 @@ def apply_conflict_budget(
                 "consecutive_conflicts": 0,
                 "last_conflict_feature_sha": None,
                 "last_conflict_target_sha": None,
+                "last_conflict_paths": (),
+                "last_conflict_stage_oids": (),
             }
         )
     if record.last_action != _ACTION_CONFLICT:
@@ -191,6 +207,8 @@ def apply_conflict_budget(
                 "consecutive_conflicts": carried,
                 "last_conflict_feature_sha": prior.last_conflict_feature_sha,
                 "last_conflict_target_sha": prior.last_conflict_target_sha,
+                "last_conflict_paths": prior.last_conflict_paths,
+                "last_conflict_stage_oids": prior.last_conflict_stage_oids,
             }
         )
 
@@ -198,6 +216,8 @@ def apply_conflict_budget(
         "consecutive_conflicts": carried + 1,
         "last_conflict_feature_sha": identity.feature_sha,
         "last_conflict_target_sha": identity.target_sha,
+        "last_conflict_paths": identity.conflicted_paths,
+        "last_conflict_stage_oids": identity.stage_oids,
     }
     if resolver_suppressed:
         update["last_reason"] = (
