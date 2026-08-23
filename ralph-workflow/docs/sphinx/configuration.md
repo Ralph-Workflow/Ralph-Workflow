@@ -199,6 +199,8 @@ total_resolution_cap_seconds = 3600.0
 
 Ralph Workflow reports at configuration load time that this override may stop active resolution. Leave the setting absent to allow active conflict work to continue without an elapsed-time cap.
 
+Rebase, endpoint merge, and remote reconciliation share one conflict identity and one repeat budget, keyed by feature tip, target tip, conflicted paths, stage OIDs, and a `scope` of `feature` or `remote`. An exhausted feature budget does not suppress a distinct remote conflict. After an unchanged failed identity, Ralph Workflow does not start another rebase or silently re-invoke the same resolver; exhaustion stops the phase and the recorded reason names the suppressed state.
+
 ## Auto-integration
 
 Auto-integration keeps a feature branch and its configured local mainline in

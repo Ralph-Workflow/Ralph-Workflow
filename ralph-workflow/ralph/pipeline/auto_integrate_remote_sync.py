@@ -188,9 +188,9 @@ def pull_and_reconcile_target(
 
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     try:
-        identity = observe_conflict_identity(repo_root, target)
+        identity = observe_conflict_identity(repo_root, target, scope="remote")
     except Exception:
-        identity = ConflictIdentity()
+        identity = ConflictIdentity(scope="remote")
     prior_state = prior or RebaseState()
     booked = False
     effective_resolver = rebase_stop_resolver

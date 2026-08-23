@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
@@ -10,6 +11,9 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     resolver_allowed,
 )
 from ralph.pipeline.rebase_state import RebaseState
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
@@ -167,3 +171,90 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
     assert observed == [identity]
     assert started == [False]
     assert applied == [identity]
+
+
+def test_endpoint_merge_does_not_reinvoke_the_same_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed rebase resolution must not immediately pay the same resolver again."""
+    from ralph.git.merge import MergeResult
+    from ralph.git.rebase.rebase import RebaseConflicts
+    from ralph.pipeline import auto_integrate_rebase_merge as merge_module
+    from ralph.pipeline.auto_integrate_conflict_budget import (
+        ConflictIdentity,
+        finish_conflict_attempt,
+        start_conflict_attempt,
+    )
+
+    identity = ConflictIdentity(
+        feature_sha="feat",
+        target_sha="main",
+        conflicted_paths=("a.py",),
+        stage_oids=("oid",),
+    )
+    finish_conflict_attempt(identity)
+    assert start_conflict_attempt(identity) is True
+    endpoint_calls: list[object] = []
+    aborted: list[Path] = []
+
+    def _abort(repo_root: Path | None = None, **_kwargs: object) -> None:
+        aborted.append(repo_root or tmp_path)
+
+    monkeypatch.setattr(merge_module, "_range_routing_reason", lambda _root, _target: None)
+    monkeypatch.setattr(
+        merge_module,
+        "rebase_onto",
+        lambda _target, repo_root: RebaseConflicts(files=["a.py"]),
+    )
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
+    monkeypatch.setattr(
+        merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False
+    )
+    monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
+    monkeypatch.setattr(merge_module, "abort_rebase", _abort)
+
+    def _endpoint(_root: Path, _target: str, resolver: object) -> MergeResult:
+        endpoint_calls.append(resolver)
+        return MergeResult(outcome="conflict")
+
+    monkeypatch.setattr(merge_module, "endpoint_merge_with_resolution", _endpoint)
+
+    try:
+        merge_module.run_rebase_or_merge(
+            tmp_path,
+            "main",
+            lambda *_args: True,
+            rebase_stop_resolver=lambda *_args: False,
+        )
+        assert endpoint_calls in ([None], [])
+    finally:
+        finish_conflict_attempt(identity)
+
+
+def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() -> None:
+    """Remote reconciliation must keep its own budget even when feature spend is done."""
+    feature = ConflictIdentity(
+        feature_sha="feat",
+        target_sha="main",
+        conflicted_paths=("a.py",),
+        stage_oids=("oid",),
+    )
+    remote = ConflictIdentity(
+        feature_sha="feat",
+        target_sha="main",
+        conflicted_paths=("a.py",),
+        stage_oids=("oid",),
+        scope="remote",
+    )
+    state = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=2,
+        last_conflict_feature_sha="feat",
+        last_conflict_target_sha="main",
+        last_conflict_paths=("a.py",),
+        last_conflict_stage_oids=("oid",),
+        last_conflict_scope="feature",
+    )
+    assert resolver_allowed(state, "main", feature) is False
+    assert resolver_allowed(state, "main", remote) is True

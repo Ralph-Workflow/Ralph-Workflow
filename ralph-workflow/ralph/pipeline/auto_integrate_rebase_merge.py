@@ -49,6 +49,7 @@ from ralph.pipeline.auto_integrate_resolve import (
     endpoint_merge_with_resolution,
 )
 from ralph.pipeline.conflict_resolution import resolve_rebase_in_progress
+from ralph.pipeline.conflict_resolution.progress import load_progress
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 
 if TYPE_CHECKING:
@@ -200,6 +201,7 @@ def run_rebase_or_merge(
         )
         if resolved is not None:
             return resolved
+        return _fallback_to_endpoint_merge(root, target, rebase_outcome, None)
 
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver)
 
@@ -483,7 +485,9 @@ def _fallback_to_endpoint_merge(
     on its conflict / resolution paths. The ``owns_resolution``
     flag is ``True`` when the conflict resolver is mid-edit.
     """
-    _abort_rebase_after_conflict(root)
+    keep_landed = _rebase_has_landed_stops(root)
+    if not keep_landed:
+        _abort_rebase_after_conflict(root)
     if rebase_in_progress(root):
         # Keep the pre-mutation record: abort_rebase can fail after the
         # rebase engine has created state, and recovery needs that record
@@ -495,7 +499,14 @@ def _fallback_to_endpoint_merge(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,
             merge_outcome=None,
-            short_circuit=record_conflict(reason="rebase in-progress after abort", target=target),
+            short_circuit=record_conflict(
+                reason=(
+                    "rebase paused with landed stops; resume remaining stops"
+                    if keep_landed
+                    else "rebase in-progress after abort"
+                ),
+                target=target,
+            ),
         )
     _verify_terminal_state(
         root, expected_head_sha=None, owns_resolution=conflict_resolver is not None
@@ -626,6 +637,12 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
         )
         return
     clear_record(root)
+
+
+def _rebase_has_landed_stops(root: Path) -> bool:
+    """Whether the progress sidecar already names landed replay commits."""
+    progress = load_progress(root)
+    return progress is not None and bool(progress.landed_shas)
 
 
 def _abort_rebase_after_conflict(root: Path) -> None:

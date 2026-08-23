@@ -34,6 +34,7 @@ from ralph.pipeline.conflict_resolution.graph import (
 )
 from ralph.pipeline.conflict_resolution.progress import (
     RebaseResolutionProgress,
+    load_progress,
     save_progress,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import (
@@ -894,3 +895,32 @@ def test_resolve_skips_sidecar_landed_shas_and_starts_at_the_first_unlanded(
     assert resolved is True
     assert [stop.sha for stop in seen] == ["bbb2"]
     assert repo.continue_calls == 2
+
+
+def test_four_landed_stops_survive_a_fifth_stop_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A later-stop decline must keep the four already-landed replay SHAs."""
+    shas = ("s1", "s2", "s3", "s4", "s5")
+    repo = _FakeRepo(stops=5)
+    _install_seams(monkeypatch, repo)
+
+    def _head(_root: Path) -> str:
+        landed = 5 - repo.remaining
+        return shas[landed]
+
+    monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", _head)
+    seen: list[RebaseStop] = []
+
+    def _resolve(_root: Path, _target: str, stop: RebaseStop) -> bool:
+        seen.append(stop)
+        return stop.sha != "s5"
+
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _resolve)
+
+    assert resolved is False
+    assert [stop.sha for stop in seen] == list(shas)
+    progress = load_progress(tmp_path)
+    assert progress is not None
+    assert progress.landed_shas == ["s1", "s2", "s3", "s4"]
+    assert repo.continue_calls == 4

@@ -100,9 +100,13 @@ class ConflictIdentity:
     target_sha: str | None = None
     conflicted_paths: tuple[str, ...] = ()
     stage_oids: tuple[str, ...] = ()
+    scope: str = "feature"
 
     def matches(self, state: RebaseState) -> bool:
         """Whether ``state`` recorded a conflict with this same identity."""
+        recorded_scope = state.last_conflict_scope
+        if self.scope and recorded_scope and self.scope != recorded_scope:
+            return False
         if (
             self.conflicted_paths
             and state.last_conflict_paths
@@ -202,6 +206,7 @@ def apply_conflict_budget(
                 "last_conflict_target_sha": None,
                 "last_conflict_paths": (),
                 "last_conflict_stage_oids": (),
+                "last_conflict_scope": "",
             }
         )
     if record.last_action != _ACTION_CONFLICT:
@@ -212,6 +217,7 @@ def apply_conflict_budget(
                 "last_conflict_target_sha": prior.last_conflict_target_sha,
                 "last_conflict_paths": prior.last_conflict_paths,
                 "last_conflict_stage_oids": prior.last_conflict_stage_oids,
+                "last_conflict_scope": prior.last_conflict_scope,
             }
         )
 
@@ -221,6 +227,7 @@ def apply_conflict_budget(
         "last_conflict_target_sha": identity.target_sha,
         "last_conflict_paths": identity.conflicted_paths,
         "last_conflict_stage_oids": identity.stage_oids,
+        "last_conflict_scope": identity.scope,
     }
     if resolver_suppressed:
         update["last_reason"] = (
@@ -243,6 +250,7 @@ def _conflict_attempt_key(identity: ConflictIdentity) -> tuple[object, ...]:
         identity.target_sha,
         identity.conflicted_paths,
         identity.stage_oids,
+        identity.scope,
     )
 
 

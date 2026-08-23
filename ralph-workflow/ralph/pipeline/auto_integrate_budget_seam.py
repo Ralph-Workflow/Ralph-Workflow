@@ -42,7 +42,9 @@ __all__ = [
 ]
 
 
-def observe_conflict_identity(root: Path, target: str) -> ConflictIdentity:
+def observe_conflict_identity(
+    root: Path, target: str, *, scope: str = "feature"
+) -> ConflictIdentity:
     """Observe the endpoint pair that identifies one integration attempt.
 
     Read once per seam, before any git mutation, and threaded through
@@ -71,6 +73,7 @@ def observe_conflict_identity(root: Path, target: str) -> ConflictIdentity:
         target_sha=branch_sha(root, target),
         conflicted_paths=paths,
         stage_oids=stage_oids,
+        scope=scope,
     )
 
 

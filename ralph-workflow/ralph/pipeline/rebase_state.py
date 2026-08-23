@@ -122,6 +122,7 @@ class RebaseState(RalphBaseModel):
     last_conflict_target_sha: str | None = None
     last_conflict_paths: tuple[str, ...] = ()
     last_conflict_stage_oids: tuple[str, ...] = ()
+    last_conflict_scope: str = ""
 
     # ``recovery_record_retained`` marks a startup crash-recovery outcome
     # that deliberately LEFT the durable ``IntegrationRecord`` on disk for
