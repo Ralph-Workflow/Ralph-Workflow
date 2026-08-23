@@ -173,3 +173,102 @@ def test_launch_failure_is_not_collapsed_to_candidate_declined(
         is False
     )
     assert session.terminal_reason is ResolutionTerminationReason.EXCEPTION
+
+
+def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_controller(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """After a failed invoke, RecoveryController sees launch vs provider vs decline."""
+    from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.failure_classifier import FailureClassifier
+
+    seen: list[str] = []
+
+    def _spy(
+        self: RecoveryController,
+        raw_failure: BaseException | str,
+        *,
+        agent: str,
+        phase: str = "rebase_conflict_resolution",
+    ) -> object:
+        text = str(raw_failure).lower()
+        if "launch" in text:
+            seen.append("launch")
+        elif "provider" in text:
+            seen.append("provider")
+        else:
+            seen.append("decline")
+        return FailureClassifier().classify(raw_failure, phase=phase, agent=agent)
+
+    monkeypatch.setattr(
+        RecoveryController,
+        "classify_conflict_attempt",
+        _spy,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
+    )
+    _install_seams(
+        monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, _CONFLICTED]
+    )
+    outcomes: list[BaseException | bool] = [
+        RuntimeError("launch failed: cannot spawn agent"),
+        ConnectionError("provider unavailable"),
+        False,
+    ]
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        item = outcomes.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    assert seen == ["launch", "provider", "decline"]
+
+
+def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """max_fallback_agents remains a non-truncating compatibility field."""
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
+    )
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        return False
+
+    session = ResolutionSession(max_fallback_agents=2)
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is False
+    )
+    assert called == ["one", "two", "three", "four"]

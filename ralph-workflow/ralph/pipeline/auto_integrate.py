@@ -105,7 +105,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
-
 def auto_integrate_after_commit(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -223,7 +222,7 @@ def _boundary_freshness_outcome(
 ) -> RebaseState | None:
     """Return a freshness-gated no-commit boundary result, if the seam is done."""
     remote_record = pull_and_reconcile_target(
-        config, root, target, rebase_stop_resolver=rebase_stop_resolver
+        config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=state
     )
     if remote_record is not None and not remote_record.freshness_safe:
         return remote_record
@@ -352,7 +351,7 @@ def _auto_integrate_after_commit_inner(
                 target,
                 attempt=attempt,
                 initial_refresh=refresh,
-                rebase_stop_resolver=rebase_stop_resolver if allowed else None,
+                rebase_stop_resolver=rebase_stop_resolver if allowed else None, prior=state,
             )
             if remote_record is not None and not remote_record.freshness_safe:
                 return remote_record
@@ -449,7 +448,7 @@ def _freshen_attempt_target(
     *,
     attempt: int,
     initial_refresh: str | None,
-    rebase_stop_resolver: RebaseStopResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None, prior: RebaseState | None = None,
 ) -> tuple[RebaseState | None, str | None]:
     """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
@@ -457,7 +456,7 @@ def _freshen_attempt_target(
             return None, _refresh_target(config, root, target)
         return None, initial_refresh
     record = pull_and_reconcile_target(
-        config, root, target, rebase_stop_resolver=rebase_stop_resolver
+        config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=prior
     )
     if record is None:
         return None, None

@@ -14,6 +14,14 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git import remote_push as _remote_push_module
+from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
+from ralph.pipeline.auto_integrate_conflict_budget import (
+    ConflictIdentity,
+    apply_conflict_budget,
+    finish_conflict_attempt,
+    resolver_allowed,
+    start_conflict_attempt,
+)
 from ralph.pipeline.auto_integrate_sync import (
     DEFAULT_REFRESH_REMOTE,
     REFRESH_DIVERGED,
@@ -129,6 +137,7 @@ def pull_and_reconcile_target(
     remote: str | None = None,
     clock: Callable[[], float] = time.monotonic,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    prior: RebaseState | None = None,
 ) -> RebaseState | None:
     """Run the throttled pull side; reconcile the local target from the remote.
 
@@ -178,38 +187,59 @@ def pull_and_reconcile_target(
         return None
 
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
-    if not _throttle_allows_pull(repo_root, chosen_remote, target, config, clock):
-        return _record_remote_state(
-            target,
-            last_remote_sync="refresh suppressed",
-            last_refresh="refresh suppressed by throttle",
-            reason="remote freshness probe suppressed by configured interval",
-            freshness_verdict="unverified",
-            freshness_source="suppressed probe",
-        )
-
-    refresh = refresh_target_from_remote(
-        repo_root,
-        target,
-        timeout_seconds=FETCH_TIMEOUT_SECONDS,
-        remote=chosen_remote,
-    )
-    state = _dispatch_pull_outcome(
-        refresh, repo_root, target, chosen_remote, clock, config, rebase_stop_resolver
-    )
-    if state is None:
-        return None
-    from ralph.git.merge import branch_sha
-
     try:
-        target_sha = branch_sha(repo_root, target)
-    except OSError:
-        # Test/dry-run callers can provide an unmaterialized path; freshness
-        # classification remains valid but no target SHA may be claimed.
-        target_sha = None
-    return state.model_copy(
-        update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
-    )
+        identity = observe_conflict_identity(repo_root, target)
+    except Exception:
+        identity = ConflictIdentity()
+    prior_state = prior or RebaseState()
+    booked = False
+    effective_resolver = rebase_stop_resolver
+    if effective_resolver is not None:
+        if not resolver_allowed(prior_state, target, identity) or not start_conflict_attempt(identity):
+            effective_resolver = None
+        else:
+            booked = True
+    try:
+        if not _throttle_allows_pull(repo_root, chosen_remote, target, config, clock):
+            state = _record_remote_state(
+                target,
+                last_remote_sync="refresh suppressed",
+                last_refresh="refresh suppressed by throttle",
+                reason="remote freshness probe suppressed by configured interval",
+                freshness_verdict="unverified",
+                freshness_source="suppressed probe",
+            )
+        else:
+            refresh = refresh_target_from_remote(
+                repo_root,
+                target,
+                timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                remote=chosen_remote,
+            )
+            pulled = _dispatch_pull_outcome(
+                refresh, repo_root, target, chosen_remote, clock, config, effective_resolver
+            )
+            if pulled is None:
+                return None
+            from ralph.git.merge import branch_sha
+
+            try:
+                target_sha = branch_sha(repo_root, target)
+            except OSError:
+                target_sha = None
+            state = pulled.model_copy(
+                update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
+            )
+        return apply_conflict_budget(
+            state,
+            prior=prior_state,
+            target=target,
+            resolver_suppressed=rebase_stop_resolver is not None and effective_resolver is None,
+            identity=identity,
+        )
+    finally:
+        if booked:
+            finish_conflict_attempt(identity)
 
 
 def _dispatch_pull_outcome(

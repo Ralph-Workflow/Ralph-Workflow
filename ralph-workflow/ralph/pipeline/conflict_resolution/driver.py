@@ -20,6 +20,7 @@ from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolut
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
+    classify_failed_resolution_attempt,
     invoke_resolution_agent,
     resolution_chain_agents,
 )
@@ -438,6 +439,21 @@ def _run_one_round(
                 "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
             )
             session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+            classify_failed_resolution_attempt(
+                session,
+                agent_name,
+                exc,
+                candidates=candidates,
+                failed_index=offset,
+            )
+        else:
+            classify_failed_resolution_attempt(
+                session,
+                agent_name,
+                "candidate declined",
+                candidates=candidates,
+                failed_index=offset,
+            )
         session.chain_cursor = offset + 1
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             remembered = list(session.dead_tool_surfaces)

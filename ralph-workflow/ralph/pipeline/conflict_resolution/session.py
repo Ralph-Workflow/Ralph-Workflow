@@ -32,7 +32,12 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
-__all__ = ["ResolutionSession", "invoke_resolution_agent", "resolution_chain_agents"]
+__all__ = [
+    "ResolutionSession",
+    "classify_failed_resolution_attempt",
+    "invoke_resolution_agent",
+    "resolution_chain_agents",
+]
 
 _MIN_FALLBACK_CHAIN_LENGTH = 2
 
@@ -55,6 +60,7 @@ class ResolutionSession:
     chain_cursor: int = 0
     charge_conflict_budget: bool = True
     dead_tool_surfaces: tuple[str, ...] = ()
+    last_recovery_reason: str | None = None
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
@@ -74,6 +80,28 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
             drain_binding.chain,
         )
     return agents
+
+
+def classify_failed_resolution_attempt(
+    session: ResolutionSession | None,
+    agent_name: str,
+    raw_failure: BaseException | str,
+    *,
+    candidates: tuple[str, ...] = (),
+    failed_index: int = 0,
+) -> None:
+    """Route a failed conflict invoke through RecoveryController classification."""
+    from ralph.recovery.controller import RecoveryController
+
+    controller = RecoveryController()
+    classified = controller.classify_conflict_attempt(raw_failure, agent=agent_name)
+    if session is None:
+        return
+    session.last_recovery_reason = classified.reason
+    if candidates:
+        session.chain_cursor = controller.next_conflict_candidate(
+            candidates, failed_index=failed_index
+        )
 
 
 def invoke_resolution_agent(
@@ -143,18 +171,24 @@ def invoke_resolution_agent(
             run_id=None,
         )
     except AgentInactivityTimeoutError as exc:
+        classify_failed_resolution_attempt(session, agent_name, exc)
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
         return False
     except SupervisionInfrastructureError as exc:
+        classify_failed_resolution_attempt(session, agent_name, exc)
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
         return False
     except Exception as exc:
+        classify_failed_resolution_attempt(session, agent_name, exc)
         _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
         return False
-    return event == PipelineEvent.AGENT_SUCCESS
+    if event != PipelineEvent.AGENT_SUCCESS:
+        classify_failed_resolution_attempt(session, agent_name, "candidate declined")
+        return False
+    return True
 
 
 def _record_resolution_termination(session: ResolutionSession | None, exc: Exception) -> None:

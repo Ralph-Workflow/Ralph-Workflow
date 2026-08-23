@@ -90,3 +90,80 @@ def test_observe_conflict_identity_includes_paths_and_oids(
     assert identity.conflicted_paths == ("a.py",)
     assert "a.py:2:blob-ours" in identity.stage_oids
     assert "a.py:3:blob-theirs" in identity.stage_oids
+
+
+def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
+    monkeypatch: object, tmp_path: Path
+) -> None:
+    """Remote refresh observes ConflictIdentity and cannot start a duplicate attempt."""
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_conflict_budget import (
+        ConflictIdentity,
+        start_conflict_attempt,
+    )
+    from ralph.pipeline.auto_integrate_remote_sync import pull_and_reconcile_target
+    from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+
+    identity = ConflictIdentity(
+        feature_sha="feat",
+        target_sha="main",
+        conflicted_paths=("a.py",),
+        stage_oids=("oid",),
+    )
+    observed: list[ConflictIdentity] = []
+    applied: list[ConflictIdentity] = []
+    started: list[bool] = []
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.observe_conflict_identity",
+        lambda *_args, **_kwargs: observed.append(identity) or identity,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.remote_sync_enabled",
+        lambda _config: True,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.remote_target_name",
+        lambda _config: "origin",
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync._throttle_allows_pull",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.refresh_target_from_remote",
+        lambda *_args, **_kwargs: REFRESH_UNREACHABLE,
+    )
+
+    def _apply(record: object, **kwargs: object) -> object:
+        ident = kwargs.get("identity")
+        if isinstance(ident, ConflictIdentity):
+            applied.append(ident)
+        return record
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply
+    )
+
+    original_start = start_conflict_attempt
+
+    def _start(ident: ConflictIdentity) -> bool:
+        allowed = original_start(ident)
+        started.append(allowed)
+        return allowed
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.start_conflict_attempt", _start
+    )
+
+    config = UnifiedConfig.model_validate({"general": {}})
+    assert start_conflict_attempt(identity) is True
+    pull_and_reconcile_target(
+        config,
+        tmp_path,
+        "main",
+        rebase_stop_resolver=lambda **_kwargs: None,
+    )
+    assert observed == [identity]
+    assert started == [False]
+    assert applied == [identity]

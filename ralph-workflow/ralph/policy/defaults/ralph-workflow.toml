@@ -179,7 +179,7 @@ commit = "commit"
 # status_interval_seconds = 30.0       # low-cadence resolver status updates
 # max_rounds_per_stop = 3              # completed attempts per merge/rebase stop
 # max_rebase_conflict_stops = 10       # stops resolved in one rebase loop
-# max_fallback_agents = 2              # candidates tried per completed round
+# max_fallback_agents = 2              # compatibility field; does not truncate the bound chain
 # total_resolution_cap_seconds = None  # opt-in cap; active work may be stopped as OPERATOR_CAP_REACHED
 
 # Edit this only if you need to change workflow automation behavior.

@@ -1056,6 +1056,24 @@ class RecoveryController:
         """Mark an agent's retry allowance as spent for the current round of a phase."""
         self._spent_agents.setdefault(phase, set()).add(agent)
 
+    def classify_conflict_attempt(
+        self,
+        raw_failure: BaseException | str,
+        *,
+        agent: str,
+        phase: str = "rebase_conflict_resolution",
+    ) -> ClassifiedFailure:
+        """Classify a failed conflict-resolution invoke without pipeline state."""
+        return self._classifier.classify(raw_failure, phase=phase, agent=agent)
+
+    def next_conflict_candidate(
+        self, candidates: Sequence[str], *, failed_index: int
+    ) -> int:
+        """Advance past a failed candidate; never restart at the head of the chain."""
+        if not candidates:
+            return 0
+        return min(failed_index + 1, len(candidates))
+
     def preferred_agent_index(
         self,
         phase: str,

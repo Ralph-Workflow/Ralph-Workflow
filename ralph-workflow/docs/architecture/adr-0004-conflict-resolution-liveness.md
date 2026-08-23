@@ -39,9 +39,9 @@ from the completed resolver can still write to it.
    agent-controlled child environments.
 4. Before marker scanning, rebase continuation, merge commit, or deterministic
    abort, Ralph stops relay intake and reaps the scoped resolver and MCP process
-   trees. Partial edits after a non-success result are deliberately discarded by
-   the existing abort owner. Preserving partial edits remains an open future
-   decision.
+   trees. Landed stop SHAs and remaining conflict identity are persisted in
+   `.ralph/conflict-resolution-progress.json` via `record_landed_stop`. Abort does
+   not drop already-landed stops; replay starts at the first unlanded stop.
 
 ## Consequences
 

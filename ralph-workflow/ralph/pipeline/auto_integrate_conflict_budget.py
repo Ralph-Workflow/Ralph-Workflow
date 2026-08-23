@@ -52,6 +52,7 @@ the agent would replay work it has already failed.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -69,8 +70,10 @@ __all__ = [
     "MAX_CONSECUTIVE_RESOLVER_ATTEMPTS",
     "ConflictIdentity",
     "apply_conflict_budget",
+    "finish_conflict_attempt",
     "prior_conflict_count",
     "resolver_allowed",
+    "start_conflict_attempt",
 ]
 
 
@@ -226,3 +229,34 @@ def apply_conflict_budget(
             f"until an integration lands"
         )
     return record.model_copy(update=update)
+
+
+_MAX_ACTIVE_CONFLICT_ATTEMPTS = 64
+_ACTIVE_CONFLICT_ATTEMPTS: OrderedDict[tuple[object, ...], None] = (
+    OrderedDict()  # bounded-accumulator-ok: FIFO-capped by _MAX_ACTIVE_CONFLICT_ATTEMPTS
+)
+
+
+def _conflict_attempt_key(identity: ConflictIdentity) -> tuple[object, ...]:
+    return (
+        identity.feature_sha,
+        identity.target_sha,
+        identity.conflicted_paths,
+        identity.stage_oids,
+    )
+
+
+def start_conflict_attempt(identity: ConflictIdentity) -> bool:
+    """Book one in-flight resolution for ``identity``; reject duplicates."""
+    key = _conflict_attempt_key(identity)
+    if key in _ACTIVE_CONFLICT_ATTEMPTS:
+        return False
+    while len(_ACTIVE_CONFLICT_ATTEMPTS) >= _MAX_ACTIVE_CONFLICT_ATTEMPTS:
+        _ACTIVE_CONFLICT_ATTEMPTS.popitem(last=False)
+    _ACTIVE_CONFLICT_ATTEMPTS[key] = None
+    return True
+
+
+def finish_conflict_attempt(identity: ConflictIdentity) -> None:
+    """Release an in-flight resolution booking."""
+    _ACTIVE_CONFLICT_ATTEMPTS.pop(_conflict_attempt_key(identity), None)
