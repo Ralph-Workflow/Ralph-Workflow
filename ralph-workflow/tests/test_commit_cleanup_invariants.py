@@ -30,7 +30,11 @@ if TYPE_CHECKING:
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
 
-pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+pytestmark = [
+    pytest.mark.timeout_seconds(5),
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+]
 
 
 def _write_commit_cleanup_artifact(
@@ -89,6 +93,13 @@ def test_identical_declined_path_replay_completes_without_phase_failure(
         },
     )
     first = _run(workspace)
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "src.py"}],
+        },
+    )
     second = _run(workspace)
     assert first == [PipelineEvent.AGENT_SUCCESS]
     assert second == [PipelineEvent.AGENT_SUCCESS]
@@ -385,6 +396,16 @@ def test_idempotent_second_apply_of_well_formed_batch(tmp_git_repo: Path) -> Non
         },
     )
     first = _run(workspace)
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "delete_file", "path": "session-output.txt"},
+                {"action": "add_to_gitignore", "pattern": "*.exe"},
+            ],
+        },
+    )
     second = _run(workspace)
     assert first == [PipelineEvent.AGENT_SUCCESS]
     assert second == [PipelineEvent.AGENT_SUCCESS]

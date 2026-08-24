@@ -536,7 +536,7 @@ def _check_best_effort_invariants() -> list[str]:
         problems.append(
             f"{rel_path}: missing required symbol 'build_cleanup_retry_hint' -- "
             "the phase MUST provide a structured retry-hint producer for "
-            "PhaseFailureEvent when all delete actions are rejected"
+            "unapplied delete and apply-failed decisions"
         )
 
     return problems

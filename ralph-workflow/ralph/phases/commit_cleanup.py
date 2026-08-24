@@ -328,6 +328,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
         try:
             report = _apply_cleanup_report(repo_root, cleanup)
         except Exception as exc:
+            _consume_cleanup_artifact(ctx)
             events = _maybe_succeed_after_identity_bound(
                 ctx,
                 phase_name,
@@ -336,6 +337,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
             )
         else:
             _persist_unapplied_hint(ctx, phase_name, report)
+            _consume_cleanup_artifact(ctx)
             outcome = decide_cleanup_outcome(phase_name, cleanup, report)
             if all_applications_failed(report):
                 events = _maybe_succeed_after_identity_bound(
@@ -347,6 +349,15 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
             else:
                 events = outcome
     return events
+
+
+def _consume_cleanup_artifact(ctx: PhaseContext) -> None:
+    """Drop a graded well-formed leftover so the next attempt needs a new submit."""
+    try:
+        if ctx.workspace.exists(COMMIT_CLEANUP_ARTIFACT_PATH):
+            ctx.workspace.delete(COMMIT_CLEANUP_ARTIFACT_PATH)
+    except Exception as exc:
+        logger.warning("Failed to consume commit-cleanup leftover artifact: {}", exc)
 
 
 def _maybe_succeed_after_identity_bound(

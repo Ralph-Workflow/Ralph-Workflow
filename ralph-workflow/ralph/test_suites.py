@@ -111,6 +111,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.
     "tests/test_tool_git_read_path_validation.py",
+    # I1/I2/I4 housekeeping bounds live in a subprocess_e2e module; keep
+    # them on the default make-test profile via this registry.
+    "tests/test_commit_cleanup_invariants.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (
