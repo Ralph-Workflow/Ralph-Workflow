@@ -276,7 +276,8 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     ignore_text = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
     assert "*.o" not in ignore_text
     assert (tmp_git_repo / "lib.py").exists()
-    assert PipelineEvent.AGENT_SUCCESS in result or isinstance(result[0], PhaseFailureEvent)
+    assert PipelineEvent.AGENT_SUCCESS not in result
+    assert isinstance(result[0], PhaseFailureEvent)
 
 
 def test_untracked_completion_report_md_is_deleted(tmp_git_repo: Path) -> None:
@@ -464,3 +465,106 @@ def test_prompt_and_engine_generated_text_classes_agree() -> None:
     ).read_text(encoding="utf-8")
     assert "{{ DELETE_DECISION_RULES }}" in template
     assert "{% if LAST_RETRY_ERROR %}" in template
+
+
+def test_untracked_config_file_is_never_deleted(tmp_git_repo: Path) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    config = tmp_git_repo / "pyproject.toml"
+    config.write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "pyproject.toml"}],
+        },
+    )
+    result = _run(workspace)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert config.exists()
+
+
+def test_untracked_docs_path_is_never_deleted(tmp_git_repo: Path) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    docs = tmp_git_repo / "docs" / "guide.md"
+    docs.parent.mkdir(parents=True, exist_ok=True)
+    docs.write_text("# Guide\n", encoding="utf-8")
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "docs/guide.md"}],
+        },
+    )
+    result = _run(workspace)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert docs.exists()
+
+
+def test_symlink_escape_is_never_deleted(tmp_git_repo: Path) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    outside = tmp_git_repo.parent / "commit-cleanup-outside.txt"
+    outside.write_text("preserve-me\n", encoding="utf-8")
+    link = tmp_git_repo / "scratch.tmp"
+    link.symlink_to(outside)
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "scratch.tmp"}],
+        },
+    )
+    result = _run(workspace)
+    assert PipelineEvent.AGENT_SUCCESS in result or isinstance(result[0], PhaseFailureEvent)
+    assert outside.exists()
+    assert outside.read_text(encoding="utf-8") == "preserve-me\n"
+
+
+def test_recognized_secret_is_untracked_and_preserved(tmp_git_repo: Path) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    secret = tmp_git_repo / ".env"
+    secret.write_text("TOKEN=secret\n", encoding="utf-8")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add([".env"])
+        repo.index.commit("track secret")
+    finally:
+        repo.close()
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "add_to_git_exclude", "pattern": ".env"}],
+        },
+    )
+    result = _run(workspace)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert secret.read_text(encoding="utf-8") == "TOKEN=secret\n"
+    repo = Repo(tmp_git_repo)
+    try:
+        tracked = repo.git.ls_files("--cached").splitlines()
+    finally:
+        repo.close()
+    assert ".env" not in tracked
+
+
+def test_tracked_engine_internal_runtime_artifact_is_deleted(tmp_git_repo: Path) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    target = tmp_git_repo / ".agent" / "raw" / "opencode.log"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("log\n", encoding="utf-8")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add([".agent/raw/opencode.log"])
+        repo.index.commit("track engine log")
+    finally:
+        repo.close()
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": ".agent/raw/opencode.log"}],
+        },
+    )
+    result = _run(workspace)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not target.exists()

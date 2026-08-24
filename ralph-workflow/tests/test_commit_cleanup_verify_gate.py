@@ -10,7 +10,11 @@ from git import Repo
 from ralph.agents.chain import ChainManager
 from ralph.mcp.protocol._session_drain import SessionDrain
 from ralph.phases import PhaseContext
-from ralph.phases._commit_cleanup_catalog import render_delete_decision_rules_markdown
+from ralph.phases._commit_cleanup_catalog import (
+    PROMPT_DELETE_FILE_ELIGIBLE_EXAMPLES,
+    PROMPT_DELETE_FILE_INELIGIBLE_EXAMPLES,
+    render_delete_decision_rules_markdown,
+)
 from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -235,7 +239,8 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     ignore_text = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
     assert "*.o" not in ignore_text
     assert (tmp_git_repo / "lib.py").exists()
-    assert result == [PipelineEvent.AGENT_SUCCESS] or isinstance(result[0], PhaseFailureEvent)
+    assert PipelineEvent.AGENT_SUCCESS not in result
+    assert isinstance(result[0], PhaseFailureEvent)
 
 
 def test_untracked_completion_report_md_deletes_and_tracked_is_declined(
@@ -310,3 +315,36 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
     assert not (tmp_git_repo / "scratch.tmp").exists()
     assert (tmp_git_repo / "app.py").exists()
     assert (tmp_git_repo / "package-lock.json").exists()
+    for example in PROMPT_DELETE_FILE_ELIGIBLE_EXAMPLES:
+        assert f"`{example}`" in rules
+        target = tmp_git_repo / example
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("generated\n", encoding="utf-8")
+        _write_commit_cleanup_artifact(
+            workspace,
+            {
+                "analysis_complete": True,
+                "actions": [{"action": "delete_file", "path": example}],
+            },
+        )
+        eligible_result = _run(workspace)
+        assert eligible_result == [PipelineEvent.AGENT_SUCCESS]
+        assert not target.exists()
+    for example in PROMPT_DELETE_FILE_INELIGIBLE_EXAMPLES:
+        assert f"`{example}`" in rules
+        if example.startswith("../"):
+            target = tmp_git_repo.parent / example.removeprefix("../")
+        else:
+            target = tmp_git_repo / example
+            target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("keep\n", encoding="utf-8")
+        _write_commit_cleanup_artifact(
+            workspace,
+            {
+                "analysis_complete": True,
+                "actions": [{"action": "delete_file", "path": example}],
+            },
+        )
+        ineligible_result = _run(workspace)
+        assert ineligible_result == [PipelineEvent.AGENT_SUCCESS]
+        assert target.exists()

@@ -200,6 +200,19 @@ TEMPORARY_SUFFIXES: frozenset[str] = frozenset(
 COMMIT_CLEANUP_IDENTITY_COUNTER = "commit_cleanup_identity"
 DEFAULT_IDENTITY_MAX = 3
 
+PROMPT_DELETE_FILE_ELIGIBLE_EXAMPLES: tuple[str, ...] = (
+    "scratch.tmp",
+    "completion_report.md",
+    ".agent/raw/opencode.log",
+)
+PROMPT_DELETE_FILE_INELIGIBLE_EXAMPLES: tuple[str, ...] = (
+    "app.py",
+    "docs/guide.md",
+    "pyproject.toml",
+    "package-lock.json",
+    "../outside.txt",
+)
+
 
 def render_delete_decision_rules_markdown() -> str:
     """Render the prompt decision-rule table from the engine catalog."""
@@ -230,5 +243,10 @@ def render_delete_decision_rules_markdown() -> str:
         "lockfile, or tracked source | no action | never change commit meaning |\n"
         "\n"
         "Never remove dependency lockfiles such as "
-        f"{lockfiles}."
+        f"{lockfiles}.\n\n"
+        "Eligible `delete_file` examples: "
+        + ", ".join(f"`{path}`" for path in PROMPT_DELETE_FILE_ELIGIBLE_EXAMPLES)
+        + ".\nIneligible examples: "
+        + ", ".join(f"`{path}`" for path in PROMPT_DELETE_FILE_INELIGIBLE_EXAMPLES)
+        + "."
     )

@@ -89,7 +89,7 @@ def all_applications_failed(report: CleanupApplyReport) -> bool:
         + len(report.failed_pattern_tokens)
         + report.applied_count
     )
-    return report.applied_count == 0 and attempted > 0 and not report.declined_delete_paths
+    return report.applied_count == 0 and attempted > 0
 
 
 def _recoverable_housekeeping_failure(
