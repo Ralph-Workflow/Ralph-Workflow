@@ -175,12 +175,14 @@ commit = "commit"
 # optional total cap is off by default; if enabled, it can stop active work and
 # Ralph Workflow reports it as an operator cap, never as an idle timeout.
 [conflict_resolution]
-# inactivity_timeout_seconds = 900.0   # fixed silence window; no round/deadline scaling
+# inactivity_timeout_seconds = 900.0   # silence window; never an elapsed kill of active work
 # status_interval_seconds = 30.0       # low-cadence resolver status updates
 # max_rounds_per_stop = 3              # completed attempts per merge/rebase stop
 # max_rebase_conflict_stops = 10       # stops resolved in one rebase loop
-# max_fallback_agents = 2              # compatibility field; does not truncate the bound chain
-# total_resolution_cap_seconds = None  # opt-in cap; active work may be stopped as OPERATOR_CAP_REACHED
+# max_fallback_agents = 2              # compatibility only; does not cap chain candidates
+# total_resolution_cap_seconds = None  # opt-in elapsed cap; only bound that may stop active work
+# Chain retries/backoff live on [agent_chains.rebase_conflict_resolution] in agents.toml
+# (max_retries = 2, retry_delay_ms = 1000). The drain rebase_conflict_resolution binds that chain.
 
 # Edit this only if you need to change workflow automation behavior.
 # -----------------------------------------------------------------------------

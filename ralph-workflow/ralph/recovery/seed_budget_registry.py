@@ -29,4 +29,11 @@ def seed_budget_registry(bundle: PolicyBundle) -> AgentBudgetRegistry:
             for agent_name in chain_config.agents:
                 registry = registry.set_budget(phase_name, agent_name, max_retries)
 
+    for drain_name, drain_config in bundle.agents.agent_drains.items():
+        drain_chain = bundle.agents.agent_chains.get(drain_config.chain)
+        if drain_chain is None:
+            continue
+        for agent_name in drain_chain.agents:
+            registry = registry.set_budget(drain_name, agent_name, drain_chain.max_retries)
+
     return registry

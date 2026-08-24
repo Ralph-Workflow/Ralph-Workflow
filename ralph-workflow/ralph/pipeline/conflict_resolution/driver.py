@@ -14,7 +14,11 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import INFRASTRUCTURE_TERMINATION_REASONS
-from ralph.pipeline.conflict_resolution.graph import TERMINAL_RESOLVED, route_after_round
+from ralph.pipeline.conflict_resolution.graph import (
+    PHASE_RESOLUTION,
+    TERMINAL_RESOLVED,
+    route_after_round,
+)
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -281,7 +285,7 @@ def _run_rounds(
             session.last_activity_at = None
             session.last_duration_seconds = None
             succeeded = _run_one_round(
-                runner, candidates, prompt_path, round_index, display, session
+                runner, candidates, prompt_path, round_index, display, session, policy_bundle
             )
             session.unresolved_paths = tuple(paths_with_conflict_markers(root, conflicted))
             outcome = ResolutionOutcome(
@@ -415,17 +419,17 @@ def _run_one_round(
     round_index: int,
     display: ParallelDisplay | None,
     session: ResolutionSession,
+    policy_bundle: PolicyBundle,
 ) -> bool:
-    start = min(session.chain_cursor, len(candidates))
-    if start >= len(candidates):
-        if len(candidates) == 1:
-            indexed: list[tuple[int, str]] = [(0, candidates[0])]
-        else:
-            indexed = []
-    else:
-        indexed = list(enumerate(candidates[start:], start=start))
-    for offset, agent_name in indexed:
+    offset = min(session.chain_cursor, len(candidates))
+    if offset >= len(candidates):
+        if len(candidates) != 1:
+            return False
+        offset = 0
+    while offset < len(candidates):
+        agent_name = candidates[offset]
         if agent_name in session.dead_tool_surfaces:
+            offset += 1
             continue
         emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
@@ -445,6 +449,7 @@ def _run_one_round(
                 exc,
                 candidates=candidates,
                 failed_index=offset,
+                policy_bundle=policy_bundle,
             )
         else:
             classify_failed_resolution_attempt(
@@ -453,6 +458,7 @@ def _run_one_round(
                 "candidate declined",
                 candidates=candidates,
                 failed_index=offset,
+                policy_bundle=policy_bundle,
             )
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             remembered = list(session.dead_tool_surfaces)
@@ -460,7 +466,29 @@ def _run_one_round(
                 remembered.append(agent_name)
             session.dead_tool_surfaces = tuple(remembered)
             session.charge_conflict_budget = False
+            offset = session.chain_cursor if session.chain_cursor > offset else offset + 1
+            continue
+        if session.chain_cursor == offset:
+            _sleep_conflict_retry(session, policy_bundle)
+            continue
+        offset = session.chain_cursor
     return False
+
+
+def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
+    """Honor RecoveryController backoff, falling back to the chain's retry_delay_ms."""
+    delay_ms = session.last_retry_delay_ms
+    if delay_ms <= 0:
+        drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
+        chain = (
+            policy_bundle.agents.agent_chains.get(drain.chain)
+            if drain is not None
+            else None
+        )
+        if chain is not None:
+            delay_ms = chain.retry_delay_ms
+    if delay_ms > 0:
+        time.sleep(delay_ms / 1000.0)  # filesystem-poll-ok: RecoveryController chain retry_delay_ms backoff
 
 
 def _default_invoker(

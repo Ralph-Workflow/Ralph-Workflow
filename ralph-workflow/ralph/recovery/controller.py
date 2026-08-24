@@ -1018,9 +1018,8 @@ class RecoveryController:
         if self._policy_bundle is None:
             return None
         phase_def = self._policy_bundle.pipeline.phases.get(phase)
-        if phase_def is None:
-            return None
-        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
+        drain_name = phase_def.drain if phase_def is not None else phase
+        drain_config = self._policy_bundle.agents.agent_drains.get(drain_name)
         if drain_config is None:
             return None
         return self._policy_bundle.agents.agent_chains.get(drain_config.chain)

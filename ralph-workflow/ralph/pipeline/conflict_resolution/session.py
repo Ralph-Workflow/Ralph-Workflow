@@ -61,6 +61,10 @@ class ResolutionSession:
     charge_conflict_budget: bool = True
     dead_tool_surfaces: tuple[str, ...] = ()
     last_recovery_reason: str | None = None
+    recovery_controller: object | None = None
+    recovery_state: object | None = None
+    last_retry_delay_ms: int = 0
+    current_agent_retries: int = 0
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
@@ -89,28 +93,48 @@ def classify_failed_resolution_attempt(
     *,
     candidates: tuple[str, ...] = (),
     failed_index: int = 0,
+    policy_bundle: PolicyBundle | None = None,
 ) -> None:
     """Route a failed conflict invoke through RecoveryController.handle."""
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
     from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.failure_category import FailureCategory
+    from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+    from ralph.recovery.seed_budget_registry import seed_budget_registry
 
-    controller = RecoveryController()
+    controller: RecoveryController
+    if session is not None and isinstance(session.recovery_controller, RecoveryController):
+        controller = session.recovery_controller
+    else:
+        options = RecoveryControllerOptions(
+            policy_bundle=policy_bundle,
+            budget_registry=(
+                seed_budget_registry(policy_bundle) if policy_bundle is not None else None
+            ),
+        )
+        controller = RecoveryController(options=options)
+        if session is not None:
+            session.recovery_controller = controller
     classified = controller.classify_conflict_attempt(raw_failure, agent=agent_name)
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
-    recovery_state = PipelineState(
-        phase=PHASE_RESOLUTION,
-        phase_chains={
-            PHASE_RESOLUTION: AgentChainState(
-                agents=agents,
-                current_index=bounded_index,
-                retries=0,
-            )
-        },
-    )
-    controller.handle(
+    recovery_state: PipelineState
+    if session is not None and isinstance(session.recovery_state, PipelineState):
+        recovery_state = session.recovery_state
+    else:
+        recovery_state = PipelineState(
+            phase=PHASE_RESOLUTION,
+            phase_chains={
+                PHASE_RESOLUTION: AgentChainState(
+                    agents=agents,
+                    current_index=bounded_index,
+                    retries=0,
+                )
+            },
+        )
+    new_state, _effects, _event = controller.handle(
         recovery_state,
         raw_failure,
         FailureContext(
@@ -121,11 +145,45 @@ def classify_failed_resolution_attempt(
     )
     if session is None:
         return
+    session.recovery_state = new_state
     session.last_recovery_reason = classified.reason
-    if candidates:
+    session.last_retry_delay_ms = new_state.last_retry_delay_ms
+    max_retries = _conflict_chain_max_retries(policy_bundle)
+    if (
+        classified.category == FailureCategory.ENVIRONMENTAL
+        and session.current_agent_retries + 1 < max_retries
+    ):
+        session.current_agent_retries += 1
+        session.chain_cursor = failed_index
+    elif candidates:
+        session.current_agent_retries = 0
         session.chain_cursor = controller.next_conflict_candidate(
             candidates, failed_index=failed_index
         )
+    if session.recovery_state is not None:
+        chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
+        agents = list(chain_state.agents) if chain_state is not None else list(candidates)
+        session.recovery_state = new_state.with_phase_chain(
+            PHASE_RESOLUTION,
+            AgentChainState(
+                agents=agents,
+                current_index=min(session.chain_cursor, max(len(agents) - 1, 0)),
+                retries=session.current_agent_retries,
+            ),
+        )
+
+
+def _conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
+    """Return the bound conflict chain's max_retries, or 2 when unbound."""
+    if policy_bundle is None:
+        return 2
+    drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
+    if drain is None:
+        return 2
+    chain = policy_bundle.agents.agent_chains.get(drain.chain)
+    if chain is None:
+        return 2
+    return chain.max_retries
 
 
 def invoke_resolution_agent(
@@ -195,22 +253,30 @@ def invoke_resolution_agent(
             run_id=None,
         )
     except AgentInactivityTimeoutError as exc:
-        classify_failed_resolution_attempt(session, agent_name, exc)
+        classify_failed_resolution_attempt(
+            session, agent_name, exc, policy_bundle=policy_bundle
+        )
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
         return False
     except SupervisionInfrastructureError as exc:
-        classify_failed_resolution_attempt(session, agent_name, exc)
+        classify_failed_resolution_attempt(
+            session, agent_name, exc, policy_bundle=policy_bundle
+        )
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
         return False
     except Exception as exc:
-        classify_failed_resolution_attempt(session, agent_name, exc)
+        classify_failed_resolution_attempt(
+            session, agent_name, exc, policy_bundle=policy_bundle
+        )
         _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
         return False
     if event != PipelineEvent.AGENT_SUCCESS:
-        classify_failed_resolution_attempt(session, agent_name, "candidate declined")
+        classify_failed_resolution_attempt(
+            session, agent_name, "candidate declined", policy_bundle=policy_bundle
+        )
         return False
     return True
 

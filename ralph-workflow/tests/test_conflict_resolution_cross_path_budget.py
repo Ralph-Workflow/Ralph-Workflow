@@ -173,6 +173,56 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
     assert applied == [identity]
 
 
+def test_remote_refresh_failure_still_books_conflict_budget(
+    monkeypatch: object, tmp_path: Path
+) -> None:
+    """A None pull outcome must still run apply_conflict_budget before returning."""
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+    from ralph.pipeline.auto_integrate_remote_sync import pull_and_reconcile_target
+
+    identity = ConflictIdentity(scope="remote")
+    applied: list[ConflictIdentity] = []
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.observe_conflict_identity",
+        lambda *_args, **_kwargs: identity,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.remote_sync_enabled",
+        lambda _config: True,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.remote_target_name",
+        lambda _config: "origin",
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync._throttle_allows_pull",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.refresh_target_from_remote",
+        lambda *_args, **_kwargs: "ok",
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync._dispatch_pull_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    def _apply(record: object, **kwargs: object) -> object:
+        ident = kwargs.get("identity")
+        if isinstance(ident, ConflictIdentity):
+            applied.append(ident)
+        return record
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply
+    )
+    config = UnifiedConfig.model_validate({"general": {}})
+    result = pull_and_reconcile_target(config, tmp_path, "main")
+    assert applied == [identity]
+    assert result is not None
+
+
 def test_endpoint_merge_does_not_reinvoke_the_same_identity(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

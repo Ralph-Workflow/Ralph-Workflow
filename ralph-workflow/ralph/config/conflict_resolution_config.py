@@ -24,7 +24,15 @@ class ConflictResolutionConfig(RalphBaseModel):
     status_interval_seconds: float = Field(default=30.0, gt=0.0)
     max_rounds_per_stop: int = Field(default=3, ge=1)
     max_rebase_conflict_stops: int = Field(default=10, ge=1)
-    max_fallback_agents: int = Field(default=2, ge=1)
+    max_fallback_agents: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "Compatibility field retained for older configs. It does not cap "
+            "how many chain candidates conflict resolution tries; the bound "
+            "agent chain alone decides candidate breadth."
+        ),
+    )
     total_resolution_cap_seconds: float | None = Field(
         default=None,
         description=(

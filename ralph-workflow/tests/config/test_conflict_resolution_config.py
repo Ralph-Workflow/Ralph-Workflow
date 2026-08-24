@@ -8,6 +8,7 @@ import pytest
 from loguru import logger
 from pydantic import ValidationError
 
+from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.loader import load_config
 from ralph.config.models import UnifiedConfig
 
@@ -74,6 +75,25 @@ def test_config_loader_identifies_unknown_conflict_resolution_field() -> None:
         {"conflict_resolution": {"inactivity_timeout_secodns": 900.0}}, Path("config.toml")
     )
     assert any("conflict_resolution.inactivity_timeout_secodns" in message for message in messages)
+
+
+def test_max_fallback_agents_is_documented_as_unused_for_chain_breadth() -> None:
+    """R3: max_fallback_agents must not be a second answer to chain length."""
+    field = ConflictResolutionConfig.model_fields["max_fallback_agents"]
+    description = field.description or ""
+    assert "does not cap" in description.lower() or "not a candidate cap" in description.lower()
+
+
+def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator_cap() -> None:
+    """R49: load has no elapsed kill of a progressing resolver besides the opt-in cap."""
+    names = set(ConflictResolutionConfig.model_fields)
+    elapsed_kills = {
+        name
+        for name in names
+        if any(token in name for token in ("wait", "ceiling", "deadline", "elapsed", "child"))
+    }
+    assert elapsed_kills <= {"total_resolution_cap_seconds"}
+    assert "inactivity_timeout_seconds" in names
 
 
 def test_one_agent_conflict_chain_is_warned_at_policy_load() -> None:

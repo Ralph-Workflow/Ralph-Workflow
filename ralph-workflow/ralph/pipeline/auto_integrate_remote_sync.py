@@ -220,16 +220,17 @@ def pull_and_reconcile_target(
                 refresh, repo_root, target, chosen_remote, clock, config, effective_resolver
             )
             if pulled is None:
-                return None
-            from ralph.git.merge import branch_sha
+                state = prior_state
+            else:
+                from ralph.git.merge import branch_sha
 
-            try:
-                target_sha = branch_sha(repo_root, target)
-            except OSError:
-                target_sha = None
-            state = pulled.model_copy(
-                update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
-            )
+                try:
+                    target_sha = branch_sha(repo_root, target)
+                except OSError:
+                    target_sha = None
+                state = pulled.model_copy(
+                    update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
+                )
         return apply_conflict_budget(
             state,
             prior=prior_state,

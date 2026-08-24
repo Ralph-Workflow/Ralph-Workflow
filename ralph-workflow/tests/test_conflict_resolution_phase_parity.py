@@ -82,6 +82,86 @@ def test_four_agent_chain_tries_every_candidate(
     assert called == ["one", "two", "three", "four"]
 
 
+def test_transient_failure_retries_the_same_agent_using_recovery_controller_handle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A transient first-agent failure retries that agent before failover."""
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
+    )
+    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver.time.sleep", lambda _seconds: None)
+    _install_seams(
+        monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED]
+    )
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        if agent_name == "one":
+            raise ConnectionError("provider unavailable")
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    assert called[0] == "one"
+    assert called.count("one") > 1
+    assert "two" in called
+    one_indexes = [index for index, name in enumerate(called) if name == "one"]
+    assert one_indexes[1] == one_indexes[0] + 1
+
+
+def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Retry backoff is the chain's retry_delay_ms decided by RecoveryController.handle."""
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.driver.time.sleep", sleeps.append
+    )
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
+    )
+    _install_seams(
+        monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED]
+    )
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        if agent_name == "one":
+            raise ConnectionError("provider unavailable")
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    chain = _policy_bundle().agents.agent_chains["rebase_conflict_resolution"]
+    expected_seconds = chain.retry_delay_ms / 1000.0
+    assert sleeps
+    assert sleeps[0] == expected_seconds
+
+
 def test_conflict_failures_call_recovery_controller_handle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -254,17 +334,19 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
     )
+    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver.time.sleep", lambda _seconds: None)
     _install_seams(
         monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, _CONFLICTED]
     )
     outcomes: list[BaseException | bool] = [
         RuntimeError("launch failed: cannot spawn agent"),
         ConnectionError("provider unavailable"),
+        ConnectionError("provider unavailable"),
         False,
     ]
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        item = outcomes.pop(0)
+        item = outcomes.pop(0) if outcomes else False
         if isinstance(item, BaseException):
             raise item
         return item
@@ -283,7 +365,9 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
         )
         is False
     )
-    assert seen == ["launch", "provider", "decline"]
+    assert seen[0] == "launch"
+    assert "provider" in seen
+    assert "decline" in seen
 
 
 def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(

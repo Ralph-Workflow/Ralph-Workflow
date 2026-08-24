@@ -55,6 +55,13 @@ sessions also suppress inherited cycle-timebox and ordinary session-wrap-up
 notices, which are normal-phase elapsed-time supervisors rather than evidence
 of resolver inactivity.
 
+Conflict resolution remains an out-of-graph drain. Failed attempts still call
+`RecoveryController.handle` with pipeline state for `rebase_conflict_resolution`
+so chain `max_retries` and `retry_delay_ms` govern retry and failover. The
+local `_run_rounds` loop only sequences unresolved work; it does not choose
+candidates or backoff. `max_fallback_agents` is a compatibility field and does
+not truncate the bound chain. A one-agent chain is warned at policy load.
+
 ## Verification
 
 The deterministic regression coverage is in
