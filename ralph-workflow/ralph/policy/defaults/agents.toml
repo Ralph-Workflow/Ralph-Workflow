@@ -97,8 +97,9 @@ retry_delay_ms = 1000
 # above it is bound to no phase in ralph/policy/defaults/pipeline.toml, so
 # validate_drain_contracts / validate_agent_chains_satisfiable do not require a
 # phase binding. The chain mirrors `development` because resolving a conflict
-# is source editing under verification. Bind more than one agent here: a
-# one-agent chain is warned at load because this phase then has no fallback.
+# is source editing under verification. The chain itself owns ordered candidates,
+# retries, retry_delay_ms backoff, and fallback. Bind more than one agent here:
+# a one-agent chain is warned at load because this phase then has no fallback.
 [agent_chains.rebase_conflict_resolution]
 agents = ["claude"]
 max_retries = 2

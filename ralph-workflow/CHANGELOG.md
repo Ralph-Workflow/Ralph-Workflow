@@ -45,6 +45,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(conflict-resolution): route merge, rebase, and remote conflict attempts through the bound recovery chain** — chain-owned retries, backoff, ordered fallover, durable identity suppression, and resumable landed stops replace local conflict retry policy; Ralph alone stages and advances Git. Locked by `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_cross_path_budget.py`, `tests/test_conflict_resolution_resume.py`, and `tests/recovery/`.
+
 - **fix(conflict-resolution): supervise active merge and rebase resolvers by fixed activity instead of elapsed time** — adds typed `[conflict_resolution]` bounds, an authenticated standalone-MCP activity relay, explicit operator-cap reporting, and bounded MCP-process reaping. Locked by `tests/test_conflict_resolution_liveness_matrix.py`, `tests/test_conflict_resolution_supervision.py`, `tests/mcp/test_mcp_activity_relay.py`, and `tests/test_conflict_resolution_lifecycle.py`.
 
 - **fix(console): restore terminal modes and contain residual control-sequence leaks** — signal restoration reapplies saved termios modes, VT writes are gated on terminal capability, the canonical stripper consumes DCS/SOS/PM/APC and dangling fragments, and SIGWINCH refreshes are total and non-reentrant. Locked by `tests/test_line_sanitizer.py`, `tests/unit/display/test_terminal_restore.py`, `tests/unit/display/test_terminal_bg_query.py`, and `tests/unit/display/test_context_resize_install_sigwinch_refresher.py`.

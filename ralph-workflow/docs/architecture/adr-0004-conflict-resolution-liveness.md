@@ -55,12 +55,11 @@ sessions also suppress inherited cycle-timebox and ordinary session-wrap-up
 notices, which are normal-phase elapsed-time supervisors rather than evidence
 of resolver inactivity.
 
-Conflict resolution remains an out-of-graph drain. Failed attempts still call
-`RecoveryController.handle` with pipeline state for `rebase_conflict_resolution`
-so chain `max_retries` and `retry_delay_ms` govern retry and failover. The
-local `_run_rounds` loop only sequences unresolved work; it does not choose
-candidates or backoff. `max_fallback_agents` is a compatibility field and does
-not truncate the bound chain. A one-agent chain is warned at policy load.
+Conflict resolution remains an out-of-graph drain. ADR-0005 supersedes this
+ADR's pipeline-recovery discussion: `RecoveryController.handle` owns the bound
+`rebase_conflict_resolution` chain's retries, backoff, candidate ordering, and
+failover, while Ralph-owned staging and Git advancement remain the deliberate
+conflict-specific differences.
 
 ## Verification
 

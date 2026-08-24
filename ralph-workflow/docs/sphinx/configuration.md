@@ -199,7 +199,9 @@ total_resolution_cap_seconds = 3600.0
 
 Ralph Workflow reports at configuration load time that this override may stop active resolution. Leave the setting absent to allow active conflict work to continue without an elapsed-time cap.
 
-Rebase, endpoint merge, and remote reconciliation share one conflict identity and one repeat budget, keyed by feature tip, target tip, conflicted paths, stage OIDs, and a `scope` of `feature` or `remote`. An exhausted feature budget does not suppress a distinct remote conflict. After an unchanged failed identity, Ralph Workflow does not start another rebase or silently re-invoke the same resolver; exhaustion stops the phase and the recorded reason names the suppressed state.
+The `rebase_conflict_resolution` drain binds the `rebase_conflict_resolution` chain in `agents.toml`. Its bundled default is `claude`, with `max_retries = 2` and `retry_delay_ms = 1000`. The chain alone owns ordered candidates, retries, backoff, and fallover; add fallback agents to that chain when needed. `max_fallback_agents` is compatibility-only and cannot narrow the chain. A one-agent chain is valid but produces a configuration-load warning because no fallback remains.
+
+Rebase, endpoint merge, and remote reconciliation share one conflict identity and repeat contract, keyed by feature tip, target tip, conflicted paths, stage OIDs, and a `scope` of `feature` or `remote`. An exhausted feature budget does not suppress a distinct remote conflict. After an unchanged failed identity, Ralph Workflow suppresses repeated resolution instead of starting another rebase or silently re-invoking the same resolver; the terminal record names the suppression and operator action.
 
 ## Auto-integration
 

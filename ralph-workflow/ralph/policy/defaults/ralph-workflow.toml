@@ -181,8 +181,9 @@ commit = "commit"
 # max_rebase_conflict_stops = 10       # stops resolved in one rebase loop
 # max_fallback_agents = 2              # compatibility only; does not cap chain candidates
 # total_resolution_cap_seconds = None  # opt-in elapsed cap; only bound that may stop active work
-# Chain retries/backoff live on [agent_chains.rebase_conflict_resolution] in agents.toml
-# (max_retries = 2, retry_delay_ms = 1000). The drain rebase_conflict_resolution binds that chain.
+# Candidate order, retries, and backoff live on [agent_chains.rebase_conflict_resolution]
+# in agents.toml (bundled: claude, max_retries = 2, retry_delay_ms = 1000).
+# The rebase_conflict_resolution drain binds that chain; max_fallback_agents cannot cap it.
 
 # Edit this only if you need to change workflow automation behavior.
 # -----------------------------------------------------------------------------

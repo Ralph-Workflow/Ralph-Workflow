@@ -14,6 +14,9 @@ the maintained Python package.
 - [ADR-0004: conflict-resolution liveness](adr-0004-conflict-resolution-liveness.md) —
   activity-only supervision, authenticated standalone-MCP activity relay, and
   terminal process quiescence before integration actions
+- [ADR-0005: conflict-resolution pipeline parity](adr-0005-conflict-resolution-pipeline-parity.md) —
+  shared recovery-controller routing, durable conflict identity, and Ralph-owned
+  staging and Git advancement for every conflict path
 - [Project Policy Readiness traceability](project-policy-readiness-traceability.md) —
   26-row requirements-traceability matrix binding the spec's acceptance
   criteria to implementing symbols and passing deterministic tests
