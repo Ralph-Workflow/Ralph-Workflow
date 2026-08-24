@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from git import Repo
 
 from ralph.agents.chain import ChainManager
@@ -28,12 +28,16 @@ from ralph.recovery.classifier import FailureCategory
 from ralph.test_suites import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 from ralph.workspace.fs import FsWorkspace
 
-if TYPE_CHECKING:
-    import pytest
-
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
 _INVARIANTS_FILE = "tests/test_commit_cleanup_invariants.py"
+_VERIFY_GATE_FILE = "tests/test_commit_cleanup_verify_gate.py"
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+pytestmark = [
+    pytest.mark.timeout_seconds(5),
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+]
 
 
 def _write_commit_cleanup_artifact(
@@ -181,6 +185,7 @@ def test_cleanup_failure_routes_to_commit_not_failed_terminal() -> None:
 
 def test_invariants_module_is_required_auto_integrate() -> None:
     assert _INVARIANTS_FILE in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    assert _VERIFY_GATE_FILE in REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
 
 def test_next_prompt_contains_declined_and_apply_failed_paths(

@@ -89,7 +89,7 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
     )
-    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None)
     _install_seams(
         monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED]
     )
@@ -128,7 +128,7 @@ def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
     """Retry backoff is the chain's retry_delay_ms decided by RecoveryController.handle."""
     sleeps: list[float] = []
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.driver.time.sleep", sleeps.append
+        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", sleeps.append
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
@@ -334,7 +334,7 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
     )
-    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None)
     _install_seams(
         monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, _CONFLICTED]
     )

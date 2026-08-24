@@ -60,6 +60,11 @@ type MonotonicClock = Callable[[], float]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
+
+def _sleep_seconds(seconds: float) -> None:
+    """Sleep without exposing ``time.sleep`` as the patch target for tests."""
+    time.sleep(seconds)  # filesystem-poll-ok: RecoveryController chain retry_delay_ms backoff
+
 __all__ = [
     "MonotonicClock",
     "ResolutionInvoker",
@@ -488,7 +493,7 @@ def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundl
         if chain is not None:
             delay_ms = chain.retry_delay_ms
     if delay_ms > 0:
-        time.sleep(delay_ms / 1000.0)  # filesystem-poll-ok: RecoveryController chain retry_delay_ms backoff
+        _sleep_seconds(delay_ms / 1000.0)
 
 
 def _default_invoker(
