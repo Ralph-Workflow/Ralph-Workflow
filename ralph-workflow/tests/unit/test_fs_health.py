@@ -106,7 +106,7 @@ def test_gather_on_non_darwin_only_sets_volume_root(tmp_path: Path) -> None:
         # implementation never reaches ``_probe_journal_size``.
         journal = tmp_path / ".fseventsd"
         journal.mkdir()
-        (journal / "big").write_bytes(b"x" * (_JOURNAL_WARN_BYTES + 1))
+        (journal / "big").write_bytes(b"x" * 64)
         with patch.object(
             fs_health_module,
             "_probe_journal_size",

@@ -515,33 +515,3 @@ def _cleanup_failed_event(phase_name: str, exc: BaseException) -> list[Event]:
     ]
 
 
-def _decide_cleanup_outcome(
-    phase_name: str,
-    cleanup: CommitCleanup,
-    skipped_delete_paths: list[str],
-    failed_delete_paths: list[str] | None = None,
-) -> list[Event]:
-    """Delegate outcome calculation using a synthetic observed report."""
-    report = CleanupApplyReport(
-        declined_delete_paths=list(skipped_delete_paths),
-        failed_delete_paths=list(failed_delete_paths or []),
-        applied_delete_paths=[
-            action.path
-            for action in cleanup.actions
-            if action.action == "delete_file"
-            and action.path
-            and action.path not in skipped_delete_paths
-            and action.path not in (failed_delete_paths or [])
-        ],
-        applied_gitignore_patterns=[
-            action.pattern
-            for action in cleanup.actions
-            if action.action == "add_to_gitignore" and action.pattern and action.pattern.strip()
-        ],
-        applied_exclude_patterns=[
-            action.pattern
-            for action in cleanup.actions
-            if action.action == "add_to_git_exclude" and action.pattern and action.pattern.strip()
-        ],
-    )
-    return decide_cleanup_outcome(phase_name, cleanup, report)

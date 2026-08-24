@@ -13,9 +13,10 @@ from ralph.config import bootstrap
 from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
 from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
 from ralph.phases import PhaseContext
+from ralph.phases._commit_cleanup_actions import CleanupApplyReport
+from ralph.phases._commit_cleanup_outcome import decide_cleanup_outcome
 from ralph.phases.commit_cleanup import (
     _apply_cleanup_actions,
-    _decide_cleanup_outcome,
     build_cleanup_retry_hint,
     handle_commit_cleanup_phase,
 )
@@ -2144,8 +2145,15 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
 
     skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
+    gitignore_path = tmp_git_repo / ".gitignore"
+    gitignore_text = gitignore_path.read_text() if gitignore_path.exists() else ""
+    applied_gitignore = ["   "] if "   " in gitignore_text else []
+    report = CleanupApplyReport(
+        declined_delete_paths=list(skipped),
+        applied_gitignore_patterns=applied_gitignore,
+    )
 
-    outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, skipped)
+    outcome = decide_cleanup_outcome("development_commit_cleanup", cleanup, report)
     assert outcome == [PipelineEvent.PHASE_LOOPBACK]
     assert source.exists()
 
@@ -2175,8 +2183,15 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
 
     skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
+    exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
+    exclude_text = exclude_path.read_text() if exclude_path.exists() else ""
+    applied_exclude = ["   "] if "   " in exclude_text else []
+    report = CleanupApplyReport(
+        declined_delete_paths=list(skipped),
+        applied_exclude_patterns=applied_exclude,
+    )
 
-    outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, skipped)
+    outcome = decide_cleanup_outcome("development_commit_cleanup", cleanup, report)
     assert outcome == [PipelineEvent.PHASE_LOOPBACK]
     assert source.exists()
 
@@ -2206,8 +2221,13 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
     _apply_cleanup_actions(tmp_git_repo, cleanup)
     gitignore_text = (tmp_git_repo / ".gitignore").read_text()
     assert "*.scratch" in gitignore_text
+    applied_gitignore = ["*.scratch"] if "*.scratch" in gitignore_text else []
+    report = CleanupApplyReport(
+        declined_delete_paths=[],
+        applied_gitignore_patterns=applied_gitignore,
+    )
 
-    outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, [])
+    outcome = decide_cleanup_outcome("development_commit_cleanup", cleanup, report)
     assert outcome == [PipelineEvent.AGENT_SUCCESS] or len(outcome) == 1
 
 
