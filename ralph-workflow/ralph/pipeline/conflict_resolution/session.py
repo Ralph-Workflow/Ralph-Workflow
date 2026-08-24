@@ -90,11 +90,35 @@ def classify_failed_resolution_attempt(
     candidates: tuple[str, ...] = (),
     failed_index: int = 0,
 ) -> None:
-    """Route a failed conflict invoke through RecoveryController classification."""
+    """Route a failed conflict invoke through RecoveryController.handle."""
+    from ralph.pipeline.agent_chain_state import AgentChainState
+    from ralph.pipeline.state import PipelineState
+    from ralph.recovery.classifier import FailureContext
     from ralph.recovery.controller import RecoveryController
 
     controller = RecoveryController()
     classified = controller.classify_conflict_attempt(raw_failure, agent=agent_name)
+    agents = list(candidates) if candidates else [agent_name]
+    bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
+    recovery_state = PipelineState(
+        phase=PHASE_RESOLUTION,
+        phase_chains={
+            PHASE_RESOLUTION: AgentChainState(
+                agents=agents,
+                current_index=bounded_index,
+                retries=0,
+            )
+        },
+    )
+    controller.handle(
+        recovery_state,
+        raw_failure,
+        FailureContext(
+            phase=PHASE_RESOLUTION,
+            agent=agent_name,
+            classified_failure=classified,
+        ),
+    )
     if session is None:
         return
     session.last_recovery_reason = classified.reason

@@ -25,6 +25,9 @@ from pydantic import TypeAdapter, ValidationError
 import ralph.policy
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.phases import register_role_handlers
+from ralph.policy.conflict_chain_warnings import (
+    warn_if_conflict_resolution_chain_has_no_fallback,
+)
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -926,6 +929,7 @@ def _load_policy_from_paths(
         ) from exc
 
     register_role_handlers(pipeline_policy)
+    warn_if_conflict_resolution_chain_has_no_fallback(bundle)
     return bundle
 
 

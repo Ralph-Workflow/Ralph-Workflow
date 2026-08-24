@@ -454,7 +454,6 @@ def _run_one_round(
                 candidates=candidates,
                 failed_index=offset,
             )
-        session.chain_cursor = offset + 1
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             remembered = list(session.dead_tool_surfaces)
             if agent_name not in remembered:

@@ -77,17 +77,17 @@ def test_config_loader_identifies_unknown_conflict_resolution_field() -> None:
 
 
 def test_one_agent_conflict_chain_is_warned_at_policy_load() -> None:
-    """R3/B1: a one-agent conflict chain is reported when the chain is resolved."""
-    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+    """R3/B1: a one-agent rebase_conflict_resolution chain is warned at policy load."""
     from ralph.policy.loader import load_policy
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
     try:
         bundle = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults")
-        agents = resolution_chain_agents(bundle)
     finally:
         logger.remove(sink_id)
 
+    drain = bundle.agents.agent_drains["rebase_conflict_resolution"]
+    agents = bundle.agents.agent_chains[drain.chain].agents
     assert len(agents) == 1
     assert any("one-agent chain" in record for record in records)

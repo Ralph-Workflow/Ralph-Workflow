@@ -558,6 +558,13 @@ ralph.policy
 .. automodule:: ralph.policy
    :no-members:
 
+ralph.policy.conflict_chain_warnings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.policy.conflict_chain_warnings
+   :members:
+   :show-inheritance:
+
 ralph.policy.loader
 ~~~~~~~~~~~~~~~~~~~
 

@@ -82,6 +82,51 @@ def test_four_agent_chain_tries_every_candidate(
     assert called == ["one", "two", "three", "four"]
 
 
+def test_conflict_failures_call_recovery_controller_handle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """R1: candidate failures use RecoveryController.handle, not a private retry table."""
+    from ralph.recovery.controller import RecoveryController
+
+    handled: list[str] = []
+    original = RecoveryController.handle
+
+    def _spy(
+        self: RecoveryController,
+        state: object,
+        raw_failure: BaseException | str,
+        context: object,
+    ) -> object:
+        handled.append(str(raw_failure))
+        return original(self, state, raw_failure, context)
+
+    monkeypatch.setattr(RecoveryController, "handle", _spy)
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
+    )
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        raise RuntimeError(f"launch failed for {agent_name}")
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    assert handled
+    assert any("launch failed for one" in item for item in handled)
+
+
 def test_next_round_starts_at_an_untried_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
