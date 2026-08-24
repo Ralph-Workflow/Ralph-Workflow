@@ -40,6 +40,7 @@ from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
     check_process_result,
     completion_run_id_from_extra_env,
+    read_bounded_stderr,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -228,6 +229,7 @@ def check_broken_agent_timer(
             elapsed_seconds=elapsed_seconds,
             grace_seconds=grace_seconds,
             returncode=0 if returncode is None else int(returncode),
+            stderr=read_bounded_stderr(handle),
         )
     # The BROKEN_AGENT_OUTPUT_GRACE_SECONDS reference is load-bearing:
     # test_teardown_subtree_calls_are_verdict_guarded audits that every

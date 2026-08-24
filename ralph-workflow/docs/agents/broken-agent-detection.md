@@ -10,6 +10,8 @@ Both subprocess and PTY line readers enforce the grace window while the process 
 
 A clean exit is checked before the normal resumable-exit path without waiting for that grace window. Empty bounded output, output made entirely of prompt echoes, and small no-meaningful-output cases each raise `BrokenAgentExitError` immediately. `no_llm_activity` is only treated as an immediate broken-agent classification when bounded output is structurally small (≤2 nonblank lines and ≤256 bytes total); larger output with `has_meaningful_output=False` falls through the missing-artifact path for resumable/retry handling. A credential marker in stderr, or in empty/structurally small bounded output, does the same, whether the harness exits with `rc=0` or nonzero; a substantial transcript that merely mentions credentials (an echoed retry prompt, the master prompt, or source under discussion) follows the resumable missing-artifact path instead. A credential-marked nonzero exit after the grace window remains a normal recoverable invocation failure.
 
+For a settled fast subprocess exit, Ralph preserves the process's actual exit status and reads up to 64 KiB from its stderr pipe into the `BrokenAgentExitError` diagnostic. This is crash evidence, not provider attribution: use the status and stderr to investigate the local agent command, credentials, extension, or provider configuration; absence of stderr does not identify an external cause. PTY transports multiplex terminal output and do not provide a separate stderr pipe.
+
 ## Non-LLM Activity
 
 `reason="no_llm_activity"` identifies a clean exit whose bounded output is a **small structural case** with watchdog-confirmed no meaningful LLM activity: nonempty output with ≤2 nonblank lines and ≤256 bytes total, typically lifecycle noise or simple harness chatter. It differs from `no_output`, where no classified output was seen, and `prompt_echo`, where every nonblank line was a deterministic echo of the input prompt. Substantial output above the structural threshold is routed through the normal resumable/retry path instead.
@@ -34,7 +36,7 @@ Repeated identical broken-agent failures are also bounded. `BROKEN_AGENT_SAME_SH
 
 ## Operator Response
 
-Check the selected agent's credentials and provider availability first. A prompt-echo diagnosis also indicates that the harness started but the model did not provide meaningful output.
+For a fast no-output subprocess exit, start with the `BrokenAgentExitError` exit code and stderr text. They distinguish a hard process crash from a clean no-output completion, but they do not by themselves prove why a provider failed. Then check the selected agent's credentials, command configuration, extension setup, and provider availability. A prompt-echo diagnosis also indicates that the harness started but the model did not provide meaningful output.
 
 After correcting credentials or provider configuration, allow the unavailable-agent cooldown to expire or restart the run using the configured recovery workflow.
 

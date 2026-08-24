@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from io import StringIO
+
 import pytest
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
@@ -16,8 +18,9 @@ from ralph.timeout_defaults import (
 class _ManagedHandle:
     pid = None
 
-    def __init__(self, returncode: int | None) -> None:
+    def __init__(self, returncode: int | None, *, stderr_text: str = "") -> None:
         self._returncode = returncode
+        self.stderr = StringIO(stderr_text)
         self.terminated = False
 
     def poll(self) -> int | None:
@@ -60,6 +63,24 @@ def test_quick_clean_exit_without_evidence_falls_over_before_grace_window() -> N
     assert "code 23" in str(excinfo.value)
     assert excinfo.value.elapsed_seconds == 2.0 + BROKEN_AGENT_EXIT_SETTLE_SECONDS
     assert excinfo.value.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+
+
+def test_quick_exit_regression_retains_stderr_with_real_nonzero_exit_code() -> None:
+    """S-2: a settled instant crash preserves bounded stderr diagnostic evidence."""
+    clock = FakeClock(start=0.0)
+    handle = _ManagedHandle(returncode=37, stderr_text="provider bootstrap rejected credentials")
+    watchdog = _watchdog(clock)
+    clock.advance(2.0)
+    check_broken_agent_timer(handle, watchdog, "pi")
+    clock.advance(BROKEN_AGENT_EXIT_SETTLE_SECONDS)
+
+    with pytest.raises(BrokenAgentExitError) as excinfo:
+        check_broken_agent_timer(handle, watchdog, "pi")
+
+    assert excinfo.value.returncode == 37
+    assert excinfo.value.stderr == "provider bootstrap rejected credentials"
+    assert "code 37" in str(excinfo.value)
+    assert "provider bootstrap rejected credentials" in str(excinfo.value)
 
 
 def test_live_silent_process_keeps_startup_grace_window() -> None:

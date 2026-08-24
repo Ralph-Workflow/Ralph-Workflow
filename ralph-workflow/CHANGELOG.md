@@ -45,6 +45,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(invoke): retain bounded stderr and the actual exit status for settled fast no-output subprocess failures** — `BrokenAgentExitError` now preserves up to 64 KiB of subprocess stderr alongside the polled nonzero return code, improving crash diagnosis without attributing an external provider cause. Locked by `tests/agents/invoke/test_quick_exit_no_output_broken.py`.
+
 - **fix(conflict-resolution): route merge, rebase, and remote conflict attempts through the bound recovery chain** — chain-owned retries, backoff, ordered fallover, durable identity suppression, and resumable landed stops replace local conflict retry policy; Ralph alone stages and advances Git. Locked by `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_cross_path_budget.py`, `tests/test_conflict_resolution_resume.py`, and `tests/recovery/`.
 
 - **fix(conflict-resolution): supervise active merge and rebase resolvers by fixed activity instead of elapsed time** — adds typed `[conflict_resolution]` bounds, an authenticated standalone-MCP activity relay, explicit operator-cap reporting, and bounded MCP-process reaping. Locked by `tests/test_conflict_resolution_liveness_matrix.py`, `tests/test_conflict_resolution_supervision.py`, `tests/mcp/test_mcp_activity_relay.py`, and `tests/test_conflict_resolution_lifecycle.py`.

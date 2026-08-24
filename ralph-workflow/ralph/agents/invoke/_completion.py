@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import KW_ONLY, dataclass, field, replace
-from typing import IO, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -88,13 +88,20 @@ def _looks_like_credentials_failure(text: str) -> bool:
     return contains_casefolded_marker([text], CREDENTIALS_FAILURE_SUBSTRINGS)
 
 
+@runtime_checkable
+class _ReadableTextPipe(Protocol):
+    """Minimal typed boundary for a captured text stderr pipe."""
+
+    def read(self, size: int = -1, /) -> str: ...
+
+
 def _truncation_marker(capped_bytes: int) -> str:
     """Return the canonical truncation marker used when the stderr pipe holds
     more bytes than the cap."""
     return f"\n[stderr truncated: more than {capped_bytes} bytes]"
 
 
-def _bounded_read(pipe: IO[str]) -> str:
+def _bounded_read(pipe: _ReadableTextPipe) -> str:
     """Read at most ``_MAX_STDERR_CAPTURE_BYTES`` from ``pipe`` and append a
     truncation marker if more was available.
 
@@ -112,6 +119,20 @@ def _bounded_read(pipe: IO[str]) -> str:
         if probe:
             chunk = chunk + _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
     return chunk
+
+
+def read_bounded_stderr(handle: object) -> str:
+    """Return the bounded stderr captured from a subprocess handle, if available.
+
+    Stderr is diagnostic evidence only. A closed or malformed transport pipe
+    must not replace the original process-exit classification, so read errors
+    deliberately degrade to an empty diagnostic.
+    """
+    try:
+        stderr_pipe: object = getattr(handle, "stderr", None)
+        return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""
+    except Exception:
+        return ""
 
 
 if TYPE_CHECKING:
@@ -628,10 +649,9 @@ def check_process_result(
             completion evidence and no child agents are still running.
     """
     returncode = int(handle.returncode or 0)
-    stderr_pipe = cast(
-        "IO[str] | None", getattr(handle, "stderr", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    stderr_text = _bounded_read(stderr_pipe) if stderr_pipe is not None else ""
+    stderr_text = read_bounded_stderr(handle)
+    stderr_attr: object = getattr(handle, "stderr", None)
+    stderr_available = stderr_attr is not None
     if returncode != 0:
         if _looks_like_credentials_failure(stderr_text) and (
             check_options is None
@@ -649,7 +669,7 @@ def check_process_result(
                 returncode=returncode,
                 stderr=stderr_text,
             )
-        stderr = stderr_text if stderr_pipe is not None else "(unable to read stderr)"
+        stderr = stderr_text if stderr_available else "(unable to read stderr)"
         exc = AgentInvocationError(
             agent_name,
             returncode,
