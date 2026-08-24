@@ -11,6 +11,7 @@ from ralph.recovery.classifier import FailureCategory
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
+    from ralph.phases._commit_cleanup_actions import CleanupApplyReport
 
 
 def build_cleanup_retry_hint(skipped_paths: list[str], safe_applied_count: int) -> str:
@@ -38,118 +39,67 @@ def build_cleanup_retry_hint(skipped_paths: list[str], safe_applied_count: int) 
     )
 
 
+def build_unapplied_retry_hint(report: CleanupApplyReport) -> str:
+    """Build the hint delivered to the next prompt for unapplied decisions."""
+    lines: list[str] = ["Cleanup retry hint: some requested actions were not applied."]
+    if report.declined_delete_paths:
+        lines.append("Declined delete_file paths:")
+        lines.extend(f"  - {path!r}" for path in report.declined_delete_paths)
+        lines.append(
+            "Resubmit without these paths, or reclassify a machine-local path as "
+            "add_to_git_exclude / a project-wide pattern as add_to_gitignore."
+        )
+    if report.failed_delete_paths:
+        lines.append("delete_file actions that failed while applying:")
+        lines.extend(f"  - {path!r}" for path in report.failed_delete_paths)
+    if report.failed_gitignore_patterns:
+        lines.append("add_to_gitignore patterns that failed while applying:")
+        lines.extend(f"  - {pattern!r}" for pattern in report.failed_gitignore_patterns)
+    if report.failed_exclude_patterns:
+        lines.append("add_to_git_exclude patterns that failed while applying:")
+        lines.extend(f"  - {pattern!r}" for pattern in report.failed_exclude_patterns)
+    if report.unapplied_notes:
+        lines.append("Other unapplied decisions:")
+        lines.extend(f"  - {note}" for note in report.unapplied_notes)
+    if len(lines) == 1:
+        return ""
+    return "\n".join(lines)
+
+
 def decide_cleanup_outcome(
     phase_name: str,
     cleanup: CommitCleanup,
-    skipped_delete_paths: list[str],
-    failed_delete_paths: list[str] | None = None,
+    report: CleanupApplyReport,
 ) -> list[Event]:
     """Return the final phase event after cleanup action application."""
-    failed_paths = list(failed_delete_paths) if failed_delete_paths else []
-    safe_actions_count = _count_safe_actions(cleanup, skipped_delete_paths, failed_paths)
-    attempted_delete_count = _count_attempted_delete_actions(cleanup, skipped_delete_paths)
-    if failed_paths and safe_actions_count == 0 and attempted_delete_count > 0:
-        return _all_deletes_failed_failure(phase_name, failed_paths, safe_actions_count)
-    delete_actions_count = _count_meaningful_delete_actions(cleanup)
-    if skipped_delete_paths and safe_actions_count == 0 and delete_actions_count > 0:
-        return _all_deletes_rejected_failure(phase_name, skipped_delete_paths, safe_actions_count)
+    if all_applications_failed(report):
+        tokens = [*report.failed_delete_paths, *report.failed_pattern_tokens]
+        return _recoverable_housekeeping_failure(
+            phase_name,
+            "all cleanup applications failed at apply time",
+            tokens,
+        )
     return _analysis_complete_outcome(cleanup)
 
 
-def _count_safe_actions(
-    cleanup: CommitCleanup,
-    skipped_delete_paths: list[str],
-    failed_delete_paths: list[str] | None = None,
-) -> int:
-    """Count meaningful actions that applied successfully."""
-    skipped_set = set(skipped_delete_paths)
-    failed_set = set(failed_delete_paths) if failed_delete_paths else set()
-    return (
-        sum(
-            1
-            for action in cleanup.actions
-            if action.action == "add_to_gitignore" and action.pattern and action.pattern.strip()
-        )
-        + sum(
-            1
-            for action in cleanup.actions
-            if action.action == "add_to_git_exclude" and action.pattern and action.pattern.strip()
-        )
-        + sum(
-            1
-            for action in cleanup.actions
-            if (
-                action.action == "delete_file"
-                and action.path
-                and action.path.strip()
-                and action.path not in skipped_set
-                and action.path not in failed_set
-            )
-        )
+def all_applications_failed(report: CleanupApplyReport) -> bool:
+    """Return True when every attempted apply threw and nothing applied."""
+    attempted = (
+        len(report.failed_delete_paths)
+        + len(report.failed_pattern_tokens)
+        + report.applied_count
     )
+    return report.applied_count == 0 and attempted > 0 and not report.declined_delete_paths
 
 
-def _count_meaningful_delete_actions(cleanup: CommitCleanup) -> int:
-    """Count delete actions with non-whitespace paths."""
-    return sum(
-        1
-        for action in cleanup.actions
-        if action.action == "delete_file" and action.path and action.path.strip()
-    )
-
-
-def _count_attempted_delete_actions(
-    cleanup: CommitCleanup,
-    skipped_delete_paths: list[str],
-) -> int:
-    """Count meaningful delete actions accepted by the safety classifier."""
-    skipped_set = set(skipped_delete_paths)
-    return sum(
-        1
-        for action in cleanup.actions
-        if (
-            action.action == "delete_file"
-            and action.path
-            and action.path.strip()
-            and action.path not in skipped_set
-        )
-    )
-
-
-def _all_deletes_rejected_failure(
+def _recoverable_housekeeping_failure(
     phase_name: str,
-    skipped_delete_paths: list[str],
-    safe_actions_count: int,
+    label: str,
+    tokens: list[str],
 ) -> list[Event]:
-    """Return a recoverable failure for a wholly rejected delete batch."""
-    retry_hint = build_cleanup_retry_hint(skipped_delete_paths, safe_actions_count)
-    logger.warning(
-        "{}: all delete actions rejected. Returning PhaseFailureEvent with retry hint.",
-        phase_name,
-    )
-    return [
-        PhaseFailureEvent(
-            phase=phase_name,
-            reason=retry_hint,
-            recoverable=True,
-            retry_in_session=True,
-            failure_category=FailureCategory.ARTIFACT_VALIDATION,
-        )
-    ]
-
-
-def _all_deletes_failed_failure(
-    phase_name: str,
-    failed_delete_paths: list[str],
-    safe_actions_count: int,
-) -> list[Event]:
-    """Return a recoverable failure when every attempted delete failed."""
-    retry_hint = build_cleanup_retry_hint(failed_delete_paths, safe_actions_count)
-    logger.warning(
-        "{}: all attempted delete_file actions failed at apply time. "
-        "Returning PhaseFailureEvent with retry hint.",
-        phase_name,
-    )
+    """Return a recoverable failure that must not terminate the run by itself."""
+    retry_hint = build_cleanup_retry_hint(tokens, 0)
+    logger.warning("{}: {}. Returning PhaseFailureEvent with retry hint.", phase_name, label)
     return [
         PhaseFailureEvent(
             phase=phase_name,

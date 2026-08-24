@@ -82,7 +82,8 @@ def test_terminal_restore_sequence_contains_expected_mode_resets() -> None:
     assert seq.endswith("\r")
 
 
-def test_restore_terminal_writes_sequence_on_tty_stream() -> None:
+def test_restore_terminal_writes_sequence_on_tty_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TERM", "xterm")
     stream = _make_dummy_tty_stream()
     restore_terminal(stream=stream, modes=None)
     content = stream.getvalue()
@@ -109,7 +110,10 @@ def test_restore_terminal_writes_nothing_on_non_tty_stream() -> None:
     assert stream.getvalue() == ""
 
 
-def test_restore_terminal_flushes_pending_input_after_writing_sequence() -> None:
+def test_restore_terminal_flushes_pending_input_after_writing_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "xterm")
     stream = _make_dummy_tty_stream()
     with patch("termios.tcflush") as flush, patch("os.isatty", return_value=True):
         restore_terminal(stream=stream, modes=None)
@@ -117,7 +121,10 @@ def test_restore_terminal_flushes_pending_input_after_writing_sequence() -> None
     assert stream.getvalue() == terminal_restore_sequence()
 
 
-def test_restore_terminal_uses_stderr_when_default_stdout_is_not_a_tty() -> None:
+def test_restore_terminal_uses_stderr_when_default_stdout_is_not_a_tty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "xterm")
     stdout = _make_dummy_non_tty_stream()
     stderr = _make_dummy_tty_stream()
     with patch("ralph.display.terminal_restore.sys.stdout", stdout), patch(

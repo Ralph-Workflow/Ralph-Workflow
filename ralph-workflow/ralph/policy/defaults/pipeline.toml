@@ -34,6 +34,10 @@ description = "Planning analysis loop iteration counter"
 default_max = 3
 description = "Commit cleanup loop iteration counter"
 
+[loop_counters.commit_cleanup_identity]
+default_max = 3
+description = "Identical no-progress commit-cleanup attempt counter"
+
 # ---------------------------------------------------------------------------
 # Edit this only if you need to change the total development-cycle budget.
 # Budget counters

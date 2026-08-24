@@ -304,7 +304,8 @@ def test_delete_tracked_verify_output_text_file_returns_failure_event(
     result = handle_commit_cleanup_phase(effect, ctx)
 
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
+    assert not isinstance(result[0], PhaseFailureEvent)
     assert verify_output.exists()
 
 
@@ -389,7 +390,8 @@ def test_delete_source_code_extension_rejected(tmp_git_repo: Path, ext: str) -> 
     )
     result = handle_commit_cleanup_phase(effect, ctx)
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
+    assert not isinstance(result[0], PhaseFailureEvent)
     assert src.exists()
 
 
@@ -430,7 +432,8 @@ def test_delete_lock_file_rejected(tmp_git_repo: Path, lock_file: str) -> None:
     )
     result = handle_commit_cleanup_phase(effect, ctx)
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
+    assert not isinstance(result[0], PhaseFailureEvent)
     assert lock.exists()
 
 
@@ -703,7 +706,7 @@ def test_delete_unsafe_file_returns_failure_event(
     )
     result = handle_commit_cleanup_phase(effect, ctx)
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] is PipelineEvent.PHASE_LOOPBACK
     assert target.exists()  # file must NOT be deleted
 
 
@@ -736,7 +739,7 @@ def test_delete_file_with_parent_traversal_returns_failure_event(
     result = handle_commit_cleanup_phase(effect, ctx)
 
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] is PipelineEvent.PHASE_LOOPBACK
     assert outside.exists()
 
 
@@ -769,7 +772,7 @@ def test_delete_file_with_absolute_path_returns_failure_event(
     result = handle_commit_cleanup_phase(effect, ctx)
 
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] is PipelineEvent.PHASE_LOOPBACK
     assert outside.exists()
 
 
@@ -976,7 +979,7 @@ def test_delete_tracked_backup_file_rejected(tmp_git_repo: Path) -> None:
     )
     result = handle_commit_cleanup_phase(effect, ctx)
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] is PipelineEvent.PHASE_LOOPBACK
     assert backup.exists()
 
 
@@ -1000,6 +1003,13 @@ def _invoke_cleanup(workspace: FsWorkspace, content: dict) -> list:
         agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
     )
     return handle_commit_cleanup_phase(effect, ctx)
+
+
+def _assert_declined_completes(result: list[object]) -> None:
+    """Safety declines complete the phase; they are not phase failures."""
+    assert len(result) == 1
+    assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
+    assert not isinstance(result[0], PhaseFailureEvent)
 
 
 @pytest.mark.parametrize(
@@ -1086,7 +1096,7 @@ def test_untracked_legitimate_source_file_rejected(
     )
 
     assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    assert result[0] is PipelineEvent.PHASE_LOOPBACK
     assert target.exists()
 
 
@@ -1110,8 +1120,7 @@ def test_tracked_temporary_source_code_rejected(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert src.exists()
 
 
@@ -1137,8 +1146,7 @@ def test_tracked_source_code_in_tmp_directory_rejected(tmp_git_repo: Path) -> No
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert src.exists()
 
 
@@ -1195,8 +1203,7 @@ def test_reject_delete_untracked_dockerfile(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert dockerfile.exists()
 
 
@@ -1215,8 +1222,7 @@ def test_reject_delete_untracked_makefile(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert makefile.exists()
 
 
@@ -1235,8 +1241,7 @@ def test_reject_delete_untracked_license_txt(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert license_txt.exists()
 
 
@@ -1260,8 +1265,7 @@ def test_delete_tracked_coverage_rejected(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert coverage.exists()
 
 
@@ -1286,8 +1290,7 @@ def test_delete_tracked_coverage_xml_rejected(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert coverage_xml.exists()
 
 
@@ -1363,8 +1366,7 @@ def test_reject_delete_untracked_source_code(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert helper.exists()
 
 
@@ -1715,8 +1717,7 @@ def test_delete_tracked_source_code_in_agent_dir_rejected(
         {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert target.exists()
 
 
@@ -1741,8 +1742,7 @@ def test_delete_tracked_arbitrary_subdir_in_agent_dir_rejected(
         {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert target.exists()
 
 
@@ -1769,8 +1769,7 @@ def test_delete_tracked_source_code_outside_agent_dir_rejected(
         {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert target.exists()
 
 
@@ -1793,8 +1792,7 @@ def test_delete_tracked_checkpoint_json_bak_outside_agent_rejected(tmp_git_repo:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert target.exists()
 
 
@@ -1813,8 +1811,7 @@ def test_delete_tracked_random_json_in_agent_root_rejected(tmp_git_repo: Path) -
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert target.exists()
 
 
@@ -1874,8 +1871,7 @@ def test_delete_tracked_source_files_inside_engine_dirs_rejected(
         {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
+    _assert_declined_completes(result)
     assert target.exists()
 
 
@@ -2116,9 +2112,9 @@ def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
-    assert "module.py" in result[0].reason
+    _assert_declined_completes(result)
+    hint = (tmp_git_repo / ".agent" / "tmp" / "last_retry_error_development_commit_cleanup.txt").read_text()
+    assert "module.py" in hint
     assert source.exists()
 
 
@@ -2150,10 +2146,7 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
     assert "module.py" in skipped
 
     outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, skipped)
-    assert len(outcome) == 1
-    assert isinstance(outcome[0], PhaseFailureEvent)
-    assert "module.py" in outcome[0].reason
-    assert "Cleanup retry hint" in outcome[0].reason
+    assert outcome == [PipelineEvent.PHASE_LOOPBACK]
     assert source.exists()
 
 
@@ -2184,10 +2177,7 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
     assert "module.py" in skipped
 
     outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, skipped)
-    assert len(outcome) == 1
-    assert isinstance(outcome[0], PhaseFailureEvent)
-    assert "module.py" in outcome[0].reason
-    assert "Cleanup retry hint" in outcome[0].reason
+    assert outcome == [PipelineEvent.PHASE_LOOPBACK]
     assert source.exists()
 
 
@@ -2239,11 +2229,10 @@ def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
         },
     )
 
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
-    assert "a.py" in result[0].reason
-    assert "b.py" in result[0].reason
-    assert "Cleanup retry hint" in result[0].reason
+    _assert_declined_completes(result)
+    hint = (tmp_git_repo / ".agent" / "tmp" / "last_retry_error_development_commit_cleanup.txt").read_text()
+    assert "a.py" in hint
+    assert "b.py" in hint
     assert source_a.exists()
     assert source_b.exists()
 

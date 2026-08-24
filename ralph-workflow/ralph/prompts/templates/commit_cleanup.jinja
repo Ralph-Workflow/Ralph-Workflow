@@ -6,24 +6,20 @@ Classify only the pending diff's unsafe or machine-local files and submit cleanu
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+Previous cleanup attempt:
+{{ LAST_RETRY_ERROR }}
+{% endif %}
+
 The diff contains tracked changes plus untracked filenames. Runtime files are pre-emptively untracked before this prompt; if one still appears, classify it as `delete_file`.
 
 ## Decision rules
 
-| Path class | Action | Boundary |
-|---|---|---|
-| Ralph Workflow runtime artifact listed below | `delete_file` | exact basename, glob, directory, and extension rules only |
-| binary, build output, cache, editor/OS file, log, coverage, backup, or temporary artifact | `delete_file`; optionally `add_to_gitignore` | delete only an actual generated file in the diff; add a pattern only when project-wide or recurrent |
-| machine-local file or pattern | `add_to_git_exclude` | use for the recognized secret family below and editor state |
-| generated untracked text/JSON named for session, transcript, prompt, analysis, checkpoint, verify, output, report, log, trace, debug, dump, temp, artifact, capture, completion, note, pipeline, response, review, summary, worker, chat, message, plan, model, llm, brainstorm, interaction, or inference | `delete_file` | untracked only |
-| generated untracked source whose name contains `temp`, `tmp`, `scratch`, `generated`, `throwaway`, or `dump`, or lies under `tmp/`, `temp/`, `generated/`, or `artifacts/` | `delete_file` | untracked only |
-| uncertain, user-authored, intentional config, test, documentation, lockfile, or tracked source | no action | never change commit meaning |
+{{ DELETE_DECISION_RULES }}
 
 Recognized secrets are `.env`, `.env.local`, `.env.*.local`, `secrets.yml`, and `credentials.json`. `add_to_git_exclude` preserves their working-tree copies and untracks only this recognized family; it never untracks arbitrary project files.
 
 Common generated categories include compiled extensions (`.exe`, `.dll`, `.so`, `.dylib`, `.pdb`, `.a`, `.o`, `.class`, `.pyc`, `.pyo`); build/dependency/cache directories (`build/`, `dist/`, `node_modules/`, `vendor/`, `.next/`, `.nuxt/`, `.output/`, `__pycache__/`, `.eggs/`, `*.egg-info/`, `.bundle/`, `.gradle/`, `.m2/`); editor/OS files (`.DS_Store`, `Thumbs.db`, `._*`, `*.swp`, `*.swo`, `*.orig`, `*~`, `.vscode/`, `.idea/`); temporary/log/coverage files (`*.bak`, `*.tmp`, `*.temp`, `*.old`, `*.rej`, `*.patch`, `*.log`, `*.trace`, `*.profile`, `coverage/`, `.coverage`, `coverage.xml`, `htmlcov/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`).
-
-Never remove dependency lockfiles such as `package-lock.json`, `yarn.lock`, `Cargo.lock`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, `composer.lock`, `Gemfile.lock`, or `go.sum`.
 
 ## Ralph Workflow runtime artifact allowlist
 

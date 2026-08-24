@@ -170,6 +170,7 @@ def test_probe_completes_a_full_exchange_and_still_restores_terminal_mode(
     unconditional, not just an error-path behaviour."""
     fake_termios = _FakeTermios()
     fake_tty = _FakeTty()
+    monkeypatch.setenv("TERM", "xterm")
     monkeypatch.setitem(sys.modules, "termios", fake_termios)
     monkeypatch.setitem(sys.modules, "tty", fake_tty)
     monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
@@ -268,6 +269,7 @@ def test_probe_does_not_flush_input_queue_on_successful_reply_path(
     """S-6: on successful reply path, tcflush is NOT called so user keystrokes are preserved."""
     fake_termios = _FakeTermios()
     fake_tty = _FakeTty()
+    monkeypatch.setenv("TERM", "xterm")
     monkeypatch.setitem(sys.modules, "termios", fake_termios)
     monkeypatch.setitem(sys.modules, "tty", fake_tty)
     monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
