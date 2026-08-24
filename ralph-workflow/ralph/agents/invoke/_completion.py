@@ -540,6 +540,7 @@ def _raise_if_broken_agent_exit(
     *,
     stderr_text: str = "",
 ) -> None:
+    returncode = int(handle.returncode or 0)
     credentials_marker_seen = _looks_like_credentials_failure(stderr_text) or any(
         _looks_like_credentials_failure(line) for line in bounded_output
     )
@@ -552,6 +553,8 @@ def _raise_if_broken_agent_exit(
             reason="no_output",
             elapsed_seconds=opts.elapsed_seconds,
             grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+            returncode=returncode,
+            stderr=stderr_text,
         )
     # A substantial transcript that merely mentions credentials (e.g. an
     # echoed retry prompt, a test file about credential handling, or the
@@ -568,6 +571,8 @@ def _raise_if_broken_agent_exit(
             reason="no_llm_activity",
             elapsed_seconds=opts.elapsed_seconds,
             grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+            returncode=returncode,
+            stderr=stderr_text,
         )
     if opts.elapsed_seconds is not None and not bounded_output:
         _teardown_subtree_if_pid_available(handle)
@@ -576,13 +581,20 @@ def _raise_if_broken_agent_exit(
             reason="no_output",
             elapsed_seconds=opts.elapsed_seconds,
             grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+            returncode=returncode,
+            stderr=stderr_text,
         )
     nonblank_output = [line for line in bounded_output if line.strip()]
     if nonblank_output and all(
         is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
     ):
         _teardown_subtree_if_pid_available(handle)
-        raise BrokenAgentExitError(agent_name, reason="prompt_echo")
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="prompt_echo",
+            returncode=returncode,
+            stderr=stderr_text,
+        )
 
 
 def check_process_result(
@@ -634,6 +646,8 @@ def check_process_result(
                     check_options.elapsed_seconds if check_options is not None else None
                 ),
                 grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+                returncode=returncode,
+                stderr=stderr_text,
             )
         stderr = stderr_text if stderr_pipe is not None else "(unable to read stderr)"
         exc = AgentInvocationError(

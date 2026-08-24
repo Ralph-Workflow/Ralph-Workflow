@@ -17,6 +17,20 @@ def test_broken_agent_exit_error_skips_same_agent_retries_and_exposes_reason() -
     assert "prompt" in str(error).casefold()
 
 
+def test_broken_agent_exit_error_retains_returncode_and_stderr() -> None:
+    error = BrokenAgentExitError(
+        "pi/omnirouter/cx/gpt-5.6-terra-medium",
+        reason="no_output",
+        returncode=17,
+        stderr="provider authentication failed",
+    )
+
+    assert error.returncode == 17
+    assert error.stderr == "provider authentication failed"
+    assert "code 17" in str(error)
+    assert "provider authentication failed" in str(error)
+
+
 def test_broken_agent_exit_error_rejects_unknown_reason() -> None:
     with pytest.raises(ValueError, match="reason"):
         BrokenAgentExitError("claude", reason="unexpected")

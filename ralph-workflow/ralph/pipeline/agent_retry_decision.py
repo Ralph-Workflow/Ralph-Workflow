@@ -51,6 +51,8 @@ def resolve_retry_intent(
             skip_same_agent_retries=True,
             failed_agent_name=agent,
             broken_agent_reason=broken_agent_reason,
+            broken_agent_returncode=exc.returncode if isinstance(exc, BrokenAgentExitError) else None,
+            broken_agent_stderr=exc.stderr if isinstance(exc, BrokenAgentExitError) else "",
         )
     if retryable_agent_failure_reason(exc, inactivity_error_type) is None:
         return None

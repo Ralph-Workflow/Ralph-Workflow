@@ -147,7 +147,9 @@ def test_pi_context_exhaustion_skips_same_agent_retries() -> None:
 def test_broken_agent_regression_intent_captures_reconstruction_data() -> None:
     """Broken-agent fallover retains the typed failure facts for the reducer."""
     intent = resolve_retry_intent(
-        BrokenAgentExitError("claude", reason="no_output"),
+        BrokenAgentExitError(
+            "claude", reason="no_output", returncode=19, stderr="provider unavailable"
+        ),
         phase="development",
         agent="claude",
         session_id=None,
@@ -158,3 +160,5 @@ def test_broken_agent_regression_intent_captures_reconstruction_data() -> None:
     assert intent.failure_reason == "BrokenAgentExitError"
     assert intent.failed_agent_name == "claude"
     assert intent.broken_agent_reason == "no_output"
+    assert intent.broken_agent_returncode == 19
+    assert intent.broken_agent_stderr == "provider unavailable"

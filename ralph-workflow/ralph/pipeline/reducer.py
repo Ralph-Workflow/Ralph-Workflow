@@ -279,6 +279,8 @@ def _reduce_captured_agent_failure(
         failure: Exception = BrokenAgentExitError(
             intent.failed_agent_name,
             reason=intent.broken_agent_reason,
+            returncode=intent.broken_agent_returncode or 0,
+            stderr=intent.broken_agent_stderr,
         )
     elif intent.failure_reason == "PiContextExhaustedExitError":
         from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError

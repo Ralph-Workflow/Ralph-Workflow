@@ -20,6 +20,8 @@ class BrokenAgentExitError(AgentInvocationError):
         reason: _BrokenAgentReason,
         elapsed_seconds: float | None = None,
         grace_seconds: float | None = None,
+        returncode: int = 0,
+        stderr: str = "",
     ) -> None:
         if reason not in _VALID_REASONS:
             msg = f"unsupported broken-agent reason: {reason!r}"
@@ -35,8 +37,8 @@ class BrokenAgentExitError(AgentInvocationError):
         }[reason]
         super().__init__(
             agent_name,
-            0,
-            f"agent appears broken: {context}; check credentials or provider availability",
+            returncode,
+            stderr or f"agent appears broken: {context}; check credentials or provider availability",
         )
 
 

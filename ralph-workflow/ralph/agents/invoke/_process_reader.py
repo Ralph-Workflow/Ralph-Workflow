@@ -221,11 +221,13 @@ def check_broken_agent_timer(
         and not evidence.has_session_id_captured
         and watchdog.observed_output_is_structurally_small()
     ):
+        returncode = handle.poll()
         raise BrokenAgentExitError(
             agent_name,
             reason="no_output",
             elapsed_seconds=elapsed_seconds,
             grace_seconds=grace_seconds,
+            returncode=0 if returncode is None else int(returncode),
         )
     # The BROKEN_AGENT_OUTPUT_GRACE_SECONDS reference is load-bearing:
     # test_teardown_subtree_calls_are_verdict_guarded audits that every

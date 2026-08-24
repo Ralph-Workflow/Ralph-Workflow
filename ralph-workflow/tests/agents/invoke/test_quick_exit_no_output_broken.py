@@ -45,7 +45,7 @@ def test_quick_clean_exit_without_evidence_falls_over_before_grace_window() -> N
     order of magnitude inside the grace window this test is named for.
     """
     clock = FakeClock(start=0.0)
-    handle = _ManagedHandle(returncode=0)
+    handle = _ManagedHandle(returncode=23)
     watchdog = _watchdog(clock)
     clock.advance(2.0)
 
@@ -56,6 +56,8 @@ def test_quick_clean_exit_without_evidence_falls_over_before_grace_window() -> N
         check_broken_agent_timer(handle, watchdog, "opencode")
 
     assert excinfo.value.reason == "no_output"
+    assert excinfo.value.returncode == 23
+    assert "code 23" in str(excinfo.value)
     assert excinfo.value.elapsed_seconds == 2.0 + BROKEN_AGENT_EXIT_SETTLE_SECONDS
     assert excinfo.value.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 

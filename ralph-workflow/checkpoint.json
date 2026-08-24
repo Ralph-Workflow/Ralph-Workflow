@@ -83,7 +83,9 @@
     "failure_reason": "",
     "skip_same_agent_retries": false,
     "failed_agent_name": null,
-    "broken_agent_reason": null
+    "broken_agent_reason": null,
+    "broken_agent_returncode": null,
+    "broken_agent_stderr": ""
   },
   "last_unavailability_reason": null,
   "is_waiting_state": false

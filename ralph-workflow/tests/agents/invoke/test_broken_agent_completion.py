@@ -167,6 +167,9 @@ def test_completion_gate_regression_classifies_fast_nonzero_credentials_as_broke
         )
 
     assert excinfo.value.reason == "no_output"
+    assert excinfo.value.returncode == 1
+    assert "code 1" in str(excinfo.value)
+    assert "403 forbidden" in excinfo.value.stderr
     assert excinfo.value.elapsed_seconds == 2.0
 
 
