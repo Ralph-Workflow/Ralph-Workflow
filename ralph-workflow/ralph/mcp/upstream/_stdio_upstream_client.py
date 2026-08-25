@@ -9,6 +9,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.protocol._startup_timeouts import upstream_call_timeout_seconds
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
@@ -128,11 +129,21 @@ def _make_stdio_caller(
                 label=f"upstream:{server.name}",
             ),
         )
+        # Discovery is bounded BELOW the server-readiness budget: it runs inside
+        # a starting MCP server subprocess, before its port is bound, and a probe
+        # allowed to burn the whole readiness window gets that subprocess killed
+        # mid-call -- so the operator saw "connection refused" instead of the
+        # name of the upstream that stalled.
+        probe_timeout_s = upstream_call_timeout_seconds(method)
         try:
-            stdout_bytes, _stderr = handle.communicate(input=payload.encode(), timeout=30)
+            stdout_bytes, _stderr = handle.communicate(
+                input=payload.encode(), timeout=probe_timeout_s
+            )
         except subprocess.TimeoutExpired:
             handle.terminate(grace_period_s=0)
-            raise UpstreamCallError(f"upstream server '{server.name}' timed out") from None
+            raise UpstreamCallError(
+                f"upstream server '{server.name}' timed out after {probe_timeout_s:g}s"
+            ) from None
         except BaseException:
             if handle.record.status not in _TERMINAL_STATUSES:
                 with contextlib.suppress(Exception):

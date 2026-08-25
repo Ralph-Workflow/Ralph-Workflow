@@ -80,6 +80,7 @@ from ralph.mcp.upstream.config import (
     load_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.validation import strict_mode_from_env
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 from ralph.workspace.fs import FsWorkspace
@@ -217,7 +218,16 @@ def build_standalone_http_server(
     elif upstream_servers and tool_catalog:
         upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
     elif upstream_servers:
-        upstream_reg = UpstreamRegistry.build(upstream_servers)
+        # RALPH_MCP_STRICT is documented as the switch to warn-and-skip, but this
+        # path ignored it and always hard-failed -- so ONE unreachable custom MCP
+        # server aborted the whole subprocess before it could bind its port,
+        # taking every built-in Ralph tool down with it and leaving the parent to
+        # report nothing but "connection refused". Strict stays the default; the
+        # documented escape hatch now actually works.
+        upstream_reg = UpstreamRegistry.build(
+            upstream_servers,
+            on_unreachable="raise" if strict_mode_from_env(env_map) else "warn_and_skip",
+        )
     else:
         upstream_reg = None
     registry = build_ralph_tool_registry(

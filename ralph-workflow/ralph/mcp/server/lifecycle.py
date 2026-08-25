@@ -40,6 +40,11 @@ from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
 from ralph.mcp.server._process_like import ProcessLike
+from ralph.mcp.server._server_log import (
+    mcp_server_log_path,
+    mcp_server_log_size,
+    read_mcp_server_log_since,
+)
 from ralph.mcp.server._spawn_process import SpawnProcess
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.tool_contract import visible_owned_tool_names
@@ -614,6 +619,15 @@ def start_mcp_server(
     )
 
 
+def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
+    """Render the child's own startup output as a suffix for the parent's error."""
+
+    diagnostic = read_mcp_server_log_since(root, log_offset)
+    if not diagnostic:
+        return ""
+    return f"\nMCP server output ({mcp_server_log_path(root)}):\n{diagnostic}"
+
+
 def _spawn_mcp_process(
     root: Path,
     session: SessionLike,
@@ -627,6 +641,9 @@ def _spawn_mcp_process(
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation."""
     endpoint = f"http://127.0.0.1:{port}/mcp"
+    # Recorded BEFORE the spawn so a startup failure reports only what THIS
+    # child wrote; the log is append-only and shared across restarts.
+    log_offset = mcp_server_log_size(root)
     session_file: Path | None = None
     try:
         session_file = deps.create_session_file(root, session)
@@ -663,11 +680,15 @@ def _spawn_mcp_process(
         deps.preflight(endpoint, _visible_tools, deps.preflight_timeout())
     except Exception as exc:
         returncode = process.poll()
+        # Shut down FIRST so the child's own output is flushed and reaped, then
+        # read what it wrote. Without this the error named only the refused
+        # connection, never the reason the child never got as far as listening.
         bridge.shutdown()
+        diagnostic = _startup_diagnostic_suffix(root, log_offset)
         if returncode is not None:
             raise McpServerError(
                 f"MCP server process exited before endpoint {endpoint} became ready "
-                f"(rc={returncode})",
+                f"(rc={returncode}){diagnostic}",
                 restart_count=0,
             ) from exc
         # A live-but-unready process is the same failure class as an exited
@@ -675,7 +696,7 @@ def _spawn_mcp_process(
         # preflight error escaped the supervisor's handler and killed the
         # supervisor thread, leaving the run with nothing probing the server.
         raise McpServerError(
-            f"MCP server endpoint {endpoint} did not become ready: {exc}",
+            f"MCP server endpoint {endpoint} did not become ready: {exc}{diagnostic}",
             restart_count=0,
         ) from exc
 
@@ -770,11 +791,11 @@ def _spawn_process(
     # Persist server output instead of discarding it: with DEVNULL, a crash
     # inside a request handler (e.g. an AttributeError after SSE headers) left
     # no trace anywhere while the client hung to its request timeout (-32001).
-    log_dir = cwd / ".agent" / "tmp"
+    log_path = mcp_server_log_path(cwd)
     # filesystem-write-ok: MCP server live diagnostic log directory
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = os.open(  # filesystem-write-ok: append-only live MCP diagnostic stream; resource-lifecycle-ok: fd closed in finally
-        log_dir / "mcp-server.log",
+        log_path,
         os.O_WRONLY | os.O_CREAT | os.O_APPEND,
         0o644,
     )
@@ -963,6 +984,7 @@ __all__ = [
     "SpawnProcess",
     "StandaloneMcpProcess",
     "check_mcp_bridge_health",
+    "mcp_server_log_path",
     "session_payload_json",
     "shutdown_mcp_server",
     "start_mcp_server",

@@ -34,6 +34,7 @@ from ralph.mcp.protocol.startup import (
     initialized_notification,
     legacy_sse_jsonrpc_exchange,
     looks_like_legacy_sse_endpoint,
+    upstream_call_timeout_seconds,
 )
 from ralph.mcp.upstream._has_media_manifest import HasMediaManifest
 from ralph.mcp.upstream._stdio_upstream_client import StdioUpstreamClient
@@ -497,11 +498,15 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
             "method": method,
             "params": params,
         }
+        # Discovery (``tools/list``) runs inside a starting MCP server
+        # subprocess, before its port is bound, so it is capped below the
+        # server-readiness budget; a real tool call keeps the full call budget.
+        timeout_s = upstream_call_timeout_seconds(method)
         if looks_like_legacy_sse_endpoint(url):
             responses = legacy_sse_jsonrpc_exchange(
                 url,
                 (initialize_request(), initialized_notification(), payload_obj),
-                timeout_s=30.0,
+                timeout_s=timeout_s,
             )
             return _json_rpc_result(responses[-1], f"'{url}'")
         try:
@@ -509,7 +514,7 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
                 url,
                 content=json.dumps(payload_obj, separators=(",", ":")).encode(),
                 headers={"Content-Type": "application/json"},
-                timeout=30.0,
+                timeout=timeout_s,
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:

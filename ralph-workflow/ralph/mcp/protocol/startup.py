@@ -37,9 +37,14 @@ from ralph.mcp.protocol._startup_http import (
     read_legacy_sse_message_endpoint,
     tools_list_request,
 )
+from ralph.mcp.protocol._startup_timeouts import (
+    mcp_preflight_timeout_from_env,
+    mcp_upstream_probe_timeout_from_env,
+    mcp_upstream_probe_timeout_seconds,
+    upstream_call_timeout_seconds,
+)
 from ralph.mcp.protocol.capability_mapping import AccessMode, drain_to_access_mode
 from ralph.mcp.protocol.env import (
-    MCP_PREFLIGHT_TIMEOUT_MS_ENV,
     MCP_PROBE_TIMEOUT_MS_ENV,
     MCP_SUPERVISION_INTERVAL_MS_ENV,
 )
@@ -64,6 +69,8 @@ __all__ = [
     "looks_like_legacy_sse_endpoint",
     "mcp_preflight_timeout_from_env",
     "mcp_probe_timeout_from_env",
+    "mcp_upstream_probe_timeout_from_env",
+    "mcp_upstream_probe_timeout_seconds",
     "parse_http_endpoint",
     "parse_tcp_endpoint",
     "post_http_jsonrpc",
@@ -75,6 +82,7 @@ __all__ = [
     "read_jsonrpc_response",
     "read_legacy_sse_message_endpoint",
     "tools_list_request",
+    "upstream_call_timeout_seconds",
     "write_jsonrpc_request",
 ]
 
@@ -111,21 +119,6 @@ def _visible_mcp_tool_names_owned(
         upstream_registry=upstream_registry,
         include_aliases=True,
     )
-
-
-def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    """Return the configured MCP preflight timeout duration."""
-
-    default = timedelta(milliseconds=30_000)
-    env_map = os.environ if env is None else env
-    raw = env_map.get(MCP_PREFLIGHT_TIMEOUT_MS_ENV)
-    if raw is None:
-        return default
-    try:
-        parsed = int(raw)
-    except ValueError:
-        return default
-    return timedelta(milliseconds=max(1, parsed))
 
 
 def preflight_mcp_server_tools(
