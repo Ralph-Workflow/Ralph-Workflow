@@ -40,6 +40,7 @@ from ralph.onboarding import init_local_config_help_text
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.skills._capability_state import CapabilityState
+from ralph.workspace.scope import WorkspaceScope
 
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
@@ -1243,6 +1244,78 @@ def test_local_config_aliases_create_the_complete_parseable_override_set(
     )
     assert f"Local config scope: project; directory: {tmp_path / '.agent'}" in normalized_existing
     assert f"Local config files already exist in: {tmp_path / '.agent'}" in normalized_existing
+
+
+def _assert_complete_local_config_set(agent_dir: Path) -> None:
+    local_files = tuple(agent_dir.glob("*.toml"))
+    assert {path.name for path in local_files} == {
+        "ralph-workflow.toml",
+        "mcp.toml",
+        "pipeline.toml",
+        "artifacts.toml",
+    }
+    for path in local_files:
+        assert isinstance(tomllib.loads(path.read_text(encoding="utf-8")), dict)
+
+
+@pytest.mark.parametrize(
+    ("scope_argument", "target_name", "scope_label"),
+    ((None, "worktree", "worktree"), ("worktree", "worktree", "worktree"), ("project", "main", "project")),
+)
+def test_local_config_scope_selects_the_requested_linked_worktree_layer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scope_argument: str | None,
+    target_name: str,
+    scope_label: str,
+) -> None:
+    """Plan S-1: linked-worktree generation selects and reports the requested layer."""
+    main_checkout = tmp_path / "main"
+    worktree = tmp_path / "feature"
+    main_checkout.mkdir()
+    worktree.mkdir()
+    scope = WorkspaceScope(
+        root=worktree,
+        local_config_path=main_checkout / ".agent" / "ralph-workflow.toml",
+        propagated_config_paths=(main_checkout / ".agent" / "ralph-workflow.toml",),
+    )
+    monkeypatch.setattr(main_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setenv("COLUMNS", "500")
+    monkeypatch.chdir(worktree)
+    arguments = ["--init-local-config"]
+    if scope_argument is not None:
+        arguments.extend(("--scope", scope_argument))
+
+    result = typer.testing.CliRunner().invoke(main_module.app, arguments)
+
+    target_dir = (main_checkout if target_name == "main" else worktree) / ".agent"
+    other_dir = (worktree if target_name == "main" else main_checkout) / ".agent"
+    assert result.exit_code == 0, result.output
+    _assert_complete_local_config_set(target_dir)
+    assert not other_dir.exists()
+    normalized_output = " ".join(re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split())
+    assert f"Local config scope: {scope_label}; directory: {target_dir}" in normalized_output
+    if scope_label == "worktree":
+        assert f"Inherits project config: {main_checkout / '.agent' / 'ralph-workflow.toml'}" in normalized_output
+
+
+@pytest.mark.parametrize("scope_argument", ("worktree", "project"))
+def test_local_config_scope_values_use_the_project_layer_in_a_plain_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scope_argument: str
+) -> None:
+    """Plan S-1: both explicit scopes remain project-scoped outside linked worktrees."""
+    monkeypatch.setenv("COLUMNS", "500")
+    monkeypatch.chdir(tmp_path)
+
+    result = typer.testing.CliRunner().invoke(
+        main_module.app, ["--init-local-config", "--scope", scope_argument]
+    )
+
+    target_dir = tmp_path / ".agent"
+    assert result.exit_code == 0, result.output
+    _assert_complete_local_config_set(target_dir)
+    normalized_output = " ".join(re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split())
+    assert f"Local config scope: project; directory: {target_dir}" in normalized_output
 
 
 def test_local_config_scope_rejects_unknown_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
