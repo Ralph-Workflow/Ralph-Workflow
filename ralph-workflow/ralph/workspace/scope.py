@@ -41,6 +41,8 @@ from ralph.git.operations import GitOperationError, find_main_worktree_root, fin
 from ralph.pro_support.workspace import resolve_pro_workspace
 
 CONFIG_DIR_NAME = ".agent"
+WORKTREE_SCOPE_LABEL = "worktree"
+PROJECT_SCOPE_LABEL = "project"
 _PRO_WORKSPACE_RESOLVER = "ralph.pro_support.workspace.resolve_pro_workspace"
 WORKSPACE_CONFIG_NAME = "ralph-workflow.toml"
 _WORKSPACE_AGENT_FILENAMES = (
@@ -144,6 +146,11 @@ class WorkspaceScope:
     def is_linked_worktree(self) -> bool:
         """Return whether this scope is a linked git worktree."""
         return self.project_config_path.parent.parent != self.root
+
+    @property
+    def scope_label(self) -> str:
+        """Return the automatic local-config scope label for this workspace."""
+        return WORKTREE_SCOPE_LABEL if self.is_linked_worktree else PROJECT_SCOPE_LABEL
 
     @property
     def worktree_config_path(self) -> Path:
@@ -303,4 +310,9 @@ def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
         return WorkspaceScope(candidate)
 
 
-__all__ = ["WorkspaceScope", "resolve_workspace_scope"]
+__all__ = [
+    "PROJECT_SCOPE_LABEL",
+    "WORKTREE_SCOPE_LABEL",
+    "WorkspaceScope",
+    "resolve_workspace_scope",
+]

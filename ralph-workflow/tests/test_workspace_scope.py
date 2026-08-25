@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.workspace.fs import FsWorkspace
-from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
+from ralph.workspace.scope import (
+    PROJECT_SCOPE_LABEL,
+    WORKTREE_SCOPE_LABEL,
+    WorkspaceScope,
+    resolve_workspace_scope,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,6 +33,27 @@ def test_resolve_workspace_scope_keeps_root_worktree_authority_local(
     assert scope.root == main_repo.resolve()
     assert scope.allowed_roots == (main_repo.resolve(),)
     assert not scope.is_linked_worktree
+    assert scope.project_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
+    assert scope.scope_label == PROJECT_SCOPE_LABEL
+
+
+def test_workspace_scope_regression_linked_worktree_exposes_distinct_config_layers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Plan S-1/S-2: a linked worktree retains its own target before an override exists."""
+    main_repo = tmp_path / "main"
+    worktree = tmp_path / "feature"
+    main_repo.mkdir()
+    worktree.mkdir()
+    monkeypatch.setattr("ralph.workspace.scope.find_repo_root", lambda _start: worktree)
+    monkeypatch.setattr("ralph.workspace.scope.find_main_worktree_root", lambda _start: main_repo)
+
+    scope = resolve_workspace_scope(worktree)
+
+    assert scope.is_linked_worktree
+    assert scope.scope_label == WORKTREE_SCOPE_LABEL
+    assert scope.worktree_config_path == (worktree / ".agent" / "ralph-workflow.toml").resolve()
     assert scope.project_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
 
 

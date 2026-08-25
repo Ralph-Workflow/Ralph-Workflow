@@ -36,6 +36,7 @@ from ralph.mcp.multimodal.capabilities import (
     resolve_capability_profile,
 )
 from ralph.mcp.protocol.session import AgentSession
+from ralph.onboarding import init_local_config_help_text
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.skills._capability_state import CapabilityState
@@ -1198,6 +1199,25 @@ def test_local_config_aliases_create_the_complete_parseable_override_set(
     }
     for path in local_files:
         assert isinstance(tomllib.loads(path.read_text(encoding="utf-8")), dict)
+
+
+def test_local_config_scope_rejects_unknown_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Plan S-3: scope validation names the two accepted values."""
+    monkeypatch.chdir(tmp_path)
+
+    result = typer.testing.CliRunner().invoke(main_module.app, ["--init-local-config", "--scope", "bad"])
+
+    assert result.exit_code != 0
+    assert "worktree" in result.output
+    assert "project" in result.output
+
+
+def test_local_config_help_describes_scope_auto_detection() -> None:
+    """Plan S-3: the local-config help text exposes scope auto-detection."""
+    help_text = init_local_config_help_text()
+
+    assert "{worktree,project}" in help_text
+    assert "auto-detect" in help_text
 
 
 class TestCheckPolicyCommand:

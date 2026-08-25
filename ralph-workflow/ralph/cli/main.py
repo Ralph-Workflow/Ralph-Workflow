@@ -79,7 +79,11 @@ from ralph.policy.validation import validate_agent_chains_satisfiable, validate_
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.visual.judgement_tier import run_on_demand_judgement
-from ralph.workspace.scope import resolve_workspace_scope
+from ralph.workspace.scope import (
+    PROJECT_SCOPE_LABEL,
+    WORKTREE_SCOPE_LABEL,
+    resolve_workspace_scope,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -442,11 +446,11 @@ def _handle_generate_local_config(
     """Create the local config set in the automatic or requested workspace layer."""
     display = resolve_active_display(None, display_context)
     scope = resolve_workspace_scope()
-    is_worktree_scope = scope.is_linked_worktree and scope_name != "project"
+    is_worktree_scope = scope.is_linked_worktree and scope_name != PROJECT_SCOPE_LABEL
     target_dir = (
         scope.worktree_config_path.parent if is_worktree_scope else scope.project_config_path.parent
     )
-    scope_label = "worktree" if is_worktree_scope else "project"
+    scope_label = WORKTREE_SCOPE_LABEL if is_worktree_scope else PROJECT_SCOPE_LABEL
     results = ensure_local_configs(target_dir)
     display.emit_status(f"Local config scope: {scope_label}; directory: {target_dir}")
     if is_worktree_scope:
@@ -806,7 +810,10 @@ def main(
         str | None,
         typer.Option(
             "--scope",
-            help="Local-config scope: worktree or project (default: auto-detect linked worktrees)",
+            help=(
+                "Local-config scope: {worktree,project}; defaults to worktree in linked "
+                "worktrees and project otherwise"
+            ),
         ),
     ] = None,
     generate_commit_msg: Annotated[
@@ -1112,8 +1119,11 @@ def main(
         raise typer.Exit()
 
     if generate_local_config:
-        if scope_name not in {None, "worktree", "project"}:
-            raise typer.BadParameter("must be one of: worktree, project", param_hint="--scope")
+        if scope_name not in {None, WORKTREE_SCOPE_LABEL, PROJECT_SCOPE_LABEL}:
+            raise typer.BadParameter(
+                f"must be one of: {WORKTREE_SCOPE_LABEL}, {PROJECT_SCOPE_LABEL}",
+                param_hint="--scope",
+            )
         _handle_generate_local_config(scope_name=scope_name, display_context=_cli_ctx)
         raise typer.Exit()
 

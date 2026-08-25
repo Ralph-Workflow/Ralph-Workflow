@@ -66,8 +66,9 @@ def init_local_config_help_text() -> str:
     """Return top-level help text for the optional local override command."""
     explanation = init_local_config_override_explanation()
     return (
-        f"Create .agent/ config files as an {explanation}; auto-selects a linked worktree "
-        "unless --scope project is given."
+        f"Create .agent/ config files as an {explanation}; auto-detects worktree scope "
+        "in linked worktrees, or project scope otherwise. Use --scope {worktree,project} "
+        "to select explicitly."
     )
 
 
