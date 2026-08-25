@@ -140,6 +140,25 @@ class WorkspaceScope:
         object.__setattr__(self, "local_config_path", canonical_local_config)
         object.__setattr__(self, "propagated_config_paths", canonical_propagated_configs)
 
+    @property
+    def is_linked_worktree(self) -> bool:
+        """Return whether this scope is a linked git worktree."""
+        return self.project_config_path.parent.parent != self.root
+
+    @property
+    def worktree_config_path(self) -> Path:
+        """Return the canonical config path owned by this workspace."""
+        return _default_local_config_path(self.root)
+
+    @property
+    def project_config_path(self) -> Path:
+        """Return the canonical config path owned by the main project checkout."""
+        if self.local_config_path != self.worktree_config_path:
+            return self.local_config_path
+        if self.propagated_config_paths:
+            return self.propagated_config_paths[0]
+        return self.worktree_config_path
+
     def resolve_agent_file(self, filename: str) -> Path:
         """Resolve the effective .agent file for this workspace.
 

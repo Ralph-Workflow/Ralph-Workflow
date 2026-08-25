@@ -1,14 +1,12 @@
-"""Diagnose command for Ralph Workflow CLI.
-
-This module implements diagnostic commands to check the
-environment and configuration.
-"""
+"""Diagnose command for Ralph Workflow CLI."""
 
 from __future__ import annotations
 
 from importlib import import_module
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from rich.text import Text
 
@@ -77,12 +75,7 @@ def _load_starter_prompt_sentinel() -> str:
 
 
 def _run_fs_health_for_diagnose(workspace_root: Path) -> FsHealth:
-    """Build an :class:`FsHealth` snapshot for the diagnose CLI.
-
-    Test seam: production delegates to :meth:`FsHealth.gather`; tests
-    monkeypatch this attribute to inject a stubbed snapshot without
-    running ``mdutil`` / ``.fseventsd`` probes.
-    """
+    """Build an :class:`FsHealth` snapshot; tests may patch this seam."""
     return FsHealth.gather(workspace_root)
 
 
@@ -94,14 +87,7 @@ def diagnose_command(
 ) -> int:
     """Run diagnostics on the Ralph Workflow environment.
 
-    Args:
-        config_path: Optional path to config file.
-        cli_overrides: CLI flag overrides.
-        display_context: Display context for consistent rendering. If None, a default
-            context is created using make_display_context().
-
-    Returns:
-        Exit code (0 for success, 1 for errors, 2 for validation failures).
+    Returns 0 for success, 1 for errors, or 2 for validation failures.
     """
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
@@ -116,7 +102,7 @@ def diagnose_command(
     agent_missing = _check_agents_impl(cli_overrides, display=display)
     config_ok &= not agent_missing
     config_ok &= _check_mcp_servers(workspace_scope, display=display)
-    config_ok &= _check_workspace_files(display=display)
+    config_ok &= _check_workspace_files(workspace_scope, display=display)
     _check_capability_state(display=display)
     _check_filesystem_health(workspace_scope.root, display=display)
 
@@ -864,21 +850,31 @@ def _inventory_exposure(origin: str) -> str:
     return "proxied via ralph_upstream__*"
 
 
-def _check_workspace_files(*, display: object) -> bool:
-    """Check workspace files."""
+def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) -> bool:
+    """Check workspace files and each resolved configuration layer."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
     rows: list[tuple[object, ...]] = []
 
-    workspace_files = (
-        ("PROMPT.md", "Implementation prompt"),
-        (".agent/ralph-workflow.toml", "Local config"),
-        (".agent/checkpoint.json", "Checkpoint"),
-    )
+    workspace_files: list[tuple[str, str, Path]] = [
+        ("PROMPT.md", "Implementation prompt", workspace_scope.root / "PROMPT.md"),
+        ("Project config", "Workspace-owned .agent/ralph-workflow.toml", workspace_scope.project_config_path),
+        (".agent/checkpoint.json", "Checkpoint", workspace_scope.root / ".agent/checkpoint.json"),
+    ]
+    if workspace_scope.is_linked_worktree:
+        workspace_files.insert(
+            1,
+            ("Worktree config", "Workspace-owned .agent/ralph-workflow.toml", workspace_scope.worktree_config_path),
+        )
+        workspace_files[2] = (
+            "Project config",
+            "Inherited main-checkout .agent/ralph-workflow.toml",
+            workspace_scope.project_config_path,
+        )
+    workspace_files.append(("User-global config", "User-global ralph-workflow.toml", _global_config_path()))
 
-    for file_path, description in workspace_files:
-        path = Path(file_path)
+    for file_path, description, path in workspace_files:
         file_label = Text()
         file_label.append(f"{file_path} ({description})")
         # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
@@ -896,7 +892,7 @@ def _check_workspace_files(*, display: object) -> bool:
         else:
             missing = (
                 "Optional — not created; run `ralph --init-local-config` to add it"
-                if file_path == ".agent/ralph-workflow.toml"
+                if "config" in file_path.lower()
                 else "Not found"
             )
             rows.append((file_label, Text(missing, style="theme.status.warning"), "", "", ""))
@@ -997,4 +993,4 @@ def check_workspace_files(*, display_context: DisplayContext | None = None) -> b
     """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
-    return _check_workspace_files(display=display)
+    return _check_workspace_files(resolve_workspace_scope(), display=display)

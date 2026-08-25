@@ -436,15 +436,25 @@ def _record_cli_command(ctx: typer.Context) -> None:
         logger.warning("Telemetry command-invocation forwarding failed", exc_info=True)
 
 
-def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
-    """Create the full project-local config override set from the global config set."""
+def _handle_generate_local_config(
+    *, display_context: DisplayContext, scope_name: str | None = None
+) -> None:
+    """Create the local config set in the automatic or requested workspace layer."""
     display = resolve_active_display(None, display_context)
     scope = resolve_workspace_scope()
-    results = ensure_local_configs(scope.local_config_path.parent)
+    is_worktree_scope = scope.is_linked_worktree and scope_name != "project"
+    target_dir = (
+        scope.worktree_config_path.parent if is_worktree_scope else scope.project_config_path.parent
+    )
+    scope_label = "worktree" if is_worktree_scope else "project"
+    results = ensure_local_configs(target_dir)
+    display.emit_status(f"Local config scope: {scope_label}; directory: {target_dir}")
+    if is_worktree_scope:
+        display.emit_status(f"Inherits project config: {scope.project_config_path}")
     if any(result.action in {"created", "regenerated"} for result in results):
         emit_first_run_welcome(results, display_context=display_context)
         return
-    display.emit_status(f"Local config files already exist in: {scope.local_config_path.parent}")
+    display.emit_status(f"Local config files already exist in: {target_dir}")
 
 
 def _handle_early_exit_flags(
@@ -792,6 +802,13 @@ def main(
             help=init_local_config_help_text(),
         ),
     ] = False,
+    scope_name: Annotated[
+        str | None,
+        typer.Option(
+            "--scope",
+            help="Local-config scope: worktree or project (default: auto-detect linked worktrees)",
+        ),
+    ] = None,
     generate_commit_msg: Annotated[
         bool,
         typer.Option("--generate-commit-msg", help="Generate commit message"),
@@ -1095,7 +1112,9 @@ def main(
         raise typer.Exit()
 
     if generate_local_config:
-        _handle_generate_local_config(display_context=_cli_ctx)
+        if scope_name not in {None, "worktree", "project"}:
+            raise typer.BadParameter("must be one of: worktree, project", param_hint="--scope")
+        _handle_generate_local_config(scope_name=scope_name, display_context=_cli_ctx)
         raise typer.Exit()
 
     if inspect_checkpoint:

@@ -26,9 +26,10 @@ ralph --check-policy
 Ralph Workflow uses layered configuration. Settings are resolved in this order, highest priority first:
 
 1. **CLI flags**
-2. **Project-local config** — `.agent/ralph-workflow.toml`
-3. **User-global config** — `~/.config/ralph-workflow.toml`
-4. **Bundled defaults** — shipped in `ralph/policy/defaults/`
+2. **Worktree-local config** — `<linked-worktree>/.agent/ralph-workflow.toml`
+3. **Project config** — `<main-checkout>/.agent/ralph-workflow.toml`
+4. **User-global config** — `~/.config/ralph-workflow.toml`
+5. **Bundled defaults** — shipped in `ralph/policy/defaults/`
 
 ## The files most operators care about
 
@@ -44,16 +45,17 @@ Ralph Workflow manages a standard config set across two scopes.
 | `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults when a workspace has no local pipeline override |
 | `~/.config/ralph-workflow-artifacts.toml` | Global artifact defaults when a workspace has no local artifact override |
 
-### Project-local files
+### Project and worktree-local files
 
-| File | Purpose |
+| Location | Purpose |
 |------|---------|
-| `.agent/mcp.toml` | Project-specific MCP server definitions |
-| `.agent/pipeline.toml` | Workflow phases, routing, and parallel settings |
-| `.agent/artifacts.toml` | Artifact type schemas and contracts |
-| `.agent/ralph-workflow.toml` | Optional project-specific overrides for agents, chains, drains, and main settings |
+| `<main-checkout>/.agent/mcp.toml` | Project-specific MCP server definitions |
+| `<main-checkout>/.agent/pipeline.toml` | Workflow phases, routing, and parallel settings |
+| `<main-checkout>/.agent/artifacts.toml` | Artifact type schemas and contracts |
+| `<main-checkout>/.agent/ralph-workflow.toml` | Optional project overrides for agents, chains, drains, and main settings |
+| `<linked-worktree>/.agent/ralph-workflow.toml` | Optional worktree-specific override that wins over the project config |
 
-`ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create project-local config files. Use `ralph --init-local-config` (alias: `ralph --generate-local-config`) only when you explicitly want the advanced project-local override set.
+Use a worktree-local set when a branch needs settings that should not affect the main checkout or other linked worktrees. `ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create local config files. `ralph --init-local-config` (alias: `ralph --generate-local-config`) automatically targets a linked worktree, or accepts `--scope project` to target the main checkout.
 
 ## Advanced config map
 
@@ -285,7 +287,7 @@ Each entry under `[agents.<name>]` accepts an optional `subagent_capability` swi
 | `pi` | `None` — agent decides at runtime |
 | `generic` | `None` — agent decides at runtime |
 
-The override precedence is the same as every other Ralph Workflow setting: **CLI flags > project-local `.agent/ralph-workflow.toml` > user-global `~/.config/ralph-workflow.toml` > bundled defaults** (see the precedence list at the top of this page). Set the switch explicitly to override the transport-inferred default — for example, to force a Claude Code run to be sequential without changing every other Claude setting:
+The override precedence is the same as every other Ralph Workflow setting: **CLI flags > worktree-local `.agent/ralph-workflow.toml` > project `.agent/ralph-workflow.toml` > user-global `~/.config/ralph-workflow.toml` > bundled defaults** (see the precedence list at the top of this page). Set the switch explicitly to override the transport-inferred default — for example, to force a Claude Code run to be sequential without changing every other Claude setting:
 
 ```toml
 [agents.claude]

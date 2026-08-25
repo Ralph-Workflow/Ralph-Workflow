@@ -37,9 +37,10 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. Labels: `feature-spec`, `guardrail` (or `bug-fix`), `refactor`, `test-coverage`, `docs`. Seeds `.gitignore` in the current directory when missing; use `--init-local-config` only when this repo needs project-local overrides. |
+| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. Labels: `feature-spec`, `guardrail` (or `bug-fix`), `refactor`, `test-coverage`, `docs`. Seeds `.gitignore` in the current directory when missing; use `--init-local-config` only when this repo needs local overrides. |
 | `--force-init-skills` | | `False` | Re-run baseline skill installation (user-global + project-scope) and exit. Pairs with `--init` for an explicit re-init; standalone forces the recheck path on a normal `ralph` run. |
-| `--init-local-config` (`--generate-local-config`) | | `False` | Create the complete advanced `.agent/` project-local override set. This is the explicit local-config opt-in. |
+| `--init-local-config` (`--generate-local-config`) | | `False` | Create the complete advanced `.agent/` local override set. It automatically targets the current linked worktree; use `--scope project` to target the main checkout. |
+| `--scope {worktree,project}` | | auto-detect | Select the local-config target. In a linked worktree, `worktree` is the default; in a main checkout both values use the project directory. |
 | `--regenerate-config` | | `False` | Rewrite user-global config files and refresh only project-local TOMLs that already exist. Missing `.agent/` files stay absent; overwritten files are backed up as `<name>.bak`. |
 
 ## What `--init` does on first run

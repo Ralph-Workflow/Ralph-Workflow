@@ -47,7 +47,7 @@ def getting_started_pointer_sentence() -> str:
 
 def init_local_config_override_explanation() -> str:
     """Return the canonical explanation for the local override command."""
-    return "optional full project-local override copy of the user-global config set"
+    return "optional full local override copy of the user-global config set"
 
 
 def init_help_text() -> str:
@@ -65,7 +65,10 @@ def init_help_text() -> str:
 def init_local_config_help_text() -> str:
     """Return top-level help text for the optional local override command."""
     explanation = init_local_config_override_explanation()
-    return f"Create .agent/ config files as an {explanation} for this repo."
+    return (
+        f"Create .agent/ config files as an {explanation}; auto-selects a linked worktree "
+        "unless --scope project is given."
+    )
 
 
 def fresh_workspace_next_steps() -> tuple[str, ...]:

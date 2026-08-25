@@ -27,6 +27,8 @@ def test_resolve_workspace_scope_keeps_root_worktree_authority_local(
 
     assert scope.root == main_repo.resolve()
     assert scope.allowed_roots == (main_repo.resolve(),)
+    assert not scope.is_linked_worktree
+    assert scope.project_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
 
 
 def test_for_same_workspace_worker_root_stays_at_repo_root(tmp_path: Path) -> None:
@@ -173,6 +175,9 @@ def test_resolve_workspace_scope_inherits_main_worktree_config_by_default(
         scope.resolve_agent_file("pipeline.toml")
         == (main_repo / ".agent" / "pipeline.toml").resolve()
     )
+    assert scope.is_linked_worktree
+    assert scope.worktree_config_path == (child_worktree / ".agent" / "ralph-workflow.toml").resolve()
+    assert scope.project_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
 
 
 def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file(
