@@ -643,6 +643,37 @@ def test_check_workspace_files_reports_status(
     assert "Not found" in output
 
 
+def test_check_workspace_files_shows_distinct_linked_worktree_config_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Plan S-4: diagnose shows each linked-worktree config layer by absolute path."""
+    stream = StringIO()
+    console = Console(
+        file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME, width=240
+    )
+    ctx = make_display_context(console=console, env={})
+    main_checkout = tmp_path / "main"
+    linked_worktree = tmp_path / "feature"
+    main_checkout.mkdir()
+    linked_worktree.mkdir()
+    scope = __import__("ralph.workspace.scope", fromlist=["WorkspaceScope"]).WorkspaceScope(
+        linked_worktree,
+        local_config_path=main_checkout / ".agent" / "ralph-workflow.toml",
+    )
+    monkeypatch.setattr(diagnose_module, "resolve_workspace_scope", lambda: scope)
+
+    diagnose_module.check_workspace_files(display_context=ctx)
+
+    output = stream.getvalue()
+    assert "Worktree config" in output
+    assert "Project config" in output
+    assert "Workspace-owned" in output
+    assert "Inherited" in output
+    assert "main-checkout" in output
+    assert str(scope.worktree_config_path) in output
+    assert str(scope.project_config_path) in output
+
+
 def test_diagnose_uses_display_context_console(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1185,6 +1216,7 @@ def test_local_config_aliases_create_the_complete_parseable_override_set(
     """Plan S-1: only the explicit local-config aliases materialize local TOMLs."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    monkeypatch.setenv("COLUMNS", "500")
     monkeypatch.chdir(tmp_path)
 
     result = typer.testing.CliRunner().invoke(main_module.app, [alias])
@@ -1199,6 +1231,18 @@ def test_local_config_aliases_create_the_complete_parseable_override_set(
     }
     for path in local_files:
         assert isinstance(tomllib.loads(path.read_text(encoding="utf-8")), dict)
+    normalized_created = " ".join(
+        re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split()
+    )
+    assert f"Local config scope: project; directory: {tmp_path / '.agent'}" in normalized_created
+
+    already_exists = typer.testing.CliRunner().invoke(main_module.app, [alias])
+    assert already_exists.exit_code == 0, already_exists.output
+    normalized_existing = " ".join(
+        re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", already_exists.output).split()
+    )
+    assert f"Local config scope: project; directory: {tmp_path / '.agent'}" in normalized_existing
+    assert f"Local config files already exist in: {tmp_path / '.agent'}" in normalized_existing
 
 
 def test_local_config_scope_rejects_unknown_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -876,7 +876,7 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
 
     for file_path, description, path in workspace_files:
         file_label = Text()
-        file_label.append(f"{file_path} ({description})")
+        file_label.append(f"{file_path} ({description})\n{path}")
         # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
         if path.exists():
             size = path.stat().st_size  # filesystem-read-ok: explicit diagnose command reports file size

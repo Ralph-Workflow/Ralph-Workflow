@@ -452,13 +452,13 @@ def _handle_generate_local_config(
     )
     scope_label = WORKTREE_SCOPE_LABEL if is_worktree_scope else PROJECT_SCOPE_LABEL
     results = ensure_local_configs(target_dir)
+    if any(result.action in {"created", "regenerated"} for result in results):
+        emit_first_run_welcome(results, display_context=display_context)
+    else:
+        display.emit_status(f"Local config files already exist in: {target_dir}")
     display.emit_status(f"Local config scope: {scope_label}; directory: {target_dir}")
     if is_worktree_scope:
         display.emit_status(f"Inherits project config: {scope.project_config_path}")
-    if any(result.action in {"created", "regenerated"} for result in results):
-        emit_first_run_welcome(results, display_context=display_context)
-        return
-    display.emit_status(f"Local config files already exist in: {target_dir}")
 
 
 def _handle_early_exit_flags(
