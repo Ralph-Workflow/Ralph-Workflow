@@ -101,7 +101,6 @@ def classify_failed_resolution_attempt(
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
     from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.failure_category import FailureCategory
     from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
     from ralph.recovery.seed_budget_registry import seed_budget_registry
 
@@ -149,6 +148,8 @@ def classify_failed_resolution_attempt(
     session.recovery_state = new_state
     session.last_recovery_reason = classified.reason
     session.last_retry_delay_ms = new_state.last_retry_delay_ms
+    from ralph.recovery.failure_category import FailureCategory
+
     max_retries = _conflict_chain_max_retries(policy_bundle)
     if (
         classified.category == FailureCategory.ENVIRONMENTAL
@@ -161,17 +162,17 @@ def classify_failed_resolution_attempt(
         session.chain_cursor = controller.next_conflict_candidate(
             candidates, failed_index=failed_index
         )
-    if session.recovery_state is not None:
-        chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
-        agents = list(chain_state.agents) if chain_state is not None else list(candidates)
-        session.recovery_state = new_state.with_phase_chain(
-            PHASE_RESOLUTION,
-            AgentChainState(
-                agents=agents,
-                current_index=min(session.chain_cursor, max(len(agents) - 1, 0)),
-                retries=session.current_agent_retries,
-            ),
-        )
+    chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
+    agents = list(chain_state.agents) if chain_state is not None else list(candidates)
+    session.recovery_state = new_state.with_phase_chain(
+        PHASE_RESOLUTION,
+        AgentChainState(
+            agents=agents,
+            current_index=min(session.chain_cursor, max(len(agents) - 1, 0)),
+            retries=session.current_agent_retries,
+        ),
+    )
+
 
 
 def _conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:

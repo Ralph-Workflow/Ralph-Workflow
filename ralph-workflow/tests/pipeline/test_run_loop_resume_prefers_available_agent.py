@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
@@ -160,12 +161,14 @@ def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
     assert resumed.is_waiting_state is False
 
 
+@pytest.mark.parametrize("auto_integrate_enabled", (True, False))
 def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
     monkeypatch: Any,
+    auto_integrate_enabled: bool,
 ) -> None:
-    """A late conflict uses the resolver seam instead of exiting an ordinary phase."""
+    """A late conflict uses the resolver seam even when auto integration is disabled."""
     config = MagicMock()
-    config.general.auto_integrate_enabled = True
+    config.general.auto_integrate_enabled = auto_integrate_enabled
     ctx = MagicMock()
     ctx.config = config
     ctx.workspace_scope.root = Path("/workspace")

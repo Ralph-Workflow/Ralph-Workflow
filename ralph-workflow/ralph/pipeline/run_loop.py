@@ -1273,16 +1273,6 @@ def _resume_after_cooldown_wait(
     return state
 
 
-def _auto_integration_enabled(ctx: _LoopContext) -> bool:
-    """Return whether this loop context enables integration enforcement."""
-    config: object = cast("object", getattr(ctx, "config", None))
-    if config is None:
-        return True
-    general: object = getattr(config, "general", None)
-    enabled: object = getattr(general, "auto_integrate_enabled", True)
-    return enabled is not False
-
-
 def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1297,8 +1287,6 @@ def _block_unresolved_integration(
     fallback/retry opportunity.  Only an exhausted verdict, or a resolver
     that leaves the ground-truth verdict blocked, can terminate this run.
     """
-    if not _auto_integration_enabled(ctx):
-        return None
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
         return None
@@ -1331,7 +1319,7 @@ def _run_inner_loop(
 ) -> tuple[PipelineState, str, int | None]:
     """Apply startup integration before entering the phase-dispatch loop."""
     workspace_root_raw: object = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
-    if _auto_integration_enabled(ctx) and isinstance(workspace_root_raw, Path):
+    if isinstance(workspace_root_raw, Path):
         legacy_block = legacy_rebase_startup_block(workspace_root_raw)
         if legacy_block is not None:
             state = state.copy_with(rebase=legacy_block)
