@@ -323,12 +323,28 @@ def _run_rounds(
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
+    unresolved = session.unresolved_paths or conflicted
+    session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
     emit_conflict_phase_line(
         display,
-        "abandoning conflict resolution; conflict markers survive in: "
-        + ", ".join(session.unresolved_paths or conflicted),
+        "abandoning conflict resolution; "
+        + session.exhaustion_reason,
     )
     return False
+
+
+def _resolution_exhaustion_reason(
+    session: ResolutionSession,
+    unresolved_paths: tuple[str, ...],
+) -> str:
+    """Build durable terminal evidence when the resolver cannot finish."""
+    reason = (
+        session.terminal_reason.value
+        if session.terminal_reason is not None
+        else "RESOLUTION_CHAIN_EXHAUSTED"
+    )
+    paths = ", ".join(unresolved_paths) or "<unreadable>"
+    return f"{reason}: conflict markers survive in: {paths}"
 
 
 def _operator_cap_expired(session: ResolutionSession, clock: MonotonicClock) -> bool:

@@ -837,7 +837,8 @@ def _assert_integration_dispatch_invariant(
 ) -> None:
     """Prove enabled integration is safe before ordinary dispatch."""
     general: object = getattr(config, "general", None)
-    if getattr(general, "auto_integrate_enabled", True) is False:
+    enabled: object = getattr(general, "auto_integrate_enabled", True)
+    if enabled is False:
         return
     verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
     assert_non_resolution_dispatch_allowed(state.phase, verdict)

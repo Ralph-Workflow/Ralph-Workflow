@@ -74,6 +74,18 @@ def record_conflict(
     )
 
 
+def record_resolution_exhausted(*, reason: str, target: str | None) -> RebaseState:
+    """Build terminal persisted evidence after the resolver chain is exhausted."""
+    return RebaseState(
+        last_action=ACTION_CONFLICT,
+        last_reason=reason,
+        last_target=target,
+        fast_forwarded=False,
+        resolution_exhausted=True,
+        resolution_exhaustion_reason=reason,
+    )
+
+
 def record_rebase_outcome(
     *,
     rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
@@ -251,5 +263,6 @@ __all__ = [
     "classify_rebase_outcome",
     "record_conflict",
     "record_rebase_outcome",
+    "record_resolution_exhausted",
     "record_skip",
 ]

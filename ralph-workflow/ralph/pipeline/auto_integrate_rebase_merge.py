@@ -38,6 +38,7 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
+    record_resolution_exhausted,
 )
 from ralph.pipeline.auto_integrate_record import clear_record, set_resolving_rebase
 from ralph.pipeline.auto_integrate_recovery import (
@@ -405,7 +406,7 @@ def _resolve_conflicted_rebase(
         return None
     try:
         with conflict_status_bar_session(display, root):
-            resolved = _resolve_rebase_with_config(
+            resolved, exhaustion_reason = _resolve_rebase_with_config(
                 root,
                 target,
                 rebase_stop_resolver,
@@ -424,6 +425,21 @@ def _resolve_conflicted_rebase(
                 target,
             )
     if not resolved:
+        if exhaustion_reason is not None:
+            logger.error(
+                "auto_integrate: rebase conflict resolver exhausted for '{}': {}",
+                target,
+                exhaustion_reason,
+            )
+            return RebaseRunResult(
+                rebase_outcome=RebaseConflicts(files=[]),
+                merge_attempted=False,
+                merge_outcome=None,
+                short_circuit=record_resolution_exhausted(
+                    reason=exhaustion_reason,
+                    target=target,
+                ),
+            )
         logger.info(
             "auto_integrate: rebase conflict resolution declined for '{}'; "
             "falling back to the endpoint merge",
@@ -444,24 +460,23 @@ def _resolve_rebase_with_config(
     target: str,
     resolver: RebaseStopResolver,
     config: ConflictResolutionConfig | None,
-) -> bool:
-    """Create the one typed session that spans every stop of this paused rebase."""
-    if config is None:
-        return resolve_rebase_in_progress(root, target, resolver)
+) -> tuple[bool, str | None]:
+    """Return rebase completion and terminal resolver-chain evidence."""
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
-    return resolve_rebase_in_progress(
-        root,
-        target,
-        resolver,
-        session=ResolutionSession(
+    session = (
+        ResolutionSession()
+        if config is None
+        else ResolutionSession(
             inactivity_timeout_seconds=config.inactivity_timeout_seconds,
             max_rounds_per_stop=config.max_rounds_per_stop,
             max_rebase_conflict_stops=config.max_rebase_conflict_stops,
             max_fallback_agents=config.max_fallback_agents,
             total_resolution_cap_seconds=config.total_resolution_cap_seconds,
-        ),
+        )
     )
+    resolved = resolve_rebase_in_progress(root, target, resolver, session=session)
+    return resolved, None if resolved else session.exhaustion_reason
 
 
 def _fallback_to_endpoint_merge(

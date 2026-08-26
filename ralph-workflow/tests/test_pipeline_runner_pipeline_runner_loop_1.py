@@ -176,6 +176,19 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
         "_apply_connectivity_check",
         lambda current_state, _monitor: current_state,
     )
+    # Runner-loop unit tests own their injected effects, not startup Git
+    # recovery; integration recovery has its own behavioral test modules.
+    monkeypatch.setattr(
+        run_loop_module,
+        "_apply_startup_rebase_outcomes",
+        lambda current_state, _ctx: current_state,
+    )
+    monkeypatch.setattr(run_loop_module, "_block_unresolved_integration", lambda *_args: None)
+    monkeypatch.setattr(
+        runner_module,
+        "_assert_integration_dispatch_invariant",
+        lambda *_args: None,
+    )
 
 
 class TestPipelineRunnerLoop:

@@ -133,8 +133,14 @@ def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
             "development": AgentChainState(agents=["claude", "opencode"], current_index=1)
         },
     ).copy_with(rebase=run_loop.RebaseState(last_action="conflict"), is_waiting_state=True)
+    reselections: list[PipelineState] = []
     monkeypatch.setattr(run_loop, "emit_activity_line", lambda *_args: None)
     monkeypatch.setattr(run_loop, "_log_resumed_state", lambda *_args: None)
+    monkeypatch.setattr(
+        run_loop,
+        "_reselect_preferred_agent",
+        lambda candidate, _ctx: reselections.append(candidate) or candidate,
+    )
     monkeypatch.setattr(
         run_loop,
         "inspect_integration_resolution",
@@ -143,6 +149,7 @@ def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
 
     resumed = run_loop._resume_after_cooldown_wait(state, ctx, "development", "offline", 10)
 
+    assert reselections == [], "blocked cooldown resume must not prepare an ordinary dispatch"
     chain = resumed.chain_for_phase("development")
     assert chain is not None
     assert chain.current_index == 1

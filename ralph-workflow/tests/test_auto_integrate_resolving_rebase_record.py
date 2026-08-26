@@ -134,7 +134,7 @@ def _install_fallback_seams(monkeypatch: pytest.MonkeyPatch, resolver_calls: lis
         lambda _root, _target, _resolver: MergeResult(outcome="success"),
     )
 
-    def _never(_root: Path, _target: str, _resolver: object) -> bool:
+    def _never(_root: Path, _target: str, _resolver: object, **_kwargs: object) -> bool:
         resolver_calls.append("resolve_rebase_in_progress")
         return True
 
@@ -241,3 +241,29 @@ def test_a_recordable_resolution_is_started(
     assert resolver_calls == ["resolve_rebase_in_progress"]
     assert result.merge_attempted is False
     assert flags == [True, False]
+
+
+def test_resolver_chain_exhaustion_is_returned_as_terminal_rebase_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-4/DA-006: exhausted recovery is persisted, never sent to merge fallback."""
+    _install_fallback_seams(monkeypatch, [])
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
+
+    def _exhausted(_root: Path, _target: str, _resolver: object, *, session: object) -> bool:
+        session.exhaustion_reason = "RESOLUTION_CHAIN_EXHAUSTED: src/alpha.py"
+        return False
+
+    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", _exhausted)
+
+    result = merge_module.run_rebase_or_merge(
+        tmp_path,
+        _TARGET,
+        None,
+        rebase_stop_resolver=lambda _root, _target, _stop: False,
+    )
+
+    assert result.merge_attempted is False
+    assert result.short_circuit is not None
+    assert result.short_circuit.resolution_exhausted is True
+    assert result.short_circuit.resolution_exhaustion_reason == "RESOLUTION_CHAIN_EXHAUSTED: src/alpha.py"

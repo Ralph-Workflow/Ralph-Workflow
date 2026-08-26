@@ -65,6 +65,7 @@ class ResolutionSession:
     recovery_state: object | None = None
     last_retry_delay_ms: int = 0
     current_agent_retries: int = 0
+    exhaustion_reason: str | None = None
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:

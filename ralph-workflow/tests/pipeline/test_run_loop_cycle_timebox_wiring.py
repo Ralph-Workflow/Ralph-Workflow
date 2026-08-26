@@ -44,6 +44,10 @@ def _run_to_terminal(
         return state.copy_with(phase=kwargs["policy_bundle"].pipeline.terminal_phase)
 
     monkeypatch.setattr(run_loop._runner_module, "run_pipeline_step", _step)
+    # This wiring test owns the ordinary inner-loop seam; startup recovery and
+    # the integration dispatch invariant have dedicated behavioral coverage.
+    monkeypatch.setattr(run_loop, "_apply_startup_rebase_outcomes", lambda state, _ctx: state)
+    monkeypatch.setattr(run_loop, "_block_unresolved_integration", lambda *_args: None)
     runner_module.run(MagicMock(), initial_state=initial, verbosity=Verbosity.QUIET)
 
 

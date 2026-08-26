@@ -8,6 +8,7 @@ real pipeline state.
 
 from __future__ import annotations
 
+import importlib
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -148,6 +149,18 @@ def test_default_run_propagates_display_subscriber(
         runner_module,
         "auto_integrate_on_phase_transition",
         lambda *_args, **_kwargs: None,
+    )
+    run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
+    monkeypatch.setattr(
+        run_loop_module,
+        "_apply_startup_rebase_outcomes",
+        lambda current_state, _ctx: current_state,
+    )
+    monkeypatch.setattr(run_loop_module, "_block_unresolved_integration", lambda *_args: None)
+    monkeypatch.setattr(
+        runner_module,
+        "_assert_integration_dispatch_invariant",
+        lambda *_args: None,
     )
 
     real_init = pd_module.ParallelDisplay.__init__
