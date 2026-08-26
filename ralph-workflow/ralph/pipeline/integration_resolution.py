@@ -9,7 +9,6 @@ it is the sole recovery executor named by a blocking verdict.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
@@ -24,32 +23,23 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 RESOLUTION_DRAIN = "rebase_conflict_resolution"
-
-
-class IntegrationResolutionStatus(StrEnum):
-    """Dispatch-safe classification of integration state."""
-
-    RESOLVED = "resolved"
-    RECOVERABLE = "recoverable"
-    EXHAUSTED = "exhausted"
+RESOLVED = "resolved"
+RECOVERABLE = "recoverable"
+EXHAUSTED = "exhausted"
 
 
 @dataclass(frozen=True)
 class IntegrationResolutionVerdict:
     """Evidence-backed answer to whether an ordinary phase may dispatch."""
 
-    status: IntegrationResolutionStatus
+    status: str
     reasons: tuple[str, ...] = ()
     recovery_executor: str | None = None
 
     @property
     def dispatch_allowed(self) -> bool:
         """Whether a non-resolution phase is safe to dispatch."""
-        return self.status is IntegrationResolutionStatus.RESOLVED
-
-
-class IntegrationResolutionBlockedError(RuntimeError):
-    """Raised when an ordinary phase attempts to bypass the invariant."""
+        return self.status == RESOLVED
 
 
 def inspect_integration_resolution(
@@ -62,20 +52,21 @@ def inspect_integration_resolution(
 ) -> IntegrationResolutionVerdict:
     """Return the fail-closed dispatch verdict for ``root`` and ``state``.
 
-    Full porcelain output intentionally includes untracked paths: every file
-    is evidence that the worktree observed by a subsequently dispatched agent
-    differs from the integration result. Any failed inspection is unsafe.
+    Porcelain is inspected only to prove the repository is readable. Ordinary
+    tracked or untracked changes are commit work, not integration evidence;
+    blocking them would prevent a ``COMMIT_RESIDUAL`` event from re-entering
+    its commit phase. Any failed inspection remains unsafe.
     """
     # Non-repository orchestration contexts (unit seams and initial project
     # setup) have no live Git integration state to inspect. The production
     # dispatch path is a repository, while this preserves existing synthetic
     # runner seams without manufacturing a Git failure.
     if porcelain is None and not (root / ".git").exists():
-        return IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED)
+        return IntegrationResolutionVerdict(RESOLVED)
 
     if state.resolution_exhausted:
         return IntegrationResolutionVerdict(
-            IntegrationResolutionStatus.EXHAUSTED,
+            EXHAUSTED,
             (state.resolution_exhaustion_reason or "conflict resolver exhausted",),
         )
 
@@ -84,13 +75,11 @@ def inspect_integration_resolution(
         reasons.append("persisted integration state is unresolved")
     probe = porcelain or _full_porcelain
     try:
-        readable, output = probe(root)
+        readable, _ = probe(root)
     except Exception:
-        readable, output = False, ""
+        readable = False
     if not readable:
         reasons.append("unable to inspect full git porcelain status")
-    elif output.strip():
-        reasons.append("worktree is not porcelain-clean")
     try:
         if rebase_active(root):
             reasons.append("rebase is in progress")
@@ -103,11 +92,11 @@ def inspect_integration_resolution(
         reasons.append("unable to inspect merge state")
     if reasons:
         return IntegrationResolutionVerdict(
-            IntegrationResolutionStatus.RECOVERABLE,
+            RECOVERABLE,
             tuple(reasons),
             RESOLUTION_DRAIN,
         )
-    return IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED)
+    return IntegrationResolutionVerdict(RESOLVED)
 
 
 def assert_non_resolution_dispatch_allowed(
@@ -117,9 +106,9 @@ def assert_non_resolution_dispatch_allowed(
     """Reject every ordinary phase when the integration invariant blocks it."""
     if phase != RESOLUTION_DRAIN and not verdict.dispatch_allowed:
         detail = "; ".join(reason for reason in verdict.reasons if isinstance(reason, str))
-        detail = detail or verdict.status.value
-        raise IntegrationResolutionBlockedError(
-            f"cannot dispatch {phase!r}: integration resolution is {verdict.status.value}: {detail}"
+        detail = detail or verdict.status
+        raise RuntimeError(
+            f"cannot dispatch {phase!r}: integration resolution is {verdict.status}: {detail}"
         )
 
 

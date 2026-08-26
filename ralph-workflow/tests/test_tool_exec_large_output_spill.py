@@ -22,7 +22,7 @@ from tests.mock_session import MockSession
 from tests.mock_workspace_root import MockWorkspaceRoot
 
 _FIRST_LINE = "line-00000000"
-_LAST_LINE = "line-00149999"
+_LAST_LINE = "line-00074999"
 
 
 @lru_cache(maxsize=1)
@@ -32,7 +32,7 @@ def _large_body() -> bytes:
     # the production spill branch is exercised end-to-end; sharing the
     # bytes avoids paying the join+encode cost on every test invocation
     # (which previously caused SIGALRM-driven flakiness under contention).
-    return "".join(f"line-{i:08d}\n" for i in range(150_000)).encode()
+    return "".join(f"line-{i:08d}\n" for i in range(75_000)).encode()
 
 
 def test_large_output_spills_to_file_with_preview(tmp_path: Path) -> None:

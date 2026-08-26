@@ -33,6 +33,8 @@
     "last_conflict_stage_oids": [],
     "last_conflict_scope": "",
     "recovery_record_retained": false,
+    "resolution_exhausted": false,
+    "resolution_exhaustion_reason": null,
     "legacy_checkpoint_blocked": false,
     "legacy_phase": null,
     "legacy_conflicted_files": [],

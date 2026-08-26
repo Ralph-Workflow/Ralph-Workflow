@@ -8,8 +8,9 @@ import pytest
 
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline.integration_resolution import (
-    IntegrationResolutionBlockedError,
-    IntegrationResolutionStatus,
+    EXHAUSTED,
+    RECOVERABLE,
+    RESOLVED,
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
 )
@@ -17,7 +18,9 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 @pytest.mark.parametrize("porcelain", (" M src/a.py\n", "M  src/a.py\n", "?? scratch.txt\n"))
-def test_any_full_porcelain_entry_blocks_dispatch(tmp_path: Path, porcelain: str) -> None:
+def test_dirty_non_integrating_worktree_permits_commit_dispatch(
+    tmp_path: Path, porcelain: str
+) -> None:
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -26,8 +29,9 @@ def test_any_full_porcelain_entry_blocks_dispatch(tmp_path: Path, porcelain: str
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is IntegrationResolutionStatus.RECOVERABLE
-    assert verdict.recovery_executor == "rebase_conflict_resolution"
+    assert verdict.status is RESOLVED
+    assert verdict.recovery_executor is None
+    assert_non_resolution_dispatch_allowed("development_commit", verdict)
 
 
 @pytest.mark.parametrize(
@@ -49,7 +53,7 @@ def test_unresolved_evidence_blocks_dispatch(
         merge_status=lambda _: merge_status,
     )
 
-    assert verdict.status is IntegrationResolutionStatus.RECOVERABLE
+    assert verdict.status is RECOVERABLE
 
 
 def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:
@@ -61,7 +65,7 @@ def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is IntegrationResolutionStatus.RECOVERABLE
+    assert verdict.status is RECOVERABLE
 
 
 def test_exhaustion_is_terminal_and_never_dispatches(tmp_path: Path) -> None:
@@ -73,12 +77,12 @@ def test_exhaustion_is_terminal_and_never_dispatches(tmp_path: Path) -> None:
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is IntegrationResolutionStatus.EXHAUSTED
-    with pytest.raises(IntegrationResolutionBlockedError, match="exhausted"):
+    assert verdict.status is EXHAUSTED
+    with pytest.raises(RuntimeError, match="exhausted"):
         assert_non_resolution_dispatch_allowed("planning", verdict)
 
 
-def test_only_a_fully_clean_repository_permits_dispatch(tmp_path: Path) -> None:
+def test_clean_repository_permits_dispatch(tmp_path: Path) -> None:
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -87,5 +91,5 @@ def test_only_a_fully_clean_repository_permits_dispatch(tmp_path: Path) -> None:
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is IntegrationResolutionStatus.RESOLVED
+    assert verdict.status is RESOLVED
     assert_non_resolution_dispatch_allowed("planning", verdict)

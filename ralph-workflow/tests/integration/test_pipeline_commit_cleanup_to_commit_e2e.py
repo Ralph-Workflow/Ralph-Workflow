@@ -441,6 +441,7 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
         "A residual scoped commit must reinvoke the same commit phase before downstream routing."
     )
     _assert_two_scoped_commits(repo_root, new_reflog_shas)
+    _assert_worktree_is_clean(repo_root)
 
     new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
     for rel_path in ORIGINALLY_FAILING_PATHS:
@@ -663,6 +664,17 @@ def _assert_two_scoped_commits(repo_root: Path, new_reflog_shas: set[str]) -> No
         assert (first_commit.tree / FIRST_COMMIT_SCOPE).data_stream.read().decode() == "updated first scope\n"
         assert (first_commit.tree / SECOND_COMMIT_SCOPE).data_stream.read().decode() == "initial second scope\n"
         assert (second_commit.tree / SECOND_COMMIT_SCOPE).data_stream.read().decode() == "updated second scope\n"
+    finally:
+        repo.close()
+
+
+def _assert_worktree_is_clean(repo_root: Path) -> None:
+    """Prove the residual scope was committed before pipeline completion."""
+    repo = Repo(repo_root)
+    try:
+        assert not repo.git.status("--porcelain"), (
+            "The second scoped commit must leave no residual worktree changes when the pipeline completes."
+        )
     finally:
         repo.close()
 
