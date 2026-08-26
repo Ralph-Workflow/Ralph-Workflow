@@ -143,6 +143,16 @@ class RebaseState(RalphBaseModel):
     # retained".
     recovery_record_retained: bool = False
 
+    # Legacy rebase checkpoint identity. These fields let both startup paths
+    # retain actionable evidence without re-parsing or replacing it.
+    legacy_checkpoint_blocked: bool = False
+    legacy_phase: str | None = None
+    legacy_conflicted_files: tuple[str, ...] = ()
+    legacy_resolved_files: tuple[str, ...] = ()
+    legacy_error_count: int = 0
+    legacy_timestamp: str | None = None
+    legacy_source: str | None = None
+
     @property
     def integration_unresolved(self) -> bool:
         """Whether a durable integration outcome still blocks phase advancement.
@@ -151,4 +161,8 @@ class RebaseState(RalphBaseModel):
         unresolved integration ownership. Callers must fail closed rather than
         materializing prompts, dispatching agents, or reporting success.
         """
-        return self.last_action == "conflict" or self.recovery_record_retained
+        return (
+            self.last_action == "conflict"
+            or self.recovery_record_retained
+            or self.legacy_checkpoint_blocked
+        )

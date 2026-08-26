@@ -54,6 +54,7 @@ from ralph.pipeline.auto_integrate_agent import (
     build_agent_rebase_stop_resolver,
     emit_integration_warn_line,
 )
+from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.checkpoint import worker_checkpoint_path
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
@@ -400,6 +401,10 @@ def run_parallel_worker_from_manifest(
     # prompt — the agent-facing write restriction is enforced separately via
     # workspace_scope, which execute_agent_effect uses for the MCP surface.
     workspace = FsWorkspace(workspace_root)
+    legacy_block = legacy_rebase_startup_block(workspace_root)
+    if legacy_block is not None:
+        logger.warning("auto_integrate: legacy worker startup block: {}", legacy_block.last_reason)
+        return 1
     registry = AgentRegistry.from_config(config)
     agent = registry.get(effect.agent_name)
     # Startup seam: reconcile any interrupted integration and catch up

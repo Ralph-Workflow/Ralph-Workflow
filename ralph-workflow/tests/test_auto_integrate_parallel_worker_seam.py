@@ -285,6 +285,27 @@ def test_worker_recovers_before_it_integrates_and_before_it_works(
     assert events[0] == "recover", f"recovery must precede any integration, got {events!r}"
 
 
+def test_persisted_legacy_conflict_blocks_prompt_and_agent_invocation(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A legacy persisted conflict stops the actual manifest entry before prompts."""
+    module = _worker_module()
+    manifest_path, _worker_ns = _write_manifest(tmp_path)
+    _install_worker_stubs(module, monkeypatch)
+    conflict = RebaseState(
+        last_action="conflict", legacy_checkpoint_blocked=True, last_reason="legacy conflict"
+    )
+    materialize = MagicMock()
+    execute = MagicMock()
+    monkeypatch.setattr(module, "legacy_rebase_startup_block", MagicMock(return_value=conflict))
+    monkeypatch.setattr(module, "execute_agent_effect", execute)
+    deps = dataclasses.replace(_worker_pipeline_deps(_display_context()), phase_prompt_materializer=materialize)
+
+    assert module.run_parallel_worker_from_manifest(manifest_path=manifest_path, display_context=_display_context(), pipeline_deps=deps) == 1
+    materialize.assert_not_called()
+    execute.assert_not_called()
+
+
 def test_worker_startup_conflict_blocks_prompt_and_agent_invocation(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

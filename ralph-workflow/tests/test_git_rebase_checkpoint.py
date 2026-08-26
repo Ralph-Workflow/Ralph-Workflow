@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.git.rebase.rebase_checkpoint import (
+    LegacyCheckpointStatus,
     RebaseCheckpoint,
     RebasePhase,
     clear_rebase_checkpoint,
+    inspect_legacy_rebase_checkpoint,
     load_rebase_checkpoint,
     rebase_checkpoint_exists,
     save_rebase_checkpoint,
@@ -25,6 +27,26 @@ def _checkpoint_entry(upstream: str) -> RebaseCheckpoint:
     checkpoint.add_resolved_file("conflict.txt")
     checkpoint.record_error("initial failure")
     return checkpoint
+
+
+def test_legacy_inspection_classifies_persisted_conflict_without_normalizing_it(
+    tmp_path: Path,
+) -> None:
+    checkpoint = RebaseCheckpoint.new("main")
+    checkpoint.set_phase(RebasePhase.ConflictDetected)
+    checkpoint.add_conflicted_file("conflict.py")
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "rebase_checkpoint.json").write_text(
+        __import__("json").dumps(checkpoint.to_dict()), encoding="utf-8"
+    )
+
+    inspection = inspect_legacy_rebase_checkpoint(tmp_path)
+
+    assert inspection.status == LegacyCheckpointStatus.ACTIONABLE_CONFLICT
+    assert inspection.checkpoint is not None
+    assert inspection.checkpoint.phase == RebasePhase.ConflictDetected
+    assert inspection.checkpoint.conflicted_files == ["conflict.py"]
 
 
 def test_save_and_load_checkpoint_preserves_state(

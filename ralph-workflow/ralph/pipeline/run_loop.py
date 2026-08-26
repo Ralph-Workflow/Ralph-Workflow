@@ -40,6 +40,7 @@ from ralph.pipeline.auto_integrate_agent import (
     emit_integration_warn_line,
 )
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
+from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
@@ -1287,6 +1288,10 @@ def _run_inner_loop(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Apply startup integration before entering the phase-dispatch loop."""
+    workspace_root = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
+    legacy_block = legacy_rebase_startup_block(workspace_root)
+    if legacy_block is not None:
+        state = state.copy_with(rebase=legacy_block)
     if state.rebase.integration_unresolved:
         blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
         if blocked_startup is not None:

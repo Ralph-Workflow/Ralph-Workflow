@@ -85,7 +85,9 @@ class RebaseStateMachine:
             except (OSError, ValueError):
                 checkpoint = restore_from_backup()
                 if checkpoint is None:
-                    clear_rebase_checkpoint()
+                    raise RuntimeError(
+                        "Legacy rebase checkpoint is unreadable; recovery is required"
+                    ) from None
         if checkpoint is None:
             checkpoint = RebaseCheckpoint.new(upstream_branch)
         return cls(

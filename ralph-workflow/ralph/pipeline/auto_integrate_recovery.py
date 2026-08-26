@@ -24,6 +24,10 @@ from ralph.git.merge import (
 )
 from ralph.git.operations import is_repo_clean
 from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
+from ralph.git.rebase.rebase_checkpoint import (
+    LegacyCheckpointStatus,
+    inspect_legacy_rebase_checkpoint,
+)
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_recovery_integrating import recover_integrating_record
 from ralph.pipeline.auto_integrate_context import (
@@ -67,10 +71,59 @@ _ACTION_RECOVERED = "recovered"
 
 __all__ = [
     "TerminalStateViolationError",
+    "legacy_rebase_startup_block",
     "post_attempt_verify",
     "recover_incomplete_integration",
     "recovery_retained_record",
 ]
+
+
+def _clear_legacy_checkpoint(workspace_root: Path) -> None:
+    """Retire only a terminal checkpoint already proved clean by Git."""
+    checkpoint_path = workspace_root / ".agent" / "rebase_checkpoint.json"
+    for path in (checkpoint_path, checkpoint_path.with_suffix(".json.bak")):
+        if path.exists():
+            # filesystem-write-ok: retire only validated terminal legacy evidence
+            path.unlink()
+
+
+def legacy_rebase_startup_block(workspace_root: Path) -> RebaseState | None:
+    """Reconcile only provably retired legacy evidence; otherwise block startup.
+
+    Legacy checkpoints predate the auto-integration record.  Treating them as
+    disposable made planning possible while a previous rebase was unresolved.
+    This boundary is deliberately side-effect minimal: it clears a validated
+    terminal checkpoint only after Git proves no rebase or merge exists.
+    """
+    # Non-repository test and orchestration contexts cannot have legacy Git
+    # rebase state. Do not turn their ordinary startup into a filesystem read.
+    if not (workspace_root / ".git").exists():
+        return None
+    inspection = inspect_legacy_rebase_checkpoint(workspace_root)
+    if inspection.status == LegacyCheckpointStatus.ABSENT:
+        return None
+    checkpoint = inspection.checkpoint
+    identity = {
+        "legacy_checkpoint_blocked": True,
+        "legacy_phase": checkpoint.phase.value if checkpoint is not None else None,
+        "legacy_conflicted_files": tuple(checkpoint.conflicted_files) if checkpoint else (),
+        "legacy_resolved_files": tuple(checkpoint.resolved_files) if checkpoint else (),
+        "legacy_error_count": checkpoint.error_count if checkpoint else 0,
+        "legacy_timestamp": checkpoint.timestamp if checkpoint else None,
+        "legacy_source": ".agent/rebase_checkpoint.json",
+        "last_target": checkpoint.upstream_branch if checkpoint else None,
+    }
+    if inspection.status == LegacyCheckpointStatus.TERMINAL:
+        try:
+            git_clean = not rebase_in_progress(workspace_root) and merge_state(workspace_root) == MERGE_STATE_NONE
+        except OSError:
+            git_clean = False
+        if git_clean:
+            _clear_legacy_checkpoint(workspace_root)
+            return None
+        return RebaseState(last_action="conflict", last_reason="legacy terminal checkpoint contradicts live Git", **identity)
+    reason = inspection.reason or "legacy rebase checkpoint requires recovery"
+    return RebaseState(last_action="conflict", last_reason=reason, **identity)
 
 
 def recovery_retained_record(state: RebaseState | None) -> bool:

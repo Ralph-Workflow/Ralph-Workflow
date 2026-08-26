@@ -419,6 +419,26 @@ def test_a_display_that_cannot_take_the_line_never_aborts_startup(
     assert state.rebase.recovery_record_retained is True
 
 
+def test_persisted_legacy_conflict_blocks_shared_loop_before_dispatch(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """The shared entry cannot advance planning past a legacy conflict."""
+    module = _run_loop_module()
+    ctx = _loop_ctx(tmp_path, _RecordingDisplay())
+    ctx.policy_bundle = SimpleNamespace(pipeline=SimpleNamespace(terminal_phase="complete"))
+    dispatched: list[object] = []
+    legacy = RebaseState(last_action="conflict", legacy_checkpoint_blocked=True, last_reason="legacy conflict")
+    monkeypatch.setattr(module, "legacy_rebase_startup_block", lambda _root: legacy)
+    monkeypatch.setattr(module._runner_module, "run_pipeline_step", dispatched.append)
+    monkeypatch.setattr(module, "_save_recovered_rebase_checkpoint", lambda *_args: None)
+
+    result, _prev_phase, exit_code = module._run_inner_loop(PipelineState(phase="planning"), ctx, prev_phase="planning")
+
+    assert exit_code == 1
+    assert result.rebase.legacy_checkpoint_blocked is True
+    assert dispatched == []
+
+
 def test_run_loop_checkpointed_conflict_blocks_first_phase_dispatch(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:

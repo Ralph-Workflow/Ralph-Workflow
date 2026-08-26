@@ -8,6 +8,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,9 +19,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "LegacyCheckpointInspection",
+    "LegacyCheckpointStatus",
     "RebaseCheckpoint",
     "acquire_rebase_lock",
     "clear_rebase_checkpoint",
+    "inspect_legacy_rebase_checkpoint",
     "load_rebase_checkpoint",
     "rebase_checkpoint_exists",
     "release_rebase_lock",
@@ -78,6 +82,24 @@ def _string_list(data: Mapping[str, object], key: str) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value]
+
+
+class LegacyCheckpointStatus(StrEnum):
+    """Fail-closed classification for legacy rebase persistence."""
+
+    ABSENT = "absent"
+    TERMINAL = "terminal"
+    ACTIONABLE_CONFLICT = "actionable_conflict"
+    BLOCKED = "blocked"
+
+
+@dataclass(frozen=True)
+class LegacyCheckpointInspection:
+    """Validated legacy evidence, or a reason it must block startup."""
+
+    status: LegacyCheckpointStatus
+    checkpoint: RebaseCheckpoint | None = None
+    reason: str | None = None
 
 
 def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
@@ -153,27 +175,78 @@ class RebaseCheckpoint:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> RebaseCheckpoint:
+        """Decode a checkpoint without silently normalizing corrupt evidence."""
         phase_value = data.get("phase")
-        phase = RebasePhase.NotStarted
-        if isinstance(phase_value, str):
-            try:
-                phase = RebasePhase(phase_value)
-            except ValueError:
-                phase = RebasePhase.NotStarted
-
+        if not isinstance(phase_value, str):
+            raise ValueError("Checkpoint phase must be a string")
+        try:
+            phase = RebasePhase(phase_value)
+        except ValueError as exc:
+            raise ValueError(f"Unknown checkpoint phase: {phase_value!r}") from exc
+        upstream = data.get("upstream_branch", "")
+        if not isinstance(upstream, str):
+            raise ValueError("Checkpoint upstream_branch must be a string")
+        for key in ("conflicted_files", "resolved_files"):
+            value = data.get(key, [])
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValueError(f"Checkpoint {key} must be a list of strings")
+        for key in ("error_count", "phase_error_count"):
+            value = data.get(key, 0)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"Checkpoint {key} must be a non-negative integer")
+        timestamp = data.get("timestamp")
+        if not isinstance(timestamp, str):
+            raise ValueError("Checkpoint timestamp must be a string")
+        try:
+            datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("Checkpoint timestamp is invalid") from exc
+        resolved = list(data.get("resolved_files", []))
+        conflicts = list(data.get("conflicted_files", []))
+        if any(file not in conflicts for file in resolved):
+            raise ValueError("Checkpoint resolved_files must be a subset of conflicted_files")
+        if phase not in {RebasePhase.NotStarted, RebasePhase.RebaseComplete, RebasePhase.RebaseAborted} and not upstream:
+            raise ValueError("Active checkpoint requires an upstream_branch")
         last_error_value = data.get("last_error")
-        last_error = None if last_error_value is None else str(last_error_value)
+        if last_error_value is not None and not isinstance(last_error_value, str):
+            raise ValueError("Checkpoint last_error must be a string or null")
+        return cls(phase=phase, upstream_branch=upstream, conflicted_files=conflicts,
+                   resolved_files=resolved, error_count=data.get("error_count", 0),
+                   last_error=last_error_value, timestamp=timestamp,
+                   phase_error_count=data.get("phase_error_count", 0))
 
-        return cls(
-            phase=phase,
-            upstream_branch=str(data.get("upstream_branch", "")),
-            conflicted_files=_string_list(data, "conflicted_files"),
-            resolved_files=_string_list(data, "resolved_files"),
-            error_count=_int_value(data, "error_count"),
-            last_error=last_error,
-            timestamp=str(data.get("timestamp", _current_timestamp())),
-            phase_error_count=_int_value(data, "phase_error_count"),
-        )
+
+def inspect_legacy_rebase_checkpoint(
+    workspace_root: Path | None = None,
+) -> LegacyCheckpointInspection:
+    """Inspect legacy persistence once, preserving every unsafe byte in place.
+
+    This function never clears, repairs, or replaces a checkpoint.  Startup
+    callers use its result as a fail-closed gate before prompt dispatch.
+    """
+    agent_dir = (workspace_root / AGENT_DIR) if workspace_root is not None else AGENT_DIR
+    primary = agent_dir / CHECKPOINT_FILE
+    backup = agent_dir / f"{CHECKPOINT_FILE}{BACKUP_SUFFIX}"
+    if not primary.exists() and not backup.exists():
+        return LegacyCheckpointInspection(LegacyCheckpointStatus.ABSENT)
+    try:
+        primary_bytes = primary.read_bytes() if primary.exists() else None
+        backup_bytes = backup.read_bytes() if backup.exists() else None
+        if primary_bytes is None:
+            reason = "legacy checkpoint primary is missing"
+        elif backup_bytes is not None and primary_bytes != backup_bytes:
+            reason = "legacy checkpoint primary and backup disagree"
+        else:
+            checkpoint = RebaseCheckpoint.from_dict(_load_checkpoint_payload(primary))
+            if checkpoint.phase in {RebasePhase.NotStarted, RebasePhase.RebaseComplete, RebasePhase.RebaseAborted}:
+                return LegacyCheckpointInspection(LegacyCheckpointStatus.TERMINAL, checkpoint)
+            if checkpoint.phase in {RebasePhase.ConflictDetected, RebasePhase.ConflictResolutionInProgress}:
+                return LegacyCheckpointInspection(LegacyCheckpointStatus.ACTIONABLE_CONFLICT, checkpoint)
+            reason = "legacy rebase recovery is still active"
+            return LegacyCheckpointInspection(LegacyCheckpointStatus.BLOCKED, checkpoint, reason)
+    except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        reason = f"legacy checkpoint is unsafe: {exc}"
+    return LegacyCheckpointInspection(LegacyCheckpointStatus.BLOCKED, reason=reason)
 
 
 def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
