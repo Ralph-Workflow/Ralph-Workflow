@@ -185,3 +185,33 @@ def test_worker_without_a_display_context_declines_without_raising() -> None:
     )
 
     assert resolvers == (None, None, None)
+
+
+def test_fan_out_retained_recovery_routes_through_recovery(monkeypatch: MonkeyPatch) -> None:
+    """A retained recovery outcome cannot preserve coordinator success."""
+    retained = RebaseState(last_action="skipped", recovery_record_retained=True)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        MagicMock(return_value=retained),
+    )
+    failed_state = MagicMock(spec=PipelineState)
+    failed_state.copy_with.return_value = failed_state
+    reduced = MagicMock(return_value=(failed_state, []))
+    monkeypatch.setattr(runner_module, "reducer_reduce", reduced)
+    state = MagicMock(spec=PipelineState)
+    state.phase = "development"
+    state.rebase = RebaseState()
+
+    result = runner_module._integrate_after_fan_out(
+        state=state,
+        config=_config(enabled=True),
+        workspace_scope=MagicMock(),
+        display=MagicMock(),
+        policy_bundle=MagicMock(),
+        registry=None,
+    )
+
+    assert result is failed_state
+    assert "integration conflict" in reduced.call_args.args[1].reason
+    failed_state.copy_with.assert_called_once_with(rebase=retained)

@@ -1268,7 +1268,7 @@ def _block_unresolved_startup_conflict(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
     """Persist and stop before dispatch when startup leaves a conflict unresolved."""
-    if state.rebase.last_action != "conflict":
+    if state.rebase.integration_unresolved is not True:
         return None
     # An unresolved conflict is durable recovery evidence, not a display-only
     # warning. Never dispatch another phase (especially planning) until the

@@ -142,3 +142,13 @@ class RebaseState(RalphBaseModel):
     # checkpoints load unchanged and conservatively read as "not
     # retained".
     recovery_record_retained: bool = False
+
+    @property
+    def integration_unresolved(self) -> bool:
+        """Whether a durable integration outcome still blocks phase advancement.
+
+        Conflict resolution and retained crash-recovery records are both
+        unresolved integration ownership. Callers must fail closed rather than
+        materializing prompts, dispatching agents, or reporting success.
+        """
+        return self.last_action == "conflict" or self.recovery_record_retained

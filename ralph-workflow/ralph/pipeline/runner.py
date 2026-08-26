@@ -897,19 +897,22 @@ def _integrate_inline_effect(
             inline_exc,
         )
         return inline_result
-    if outcome is not None and isinstance(inline_result, PipelineState):
-        if outcome.last_action == "conflict":
+    if outcome is not None and outcome.integration_unresolved is True:
+        if isinstance(inline_result, PipelineState):
             failed_state, _ = reducer_reduce(
                 state,
                 _integration_conflict_failure(state, outcome),
                 policy_bundle.pipeline if policy_bundle is not None else None,
             )
             return failed_state.copy_with(rebase=outcome)
-        # PipelineState-shaped result: thread the integration
-        # outcome into the persisted checkpoint so the catch-up
-        # survives a crash right after the inline effect. The
-        # reducer/phase on the returned state is left untouched;
-        # ``copy_with(rebase=...)`` only updates the rebase slot.
+        # ExitSuccessEffect returns an int, so it cannot carry rebase state.
+        # Never return its successful value while recovery still owns a record
+        # or a resolver left a conflict unresolved.
+        return 1
+    if outcome is not None and isinstance(inline_result, PipelineState):
+        # PipelineState-shaped result: thread the integration outcome into the
+        # persisted checkpoint so the catch-up survives a crash right after the
+        # inline effect. The reducer/phase is left untouched.
         return inline_result.copy_with(rebase=outcome)
     return inline_result
 
@@ -1237,7 +1240,7 @@ def _integrate_after_fan_out(
     )
     if outcome is None:
         return state
-    if outcome.last_action == "conflict":
+    if outcome.integration_unresolved is True:
         failed_state, _ = reducer_reduce(
             state,
             _integration_conflict_failure(state, outcome),

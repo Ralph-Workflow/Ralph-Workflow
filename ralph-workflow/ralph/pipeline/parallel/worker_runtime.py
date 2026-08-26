@@ -416,7 +416,7 @@ def run_parallel_worker_from_manifest(
             display_context=display_context,
             recover_first=True,
         )
-    if startup_outcome is not None and startup_outcome.last_action == "conflict":
+    if startup_outcome is not None and startup_outcome.integration_unresolved is True:
         logger.warning("auto_integrate: worker startup conflict blocks phase invocation")
         return 1
     prompt_path = effective_pipeline_deps.phase_prompt_materializer(
@@ -526,7 +526,7 @@ def run_parallel_worker_from_manifest(
                 display_context=display_context,
                 recover_first=False,
             )
-        if boundary_outcome is not None and boundary_outcome.last_action == "conflict":
+        if boundary_outcome is not None and boundary_outcome.integration_unresolved is True:
             logger.warning("auto_integrate: worker boundary conflict blocks successful completion")
             return 1
     return 0 if event == PipelineEvent.AGENT_SUCCESS else 1

@@ -434,3 +434,45 @@ def test_phase_transition_seam_handles_non_pipelineevent_input() -> None:
     )
     assert result is None
     integrate.assert_not_called()
+
+
+def test_exit_success_inline_conflict_returns_failure_not_success(
+    monkeypatch,
+    default_policy,
+) -> None:
+    """An unresolved inline integration must not return ExitSuccessEffect's 0."""
+    from ralph.config.enums import Verbosity
+    from ralph.display.context import make_display_context
+
+    bundle = _policy_bundle(default_policy)
+    state = _stub_state()
+    conflict = RebaseState(last_action="conflict", last_reason="resolver exhausted")
+    monkeypatch.setattr(runner, "_integrate_on_phase_transition", MagicMock(return_value=conflict))
+    monkeypatch.setattr(
+        runner, "call_determine_effect_from_policy", lambda *_a, **_k: ExitSuccessEffect()
+    )
+    monkeypatch.setattr(
+        runner, "reducer_reduce", lambda s, e, p, recovery=None, routing_timing=None: (s, [])
+    )
+    monkeypatch.setattr(runner.ckpt, "save", MagicMock())
+    monkeypatch.setattr(runner, "_save_checkpoint_or_log", lambda *a, **k: None)
+    display_context = make_display_context()
+    display = runner.ParallelDisplay(display_context)
+    registry = MagicMock()
+    registry.get.return_value = None
+    workspace_scope = MagicMock()
+    workspace_scope.root = Path("/workspace")
+
+    result = runner._run_pipeline_step(
+        state=state,
+        policy_bundle=bundle,
+        workspace_scope=workspace_scope,
+        config=_default_config(),
+        display=display,
+        display_context=display_context,
+        verbosity=Verbosity.QUIET,
+        registry=registry,
+        pipeline_subscriber=None,
+    )
+
+    assert result == 1

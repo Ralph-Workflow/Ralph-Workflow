@@ -460,3 +460,51 @@ def test_a_raising_seam_never_aborts_the_worker(monkeypatch: MonkeyPatch, tmp_pa
         )
         is None
     )
+
+
+def test_worker_startup_retained_recovery_blocks_prompt_and_agent_invocation(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A retained record blocks prompt materialization just like a conflict."""
+    module = _worker_module()
+    manifest_path, _worker_ns = _write_manifest(tmp_path)
+    _install_worker_stubs(module, monkeypatch)
+    retained = RebaseState(last_action="skipped", recovery_record_retained=True)
+    integration = MagicMock(return_value=retained)
+    materialize = MagicMock()
+    execute = MagicMock()
+    monkeypatch.setattr(module, "run_worker_auto_integration", integration)
+    monkeypatch.setattr(module, "execute_agent_effect", execute)
+    deps = dataclasses.replace(
+        _worker_pipeline_deps(_display_context()), phase_prompt_materializer=materialize
+    )
+
+    exit_code = module.run_parallel_worker_from_manifest(
+        manifest_path=manifest_path,
+        display_context=_display_context(),
+        pipeline_deps=deps,
+    )
+
+    assert exit_code == 1
+    integration.assert_called_once()
+    materialize.assert_not_called()
+    execute.assert_not_called()
+
+
+def test_worker_boundary_retained_recovery_blocks_success_exit(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A retained outcome after agent success must not yield worker exit code 0."""
+    module = _worker_module()
+    manifest_path, _worker_ns = _write_manifest(tmp_path)
+    _install_worker_stubs(module, monkeypatch)
+    outcomes = iter([None, RebaseState(last_action="skipped", recovery_record_retained=True)])
+    monkeypatch.setattr(module, "run_worker_auto_integration", lambda **_kwargs: next(outcomes))
+
+    exit_code = module.run_parallel_worker_from_manifest(
+        manifest_path=manifest_path,
+        display_context=_display_context(),
+        pipeline_deps=_worker_pipeline_deps(_display_context()),
+    )
+
+    assert exit_code == 1

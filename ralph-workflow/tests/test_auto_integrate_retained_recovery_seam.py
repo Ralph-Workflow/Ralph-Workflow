@@ -620,3 +620,27 @@ def test_the_worker_boundary_seam_is_unaffected(monkeypatch: MonkeyPatch, tmp_pa
     assert events == ["integrate"], (
         f"the boundary seam must neither recover nor be gated, got {events!r}"
     )
+
+
+def test_run_loop_retained_recovery_blocks_first_phase_dispatch(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """A retained recovery record is as unresolved as an explicit conflict."""
+    module = _run_loop_module()
+    retained_state = PipelineState(phase="planning").copy_with(rebase=_retained())
+    ctx = _loop_ctx(tmp_path, _RecordingDisplay())
+    ctx.policy_bundle = SimpleNamespace(pipeline=SimpleNamespace(terminal_phase="complete"))
+    dispatched: list[object] = []
+    saved: list[PipelineState] = []
+    monkeypatch.setattr(module, "_apply_startup_rebase_outcomes", lambda _state, _ctx: retained_state)
+    monkeypatch.setattr(module._runner_module, "run_pipeline_step", dispatched.append)
+    monkeypatch.setattr(module, "_save_recovered_rebase_checkpoint", lambda state, _ctx: saved.append(state))
+
+    result, _prev_phase, exit_code = module._run_inner_loop(
+        PipelineState(phase="planning"), ctx, prev_phase="planning"
+    )
+
+    assert exit_code == 1
+    assert result.rebase.recovery_record_retained is True
+    assert saved == [retained_state]
+    assert dispatched == []
