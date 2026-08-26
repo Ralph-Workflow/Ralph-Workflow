@@ -545,6 +545,47 @@ def test_worker_boundary_retained_recovery_blocks_success_exit(
     _install_worker_stubs(module, monkeypatch)
     outcomes = iter([None, RebaseState(last_action="skipped", recovery_record_retained=True)])
     monkeypatch.setattr(module, "run_worker_auto_integration", lambda **_kwargs: next(outcomes))
+    monkeypatch.setattr(
+        module,
+        "inspect_integration_resolution",
+        lambda _root, rebase: IntegrationResolutionVerdict(
+            IntegrationResolutionStatus.RECOVERABLE,
+            ("persisted integration state is unresolved",),
+            "rebase_conflict_resolution",
+        )
+        if rebase.recovery_record_retained
+        else IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED),
+    )
+
+    exit_code = module.run_parallel_worker_from_manifest(
+        manifest_path=manifest_path,
+        display_context=_display_context(),
+        pipeline_deps=_worker_pipeline_deps(_display_context()),
+    )
+
+    assert exit_code == 1
+
+
+def test_worker_boundary_live_verdict_blocks_success_exit(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """S-3: post-phase live Git evidence blocks the worker even when its state is stale."""
+    module = _worker_module()
+    manifest_path, _worker_ns = _write_manifest(tmp_path)
+    _install_worker_stubs(module, monkeypatch)
+    outcomes = iter([None, RebaseState()])
+    monkeypatch.setattr(module, "run_worker_auto_integration", lambda **_kwargs: next(outcomes))
+    verdicts = iter(
+        [
+            IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED),
+            IntegrationResolutionVerdict(
+                IntegrationResolutionStatus.RECOVERABLE,
+                ("working tree is not clean",),
+                "rebase_conflict_resolution",
+            ),
+        ]
+    )
+    monkeypatch.setattr(module, "inspect_integration_resolution", lambda *_args: next(verdicts))
 
     exit_code = module.run_parallel_worker_from_manifest(
         manifest_path=manifest_path,

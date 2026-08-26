@@ -550,8 +550,13 @@ def run_parallel_worker_from_manifest(
                 recover_first=False,
                 state=startup_outcome,
             )
-        if boundary_outcome is not None and boundary_outcome.integration_unresolved is True:
-            logger.warning("auto_integrate: worker boundary conflict blocks successful completion")
+        boundary_rebase = boundary_outcome or state.rebase
+        boundary_verdict = inspect_integration_resolution(workspace_root, boundary_rebase)
+        if not boundary_verdict.dispatch_allowed:
+            logger.warning(
+                "auto_integrate: worker boundary blocks successful completion: {}",
+                "; ".join(boundary_verdict.reasons),
+            )
             return 1
     return 0 if event == PipelineEvent.AGENT_SUCCESS else 1
 
