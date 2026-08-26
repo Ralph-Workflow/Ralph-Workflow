@@ -40,9 +40,7 @@ invocation engine uses).  No subprocess, no real sleep.
 from __future__ import annotations
 
 import asyncio
-import itertools
 import json
-import os
 from typing import TYPE_CHECKING
 
 import pytest
@@ -496,12 +494,6 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
     )
     completion_event = asyncio.Event()
     completion_event.set()
-    # ``ProcessManager`` probes process groups during spawn; fake PIDs must
-    # never coincide with a live verification-shard process. Deriving the
-    # first ID above this process's ID keeps the fake outside the compact PID
-    # range the concurrent pytest children occupy.
-    pid_counter = itertools.count(os.getpid() + 1_000_000)
-
     async def async_factory(
         command: tuple[str, ...],
         *,
@@ -513,7 +505,10 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
         start_new_session: bool,
     ) -> FakeControllableAsyncProcess:
         return FakeControllableAsyncProcess(
-            pid=next(pid_counter),
+            # A negative PID cannot name a live OS process, so process-group
+            # probing rejects this in-memory test double without interacting
+            # with the pytest runner's self-pipe descriptors.
+            pid=-1,
             stdout_data=(tool_line + "\n").encode("utf-8"),
             returncode=0,
             completion_event=completion_event,
@@ -533,6 +528,7 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
     executor = SubprocessAgentExecutor(
         command=["claude", "--help"],
         activity_router=router,
+        raw_overflow_root=tmp_path,
         _pm=pm,
     )
 

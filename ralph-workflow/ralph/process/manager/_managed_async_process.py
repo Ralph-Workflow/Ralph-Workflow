@@ -115,14 +115,11 @@ class ManagedAsyncProcess:
             # propagates).
             with contextlib.suppress(Exception):
                 await self.terminate(grace_period_s=2.0)
-        # Defensively close the asyncio stdin/stdout/stderr transports so
-        # event-loop resources (StreamWriter/StreamReader buffers, pipe
-        # selectors) are released on every exit path — mirror the sync
-        # ManagedProcess.__exit__ (_managed_process.py:496-503). Each close
-        # is wrapped in suppress so a failing close cannot mask the
-        # body exception.
-        for attr in ("stdout", "stderr", "stdin"):
-            pipe: object | None = getattr(self._proc, attr, None)
-            if pipe is not None:
+        # Real ``asyncio.StreamReader`` instances are loop-owned and must not
+        # be closed: their inherited close attribute can close the loop
+        # self-pipe during teardown. Test doubles can explicitly opt into the
+        # context-manager transport contract with a ``close`` method.
+        for pipe in (self._proc.stdout, self._proc.stderr, self._proc.stdin):
+            if pipe is not None and not isinstance(pipe, asyncio.StreamReader):
                 with contextlib.suppress(Exception):
-                    pipe.close()  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    pipe.close()
