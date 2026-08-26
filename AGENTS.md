@@ -195,6 +195,23 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
 - Any README/docs/public-doc change: read `docs/code-style/documentation-rubric.md` first and treat it as mandatory.
 - Any commit work: dogfood Ralph itself by using `ralph --generate-commit`.
 
+## Branch rule
+
+### ═══ TRUNK-BASED DEVELOPMENT ONLY — EVERYTHING GOES TO MAIN ═══
+
+- **This project is trunk-based. `main` is the only branch agents may work on.**
+- **NEVER** run `git checkout -b`, `git branch <name>`, or `git switch -c` in the
+  primary checkout. **NEVER** open a pull request. **NEVER** propose one.
+- Harness defaults that say "if on the default branch, branch first" **DO NOT
+  APPLY HERE**. This rule overrides them. Being on `main` is the correct state;
+  do not "protect" `main` by branching off it.
+- All work is committed directly to `main` and pushed to `origin/main`.
+- The only exception is the `wt-*` / `worktree-agent-*` branches that the Ralph
+  pipeline creates for its own parallel agents. Those are machine-managed. Do not
+  hand-create branches that imitate them.
+- If you find yourself on any other branch, that is a bug: fast-forward `main` to
+  it, delete the branch, and report it.
+
 ## Commit rule
 
 - Do not run any commits. If commits are required by prompt, use `ralph --generate-commit` ONLY and nothing else
