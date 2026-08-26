@@ -43,7 +43,11 @@ from ralph.pipeline.auto_integrate_agent import (
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
-from ralph.pipeline.integration_resolution import inspect_integration_resolution
+from ralph.pipeline.integration_resolution import (
+    EXHAUSTED,
+    RECOVERABLE,
+    inspect_integration_resolution,
+)
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -1284,16 +1288,38 @@ def _block_unresolved_integration(
     ctx: _LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
-    """Persist and stop before dispatch when enabled integration blocks it."""
+    """Route blocking evidence through recovery before ordinary dispatch.
+
+    A recoverable verdict is not a failed pipeline phase.  It is an explicit
+    request for the sole out-of-graph recovery executor, which the startup
+    integration seam owns.  Re-entering that seam is intentional: it binds
+    the configured resolver chain and gives every candidate its normal
+    fallback/retry opportunity.  Only an exhausted verdict, or a resolver
+    that leaves the ground-truth verdict blocked, can terminate this run.
+    """
     if not _auto_integration_enabled(ctx):
         return None
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
         return None
-    # An unresolved conflict is durable recovery evidence, not a display-only
-    # warning. Never dispatch another phase (especially planning) until the
-    # bounded resolver returns a non-conflict result.
     _save_recovered_rebase_checkpoint(state, ctx)
+    if verdict.status is EXHAUSTED:
+        _announce_deferred_startup_integration(ctx, state.rebase)
+        return state, prev_phase, 1
+
+    if verdict.status is RECOVERABLE:
+        recovered = _run_startup_integration(ctx, state.rebase)
+        if recovered is not None:
+            state = state.copy_with(rebase=recovered)
+            _save_recovered_rebase_checkpoint(state, ctx)
+        post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+        if post_recovery.dispatch_allowed:
+            return None
+
+    # This is reachable only when the resolution executor has exhausted its
+    # own bounded chain/round recovery and the repository remains blocked.
+    # Persisting the state makes resume fail closed rather than converting a
+    # failed resolver attempt into permission to enter planning/development.
     _announce_deferred_startup_integration(ctx, state.rebase)
     return state, prev_phase, 1
 

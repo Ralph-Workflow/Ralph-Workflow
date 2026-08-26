@@ -61,6 +61,7 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress,
     save_progress,
 )
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 if TYPE_CHECKING:
@@ -144,7 +145,12 @@ class RebaseStop:
 #: ``type`` alias body is evaluated lazily, and sphinx autodoc forces
 #: that evaluation while building the API reference. The same is true of
 #: :data:`ralph.pipeline.conflict_resolution.driver.ResolutionInvoker`.
-type RebaseStopResolver = Callable[["Path", str, RebaseStop], bool]
+type RebaseStopResolver = Callable[["Path", str, RebaseStop], ResolutionOutcome | bool]
+
+
+def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
+    """Project legacy injected boolean fakes onto the typed resolver contract."""
+    return result.succeeded if isinstance(result, ResolutionOutcome) else result
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
@@ -314,7 +320,7 @@ def _resolve_one_stop(
         return False
     if _try_deterministic_resolution(root, stop):
         return _stage_and_prove(root, stop) and _continue_past(root, stop)
-    if not resolver(root, target, stop):
+    if not _resolution_succeeded(resolver(root, target, stop)):
         logger.info(
             "conflict_resolution: resolver declined rebase stop {} ({})",
             stop.stop_index,

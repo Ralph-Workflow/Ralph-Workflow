@@ -22,7 +22,9 @@ so the completion contract and the git denial are both real.
 from __future__ import annotations
 
 from ralph.pipeline.conflict_resolution.driver import (
+    run_conflict_resolution_outcome,
     run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_outcome,
     run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import (
@@ -41,6 +43,8 @@ __all__ = [
     "bind_active_rebase_resolution_session",
     "resolution_session_from_config",
     "resolve_rebase_in_progress",
+    "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
+    "run_rebase_conflict_resolution_outcome",
     "run_rebase_conflict_resolution_pipeline",
 ]

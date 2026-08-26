@@ -68,9 +68,105 @@ def _sleep_seconds(seconds: float) -> None:
 __all__ = [
     "MonotonicClock",
     "ResolutionInvoker",
+    "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
+    "run_rebase_conflict_resolution_outcome",
     "run_rebase_conflict_resolution_pipeline",
 ]
+
+
+def _resolution_outcome(session: ResolutionSession, succeeded: bool) -> ResolutionOutcome:
+    """Expose one resolver invocation as typed outcome evidence."""
+    return ResolutionOutcome(
+        succeeded=succeeded,
+        reason=None if succeeded else session.terminal_reason,
+        duration_seconds=session.last_duration_seconds or 0.0,
+        last_activity_kind=session.last_activity_kind,
+        last_activity_at=session.last_activity_at,
+        unresolved_paths=session.unresolved_paths,
+    )
+
+
+def run_conflict_resolution_outcome(
+    *,
+    root: Path,
+    target: str,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None,
+    invoke: ResolutionInvoker | None = None,
+    clock: MonotonicClock | None = None,
+    session: ResolutionSession | None = None,
+) -> ResolutionOutcome:
+    """Resolve an in-progress merge through fixed-window liveness supervision."""
+    active_session = session or _new_resolution_session(config)
+    previous_model = capture_status_bar_model(display)
+    try:
+        resolved = _run_rounds(
+            root=root,
+            target=target,
+            config=config,
+            pipeline_deps=pipeline_deps,
+            workspace_scope=workspace_scope,
+            policy_bundle=policy_bundle,
+            display=display,
+            display_context=display_context,
+            invoke=invoke,
+            clock=clock or time.monotonic,
+            stop=None,
+            session=active_session,
+        )
+        return _resolution_outcome(active_session, resolved)
+    except Exception as exc:
+        logger.warning("conflict_resolution: pipeline failed: {}", exc)
+        emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
+        active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        return _resolution_outcome(active_session, False)
+    finally:
+        _restore_status_bar(display, root, previous_model)
+
+
+def run_rebase_conflict_resolution_outcome(
+    *,
+    root: Path,
+    target: str,
+    stop: RebaseStop,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None,
+    invoke: ResolutionInvoker | None = None,
+    clock: MonotonicClock | None = None,
+    session: ResolutionSession | None = None,
+) -> ResolutionOutcome:
+    """Resolve one paused rebase stop with typed terminal evidence."""
+    active_session = session or active_rebase_resolution_session() or _new_resolution_session(config)
+    try:
+        resolved = _run_rounds(
+            root=root,
+            target=target,
+            config=config,
+            pipeline_deps=pipeline_deps,
+            workspace_scope=workspace_scope,
+            policy_bundle=policy_bundle,
+            display=display,
+            display_context=display_context,
+            invoke=invoke,
+            clock=clock or time.monotonic,
+            stop=stop,
+            session=active_session,
+        )
+        return _resolution_outcome(active_session, resolved)
+    except Exception as exc:
+        logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
+        emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
+        active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        return _resolution_outcome(active_session, False)
 
 
 def run_conflict_resolution_pipeline(
@@ -87,29 +183,20 @@ def run_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
 ) -> bool:
-    """Resolve an in-progress merge through fixed-window liveness supervision."""
-    previous_model = capture_status_bar_model(display)
-    try:
-        return _run_rounds(
-            root=root,
-            target=target,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            invoke=invoke,
-            clock=clock or time.monotonic,
-            stop=None,
-            session=session or _new_resolution_session(config),
-        )
-    except Exception as exc:
-        logger.warning("conflict_resolution: pipeline failed: {}", exc)
-        emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
-        return False
-    finally:
-        _restore_status_bar(display, root, previous_model)
+    """Backward-compatible boolean projection of the typed merge outcome."""
+    return run_conflict_resolution_outcome(
+        root=root,
+        target=target,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        policy_bundle=policy_bundle,
+        display=display,
+        display_context=display_context,
+        invoke=invoke,
+        clock=clock,
+        session=session,
+    ).succeeded
 
 
 def run_rebase_conflict_resolution_pipeline(
@@ -127,26 +214,21 @@ def run_rebase_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
 ) -> bool:
-    """Resolve one paused rebase stop with the same fixed liveness window."""
-    try:
-        return _run_rounds(
-            root=root,
-            target=target,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            invoke=invoke,
-            clock=clock or time.monotonic,
-            stop=stop,
-            session=session or active_rebase_resolution_session() or _new_resolution_session(config),
-        )
-    except Exception as exc:
-        logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
-        emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
-        return False
+    """Backward-compatible projection of the out-of-graph ``PHASE_RESOLUTION`` outcome."""
+    return run_rebase_conflict_resolution_outcome(
+        root=root,
+        target=target,
+        stop=stop,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        policy_bundle=policy_bundle,
+        display=display,
+        display_context=display_context,
+        invoke=invoke,
+        clock=clock,
+        session=session,
+    ).succeeded
 
 
 def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:

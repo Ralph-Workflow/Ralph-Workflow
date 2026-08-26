@@ -281,7 +281,6 @@ def build_agent_rebase_stop_resolver(
     return _resolver
 
 
-
 def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsAgentLookup) -> bool:
     """Whether at least one resolution-chain agent exists in the registry.
 

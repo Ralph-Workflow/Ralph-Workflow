@@ -51,15 +51,21 @@ from ralph.git.merge import (
     stage_paths,
     unmerged_paths,
 )
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
 #: Sentinel :func:`unmerged_paths` reports when the git query itself
 #: failed, so a broken repository is never mistaken for "resolved".
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
 
-#: Signature of a conflict resolver: ``(repo_root, target_branch) ->
-#: resolved``. Returning True means every conflict marker was rewritten
-#: on disk; Ralph then stages, verifies and commits the merge.
-ConflictResolver = Callable[[Path, str], bool]
+#: Signature of a conflict resolver: ``(repo_root, target_branch) ->``
+#: :class:`ResolutionOutcome`. The typed result preserves terminal failure
+#: evidence for the integration producer instead of collapsing it to a bool.
+ConflictResolver = Callable[[Path, str], ResolutionOutcome | bool]
+
+
+def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
+    """Project legacy injected boolean fakes onto the typed resolver contract."""
+    return result.succeeded if isinstance(result, ResolutionOutcome) else result
 
 #: MergeResult outcome recorded when a resolver was given the conflict
 #: and could not (or did not) fully resolve it. Distinct from plain
@@ -135,7 +141,7 @@ def _resolve_and_commit(
         )
         return False
     try:
-        resolved = bool(resolver(root, target))
+        resolved = _resolution_succeeded(resolver(root, target))
     except Exception as resolver_exc:
         logger.warning("auto_integrate: conflict resolver raised: {}", resolver_exc)
         return False

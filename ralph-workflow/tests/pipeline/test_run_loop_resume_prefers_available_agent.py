@@ -12,7 +12,11 @@ from loguru import logger
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
-from ralph.pipeline.integration_resolution import RECOVERABLE, IntegrationResolutionVerdict
+from ralph.pipeline.integration_resolution import (
+    RECOVERABLE,
+    RESOLVED,
+    IntegrationResolutionVerdict,
+)
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
@@ -154,3 +158,55 @@ def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
     assert chain is not None
     assert chain.current_index == 1
     assert resumed.is_waiting_state is False
+
+
+def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
+    monkeypatch: Any,
+) -> None:
+    """A late conflict uses the resolver seam instead of exiting an ordinary phase."""
+    config = MagicMock()
+    config.general.auto_integrate_enabled = True
+    ctx = MagicMock()
+    ctx.config = config
+    ctx.workspace_scope.root = Path("/workspace")
+    state = PipelineState(phase="planning")
+    recoverable = IntegrationResolutionVerdict(
+        status=RECOVERABLE,
+        reasons=("working tree is not clean",),
+        recovery_executor="rebase_conflict_resolution",
+    )
+    resolved = IntegrationResolutionVerdict(
+        status=RESOLVED,
+    )
+    inspections = iter((recoverable, resolved))
+    startup = MagicMock(return_value=state.rebase)
+    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_args: next(inspections))
+    monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
+
+    assert run_loop._block_unresolved_integration(state, ctx, "analysis") is None
+    startup.assert_called_once_with(ctx, state.rebase)
+
+
+def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
+    monkeypatch: Any,
+) -> None:
+    """Only durable resolver exhaustion may stop an otherwise ordinary loop."""
+    config = MagicMock()
+    config.general.auto_integrate_enabled = True
+    ctx = MagicMock()
+    ctx.config = config
+    ctx.workspace_scope.root = Path("/workspace")
+    state = PipelineState(phase="planning")
+    exhausted = IntegrationResolutionVerdict(
+        status=run_loop.EXHAUSTED,
+        reasons=("chain exhausted",),
+    )
+    startup = MagicMock()
+    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_args: exhausted)
+    monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
+    monkeypatch.setattr(run_loop, "_announce_deferred_startup_integration", lambda *_args: None)
+
+    assert run_loop._block_unresolved_integration(state, ctx, "analysis") == (state, "analysis", 1)
+    startup.assert_not_called()
