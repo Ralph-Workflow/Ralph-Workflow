@@ -122,6 +122,7 @@ from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.integration_resolution import (
+    RESOLUTION_DRAIN,
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
 )
@@ -835,10 +836,19 @@ def _assert_integration_dispatch_invariant(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
 ) -> None:
-    """Prove enabled integration is safe before ordinary dispatch."""
-    general: object = getattr(config, "general", None)
-    enabled: object = getattr(general, "auto_integrate_enabled", True)
-    if enabled is False:
+    """Prove integration is resolved before every ordinary dispatch.
+
+    ``auto_integrate_enabled`` controls whether Ralph proactively changes Git
+    state; it never relaxes the safety requirement for an existing worktree.
+    Keep the configuration argument for the dispatch-funnel seam's stable
+    signature, but deliberately do not consult it here.
+    """
+    del config
+    # The recovery drain is intentionally the sole out-of-graph executor.
+    # It must remain reachable while the worktree is blocked so its fallback
+    # chain can resolve the evidence; every ordinary phase consumes the same
+    # fail-closed verdict below.
+    if state.phase == RESOLUTION_DRAIN:
         return
     verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
     assert_non_resolution_dispatch_allowed(state.phase, verdict)

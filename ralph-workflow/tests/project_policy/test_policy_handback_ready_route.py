@@ -91,6 +91,8 @@ from ralph.pipeline._runner_session import (
     apply_session_capture,
     pop_last_captured_session_id,
 )
+from ralph.pipeline.integration_resolution import RESOLVED
+from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import default_dir, load_policy
 from ralph.project_policy import analysis as policy_analysis
@@ -348,7 +350,9 @@ def _run_ready_route(
 
     original_deps_factory = cli_integration._build_pipeline_deps_for_remediation
     original_executor = effect_executor_module.execute_agent_effect
+    original_inspect = effect_executor_module.inspect_integration_resolution
     cli_integration._build_pipeline_deps_for_remediation = lambda _lr, _dc: deps
+    effect_executor_module.inspect_integration_resolution = lambda *_args: IntegrationResolutionVerdict(RESOLVED)
 
     def patched_executor(
         effect: object,
@@ -383,6 +387,7 @@ def _run_ready_route(
         )
     finally:
         effect_executor_module.execute_agent_effect = original_executor
+        effect_executor_module.inspect_integration_resolution = original_inspect
         cli_integration._build_pipeline_deps_for_remediation = original_deps_factory
 
     calls: list[dict[str, object]] = list(deps.bridge_factory.calls)

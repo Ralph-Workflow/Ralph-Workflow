@@ -61,12 +61,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
 from rich.console import Console
 
+import ralph.pipeline.run_loop as run_loop_module
 from ralph.agents.chain import ChainManager
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
@@ -247,6 +249,22 @@ def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
     monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+
+
+def _resolved_integration_verdict(*_args: object) -> SimpleNamespace:
+    """Return the clean verdict for an integration-independent harness."""
+    return SimpleNamespace(dispatch_allowed=True)
+
+
+@pytest.fixture(autouse=True)
+def _stub_integration_verdict(monkeypatch: MonkeyPatch) -> None:
+    """Isolate cleanup behavior from the separately tested integration invariant."""
+    monkeypatch.setattr(runner, "inspect_integration_resolution", _resolved_integration_verdict)
+    monkeypatch.setattr(
+        run_loop_module,
+        "inspect_integration_resolution",
+        _resolved_integration_verdict,
+    )
 
 
 def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(

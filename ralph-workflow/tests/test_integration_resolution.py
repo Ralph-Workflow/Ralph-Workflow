@@ -9,7 +9,7 @@ import pytest
 
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.git.subprocess_runner import GitRunResult
-from ralph.pipeline import effect_executor
+from ralph.pipeline import effect_executor, runner
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.integration_resolution import (
@@ -91,6 +91,23 @@ def test_final_fence_checks_live_verdict_without_pipeline_state(
         )
 
     assert observed_states == [RebaseState()]
+
+
+def test_runner_dispatch_funnel_ignores_auto_integration_toggle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The earlier runner funnel cannot bypass the invariant when disabled."""
+    blocked = IntegrationResolutionVerdict(
+        RECOVERABLE, ("working tree is not clean",), "rebase_conflict_resolution"
+    )
+    monkeypatch.setattr(runner, "inspect_integration_resolution", lambda *_args: blocked)
+    config = MagicMock()
+    config.general.auto_integrate_enabled = False
+
+    with pytest.raises(RuntimeError, match="cannot dispatch 'planning'"):
+        runner._assert_integration_dispatch_invariant(
+            PipelineState(phase="planning"), WorkspaceScope(tmp_path), config
+        )
 
 
 def test_final_fence_ignores_auto_integration_toggle(
