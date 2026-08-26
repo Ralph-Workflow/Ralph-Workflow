@@ -147,6 +147,7 @@ from ralph.pipeline.prompt_prep import (
     publish_cycle_deadline_env,
     withdraw_cycle_deadline_env,
 )
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import redirect_expired_cycle_in_place
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import CommitState, PipelineState
@@ -179,7 +180,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.rebase_state import RebaseState
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
@@ -1680,8 +1680,8 @@ def _run_pipeline_step(
             display_context=display_context,
         )
         if (
-            _auto_integrate_outcome is not None
-            and _auto_integrate_outcome.last_action == "conflict"
+            isinstance(_auto_integrate_outcome, RebaseState)
+            and _auto_integrate_outcome.integration_unresolved
         ):
             event = _integration_conflict_failure(state, _auto_integrate_outcome)
         _phase_outcome = _coarse_outcome_for_event(event)

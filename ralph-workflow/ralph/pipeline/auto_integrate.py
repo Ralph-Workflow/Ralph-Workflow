@@ -1,4 +1,4 @@
-"""Auto-integrate safely: resolve the rebase in place before any merge on unresolved conflict."""
+"""Resolve the rebase in place before merge on unresolved conflict."""
 
 from __future__ import annotations
 
@@ -117,6 +117,8 @@ def auto_integrate_after_commit(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Integrate after a commit, recording skips and surfacing terminal-state violations."""
+    if state.integration_unresolved:
+        return state
     try:
         return _auto_integrate_after_commit_inner(
             config,
@@ -129,11 +131,6 @@ def auto_integrate_after_commit(
             jitter=jitter,
         )
     except TerminalStateViolationError:
-        # R6/AC-06: terminal-state violations are loud, never
-        # silent. Re-raise so the caller (or the recovery preamble)
-        # sees the exact cause; do NOT clear the record here -- it
-        # is the recovery preamble's only handle on the
-        # pre-attempt SHA needed to restore the feature branch.
         raise
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
@@ -154,38 +151,21 @@ def auto_integrate_on_phase_transition(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
+    if state.integration_unresolved:
+        return state
     try:
         root = Path(workspace_scope.root)
-        # Cheap stat guard BEFORE any subprocess: phase boundaries are
-        # frequent, and a workspace that is not a git checkout (or a
-        # disabled feature) must cost nothing here.
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():
             return None
         target = resolve_integration_target(config, root)
-        if target is None:
-            return _record_skip(
-                reason=_missing_target_reason(config),
-                target=_configured_target(config),
-            )
-        if not _worktree_is_clean(root):
-            return _defer_dirty_boundary(config, root, target)
-        boundary_outcome = _boundary_freshness_outcome(
+        boundary_handled, boundary_outcome = _phase_boundary_outcome(
             config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
         )
-        if boundary_outcome is not None:
+        if boundary_handled:
             return boundary_outcome
     except Exception as exc:
-        # AC-08: never silently swallow a phase-transition pre-check
-        # exception while ``auto_integrate_enabled`` is true. Surface
-        # the failure as a recorded skip carrying the underlying
-        # exception text so an operator looking at the run log can
-        # tell WHICH precondition tripped (an opaque ``None`` here is
-        # indistinguishable from "the feature is disabled" or "this
-        # boundary decided not to fire", both of which are recorded
-        # states). The boundary hook still costs nothing here --
-        # ``_record_skip`` is a pure dataclass construction, the
-        # WARNING carries the failure detail.
+        # Record pre-check failures rather than hiding them as a no-op.
         logger.warning(
             "auto_integrate: phase-transition pre-check failed: {}\n"
             "  recording skip (AC-08); the next seam will retry from a "
@@ -210,6 +190,25 @@ def auto_integrate_on_phase_transition(
         sleep=sleep,
         jitter=jitter,
     )
+
+
+def _phase_boundary_outcome(
+    config: UnifiedConfig,
+    root: Path,
+    target: str | None,
+    state: RebaseState,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> tuple[bool, RebaseState | None]:
+    """Return whether the target, cleanliness, or freshness gate ends this boundary."""
+    if target is None:
+        return True, _record_skip(reason=_missing_target_reason(config), target=_configured_target(config))
+    if not _worktree_is_clean(root):
+        return True, _defer_dirty_boundary(config, root, target)
+    outcome = _boundary_freshness_outcome(
+        config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
+    )
+    return outcome is not None, outcome
 
 
 def _boundary_freshness_outcome(

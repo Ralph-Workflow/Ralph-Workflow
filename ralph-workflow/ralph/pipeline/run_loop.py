@@ -707,7 +707,9 @@ def _run_auto_integrate_recovery_preamble(
     return recovered
 
 
-def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
+def _run_startup_integration(
+    ctx: _LoopContext, state: RebaseState | None = None
+) -> RebaseState | None:
     """Integrate the branch onto the target BEFORE the first phase runs.
 
     A run started (or resumed) on a stale branch must not plan or
@@ -727,10 +729,11 @@ def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
         )
+        prior_rebase = state if state is not None and type(state) is RebaseState else RebaseState()
         outcome = auto_integrate_on_phase_transition(
             ctx.config,
             ctx.workspace_scope,
-            RebaseState(),
+            prior_rebase,
             conflict_resolver=resolver,
             rebase_stop_resolver=build_agent_rebase_stop_resolver(
                 policy_bundle=ctx.policy_bundle,
@@ -1214,7 +1217,7 @@ def _apply_startup_rebase_outcomes(
             # the checkpoint already carries the retained outcome.
             _announce_deferred_startup_integration(ctx, recovered_rebase)
             return state
-    startup_rebase = _run_startup_integration(ctx)
+    startup_rebase = _run_startup_integration(ctx, state.rebase)
     if startup_rebase is not None:
         state = state.copy_with(rebase=startup_rebase)
         if startup_rebase.last_action != "skipped":
@@ -1284,6 +1287,10 @@ def _run_inner_loop(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Apply startup integration before entering the phase-dispatch loop."""
+    if state.rebase.integration_unresolved:
+        blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
+        if blocked_startup is not None:
+            return blocked_startup
     state = _apply_startup_rebase_outcomes(state, ctx)
     blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
     if blocked_startup is not None:

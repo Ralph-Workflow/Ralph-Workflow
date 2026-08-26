@@ -246,6 +246,7 @@ def run_worker_auto_integration(
     pipeline_deps: PipelineDeps | None,
     display_context: DisplayContext | None,
     recover_first: bool,
+    state: RebaseState | None = None,
 ) -> RebaseState | None:
     """Run one auto-integration seam on behalf of a parallel worker.
 
@@ -262,6 +263,9 @@ def run_worker_auto_integration(
         recover_first: Whether to reconcile a durable crash record left
             by an interrupted integration before integrating. True for
             the startup seam, False for the per-phase boundary.
+        state: Prior integration outcome carried from the worker lifecycle.
+            An unresolved state is returned unchanged without recovery,
+            resolver construction, or fresh integration.
 
     Returns:
         The recorded :class:`~ralph.pipeline.rebase_state.RebaseState`,
@@ -278,6 +282,8 @@ def run_worker_auto_integration(
     swallowed, because an integration problem must never abort the
     worker whose actual job is the phase it was launched for.
     """
+    if state is not None and state.integration_unresolved:
+        return state
     # Cheap stat guard BEFORE anything else, mirroring the one
     # ``auto_integrate_on_phase_transition`` opens with: a worker whose
     # workspace is not a git checkout has nothing to recover and nothing
@@ -316,7 +322,7 @@ def run_worker_auto_integration(
         outcome = auto_integrate_on_phase_transition(
             config,
             workspace_scope,
-            RebaseState(),
+            state or RebaseState(),
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
@@ -415,6 +421,7 @@ def run_parallel_worker_from_manifest(
             pipeline_deps=effective_pipeline_deps,
             display_context=display_context,
             recover_first=True,
+            state=state.rebase,
         )
     if startup_outcome is not None and startup_outcome.integration_unresolved is True:
         logger.warning("auto_integrate: worker startup conflict blocks phase invocation")
@@ -525,6 +532,7 @@ def run_parallel_worker_from_manifest(
                 pipeline_deps=effective_pipeline_deps,
                 display_context=display_context,
                 recover_first=False,
+                state=startup_outcome,
             )
         if boundary_outcome is not None and boundary_outcome.integration_unresolved is True:
             logger.warning("auto_integrate: worker boundary conflict blocks successful completion")

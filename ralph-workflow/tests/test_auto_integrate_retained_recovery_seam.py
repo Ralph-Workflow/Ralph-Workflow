@@ -335,8 +335,8 @@ def _install_run_loop_seams(
         events.append("recover")
         return recovered
 
-    def _fake_startup(ctx: object) -> RebaseState | None:
-        del ctx
+    def _fake_startup(ctx: object, state: RebaseState | None = None) -> RebaseState | None:
+        del ctx, state
         events.append("integrate")
         return RebaseState(last_action="fast_forwarded", last_target="main")
 
@@ -525,6 +525,7 @@ def _run_worker_seam(
     *,
     recover_first: bool = True,
     display_context: DisplayContext | None = None,
+    state: RebaseState | None = None,
 ) -> RebaseState | None:
     return module.run_worker_auto_integration(
         config=_config(),
@@ -534,6 +535,7 @@ def _run_worker_seam(
         pipeline_deps=None,
         display_context=display_context,
         recover_first=recover_first,
+        state=state,
     )
 
 
@@ -604,22 +606,24 @@ def test_worker_still_integrates_after_a_reconciled_recovery(
     assert outcome.last_action == "fast_forwarded"
 
 
-def test_the_worker_boundary_seam_is_unaffected(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
-    """``recover_first=False`` is the per-phase boundary: no recovery, no gate.
-
-    Deliberate scope: gating the in-run seams too would disable
-    auto-integration for a whole run over a transient recovery fault and
-    strand this worker off the shared mainline. Recovery retries the
-    retained record at the next process startup instead.
-    """
+@pytest.mark.parametrize(
+    "unresolved",
+    [
+        RebaseState(last_action="conflict", last_reason="resolver exhausted"),
+        _retained(),
+    ],
+)
+def test_worker_boundary_does_not_integrate_over_an_unresolved_outcome(
+    monkeypatch: MonkeyPatch, tmp_path: Path, unresolved: RebaseState
+) -> None:
+    """S-3 regression: either unresolved form returns durable evidence unchanged."""
     module = _worker_module()
     events = _install_worker_seams(module, monkeypatch, _retained())
 
-    _run_worker_seam(module, tmp_path, recover_first=False)
+    outcome = _run_worker_seam(module, tmp_path, recover_first=False, state=unresolved)
 
-    assert events == ["integrate"], (
-        f"the boundary seam must neither recover nor be gated, got {events!r}"
-    )
+    assert events == [], f"the boundary must not start fresh integration, got {events!r}"
+    assert outcome is unresolved
 
 
 def test_run_loop_retained_recovery_blocks_first_phase_dispatch(

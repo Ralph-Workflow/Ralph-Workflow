@@ -74,6 +74,7 @@ def test_startup_seam_returns_injected_integration_outcome(
         registry=MagicMock(),
         display_context=MagicMock(),
         active_display=MagicMock(),
+        latest_state=[PipelineState(phase="planning")],
     )
 
     actual = run_loop._run_startup_integration(ctx)

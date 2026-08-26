@@ -342,3 +342,36 @@ def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_pa
     )
 
     assert delays[0] < long_wait[0], "jitter must actually vary the delay"
+
+
+def test_direct_auto_integrate_entry_points_return_unresolved_state_without_work(monkeypatch) -> None:
+    """S-3 regression: either unresolved form stops both public integration seams first.
+
+    The test replaces the first work-bearing helpers with failures. A guard that
+    runs after context resolution, freshness, or integration would therefore
+    fail instead of returning the exact durable recovery evidence unchanged.
+    """
+    config = _default_config()
+    workspace_scope = MagicMock()
+    for unresolved in (
+        RebaseState(last_action="conflict", last_reason="resolver exhausted"),
+        RebaseState(last_action="skipped", recovery_record_retained=True),
+    ):
+        monkeypatch.setattr(
+            auto_integrate,
+            "_auto_integrate_after_commit_inner",
+            MagicMock(side_effect=AssertionError("must not integrate")),
+        )
+        monkeypatch.setattr(
+            auto_integrate,
+            "resolve_integration_target",
+            MagicMock(side_effect=AssertionError("must not refresh")),
+        )
+
+        assert (
+            auto_integrate.auto_integrate_after_commit(config, workspace_scope, unresolved) is unresolved
+        )
+        assert (
+            auto_integrate.auto_integrate_on_phase_transition(config, workspace_scope, unresolved)
+            is unresolved
+        )
