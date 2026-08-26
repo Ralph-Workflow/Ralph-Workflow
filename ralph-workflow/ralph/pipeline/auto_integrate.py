@@ -151,10 +151,10 @@ def auto_integrate_on_phase_transition(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
-    if state.integration_unresolved:
-        return state
     try:
         root = Path(workspace_scope.root)
+        if state.integration_unresolved:
+            return state
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():
             return None

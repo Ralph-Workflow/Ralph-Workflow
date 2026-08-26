@@ -143,6 +143,13 @@ class RebaseState(RalphBaseModel):
     # retained".
     recovery_record_retained: bool = False
 
+    # A resolver chain that has tried every allowed candidate is terminal
+    # integration evidence.  These defaulted fields preserve compatibility
+    # with checkpoints written before conflict-resolution exhaustion was
+    # durable.
+    resolution_exhausted: bool = False
+    resolution_exhaustion_reason: str | None = None
+
     # Legacy rebase checkpoint identity. These fields let both startup paths
     # retain actionable evidence without re-parsing or replacing it.
     legacy_checkpoint_blocked: bool = False

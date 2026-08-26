@@ -5,6 +5,22 @@ This section documents every public Ralph Workflow subpackage. All modules liste
 
 ----
 
+Pipeline Integration Resolution
+-------------------------------
+
+The integration-resolution invariant is the authoritative fail-closed
+pre-dispatch guard. It prevents ordinary pipeline phases from observing a
+worktree that has unresolved rebase, merge, or porcelain evidence.
+
+ralph.pipeline.integration_resolution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_resolution
+   :members:
+   :show-inheritance:
+
+----
+
 Top-Level
 ---------
 

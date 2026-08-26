@@ -121,6 +121,10 @@ from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
+from ralph.pipeline.integration_resolution import (
+    assert_non_resolution_dispatch_allowed,
+    inspect_integration_resolution,
+)
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
     render_phase_failure_report,
@@ -826,6 +830,12 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
 
 
+def _assert_integration_dispatch_invariant(state: PipelineState, workspace_scope: WorkspaceScope) -> None:
+    """Prove the repository is integration-safe before ordinary dispatch."""
+    verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
+    assert_non_resolution_dispatch_allowed(state.phase, verdict)
+
+
 def _inline_event_for_effect(effect: object) -> PipelineEvent | None:
     """Map an inline-effect handle to the phase-transition event the
     boundary integration hook should treat it as.
@@ -1527,6 +1537,10 @@ def _run_pipeline_step(
     )
 
     try:
+        # This common dispatch funnel checks immediately before effect
+        # selection/prompt materialization so no ordinary phase can observe a
+        # partial integration result.
+        _assert_integration_dispatch_invariant(state, workspace_scope)
         effect = call_determine_effect_from_policy(
             state,
             policy_bundle,
