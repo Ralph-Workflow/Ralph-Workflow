@@ -190,7 +190,7 @@ def execute_agent_effect(
     # This is the final live agent-invocation boundary.  All normal dispatches
     # delegate to the single fail-closed resolution invariant; its sole drain
     # is the out-of-graph conflict-resolution executor.
-    if state is not None:
+    if state is not None and config.general.auto_integrate_enabled:
         verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
         assert_non_resolution_dispatch_allowed(effect.phase, verdict)
 

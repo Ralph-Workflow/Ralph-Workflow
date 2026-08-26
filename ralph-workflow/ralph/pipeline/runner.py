@@ -830,8 +830,15 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
 
 
-def _assert_integration_dispatch_invariant(state: PipelineState, workspace_scope: WorkspaceScope) -> None:
-    """Prove the repository is integration-safe before ordinary dispatch."""
+def _assert_integration_dispatch_invariant(
+    state: PipelineState,
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig,
+) -> None:
+    """Prove enabled integration is safe before ordinary dispatch."""
+    general: object = getattr(config, "general", None)
+    if getattr(general, "auto_integrate_enabled", True) is False:
+        return
     verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
     assert_non_resolution_dispatch_allowed(state.phase, verdict)
 
@@ -1540,7 +1547,7 @@ def _run_pipeline_step(
         # This common dispatch funnel checks immediately before effect
         # selection/prompt materialization so no ordinary phase can observe a
         # partial integration result.
-        _assert_integration_dispatch_invariant(state, workspace_scope)
+        _assert_integration_dispatch_invariant(state, workspace_scope, config)
         effect = call_determine_effect_from_policy(
             state,
             policy_bundle,
