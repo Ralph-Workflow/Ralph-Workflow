@@ -115,6 +115,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # them on the default make-test profile via this registry.
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",
+    "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

@@ -270,9 +270,11 @@ class TestExecuteEffect:
             phase_name: object = "commit",
             state: object = None,
             pipeline_policy: object = None,
+            **opts: object,
         ) -> PipelineEvent:
             del create_commit, stage_all, repo_root, display, verbosity, phase_name
             del state, pipeline_policy
+            assert callable(opts["has_residual_work_fn"])
             captured["called"] = True
             captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS

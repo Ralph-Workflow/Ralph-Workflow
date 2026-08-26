@@ -326,6 +326,7 @@ def _get_event_handlers() -> dict[
                 PipelineEvent.FIX_SUCCESS: _handle_fix_success,
                 PipelineEvent.FIX_FAILURE: _handle_fix_failure,
                 PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
+                PipelineEvent.COMMIT_RESIDUAL: _handle_commit_residual,
                 PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
                 PipelineEvent.COMMIT_FAILURE: _handle_commit_failure,
                 PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
@@ -1198,6 +1199,17 @@ def _handle_commit_success(
         return _advance_to_failed(
             state, f"Routing error after commit success in '{state.phase}': {exc}", policy
         )
+
+
+def _handle_commit_residual(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None = None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Re-enter the commit phase to prepare a fresh artifact for remaining changes."""
+    if policy is None:
+        return _advance_to_failed(state, "No policy loaded for residual commit routing", policy)
+    return _advance_phase(state, state.phase, policy, routing_timing=routing_timing)
 
 
 def _handle_commit_skipped(

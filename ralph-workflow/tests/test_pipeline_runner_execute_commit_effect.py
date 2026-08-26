@@ -18,6 +18,7 @@ from ralph.display.parallel_display import ParallelDisplay
 from ralph.git.operations import GitOperationError
 from ralph.pipeline import commit_executor as commit_executor_module
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.commit_executor import execute_commit_effect
 from ralph.pipeline.effects import (
     CommitEffect,
 )
@@ -254,6 +255,30 @@ class TestExecuteCommitEffect:
         assert result == PipelineEvent.COMMIT_SUCCESS
         stage_all.assert_called_once_with(str(tmp_path))
         create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+        assert not message_file.exists()
+
+    def test_returns_residual_event_when_scoped_commit_leaves_worktree_dirty(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """A scoped commit must request another commit pass when changes remain."""
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        message_file.write_text(_commit_document(files=("src/feature.py",)), encoding="utf-8")
+        has_commit_work = MagicMock(side_effect=[True, True])
+        monkeypatch.setattr(commit_executor_module, "_changed_commit_paths", lambda _root: ["src/feature.py"])
+        monkeypatch.setattr(commit_executor_module, "_stage_files", MagicMock())
+
+        result = execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            tmp_path,
+            create_commit_fn=MagicMock(return_value="sha"),
+            has_commit_work_fn=has_commit_work,
+            has_residual_work_fn=has_commit_work,
+            stage_all_fn=MagicMock(),
+        )
+
+        assert result == PipelineEvent.COMMIT_RESIDUAL
+        assert has_commit_work.call_count == 2
         assert not message_file.exists()
 
     def test_stages_only_files_declared_in_commit_artifact(

@@ -30,6 +30,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_tool_git_read_path_validation.py",
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",
+    "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py",
 )
 
 

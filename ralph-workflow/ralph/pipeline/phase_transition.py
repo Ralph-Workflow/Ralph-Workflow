@@ -299,6 +299,7 @@ def _bypass_resolution_for_transition(
         PipelineEvent.AGENT_SUCCESS,
         PipelineEvent.ANALYSIS_SUCCESS,
         PipelineEvent.COMMIT_SUCCESS,
+        PipelineEvent.COMMIT_RESIDUAL,
         PipelineEvent.COMMIT_SKIPPED,
         PipelineEvent.FIX_SUCCESS,
         PipelineEvent.REVIEW_CLEAN,

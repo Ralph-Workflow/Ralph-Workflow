@@ -122,6 +122,10 @@ def execute_commit_effect(
     _has_commit_work_fn: _HasCommitWorkFn = cast(
         "_HasCommitWorkFn", _raw_has_work if callable(_raw_has_work) else _repo_has_commit_work
     )
+    _raw_residual_work = opts.get("has_residual_work_fn")
+    _has_residual_work_fn: _HasCommitWorkFn | None = cast(
+        "_HasCommitWorkFn | None", _raw_residual_work if callable(_raw_residual_work) else None
+    )
     try:
         payload = _read_commit_effect_payload(effect)
         message = _read_commit_effect_message(effect)
@@ -152,6 +156,9 @@ def execute_commit_effect(
                     f"sha={sha[:8]}"
                 )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         cleanup_commit_message_artifacts(repo_root)
+        if _has_residual_work_fn is not None and _has_residual_work_fn(repo_root):
+            logger.info("Commit left uncommitted changes; preparing another commit pass")
+            return PipelineEvent.COMMIT_RESIDUAL
     except Exception as exc:
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         return PipelineEvent.COMMIT_FAILURE

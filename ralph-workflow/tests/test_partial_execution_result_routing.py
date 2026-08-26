@@ -126,6 +126,23 @@ def test_partial_result_commits_then_returns_to_same_execution_phase_in_new_sess
     assert next_state.post_commit_phase_override is None
 
 
+def test_residual_commit_reinvokes_same_commit_phase_with_fresh_state() -> None:
+    policy = _custom_policy()
+    commit_state = PipelineState(
+        phase="savepoint",
+        commit={"message_prepared": True, "diff_prepared": True, "agent_invoked": True},
+    )
+
+    next_state, effects = reducer_reduce(commit_state, PipelineEvent.COMMIT_RESIDUAL, policy)
+
+    assert next_state.phase == "savepoint"
+    assert next_state.previous_phase == "savepoint"
+    assert next_state.commit.message_prepared is False
+    assert next_state.commit.diff_prepared is False
+    assert next_state.commit.agent_invoked is False
+    assert effects == []
+
+
 def test_completed_result_retains_commit_then_analyzer_flow() -> None:
     policy = _custom_policy(result_status_post_commit={"partial": "builder"})
     state = PipelineState(phase="builder", last_agent_session_id="session-1")

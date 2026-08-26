@@ -327,7 +327,13 @@ def _execute_commit_effect_from_deps(
             pipeline_deps.commit_effect_executor(effect, workspace_scope.root),
         )
     return execute_commit_effect(
-        effect, create_commit, stage_all, workspace_scope.root, display, verbosity=verbosity
+        effect,
+        create_commit,
+        stage_all,
+        workspace_scope.root,
+        display,
+        verbosity=verbosity,
+        has_residual_work_fn=repo_has_commit_work,
     )
 
 
@@ -748,6 +754,7 @@ _PHASE_SUCCESS_EVENTS: frozenset[PipelineEvent] = frozenset(
     {
         PipelineEvent.AGENT_SUCCESS,
         PipelineEvent.COMMIT_SUCCESS,
+        PipelineEvent.COMMIT_RESIDUAL,
         PipelineEvent.ANALYSIS_SUCCESS,
         PipelineEvent.REVIEW_CLEAN,
         PipelineEvent.FIX_SUCCESS,
@@ -1074,6 +1081,7 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
         PipelineEvent.REVIEW_ISSUES_FOUND,
         PipelineEvent.FIX_SUCCESS,
         PipelineEvent.FIX_FAILURE,
+        PipelineEvent.COMMIT_RESIDUAL,
         PipelineEvent.COMMIT_SKIPPED,
         PipelineEvent.COMMIT_FAILURE,
         PipelineEvent.CHECKPOINT_SAVED,

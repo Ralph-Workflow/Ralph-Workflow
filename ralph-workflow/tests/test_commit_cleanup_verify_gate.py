@@ -31,6 +31,7 @@ from ralph.workspace.fs import FsWorkspace
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
 _INVARIANTS_FILE = "tests/test_commit_cleanup_invariants.py"
 _VERIFY_GATE_FILE = "tests/test_commit_cleanup_verify_gate.py"
+_PIPELINE_COMMIT_E2E_FILE = "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py"
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 pytestmark = [
@@ -186,6 +187,7 @@ def test_cleanup_failure_routes_to_commit_not_failed_terminal() -> None:
 def test_invariants_module_is_required_auto_integrate() -> None:
     assert _INVARIANTS_FILE in REQUIRED_AUTO_INTEGRATE_E2E_FILES
     assert _VERIFY_GATE_FILE in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    assert _PIPELINE_COMMIT_E2E_FILE in REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
 
 def test_next_prompt_contains_declined_and_apply_failed_paths(
