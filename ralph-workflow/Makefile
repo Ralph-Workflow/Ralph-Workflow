@@ -53,17 +53,11 @@ export PYTEST_WORKERS
 PYTEST_XDIST_WORKERS_PER_SHARD ?= 0
 export PYTEST_XDIST_WORKERS_PER_SHARD
 export PYTHONPATH := $(shell realpath .)
-# ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
-# outside the current project (``warning: VIRTUAL_ENV=... does not
-# match the project environment path .venv``). Make targets below
-# already run from the project root, so re-point ``VIRTUAL_ENV`` at
-# the canonical project-local ``.venv`` before any ``uv run`` is
-# invoked. This silences the warning without weakening the
-# environment-detection contract: if ``.venv`` does not exist
-# ``uv run`` will recreate it as it would without ``VIRTUAL_ENV``.
-ifneq ($(wildcard .venv/pyvenv.cfg),)
-  export VIRTUAL_ENV := $(abspath .venv)
-endif
+# ``uv run`` refuses an inherited ``VIRTUAL_ENV`` that points outside
+# the project (``warning: VIRTUAL_ENV=... does not match .venv``).
+# Make always targets the canonical project-local environment, including
+# before its first creation, so every package target is warning-free.
+export VIRTUAL_ENV := $(abspath .venv)
 # NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
 # The combined total test budget (60 s, ABSOLUTE and IMMUTABLE) for
 # `make verify` is enforced in ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS,

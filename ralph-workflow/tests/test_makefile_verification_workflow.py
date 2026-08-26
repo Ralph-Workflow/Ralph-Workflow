@@ -58,6 +58,18 @@ def test_run_python_uses_uv_managed_interpreter() -> None:
     assert "RUN_PYTHON = uv run python" in makefile_text
 
 
+def test_makefile_unconditionally_selects_the_project_virtual_environment() -> None:
+    """S-4 regression: inherited environments cannot make ``uv run`` warn.
+
+    The assignment must apply before the first ``uv run`` can create a missing
+    project environment, rather than only after ``.venv/pyvenv.cfg`` exists.
+    """
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
+
+    assert "export VIRTUAL_ENV := $(abspath .venv)" in makefile_text
+    assert "ifneq ($(wildcard .venv/pyvenv.cfg),)" not in makefile_text
+
+
 def test_default_worker_count_preserves_verify_budget_headroom() -> None:
     """The maintained worker baseline leaves room for both smoke gates.
 
