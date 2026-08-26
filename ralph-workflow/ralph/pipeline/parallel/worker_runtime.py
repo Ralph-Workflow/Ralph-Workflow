@@ -287,7 +287,9 @@ def run_worker_auto_integration(
     swallowed, because an integration problem must never abort the
     worker whose actual job is the phase it was launched for.
     """
-    if state is not None and state.integration_unresolved:
+    if state is not None and not inspect_integration_resolution(
+        Path(workspace_scope.root), state
+    ).dispatch_allowed:
         return state
     # Cheap stat guard BEFORE anything else, mirroring the one
     # ``auto_integrate_on_phase_transition`` opens with: a worker whose

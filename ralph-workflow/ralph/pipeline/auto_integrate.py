@@ -93,6 +93,7 @@ from ralph.pipeline.auto_integrate_terminal import (
 from ralph.pipeline.auto_integrate_worktree_state import (
     _worktree_is_clean,
 )
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -117,7 +118,7 @@ def auto_integrate_after_commit(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Integrate after a commit, recording skips and surfacing terminal-state violations."""
-    if state.integration_unresolved:
+    if not inspect_integration_resolution(Path(workspace_scope.root), state).dispatch_allowed:
         return state
     try:
         return _auto_integrate_after_commit_inner(
@@ -153,7 +154,7 @@ def auto_integrate_on_phase_transition(
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
     try:
         root = Path(workspace_scope.root)
-        if state.integration_unresolved:
+        if not inspect_integration_resolution(root, state).dispatch_allowed:
             return state
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():

@@ -43,6 +43,7 @@ from ralph.pipeline.auto_integrate_agent import (
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -1266,13 +1267,14 @@ def _resume_after_cooldown_wait(
     return state
 
 
-def _block_unresolved_startup_conflict(
+def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
-    """Persist and stop before dispatch when startup leaves a conflict unresolved."""
-    if state.rebase.integration_unresolved is not True:
+    """Persist and stop before dispatch when the shared invariant blocks it."""
+    verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+    if verdict.dispatch_allowed:
         return None
     # An unresolved conflict is durable recovery evidence, not a display-only
     # warning. Never dispatch another phase (especially planning) until the
@@ -1293,15 +1295,38 @@ def _run_inner_loop(
         legacy_block = legacy_rebase_startup_block(workspace_root_raw)
         if legacy_block is not None:
             state = state.copy_with(rebase=legacy_block)
-    if state.rebase.integration_unresolved:
-        blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
-        if blocked_startup is not None:
-            return blocked_startup
+    blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
+    if blocked_startup is not None:
+        return blocked_startup
     state = _apply_startup_rebase_outcomes(state, ctx)
-    blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
+    return _continue_after_startup_integration(state, ctx, prev_phase)
+
+
+def _continue_after_startup_integration(
+    state: PipelineState,
+    ctx: _LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, str, int | None]:
+    """Validate startup integration before entering ordinary dispatch."""
+    blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
     if blocked_startup is not None:
         return blocked_startup
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
+
+
+def _iteration_pipeline_deps(
+    ctx: _LoopContext,
+    connectivity_provider: Callable[[], str | None],
+    waiting_provider: Callable[[], bool],
+) -> PipelineDeps | None:
+    """Attach live loop-state providers to optional pipeline dependencies."""
+    if ctx.pipeline_deps is None:
+        return None
+    return dataclasses.replace(
+        ctx.pipeline_deps,
+        connectivity_state_provider=connectivity_provider,
+        is_waiting_state_provider=waiting_provider,
+    )
 
 
 def _run_inner_loop_after_startup(
@@ -1341,21 +1366,18 @@ def _run_inner_loop_after_startup(
     )
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         captured_phase = str(state.phase)
+        blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
+        if blocked_integration is not None:
+            return blocked_integration
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
         ctx.latest_state[:] = [state]
         # Per-iteration pipeline_deps with the live providers so the
         # watchdog inside the agent invocation can consult the
         # classifier on every evaluate() call.
-        iter_pipeline_deps: PipelineDeps | None
-        if ctx.pipeline_deps is not None:
-            iter_pipeline_deps = dataclasses.replace(
-                ctx.pipeline_deps,
-                connectivity_state_provider=_live_connectivity,
-                is_waiting_state_provider=_live_is_waiting,
-            )
-        else:
-            iter_pipeline_deps = ctx.pipeline_deps
+        iter_pipeline_deps = _iteration_pipeline_deps(
+            ctx, _live_connectivity, _live_is_waiting
+        )
         runner_step = cast(
             "_RunPipelineStepFn", _runner_module.run_pipeline_step
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)

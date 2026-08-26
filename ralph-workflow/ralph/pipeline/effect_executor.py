@@ -187,13 +187,9 @@ def execute_agent_effect(
     omit the display dependency: at least one of ``display_context`` /
     ``display`` must be non-None or :func:`get_display_context` raises.
     """
-    # This is the final live agent-invocation boundary.  Callers normally
-    # guard earlier, but no direct invocation may bypass a dirty, mid-rebase,
-    # or unresolved integration.  The nested conflict-resolution drain is the
-    # sole exception because it is the operation that restores the invariant.
-    # Out-of-graph policy drains do not participate in the pipeline's Git
-    # integration lifecycle.  They retain the legacy state-less invocation
-    # contract; every in-graph caller provides ``state`` and is guarded here.
+    # This is the final live agent-invocation boundary.  All normal dispatches
+    # delegate to the single fail-closed resolution invariant; its sole drain
+    # is the out-of-graph conflict-resolution executor.
     if state is not None:
         verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
         assert_non_resolution_dispatch_allowed(effect.phase, verdict)

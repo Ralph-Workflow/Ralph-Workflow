@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
@@ -19,7 +20,6 @@ from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from ralph.pipeline.rebase_state import RebaseState
 
@@ -70,13 +70,6 @@ def inspect_integration_resolution(
     non-empty output blocks ordinary dispatch. Any failed inspection remains
     unsafe.
     """
-    # Non-repository orchestration contexts (unit seams and initial project
-    # setup) have no live Git integration state to inspect. The production
-    # dispatch path is a repository, while this preserves existing synthetic
-    # runner seams without manufacturing a Git failure.
-    if porcelain is None and not (root / ".git").exists():
-        return IntegrationResolutionVerdict(RESOLVED)
-
     if state.resolution_exhausted:
         return IntegrationResolutionVerdict(
             EXHAUSTED,
@@ -86,6 +79,13 @@ def inspect_integration_resolution(
     reasons: list[str] = []
     if state.integration_unresolved:
         reasons.append("persisted integration state is unresolved")
+    # Non-repository orchestration contexts (unit seams and initial project
+    # setup) have no live Git integration state to inspect. Persisted conflict
+    # evidence remains blocking even in these synthetic contexts.
+    if porcelain is None and (
+        not isinstance(root, Path) or not (root / ".git").exists()
+    ):
+        return _verdict_from_persisted_reasons(reasons)
     probe = porcelain or _full_porcelain
     try:
         readable, porcelain_output = probe(root)
@@ -105,12 +105,13 @@ def inspect_integration_resolution(
             reasons.append("merge is in progress or merge state is unreadable")
     except Exception:
         reasons.append("unable to inspect merge state")
+    return _verdict_from_persisted_reasons(reasons)
+
+
+def _verdict_from_persisted_reasons(reasons: list[str]) -> IntegrationResolutionVerdict:
+    """Build the ordinary verdict after all available evidence was collected."""
     if reasons:
-        return IntegrationResolutionVerdict(
-            RECOVERABLE,
-            tuple(reasons),
-            RESOLUTION_DRAIN,
-        )
+        return IntegrationResolutionVerdict(RECOVERABLE, tuple(reasons), RESOLUTION_DRAIN)
     return IntegrationResolutionVerdict(RESOLVED)
 
 
