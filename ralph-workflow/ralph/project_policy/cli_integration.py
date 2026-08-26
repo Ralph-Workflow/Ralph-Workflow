@@ -34,6 +34,8 @@ from ralph.pipeline._runner_session import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
+from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.state import PipelineState
 from ralph.project_policy import _auto_commit as policy_auto_commit
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import _schema_upgrade as policy_schema_upgrade
@@ -394,6 +396,11 @@ def _make_production_invoke_agent(
                         policy_bundle=load_result.policy_bundle,
                         display=display,
                         display_context=display_context,
+                        # Policy readiness runs out of graph, but it still invokes
+                        # a live phase agent. Supply an explicit clean pipeline
+                        # state so the executor's fail-closed integration guard
+                        # always cross-checks this workspace before invocation.
+                        state=PipelineState(phase=phase, rebase=RebaseState()),
                     )
                 except Exception as exc:
                     # A crash launching ONE agent is not a failure of the chain: try

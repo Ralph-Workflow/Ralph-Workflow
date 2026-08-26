@@ -115,6 +115,9 @@ def test_production_closure_forwards_display_context(
     assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
     assert observed_opts, "execute_agent_effect must be invoked"
     assert observed_opts[0].get("display_context") is display_context
+    guard_state = observed_opts[0].get("state")
+    assert getattr(guard_state, "phase", None) == PHASE_REMEDIATION
+    assert getattr(getattr(guard_state, "rebase", None), "integration_unresolved", None) is False
 
 
 def test_production_closure_falls_back_across_chain_agents(
