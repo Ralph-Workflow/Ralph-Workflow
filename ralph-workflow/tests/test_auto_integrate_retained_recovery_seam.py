@@ -419,6 +419,32 @@ def test_a_display_that_cannot_take_the_line_never_aborts_startup(
     assert state.rebase.recovery_record_retained is True
 
 
+def test_run_loop_checkpointed_conflict_blocks_first_phase_dispatch(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-3 regression: a persisted conflict cannot enter planning."""
+    module = _run_loop_module()
+    conflict_state = PipelineState(phase="planning").copy_with(
+        rebase=RebaseState(last_action="conflict", last_reason="resolver exhausted")
+    )
+    ctx = _loop_ctx(tmp_path, _RecordingDisplay())
+    ctx.policy_bundle = SimpleNamespace(pipeline=SimpleNamespace(terminal_phase="complete"))
+    dispatched: list[object] = []
+    monkeypatch.setattr(module, "_apply_startup_rebase_outcomes", lambda _state, _ctx: conflict_state)
+    monkeypatch.setattr(module._runner_module, "run_pipeline_step", dispatched.append)
+    saved: list[PipelineState] = []
+    monkeypatch.setattr(module, "_save_recovered_rebase_checkpoint", lambda state, _ctx: saved.append(state))
+
+    result, _prev_phase, exit_code = module._run_inner_loop(
+        PipelineState(phase="planning"), ctx, prev_phase="planning"
+    )
+
+    assert exit_code == 1
+    assert result.rebase.last_action == "conflict"
+    assert dispatched == []
+    assert saved == [conflict_state]
+
+
 def test_run_loop_still_catches_up_after_a_reconciled_recovery(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:

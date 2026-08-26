@@ -20,7 +20,7 @@ from ralph.pipeline import auto_integrate_agent
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -153,12 +153,10 @@ def test_commit_skipped_does_not_invoke_auto_integrate(monkeypatch: MonkeyPatch)
     assert all("rebase" not in call.kwargs for call in state.copy_with.call_args_list)
 
 
-def test_commit_conflict_outcome_does_not_halt_run(monkeypatch: MonkeyPatch) -> None:
-    """Prompt AC-07, plan step 6: conflict is persisted and the runner reduces success.
-
-    This is a behavioral contract pin, not extra branch coverage: conflict and
-    rebased outcomes currently traverse the same non-None seam branch.
-    """
+def test_commit_conflict_outcome_routes_the_phase_through_recovery(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """S-1 regression: an unresolved integration conflict cannot reduce success."""
     conflict = RebaseState(
         last_action="conflict",
         last_reason="rebase and endpoint merge both conflicted",
@@ -167,7 +165,9 @@ def test_commit_conflict_outcome_does_not_halt_run(monkeypatch: MonkeyPatch) -> 
     )
     state, reducer = _run_commit_phase(monkeypatch, integration=lambda *_args, **_kwargs: conflict)
 
-    assert reducer.call_args.args[1] is PipelineEvent.COMMIT_SUCCESS
+    reduced_event = reducer.call_args.args[1]
+    assert isinstance(reduced_event, PhaseFailureEvent)
+    assert "integration conflict" in reduced_event.reason
     rebase_calls = [call for call in state.copy_with.call_args_list if "rebase" in call.kwargs]
     assert rebase_calls[-1].kwargs["rebase"] is conflict
 

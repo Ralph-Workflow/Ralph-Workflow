@@ -9,6 +9,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.state import PipelineState
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -56,6 +57,36 @@ def test_fan_out_join_invokes_auto_integrate_when_enabled(
     )
     assert result is state
     state.copy_with.assert_called_once_with(rebase=hook.return_value)
+
+
+def test_fan_out_join_conflict_routes_through_recovery(monkeypatch: MonkeyPatch) -> None:
+    """S-2 regression: a fan-out conflict cannot keep the reduced success state."""
+    conflict = RebaseState(last_action="conflict", last_reason="resolver exhausted")
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        MagicMock(return_value=conflict),
+    )
+    failed_state = MagicMock(spec=PipelineState)
+    failed_state.copy_with.return_value = failed_state
+    reduced = MagicMock(return_value=(failed_state, []))
+    monkeypatch.setattr(runner_module, "reducer_reduce", reduced)
+    state = MagicMock(spec=PipelineState)
+    state.phase = "development"
+    state.rebase = RebaseState()
+
+    result = runner_module._integrate_after_fan_out(
+        state=state,
+        config=_config(enabled=True),
+        workspace_scope=MagicMock(),
+        display=MagicMock(),
+        policy_bundle=MagicMock(),
+        registry=None,
+    )
+
+    assert result is failed_state
+    assert "integration conflict" in reduced.call_args.args[1].reason
+    failed_state.copy_with.assert_called_once_with(rebase=conflict)
 
 
 def test_fan_out_join_skips_auto_integrate_when_disabled(

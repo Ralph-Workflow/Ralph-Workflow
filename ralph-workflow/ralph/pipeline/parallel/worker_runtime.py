@@ -407,7 +407,7 @@ def run_parallel_worker_from_manifest(
     # the conflict-resolver agent reconciliation spawns never joined the cycle
     # and must not be nagged to wrap up work it has no part in.
     with cycle_deadline_suspended():
-        run_worker_auto_integration(
+        startup_outcome = run_worker_auto_integration(
             config=config,
             workspace_scope=workspace_scope,
             policy_bundle=policy_bundle,
@@ -416,6 +416,9 @@ def run_parallel_worker_from_manifest(
             display_context=display_context,
             recover_first=True,
         )
+    if startup_outcome is not None and startup_outcome.last_action == "conflict":
+        logger.warning("auto_integrate: worker startup conflict blocks phase invocation")
+        return 1
     prompt_path = effective_pipeline_deps.phase_prompt_materializer(
         phase=manifest.phase,
         workspace=workspace,
@@ -514,7 +517,7 @@ def run_parallel_worker_from_manifest(
         # phase-transition hook, and the only place a worker's work
         # reaches its siblings without waiting for the coordinator.
         with cycle_deadline_suspended():
-            run_worker_auto_integration(
+            boundary_outcome = run_worker_auto_integration(
                 config=config,
                 workspace_scope=workspace_scope,
                 policy_bundle=policy_bundle,
@@ -523,6 +526,9 @@ def run_parallel_worker_from_manifest(
                 display_context=display_context,
                 recover_first=False,
             )
+        if boundary_outcome is not None and boundary_outcome.last_action == "conflict":
+            logger.warning("auto_integrate: worker boundary conflict blocks successful completion")
+            return 1
     return 0 if event == PipelineEvent.AGENT_SUCCESS else 1
 
 

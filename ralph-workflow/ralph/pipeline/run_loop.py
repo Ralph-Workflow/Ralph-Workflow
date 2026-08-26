@@ -1196,7 +1196,9 @@ def _apply_startup_rebase_outcomes(
     pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
     if pipeline_deps is not None and pipeline_deps.startup_rebase_resolver is not None:
         injected_rebase = pipeline_deps.startup_rebase_resolver(ctx.config, ctx.workspace_scope)
-        return state if injected_rebase is None else state.copy_with(rebase=injected_rebase)
+        if injected_rebase is None:
+            return state
+        return state.copy_with(rebase=injected_rebase)
 
     recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
     if recovered_rebase is not None:
@@ -1260,18 +1262,41 @@ def _resume_after_cooldown_wait(
     return state
 
 
+def _block_unresolved_startup_conflict(
+    state: PipelineState,
+    ctx: _LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, str, int] | None:
+    """Persist and stop before dispatch when startup leaves a conflict unresolved."""
+    if state.rebase.last_action != "conflict":
+        return None
+    # An unresolved conflict is durable recovery evidence, not a display-only
+    # warning. Never dispatch another phase (especially planning) until the
+    # bounded resolver returns a non-conflict result.
+    _save_recovered_rebase_checkpoint(state, ctx)
+    _announce_deferred_startup_integration(ctx, state.rebase)
+    return state, prev_phase, 1
+
+
 def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
-    """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted).
-
-    Publishes each state it reaches into ``ctx.latest_state`` so an interrupt,
-    which unwinds past every local binding here, still leaves the caller
-    holding the state the run actually reached.
-    """
+    """Apply startup integration before entering the phase-dispatch loop."""
     state = _apply_startup_rebase_outcomes(state, ctx)
+    blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
+    if blocked_startup is not None:
+        return blocked_startup
+    return _run_inner_loop_after_startup(state, ctx, prev_phase)
+
+
+def _run_inner_loop_after_startup(
+    state: PipelineState,
+    ctx: _LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, str, int | None]:
+    """Dispatch pipeline phases after startup has established a safe state."""
     # State holder so the providers captured by run_pipeline_step can
     # read the LIVE PipelineState / ConnectivityMonitor on every agent
     # invocation. The list is rebound every loop iteration so the

@@ -21,16 +21,19 @@ real-git proof of the conflicted path lives in
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
@@ -40,7 +43,6 @@ if TYPE_CHECKING:
 
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.rebase_state import RebaseState
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
 
@@ -281,6 +283,34 @@ def test_worker_recovers_before_it_integrates_and_before_it_works(
         f"recovery must run exactly once per worker, got {events!r}"
     )
     assert events[0] == "recover", f"recovery must precede any integration, got {events!r}"
+
+
+def test_worker_startup_conflict_blocks_prompt_and_agent_invocation(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """S-3 regression: a startup conflict cannot reach worker planning or execution."""
+    module = _worker_module()
+    manifest_path, _worker_ns = _write_manifest(tmp_path)
+    _install_worker_stubs(module, monkeypatch)
+    conflict = RebaseState(last_action="conflict", last_reason="resolver exhausted")
+    integration = MagicMock(return_value=conflict)
+    materialize = MagicMock()
+    execute = MagicMock()
+    monkeypatch.setattr(module, "run_worker_auto_integration", integration)
+    monkeypatch.setattr(module, "execute_agent_effect", execute)
+    deps = _worker_pipeline_deps(_display_context())
+    deps = dataclasses.replace(deps, phase_prompt_materializer=materialize)
+
+    exit_code = module.run_parallel_worker_from_manifest(
+        manifest_path=manifest_path,
+        display_context=_display_context(),
+        pipeline_deps=deps,
+    )
+
+    assert exit_code == 1
+    integration.assert_called_once()
+    materialize.assert_not_called()
+    execute.assert_not_called()
 
 
 def test_worker_runs_a_startup_and_a_boundary_integration(

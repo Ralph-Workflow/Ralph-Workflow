@@ -898,6 +898,13 @@ def _integrate_inline_effect(
         )
         return inline_result
     if outcome is not None and isinstance(inline_result, PipelineState):
+        if outcome.last_action == "conflict":
+            failed_state, _ = reducer_reduce(
+                state,
+                _integration_conflict_failure(state, outcome),
+                policy_bundle.pipeline if policy_bundle is not None else None,
+            )
+            return failed_state.copy_with(rebase=outcome)
         # PipelineState-shaped result: thread the integration
         # outcome into the persisted checkpoint so the catch-up
         # survives a crash right after the inline effect. The
@@ -905,6 +912,18 @@ def _integrate_inline_effect(
         # ``copy_with(rebase=...)`` only updates the rebase slot.
         return inline_result.copy_with(rebase=outcome)
     return inline_result
+
+
+def _integration_conflict_failure(
+    state: PipelineState, outcome: RebaseState
+) -> PhaseFailureEvent:
+    """Build the recovery-routable failure for an unresolved integration."""
+    reason = outcome.last_reason or "the conflict resolver did not produce a resolution"
+    return PhaseFailureEvent(
+        phase=state.phase,
+        reason=f"integration conflict requires resolution: {reason}",
+        recoverable=True,
+    )
 
 
 def _maybe_auto_integrate(
@@ -1216,7 +1235,16 @@ def _integrate_after_fan_out(
         pipeline_deps=pipeline_deps,
         display_context=display_context,
     )
-    return state.copy_with(rebase=outcome) if outcome is not None else state
+    if outcome is None:
+        return state
+    if outcome.last_action == "conflict":
+        failed_state, _ = reducer_reduce(
+            state,
+            _integration_conflict_failure(state, outcome),
+            policy_bundle.pipeline if policy_bundle is not None else None,
+        )
+        return failed_state.copy_with(rebase=outcome)
+    return state.copy_with(rebase=outcome)
 
 
 def _finalize_agent_invocation(
@@ -1648,6 +1676,11 @@ def _run_pipeline_step(
             pipeline_deps=pipeline_deps,
             display_context=display_context,
         )
+        if (
+            _auto_integrate_outcome is not None
+            and _auto_integrate_outcome.last_action == "conflict"
+        ):
+            event = _integration_conflict_failure(state, _auto_integrate_outcome)
         _phase_outcome = _coarse_outcome_for_event(event)
         # Resample the monotonic clock AFTER the agent invocation so the
         # reducer's deadline guard sees elapsed time that includes the
