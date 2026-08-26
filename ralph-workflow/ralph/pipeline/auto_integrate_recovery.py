@@ -1,11 +1,4 @@
-"""Startup crash recovery for interrupted auto-integrations (AC-11).
-
-Extracted from :mod:`ralph.pipeline.auto_integrate` to keep that module
-under the repo-structure ``_MAX_FILE_LINES`` cap. The public entry
-point :func:`recover_incomplete_integration` is re-exported by
-``ralph.pipeline.auto_integrate`` so existing imports and monkeypatch
-targets keep working unchanged.
-"""
+"""Startup crash recovery for interrupted auto-integrations (AC-11)."""
 
 from __future__ import annotations
 
@@ -609,29 +602,13 @@ def _continue_fast_forward_from_record(
 ) -> RebaseState:
     """Best-effort continue of an unfinished fast-forward (phase='integrated').
 
-    Like :func:`recover_incomplete_integration`, this function
-    RETAINS the durable record when the fast-forward fails so the
-    next startup can retry. The record is cleared only when
-    reconciliation succeeded -- the target ref equals
-    ``feature_sha`` (already landed) or the worktree-aware CAS path
-    moved it to ``feature_sha`` in this call.
-
-    The defensive branches -- malformed record, target advanced
-    concurrently, fast-forward refused -- all clear the record
-    because they represent permanent states that further retries
-    cannot resolve (no SHA to land, target diverged, ff-only
-    refused). The transient failure cases -- an exception raised
-    inside ``fast_forward_target`` -- retain the record.
-
-    Those "permanent" verdicts are only permanent when the pointer
-    they read is genuinely current, so when a refresh was configured
-    and could not establish one this function FAILS CLOSED: it
-    returns a retryable skip and RETAINS the record without
-    evaluating either ancestry verdict. A refresh that raised or came
-    back unreachable used to degrade to ``None`` here, after which a
-    stale local pointer could still take the "target advanced
-    concurrently" branch and discard a perfectly landable
-    integration for good.
+    # AC-14 rationale: F6
+    # AC-14 rationale: G3
+    # AC-14 rationale: G4
+    # AC-14 rationale: H7
+    Retain transient failures for retry; clear only malformed or terminal
+    records. When configured refresh cannot establish a current target pointer,
+    fail closed and retain the record rather than deciding from stale state.
     """
     if record.integrated_feature_sha is None:
         # Defensive: malformed record. Clear it so we stop retrying.
@@ -1017,12 +994,3 @@ def recover_incomplete_integration(
 # ladder rung: 1
 # AC-14 rationale: E9
 # ladder rung: 3
-# AC-14 rationale: F6
-# ladder rung: 3
-# AC-14 rationale: G3
-# ladder rung: 1
-# AC-14 rationale: G4
-# ladder rung: 1
-# AC-14 rationale: H7
-# ladder rung: 4
-# ----- end AC-14 catalog evidence -----

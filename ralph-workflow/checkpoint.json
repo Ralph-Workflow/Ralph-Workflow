@@ -32,7 +32,14 @@
     "last_conflict_paths": [],
     "last_conflict_stage_oids": [],
     "last_conflict_scope": "",
-    "recovery_record_retained": false
+    "recovery_record_retained": false,
+    "legacy_checkpoint_blocked": false,
+    "legacy_phase": null,
+    "legacy_conflicted_files": [],
+    "legacy_resolved_files": [],
+    "legacy_error_count": 0,
+    "legacy_timestamp": null,
+    "legacy_source": null
   },
   "commit": {
     "message_prepared": false,

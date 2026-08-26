@@ -10,6 +10,7 @@ import threading
 import time
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
@@ -63,7 +64,6 @@ from ralph.timeout_defaults import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.agent_config import AgentConfig
@@ -1288,10 +1288,11 @@ def _run_inner_loop(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Apply startup integration before entering the phase-dispatch loop."""
-    workspace_root = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
-    legacy_block = legacy_rebase_startup_block(workspace_root)
-    if legacy_block is not None:
-        state = state.copy_with(rebase=legacy_block)
+    workspace_root_raw: object = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
+    if isinstance(workspace_root_raw, Path):
+        legacy_block = legacy_rebase_startup_block(workspace_root_raw)
+        if legacy_block is not None:
+            state = state.copy_with(rebase=legacy_block)
     if state.rebase.integration_unresolved:
         blocked_startup = _block_unresolved_startup_conflict(state, ctx, prev_phase)
         if blocked_startup is not None:

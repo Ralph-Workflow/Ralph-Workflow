@@ -61,12 +61,14 @@ def test_fallback_cleanup_writes_no_escape_codes_to_non_tty() -> None:
     assert status_bar._fallback_frame is None
 
 
-def test_fallback_cleanup_keeps_erase_for_vt_capable_tty(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A VT-capable TTY retains the existing transient-footer erase behavior."""
+def test_fallback_cleanup_regression_preserves_tty_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S-1: TTY teardown must not erase prior command output or the footer row."""
     stream = _TtyStringIO()
     status_bar = _status_bar_for_cleanup(stream, is_tty=True)
     monkeypatch.setattr(status_bar_module, "terminal_understands_vt", lambda: True)
 
     status_bar._fallback_cleanup()
 
-    assert stream.getvalue() == "\r\x1b[1A\x1b[2K"
+    assert stream.getvalue() == ""
+    assert status_bar._fallback_rendered is False
+    assert status_bar._fallback_frame is None

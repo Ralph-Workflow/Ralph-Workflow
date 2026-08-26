@@ -3,7 +3,8 @@ from __future__ import annotations
 import shutil
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.git.rebase.rebase_checkpoint import (
     LegacyCheckpointStatus,
@@ -15,9 +16,6 @@ from ralph.git.rebase.rebase_checkpoint import (
     rebase_checkpoint_exists,
     save_rebase_checkpoint,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _checkpoint_entry(upstream: str) -> RebaseCheckpoint:
@@ -47,6 +45,19 @@ def test_legacy_inspection_classifies_persisted_conflict_without_normalizing_it(
     assert inspection.checkpoint is not None
     assert inspection.checkpoint.phase == RebasePhase.ConflictDetected
     assert inspection.checkpoint.conflicted_files == ["conflict.py"]
+
+
+def test_checkpoint_from_dict_regression_rejects_malformed_typed_fields() -> None:
+    """S-4: invalid persisted collection and counter values remain fail-closed."""
+    payload = _checkpoint_entry("main").to_dict()
+    payload["conflicted_files"] = ["conflict.txt", 3]
+    with pytest.raises(ValueError, match="conflicted_files"):
+        RebaseCheckpoint.from_dict(payload)
+
+    payload = _checkpoint_entry("main").to_dict()
+    payload["error_count"] = True
+    with pytest.raises(ValueError, match="error_count"):
+        RebaseCheckpoint.from_dict(payload)
 
 
 def test_save_and_load_checkpoint_preserves_state(

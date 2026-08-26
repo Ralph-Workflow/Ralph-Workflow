@@ -56,10 +56,10 @@ Cadence constants:
 - ``_STATUS_BAR_REFRESH_PER_SECOND`` (default ``4.0``): bounded Live-region
   repaint cadence. The elapsed clock changes each second while a run is active;
   unchanged frames are not re-emitted by the non-interactive fallback.
-- ``_STATUS_BAR_TRANSIENT`` (default ``True``): frames are erased on stop,
-  preserving clean scrollback, copy/paste, terminal search, and post-run log
-  review. The completion panel carries the durable outcome; the final
-  terminated-state push is visible before teardown.
+- ``_STATUS_BAR_TRANSIENT`` (default ``False``): Rich restores the cursor
+  without erasing the final frame on stop. Earlier command output and the
+  final footer remain readable in scrollback; terminal-mode restoration is
+  owned separately by :mod:`ralph.display.terminal_restore`.
 
 Default rendering
 -----------------
@@ -140,7 +140,7 @@ if TYPE_CHECKING:
 
 
 _STATUS_BAR_REFRESH_PER_SECOND: float = 4.0
-_STATUS_BAR_TRANSIENT: bool = True
+_STATUS_BAR_TRANSIENT: bool = False
 
 
 DEFAULT_PATH_BUDGET: int = 48
@@ -1661,11 +1661,15 @@ class StatusBar:
             return
         self._fallback_rendered = False
         self._fallback_frame = None
+        # Preserve the established TTY/VT gate even though cleanup is now
+        # non-destructive: teardown must not write terminal controls anywhere.
         if not self._real_tty() or not terminal_understands_vt():
             return
-        file_obj: IO[str] = self._ctx().console.file
-        file_obj.write("\r\x1b[1A\x1b[2K")
-        file_obj.flush()
+        # A footer may share a transcript with command banners (including
+        # ``ralph --version``), so cursor-up/erase-line controls can destroy
+        # already-rendered output. Rich's non-transient Live stop restores its
+        # own cursor state without an additional erase sequence.
+        return
 
     def _refresh_live_if_changed(self) -> bool:
         """Refresh the interactive footer only when its visible frame changed."""
@@ -1711,7 +1715,7 @@ class StatusBar:
             ticker.join(timeout=1.0)
 
     def start(self) -> None:
-        """Begin rendering the Status Bar inside a transient Rich Live region.
+        """Begin rendering the Status Bar inside a retained Rich Live region.
 
         No-op when the real-TTY gate is closed (non-tty console, redirected
         output, StringIO test console, quiet mode), or when a Live region
@@ -1762,9 +1766,6 @@ class StatusBar:
         self._live = None
         self._last_live_frame = None
         self._stop_ticker()
-        if self._live_frame_rendered:
-            with contextlib.suppress(Exception):
-                live.update(Text(" "), refresh=False)
         with contextlib.suppress(Exception):
             live.stop()
         self._live_frame_rendered = False

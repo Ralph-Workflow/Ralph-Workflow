@@ -403,9 +403,12 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
     assert out == "", f"No bytes may be written on a force_terminal+StringIO console; got {out!r}"
 
 
-def test_runtime_entry_point_renders_commit_generation_activity_in_live_footer() -> None:
-    """Direct commit generation exposes its activity through the real TTY footer."""
+def test_runtime_entry_point_regression_stop_preserves_prior_transcript_and_banner() -> None:
+    """S-1: stopping the live footer keeps earlier CLI output readable."""
     pd, buf = _make_parallel_display()
+    banner = "ralph 1.2.3 — welcome"
+    pd._ctx.console.print(banner)
+    before_stop = buf.getvalue()
     model = StatusBarModel(
         workspace_root="/tmp/commit-workspace",
         phase_label="Commit Generation",
@@ -416,5 +419,13 @@ def test_runtime_entry_point_renders_commit_generation_activity_in_live_footer()
     with pd:
         assert pd.status_bar.is_active is True
         assert pd.status_bar.last_model is model
+        before_stop_footer = buf.getvalue()
 
-    assert "Commit Generation" in buf.getvalue()
+    after_stop = buf.getvalue()
+    assert "ralph" in before_stop
+    assert "welcome" in before_stop
+    assert "ralph" in after_stop
+    assert "welcome" in after_stop
+    assert before_stop in after_stop
+    teardown_output = after_stop[len(before_stop_footer) :]
+    assert "\x1b[2J" not in teardown_output

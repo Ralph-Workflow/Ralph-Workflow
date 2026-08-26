@@ -8,12 +8,15 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.git.rebase._rebase_lock import RebaseLock
 from ralph.git.rebase._rebase_phase import RebasePhase
+from ralph.git.rebase.legacy_checkpoint import (
+    LegacyCheckpointInspection,
+    LegacyCheckpointStatus,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -77,29 +80,20 @@ def _load_checkpoint_payload(path: Path) -> dict[str, object]:
     return _json_object(raw_payload)
 
 
-def _string_list(data: Mapping[str, object], key: str) -> list[str]:
+def _validated_string_list(data: Mapping[str, object], key: str) -> list[str]:
+    """Return a checkpoint string collection after validating every entry."""
     value = data.get(key, [])
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"Checkpoint {key} must be a list of strings")
+    return value
 
 
-class LegacyCheckpointStatus(StrEnum):
-    """Fail-closed classification for legacy rebase persistence."""
-
-    ABSENT = "absent"
-    TERMINAL = "terminal"
-    ACTIONABLE_CONFLICT = "actionable_conflict"
-    BLOCKED = "blocked"
-
-
-@dataclass(frozen=True)
-class LegacyCheckpointInspection:
-    """Validated legacy evidence, or a reason it must block startup."""
-
-    status: LegacyCheckpointStatus
-    checkpoint: RebaseCheckpoint | None = None
-    reason: str | None = None
+def _validated_nonnegative_int(data: Mapping[str, object], key: str) -> int:
+    """Return a non-boolean non-negative checkpoint counter."""
+    value = data.get(key, 0)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"Checkpoint {key} must be a non-negative integer")
+    return value
 
 
 def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
@@ -186,14 +180,10 @@ class RebaseCheckpoint:
         upstream = data.get("upstream_branch", "")
         if not isinstance(upstream, str):
             raise ValueError("Checkpoint upstream_branch must be a string")
-        for key in ("conflicted_files", "resolved_files"):
-            value = data.get(key, [])
-            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-                raise ValueError(f"Checkpoint {key} must be a list of strings")
-        for key in ("error_count", "phase_error_count"):
-            value = data.get(key, 0)
-            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                raise ValueError(f"Checkpoint {key} must be a non-negative integer")
+        conflicts = _validated_string_list(data, "conflicted_files")
+        resolved = _validated_string_list(data, "resolved_files")
+        error_count = _validated_nonnegative_int(data, "error_count")
+        phase_error_count = _validated_nonnegative_int(data, "phase_error_count")
         timestamp = data.get("timestamp")
         if not isinstance(timestamp, str):
             raise ValueError("Checkpoint timestamp must be a string")
@@ -201,8 +191,6 @@ class RebaseCheckpoint:
             datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except ValueError as exc:
             raise ValueError("Checkpoint timestamp is invalid") from exc
-        resolved = list(data.get("resolved_files", []))
-        conflicts = list(data.get("conflicted_files", []))
         if any(file not in conflicts for file in resolved):
             raise ValueError("Checkpoint resolved_files must be a subset of conflicted_files")
         if phase not in {RebasePhase.NotStarted, RebasePhase.RebaseComplete, RebasePhase.RebaseAborted} and not upstream:
@@ -210,10 +198,16 @@ class RebaseCheckpoint:
         last_error_value = data.get("last_error")
         if last_error_value is not None and not isinstance(last_error_value, str):
             raise ValueError("Checkpoint last_error must be a string or null")
-        return cls(phase=phase, upstream_branch=upstream, conflicted_files=conflicts,
-                   resolved_files=resolved, error_count=data.get("error_count", 0),
-                   last_error=last_error_value, timestamp=timestamp,
-                   phase_error_count=data.get("phase_error_count", 0))
+        return cls(
+            phase=phase,
+            upstream_branch=upstream,
+            conflicted_files=conflicts,
+            resolved_files=resolved,
+            error_count=error_count,
+            last_error=last_error_value,
+            timestamp=timestamp,
+            phase_error_count=phase_error_count,
+        )
 
 
 def inspect_legacy_rebase_checkpoint(

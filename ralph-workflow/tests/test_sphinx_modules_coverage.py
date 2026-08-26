@@ -30,6 +30,7 @@ _EXCLUDED: dict[str, str] = {
     "display.budget_progress": "internal display type, not public API",
     "display.event_options": "internal display type, not public API",
     "display.exit_context": "internal display context, not public API",
+    "git.rebase.legacy_checkpoint": "internal legacy-checkpoint classification seam, not public API",
     "display.phase_activity_counts": "internal display type, not public API",
     "display.phase_entry_model": "internal display model, not public API",
     "display.phase_exit_model": "internal display model, not public API",
