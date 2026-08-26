@@ -18,7 +18,7 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 @pytest.mark.parametrize("porcelain", (" M src/a.py\n", "M  src/a.py\n", "?? scratch.txt\n"))
-def test_dirty_non_integrating_worktree_permits_commit_dispatch(
+def test_dirty_worktree_blocks_non_resolution_dispatch(
     tmp_path: Path, porcelain: str
 ) -> None:
     verdict = inspect_integration_resolution(
@@ -29,9 +29,10 @@ def test_dirty_non_integrating_worktree_permits_commit_dispatch(
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is RESOLVED
-    assert verdict.recovery_executor is None
-    assert_non_resolution_dispatch_allowed("development_commit", verdict)
+    assert verdict.status is RECOVERABLE
+    assert verdict.recovery_executor == "rebase_conflict_resolution"
+    with pytest.raises(RuntimeError, match="working tree is not clean"):
+        assert_non_resolution_dispatch_allowed("development_commit", verdict)
 
 
 @pytest.mark.parametrize(

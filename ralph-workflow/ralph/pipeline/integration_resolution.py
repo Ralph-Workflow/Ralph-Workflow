@@ -9,6 +9,7 @@ it is the sole recovery executor named by a blocking verdict.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
@@ -23,16 +24,28 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 RESOLUTION_DRAIN = "rebase_conflict_resolution"
-RESOLVED = "resolved"
-RECOVERABLE = "recoverable"
-EXHAUSTED = "exhausted"
+
+
+class IntegrationResolutionStatus(StrEnum):
+    """Closed dispatch verdict vocabulary shared by all integration boundaries."""
+
+    RESOLVED = "resolved"
+    RECOVERABLE = "recoverable"
+    EXHAUSTED = "exhausted"
+
+
+# Public aliases preserve the original concise predicate vocabulary while the
+# enum gives direct callers a typed, stable decision contract.
+RESOLVED = IntegrationResolutionStatus.RESOLVED
+RECOVERABLE = IntegrationResolutionStatus.RECOVERABLE
+EXHAUSTED = IntegrationResolutionStatus.EXHAUSTED
 
 
 @dataclass(frozen=True)
 class IntegrationResolutionVerdict:
     """Evidence-backed answer to whether an ordinary phase may dispatch."""
 
-    status: str
+    status: IntegrationResolutionStatus
     reasons: tuple[str, ...] = ()
     recovery_executor: str | None = None
 
@@ -52,10 +65,10 @@ def inspect_integration_resolution(
 ) -> IntegrationResolutionVerdict:
     """Return the fail-closed dispatch verdict for ``root`` and ``state``.
 
-    Porcelain is inspected only to prove the repository is readable. Ordinary
-    tracked or untracked changes are commit work, not integration evidence;
-    blocking them would prevent a ``COMMIT_RESIDUAL`` event from re-entering
-    its commit phase. Any failed inspection remains unsafe.
+    Full porcelain is ground-truth integration evidence. Any staged, tracked,
+    or untracked change can conceal an unfinished rebase/merge result, so a
+    non-empty output blocks ordinary dispatch. Any failed inspection remains
+    unsafe.
     """
     # Non-repository orchestration contexts (unit seams and initial project
     # setup) have no live Git integration state to inspect. The production
@@ -75,11 +88,13 @@ def inspect_integration_resolution(
         reasons.append("persisted integration state is unresolved")
     probe = porcelain or _full_porcelain
     try:
-        readable, _ = probe(root)
+        readable, porcelain_output = probe(root)
     except Exception:
         readable = False
     if not readable:
         reasons.append("unable to inspect full git porcelain status")
+    elif porcelain_output.strip():
+        reasons.append("working tree is not clean")
     try:
         if rebase_active(root):
             reasons.append("rebase is in progress")
