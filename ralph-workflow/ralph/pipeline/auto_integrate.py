@@ -154,8 +154,6 @@ def auto_integrate_on_phase_transition(
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
     try:
         root = Path(workspace_scope.root)
-        if not inspect_integration_resolution(root, state).dispatch_allowed:
-            return state
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():
             return None

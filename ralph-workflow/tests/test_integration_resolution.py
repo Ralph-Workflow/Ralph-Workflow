@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.git.subprocess_runner import GitRunResult
+from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
@@ -16,6 +19,8 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.state import PipelineState
+from ralph.workspace.scope import WorkspaceScope
 
 
 @pytest.mark.parametrize("porcelain", (" M src/a.py\n", "M  src/a.py\n", "?? scratch.txt\n"))
@@ -34,6 +39,30 @@ def test_dirty_worktree_blocks_non_resolution_dispatch(
     assert verdict.recovery_executor == "rebase_conflict_resolution"
     with pytest.raises(RuntimeError, match="working tree is not clean"):
         assert_non_resolution_dispatch_allowed("development_commit", verdict)
+
+
+def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_path: Path) -> None:
+    """The final fence raises before a blocked ordinary agent can start."""
+    effect = InvokeAgentEffect(
+        agent_name="developer",
+        phase="development",
+        prompt_file="PROMPT.md",
+        drain="development",
+    )
+    state = PipelineState(phase="development").copy_with(
+        rebase=RebaseState(last_action="conflict")
+    )
+
+    with pytest.raises(RuntimeError, match="cannot dispatch 'development'"):
+        execute_agent_effect(
+            effect,
+            MagicMock(),
+            MagicMock(),
+            WorkspaceScope(tmp_path),
+            display_context=MagicMock(),
+            state=state,
+        )
+
 
 
 @pytest.mark.parametrize(
