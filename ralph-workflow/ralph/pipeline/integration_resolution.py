@@ -48,15 +48,11 @@ def inspect_integration_resolution(
     non-empty output blocks ordinary dispatch. Any failed inspection remains
     unsafe.
     """
-    if state.resolution_exhausted:
-        return IntegrationResolutionVerdict(
-            EXHAUSTED,
-            (state.resolution_exhaustion_reason or "conflict resolver exhausted",),
-        )
+    persisted = persisted_integration_resolution_verdict(state)
+    if persisted is not None:
+        return persisted
 
     reasons: list[str] = []
-    if state.integration_unresolved:
-        reasons.append("persisted integration state is unresolved")
     # Non-repository orchestration contexts (unit seams and initial project
     # setup) have no live Git integration state to inspect. Persisted conflict
     # evidence remains blocking even in these synthetic contexts.
@@ -84,6 +80,24 @@ def inspect_integration_resolution(
     except Exception:
         reasons.append("unable to inspect merge state")
     return _verdict_from_persisted_reasons(reasons)
+
+
+def persisted_integration_resolution_verdict(
+    state: RebaseState,
+) -> IntegrationResolutionVerdict | None:
+    """Return the blocking verdict supported by durable state alone."""
+    if state.resolution_exhausted:
+        return IntegrationResolutionVerdict(
+            EXHAUSTED,
+            (state.resolution_exhaustion_reason or "conflict resolver exhausted",),
+        )
+    if state.integration_unresolved:
+        return IntegrationResolutionVerdict(
+            RECOVERABLE,
+            ("persisted integration state is unresolved",),
+            RESOLUTION_DRAIN,
+        )
+    return None
 
 
 def _verdict_from_persisted_reasons(reasons: list[str]) -> IntegrationResolutionVerdict:

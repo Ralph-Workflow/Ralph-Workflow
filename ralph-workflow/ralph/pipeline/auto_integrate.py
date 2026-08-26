@@ -94,7 +94,7 @@ from ralph.pipeline.auto_integrate_terminal import (
 from ralph.pipeline.auto_integrate_worktree_state import (
     _worktree_is_clean,
 )
-from ralph.pipeline.integration_resolution import inspect_integration_resolution
+from ralph.pipeline.integration_resolution import persisted_integration_resolution_verdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -119,7 +119,7 @@ def auto_integrate_after_commit(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Integrate after a commit, recording skips and surfacing terminal-state violations."""
-    if not inspect_integration_resolution(Path(workspace_scope.root), state).dispatch_allowed:
+    if persisted_integration_resolution_verdict(state) is not None:
         return state
     try:
         return _auto_integrate_after_commit_inner(

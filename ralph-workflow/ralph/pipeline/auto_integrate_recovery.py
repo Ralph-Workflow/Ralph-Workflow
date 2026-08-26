@@ -51,6 +51,7 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
 )
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -107,14 +108,15 @@ def legacy_rebase_startup_block(workspace_root: Path) -> RebaseState | None:
         "last_target": checkpoint.upstream_branch if checkpoint else None,
     }
     if inspection.status == LegacyCheckpointStatus.TERMINAL:
-        try:
-            git_clean = not rebase_in_progress(workspace_root) and merge_state(workspace_root) == MERGE_STATE_NONE
-        except OSError:
-            git_clean = False
-        if git_clean:
+        terminal_state = RebaseState(**identity)
+        if inspect_integration_resolution(workspace_root, terminal_state).dispatch_allowed:
             _clear_legacy_checkpoint(workspace_root)
             return None
-        return RebaseState(last_action="conflict", last_reason="legacy terminal checkpoint contradicts live Git", **identity)
+        return RebaseState(
+            last_action="conflict",
+            last_reason="legacy terminal checkpoint contradicts live Git",
+            **identity,
+        )
     reason = inspection.reason or "legacy rebase checkpoint requires recovery"
     return RebaseState(last_action="conflict", last_reason=reason, **identity)
 
