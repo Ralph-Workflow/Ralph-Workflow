@@ -73,6 +73,7 @@ from ralph.pipeline.integration_resolution import (
 )
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.pipeline.phase_transition import show_phase_start_with_context
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.session_bridge import build_session_bridge, reset_tool_registry_callback
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
@@ -190,9 +191,14 @@ def execute_agent_effect(
     # This is the final live agent-invocation boundary.  All normal dispatches
     # delegate to the single fail-closed resolution invariant; its sole drain
     # is the out-of-graph conflict-resolution executor.
-    if state is not None and config.general.auto_integrate_enabled:
-        verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
-        assert_non_resolution_dispatch_allowed(effect.phase, verdict)
+    # The final live agent-invocation boundary is unconditional.  Standalone
+    # plumbing has no checkpointed PipelineState, but it must still prove the
+    # live repository is safe before it can start an ordinary phase.
+    verdict = inspect_integration_resolution(
+        workspace_scope.root,
+        state.rebase if state is not None else RebaseState(),
+    )
+    assert_non_resolution_dispatch_allowed(effect.phase, verdict)
 
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)

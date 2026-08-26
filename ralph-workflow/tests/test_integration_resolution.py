@@ -9,6 +9,7 @@ import pytest
 
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.git.subprocess_runner import GitRunResult
+from ralph.pipeline import effect_executor
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.integration_resolution import (
@@ -18,6 +19,7 @@ from ralph.pipeline.integration_resolution import (
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
 )
+from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
@@ -63,6 +65,59 @@ def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_p
             state=state,
         )
 
+
+def test_final_fence_checks_live_verdict_without_pipeline_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Standalone plumbing cannot bypass the final fence by omitting state."""
+    effect = InvokeAgentEffect(
+        agent_name="developer", phase="development", prompt_file="PROMPT.md", drain="development"
+    )
+    observed_states: list[RebaseState] = []
+
+    def _blocked(_root: Path, rebase: RebaseState) -> IntegrationResolutionVerdict:
+        observed_states.append(rebase)
+        return IntegrationResolutionVerdict(RECOVERABLE, ("working tree is not clean",), "rebase_conflict_resolution")
+
+    monkeypatch.setattr(effect_executor, "inspect_integration_resolution", _blocked)
+
+    with pytest.raises(RuntimeError, match="cannot dispatch 'development'"):
+        execute_agent_effect(
+            effect,
+            MagicMock(),
+            MagicMock(),
+            WorkspaceScope(tmp_path),
+            display_context=MagicMock(),
+        )
+
+    assert observed_states == [RebaseState()]
+
+
+def test_final_fence_ignores_auto_integration_toggle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Disabling auto-integration cannot disable the dispatch invariant."""
+    effect = InvokeAgentEffect(
+        agent_name="developer", phase="planning", prompt_file="PROMPT.md", drain="planning"
+    )
+    monkeypatch.setattr(
+        effect_executor,
+        "inspect_integration_resolution",
+        lambda _root, _rebase: IntegrationResolutionVerdict(
+            RECOVERABLE, ("rebase is in progress",), "rebase_conflict_resolution"
+        ),
+    )
+    config = MagicMock()
+    config.general.auto_integrate_enabled = False
+
+    with pytest.raises(RuntimeError, match="cannot dispatch 'planning'"):
+        execute_agent_effect(
+            effect,
+            config,
+            MagicMock(),
+            WorkspaceScope(tmp_path),
+            display_context=MagicMock(),
+        )
 
 
 @pytest.mark.parametrize(
