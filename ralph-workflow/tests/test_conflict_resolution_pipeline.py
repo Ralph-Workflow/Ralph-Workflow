@@ -189,6 +189,62 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert calls == [1, 2, 3]
 
 
+def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed resolver invocation cannot finish recovery or advance a phase."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
+    )
+    calls: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        del prompt_path, round_index
+        calls.append(agent_name)
+        if agent_name == "primary":
+            raise RuntimeError("agent exploded")
+        return True
+
+    assert _run(tmp_path, invoke=_invoke) is True
+    assert calls == ["primary", "fallback"]
+
+
+def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An exhausted resolver chain remains a terminal recovery failure."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
+    )
+    session = ResolutionSession(max_rounds_per_stop=1)
+    calls: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        del prompt_path, round_index
+        calls.append(agent_name)
+        return False
+
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=_invoke,
+        session=session,
+    )
+
+    assert outcome.succeeded is False
+    assert outcome.reason is ResolutionTerminationReason.CANDIDATE_DECLINED
+    assert session.exhaustion_reason is not None
+    assert calls == ["primary", "fallback"]
+
+
 def test_invoker_exception_is_contained_and_returns_false(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

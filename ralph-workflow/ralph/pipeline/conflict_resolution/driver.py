@@ -555,6 +555,12 @@ def _run_one_round(
                 policy_bundle=policy_bundle,
             )
         else:
+            # A false return is a failed candidate attempt, never evidence
+            # that resolution completed. Preserve a typed reason so the
+            # terminal outcome can be persisted as exhaustion if every
+            # configured fallback also declines.
+            if session.terminal_reason is None:
+                session.terminal_reason = ResolutionTerminationReason.CANDIDATE_DECLINED
             classify_failed_resolution_attempt(
                 session,
                 agent_name,

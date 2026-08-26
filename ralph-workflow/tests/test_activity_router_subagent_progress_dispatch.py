@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
+import os
 from typing import TYPE_CHECKING
 
 import pytest
@@ -495,7 +496,11 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
     )
     completion_event = asyncio.Event()
     completion_event.set()
-    pid_counter = itertools.count(500)
+    # ``ProcessManager`` probes process groups during spawn; fake PIDs must
+    # never coincide with a live verification-shard process. Deriving the
+    # first ID above this process's ID keeps the fake outside the compact PID
+    # range the concurrent pytest children occupy.
+    pid_counter = itertools.count(os.getpid() + 1_000_000)
 
     async def async_factory(
         command: tuple[str, ...],
