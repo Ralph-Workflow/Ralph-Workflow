@@ -32,6 +32,10 @@ from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.integration_resolution import (
+    IntegrationResolutionStatus,
+    IntegrationResolutionVerdict,
+)
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
@@ -181,6 +185,12 @@ def _install_worker_stubs(
         raising=False,
     )
     monkeypatch.setattr(module, "AgentRegistry", _fake_registry_class(), raising=False)
+    monkeypatch.setattr(
+        module,
+        "inspect_integration_resolution",
+        lambda *_args, **_kwargs: IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED),
+        raising=False,
+    )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
     monkeypatch.setattr(
         module,
@@ -314,6 +324,13 @@ def test_worker_startup_conflict_blocks_prompt_and_agent_invocation(
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)
     conflict = RebaseState(last_action="conflict", last_reason="resolver exhausted")
+    monkeypatch.setattr(
+        module,
+        "inspect_integration_resolution",
+        lambda *_args, **_kwargs: IntegrationResolutionVerdict(
+            IntegrationResolutionStatus.RECOVERABLE, ("persisted integration state is unresolved",), "rebase_conflict_resolution"
+        ),
+    )
     integration = MagicMock(return_value=conflict)
     materialize = MagicMock()
     execute = MagicMock()
@@ -491,6 +508,13 @@ def test_worker_startup_retained_recovery_blocks_prompt_and_agent_invocation(
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)
     retained = RebaseState(last_action="skipped", recovery_record_retained=True)
+    monkeypatch.setattr(
+        module,
+        "inspect_integration_resolution",
+        lambda *_args, **_kwargs: IntegrationResolutionVerdict(
+            IntegrationResolutionStatus.RECOVERABLE, ("persisted integration state is unresolved",), "rebase_conflict_resolution"
+        ),
+    )
     integration = MagicMock(return_value=retained)
     materialize = MagicMock()
     execute = MagicMock()

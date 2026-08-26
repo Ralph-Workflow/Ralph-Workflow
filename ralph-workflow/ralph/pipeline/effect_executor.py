@@ -67,6 +67,10 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.integration_resolution import (
+    assert_non_resolution_dispatch_allowed,
+    inspect_integration_resolution,
+)
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.pipeline.phase_transition import show_phase_start_with_context
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
@@ -183,6 +187,17 @@ def execute_agent_effect(
     omit the display dependency: at least one of ``display_context`` /
     ``display`` must be non-None or :func:`get_display_context` raises.
     """
+    # This is the final live agent-invocation boundary.  Callers normally
+    # guard earlier, but no direct invocation may bypass a dirty, mid-rebase,
+    # or unresolved integration.  The nested conflict-resolution drain is the
+    # sole exception because it is the operation that restores the invariant.
+    # Out-of-graph policy drains do not participate in the pipeline's Git
+    # integration lifecycle.  They retain the legacy state-less invocation
+    # contract; every in-graph caller provides ``state`` and is guarded here.
+    if state is not None:
+        verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
+        assert_non_resolution_dispatch_allowed(effect.phase, verdict)
+
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
     agent_config = cast(

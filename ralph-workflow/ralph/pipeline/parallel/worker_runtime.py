@@ -61,6 +61,10 @@ from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
+from ralph.pipeline.integration_resolution import (
+    assert_non_resolution_dispatch_allowed,
+    inspect_integration_resolution,
+)
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
@@ -428,8 +432,13 @@ def run_parallel_worker_from_manifest(
             recover_first=True,
             state=state.rebase,
         )
-    if startup_outcome is not None and startup_outcome.integration_unresolved is True:
-        logger.warning("auto_integrate: worker startup conflict blocks phase invocation")
+    if startup_outcome is not None:
+        state = state.copy_with(rebase=startup_outcome)
+    verdict = inspect_integration_resolution(workspace_root, state.rebase)
+    try:
+        assert_non_resolution_dispatch_allowed(effect.phase, verdict)
+    except RuntimeError as exc:
+        logger.warning("auto_integrate: worker integration blocks phase invocation: {}", exc)
         return 1
     prompt_path = effective_pipeline_deps.phase_prompt_materializer(
         phase=manifest.phase,
