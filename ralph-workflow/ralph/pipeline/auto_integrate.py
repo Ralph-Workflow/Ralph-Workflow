@@ -86,6 +86,7 @@ from ralph.pipeline.auto_integrate_remote_sync import (
     reconcile_after_rejected_push,
     remote_sync_enabled,
 )
+from ralph.pipeline.auto_integrate_resolution_state import retains_unresolved_resolution_state
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
@@ -152,6 +153,8 @@ def auto_integrate_on_phase_transition(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
+    if retains_unresolved_resolution_state(state):
+        return state
     try:
         root = Path(workspace_scope.root)
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)

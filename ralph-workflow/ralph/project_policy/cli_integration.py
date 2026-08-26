@@ -387,9 +387,21 @@ def _make_production_invoke_agent(
             # must never block the run.
             with _capture_pipeline_state():
                 try:
+                    # Policy remediation deliberately writes the policy it is
+                    # validating. It is out of the shared integration graph,
+                    # so give its executor an explicit opt-out rather than
+                    # misclassifying those intended writes as an unresolved
+                    # rebase and blocking the remediation itself.
+                    policy_config = load_result.config.model_copy(
+                        update={
+                            "general": load_result.config.general.model_copy(
+                                update={"auto_integrate_enabled": False}
+                            )
+                        }
+                    )
                     event = _effect_executor_module.execute_agent_effect(
                         effect,
-                        load_result.config,
+                        policy_config,
                         pipeline_deps,
                         workspace_scope,
                         run_id=load_result.run_id,

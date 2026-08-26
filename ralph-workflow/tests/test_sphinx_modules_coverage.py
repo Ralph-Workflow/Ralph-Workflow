@@ -13,6 +13,9 @@ _MODULES_RST = Path(__file__).parent.parent / "docs" / "sphinx" / "modules.rst"
 # Modules and packages intentionally excluded from autodoc coverage, with reasons.
 # These are internal/helper modules that should not appear in the public API reference.
 _EXCLUDED: dict[str, str] = {
+    "pipeline.auto_integrate_resolution_state": "internal integration-state helper, not public API",
+    "pipeline.integration_resolution_status": "internal integration verdict enum, not public API",
+    "pipeline.integration_resolution_types": "internal integration verdict value, not public API",
     "testing.fake_process": "test infrastructure, not public API",
     # Internal event/model types not intended as public API
     "agents.catalog": "internal injectable registry, not public API",

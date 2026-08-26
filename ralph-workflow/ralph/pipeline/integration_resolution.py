@@ -8,8 +8,6 @@ it is the sole recovery executor named by a blocking verdict.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +15,8 @@ from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
+from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -26,33 +26,11 @@ if TYPE_CHECKING:
 RESOLUTION_DRAIN = "rebase_conflict_resolution"
 
 
-class IntegrationResolutionStatus(StrEnum):
-    """Closed dispatch verdict vocabulary shared by all integration boundaries."""
-
-    RESOLVED = "resolved"
-    RECOVERABLE = "recoverable"
-    EXHAUSTED = "exhausted"
-
-
 # Public aliases preserve the original concise predicate vocabulary while the
 # enum gives direct callers a typed, stable decision contract.
 RESOLVED = IntegrationResolutionStatus.RESOLVED
 RECOVERABLE = IntegrationResolutionStatus.RECOVERABLE
 EXHAUSTED = IntegrationResolutionStatus.EXHAUSTED
-
-
-@dataclass(frozen=True)
-class IntegrationResolutionVerdict:
-    """Evidence-backed answer to whether an ordinary phase may dispatch."""
-
-    status: IntegrationResolutionStatus
-    reasons: tuple[str, ...] = ()
-    recovery_executor: str | None = None
-
-    @property
-    def dispatch_allowed(self) -> bool:
-        """Whether a non-resolution phase is safe to dispatch."""
-        return self.status == RESOLVED
 
 
 def inspect_integration_resolution(
