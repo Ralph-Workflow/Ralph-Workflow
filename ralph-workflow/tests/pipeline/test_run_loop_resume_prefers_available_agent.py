@@ -12,6 +12,7 @@ from loguru import logger
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.integration_resolution import RECOVERABLE, IntegrationResolutionVerdict
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
@@ -117,4 +118,32 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
     assert seen_states[1].last_agent_session_id is None
     assert seen_states[1].is_waiting_state is False
     assert any("Phase development: Selected agent claude" in log for log in logs)
-    assert any("skipped opencode: cooldown" in log for log in logs)
+
+
+def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
+    monkeypatch: Any,
+) -> None:
+    """A cooldown cannot prepare an ordinary agent while resolution is pending."""
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    ctx.active_display = MagicMock()
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=1)
+        },
+    ).copy_with(rebase=run_loop.RebaseState(last_action="conflict"), is_waiting_state=True)
+    monkeypatch.setattr(run_loop, "emit_activity_line", lambda *_args: None)
+    monkeypatch.setattr(run_loop, "_log_resumed_state", lambda *_args: None)
+    monkeypatch.setattr(
+        run_loop,
+        "inspect_integration_resolution",
+        lambda *_args: IntegrationResolutionVerdict(RECOVERABLE),
+    )
+
+    resumed = run_loop._resume_after_cooldown_wait(state, ctx, "development", "offline", 10)
+
+    chain = resumed.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1
+    assert resumed.is_waiting_state is False

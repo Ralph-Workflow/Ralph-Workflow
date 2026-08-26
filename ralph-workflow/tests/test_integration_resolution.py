@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ralph.git.merge import MERGE_STATE_NONE
+from ralph.git.subprocess_runner import GitRunResult
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
@@ -55,6 +56,40 @@ def test_unresolved_evidence_blocks_dispatch(
     )
 
     assert verdict.status is RECOVERABLE
+
+
+@pytest.mark.parametrize(
+    ("porcelain", "rebase_active", "merge_status", "reason"),
+    (
+        ("?? scratch.txt\n", False, MERGE_STATE_NONE, "working tree is not clean"),
+        ("", True, MERGE_STATE_NONE, "rebase is in progress"),
+        ("", False, "in_progress", "merge is in progress or merge state is unreadable"),
+    ),
+)
+def test_live_git_evidence_blocks_stale_resolved_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    porcelain: str,
+    rebase_active: bool,
+    merge_status: str,
+    reason: str,
+) -> None:
+    """Live Git evidence outranks a stale checkpoint that says resolved."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    monkeypatch.setattr(
+        "ralph.pipeline.integration_resolution.run_git",
+        lambda *_args, **_kwargs: GitRunResult((), 0, porcelain, ""),
+    )
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        rebase_active=lambda _root: rebase_active,
+        merge_status=lambda _root: merge_status,
+    )
+
+    assert verdict.status is RECOVERABLE
+    assert reason in verdict.reasons
 
 
 def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:

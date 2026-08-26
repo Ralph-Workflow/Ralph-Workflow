@@ -1261,7 +1261,9 @@ def _resume_after_cooldown_wait(
         None,
         status_text("RESUMED", "cooldown expired; retrying", "green"),
     )
-    state = _reselect_preferred_agent(state, ctx)
+    verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+    if verdict.dispatch_allowed:
+        state = _reselect_preferred_agent(state, ctx)
     state = state.copy_with(is_waiting_state=False)
     _log_resumed_state(state, ctx, phase, unavailability_reason, delay_ms)
     return state

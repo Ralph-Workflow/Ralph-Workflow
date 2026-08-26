@@ -15,12 +15,11 @@ from ralph.pipeline.conflict_resolution import driver, session
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.parallel import worker_runtime
 
-
 ORDINARY_DISPATCH_ROUTES = (
     (run_loop._run_inner_loop, "_block_unresolved_integration"),
     (run_loop._continue_after_startup_integration, "_block_unresolved_integration"),
     (run_loop._run_inner_loop_after_startup, "_block_unresolved_integration"),
-    (run_loop._resume_after_cooldown_wait, "_reselect_preferred_agent"),
+    (run_loop._resume_after_cooldown_wait, "inspect_integration_resolution"),
     (runner._run_pipeline_step, "determine_effect_from_policy"),
     (runner._integrate_inline_effect, "_integrate_on_phase_transition"),
     (effect_executor.execute_agent_effect, "assert_non_resolution_dispatch_allowed"),
