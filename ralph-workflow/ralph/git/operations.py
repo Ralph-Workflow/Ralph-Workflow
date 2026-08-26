@@ -341,7 +341,12 @@ def has_staged_changes(repo_root: Path | str) -> bool:
 
 
 def list_changed_paths(repo_root: Path | str) -> list[str]:
-    """Return unique changed paths from ``git status --porcelain`` in output order."""
+    """Return unique dirty paths from ``git status --porcelain`` in output order.
+
+    Commit-message scopes are resolved before their paths are staged, so this
+    deliberately includes both staged and unstaged changes (including
+    untracked files). ``get_staged_files`` remains the staged-only API.
+    """
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
     except (OSError, GitOperationError):
@@ -356,7 +361,7 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
 
     changed_paths: list[str] = []
     for line in status_lines:
-        if not _line_is_staged(line) or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
+        if len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
             continue
         path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
         if " -> " in path_part:

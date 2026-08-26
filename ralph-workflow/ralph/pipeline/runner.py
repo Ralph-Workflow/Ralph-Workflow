@@ -2093,6 +2093,7 @@ def execute_commit_effect(
         create_commit_fn=create_commit_fn,
         stage_all_fn=stage_all_fn,
         has_commit_work_fn=repo_has_commit_work,
+        has_residual_work_fn=repo_has_commit_work,
         **opts,
     )
 

@@ -25,6 +25,7 @@ from ralph.git.operations import (
     has_staged_changes,
     has_uncommitted_changes,
     is_repo_clean,
+    list_changed_paths,
     merge_base,
     push,
     stage_all,
@@ -844,6 +845,27 @@ def test_git_status_porcelain_lines_raises_on_nonzero_return(
             _git_status_porcelain_lines(tmp_git_repo)
     finally:
         monkeypatch.undo()
+
+
+def test_list_changed_paths_includes_unstaged_and_untracked_scope_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3: a commit artifact may scope paths before they are staged."""
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout=" M src/modified.py\nA  src/staged.py\n?? src/untracked.py\n",
+            stderr="",
+        ),
+    )
+
+    assert list_changed_paths(Path("/tmp/repo")) == [
+        "src/modified.py",
+        "src/staged.py",
+        "src/untracked.py",
+    ]
 
 
 def test_git_status_porcelain_lines_returns_lines_on_zero_return(

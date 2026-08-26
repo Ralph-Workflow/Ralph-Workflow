@@ -38,8 +38,6 @@ from __future__ import annotations
 import ast as _ast
 from pathlib import Path
 
-import pytest
-
 from ralph.testing import audit_log_sink_buffering as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -603,22 +601,7 @@ def test_audit_module_imports_clean() -> None:
     assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
 
-@pytest.mark.parametrize(
-    "forbidden_name",
-    [
-        "time.sleep",
-        "asyncio.sleep",
-        "subprocess.run",
-        "subprocess.Popen",
-        "subprocess.call",
-        "subprocess.check_output",
-        "urllib.request.urlopen",
-        "socket.create_connection",
-        "httpx.get",
-        "requests.get",
-    ],
-)
-def test_audit_module_forbids_known_io_primitives(forbidden_name: str) -> None:
+def test_audit_module_forbids_known_io_primitives() -> None:
     """The audit must not be modified to introduce any of the known
     I/O primitives. This locks the invariant that the audit is a
     pure static walker and never a runtime probe.
@@ -630,21 +613,29 @@ def test_audit_module_forbids_known_io_primitives(forbidden_name: str) -> None:
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))
 
-    parts: list[str] = forbidden_name.split(".")
-
-    def _matches(node: _ast.AST) -> bool:
+    def _dotted_name(node: _ast.AST) -> str | None:
         if isinstance(node, _ast.Name):
-            return parts == [node.id]
+            return node.id
         if isinstance(node, _ast.Attribute):
-            inner: bool = _matches(node.value)
-            if not inner:
-                return False
-            return parts[-1] == node.attr and len(parts) >= 2
-        return False
+            parent = _dotted_name(node.value)
+            return f"{parent}.{node.attr}" if parent is not None else None
+        return None
 
-    for node in _ast.walk(tree):
-        if isinstance(node, _ast.Call) and _matches(node.func):
-            raise AssertionError(
-                f"audit module contains forbidden call to {forbidden_name}"
-                f" at {audit_path.name}:{node.lineno}"
-            )
+    forbidden_names = {
+        "time.sleep",
+        "asyncio.sleep",
+        "subprocess.run",
+        "subprocess.Popen",
+        "subprocess.call",
+        "subprocess.check_output",
+        "urllib.request.urlopen",
+        "socket.create_connection",
+        "httpx.get",
+        "requests.get",
+    }
+    violations = [
+        f"{_dotted_name(node.func)} at {audit_path.name}:{node.lineno}"
+        for node in _ast.walk(tree)
+        if isinstance(node, _ast.Call) and _dotted_name(node.func) in forbidden_names
+    ]
+    assert not violations, f"audit module contains forbidden calls: {violations}"

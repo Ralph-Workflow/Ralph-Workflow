@@ -30,8 +30,11 @@ combined budget enforced by ``ralph/verify.py``).
 
 Two e2e tests live here:
 
-1. ``test_pipeline_cleanup_to_commit_end_to_end`` -- the canonical
-   proof. Pre-stages the three originally-failing tracked paths AND a
+1. ``test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end``
+   -- the canonical proof. It drives two disjoint scoped commits: the first
+   leaves the second changed scope dirty, and the pipeline must reinvoke the
+   same commit phase before it can continue downstream. It also pre-stages
+   the three originally-failing tracked paths AND a
    SEPARATE innocent symlink (PA-005 distinct paths). Submits a
    cleanup artifact deleting the three originally-failing paths but
    NOT the symlink. Asserts the pipeline reaches ``complete``,
@@ -109,6 +112,8 @@ ORIGINALLY_FAILING_PATHS: tuple[str, ...] = (
 
 INNOCENT_SYMLINK = "innocent_link"
 INNOCENT_SYMLINK_TARGET = "some_real_file.txt"
+FIRST_COMMIT_SCOPE = "src/first_scope.py"
+SECOND_COMMIT_SCOPE = "src/second_scope.py"
 
 EXPECTED_GITIGNORE_FRAGMENTS: tuple[str, ...] = (
     ".agent/",
@@ -134,7 +139,9 @@ def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict[str, ob
     path.write_text(commit_cleanup_markdown(actions), encoding="utf-8")
 
 
-def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
+def _write_commit_message_artifacts(
+    repo_root: Path, subject: str, *, files: tuple[str, ...] = ()
+) -> None:
     """Write the canonical commit-message Markdown artifact."""
     artifact_path = repo_root / ".agent" / "artifacts" / "commit_message.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -149,6 +156,11 @@ def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
                 "- [BS-1] Complete the requested repository change.",
                 "## Body Details",
                 "- [BD-1] The scoped implementation and focused verification are complete.",
+                *(
+                    ["## Files", *(f"- [F{index}] {path}" for index, path in enumerate(files, 1))]
+                    if files
+                    else []
+                ),
                 "",
             )
         ),
@@ -191,6 +203,14 @@ def engine_internal_workspace_with_symlink(tmp_git_repo: Path) -> FsWorkspace:
             ".agent/tmp/mcp-server.log",
         ),
     )
+    first_scope = tmp_git_repo / FIRST_COMMIT_SCOPE
+    second_scope = tmp_git_repo / SECOND_COMMIT_SCOPE
+    first_scope.parent.mkdir(parents=True, exist_ok=True)
+    first_scope.write_text("initial first scope\n", encoding="utf-8")
+    second_scope.write_text("initial second scope\n", encoding="utf-8")
+    _track_and_commit(tmp_git_repo, (FIRST_COMMIT_SCOPE, SECOND_COMMIT_SCOPE))
+    first_scope.write_text("updated first scope\n", encoding="utf-8")
+    second_scope.write_text("updated second scope\n", encoding="utf-8")
 
     real_file = tmp_git_repo / INNOCENT_SYMLINK_TARGET
     real_file.write_text("I am the symlink target, not a deletable tracked file\n")
@@ -229,13 +249,13 @@ def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
 
 
-def test_pipeline_cleanup_to_commit_end_to_end(
+def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     memory_workspace: MemoryWorkspace,
     engine_internal_workspace_with_symlink: FsWorkspace,
 ) -> None:
-    """End-to-end proof: cleanup -> commit transition creates a real git commit.
+    """S-3 regression: residual scoped commits reinvoke and clean the worktree.
 
     Drives ``runner.run`` end-to-end with the canonical
     ``CommitCleanupAlwaysLoopbackInvoker`` helper PLUS a real
@@ -274,6 +294,7 @@ def test_pipeline_cleanup_to_commit_end_to_end(
     invoker = CommitCleanupAlwaysLoopbackInvoker(memory_workspace)
 
     saved_states: list[object] = []
+    commit_agent_invocations: list[str] = []
 
     def fake_execute_effect(
         effect: Effect,
@@ -321,9 +342,11 @@ def test_pipeline_cleanup_to_commit_end_to_end(
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
         if effect.phase in ("development_commit", "development_final_commit"):
+            commit_agent_invocations.append(effect.phase)
             _write_commit_message_artifacts(
                 repo_root,
                 "fix(commit): harden cleanup -> commit transition end-to-end",
+                files=(FIRST_COMMIT_SCOPE,) if len(commit_agent_invocations) == 1 else (),
             )
             ctx = PhaseContext.model_construct(
                 workspace=workspace,
@@ -413,6 +436,11 @@ def test_pipeline_cleanup_to_commit_end_to_end(
         "changes via real git so the cleanup -> commit transition is "
         "observed by the reflog."
     )
+
+    assert commit_agent_invocations == ["development_commit", "development_commit"], (
+        "A residual scoped commit must reinvoke the same commit phase before downstream routing."
+    )
+    _assert_two_scoped_commits(repo_root, new_reflog_shas)
 
     new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
     for rel_path in ORIGINALLY_FAILING_PATHS:
@@ -621,6 +649,22 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
         "A symlink-delete rejection must NOT cause failed_terminal; the "
         "best-effort _apply_safe_deletes try/except absorbs it as a WARNING."
     )
+
+
+def _assert_two_scoped_commits(repo_root: Path, new_reflog_shas: set[str]) -> None:
+    """Prove the first scoped commit leaves the second scope for its successor."""
+    assert len(new_reflog_shas) >= 2, (
+        "Two disjoint commit scopes must create two new HEAD entries, not one completed commit."
+    )
+    repo = Repo(repo_root)
+    try:
+        second_commit = repo.head.commit
+        first_commit = second_commit.parents[0]
+        assert (first_commit.tree / FIRST_COMMIT_SCOPE).data_stream.read().decode() == "updated first scope\n"
+        assert (first_commit.tree / SECOND_COMMIT_SCOPE).data_stream.read().decode() == "initial second scope\n"
+        assert (second_commit.tree / SECOND_COMMIT_SCOPE).data_stream.read().decode() == "updated second scope\n"
+    finally:
+        repo.close()
 
 
 def _newest_commit_tree_paths(repo_root: Path) -> set[str]:

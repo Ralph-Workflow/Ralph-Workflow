@@ -240,7 +240,9 @@ class TestExecuteCommitEffect:
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
         message_file.write_text(
             _commit_document("fix: pipeline artifact message"), encoding="utf-8"
         )
@@ -281,6 +283,28 @@ class TestExecuteCommitEffect:
         assert has_commit_work.call_count == 2
         assert not message_file.exists()
 
+    def test_runner_reports_residual_when_scoped_commit_leaves_worktree_dirty(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """S-3: the runner seam must preserve residual-work detection."""
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        message_file.write_text(_commit_document(files=("src/first.py",)), encoding="utf-8")
+        has_commit_work = MagicMock(side_effect=[True, True])
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", has_commit_work)
+        monkeypatch.setattr(commit_executor_module, "_changed_commit_paths", lambda _root: ["src/first.py"])
+        monkeypatch.setattr(commit_executor_module, "_stage_files", MagicMock())
+
+        result = runner_module.execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            MagicMock(return_value="sha"),
+            MagicMock(),
+            tmp_path,
+        )
+
+        assert result == PipelineEvent.COMMIT_RESIDUAL
+        assert has_commit_work.call_count == 2
+
     def test_stages_only_files_declared_in_commit_artifact(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
@@ -289,7 +313,9 @@ class TestExecuteCommitEffect:
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
@@ -324,7 +350,9 @@ class TestExecuteCommitEffect:
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
@@ -356,7 +384,9 @@ class TestExecuteCommitEffect:
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
@@ -388,7 +418,9 @@ class TestExecuteCommitEffect:
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
@@ -656,7 +688,9 @@ class TestExecuteCommitEffect:
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
         message_file.write_text(
             _commit_document("fix: pipeline artifact message"), encoding="utf-8"
         )
