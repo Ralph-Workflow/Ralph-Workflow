@@ -175,7 +175,7 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
     state = PipelineState(phase="planning")
     recoverable = IntegrationResolutionVerdict(
         status=RECOVERABLE,
-        reasons=("working tree is not clean",),
+        reasons=("unmerged paths remain from an unfinished rebase or merge: a.py",),
         recovery_executor="rebase_conflict_resolution",
     )
     resolved = IntegrationResolutionVerdict(
@@ -213,3 +213,249 @@ def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
 
     assert run_loop._block_unresolved_integration(state, ctx, "analysis") == (state, "analysis", 1)
     startup.assert_not_called()
+
+
+def test_recoverable_verdict_always_enters_conflict_resolution(
+    monkeypatch: Any,
+) -> None:
+    """Any recoverable integration evidence must invoke the conflict resolver.
+
+    Regression guard for the deadlock that made ``rdev`` exit with zero agent
+    calls: the only recovery executor wired to a recoverable verdict was
+    ``_run_startup_integration``, which routes through
+    ``auto_integrate_on_phase_transition`` and defers the entire boundary when
+    the worktree is dirty. Every conflicted worktree is dirty, so the resolver
+    was never invoked for exactly the evidence it exists to clear, and the run
+    terminated instead. The resolver must be called directly, and before the
+    startup seam.
+    """
+    config = MagicMock()
+    config.general.auto_integrate_enabled = True
+    ctx = MagicMock()
+    ctx.config = config
+    ctx.workspace_scope.root = Path("/workspace")
+    state = PipelineState(phase="planning")
+    recoverable = IntegrationResolutionVerdict(
+        status=RECOVERABLE,
+        reasons=("unmerged paths remain from an unfinished rebase or merge: a.py",),
+        recovery_executor="rebase_conflict_resolution",
+    )
+    calls: list[str] = []
+    inspections = iter((recoverable, IntegrationResolutionVerdict(status=RESOLVED)))
+
+    def _resolve(_ctx: Any, _rebase: Any = None) -> bool:
+        calls.append("conflict_resolution")
+        return True
+
+    def _startup(*_args: Any) -> Any:
+        calls.append("startup_integration")
+        return state.rebase
+
+    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_a: next(inspections))
+    monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", _resolve)
+    monkeypatch.setattr(run_loop, "_run_startup_integration", _startup)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a: None)
+    monkeypatch.setattr(run_loop, "_announce_conflict_resolution_entry", lambda *_a: None)
+
+    assert run_loop._block_unresolved_integration(state, ctx, "analysis") is None
+    assert calls == ["conflict_resolution", "startup_integration"]
+
+
+def test_conflict_resolution_runs_even_when_startup_integration_defers(
+    monkeypatch: Any,
+) -> None:
+    """The resolver still runs when the startup seam reports nothing to do.
+
+    ``_run_startup_integration`` returns ``None`` on a dirty worktree. That
+    must not suppress conflict resolution.
+    """
+    config = MagicMock()
+    config.general.auto_integrate_enabled = True
+    ctx = MagicMock()
+    ctx.config = config
+    ctx.workspace_scope.root = Path("/workspace")
+    state = PipelineState(phase="planning")
+    recoverable = IntegrationResolutionVerdict(
+        status=RECOVERABLE,
+        reasons=("rebase is in progress",),
+        recovery_executor="rebase_conflict_resolution",
+    )
+    resolver = MagicMock(return_value=True)
+    inspections = iter((recoverable, IntegrationResolutionVerdict(status=RESOLVED)))
+
+    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_a: next(inspections))
+    monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", resolver)
+    monkeypatch.setattr(run_loop, "_run_startup_integration", lambda *_a: None)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a: None)
+    monkeypatch.setattr(run_loop, "_announce_conflict_resolution_entry", lambda *_a: None)
+
+    assert run_loop._block_unresolved_integration(state, ctx, "analysis") is None
+    assert resolver.call_count == 1
+    assert resolver.call_args.args[0] is ctx
+
+
+def test_conflict_resolution_executor_never_raises(monkeypatch: Any) -> None:
+    """A failing resolver degrades to False rather than aborting the loop."""
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+
+    def _boom(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError("resolver exploded")
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _boom)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target",
+        lambda *_a: "main",
+    )
+
+    assert run_loop._run_integration_conflict_resolution(ctx) is False
+
+
+def test_blocked_dispatch_announces_the_real_evidence(monkeypatch: Any) -> None:
+    """A terminating block must name the live evidence, not the empty record.
+
+    Regression guard: the terminating seam reused the crash-recovery
+    announcement, so a run blocked by live git evidence died printing
+    "crash recovery still owns the durable integration record (None)" --
+    a message that names an empty record and hides the actual cause. The
+    verdict's own reasons and executor must be reported.
+    """
+    lines: list[str] = []
+    ctx = MagicMock()
+    monkeypatch.setattr(
+        run_loop,
+        "emit_integration_warn_line",
+        lambda _display, message: lines.append(message),
+    )
+
+    run_loop._announce_blocked_dispatch(
+        ctx,
+        IntegrationResolutionVerdict(
+            status=RECOVERABLE,
+            reasons=("unmerged paths remain from an unfinished rebase or merge: a.py",),
+            recovery_executor="rebase_conflict_resolution",
+        ),
+    )
+
+    assert len(lines) == 1
+    assert "unmerged paths remain" in lines[0]
+    assert "rebase_conflict_resolution" in lines[0]
+    assert "(None)" not in lines[0]
+
+
+def test_blocked_dispatch_announcement_never_raises(monkeypatch: Any) -> None:
+    """A display that cannot take the line must not abort the run."""
+
+    def _boom(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("display gone")
+
+    monkeypatch.setattr(run_loop, "emit_integration_warn_line", _boom)
+
+    run_loop._announce_blocked_dispatch(
+        MagicMock(),
+        IntegrationResolutionVerdict(status=RECOVERABLE, reasons=(), recovery_executor=None),
+    )
+
+
+def test_direct_resolver_call_is_charged_against_the_conflict_budget(
+    monkeypatch: Any,
+) -> None:
+    """The direct resolver call must not bypass the anti-thrash budget.
+
+    ``auto_integrate_after_commit`` gates resolver spend on
+    ``resolver_allowed``. The direct call added for the dirty-worktree
+    deadlock fix must honour the same bound, or re-running on an
+    unresolvable conflict would pay for an agent invocation every time.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import (
+        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    )
+    from ralph.pipeline.rebase_state import RebaseState
+
+    built: list[str] = []
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+
+    def _build(**_kwargs: Any) -> Any:
+        built.append("built")
+        return lambda _root, _target: True
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _build)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: True)
+
+    # Fresh state: the first attempt is always allowed.
+    assert run_loop._run_integration_conflict_resolution(ctx, RebaseState()) is True
+    assert len(built) == 1
+
+    # Budget spent against the same target: suppressed, resolver never built.
+    spent = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    )
+    assert run_loop._run_integration_conflict_resolution(ctx, spent) is False
+    assert len(built) == 1
+
+
+def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> None:
+    """Omitting the state keeps the resolver reachable (no accidental gate)."""
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    monkeypatch.setattr(
+        run_loop, "build_agent_conflict_resolver", lambda **_k: (lambda _r, _t: True)
+    )
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: True)
+
+    assert run_loop._run_integration_conflict_resolution(ctx) is True
+
+
+def test_completing_a_merge_stages_and_commits_not_just_resolves(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """The resolver alone never clears MERGE_HEAD; the merge must be committed.
+
+    Regression guard: invoking the bare conflict resolver repaired the
+    working tree but left the merge uncommitted, so the re-inspection still
+    reported "merge is in progress" and the run exited having burned a full
+    agent session for nothing.
+    """
+    from ralph.git.merge import MERGE_STATE_IN_PROGRESS
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "ralph.git.merge.merge_state", lambda _root: MERGE_STATE_IN_PROGRESS
+    )
+
+    def _resolve_and_commit(_root: Path, _target: str, _resolver: Any) -> bool:
+        calls.append("resolve_and_commit")
+        return True
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_resolve._resolve_and_commit", _resolve_and_commit
+    )
+
+    assert run_loop._complete_in_progress_merge(tmp_path, "main", lambda _r, _t: True) is True
+    assert calls == ["resolve_and_commit"]
+
+
+def test_completing_a_merge_declines_when_no_merge_is_in_progress(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """With no MERGE_HEAD there is nothing for the merge path to finish."""
+    from ralph.git.merge import MERGE_STATE_NONE
+
+    def _must_not_run(*_args: Any, **_kwargs: Any) -> bool:
+        raise AssertionError("_resolve_and_commit must not run without a merge")
+
+    monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_NONE)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_resolve._resolve_and_commit", _must_not_run
+    )
+
+    assert run_loop._complete_in_progress_merge(tmp_path, "main", lambda _r, _t: True) is False

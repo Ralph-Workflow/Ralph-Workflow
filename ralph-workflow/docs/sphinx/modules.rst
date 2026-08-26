@@ -10,7 +10,11 @@ Pipeline Integration Resolution
 
 The integration-resolution invariant is the authoritative fail-closed
 pre-dispatch guard. It prevents ordinary pipeline phases from observing a
-worktree that has unresolved rebase, merge, or porcelain evidence.
+worktree that has an in-progress rebase, an in-progress merge, or unmerged
+porcelain entries. Ordinary uncommitted work is NOT such evidence: a
+development phase writes files and only commits at the commit seam, so
+treating any dirty worktree as unresolved integration would block every
+run.
 
 ralph.pipeline.integration_resolution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

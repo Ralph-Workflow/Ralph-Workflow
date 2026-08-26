@@ -25,6 +25,14 @@ if TYPE_CHECKING:
 
 RESOLUTION_DRAIN = "rebase_conflict_resolution"
 
+# ``XY<space>PATH`` -- the shortest meaningful porcelain v1 entry is a
+# two-letter status code, a separator, and at least one path character.
+_PORCELAIN_MIN_ENTRY_LEN = 4
+
+# Porcelain v1 status codes that denote an unmerged index entry whose two
+# halves are not individually ``U``.
+_BOTH_SIDES_UNMERGED_CODES = frozenset({"AA", "DD"})
+
 
 # Public aliases preserve the original concise predicate vocabulary while the
 # enum gives direct callers a typed, stable decision contract.
@@ -43,10 +51,15 @@ def inspect_integration_resolution(
 ) -> IntegrationResolutionVerdict:
     """Return the fail-closed dispatch verdict for ``root`` and ``state``.
 
-    Full porcelain is ground-truth integration evidence. Any staged, tracked,
-    or untracked change can conceal an unfinished rebase/merge result, so a
-    non-empty output blocks ordinary dispatch. Any failed inspection remains
-    unsafe.
+    Ground-truth integration evidence is an UNMERGED index entry, an
+    in-progress rebase, or an in-progress merge. Ordinary staged, modified,
+    or untracked changes are not: they are the normal working state of a
+    development phase, which writes files and only commits at the commit
+    seam. Treating any non-empty porcelain as blocking deadlocked every run
+    whose worktree held uncommitted work -- the recovery executor named by
+    the resulting verdict defers on exactly that condition -- so the
+    porcelain probe now reports only unmerged paths. Any failed inspection
+    remains unsafe.
     """
     persisted = persisted_integration_resolution_verdict(state)
     if persisted is not None:
@@ -67,8 +80,13 @@ def inspect_integration_resolution(
         readable = False
     if not readable:
         reasons.append("unable to inspect full git porcelain status")
-    elif porcelain_output.strip():
-        reasons.append("working tree is not clean")
+    else:
+        unmerged = unmerged_porcelain_paths(porcelain_output)
+        if unmerged:
+            reasons.append(
+                "unmerged paths remain from an unfinished rebase or merge: "
+                + ", ".join(unmerged)
+            )
     try:
         if rebase_active(root):
             reasons.append("rebase is in progress")
@@ -80,6 +98,25 @@ def inspect_integration_resolution(
     except Exception:
         reasons.append("unable to inspect merge state")
     return _verdict_from_persisted_reasons(reasons)
+
+
+def unmerged_porcelain_paths(porcelain_output: str) -> tuple[str, ...]:
+    """Return the unmerged (conflicted) paths in ``git status --porcelain`` output.
+
+    Porcelain v1 records an unfinished rebase or merge as an unmerged index
+    entry: either half of the two-letter status code is ``U``, or the code is
+    ``AA`` (both added) or ``DD`` (both deleted). Every other code -- ``M``,
+    ``A``, ``D``, ``R``, ``C``, ``??`` -- describes ordinary uncommitted work
+    and carries no integration evidence.
+    """
+    unmerged: list[str] = []
+    for raw_line in porcelain_output.splitlines():
+        if len(raw_line) < _PORCELAIN_MIN_ENTRY_LEN:
+            continue
+        code = raw_line[:2]
+        if code[0] == "U" or code[1] == "U" or code in _BOTH_SIDES_UNMERGED_CODES:
+            unmerged.append(raw_line[3:].strip() or raw_line.strip())
+    return tuple(unmerged)
 
 
 def persisted_integration_resolution_verdict(

@@ -76,7 +76,9 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
+    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
@@ -1273,6 +1275,132 @@ def _resume_after_cooldown_wait(
     return state
 
 
+def _announce_conflict_resolution_entry(
+    ctx: _LoopContext,
+    verdict: IntegrationResolutionVerdict,
+) -> None:
+    """Tell the operator that blocking evidence is entering conflict resolution."""
+    detail = "; ".join(reason for reason in verdict.reasons if isinstance(reason, str))
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            "unresolved integration detected; entering conflict resolution"
+            f" ({detail or verdict.status})",
+        )
+
+
+def _run_integration_conflict_resolution(
+    ctx: _LoopContext,
+    rebase: RebaseState | None = None,
+) -> bool:
+    """Invoke the out-of-graph conflict resolver against live blocking evidence.
+
+    ``_run_startup_integration`` cannot serve as the recovery executor for
+    conflict evidence. It routes through
+    :func:`~ralph.pipeline.auto_integrate.auto_integrate_on_phase_transition`,
+    which defers the whole boundary when the worktree is dirty -- and a
+    worktree holding an unfinished rebase or merge is ALWAYS dirty. Handing
+    that seam the resolver therefore guaranteed the resolver was never
+    called for exactly the evidence it exists to clear, and the run exited
+    instead. Call the resolver directly so unresolved integration always
+    reaches conflict resolution.
+
+    The call is still charged against the SAME anti-thrash budget the
+    post-commit seam uses
+    (:func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`),
+    so re-running on an unresolvable conflict escalates instead of paying
+    for an agent every time. A fresh state always allows the first attempt.
+    Suppression is announced, never silent. Never raises.
+    """
+    from ralph.pipeline.auto_integrate import resolve_integration_target
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
+    try:
+        target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
+    except Exception as target_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution: unable to resolve target: {}", target_exc)
+        return False
+    if not target:
+        return False
+    if rebase is not None and not resolver_allowed(rebase, target):
+        logger.warning(
+            "integration resolution: resolver budget spent for target '{}'; escalating",
+            target,
+        )
+        with suppress(Exception):
+            emit_integration_warn_line(
+                ctx.active_display,
+                "conflict resolution budget spent for this unchanged conflict;"
+                " escalating instead of re-invoking the resolver",
+            )
+        return False
+    try:
+        resolver = build_agent_conflict_resolver(
+            policy_bundle=ctx.policy_bundle,
+            registry=ctx.registry,
+            display=ctx.active_display,
+            config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            workspace_scope=ctx.workspace_scope,
+            display_context=ctx.display_context,
+        )
+    except Exception as build_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution executor failed: {}", build_exc)
+        return False
+    return _complete_in_progress_merge(ctx.workspace_scope.root, target, resolver)
+
+
+def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResolver) -> bool:
+    """Resolve AND finish an in-progress merge, not just run the agent.
+
+    ``build_agent_conflict_resolver`` only repairs the working tree; it
+    never stages, never commits, and never continues a rebase --
+    ``conflict_resolution.driver`` explicitly leaves that to its caller.
+    Invoking the bare resolver therefore burned a full agent session and
+    left ``MERGE_HEAD`` in place, so the re-inspection still blocked and
+    the run exited anyway. Reuse the canonical resolve-stage-verify-commit
+    routine that the post-commit seam uses, so a resolved merge actually
+    clears the blocking evidence. Never raises.
+    """
+    from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
+    from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit
+
+    try:
+        if merge_state(root) != MERGE_STATE_IN_PROGRESS:
+            # No merge to finish. An in-progress rebase is reconciled by
+            # the crash-recovery preamble, which owns the rebase stops.
+            return False
+        return bool(_resolve_and_commit(root, target, resolver))
+    except Exception as resolve_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution executor failed: {}", resolve_exc)
+        return False
+
+
+def _announce_blocked_dispatch(
+    ctx: _LoopContext,
+    verdict: IntegrationResolutionVerdict,
+) -> None:
+    """Report the ACTUAL evidence that is terminating this run.
+
+    The terminating seam used to reuse
+    :func:`_announce_deferred_startup_integration`, which names the
+    crash-recovery record regardless of what actually blocked. For a
+    verdict built from live git evidence that record is empty, so the run
+    died announcing "crash recovery still owns the durable integration
+    record (None)" while the real cause was an unmerged path or an
+    in-progress rebase. Print the verdict's own reasons and the executor
+    that was asked to clear them. Never raises.
+    """
+    detail = "; ".join(reason for reason in verdict.reasons if isinstance(reason, str))
+    executor = verdict.recovery_executor or "no recovery executor"
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            f"dispatch blocked ({verdict.status}): {detail or 'no reason recorded'}"
+            f" -- {executor} could not clear it",
+        )
+
+
 def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1292,10 +1420,17 @@ def _block_unresolved_integration(
         return None
     _save_recovered_rebase_checkpoint(state, ctx)
     if verdict.status is EXHAUSTED:
+        _announce_blocked_dispatch(ctx, verdict)
         _announce_deferred_startup_integration(ctx, state.rebase)
         return state, prev_phase, 1
 
     if verdict.status is RECOVERABLE:
+        # Conflict resolution is unconditional for recoverable evidence. The
+        # resolver runs FIRST and directly, because the startup-integration
+        # seam below defers on a dirty worktree and every conflicted worktree
+        # is dirty.
+        _announce_conflict_resolution_entry(ctx, verdict)
+        _run_integration_conflict_resolution(ctx, state.rebase)
         recovered = _run_startup_integration(ctx, state.rebase)
         if recovered is not None:
             state = state.copy_with(rebase=recovered)
@@ -1303,11 +1438,15 @@ def _block_unresolved_integration(
         post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
         if post_recovery.dispatch_allowed:
             return None
+        verdict = post_recovery
 
     # This is reachable only when the resolution executor has exhausted its
     # own bounded chain/round recovery and the repository remains blocked.
     # Persisting the state makes resume fail closed rather than converting a
     # failed resolver attempt into permission to enter planning/development.
+    # Announce the live evidence first: it, not the recovery record, is what
+    # an operator needs in order to clear the block by hand.
+    _announce_blocked_dispatch(ctx, verdict)
     _announce_deferred_startup_integration(ctx, state.rebase)
     return state, prev_phase, 1
 
@@ -1323,9 +1462,15 @@ def _run_inner_loop(
         legacy_block = legacy_rebase_startup_block(workspace_root_raw)
         if legacy_block is not None:
             state = state.copy_with(rebase=legacy_block)
-    blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
-    if blocked_startup is not None:
-        return blocked_startup
+    # Crash recovery and startup integration run BEFORE the dispatch block
+    # is evaluated. The previous order asked _block_unresolved_integration
+    # first, so a checkpoint carrying a persisted conflict record blocked
+    # the run before `recover_incomplete_integration` -- the ONE routine
+    # that reconciles such a record -- ever got to run. Both integrate
+    # seams then short-circuit on that same record, so the checkpoint could
+    # never be cleared and every later run exited with zero agent calls.
+    # Neither seam below dispatches an ordinary phase; the fail-closed
+    # check still guards dispatch, from _continue_after_startup_integration.
     state = _apply_startup_rebase_outcomes(state, ctx)
     return _continue_after_startup_integration(state, ctx, prev_phase)
 

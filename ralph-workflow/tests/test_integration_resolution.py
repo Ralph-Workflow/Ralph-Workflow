@@ -25,10 +25,23 @@ from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
 
-@pytest.mark.parametrize("porcelain", (" M src/a.py\n", "M  src/a.py\n", "?? scratch.txt\n"))
-def test_dirty_worktree_blocks_non_resolution_dispatch(
+@pytest.mark.parametrize(
+    "porcelain",
+    (
+        "UU src/a.py\n",
+        "AA src/a.py\n",
+        "DD src/a.py\n",
+        "AU src/a.py\n",
+        "UD src/a.py\n",
+        "DU src/a.py\n",
+        "UA src/a.py\n",
+        " M other.py\nUU src/a.py\n?? scratch.txt\n",
+    ),
+)
+def test_unmerged_paths_block_non_resolution_dispatch(
     tmp_path: Path, porcelain: str
 ) -> None:
+    """Every unmerged porcelain code is blocking integration evidence."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -39,8 +52,83 @@ def test_dirty_worktree_blocks_non_resolution_dispatch(
 
     assert verdict.status is RECOVERABLE
     assert verdict.recovery_executor == "rebase_conflict_resolution"
-    with pytest.raises(RuntimeError, match="working tree is not clean"):
+    with pytest.raises(RuntimeError, match="unmerged paths remain"):
         assert_non_resolution_dispatch_allowed("development_commit", verdict)
+
+
+@pytest.mark.parametrize(
+    "porcelain",
+    (
+        " M src/a.py\n",
+        "M  src/a.py\n",
+        "?? scratch.txt\n",
+        "A  src/new.py\n",
+        "D  src/gone.py\n",
+        "R  src/a.py -> src/b.py\n",
+        "C  src/a.py -> src/b.py\n",
+        " M src/a.py\nM  src/b.py\n?? scratch.txt\nA  src/c.py\n",
+    ),
+)
+def test_ordinary_uncommitted_work_never_blocks_dispatch(
+    tmp_path: Path, porcelain: str
+) -> None:
+    """Uncommitted work is the normal development state, not integration evidence.
+
+    Regression guard: classifying any non-empty porcelain as unresolved
+    integration deadlocked every run in a dirty worktree. The verdict named
+    a recovery executor that itself defers on a dirty worktree, so the block
+    could never clear and the pipeline exited with zero agent calls.
+    """
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        porcelain=lambda _: (True, porcelain),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+
+    assert verdict.status is RESOLVED
+    assert verdict.dispatch_allowed
+    assert verdict.reasons == ()
+    assert_non_resolution_dispatch_allowed("development", verdict)
+
+
+@pytest.mark.parametrize(
+    ("rebase_active", "merge_status", "expected_reason"),
+    (
+        (True, MERGE_STATE_NONE, "rebase is in progress"),
+        (False, "in_progress", "merge is in progress"),
+    ),
+)
+def test_in_progress_integration_blocks_even_with_clean_porcelain(
+    tmp_path: Path, rebase_active: bool, merge_status: str, expected_reason: str
+) -> None:
+    """An in-progress rebase or merge blocks regardless of porcelain output."""
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        porcelain=lambda _: (True, " M src/a.py\n"),
+        rebase_active=lambda _: rebase_active,
+        merge_status=lambda _: merge_status,
+    )
+
+    assert verdict.status is RECOVERABLE
+    assert verdict.recovery_executor == "rebase_conflict_resolution"
+    assert any(expected_reason in reason for reason in verdict.reasons)
+
+
+def test_unreadable_porcelain_still_fails_closed(tmp_path: Path) -> None:
+    """An inspection that cannot run remains unsafe."""
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        porcelain=lambda _: (False, ""),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+
+    assert verdict.status is RECOVERABLE
+    assert not verdict.dispatch_allowed
 
 
 def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_path: Path) -> None:
@@ -77,7 +165,7 @@ def test_final_fence_checks_live_verdict_without_pipeline_state(
 
     def _blocked(_root: Path, rebase: RebaseState) -> IntegrationResolutionVerdict:
         observed_states.append(rebase)
-        return IntegrationResolutionVerdict(RECOVERABLE, ("working tree is not clean",), "rebase_conflict_resolution")
+        return IntegrationResolutionVerdict(RECOVERABLE, ("unmerged paths remain from an unfinished rebase or merge: a.py",), "rebase_conflict_resolution")
 
     monkeypatch.setattr(effect_executor, "inspect_integration_resolution", _blocked)
 
@@ -98,7 +186,7 @@ def test_runner_dispatch_funnel_ignores_auto_integration_toggle(
 ) -> None:
     """The earlier runner funnel cannot bypass the invariant when disabled."""
     blocked = IntegrationResolutionVerdict(
-        RECOVERABLE, ("working tree is not clean",), "rebase_conflict_resolution"
+        RECOVERABLE, ("unmerged paths remain from an unfinished rebase or merge: a.py",), "rebase_conflict_resolution"
     )
     monkeypatch.setattr(runner, "inspect_integration_resolution", lambda *_args: blocked)
     config = MagicMock()
@@ -162,7 +250,12 @@ def test_unresolved_evidence_blocks_dispatch(
 @pytest.mark.parametrize(
     ("porcelain", "rebase_active", "merge_status", "reason"),
     (
-        ("?? scratch.txt\n", False, MERGE_STATE_NONE, "working tree is not clean"),
+        (
+            "UU src/a.py\n",
+            False,
+            MERGE_STATE_NONE,
+            "unmerged paths remain from an unfinished rebase or merge: src/a.py",
+        ),
         ("", True, MERGE_STATE_NONE, "rebase is in progress"),
         ("", False, "in_progress", "merge is in progress or merge state is unreadable"),
     ),

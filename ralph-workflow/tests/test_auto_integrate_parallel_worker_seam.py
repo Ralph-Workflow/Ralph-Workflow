@@ -580,7 +580,7 @@ def test_worker_boundary_live_verdict_blocks_success_exit(
             IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED),
             IntegrationResolutionVerdict(
                 IntegrationResolutionStatus.RECOVERABLE,
-                ("working tree is not clean",),
+                ("unmerged paths remain from an unfinished rebase or merge: a.py",),
                 "rebase_conflict_resolution",
             ),
         ]
