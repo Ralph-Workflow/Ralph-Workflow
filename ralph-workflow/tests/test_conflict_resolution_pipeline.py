@@ -17,8 +17,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.display.parallel_display import phase_style_for_phase
+from ralph.git.merge import MERGE_STATE_NONE
+from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -35,11 +40,14 @@ from ralph.pipeline.conflict_resolution.status import (
     PHASE_LABEL,
     push_conflict_status_bar,
 )
+from ralph.pipeline.integration_resolution import (
+    EXHAUSTED,
+    assert_non_resolution_dispatch_allowed,
+    inspect_integration_resolution,
+)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["src/alpha.py", "docs/beta.md"]
@@ -206,8 +214,30 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
             raise RuntimeError("agent exploded")
         return True
 
-    assert _run(tmp_path, invoke=_invoke) is True
+    session = ResolutionSession()
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is True
+    )
     assert calls == ["primary", "fallback"]
+    # The resolution drain uses the normal immutable chain model, not a
+    # separate "failed means phase complete" cursor.  The failed primary
+    # has advanced the same AgentChainState ordinary phases use.
+    recovery_state = session.recovery_state
+    assert recovery_state is not None
+    chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
 
 
 def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
@@ -243,6 +273,50 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert outcome.reason is ResolutionTerminationReason.CANDIDATE_DECLINED
     assert session.exhaustion_reason is not None
     assert calls == ["primary", "fallback"]
+    recovery_state = session.recovery_state
+    assert recovery_state is not None
+    chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
+
+
+def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Resolver exhaustion has no ordinary-phase successor."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
+    )
+    session = ResolutionSession(max_rounds_per_stop=1)
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda _agent, _prompt, _round: False,
+        session=session,
+    )
+
+    assert outcome.succeeded is False
+    assert session.exhaustion_reason is not None
+    persisted = record_resolution_exhausted(
+        reason=session.exhaustion_reason,
+        target="main",
+    )
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        persisted,
+        porcelain=lambda _root: (True, ""),
+        rebase_active=lambda _root: False,
+        merge_status=lambda _root: MERGE_STATE_NONE,
+    )
+    assert verdict.status is EXHAUSTED
+    with pytest.raises(RuntimeError, match="cannot dispatch 'planning'"):
+        assert_non_resolution_dispatch_allowed("planning", verdict)
 
 
 def test_invoker_exception_is_contained_and_returns_false(
