@@ -1309,6 +1309,36 @@ class RecoveryController:
 
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
+        # Enforce the cap HERE, at the single funnel where a phase gives up and
+        # the cycle counter advances, not only on the AGENT path in ``handle``.
+        # The technical categories (ENVIRONMENTAL / ARTIFACT_VALIDATION /
+        # AMBIGUOUS) return to their caller before reaching that check, so the
+        # count they increment was never read. ``_enter_phase_failed`` routes to
+        # ``failed_route``, whose recovery hop re-enters ``previous_phase`` and
+        # resets the chain's retry counter, so nothing else bounded them: the
+        # pipeline ping-ponged between the two forever. A ``TypeError`` in the
+        # commit effect did exactly that -- an unclassifiable failure roughly
+        # ten times a second, unbounded. ``CycleCap`` documents itself as the
+        # guard against "a persistently-failing handler looping silently
+        # forever", and this is the funnel where it has to fire to mean it.
+        #
+        # The phase still advances to ``failed_route`` first: the exit effect
+        # reports why the run is stopping, and the state must describe where it
+        # stopped. This mirrors the AGENT-path check, which likewise runs after
+        # the phase has been failed.
+        if self._cap.is_exceeded(failed_state.recovery_cycle_count):
+            exit_reason = self._cap.exit_reason(
+                failed_state.recovery_cycle_count,
+                str(failure.category),
+                failure.reason[:200],
+            )
+            logger.error("Recovery cycle cap exceeded: {}", exit_reason)
+            # Cycle exceeded: no retry delay
+            return (
+                failed_state.copy_with(last_retry_delay_ms=0),
+                [_build_exit_failure_effect(reason=exit_reason)],
+                failure_evt,
+            )
         return failed_state, [], failure_evt
 
     def earliest_available_wait_ms(self, phase: str, agents: list[str]) -> int:
