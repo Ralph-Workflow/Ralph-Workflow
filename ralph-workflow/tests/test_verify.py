@@ -292,6 +292,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="kwargs forwarding audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_opts_key_drift"),
+            returncode=0,
+            stdout="opts key drift audit ok\n",
+        ),
         (
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
@@ -377,6 +383,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
         ("make", ("test-multimodal-smoke",)),
         ("make", ("test-visual-smoke",)),
     ]
@@ -415,6 +422,7 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[34][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     # ``make test-multimodal-smoke`` is the second-to-last step, which is how
     # ``_BUDGET_TRACKED_STEPS`` addresses it (``len(_VERIFY_STEPS) - 2``).
     # Indexing from the end keeps this assertion pinned to that step when a

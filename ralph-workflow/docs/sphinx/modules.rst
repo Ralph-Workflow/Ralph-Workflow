@@ -4146,6 +4146,13 @@ ralph.testing.audit_kwargs_forwarding
    :members:
    :show-inheritance:
 
+ralph.testing.audit_opts_key_drift
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_opts_key_drift
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_fenced_artifact_examples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

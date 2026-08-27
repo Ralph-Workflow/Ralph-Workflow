@@ -514,6 +514,22 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # The complement to the forwarding audit: rejects a keyword passed to
+        # a ``**opts`` callee that never reads that name, which is discarded
+        # in silence rather than raising. That is how the fan-out lost its
+        # monitor-stop callback and left the connectivity probe running
+        # through an interrupt. Stays silent whenever the callee reads its
+        # catch-all opaquely, so it only speaks when the key is provably
+        # unreachable. AST + Path.read_text only -- nothing is imported or
+        # executed. Inserted BEFORE the two trailing smoke steps so
+        # ``_BUDGET_TRACKED_STEPS`` keeps resolving to them; NOT
+        # budget-tracked.
+        "opts key drift audit (audit_opts_key_drift)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_opts_key_drift"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # Criterion 5 multimodal proof: drive the deterministic multimodal
         # stub agent across all six harness identities (claude /
         # claude-headless / agy / nanocoder / cursor / opencode) and
