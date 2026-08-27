@@ -31,6 +31,7 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+    from ralph.display.context import DisplayContext
     from ralph.policy.models import (
         PolicyBundle,
     )
@@ -73,6 +74,20 @@ def _registry_factory(return_value: object) -> object:
             return instance
 
     return Registry
+
+
+def _deps_display_context() -> DisplayContext:
+    """A real display context, so ``PipelineDeps`` can be built as itself.
+
+    ``PipelineDeps`` requires one when no ``core`` is supplied. Building
+    the genuine object beats standing in a duck-typed namespace: the
+    seam under test is exactly the one that broke on an argument shape,
+    so the test must pass the real shape.
+    """
+    return make_display_context(
+        console=Console(record=True, force_terminal=False, width=120, color_system=None),
+        force_width=120,
+    )
 
 
 def _install_runner_display_context(
@@ -337,7 +352,7 @@ class TestExecuteCommitEffect:
 
         result = runner_module._execute_commit_effect_from_deps(
             CommitEffect(message_file=str(message_file)),
-            PipelineDeps(display_context=make_display_context(console=Console())),
+            PipelineDeps(display_context=_deps_display_context()),
             WorkspaceScope(tmp_path),
             None,
             Verbosity.VERBOSE,
