@@ -19,6 +19,7 @@ from ralph.pipeline import (
     auto_integrate_ff,
     runner,
 )
+from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
@@ -158,17 +159,19 @@ def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> No
         return True
 
     state = RebaseState(last_push_status="non_fast_forward")
-    monkeypatch.setattr(auto_integrate, "pull_and_reconcile_target", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(auto_integrate, "branch_sha", lambda *_args: "head")
-    monkeypatch.setattr(auto_integrate, "get_head_sha", lambda *_args: "head")
+    # The boundary gates live in ``_auto_integrate_boundary``; patch the
+    # module that actually resolves these names.
+    monkeypatch.setattr(boundary, "pull_and_reconcile_target", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(boundary, "branch_sha", lambda *_args: "head")
+    monkeypatch.setattr(boundary, "get_head_sha", lambda *_args: "head")
     received: list[object | None] = []
     monkeypatch.setattr(
-        auto_integrate,
+        boundary,
         "retry_pending_remote_publish",
         lambda *_args, **kwargs: received.append(kwargs.get("rebase_stop_resolver")) or None,
     )
 
-    auto_integrate._boundary_freshness_outcome(
+    boundary.boundary_freshness_outcome(
         config, Path("/workspace"), "main", state, rebase_stop_resolver=resolver
     )
 
@@ -344,12 +347,21 @@ def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_pa
     assert delays[0] < long_wait[0], "jitter must actually vary the delay"
 
 
-def test_direct_auto_integrate_entry_points_return_unresolved_state_without_work(monkeypatch) -> None:
-    """S-3 regression: either unresolved form stops both public integration seams first.
+def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatch) -> None:
+    """S-3 regression: neither public seam may LOSE durable recovery evidence.
 
-    The test replaces the first work-bearing helpers with failures. A guard that
-    runs after context resolution, freshness, or integration would therefore
-    fail instead of returning the exact durable recovery evidence unchanged.
+    The original form of this test asserted the seams must not integrate
+    at all while unresolved. That is the deadlock: the integration seam
+    is the recovery path, so refusing to run it left the only operation
+    able to clear ``integration_unresolved`` blocked by
+    ``integration_unresolved``, and
+    ``assert_non_resolution_dispatch_allowed`` then rejected every
+    ordinary phase for the rest of the run -- against a repository that
+    may already be clean.
+
+    The invariant S-3 actually needs is the one asserted here: a seam
+    that does not LAND cannot launder the evidence away. The seam runs;
+    a skip comes back still blocking, with its durable reason intact.
     """
     config = _default_config()
     workspace_scope = MagicMock()
@@ -357,21 +369,54 @@ def test_direct_auto_integrate_entry_points_return_unresolved_state_without_work
         RebaseState(last_action="conflict", last_reason="resolver exhausted"),
         RebaseState(last_action="skipped", recovery_record_retained=True),
     ):
+        skipped = RebaseState(last_action="skipped", last_reason="no commits beyond target")
         monkeypatch.setattr(
             auto_integrate,
             "_auto_integrate_after_commit_inner",
-            MagicMock(side_effect=AssertionError("must not integrate")),
-        )
-        monkeypatch.setattr(
-            auto_integrate,
-            "resolve_integration_target",
-            MagicMock(side_effect=AssertionError("must not refresh")),
+            MagicMock(return_value=skipped),
         )
 
-        assert (
-            auto_integrate.auto_integrate_after_commit(config, workspace_scope, unresolved) is unresolved
+        after_commit = auto_integrate.auto_integrate_after_commit(
+            config, workspace_scope, unresolved
         )
-        assert (
-            auto_integrate.auto_integrate_on_phase_transition(config, workspace_scope, unresolved)
-            is unresolved
+        assert after_commit is not None
+        assert after_commit.integration_unresolved is True
+        # The seam ran and reports honestly what IT did; the block is
+        # carried on its own field rather than by rewriting the action.
+        assert after_commit.last_action == "skipped"
+
+        on_transition = auto_integrate.auto_integrate_on_phase_transition(
+            config, workspace_scope, unresolved
         )
+        assert on_transition is not None
+        assert on_transition.integration_unresolved is True
+
+
+def test_a_landing_releases_the_unresolved_integration_block(monkeypatch) -> None:
+    """Only a real landing clears the block -- and it must actually clear it.
+
+    ``resolution_exhausted`` was set in one place and cleared in none, so
+    a single exhausted resolver chain made every later run and every
+    ``--resume`` exit against a clean tree, permanently, recoverable only
+    by hand-editing ``.agent/checkpoint.json``.
+    """
+    config = _default_config()
+    workspace_scope = MagicMock()
+    exhausted = RebaseState(
+        last_action="conflict",
+        resolution_exhausted=True,
+        resolution_exhaustion_reason="chain exhausted",
+    )
+    landed = RebaseState(last_action="fast_forwarded", fast_forwarded=True)
+    monkeypatch.setattr(
+        auto_integrate,
+        "_auto_integrate_after_commit_inner",
+        MagicMock(return_value=landed),
+    )
+
+    outcome = auto_integrate.auto_integrate_after_commit(config, workspace_scope, exhausted)
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    assert outcome.integration_unresolved is False
+    assert outcome.resolution_exhausted is False

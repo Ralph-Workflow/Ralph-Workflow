@@ -150,6 +150,16 @@ class RebaseState(RalphBaseModel):
     resolution_exhausted: bool = False
     resolution_exhaustion_reason: str | None = None
 
+    # An earlier seam recorded an unresolved integration and a LATER seam
+    # neither landed nor re-recorded one -- a skip, which changes nothing
+    # about the repository and so cannot resolve anything either. Carrying
+    # the block on its own field keeps ``last_action`` honest about what
+    # the latest seam actually did, which the operator log and the
+    # integration tests both read. Defaulted, so older checkpoints load
+    # unchanged. Cleared by a landing; see
+    # ``ralph.pipeline.auto_integrate_resolution_state``.
+    unresolved_integration_carried: bool = False
+
     # Legacy rebase checkpoint identity. These fields let both startup paths
     # retain actionable evidence without re-parsing or replacing it.
     legacy_checkpoint_blocked: bool = False
@@ -172,4 +182,5 @@ class RebaseState(RalphBaseModel):
             self.last_action == "conflict"
             or self.recovery_record_retained
             or self.legacy_checkpoint_blocked
+            or self.unresolved_integration_carried
         )

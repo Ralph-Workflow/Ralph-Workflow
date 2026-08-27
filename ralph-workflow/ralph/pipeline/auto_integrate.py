@@ -10,14 +10,13 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.merge import branch_sha, is_ancestor
+from ralph.git.merge import branch_sha
 from ralph.git.operations import GitOperationError, get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
-from ralph.pipeline._auto_integrate_config import missing_target_reason as _missing_target_reason
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref as _create_rebase_backup_ref,
@@ -25,7 +24,9 @@ from ralph.pipeline.auto_integrate_backup_refs import (
 from ralph.pipeline.auto_integrate_backup_refs import (
     delete_rebase_backup_ref as _delete_rebase_backup_ref,
 )
-from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
+from ralph.pipeline.auto_integrate_boundary import (
+    phase_boundary_outcome as _phase_boundary_outcome,
+)
 from ralph.pipeline.auto_integrate_budget_seam import (
     carry_budget_through_skip,
     charge_failed_attempt,
@@ -41,13 +42,11 @@ from ralph.pipeline.auto_integrate_context import (
 )
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
-    record_when_stale,
 )
 from ralph.pipeline.auto_integrate_ff import fast_forward_target as _fast_forward_target
 from ralph.pipeline.auto_integrate_ff import (
     is_retryable_fast_forward_failure,
     maybe_push_target,
-    retry_pending_remote_publish,
 )
 from ralph.pipeline.auto_integrate_outcome import (
     ACTION_MERGED as _ACTION_MERGED,
@@ -81,20 +80,16 @@ from ralph.pipeline.auto_integrate_refresh import (
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_NO_REMOTE,
-    REMOTE_PUSH_REJECTED,
     pull_and_reconcile_target,
     reconcile_after_rejected_push,
     remote_sync_enabled,
 )
-from ralph.pipeline.auto_integrate_resolution_state import retains_unresolved_resolution_state
-from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
+from ralph.pipeline.auto_integrate_resolution_state import (
+    preserve_unresolved_resolution_state,
+)
 from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
 )
-from ralph.pipeline.auto_integrate_worktree_state import (
-    _worktree_is_clean,
-)
-from ralph.pipeline.integration_resolution import persisted_integration_resolution_verdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -119,18 +114,24 @@ def auto_integrate_after_commit(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Integrate after a commit, recording skips and surfacing terminal-state violations."""
-    if persisted_integration_resolution_verdict(state) is not None:
-        return state
+    # An unresolved integration must not SKIP this seam: this seam is the
+    # recovery path, and returning `state` here left the only operation
+    # able to clear the verdict blocked by the verdict. The evidence is
+    # protected on the way OUT instead -- see
+    # ``preserve_unresolved_resolution_state``.
     try:
-        return _auto_integrate_after_commit_inner(
-            config,
-            workspace_scope,
-            state,
-            conflict_resolver,
-            rebase_stop_resolver=rebase_stop_resolver,
-            display=display,
-            sleep=sleep,
-            jitter=jitter,
+        return preserve_unresolved_resolution_state(
+            _auto_integrate_after_commit_inner(
+                config,
+                workspace_scope,
+                state,
+                conflict_resolver,
+                rebase_stop_resolver=rebase_stop_resolver,
+                display=display,
+                sleep=sleep,
+                jitter=jitter,
+            ),
+            prior=state,
         )
     except TerminalStateViolationError:
         raise
@@ -153,8 +154,36 @@ def auto_integrate_on_phase_transition(
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
-    if retains_unresolved_resolution_state(state):
-        return state
+    # Same rule as the commit seam: an unresolved integration must not
+    # skip the seam that would resolve it. Run, then protect the evidence
+    # on the way out.
+    return preserve_unresolved_resolution_state(
+        _auto_integrate_on_phase_transition_inner(
+            config,
+            workspace_scope,
+            state,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
+            sleep=sleep,
+            jitter=jitter,
+        ),
+        prior=state,
+    )
+
+
+def _auto_integrate_on_phase_transition_inner(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: RebaseState,
+    *,
+    conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    jitter: Callable[[], float] = random.random,
+) -> RebaseState | None:
+    """Body of :func:`auto_integrate_on_phase_transition`; see it for the contract."""
     try:
         root = Path(workspace_scope.root)
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
@@ -192,98 +221,6 @@ def auto_integrate_on_phase_transition(
         sleep=sleep,
         jitter=jitter,
     )
-
-
-def _phase_boundary_outcome(
-    config: UnifiedConfig,
-    root: Path,
-    target: str | None,
-    state: RebaseState,
-    *,
-    rebase_stop_resolver: RebaseStopResolver | None,
-) -> tuple[bool, RebaseState | None]:
-    """Return whether the target, cleanliness, or freshness gate ends this boundary."""
-    if target is None:
-        return True, _record_skip(reason=_missing_target_reason(config), target=_configured_target(config))
-    if not _worktree_is_clean(root):
-        return True, _defer_dirty_boundary(config, root, target)
-    outcome = _boundary_freshness_outcome(
-        config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
-    )
-    return outcome is not None, outcome
-
-
-def _boundary_freshness_outcome(
-    config: UnifiedConfig,
-    root: Path,
-    target: str,
-    state: RebaseState,
-    *,
-    rebase_stop_resolver: RebaseStopResolver | None,
-) -> RebaseState | None:
-    """Return a freshness-gated no-commit boundary result, if the seam is done."""
-    remote_record = pull_and_reconcile_target(
-        config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=state
-    )
-    if remote_record is not None and not remote_record.freshness_safe:
-        return remote_record
-    refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
-    if branch_sha(root, target) != get_head_sha(root):
-        return None
-    pending = retry_pending_remote_publish(config, root, target, state, rebase_stop_resolver=rebase_stop_resolver)
-    if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
-        if pending is not None:
-            return pending
-        if remote_record is not None:
-            return remote_record.model_copy(
-                update={
-                    "last_reason": "no commits beyond target",
-                    "last_action": "skipped",
-                }
-            )
-        return record_when_stale(_record_skip(reason="no commits beyond target", target=target), refresh)
-    return None
-
-
-def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
-    """Return whether the target carries commits HEAD does not have."""
-    if target_sha is None:
-        return False
-    return not is_ancestor(root, target_sha, get_head_sha(root))
-
-
-def _defer_dirty_boundary(config: UnifiedConfig, root: Path, target: str) -> RebaseState | None:
-    """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
-    refresh = REFRESH_SUPPRESSED
-    if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
-        refresh = _refresh_target(config, root, target)
-        BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
-    target_sha = branch_sha(root, target)
-    diverged = _target_is_ahead(root, target_sha)
-    if (
-        diverged
-        and refresh == REFRESH_SUPPRESSED
-        and BOUNDARY_REFRESH_THROTTLE.should_force_refresh(root, target)
-    ):
-        refresh = _refresh_target(config, root, target)
-        BOUNDARY_REFRESH_THROTTLE.record_forced_outcome(root, target, refresh)
-        target_sha = branch_sha(root, target)
-        diverged = _target_is_ahead(root, target_sha)
-    if diverged:
-        skip = _record_skip(
-            reason=(
-                "worktree not clean; uncommitted tracked changes deferred catch-up integration"
-            ),
-            target=target,
-        )
-        return record_refresh(skip, refresh)
-    # R2/AC8: ladder rung 3 -- this routine clean-target deferral has no
-    # pending integration to report; a later clean seam re-evaluates live refs.
-    logger.info(
-        "auto_integrate: phase-transition integration deferred; worktree dirty (target '{}')",
-        target,
-    )
-    return None
 
 
 #: Maximum end-to-end integration attempts per commit. Attempt N+1 runs

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline import auto_integrate
+from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline import auto_integrate_recovery as recovery
 from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -208,13 +209,13 @@ def _dirty_boundary_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     the deferral must RECORD rather than swallow.
     """
     (tmp_path / ".git").mkdir()
-    monkeypatch.setattr(auto_integrate, "_worktree_is_clean", lambda root: False)
+    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda root: False)
     monkeypatch.setattr(auto_integrate, "resolve_integration_target", lambda config, root: "main")
-    monkeypatch.setattr(auto_integrate, "branch_sha", lambda root, ref: _TARGET_SHA)
-    monkeypatch.setattr(auto_integrate, "get_head_sha", lambda root: _HEAD_SHA)
-    monkeypatch.setattr(auto_integrate, "is_ancestor", lambda root, ancestor, descendant: False)
+    monkeypatch.setattr(boundary, "branch_sha", lambda root, ref: _TARGET_SHA)
+    monkeypatch.setattr(boundary, "get_head_sha", lambda root: _HEAD_SHA)
+    monkeypatch.setattr(boundary, "is_ancestor", lambda root, ancestor, descendant: False)
     monkeypatch.setattr(
-        auto_integrate,
+        boundary,
         "BOUNDARY_REFRESH_THROTTLE",
         BoundaryRefreshThrottle(min_interval_seconds=30.0, clock=_FakeClock()),
     )
@@ -242,7 +243,7 @@ def test_dirty_boundary_records_the_refresh_outcome(
         refresh_calls.append(target)
         return REFRESH_REFRESHED
 
-    monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
+    monkeypatch.setattr(boundary, "_refresh_target", _fake_refresh)
 
     outcome = auto_integrate.auto_integrate_on_phase_transition(_config(), scope, RebaseState())
 
@@ -275,7 +276,7 @@ def test_throttled_boundary_records_the_suppression_without_refetching(
     # First boundary diverges (so it records a skip), second does not.
     ancestry = iter([False, True, True])
     monkeypatch.setattr(
-        auto_integrate,
+        boundary,
         "is_ancestor",
         lambda root, ancestor, descendant: next(ancestry),
     )
@@ -285,7 +286,7 @@ def test_throttled_boundary_records_the_suppression_without_refetching(
         refresh_calls.append(target)
         return REFRESH_REFRESHED
 
-    monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
+    monkeypatch.setattr(boundary, "_refresh_target", _fake_refresh)
     config = _config()
 
     first = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
@@ -308,7 +309,7 @@ def test_a_failed_boundary_refresh_is_retried_on_the_next_boundary(
         refresh_calls.append(target)
         return REFRESH_UNREACHABLE
 
-    monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
+    monkeypatch.setattr(boundary, "_refresh_target", _fake_refresh)
     config = _config()
 
     auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
@@ -335,7 +336,7 @@ def _recording_refresh(monkeypatch: pytest.MonkeyPatch, outcome: str) -> list[st
         calls.append(target)
         return outcome
 
-    monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
+    monkeypatch.setattr(boundary, "_refresh_target", _fake_refresh)
     return calls
 
 
@@ -370,7 +371,7 @@ def test_a_throttled_boundary_with_nothing_pending_still_costs_no_fetch(
     """The common dirty boundary must stay free; only divergence pays."""
     scope = _dirty_boundary_workspace(monkeypatch, tmp_path)
     # Target already contained in HEAD: nothing to catch up.
-    monkeypatch.setattr(auto_integrate, "is_ancestor", lambda root, ancestor, descendant: True)
+    monkeypatch.setattr(boundary, "is_ancestor", lambda root, ancestor, descendant: True)
     calls = _recording_refresh(monkeypatch, REFRESH_REFRESHED)
     config = _config()
 
@@ -395,7 +396,7 @@ def test_a_forced_refresh_that_clears_the_divergence_records_nothing(
     ancestry = iter([False, False, True, True])
 
     monkeypatch.setattr(
-        auto_integrate,
+        boundary,
         "is_ancestor",
         lambda root, ancestor, descendant: next(ancestry),
     )
@@ -416,7 +417,7 @@ def test_the_forced_refresh_arms_the_throttle_window(
     scope = _dirty_boundary_workspace(monkeypatch, tmp_path)
     clock = _FakeClock()
     monkeypatch.setattr(
-        auto_integrate,
+        boundary,
         "BOUNDARY_REFRESH_THROTTLE",
         BoundaryRefreshThrottle(min_interval_seconds=30.0, clock=clock),
     )
@@ -454,7 +455,7 @@ def test_an_unhealthy_forced_refresh_is_retried_immediately(
         calls.append(target)
         return next(outcomes)
 
-    monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
+    monkeypatch.setattr(boundary, "_refresh_target", _fake_refresh)
     config = _config()
 
     auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())

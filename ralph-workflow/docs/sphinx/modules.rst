@@ -1027,6 +1027,13 @@ ralph.pipeline.auto_integrate_backoff
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_boundary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_boundary
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_boundary_refresh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
