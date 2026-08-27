@@ -1474,7 +1474,11 @@ def _run_fan_out_phase(
             config=config,
             config_path=config_path,
             cli_overrides=cli_overrides,
-            monitor_stop_cb=monitor_stop_cb,
+            # ``fan_out.execute_fan_out_sync`` reads this out of ``opts`` under
+            # the underscore-prefixed name. Spelling it without the underscore
+            # here dropped the callback silently, so the fan-out's SignalBridge
+            # never got ``_connectivity_stop`` wired on the production path.
+            _monitor_stop_cb=monitor_stop_cb,
             pipeline_deps=pipeline_deps,
             _on_successful_completion=integrate_after_successful_fan_out,
         )

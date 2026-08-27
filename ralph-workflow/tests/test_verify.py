@@ -286,6 +286,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="cast policy audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding"),
+            returncode=0,
+            stdout="kwargs forwarding audit ok\n",
+        ),
         (
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
@@ -370,6 +376,7 @@ def test_main_runs_all_verify_steps_when_successful(
             ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
         ("make", ("test-multimodal-smoke",)),
         ("make", ("test-visual-smoke",)),
     ]
@@ -407,7 +414,12 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[26][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    multimodal_timeout = runner.calls[33][3]
+    assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    # ``make test-multimodal-smoke`` is the second-to-last step, which is how
+    # ``_BUDGET_TRACKED_STEPS`` addresses it (``len(_VERIFY_STEPS) - 2``).
+    # Indexing from the end keeps this assertion pinned to that step when a
+    # non-budget-tracked audit is inserted ahead of the two trailing smokes.
+    multimodal_timeout = runner.calls[-2][3]
     assert multimodal_timeout is not None
     assert multimodal_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
         abs(multimodal_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001

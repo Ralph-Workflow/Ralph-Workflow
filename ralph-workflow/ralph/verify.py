@@ -496,6 +496,24 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Duplicate-keyword forwarding audit: rejects any call that unpacks
+        # a ``**catchall`` while also passing an explicit keyword the
+        # enclosing signature does not bind. Such a call raises
+        # ``TypeError: got multiple values for keyword argument`` only when
+        # a caller happens to name that keyword, so it type-checks and fails
+        # in production -- which is exactly how every pipeline commit broke
+        # via ``runner.execute_commit_effect``. Covers ``ralph/`` and
+        # ``tests/``. AST + Path.read_text only -- no subprocess, no sleep,
+        # no real I/O. Inserted BEFORE the two trailing smoke steps so
+        # ``_BUDGET_TRACKED_STEPS`` keeps resolving to them; NOT
+        # budget-tracked (does not count against the immutable 60-second
+        # combined test budget).
+        "kwargs forwarding audit (audit_kwargs_forwarding)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # Criterion 5 multimodal proof: drive the deterministic multimodal
         # stub agent across all six harness identities (claude /
         # claude-headless / agy / nanocoder / cursor / opencode) and

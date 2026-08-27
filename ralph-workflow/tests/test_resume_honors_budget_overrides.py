@@ -22,12 +22,10 @@ _REQUESTED_CAP = 12
 
 
 def _resumed(**overrides: object) -> PipelineState:
-    return PipelineState(
-        phase="development",
-        budget_caps={"iteration": _RESUMED_CAP},
-        outer_progress={"iteration": _RESUMED_CAP},
-        **overrides,
-    )
+    overrides.setdefault("phase", "development")
+    overrides.setdefault("budget_caps", {"iteration": _RESUMED_CAP})
+    overrides.setdefault("outer_progress", {"iteration": _RESUMED_CAP})
+    return PipelineState(**overrides)
 
 
 def test_resume_adopts_an_explicit_counter_override() -> None:

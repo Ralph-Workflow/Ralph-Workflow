@@ -20,17 +20,11 @@ def _make_watchdog(
     start: float = 0.0,
     **kwargs: object,
 ) -> tuple[IdleWatchdog, FakeClock]:
-    max_waiting_on_child_seconds = kwargs.pop("max_waiting_on_child_seconds", 1800.0)
-    max_waiting_on_child_no_progress_seconds = kwargs.pop(
-        "max_waiting_on_child_no_progress_seconds", 600.0
-    )
-    config = TimeoutPolicy(
-        idle_timeout_seconds=idle_timeout,
-        no_output_at_start_seconds=no_output_at_start_seconds,
-        max_waiting_on_child_seconds=max_waiting_on_child_seconds,
-        max_waiting_on_child_no_progress_seconds=max_waiting_on_child_no_progress_seconds,
-        **kwargs,
-    )
+    kwargs.setdefault("idle_timeout_seconds", idle_timeout)
+    kwargs.setdefault("no_output_at_start_seconds", no_output_at_start_seconds)
+    kwargs.setdefault("max_waiting_on_child_seconds", 1800.0)
+    kwargs.setdefault("max_waiting_on_child_no_progress_seconds", 600.0)
+    config = TimeoutPolicy(**kwargs)
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock), clock
 

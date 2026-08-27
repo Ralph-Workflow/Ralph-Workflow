@@ -99,11 +99,9 @@ def _dev_timing(seconds: float) -> PhaseTimingRecord:
 
 def _state_with_dev_time(seconds: float, **kwargs: object) -> PipelineState:
     """Create a development-phase state with a single timing record."""
-    return PipelineState(
-        phase="development",
-        phase_timings=(_dev_timing(seconds),),
-        **kwargs,
-    )
+    kwargs.setdefault("phase", "development")
+    kwargs.setdefault("phase_timings", (_dev_timing(seconds),))
+    return PipelineState(**kwargs)
 
 
 def test_partial_result_commits_then_returns_to_same_execution_phase_in_new_session() -> None:

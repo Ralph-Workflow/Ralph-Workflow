@@ -140,14 +140,14 @@ def _apply_runner_stubs(
     def _execute_agent_effect_wrapper(
         effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
     ) -> PipelineEvent:
+        kwargs.setdefault("bridge", _FakeBridge())
+        kwargs.setdefault("invoke_agent", fake_invoke_agent)
+        kwargs.setdefault("agent_invocation_error", AgentInvocationError)
         return effect_executor_module.execute_agent_effect(
             effect,
             config,
             deps,
             workspace_scope,
-            bridge=_FakeBridge(),
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
             **kwargs,
         )
 

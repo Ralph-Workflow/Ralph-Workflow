@@ -25,8 +25,11 @@ _CUSTOM_MAX = 7
 
 
 def _minimal_policy(**extra: object) -> PipelinePolicy:
-    return PipelinePolicy(
-        phases={
+    extra.setdefault("entry_phase", "start")
+    extra.setdefault("terminal_phase", "done")
+    extra.setdefault(
+        "phases",
+        {
             "start": PhaseDefinition(
                 drain="start",
                 transitions=PhaseTransition(on_success="done"),
@@ -38,10 +41,8 @@ def _minimal_policy(**extra: object) -> PipelinePolicy:
                 transitions=PhaseTransition(on_success="done", on_loopback="done"),
             ),
         },
-        entry_phase="start",
-        terminal_phase="done",
-        **extra,
     )
+    return PipelinePolicy(**extra)
 
 
 def _config() -> MagicMock:

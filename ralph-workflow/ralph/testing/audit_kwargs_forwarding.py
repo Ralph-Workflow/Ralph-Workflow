@@ -29,15 +29,35 @@ of forwarding past it::
         opts.setdefault("some_hook", DEFAULT)
         return inner(a, b, **opts)
 
-An explicit keyword is accepted when it CANNOT collide, i.e. when either:
+An explicit keyword is accepted only when it genuinely cannot collide:
 
-  * it names a parameter of the enclosing function (positional, keyword-only,
-    or the catch-all itself) -- a caller passing that name binds it to the
-    parameter, so it can never reach the catch-all dict; or
-  * the enclosing function guards the name, e.g.
-    ``if "buffering" in kwargs: raise TypeError(...)``, which turns the
-    collision into an explicit, well-described error before the forward.
-    ``ralph/logging.py::_add_buffered_file_sink`` uses this form.
+  * It names a plain or keyword-only parameter of the enclosing function. A
+    caller passing that name binds it to the parameter, so it never reaches
+    the catch-all dict.
+
+    Positional-only parameters do NOT qualify: ``def w(a, /, **opts)`` still
+    routes ``w(1, a=2)`` into ``opts``. Neither do the ``*args`` and
+    ``**kwargs`` names themselves -- ``w(args=5)`` and ``w(opts=5)`` both land
+    in the catch-all.
+
+  * The enclosing function rejects the name before forwarding, with a guard
+    whose body raises::
+
+        if "buffering" in kwargs:
+            raise TypeError("callers must NOT pass buffering")
+
+    which turns the collision into an explicit, well-described error.
+    ``ralph/logging.py::_add_buffered_file_sink`` uses this form. A guard that
+    only logs does not qualify, because the call still raises.
+
+Forwarding is detected through derived unpacking too: ``**{**opts}`` and
+``**dict(opts)`` collide exactly as ``**opts`` does, so any ``**`` argument
+whose expression mentions the catch-all counts as a forward.
+
+Nested scopes are attributed correctly. ``audit_function`` descends into
+nested ``def``/``lambda`` bodies while extending the safe set with the names
+those scopes bind, and stops at any scope that rebinds the catch-all name --
+that scope is audited in its own right.
 
 Usage:
     python -m ralph.testing.audit_kwargs_forwarding [root1 root2 ...]
@@ -45,7 +65,7 @@ Usage:
 Exit codes:
   0 = clean.
   1 = violations found.
-  2 = root not found.
+  2 = a named root does not exist.
 """
 
 from __future__ import annotations
@@ -54,8 +74,16 @@ import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
-DEFAULT_ROOTS: tuple[str, ...] = ("ralph",)
+#: Both the shipped package and its tests are gated: a helper in ``tests/``
+#: carrying the banned shape is a landmine for the next author of that helper.
+DEFAULT_ROOTS: tuple[str, ...] = ("ralph", "tests")
+
+_Scope = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+
+#: Node types that open a new binding scope, as a tuple for ``isinstance``.
+_SCOPE_NODES: tuple[type[ast.AST], ...] = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 
 @dataclass(frozen=True)
@@ -77,49 +105,89 @@ class Violation:
         )
 
 
-def _bound_parameter_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Return every name the enclosing signature binds directly.
+class AuditParseError(Exception):
+    """A file under audit could not be parsed, so it could not be cleared."""
 
-    A caller cannot route these into the catch-all: Python binds them to the
-    parameter instead, so an explicit keyword reusing the name never collides.
+
+def _bindable_parameter_names(scope: _Scope) -> set[str]:
+    """Return the names a caller can bind by keyword on ``scope``.
+
+    Only plain and keyword-only parameters qualify. Positional-only names, the
+    ``*args`` name, and the ``**kwargs`` name are all still routable INTO the
+    catch-all by a keyword caller, so reusing them as explicit keywords beside
+    a forward is exactly as hazardous as any other name.
     """
-    args = fn.args
-    names = {arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
-    if args.vararg is not None:
-        names.add(args.vararg.arg)
-    if args.kwarg is not None:
-        names.add(args.kwarg.arg)
-    return names
+    args = scope.args
+    return {arg.arg for arg in (*args.args, *args.kwonlyargs)}
 
 
-def _guarded_names(fn: ast.FunctionDef | ast.AsyncFunctionDef, catchall: str) -> set[str]:
-    """Return keyword names the function rejects before forwarding.
+def _rejecting_guard_names(scope: _Scope, catchall: str) -> set[str]:
+    """Return keyword names the scope raises on before forwarding.
 
-    Recognises the ``if "<name>" in <catchall>:`` membership test, the form
-    used to turn a would-be collision into an explicit error.
+    Recognises ``if "<name>" in <catchall>: ... raise ...``. The raise is
+    required: a guard that only logs leaves the collision intact.
     """
     guarded: set[str] = set()
-    for node in ast.walk(fn):
-        if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.If):
             continue
-        if not isinstance(node.ops[0], ast.In):
+        if not any(isinstance(inner, ast.Raise) for inner in ast.walk(node)):
             continue
-        left = node.left
-        right = node.comparators[0]
-        if not isinstance(left, ast.Constant) or not isinstance(left.value, str):
-            continue
-        if isinstance(right, ast.Name) and right.id == catchall:
-            guarded.add(left.value)
+        for test in ast.walk(node.test):
+            if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+                continue
+            if not isinstance(test.ops[0], ast.In):
+                continue
+            left = test.left
+            right = test.comparators[0]
+            if not isinstance(left, ast.Constant) or not isinstance(left.value, str):
+                continue
+            if isinstance(right, ast.Name) and right.id == catchall:
+                guarded.add(left.value)
     return guarded
 
 
+def _mentions(node: ast.AST, name: str) -> bool:
+    return any(isinstance(child, ast.Name) and child.id == name for child in ast.walk(node))
+
+
 def _forwards_catchall(call: ast.Call, catchall: str) -> bool:
+    """Report whether ``call`` unpacks the catch-all, directly or derived.
+
+    ``**opts``, ``**{**opts}`` and ``**dict(opts)`` all deliver the caller's
+    keys to the callee, so all three collide with an explicit keyword.
+    """
     return any(
-        keyword.arg is None
-        and isinstance(keyword.value, ast.Name)
-        and keyword.value.id == catchall
-        for keyword in call.keywords
+        keyword.arg is None and _mentions(keyword.value, catchall) for keyword in call.keywords
     )
+
+
+def _walk_scope(node: ast.AST, catchall: str, safe: frozenset[str]) -> list[tuple[ast.Call, frozenset[str]]]:
+    """Collect calls reachable from ``node``, carrying each one's safe-name set.
+
+    Descending into a nested ``def``/``lambda`` extends the safe set with the
+    names that scope binds, so a nested helper that declares the keyword is not
+    reported against its parent. A scope that rebinds the catch-all name is
+    skipped: it shadows the name, and its own pass audits it.
+    """
+    found: list[tuple[ast.Call, frozenset[str]]] = []
+    if isinstance(node, _SCOPE_NODES):
+        scope = cast("_Scope", node)
+        bound = _bindable_parameter_names(scope)
+        args = scope.args
+        shadowing = {arg.arg for arg in args.posonlyargs} | bound
+        if args.vararg is not None:
+            shadowing.add(args.vararg.arg)
+        if args.kwarg is not None:
+            shadowing.add(args.kwarg.arg)
+        if catchall in shadowing:
+            return found
+        safe = safe | bound
+    if isinstance(node, ast.Call):
+        found.append((node, safe))
+    for child in ast.iter_child_nodes(node):
+        found.extend(_walk_scope(child, catchall, safe))
+    return found
 
 
 def audit_function(
@@ -130,32 +198,38 @@ def audit_function(
     if fn.args.kwarg is None:
         return []
     catchall = fn.args.kwarg.arg
-    safe = _bound_parameter_names(fn) | _guarded_names(fn, catchall)
+    base = frozenset(_bindable_parameter_names(fn) | _rejecting_guard_names(fn, catchall))
     violations: list[Violation] = []
-    for node in ast.walk(fn):
-        if not isinstance(node, ast.Call) or not _forwards_catchall(node, catchall):
-            continue
-        for keyword in node.keywords:
-            if keyword.arg is None or keyword.arg in safe:
+    for child in ast.iter_child_nodes(fn):
+        for call, safe in _walk_scope(child, catchall, base):
+            if not _forwards_catchall(call, catchall):
                 continue
-            violations.append(
-                Violation(
-                    path=path,
-                    lineno=node.lineno,
-                    function=fn.name,
-                    catchall=catchall,
-                    keyword=keyword.arg,
+            for keyword in call.keywords:
+                if keyword.arg is None or keyword.arg in safe:
+                    continue
+                violations.append(
+                    Violation(
+                        path=path,
+                        lineno=call.lineno,
+                        function=fn.name,
+                        catchall=catchall,
+                        keyword=keyword.arg,
+                    )
                 )
-            )
     return violations
 
 
 def audit_source(source: str, path: str) -> list[Violation]:
-    """Return every violation in one module's source text."""
+    """Return every violation in one module's source text.
+
+    Raises:
+        AuditParseError: when the source does not parse. An unparseable file
+            must never be reported as clean.
+    """
     try:
         tree = ast.parse(source)
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        raise AuditParseError(f"{path}: {exc}") from exc
     violations: list[Violation] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -163,18 +237,33 @@ def audit_source(source: str, path: str) -> list[Violation]:
     return violations
 
 
-def audit_tree(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> list[Violation]:
-    """Return every violation under ``package_root`` for the named roots."""
+def audit_tree(
+    package_root: Path,
+    roots: tuple[str, ...] = DEFAULT_ROOTS,
+) -> tuple[list[Violation], int]:
+    """Return violations under ``package_root`` and the number of files scanned.
+
+    The file count is part of the result so a caller can tell a genuinely
+    clean tree from a misresolved root that scanned nothing.
+
+    Raises:
+        FileNotFoundError: when a named root is not a directory. Silently
+            skipping it would report a vacuous clean run.
+    """
     violations: list[Violation] = []
+    scanned = 0
     for root in roots:
         base = package_root / root
         if not base.is_dir():
-            continue
+            raise FileNotFoundError(f"audit root is not a directory: {base}")
         for path in sorted(base.rglob("*.py")):
-            violations.extend(
-                audit_source(path.read_text(encoding="utf-8"), str(path.relative_to(package_root)))
-            )
-    return violations
+            try:
+                label = str(path.relative_to(package_root))
+            except ValueError:
+                label = str(path)
+            violations.extend(audit_source(path.read_text(encoding="utf-8"), label))
+            scanned += 1
+    return violations, scanned
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,15 +271,20 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     package_root = Path.cwd()
     roots = tuple(args) if args else DEFAULT_ROOTS
-    for root in roots:
-        if not (package_root / root).is_dir():
-            print(f"Root not found: {package_root / root}")
-            return 2
-    violations = audit_tree(package_root, roots)
+    try:
+        violations, scanned = audit_tree(package_root, roots)
+    except FileNotFoundError as exc:
+        print(exc)
+        return 2
+    except AuditParseError as exc:
+        print(f"Could not parse a file under audit: {exc}")
+        return 1
     if not violations:
-        print(f"No duplicate-keyword forwarding found under {', '.join(roots)}.")
+        print(
+            f"No duplicate-keyword forwarding in {scanned} file(s) under {', '.join(roots)}."
+        )
         return 0
-    print(f"DUPLICATE-KEYWORD FORWARDING VIOLATIONS: {len(violations)}")
+    print(f"DUPLICATE-KEYWORD FORWARDING VIOLATIONS: {len(violations)} in {scanned} file(s)")
     print("=" * 72)
     for violation in violations:
         print(f"  {violation}")
