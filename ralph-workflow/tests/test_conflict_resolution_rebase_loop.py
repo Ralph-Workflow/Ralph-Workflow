@@ -52,6 +52,11 @@ _CONFLICTED = ["src/alpha.py"]
 #: ``rebase-merge/onto``. Completion is proved against THIS, not against
 #: the target name a fleet sibling can move mid-resolution.
 _BASE_SHA = "ba5e0000000000000000000000000000000000ba"
+#: The tip the paused rebase is replaying FROM, as git records it in
+#: ``rebase-merge/orig-head``. Paired with :data:`_BASE_SHA` it is the
+#: identity the progress sidecar is scoped to, so a record written by
+#: any other rebase is discarded instead of resumed from.
+_ORIG_HEAD_SHA = "0219000000000000000000000000000000000fea"
 _STOP_CAP = 10
 
 
@@ -113,6 +118,7 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _r: list(unmerged))
     monkeypatch.setattr(loop_module, "continue_rebase_at", repo.continue_rebase)
     monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: _BASE_SHA)
+    monkeypatch.setattr(loop_module, "_rebase_orig_head_sha", lambda _root: _ORIG_HEAD_SHA)
     monkeypatch.setattr(loop_module, "_read_replay_progress", lambda _root: replay_progress)
     monkeypatch.setattr(loop_module, "verify_rebase_completed_at", lambda _r, _t: verified)
 
@@ -879,7 +885,12 @@ def test_resolve_skips_sidecar_landed_shas_and_starts_at_the_first_unlanded(
     """A fresh process resumes at the first SHA that is not already landed."""
     save_progress(
         tmp_path,
-        RebaseResolutionProgress(landed_shas=["aaa1"], remaining_paths=list(_CONFLICTED)),
+        RebaseResolutionProgress(
+            landed_shas=["aaa1"],
+            remaining_paths=list(_CONFLICTED),
+            feature_sha=_ORIG_HEAD_SHA,
+            target_sha=_BASE_SHA,
+        ),
     )
     repo = _FakeRepo(stops=2)
     _install_seams(monkeypatch, repo)

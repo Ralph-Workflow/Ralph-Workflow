@@ -50,7 +50,8 @@ from ralph.pipeline.auto_integrate_resolve import (
     endpoint_merge_with_resolution,
 )
 from ralph.pipeline.conflict_resolution import resolve_rebase_in_progress
-from ralph.pipeline.conflict_resolution.progress import load_progress
+from ralph.pipeline.conflict_resolution.progress import load_progress_for_rebase
+from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 
 if TYPE_CHECKING:
@@ -655,8 +656,23 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
 
 
 def _rebase_has_landed_stops(root: Path) -> bool:
-    """Whether the progress sidecar already names landed replay commits."""
-    progress = load_progress(root)
+    """Whether THIS paused rebase already landed replay commits.
+
+    Answering ``True`` is expensive: :func:`_fallback_to_endpoint_merge`
+    honours it by leaving the conflicted rebase paused on disk instead
+    of aborting it, betting that a later seam resumes the remaining
+    stops. That bet only pays off if the sidecar describes the rebase
+    actually in progress, so the identity of that rebase is handed to
+    the sidecar rather than trusting whatever file happens to be there.
+
+    Reading it unscoped is what wedged worktrees: the sidecar was
+    written by the first agent-resolved rebase and never removed, so
+    every later conflicted rebase in that checkout was left in progress
+    awaiting a resume of stops the file did not describe, and the branch
+    stayed mid-rebase until the next run's recovery preamble aborted it.
+    """
+    feature_sha, target_sha = current_rebase_identity(root)
+    progress = load_progress_for_rebase(root, feature_sha=feature_sha, target_sha=target_sha)
     return progress is not None and bool(progress.landed_shas)
 
 

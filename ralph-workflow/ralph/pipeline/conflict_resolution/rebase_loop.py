@@ -58,7 +58,8 @@ from ralph.pipeline.conflict_resolution.graph import (
 )
 from ralph.pipeline.conflict_resolution.progress import (
     RebaseResolutionProgress,
-    load_progress,
+    clear_progress,
+    load_progress_for_rebase,
     save_progress,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -76,6 +77,12 @@ _UNKNOWN_SUBJECT = "(subject unavailable)"
 #: backend first. ``rebase-merge`` is the default backend; ``rebase-apply``
 #: is still produced by ``--apply`` and by older gits.
 _REBASE_ONTO_FILES = ("rebase-merge/onto", "rebase-apply/onto")
+
+#: Where git records the tip a paused rebase is replaying FROM, same
+#: backend order as :data:`_REBASE_ONTO_FILES`. Together the two pin the
+#: replay for its whole lifetime, which is what makes them usable as the
+#: progress sidecar's rebase identity.
+_REBASE_ORIG_HEAD_FILES = ("rebase-merge/orig-head", "rebase-apply/orig-head")
 
 #: Where git records how far a paused rebase has got, as ``(current,
 #: total)`` state-file pairs, newest backend first. The ``rebase-merge``
@@ -470,26 +477,52 @@ def _stage_deterministic_entries(
 def _rebase_base_sha(root: Path) -> str | None:
     """Commit the paused rebase is replaying onto, or ``None`` if unreadable.
 
+    ``None`` is a benign answer -- the caller falls back to the branch
+    name, i.e. exactly the pre-existing behaviour.
+    """
+    return _read_rebase_state_sha(root, _REBASE_ONTO_FILES, label="git-rebase-onto-path")
+
+
+def _rebase_orig_head_sha(root: Path) -> str | None:
+    """Feature tip the paused rebase is replaying, or ``None`` if unreadable."""
+    return _read_rebase_state_sha(
+        root, _REBASE_ORIG_HEAD_FILES, label="git-rebase-orig-head-path"
+    )
+
+
+def current_rebase_identity(root: Path) -> tuple[str | None, str | None]:
+    """``(orig-head, onto)`` of the rebase paused at ``root``.
+
+    The pair git pins for the whole replay, so it names one rebase and
+    no other. ``(None, None)`` when no rebase is in progress -- which is
+    exactly how :func:`record_landed_stop` recognises that the replay it
+    was following has finished and has no progress left worth keeping.
+
     Read through ``git rev-parse --git-path`` rather than by joining
     ``.git`` onto ``root``: this loop runs in LINKED worktrees, whose
     rebase state lives under the per-worktree git dir, not the common
-    one. ``None`` is a benign answer -- the caller falls back to the
-    branch name, i.e. exactly the pre-existing behaviour.
+    one.
     """
-    for relative in _REBASE_ONTO_FILES:
-        result = run_git(
-            ("rev-parse", "--git-path", relative),
-            cwd=root,
-            label="git-rebase-onto-path",
-        )
+    return _rebase_orig_head_sha(root), _rebase_base_sha(root)
+
+
+def _read_rebase_state_sha(root: Path, relatives: tuple[str, ...], *, label: str) -> str | None:
+    """First readable non-empty SHA among ``relatives`` rebase state files.
+
+    ``relatives`` lists the same file under each rebase backend, newest
+    first, so a repository rebasing with ``--apply`` answers as well as
+    the default ``merge`` backend.
+    """
+    for relative in relatives:
+        result = run_git(("rev-parse", "--git-path", relative), cwd=root, label=label)
         if result.returncode != 0:
             return None
-        onto = Path(result.stdout.strip())
-        if not onto.is_absolute():
-            onto = root / onto
+        state_file = Path(result.stdout.strip())
+        if not state_file.is_absolute():
+            state_file = root / state_file
         try:
             # filesystem-read-ok: git reports one rebase metadata path per explicit conflict resolution attempt
-            sha = onto.read_text(encoding="utf-8").strip()
+            sha = state_file.read_text(encoding="utf-8").strip()
         except OSError:
             continue
         if sha:
@@ -694,8 +727,15 @@ def _revert_unrequested_paths(root: Path, paths: tuple[str, ...]) -> bool:
 
 
 def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
-    """Return sidecar SHAs recorded before this process started resolving."""
-    progress = load_progress(root)
+    """Sidecar SHAs this SAME rebase landed before the current process.
+
+    Scoped to the paused rebase's own identity. A record left by any
+    other rebase must not be read here either: its SHAs would make
+    :func:`_resolve_one_stop` skip a genuinely unresolved stop and
+    ``--continue`` straight past it.
+    """
+    feature_sha, target_sha = current_rebase_identity(root)
+    progress = load_progress_for_rebase(root, feature_sha=feature_sha, target_sha=target_sha)
     if progress is None:
         return ()
     return tuple(progress.landed_shas)
@@ -808,10 +848,34 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
 
 
 def record_landed_stop(root: Path, stop: RebaseStop) -> None:
-    """Persist a landed rebase stop so a later failure does not discard it."""
-    progress = load_progress(root) or RebaseResolutionProgress()
+    """Persist a landed rebase stop so a later failure does not discard it.
+
+    Stamped with the identity of the rebase that produced it, so the
+    record can only ever be resumed from -- or counted as a reason to
+    keep a conflicted rebase on disk -- by that same rebase.
+
+    A stop that landed the LAST commit leaves no rebase in progress, and
+    this is the call that notices: with no identity to stamp there is
+    nothing left to resume, so the sidecar is deleted instead of
+    written. Skipping that was the whole defect. ``git rebase
+    --continue`` past the final stop raises
+    :class:`NoRebaseInProgressError`, which this module correctly counts
+    as the stop LANDING -- and the old code answered that success by
+    writing a sidecar for a rebase that no longer existed, which then
+    outlived it forever.
+    """
+    feature_sha, target_sha = current_rebase_identity(root)
+    if feature_sha is None or target_sha is None:
+        clear_progress(root)
+        return
+    progress = (
+        load_progress_for_rebase(root, feature_sha=feature_sha, target_sha=target_sha)
+        or RebaseResolutionProgress()
+    )
     progress.record_landed(stop.sha)
     progress.remaining_paths = list(stop.conflicted_files)
+    progress.feature_sha = feature_sha
+    progress.target_sha = target_sha
     save_progress(root, progress)
 
 

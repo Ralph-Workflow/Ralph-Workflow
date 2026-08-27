@@ -239,46 +239,98 @@ def build_agent_rebase_stop_resolver(
         # The ``with`` scope covers every exit path (decline, pipeline
         # exception, success, abort) so the caller's closed-over config
         # and registry are never replaced by target values.
-        with workspace_context(root) as target_ctx:
-            target_config = target_ctx.config
-            target_policy = target_ctx.policy_bundle
-            target_registry = target_ctx.registry
-            target_scope = target_ctx.target_scope
-            if not _any_chain_agent_installed(target_policy, target_registry):
-                logger.warning(
-                    "auto_integrate: no agent of the rebase-conflict-resolution "
-                    "chain is installed on the target worktree; declining to resolve the rebase"
-                )
-                emit_integration_warn_line(
-                    display,
-                    "rebase conflict resolution unavailable: no "
-                    "rebase-conflict-resolution agent installed on the target worktree",
-                )
-                return False
-            try:
-                return run_rebase_conflict_resolution_pipeline(
-                    root=root,
-                    target=target,
-                    stop=stop,
-                    config=target_config,
-                    pipeline_deps=pipeline_deps,
-                    workspace_scope=target_scope,
-                    policy_bundle=target_policy,
-                    display=display,
-                    display_context=display_context,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "auto_integrate: rebase conflict-resolution pipeline raised: {}",
-                    exc,
-                )
-                emit_integration_warn_line(
-                    display,
-                    f"rebase conflict resolution failed: resolution pipeline raised {exc}",
-                )
-                return False
+        #
+        # ENTERING it is itself fallible, and must decline rather than
+        # raise: the manager re-reads the target's config, policy and
+        # agent registry FROM DISK, so anything an operator edits
+        # mid-run -- a `.agent/ralph-workflow.toml` saved with a missing
+        # comma is the observed case -- turns every later conflict into
+        # an exception thrown out of a callable this module's own
+        # contract promises never raises. It was then caught three
+        # frames up by the resolution loop's blanket handler and logged
+        # as "rebase resolution loop failed", so the run silently lost
+        # conflict resolution for its whole remaining life and no
+        # message anywhere named the config file. Declining here keeps
+        # the fallback behaviour identical and puts the real cause in
+        # front of the operator.
+        try:
+            return _resolve_within_target_context(
+                root=root,
+                target=target,
+                stop=stop,
+                pipeline_deps=pipeline_deps,
+                display=display,
+                display_context=display_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "auto_integrate: could not use the target worktree's own "
+                "configuration for rebase conflict resolution ({}); declining "
+                "to resolve the rebase",
+                exc,
+            )
+            emit_integration_warn_line(
+                display,
+                f"rebase conflict resolution unavailable: target worktree context failed: {exc}",
+            )
+            return False
 
     return _resolver
+
+
+def _resolve_within_target_context(
+    *,
+    root: Path,
+    target: str,
+    stop: RebaseStop,
+    pipeline_deps: PipelineDeps,
+    display: ParallelDisplay,
+    display_context: DisplayContext | None,
+) -> bool:
+    """Resolve one stop under the TARGET worktree's config, policy and registry.
+
+    Split out of the resolver closure so entering ``workspace_context``
+    sits inside the caller's decline handler; see the comment there for
+    why that entry must never propagate.
+    """
+    with workspace_context(root) as target_ctx:
+        target_config = target_ctx.config
+        target_policy = target_ctx.policy_bundle
+        target_registry = target_ctx.registry
+        target_scope = target_ctx.target_scope
+        if not _any_chain_agent_installed(target_policy, target_registry):
+            logger.warning(
+                "auto_integrate: no agent of the rebase-conflict-resolution "
+                "chain is installed on the target worktree; declining to resolve the rebase"
+            )
+            emit_integration_warn_line(
+                display,
+                "rebase conflict resolution unavailable: no "
+                "rebase-conflict-resolution agent installed on the target worktree",
+            )
+            return False
+        try:
+            return run_rebase_conflict_resolution_pipeline(
+                root=root,
+                target=target,
+                stop=stop,
+                config=target_config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=target_scope,
+                policy_bundle=target_policy,
+                display=display,
+                display_context=display_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "auto_integrate: rebase conflict-resolution pipeline raised: {}",
+                exc,
+            )
+            emit_integration_warn_line(
+                display,
+                f"rebase conflict resolution failed: resolution pipeline raised {exc}",
+            )
+            return False
 
 
 def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsAgentLookup) -> bool:
