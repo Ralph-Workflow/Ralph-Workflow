@@ -2059,16 +2059,22 @@ def execute_fan_out_sync(
     pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
-    """Execute fan-out synchronously, forwarding current module globals as injectable overrides."""
+    """Execute fan-out synchronously, forwarding current module globals as injectable overrides.
+
+    The module globals are defaults, not overrides: a caller that names any of
+    them in ``opts`` wins. Passing them as explicit keywords alongside
+    ``**opts`` would instead raise ``TypeError: got multiple values for
+    keyword argument``.
+    """
+    opts.setdefault("_install_signal_handlers", install_signal_handlers)
+    opts.setdefault("_executor_cls", SubprocessAgentExecutor)
+    opts.setdefault("_mcp_factory_cls", DynamicBindingMcpServerFactory)
+    opts.setdefault("_run_process_async", run_process_async)
+    opts.setdefault("_reducer_reduce", reducer_reduce)
     return _fan_out_execute_fan_out_sync(
         effect=effect,
         state=state,
         display=display,
-        _install_signal_handlers=install_signal_handlers,
-        _executor_cls=SubprocessAgentExecutor,
-        _mcp_factory_cls=DynamicBindingMcpServerFactory,
-        _run_process_async=run_process_async,
-        _reducer_reduce=reducer_reduce,
         pipeline_deps=pipeline_deps,
         **opts,
     )
@@ -2117,15 +2123,23 @@ def execute_commit_effect(
     display: ParallelDisplay | None = None,
     **opts: object,
 ) -> PipelineEvent:
-    """Execute a commit effect while preserving runner-level dependency injection hooks."""
+    """Execute a commit effect while preserving runner-level dependency injection hooks.
+
+    The work probes are defaults, not overrides: a caller that names
+    ``has_commit_work_fn`` / ``has_residual_work_fn`` in ``opts`` wins. Naming
+    them here as explicit keywords instead collided with the forwarded
+    ``**opts`` and raised ``TypeError: got multiple values for keyword
+    argument`` on every commit the pipeline attempted, which the recovery
+    classifier could only report as an ambiguous commit-phase failure.
+    """
+    opts.setdefault("has_commit_work_fn", repo_has_commit_work)
+    opts.setdefault("has_residual_work_fn", repo_has_commit_work)
     return _ee_execute_commit_effect(
         effect,
         repo_root,
         display,
         create_commit_fn=create_commit_fn,
         stage_all_fn=stage_all_fn,
-        has_commit_work_fn=repo_has_commit_work,
-        has_residual_work_fn=repo_has_commit_work,
         **opts,
     )
 

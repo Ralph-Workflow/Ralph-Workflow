@@ -5,7 +5,8 @@ from __future__ import annotations
 import io
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,6 +14,7 @@ from git import Repo
 from loguru import logger as loguru_logger
 from rich.console import Console
 
+from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.git.operations import GitOperationError
@@ -29,6 +31,7 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import (
         PolicyBundle,
     )
@@ -304,6 +307,71 @@ class TestExecuteCommitEffect:
 
         assert result == PipelineEvent.COMMIT_RESIDUAL
         assert has_commit_work.call_count == 2
+
+    def test_production_deps_seam_executes_commit_without_duplicate_kwargs(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """The production seam must reach the executor, not raise TypeError.
+
+        ``_execute_commit_effect_from_deps`` is the only caller the pipeline
+        actually uses for a ``CommitEffect``. It names ``has_residual_work_fn``
+        while ``execute_commit_effect`` also supplied it positionally, so every
+        real commit raised ``TypeError: got multiple values for keyword
+        argument 'has_residual_work_fn'``. That surfaced as an unclassifiable
+        ``development_commit`` failure that routed to the failed terminal and
+        re-entered the phase forever, so no commit could ever be created.
+        Every other test in this class calls ``execute_commit_effect`` directly
+        and therefore never crossed this seam.
+        """
+        stage_all = MagicMock()
+        create_commit = MagicMock(return_value="sha")
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        message_file.write_text(
+            _commit_document("fix: pipeline artifact message"), encoding="utf-8"
+        )
+        monkeypatch.setattr(
+            runner_module, "repo_has_commit_work", MagicMock(side_effect=[True, False])
+        )
+        monkeypatch.setattr(runner_module, "create_commit", create_commit)
+        monkeypatch.setattr(runner_module, "stage_all", stage_all)
+
+        result = runner_module._execute_commit_effect_from_deps(
+            CommitEffect(message_file=str(message_file)),
+            cast("PipelineDeps", SimpleNamespace(commit_effect_executor=None)),
+            WorkspaceScope(tmp_path),
+            None,
+            Verbosity.VERBOSE,
+        )
+
+        assert result == PipelineEvent.COMMIT_SUCCESS
+        create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+
+    def test_caller_supplied_work_probes_override_runner_defaults(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """Explicit probes in ``opts`` win over the runner's module-global defaults."""
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        message_file.write_text(
+            _commit_document("fix: pipeline artifact message"), encoding="utf-8"
+        )
+        module_default = MagicMock(side_effect=AssertionError("module default must not be used"))
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", module_default)
+        injected = MagicMock(side_effect=[True, True])
+
+        result = runner_module.execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            MagicMock(return_value="sha"),
+            MagicMock(),
+            tmp_path,
+            has_commit_work_fn=injected,
+            has_residual_work_fn=injected,
+        )
+
+        assert result == PipelineEvent.COMMIT_RESIDUAL
+        assert injected.call_count == 2
+        module_default.assert_not_called()
 
     def test_stages_only_files_declared_in_commit_artifact(
         self, tmp_path: Path, monkeypatch: MonkeyPatch

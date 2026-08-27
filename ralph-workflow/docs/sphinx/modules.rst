@@ -4139,6 +4139,13 @@ ralph.testing.audit_cast_policy
    :members:
    :show-inheritance:
 
+ralph.testing.audit_kwargs_forwarding
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_kwargs_forwarding
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_fenced_artifact_examples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
