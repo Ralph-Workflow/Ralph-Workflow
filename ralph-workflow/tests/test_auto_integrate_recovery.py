@@ -630,7 +630,7 @@ def test_recovery_retains_record_on_abort_failure(
     def _failing_abort(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated abort_rebase failure")
 
-    monkeypatch.setattr(_ai_mod, "abort_rebase", _failing_abort)
+    monkeypatch.setattr(_ai_mod, "abort_rebase_discarding_progress", _failing_abort)
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
     assert outcome is not None
     assert outcome.last_action == "skipped"
@@ -906,7 +906,7 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
     def _failing_abort(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated normal-path abort failure")
 
-    monkeypatch.setattr(auto_integrate_module, "abort_rebase", _failing_abort)
+    monkeypatch.setattr(auto_integrate_module, "abort_rebase_discarding_progress", _failing_abort)
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     with pytest.raises(TerminalStateViolationError) as excinfo:
         auto_integrate_after_commit(

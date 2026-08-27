@@ -16,12 +16,12 @@ from ralph.git.operations import find_main_worktree_root, is_repo_clean
 from ralph.git.rebase.rebase import (
     RebaseNoOp,
     RebaseSuccess,
-    abort_rebase,
     rebase_in_progress,
     rebase_onto,
 )
 from ralph.pipeline._auto_integrate_reclaim import reclaim_dirty_target_worktree
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, clear_record, write_record
+from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     resolution_session_from_config,
@@ -136,7 +136,7 @@ def _reconcile_owned_target(
         ):
             return _clear_successful_reconciliation_record(repo_root, target, remote)
         if rebase_in_progress(owner):
-            abort_rebase(repo_root=owner)
+            abort_rebase_discarding_progress(owner)
     except Exception as exc:
         return _abort_restore_or_retain_record(
             repo_root, owner, target, remote, pre_target_sha, str(exc)
@@ -208,7 +208,7 @@ def _abort_restore_or_retain_record(
     """Abort a failed reconciliation and restore the target before clearing ownership."""
     try:
         if rebase_in_progress(owner):
-            abort_rebase(repo_root=owner)
+            abort_rebase_discarding_progress(owner)
         if rebase_in_progress(owner):
             return ReconciliationOutcome(
                 False,

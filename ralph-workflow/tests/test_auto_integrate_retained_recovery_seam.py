@@ -141,7 +141,7 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     monkeypatch.setattr(recovery, "_read_record", lambda _root: record)
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: None)
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
-    monkeypatch.setattr(recovery, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
     monkeypatch.setattr(recovery, "reset_hard", lambda _root, _sha: None)
@@ -206,7 +206,7 @@ def test_an_unprovable_abort_retains_the_record_and_says_so_structurally(
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: True)
-    monkeypatch.setattr(recovery, "abort_rebase", _boom)
+    monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", _boom)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 

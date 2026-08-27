@@ -16,7 +16,7 @@ from ralph.git.merge import (
     reset_hard,
 )
 from ralph.git.operations import is_repo_clean
-from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
+from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.rebase.rebase_checkpoint import (
     LegacyCheckpointStatus,
     inspect_legacy_rebase_checkpoint,
@@ -51,6 +51,7 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
 )
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
 
@@ -316,7 +317,7 @@ def _recover_rebase_state(root: Path, git_dir: Path) -> None:
         elif rebase_state_dir.name == "rebase-apply" and (rebase_state_dir / "applying").exists():
             run_git(("am", "--abort"), cwd=root, label="recovery:git-am-abort")
         else:
-            abort_rebase(repo_root=root)
+            abort_rebase_discarding_progress(root)
     if (git_dir / "REBASE_HEAD").exists() and not rebase_in_progress(root):
         _remove_path(git_dir / "REBASE_HEAD")
 
@@ -915,7 +916,7 @@ def recover_incomplete_integration(
                         "(an orphaned resolution is never resumed)",
                         record.target,
                     )
-                abort_rebase(repo_root=operation_root)
+                abort_rebase_discarding_progress(operation_root)
         except Exception as exc:
             abort_failed = True
             logger.warning("recovery: abort_rebase raised: {}", exc)

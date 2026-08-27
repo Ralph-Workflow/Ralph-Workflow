@@ -30,7 +30,6 @@ from ralph.git.rebase.rebase import (
     RebaseFailed,
     RebaseNoOp,
     RebaseSuccess,
-    abort_rebase,
     rebase_in_progress,
     rebase_onto,
 )
@@ -50,6 +49,7 @@ from ralph.pipeline.auto_integrate_resolve import (
     endpoint_merge_with_resolution,
 )
 from ralph.pipeline.conflict_resolution import resolve_rebase_in_progress
+from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.conflict_resolution.progress import load_progress_for_rebase
 from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
@@ -680,7 +680,7 @@ def _abort_rebase_after_conflict(root: Path) -> None:
     """Abort a conflicted rebase; never raises."""
     try:
         if rebase_in_progress(root):
-            abort_rebase(repo_root=root)
+            abort_rebase_discarding_progress(root)
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
 

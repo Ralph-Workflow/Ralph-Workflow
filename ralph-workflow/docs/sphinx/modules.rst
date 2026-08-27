@@ -1041,6 +1041,13 @@ ralph.pipeline.conflict_resolution
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.abort
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.abort
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.graph
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

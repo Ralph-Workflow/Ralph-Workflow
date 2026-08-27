@@ -261,7 +261,7 @@ def test_endpoint_merge_does_not_reinvoke_the_same_identity(
         merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False
     )
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
-    monkeypatch.setattr(merge_module, "abort_rebase", _abort)
+    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
 
     def _endpoint(_root: Path, _target: str, resolver: object) -> MergeResult:
         endpoint_calls.append(resolver)

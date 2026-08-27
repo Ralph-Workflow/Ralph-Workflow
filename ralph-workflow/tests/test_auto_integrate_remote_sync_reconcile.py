@@ -256,7 +256,7 @@ def test_target_reconciliation_regression_aborts_owner_rebase_after_conflict(
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
-    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
     success, reason = remote_reconcile.reconcile_target_onto_remote(Path("/repo"), "main", "origin")
@@ -281,7 +281,7 @@ def test_target_reconciliation_regression_abort_restores_without_destructive_res
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
-    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     cleared: list[bool] = []
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: cleared.append(True))
@@ -334,7 +334,7 @@ def test_target_reconciliation_regression_success_requires_no_active_rebase(
     states = iter((True, True, True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
     aborts: list[bool] = []
-    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: aborts.append(True))
+    monkeypatch.setattr(remote_reconcile, "abort_rebase_discarding_progress", lambda _root: aborts.append(True))
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
 
@@ -361,7 +361,7 @@ def test_target_reconciliation_regression_clear_record_failure_is_retained(
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
-    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(
         remote_reconcile,
@@ -453,7 +453,7 @@ def test_target_reconciliation_regression_retains_record_when_abort_cannot_resto
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
-    monkeypatch.setattr(remote_reconcile, "abort_rebase", lambda **_kw: None)
+    monkeypatch.setattr(remote_reconcile, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "moved")
     cleared: list[bool] = []
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: cleared.append(True))
@@ -558,7 +558,7 @@ def test_target_reconciliation_regression_resolver_success_requires_finished_reb
     monkeypatch.setattr(remote_reconcile, "resolve_rebase_in_progress", lambda *_a: True)
     aborts: list[bool] = []
     monkeypatch.setattr(
-        remote_reconcile, "abort_rebase", lambda **_kw: aborts.append(True)
+        remote_reconcile, "abort_rebase_discarding_progress", lambda _root: aborts.append(True)
     )
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)

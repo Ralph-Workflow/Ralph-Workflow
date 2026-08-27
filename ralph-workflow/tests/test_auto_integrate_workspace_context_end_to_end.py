@@ -340,12 +340,12 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
 
         abort_calls: list[bool] = []
 
-        def _record_abort(**_kw: object) -> None:
+        def _record_abort(_root: object) -> None:
             abort_calls.append(True)
 
         monkeypatch.setattr(
             remote_reconcile,
-            "abort_rebase",
+            "abort_rebase_discarding_progress",
             _record_abort,
         )
 

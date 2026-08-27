@@ -126,7 +126,7 @@ def _install_fallback_seams(monkeypatch: pytest.MonkeyPatch, resolver_calls: lis
         "rebase_onto",
         lambda _target, repo_root: RebaseConflicts(files=["src/alpha.py"]),
     )
-    monkeypatch.setattr(merge_module, "abort_rebase", lambda repo_root: None)
+    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(
         merge_module,
@@ -163,7 +163,7 @@ def test_an_unrecordable_resolution_is_never_started(
         aborted.append(repo_root)
 
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
-    monkeypatch.setattr(merge_module, "abort_rebase", _abort)
+    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
 
     def _stop_resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:
         raise AssertionError("the stop resolver must not run")

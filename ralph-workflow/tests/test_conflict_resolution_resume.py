@@ -10,19 +10,18 @@ discarded so the conflicted rebase is aborted normally.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.pipeline.conflict_resolution import rebase_loop as rebase_loop_module
 from ralph.pipeline.conflict_resolution.progress import (
     RebaseResolutionProgress,
+    clear_progress,
     load_progress,
     progress_path,
     save_progress,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, record_landed_stop
-
-if TYPE_CHECKING:
-    import pytest
 
 #: Identity of the rebase these tests pretend is paused in the worktree.
 _FEATURE_SHA = "feature000000000000000000000000000000001"
@@ -127,8 +126,9 @@ def _run_fallback_with_sidecar(
     save_progress(tmp_path, sidecar)
     aborted: list[Path] = []
 
-    def _abort(repo_root: Path | None = None, **_kwargs: object) -> None:
-        aborted.append(repo_root or tmp_path)
+    def _abort(repo_root: Path) -> None:
+        aborted.append(repo_root)
+        clear_progress(repo_root)
 
     monkeypatch.setattr(
         merge_module, "current_rebase_identity", lambda _root: (_FEATURE_SHA, _TARGET_SHA)
@@ -144,7 +144,7 @@ def _run_fallback_with_sidecar(
         merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False
     )
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: True)
-    monkeypatch.setattr(merge_module, "abort_rebase", _abort)
+    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
     monkeypatch.setattr(
         merge_module,
         "endpoint_merge_with_resolution",
@@ -226,3 +226,65 @@ def test_unstamped_legacy_sidecar_does_not_strand_this_rebase(
 
     assert aborted == [tmp_path]
     assert load_progress(tmp_path) is None
+
+
+def test_aborting_a_rebase_discards_its_progress_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The record must not outlive the abort that threw its commits away.
+
+    Scoping cannot cover this case. ``git rebase --abort`` restores HEAD
+    to ``orig-head``, so retrying the same rebase onto an unmoved target
+    reproduces a byte-identical identity -- verified against real git --
+    and the stale record passes the very check meant to reject it while
+    the commits it names no longer exist.
+    """
+    from ralph.pipeline.conflict_resolution import abort as abort_module
+
+    save_progress(
+        tmp_path,
+        RebaseResolutionProgress(
+            landed_shas=["aaa1"],
+            remaining_paths=["src/alpha.py"],
+            feature_sha=_FEATURE_SHA,
+            target_sha=_TARGET_SHA,
+        ),
+    )
+    aborted: list[Path] = []
+
+    def _record_abort(repo_root: Path) -> None:
+        aborted.append(repo_root)
+
+    monkeypatch.setattr(abort_module, "abort_rebase", _record_abort)
+
+    abort_module.abort_rebase_discarding_progress(tmp_path)
+
+    assert aborted == [tmp_path]
+    assert not progress_path(tmp_path).exists()
+
+
+def test_a_failed_abort_keeps_the_progress_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An abort that raised left the rebase in place, so its record still applies."""
+    from ralph.pipeline.conflict_resolution import abort as abort_module
+
+    save_progress(
+        tmp_path,
+        RebaseResolutionProgress(
+            landed_shas=["aaa1"],
+            remaining_paths=["src/alpha.py"],
+            feature_sha=_FEATURE_SHA,
+            target_sha=_TARGET_SHA,
+        ),
+    )
+
+    def _raise(repo_root: Path) -> None:
+        raise RuntimeError("abort refused")
+
+    monkeypatch.setattr(abort_module, "abort_rebase", _raise)
+
+    with pytest.raises(RuntimeError):
+        abort_module.abort_rebase_discarding_progress(tmp_path)
+
+    assert progress_path(tmp_path).is_file()
