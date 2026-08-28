@@ -86,10 +86,14 @@ agent-produced evidence and requires the named human review verdict;
 it does not close the review lane autonomously. Unverified evidence
 stays in the human queue. Developer prompt guidance only directs this
 capture and comparison workflow; no other phase is guided by it.
-The developer prompt guidance states the prohibition to the agent, and
-`ralph.visual.design_verdict` enforces it at the artifact boundary:
-a verdict whose inputs smuggle in source, diff, DOM, or stylesheet
-material is rejected by typed validation (D4).
+The developer prompt guidance states the prohibition to the agent
+(`ralph/prompts/templates/shared/_developer_iteration_guidance.j2`:
+"code, DOM, CSS, and functional appearance assertions are not
+visual-verdict evidence"), and the `design_verdict` markdown spec
+(`ralph/mcp/artifacts/markdown/specs/design_verdict.py`) enforces it at
+the artifact boundary: a `## Design Intent` that pivots the review into
+a code-reading task is rejected with diagnostic `DV008` when the
+artifact is submitted (D4).
 
 ### D7. Two visual smoke tiers
 

@@ -23,10 +23,15 @@ the cross-section invariants that the consumer relies on:
   reviewer could not complete and is independent of finding
   severities.
 - ``## Design Intent`` is the verbatim text the agent was asked to
-  review; smuggle phrases (``source``, ``diff``, ``DOM``,
-  ``stylesheet``) that try to pivot the review into a code-reading
-  task are rejected so a verdict cannot be smuggled in by escaping
-  the visual review.
+  review; wording that tries to pivot the review into a code-reading
+  task is rejected so a verdict cannot be smuggled in by escaping the
+  visual review. The vocabulary covers ``DOM``, ``CSS``,
+  ``stylesheet``, ``diff``, ``classname``, the code-artifact compounds
+  of ``source``/``class``/``style`` (``source code``, ``class name``,
+  ``inline style``, ...), and ``source`` as the object of a
+  code-reading directive (``inspect the source``). Matching is
+  whole-word and case insensitive, so ``dom`` is rejected while
+  ``kingdom``, ``different``, and ``the visual style`` are not.
 
 Section bodies tolerate multi-line prose and unknown continuation
 lines under items; the consumed structure above is what this spec
@@ -35,6 +40,7 @@ checks.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Literal
 
 from ralph.mcp.artifacts.design_verdict import (
@@ -59,7 +65,61 @@ _JUDGEMENT_TIERS: tuple[Literal["deterministic", "on-demand"], ...] = (
 _FINDING_PARTS = 5
 _VERDICT_PARTS = 2
 _REGION_COORDINATES = 4
-_SMUGGLE_PHRASES: tuple[str, ...] = ("source", "diff", "DOM", "stylesheet")
+# --- Design-intent smuggle vocabulary -------------------------------------
+#
+# ``## Design Intent`` carries the verbatim prose the reviewer was asked to
+# judge visually. The check rejects prose that pivots the review into a
+# code-reading task, so the vocabulary is matched as whole words (case
+# insensitively), never as bare substrings:
+#
+# * Substring matching was both leaky and over-eager. ``"DOM" in text`` missed
+#   ``dom`` and ``Dom``; ``"diff" in text`` rejected the perfectly ordinary
+#   design words ``different`` and ``difference``.
+# * Head words that are ordinary design vocabulary on their own -- ``source``
+#   (the source of a defect), ``class`` (a class of bugs), ``style`` (the
+#   visual style) -- are therefore listed ONLY in the compound forms that name
+#   a code artifact, or bound to a verb that directs code reading. This mirrors
+#   the phrase-shaped vocabulary already documented in
+#   ``ralph.visual.design_verdict._INPUT_SMUGGLE_FRAGMENTS``.
+
+# Terms that name a code artifact on their own and have no design-prose sense.
+_SMUGGLE_TERMS: tuple[str, ...] = (
+    "dom",
+    "css",
+    "stylesheets?",
+    "diffs?",
+    "classnames?",
+)
+
+# Compounds whose head word is ordinary design vocabulary in isolation.
+_SMUGGLE_COMPOUNDS: tuple[str, ...] = (
+    "source code",
+    "source files?",
+    "source trees?",
+    "class names?",
+    "class attributes?",
+    "inline styles?",
+    "style attributes?",
+    "style rules?",
+    "computed styles?",
+)
+
+# ``source`` as the object of a code-reading directive ("inspect the source").
+_SMUGGLE_DIRECTIVES: tuple[str, ...] = (
+    "(?:read|reads|reading|inspect|inspects|examine|examines|review|reviews"
+    "|check|checks|open|opens|grep|greps|walk|walks|trace|traces|look at"
+    "|looks at) (?:the |its |their |this |our )?sources?",
+)
+
+_SMUGGLE_PATTERN = re.compile(
+    r"\b(?:"
+    + "|".join(
+        phrase.replace(" ", r"\s+")
+        for phrase in (*_SMUGGLE_TERMS, *_SMUGGLE_COMPOUNDS, *_SMUGGLE_DIRECTIVES)
+    )
+    + r")\b",
+    re.IGNORECASE,
+)
 _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"blocker", "major"})
 
 
@@ -300,7 +360,16 @@ def _validate_verdict(
 
 
 def _validate_intent(intent_text: str, intent_line: int) -> list[Diagnostic]:
-    """Reject intent text that smuggles a source-reading phrase."""
+    """Reject intent text that smuggles a code-reading phrase.
+
+    Matching is whole-word and case insensitive, so ``dom``/``DOM`` are both
+    rejected while ``different`` and ``kingdom`` are not.
+    """
+    seen: list[str] = []
+    for match in _SMUGGLE_PATTERN.finditer(intent_text):
+        phrase = " ".join(match.group(0).lower().split())
+        if phrase not in seen:
+            seen.append(phrase)
     return [
         Diagnostic(
             intent_line,
@@ -308,10 +377,10 @@ def _validate_intent(intent_text: str, intent_line: int) -> list[Diagnostic]:
             "DV008",
             f"intent smuggles forbidden phrase {phrase!r}; "
             "design_verdict review is a visual check and the intent "
-            "must not pivot into a source/diff/DOM/stylesheet reading task",
+            "must not pivot into a source/diff/DOM/CSS/class/style "
+            "reading task",
         )
-        for phrase in _SMUGGLE_PHRASES
-        if phrase in intent_text
+        for phrase in seen
     ]
 
 

@@ -117,13 +117,6 @@ _IO_ALLOWLIST: set[str] = {
     # structural tests, so replacing with mocked content would defeat the
     # purpose.
     "test_no_hardcoded_phase_names",
-    # Starter-policy and ADR alignment guard. Reads the shipped
-    # ``ralph/project_policy/starters/*.md`` files and ADR-0002 because their
-    # literal contents are the regression contract: the test detects drift
-    # between the four starter policies and the recorded architecture
-    # decision. A tmp_path copy would assert against the fixture, not the
-    # shipped file, so the guard would stop detecting drift entirely.
-    "test_visual_verdict_policy_alignment",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
     "test_doc_adding_a_new_agent",
@@ -199,6 +192,37 @@ _IO_ALLOWLIST: set[str] = {
     # mock_multimodal_agent.py's real-wire dispatch.
     "mock_agy_v1_1_13",
 }
+
+# --- Narrow, read-only exemption ------------------------------------------
+#
+# Entries in ``_IO_ALLOWLIST`` (and the sleep/wall-clock lists) exempt the
+# WHOLE FILE from EVERY category -- ``audit_test_file`` returns early for
+# them. That is far broader than most justifications need. When the only
+# thing a test genuinely needs is to read a shipped repository file, list it
+# here instead: this allowlist suppresses ONLY ``Path.read_text`` /
+# ``Path.read_bytes`` findings. Subprocess, network, filesystem writes,
+# ``open()``, ``sleep()``, wall-clock, and blocking-wait violations in the
+# same file are still reported.
+_SOURCE_READ_ALLOWLIST: set[str] = {
+    # Starter-policy and ADR alignment guard. Reads the shipped
+    # ``ralph/project_policy/starters/*.md`` files and ADR-0002 because their
+    # literal contents are the regression contract: the test detects drift
+    # between the four starter policies and the recorded architecture
+    # decision. A tmp_path copy would assert against the fixture, not the
+    # shipped file, so the guard would stop detecting drift entirely. Reading
+    # those files is the ONLY thing the test needs exempted.
+    "test_visual_verdict_policy_alignment",
+    # per-file-ignores inventory drift guard. Reads the shipped
+    # ``pyproject.toml`` and ``docs/ralph-workflow-policy/linting-policy.md``
+    # because the policy document claims to be "the complete inventory of
+    # keys" for ``[tool.ruff.lint.per-file-ignores]``; a fixture copy would
+    # assert the fixture's completeness, not the shipped files'. Reading
+    # those two files is the ONLY thing the test needs exempted.
+    "test_linting_policy_inventory",
+}
+
+# Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.
+_PATH_READ_METHODS: frozenset[str] = frozenset({"read_text", "read_bytes"})
 
 # Files that legitimately use time.monotonic()/time.perf_counter() for
 # non-circumvention purposes (single-point measurements, FakeClock
@@ -352,6 +376,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
         self.source_lines = source.splitlines()
         self.violations: list[TestPolicyViolation] = []
         self._has_monkeypatch = any(pattern in source for pattern in _MONKEYPATCH_PATTERNS)
+        self._source_read_exempt = Path(file_path).stem in _SOURCE_READ_ALLOWLIST
         self._has_subprocess_e2e_marker = "subprocess_e2e" in source
         self._inside_wait_for: bool = False
 
@@ -426,6 +451,9 @@ class TestPolicyAuditor(ast.NodeVisitor):
                 "open() — real file I/O in test; use MemoryWorkspace, tmp_path, or monkeypatch",
             )
         elif any(func_name == f"Path.{method}" for method in _PATH_IO_METHODS):
+            method_name = func_name.split(".", 1)[1]
+            if self._is_source_read_exempt(method_name):
+                return
             if not self._has_monkeypatch and not self._is_using_tmp_path():
                 self._add_violation(
                     node,
@@ -445,11 +473,21 @@ class TestPolicyAuditor(ast.NodeVisitor):
                 f"{func_name}() — network I/O in test; use mock/patch at the boundary",
             )
 
+    def _is_source_read_exempt(self, method_name: str) -> bool:
+        """Return True when this file may read shipped repository files.
+
+        Narrower than the whole-file allowlists: only read methods are
+        exempt, so a write, subprocess, sleep, or wall-clock call in the
+        same file is still reported.
+        """
+        return self._source_read_exempt and method_name in _PATH_READ_METHODS
+
     def _check_anonymous_path_io_call(self, node: ast.Call) -> None:
         """Detect I/O on an inline Path expression without a dotted name."""
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr in _PATH_IO_METHODS
+            and not self._is_source_read_exempt(node.func.attr)
             and not self._has_monkeypatch
             and not self._is_using_tmp_path()
         ):

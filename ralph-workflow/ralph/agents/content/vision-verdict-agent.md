@@ -84,11 +84,13 @@ failing step.
   verdict produced by a delegated grandchild would lose its
   per-call agent identity (S-16) and break the wire-ledger
   attribution that the criterion 8 evidence contract depends on.
-- **Source / DOM / stylesheet reading.** The agent MUST NOT read
-  the implementation under review to construct a verdict. Diff,
-  DOM, stylesheet, and source-code references are explicitly
-  rejected at the artifact boundary by
-  :func:`ralph.visual.design_verdict._validate_intent_no_smuggle`.
+- **Source / DOM / CSS / stylesheet reading.** The agent MUST NOT
+  read the implementation under review to construct a verdict.
+  Diff, DOM, CSS, class/style, and source-code wording in
+  ``## Design Intent`` is rejected at the artifact boundary with
+  diagnostic ``DV008`` by
+  :mod:`ralph.mcp.artifacts.markdown.specs.design_verdict`, the spec
+  that validates every submitted ``design_verdict``.
 - **Substituted baselines.** The agent MUST NOT compare against a
   re-captured pre-change set, a fabricated baseline, or any
   pre-change set whose ``capture_run_id`` is not the run ID passed

@@ -182,6 +182,40 @@ def test_wall_clock_allowlist_file_is_skipped(tmp_path: Path) -> None:
     assert len(violations) == 0
 
 
+def test_source_read_allowlist_permits_reading_shipped_files(tmp_path: Path) -> None:
+    """A source-read allowlisted file may read repository files."""
+    test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
+    test_file.write_text("from pathlib import Path\nPath('policy.md').read_text()\n")
+    assert audit_test_file(test_file) == []
+
+
+def test_source_read_allowlist_still_flags_wall_clock(tmp_path: Path) -> None:
+    """The narrow exemption must not suppress wall-clock violations."""
+    test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
+    test_file.write_text("import time\ntime.monotonic()\n")
+    violations = audit_test_file(test_file)
+    assert [violation.category for violation in violations] == ["wall-clock"]
+
+
+def test_source_read_allowlist_still_flags_subprocess(tmp_path: Path) -> None:
+    """The narrow exemption must not suppress subprocess violations."""
+    test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
+    test_file.write_text("import subprocess\nsubprocess.run(['ls'])\n")
+    violations = audit_test_file(test_file)
+    assert len(violations) == 1
+    assert "subprocess.run" in violations[0].detail
+
+
+def test_source_read_allowlist_still_flags_sleep_and_writes(tmp_path: Path) -> None:
+    """The exemption covers reads only: sleep and filesystem writes stay flagged."""
+    test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
+    test_file.write_text(
+        "import time\nfrom pathlib import Path\ntime.sleep(1)\nPath('policy.md').write_text('x')\n"
+    )
+    violations = audit_test_file(test_file)
+    assert sorted(violation.category for violation in violations) == ["io", "sleep"]
+
+
 # ---------------------------------------------------------------------------
 # Directory-level audit test
 # ---------------------------------------------------------------------------

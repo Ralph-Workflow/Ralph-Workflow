@@ -47,7 +47,17 @@ def loguru_event_listener(event: ProcessEvent) -> None:
         else:
             bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.FAILED:
-        bound.error("process {} {} rc={}", record.pid, new_status.name, record.returncode)
+        # A spawn that never produced a child has pid -1 and rc None, so those
+        # two fields alone say nothing an operator can act on. The command and
+        # the failure message are the whole diagnosis.
+        bound.error(
+            "process {} {} rc={} command={} failure={}",
+            record.pid,
+            new_status.name,
+            record.returncode,
+            list(record.command),
+            record.failure_message,
+        )
 
 
 __all__ = ["load_psutil_module", "loguru_event_listener"]

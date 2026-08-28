@@ -17,7 +17,7 @@ Use these first, in this order:
 5. Python source and docstrings under `ralph-workflow/ralph/`
 6. `docs/code-style/documentation-rubric.md` (canonical documentation rubric — applies to every docs change)
 
-Note: the root `PROMPT.md` is the project brief/rubric, while
+Note: the root `PROMPT.md` is the canonical project brief, while
 `ralph-workflow/PROMPT.md` is the starter task template seeded into
 your project by `ralph --init` — do not conflate the two.
 

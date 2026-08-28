@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.process._spawn_env import scrub_activity_relay_controls
+from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process._spawn_validation import validate_spawn_arguments
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
@@ -510,7 +510,18 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            validate_spawn_arguments(cmd, cwd=effective.cwd, env=effective.env)
+            validate_spawn_arguments(
+                cmd,
+                cwd=effective.cwd,
+                # The map the child actually gets, matching the PTY and async
+                # seams: a variable scrubbed before the child exists cannot
+                # poison it, so rejecting the spawn over it would refuse a
+                # launch that would have succeeded.
+                env=child_env_for_spawn(
+                    effective.env,
+                    allow_activity_relay_controls=effective.allow_activity_relay_controls,
+                ),
+            )
             proc: _SyncProcessLike = self._sync_process_factory(cmd, effective)
         except (OSError, ValueError) as exc:
             record = ProcessRecord(
@@ -578,9 +589,7 @@ class ProcessManager:
         effective = opts or PtySpawnOptions(cwd=cwd, env=env, cols=cols, rows=rows, label=label)
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
-        child_env = (
-            None if effective.env is None else scrub_activity_relay_controls(dict(effective.env))
-        )
+        child_env = child_env_for_spawn(effective.env)
         try:
             validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
             proc = self._pty_process_factory(
@@ -650,9 +659,7 @@ class ProcessManager:
         effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
-        child_env = (
-            None if effective.env is None else scrub_activity_relay_controls(dict(effective.env))
-        )
+        child_env = child_env_for_spawn(effective.env)
         try:
             validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
             proc = await self._async_process_factory(

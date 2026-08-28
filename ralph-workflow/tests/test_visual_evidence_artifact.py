@@ -245,6 +245,54 @@ def test_intent_with_stylesheet_smuggle_phrase_is_rejected() -> None:
     assert "DV008" in _errors(text)
 
 
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Walk the dom tree of the rendered header.",
+        "Walk the Dom Tree of the rendered header.",
+        "Read the Source Code of the header component.",
+        "Show me the Diff between before and after.",
+        "Compare this against the production Stylesheet.",
+    ],
+)
+def test_intent_smuggle_detection_is_case_insensitive(intent: str) -> None:
+    """Lower- or mixed-case smuggle wording must be rejected like the canonical spelling."""
+    assert "DV008" in _errors(_build_document(intent=intent))
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Match the css rules that shipped with the design system.",
+        "Confirm the CSS custom properties resolve for the banner.",
+        "Check the class name applied to the primary action.",
+        "Verify the classNames emitted for the primary action.",
+        "Confirm the inline styles on the banner container.",
+        "Confirm the style attribute on the banner container.",
+        "Confirm the computed style of the banner container.",
+    ],
+)
+def test_intent_rejects_css_class_and_style_smuggles(intent: str) -> None:
+    """CSS/class/style wording is an appearance assertion, not visual-verdict evidence."""
+    assert "DV008" in _errors(_build_document(intent=intent))
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Fix the source of the spacing inconsistency in the card grid.",
+        "Resolve a class of layout bugs that appear only when stacked.",
+        "The header must read differently at the two smallest breakpoints.",
+        "Keep the visual style of the header consistent across themes.",
+        "Random kingdom banners must not clip at the narrow viewport.",
+        "The difference between the two themes must stay legible.",
+    ],
+)
+def test_intent_accepts_ordinary_design_prose(intent: str) -> None:
+    """Ordinary design vocabulary must not be mistaken for a code-reading pivot."""
+    assert _errors(_build_document(intent=intent)) == []
+
+
 def test_missing_capture_provenance_field_is_rejected() -> None:
     """A missing required provenance field must surface as a hard error."""
     text = _build_document(target="")

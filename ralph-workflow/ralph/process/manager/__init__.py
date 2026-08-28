@@ -6,7 +6,7 @@ import asyncio
 import subprocess
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.process._spawn_env import scrub_activity_relay_controls
+from ralph.process._spawn_env import child_env_for_spawn, scrub_activity_relay_controls
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -42,12 +42,9 @@ def _default_sync_process_factory(
     opts: SpawnOptions,
 ) -> _SyncProcessLike:
     # Process spawned via ProcessManager — see ralph.process.manager.ProcessManager
-    child_env = (
-        None
-        if opts.env is None
-        else dict(opts.env)
-        if opts.allow_activity_relay_controls
-        else scrub_activity_relay_controls(dict(opts.env))
+    child_env = child_env_for_spawn(
+        opts.env,
+        allow_activity_relay_controls=opts.allow_activity_relay_controls,
     )
     return cast(
         "subprocess.Popen[bytes]",
