@@ -109,9 +109,31 @@ def _check_url_policy(
     allow_private_networks: bool,
     error_url: str | None = None,
 ) -> FetchOutcome | None:
-    """Validate URL scheme, hostname, and SSRF policy. Returns an error FetchOutcome or None."""
-    parsed = urlparse(url)
+    """Validate URL scheme, hostname, and SSRF policy. Returns an error FetchOutcome or None.
+
+    Parses with BOTH parsers on purpose. The stdlib one answers the
+    policy questions (scheme, hostname, private-network), but it is
+    LENIENT where httpx is strict, so a URL can clear this gate and then
+    make ``client.stream`` raise -- ``http://999.1.1.1/`` parses here
+    with ``hostname='999.1.1.1'`` and is rejected by httpx as an invalid
+    IPv4 address. Constructing ``httpx.URL`` here moves that rejection
+    into the gate, where the designed ``invalid_url`` outcome lives,
+    instead of leaving it to escape as an exception from a function
+    documented never to raise.
+
+    The stdlib parser is itself fallible: an unbalanced bracket
+    (``http://[::1``) raises ``ValueError: Invalid IPv6 URL`` before any
+    check below runs.
+    """
     target_url = error_url or url
+    try:
+        parsed = urlparse(url)
+    except ValueError as exc:
+        return FetchOutcome(
+            status="invalid_url",
+            effective_url=target_url,
+            error=f"malformed URL: {exc}",
+        )
     if parsed.scheme not in {"http", "https"}:
         return FetchOutcome(
             status="invalid_url",
@@ -132,6 +154,18 @@ def _check_url_policy(
                 "access to private/loopback networks is disabled by default; "
                 "set allow_private_networks=true in [web_visit] config to enable"
             ),
+        )
+    try:
+        httpx.URL(url)
+    except (httpx.InvalidURL, ValueError) as exc:
+        # ``ValueError`` is not redundant with ``InvalidURL``: an
+        # over-long hostname reaches the IDNA codec and comes back as
+        # ``UnicodeEncodeError`` ("label too long"), which is a
+        # ``ValueError`` and NOT an ``InvalidURL``.
+        return FetchOutcome(
+            status="invalid_url",
+            effective_url=target_url,
+            error=f"malformed URL: {exc}",
         )
     return None
 
@@ -211,7 +245,19 @@ def fetch_url(
                                 error=f"HTTP {http_status}",
                             )
                             break
-                        next_url = urljoin(effective_url, location)
+                        try:
+                            next_url = urljoin(effective_url, location)
+                        except ValueError as exc:
+                            # A server-supplied Location header is remote
+                            # input; a malformed one must be an outcome,
+                            # not an exception out of this function.
+                            result = FetchOutcome(
+                                status="invalid_url",
+                                effective_url=effective_url,
+                                http_status=http_status,
+                                error=f"malformed redirect target: {exc}",
+                            )
+                            break
                         redirect_policy_error = _check_url_policy(
                             next_url,
                             allow_private_networks=allow_private_networks,
@@ -254,6 +300,14 @@ def fetch_url(
             else:
                 result = FetchOutcome(status="unreachable", error="too many redirects")
 
+    except (httpx.InvalidURL, ValueError) as exc:
+        # ``InvalidURL`` is NOT an httpx.HTTPError subclass (httpx declares it straight off
+        # Exception), so the tuple below cannot catch it. Reachable
+        # despite the gate above because Ralph hand-rolls the redirect
+        # loop with follow_redirects=False -- httpx converts InvalidURL
+        # to RemoteProtocolError only on its own internal redirect path,
+        # which this opts out of.
+        return FetchOutcome(status="invalid_url", error=f"malformed URL: {exc}")
     except httpx.TimeoutException as exc:
         return FetchOutcome(status="timeout", error=str(exc))
     except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.HTTPError) as exc:

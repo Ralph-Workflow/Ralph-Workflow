@@ -156,3 +156,73 @@ def test_fetch_url_follows_public_redirect_then_reads_body(
     assert outcome.body == b"<html><body><p>hello</p></body></html>"
     assert requested_urls == [start_url, final_url]
     assert created_kwargs == [{"follow_redirects": False, "timeout": 1.0}]
+
+
+#: URLs that clear or crash the stdlib policy parser and are rejected by
+#: httpx's stricter one. Each used to escape ``fetch_url`` as an
+#: exception from a function documented never to raise.
+_MALFORMED_URLS = (
+    ("http://[::1", "unbalanced bracket: stdlib urlparse raises ValueError first"),
+    ("http://999.1.1.1/", "stdlib accepts the hostname; httpx rejects the IPv4 address"),
+    ("http://exam]ple.com", "stray bracket"),
+    ("http://exa\tmple.com/", "non-printable ASCII"),
+    ("http://" + "a" * 70000 + ".com/", "over-long label: IDNA raises UnicodeEncodeError"),
+)
+
+
+def test_malformed_urls_are_an_outcome_not_an_exception() -> None:
+    """``fetch_url`` documents that it never raises; these all made it raise.
+
+    ``httpx.InvalidURL`` is declared straight off ``Exception``, so the
+    guard's ``(ConnectError, RemoteProtocolError, HTTPError)`` tuple
+    could not catch it, and the stdlib ``ValueError`` fires before httpx
+    is reached at all. Both escaped to the MCP dispatcher as a RETRYABLE
+    ``-32603``, so an agent could re-issue the identical failing call for
+    hours, while the dedicated ``invalid_url`` status was unreachable for
+    this entire input class.
+
+    No network is touched: every URL here is rejected before a request
+    is issued.
+    """
+    for url, why in _MALFORMED_URLS:
+        outcome = fetcher.fetch_url(
+            url,
+            timeout_ms=1000,
+            max_bytes=1024,
+            user_agent="ralph-test",
+            allow_private_networks=False,
+        )
+        assert outcome.status == "invalid_url", f"{why}: got {outcome.status}"
+        assert outcome.error
+
+
+def test_a_malformed_redirect_target_is_an_outcome_not_an_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``Location`` header is remote input and must not be able to raise.
+
+    Ralph sets ``follow_redirects=False`` and hand-rolls the redirect
+    loop, which opts out of the one place httpx converts ``InvalidURL``
+    into a catchable ``RemoteProtocolError`` -- so a hostile or broken
+    server's ``Location`` reached ``urljoin``/``client.stream`` raw.
+    """
+    _patch_client(
+        monkeypatch,
+        {
+            "https://example.com/": _ResponseSpec(
+                url="https://example.com/",
+                status_code=302,
+                headers={"location": "http://[::1", "content-type": "text/html"},
+            )
+        },
+    )
+
+    outcome = fetcher.fetch_url(
+        "https://example.com/",
+        timeout_ms=1000,
+        max_bytes=1024,
+        user_agent="ralph-test",
+        allow_private_networks=False,
+    )
+
+    assert outcome.status == "invalid_url"
