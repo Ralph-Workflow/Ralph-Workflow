@@ -342,3 +342,33 @@ def test_test_auto_integrate_e2e_delegates_to_canonical_registry() -> None:
     assert _target_body("test-auto-integrate-e2e") == [
         "$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e"
     ]
+
+
+@pytest.mark.timeout_seconds(5)
+def test_every_audit_module_is_wired_into_verify_steps() -> None:
+    """No ``ralph/testing/audit_*.py`` module may sit outside the default gate.
+
+    AGENTS.md: "every check MUST be wired into ``make verify``. A check
+    that runs only in an opt-in suite the default gate excludes WILL rot
+    unnoticed: either wire it into ``_VERIFY_STEPS``, or delete it."
+    A dormant audit drifts from its own contract while the gate stays
+    green, so the inventory on disk and the inventory the gate runs must
+    match exactly.
+    """
+    on_disk = {path.stem for path in (REPO_ROOT / "ralph" / "testing").glob("audit_*.py")}
+    wired = {
+        argument.rsplit(".", 1)[-1]
+        for _label, _command, args, _timeout in verify_module._VERIFY_STEPS
+        for argument in args
+        if argument.startswith("ralph.testing.audit_")
+    }
+
+    assert on_disk, "expected at least one audit module on disk"
+    assert on_disk - wired == set(), (
+        "these audit modules exist but no _VERIFY_STEPS entry runs them; "
+        f"wire them into _VERIFY_STEPS or delete them: {sorted(on_disk - wired)}"
+    )
+    assert wired - on_disk == set(), (
+        "_VERIFY_STEPS runs audit modules that no longer exist on disk: "
+        f"{sorted(wired - on_disk)}"
+    )

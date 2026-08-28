@@ -5,8 +5,7 @@ from __future__ import annotations
 import io
 from functools import lru_cache
 from pathlib import Path
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,13 +24,13 @@ from ralph.pipeline.effects import (
     CommitEffect,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import (
         PolicyBundle,
     )
@@ -338,7 +337,7 @@ class TestExecuteCommitEffect:
 
         result = runner_module._execute_commit_effect_from_deps(
             CommitEffect(message_file=str(message_file)),
-            cast("PipelineDeps", SimpleNamespace(commit_effect_executor=None)),
+            PipelineDeps(display_context=make_display_context(console=Console())),
             WorkspaceScope(tmp_path),
             None,
             Verbosity.VERBOSE,

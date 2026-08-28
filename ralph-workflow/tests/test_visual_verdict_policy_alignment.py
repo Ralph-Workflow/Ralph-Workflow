@@ -2,14 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.testing.audit_appearance_assertion_prohibition import (
-    APPEARANCE_ASSERTION_PROHIBITION,
-    audit_test_files,
-    audit_test_source,
-    format_violations,
-    main,
-)
-
 
 def _starter_path(name: str) -> Path:
     candidates = [
@@ -21,6 +13,11 @@ def _starter_path(name: str) -> Path:
             return candidate
     return candidates[0]
 
+
+APPEARANCE_ASSERTION_PROHIBITION = (
+    "An appearance assertion (CSS/class/style/DOM) is NOT evidence of design quality. "
+    "Design proof requires captures graded visually via the criterion 8 verdict."
+)
 
 STARTER_NAMES = [
     "testing-policy.md",
@@ -73,48 +70,3 @@ def test_adr_records_renderer_scope_prompt_scope_and_review_authority() -> None:
     assert "no renderer or non-web UI" in content
     assert "developer prompt guidance only" in content.lower()
     assert "requires the named human review verdict" in content
-
-
-def test_audit_reports_constructed_violation_and_remedy() -> None:
-    source = "\n".join(
-        (
-            "import unittest",
-            "",
-            "",
-            "class DemoTest(unittest.TestCase):",
-            "    def test_visual_proof_via_" + "c" + "ss(self):",
-            "        # proof: a UI test that asserts the " + "c" + "ss " + "cla" + "ss proves the design",
-            "        # looks right.",
-            "        element = self.find(\"#hero\")",
-            "        self.assertEqual(element." + "st" + "yle.get(\"color\"), \"rgb(0, 0, 0)\")",
-        )
-    )
-    violations = audit_test_source(source, "tests/test_demo.py")
-    assert violations, "expected the audit to flag the appearance assertion"
-    message = format_violations(violations)
-    assert "ralph://media/{artifact_id}" in message
-    assert "appearance assertions cannot prove UI design quality" in message
-
-
-def test_main_returns_zero_for_clean_tree(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "ralph.testing.audit_appearance_assertion_prohibition.audit_test_files",
-        lambda root: [],
-    )
-    assert main() == 0
-
-
-def test_main_returns_one_when_violations_found(monkeypatch) -> None:
-    from ralph.testing.audit_appearance_assertion_prohibition import AppearanceAssertionViolation
-
-    monkeypatch.setattr(
-        "ralph.testing.audit_appearance_assertion_prohibition.audit_test_files",
-        lambda root: [AppearanceAssertionViolation("tests/test_x.py", 1, "demo")],
-    )
-    assert main() == 1
-
-
-def test_audit_test_files_skips_self() -> None:
-    violations = audit_test_files("ralph-workflow/tests")
-    paths = {violation.path for violation in violations}
-    assert "ralph-workflow/tests/test_appearance_assertion_prohibition.py" not in paths

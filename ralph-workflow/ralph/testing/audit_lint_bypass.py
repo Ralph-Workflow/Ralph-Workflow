@@ -320,7 +320,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/visual/**/*.py",
             "ralph/agents/multimodal_status.py",
             "ralph/agents/delegation_capabilities.py",
-            "ralph/testing/audit_appearance_assertion_prohibition.py",
         ],
         "reason": (
             "Tests use literal fixtures; visual and transport policy code uses "
@@ -462,7 +461,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/multimodal/capabilities.py",
-            "ralph/testing/audit_appearance_assertion_prohibition.py",
         ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "
@@ -478,7 +476,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/builtin_spec.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
-            "ralph/testing/audit_appearance_assertion_prohibition.py",
         ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "

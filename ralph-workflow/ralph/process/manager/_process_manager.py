@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.process._spawn_env import scrub_activity_relay_controls
+from ralph.process._spawn_validation import validate_spawn_arguments
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -509,8 +510,9 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
+            validate_spawn_arguments(cmd, cwd=effective.cwd, env=effective.env)
             proc: _SyncProcessLike = self._sync_process_factory(cmd, effective)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,
@@ -580,6 +582,7 @@ class ProcessManager:
             None if effective.env is None else scrub_activity_relay_controls(dict(effective.env))
         )
         try:
+            validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
             proc = self._pty_process_factory(
                 cmd,
                 cwd=effective.cwd,
@@ -587,7 +590,7 @@ class ProcessManager:
                 cols=effective.cols,
                 rows=effective.rows,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,
@@ -651,6 +654,7 @@ class ProcessManager:
             None if effective.env is None else scrub_activity_relay_controls(dict(effective.env))
         )
         try:
+            validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
             proc = await self._async_process_factory(
                 cmd,
                 cwd=effective.cwd,
@@ -660,7 +664,7 @@ class ProcessManager:
                 stderr=effective.stderr,
                 start_new_session=effective.start_new_session,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,

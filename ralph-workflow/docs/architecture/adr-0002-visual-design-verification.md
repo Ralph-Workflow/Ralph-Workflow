@@ -86,9 +86,10 @@ agent-produced evidence and requires the named human review verdict;
 it does not close the review lane autonomously. Unverified evidence
 stays in the human queue. Developer prompt guidance only directs this
 capture and comparison workflow; no other phase is guided by it.
-`audit_appearance_assertion_prohibition` rejects UI plan proofs
-citing CSS/class/style/DOM assertions and directs authors to the
-capture path.
+The developer prompt guidance states the prohibition to the agent, and
+`ralph.visual.design_verdict` enforces it at the artifact boundary:
+a verdict whose inputs smuggle in source, diff, DOM, or stylesheet
+material is rejected by typed validation (D4).
 
 ### D7. Two visual smoke tiers
 

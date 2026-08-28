@@ -1,6 +1,6 @@
 """Duplicate-keyword forwarding audit.
 
-Bans the wrapper shape that silently breaks every call through a seam:
+Bans the wrapper shape that silently breaks every call through a seam::
 
     def wrapper(a, b, **opts):
         return inner(a, b, some_hook=DEFAULT, **opts)
@@ -74,7 +74,8 @@ import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+
+from ralph.testing._audit_parse_error import AuditParseError
 
 #: Both the shipped package and its tests are gated: a helper in ``tests/``
 #: carrying the banned shape is a landmine for the next author of that helper.
@@ -83,7 +84,7 @@ DEFAULT_ROOTS: tuple[str, ...] = ("ralph", "tests")
 _Scope = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 
 #: Node types that open a new binding scope, as a tuple for ``isinstance``.
-_SCOPE_NODES: tuple[type[ast.AST], ...] = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+_SCOPE_NODES: tuple[type[_Scope], ...] = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 
 @dataclass(frozen=True)
@@ -103,10 +104,6 @@ class Violation:
             f"'{self.keyword}' raises TypeError. Use "
             f"{self.catchall}.setdefault({self.keyword!r}, ...) instead."
         )
-
-
-class AuditParseError(Exception):
-    """A file under audit could not be parsed, so it could not be cleared."""
 
 
 def _bindable_parameter_names(scope: _Scope) -> set[str]:
@@ -172,7 +169,7 @@ def _walk_scope(node: ast.AST, catchall: str, safe: frozenset[str]) -> list[tupl
     """
     found: list[tuple[ast.Call, frozenset[str]]] = []
     if isinstance(node, _SCOPE_NODES):
-        scope = cast("_Scope", node)
+        scope = node
         bound = _bindable_parameter_names(scope)
         args = scope.args
         shadowing = {arg.arg for arg in args.posonlyargs} | bound

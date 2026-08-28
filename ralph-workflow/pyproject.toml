@@ -204,12 +204,6 @@ select = [
 "ralph/mcp/multimodal/capabilities.py" = [
     "PLR0911"
 ]
-"ralph/testing/audit_appearance_assertion_prohibition.py" = [
-    "PLR0911",
-    "PLR0912",
-    "PLR2004"
-]
-
 "tests/**/*.py" = [
     "PLR2004",
     "RUF043",

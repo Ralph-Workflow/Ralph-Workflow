@@ -117,6 +117,13 @@ _IO_ALLOWLIST: set[str] = {
     # structural tests, so replacing with mocked content would defeat the
     # purpose.
     "test_no_hardcoded_phase_names",
+    # Starter-policy and ADR alignment guard. Reads the shipped
+    # ``ralph/project_policy/starters/*.md`` files and ADR-0002 because their
+    # literal contents are the regression contract: the test detects drift
+    # between the four starter policies and the recorded architecture
+    # decision. A tmp_path copy would assert against the fixture, not the
+    # shipped file, so the guard would stop detecting drift entirely.
+    "test_visual_verdict_policy_alignment",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
     "test_doc_adding_a_new_agent",

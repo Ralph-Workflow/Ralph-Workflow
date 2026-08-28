@@ -9,7 +9,7 @@ Treat older Rust-oriented material elsewhere in the repo as legacy background un
 
 Use these first, in this order:
 
-1. `PROMPT.md` (root — the canonical documentation rubric / brief for the project)
+1. `PROMPT.md` (root — the canonical project brief)
 2. `ralph-workflow/CONTRIBUTING.md`
 3. `docs/agents/verification.md`
 3.5. `ralph-workflow/docs/agents/artifact-submission-contract.md`

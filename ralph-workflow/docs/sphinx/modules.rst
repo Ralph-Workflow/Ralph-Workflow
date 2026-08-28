@@ -4431,13 +4431,6 @@ ralph.agents.vision_agent_provisioning
    :members:
    :show-inheritance:
 
-ralph.testing.audit_appearance_assertion_prohibition
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_appearance_assertion_prohibition
-   :members:
-   :show-inheritance:
-
 ralph.mcp.artifacts.design_verdict
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
