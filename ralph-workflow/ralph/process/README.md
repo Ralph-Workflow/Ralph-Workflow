@@ -45,6 +45,35 @@ A process that exits with code `7` has `status=EXITED` and `returncode=7`.
 Whether that represents success is up to the pipeline's empirical-evidence check,
 not the manager.
 
+## Embedded NUL rule
+
+`execve` carries argv, environment entries and the child's cwd as NUL-terminated
+C strings, so a NUL *inside* any of them cannot cross the boundary — CPython
+raises `ValueError: embedded null byte` before the fork. Every `spawn*` applies
+one rule, in `ralph/process/_spawn_argv.py`:
+
+- **argv[1:] is stripped.** It carries content Ralph does not author (a
+  positional agent prompt holding a git diff, an agent-authored `git commit -m`
+  subject). A single source file with a literal NUL in a string literal is
+  enough to put one there, and aborting the phase over it helps nobody. Every
+  strip is logged with its argv index.
+- **argv[0] is rejected**, with `env` and `cwd` below: it names the program, and
+  stripping it would run a different binary than the caller asked for.
+- **env and cwd are rejected** by `ralph/process/_spawn_validation.py`, with a
+  `ValueError` naming the entry, and the spawn records the same `FAILED`
+  `ProcessRecord` an `OSError` would. These are Ralph's own control values; a
+  NUL in one is a defect, and silently rewriting a path could point the child at
+  a different directory.
+
+**Any validator that makes a security decision about an argv token must reject
+NUL itself.** Otherwise a caller hides a denied token from the validator as
+`--ext-di<NUL>ff` and the strip hands the denied token to `execve`. The argv
+validators in this repo do:
+`ralph.mcp.tools.git_read._validate_diff_args`,
+`ralph.mcp.tools.exec.parse_exec_params`, and
+`ralph.mcp.tools.unsafe_exec.handle_unsafe_exec` (guarding
+`_enforce_vcs_blacklist`).
+
 ## Cross-platform
 
 The ProcessManager's ordinary subprocess lifecycle (`spawn`, `spawn_async`, tree teardown)

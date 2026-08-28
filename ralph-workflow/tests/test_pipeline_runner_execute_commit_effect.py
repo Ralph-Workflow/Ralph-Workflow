@@ -559,6 +559,50 @@ class TestExecuteCommitEffect:
         actual = commit_executor_module._commit_include_paths_from_changed(payload, changed_paths)
         assert actual == expected
 
+    def test_commit_effect_calls_a_rejected_artifact_invalid_not_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """An artifact that fails the grammar (a NUL in a Files path) is retained
+        and re-read on every later pass, so the diagnostic has to name the real
+        problem instead of claiming a non-empty file is empty."""
+        message_file = tmp_path / "commit_message.md"
+        message_file.write_text(
+            "---\ntype: commit\nsubject: fix(auth): scope the commit\n---\n\n"
+            "## Body Summary\n\nScope the commit.\n\n## Files\n\n- src/au\x00th.py\n",
+            encoding="utf-8",
+        )
+        logged: list[str] = []
+        sink_id = loguru_logger.add(lambda message: logged.append(str(message)), level="ERROR")
+        try:
+            result = commit_executor_module.execute_commit_effect(
+                CommitEffect(message_file=str(message_file)),
+                tmp_path,
+            )
+        finally:
+            loguru_logger.remove(sink_id)
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+        assert any("is invalid" in line for line in logged), logged
+        assert not any("is empty" in line for line in logged), logged
+
+    def test_resolve_commit_scope_names_an_embedded_nul_in_a_staged_path(
+        self, tmp_git_repo: Path
+    ) -> None:
+        """A NUL-bearing path is named for what it is.
+
+        Without the guard, ``Path.resolve`` raises ``ValueError: embedded
+        null byte``, the escape check catches it, and the commit fails
+        claiming the path resolves "outside repository root" — a diagnostic
+        the agent cannot act on while the retained artifact fails the same
+        way on every later pass.
+        """
+        with pytest.raises(ValueError, match="embedded NUL"):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["src/au\x00th.py"], "excluded_files": []},
+                ["src/au\x00th.py"],
+                repo_root=tmp_git_repo,
+            )
+
     def test_resolve_commit_scope_rejects_symlink_inside_repo_pointing_to_sibling(
         self, tmp_git_repo: Path
     ) -> None:

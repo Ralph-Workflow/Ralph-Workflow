@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.process._spawn_argv import sanitize_spawn_command
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process._spawn_validation import validate_spawn_arguments
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
@@ -510,6 +511,14 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
+            # argv[1:] is STRIPPED of execve-illegal NULs so authored
+            # content (an agent prompt carrying a git diff of a source
+            # file with a literal NUL) cannot abort the phase; argv[0],
+            # cwd and env are REJECTED below, because rewriting a program
+            # name or a path would run something other than what the
+            # caller asked for. Both run inside the guard so a rejected
+            # argument still records a FAILED process.
+            cmd = sanitize_spawn_command(cmd, label=effective.label)
             validate_spawn_arguments(
                 cmd,
                 cwd=effective.cwd,
@@ -591,6 +600,14 @@ class ProcessManager:
         now = datetime.now(tz=UTC)
         child_env = child_env_for_spawn(effective.env)
         try:
+            # argv[1:] is STRIPPED of execve-illegal NULs so authored
+            # content (an agent prompt carrying a git diff of a source
+            # file with a literal NUL) cannot abort the phase; argv[0],
+            # cwd and env are REJECTED below, because rewriting a program
+            # name or a path would run something other than what the
+            # caller asked for. Both run inside the guard so a rejected
+            # argument still records a FAILED process.
+            cmd = sanitize_spawn_command(cmd, label=effective.label)
             validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
             proc = self._pty_process_factory(
                 cmd,
@@ -661,6 +678,14 @@ class ProcessManager:
         now = datetime.now(tz=UTC)
         child_env = child_env_for_spawn(effective.env)
         try:
+            # argv[1:] is STRIPPED of execve-illegal NULs so authored
+            # content (an agent prompt carrying a git diff of a source
+            # file with a literal NUL) cannot abort the phase; argv[0],
+            # cwd and env are REJECTED below, because rewriting a program
+            # name or a path would run something other than what the
+            # caller asked for. Both run inside the guard so a rejected
+            # argument still records a FAILED process.
+            cmd = sanitize_spawn_command(cmd, label=effective.label)
             validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
             proc = await self._async_process_factory(
                 cmd,

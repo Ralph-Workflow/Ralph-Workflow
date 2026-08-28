@@ -32,6 +32,7 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_from_path,
     read_commit_message_payload_from_path,
 )
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
@@ -130,7 +131,15 @@ def execute_commit_effect(
         payload = _read_commit_effect_payload(effect)
         message = _read_commit_effect_message(effect)
         if payload is None or not message:
-            logger.error("Commit message file is empty: {}", effect.message_file)
+            # "Empty" only when it really is: a file that failed the artifact
+            # grammar (a NUL in a Files path, a malformed section) also lands
+            # here, and reporting it as empty sends the next pass looking for
+            # the wrong problem while the rejected artifact is retained.
+            logger.error(
+                "Commit message file is {}: {}",
+                "empty" if not _has_content(effect.message_file) else "invalid",
+                effect.message_file,
+            )
             return PipelineEvent.COMMIT_FAILURE
         if payload.get("type") == "skip" or message.strip().lower().startswith("skip:"):
             logger.info("Commit agent requested skip — skipping commit execution")
@@ -163,6 +172,16 @@ def execute_commit_effect(
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         return PipelineEvent.COMMIT_FAILURE
     return PipelineEvent.COMMIT_SUCCESS
+
+
+def _has_content(message_file: str) -> bool:
+    """Return whether the commit-message artifact holds any content at all."""
+    path = Path(message_file)
+    if not DEFAULT_FILE_BACKEND.exists(path):
+        return False
+    # filesystem-read-ok: the artifact was already read on this path; this
+    # distinguishes an absent/blank file from one that failed the grammar.
+    return bool(DEFAULT_FILE_BACKEND.read_text(path, encoding="utf-8").strip())
 
 
 def _read_commit_effect_payload(effect: CommitEffect) -> dict[str, object] | None:
@@ -291,6 +310,16 @@ def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None
     """
     if repo_root is None:
         return
+    # An embedded NUL is named for what it is. Without this, ``resolve()``
+    # below raises ``ValueError: embedded null byte``, the escape check
+    # catches it, and the commit fails claiming the path is "outside
+    # repository root" — a lie the agent cannot act on, while the artifact
+    # is retained and the next pass fails the same way.
+    if "\x00" in normalized_path:
+        raise ValueError(
+            f"Refusing to stage a path containing an embedded NUL in commit scope: "
+            f"{normalized_path!r}"
+        )
     repo_root_resolved = Path(repo_root).resolve(strict=False)
     candidate = repo_root / normalized_path
     if candidate.is_symlink():

@@ -137,12 +137,17 @@ def _workspace_snapshot(
         content = cast("object", getattr(snapshot, "content", None))
         if isinstance(stat, dict) and (content is None or isinstance(content, str)):
             return stat, content
-    stat_result = workspace.stat(path)
+    # ``stat`` is inside the guard because a rejected PATH (one carrying an
+    # embedded NUL, one resolving outside the workspace) raises ``ValueError``
+    # from path resolution. Uncaught, that becomes a retryable ``-32603`` the
+    # agent re-issues forever; ``write_file`` / ``delete_path`` / ``stat_path``
+    # all already degrade to a terminal ``is_error`` result instead.
     try:
+        stat_result = workspace.stat(path)
         return stat_result, workspace.read(path)
     except UnicodeDecodeError:
         raise
-    except (FileNotFoundError, IsADirectoryError, OSError, RuntimeError) as exc:
+    except (FileNotFoundError, IsADirectoryError, OSError, RuntimeError, ValueError) as exc:
         raise ToolError(f"Failed to read file '{path}': {exc}") from exc
 
 

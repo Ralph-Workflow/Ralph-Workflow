@@ -14,6 +14,8 @@ import re
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -175,11 +177,51 @@ def _render_commit_body(content: dict[str, object]) -> str:
     return "\n\n".join(sections)
 
 
+#: Fields naming a file on disk. A NUL is dropped from prose (below) but a
+#: path is REJECTED: stripping ``src/se<NUL>cret.env`` would silently name
+#: ``src/secret.env`` -- a different, real file -- and quietly stage or
+#: exclude the wrong one.
+_PATH_FIELDS = frozenset({"path", "files"})
+
+
+def _reject_nul_path(value: str, field: str) -> str:
+    """Raise when a path field carries a NUL rather than rewriting the path."""
+    if "\x00" in value:
+        raise ValueError(
+            f"commit_message field {field!r} must not contain an embedded NUL: {value!r}"
+        )
+    return value
+
+
+def _strip_nul(value: str, field: str) -> str:
+    """Drop NUL characters from prose, which git writes into a corrupt object.
+
+    A NUL reaches a commit body the same way it reached an agent prompt:
+    the agent quotes a line of source that holds a literal NUL. Git does
+    not reject it -- ``index.commit`` writes it through, ``git log``
+    truncates the message at that byte, and ``git fsck`` reports
+    ``nulInCommit`` forever after (a server with
+    ``fsck.nulInCommit=error`` then refuses the push). Nothing legitimate
+    puts one in a commit message, and rejecting the artifact would only
+    send the agent round the submission loop again, so drop them and say
+    so. Path fields take the opposite treatment -- see ``_PATH_FIELDS``.
+    """
+    if field in _PATH_FIELDS:
+        return _reject_nul_path(value, field)
+    if "\x00" not in value:
+        return value
+    logger.warning(
+        f"commit_message field {field!r}: dropped {value.count(chr(0))} NUL character(s); "
+        f"git would have written a commit object that git fsck reports as nulInCommit"
+    )
+    return value.replace("\x00", "")
+
+
 def _required_string_field(content: dict[str, object], field: str) -> str:
     value = content.get(field)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"commit_message payloads require a non-empty '{field}'")
-    normalized = value.strip()
+    normalized = _strip_nul(value, field).strip()
     if field == "subject":
         _validate_commit_subject(normalized)
     return normalized
@@ -247,7 +289,7 @@ def _optional_string_field(content: dict[str, object], field: str) -> str | None
         return None
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"commit_message field '{field}' must be a non-empty string when provided")
-    return value.strip()
+    return _strip_nul(value, field).strip()
 
 
 def _optional_string_list(content: dict[str, object], field: str) -> list[str] | None:
@@ -261,7 +303,7 @@ def _optional_string_list(content: dict[str, object], field: str) -> list[str] |
     for item in value:
         if not isinstance(item, str) or not item.strip():
             raise ValueError(f"commit_message field '{field}' must contain only non-empty strings")
-        normalized.append(item.strip())
+        normalized.append(_reject_nul_path(item, field).strip())
     return normalized
 
 

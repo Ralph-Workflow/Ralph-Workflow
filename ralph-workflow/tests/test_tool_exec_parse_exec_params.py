@@ -205,3 +205,20 @@ class TestParseExecParams:
         assert result.shell_command is None
         assert result.command == "printf"
         assert result.args == [">"]
+
+    def test_rejects_an_embedded_nul_that_would_hide_a_blacklisted_command(self) -> None:
+        """``check_command`` sees ``su<NUL>do`` as unknown, but the spawn strips
+        the NUL and runs ``sudo``: the denylist boundary must fail closed."""
+        for params in (
+            {"command": "su\x00do rm -rf /"},
+            {"command": ["su\x00do", "-i"]},
+            {"command": "echo hi", "args": ["--flag\x00"]},
+            {"argv": "su\x00do -i"},
+        ):
+            with pytest.raises(InvalidParamsError, match="embedded NUL"):
+                parse_exec_params(params)
+
+    def test_accepts_a_clean_command_unchanged(self) -> None:
+        result = parse_exec_params({"command": "echo hi"})
+        assert result.command == "echo"
+        assert result.args == ["hi"]

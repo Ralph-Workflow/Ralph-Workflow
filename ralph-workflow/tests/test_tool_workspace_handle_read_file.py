@@ -93,3 +93,15 @@ class TestHandleReadFile:
 
         with pytest.raises(ToolError):
             handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "missing.txt"})
+
+    def test_rejected_path_raises_tool_error_not_a_retryable_protocol_error(self) -> None:
+        """Path resolution raises ``ValueError`` for a path carrying an embedded
+        NUL or resolving outside the workspace. Uncaught, that leaves the handler
+        as a retryable protocol error the agent re-issues; ``write_file``,
+        ``delete_path`` and ``stat_path`` all degrade to a terminal error here."""
+        ws = MagicMock()
+        ws.snapshot = None
+        ws.stat.side_effect = ValueError("embedded null byte")
+
+        with pytest.raises(ToolError):
+            handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "a\x00b.txt"})

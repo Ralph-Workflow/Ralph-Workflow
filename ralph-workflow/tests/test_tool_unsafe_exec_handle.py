@@ -134,6 +134,17 @@ class TestUnsafeExecCapabilityGate:
         with pytest.raises(InvalidParamsError):
             handle_unsafe_exec(session, workspace, {})
 
+    def test_rejects_an_embedded_nul_that_would_hide_a_denied_vcs_command(
+        self, tmp_path: Path
+    ) -> None:
+        """The VCS scanner reads ``gi<NUL>t`` as an unknown word, but the spawn
+        strips the NUL and runs ``git``: reject it before the denylist runs."""
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        for hidden in ("gi\x00t init subrepo", "git diff --outpu\x00t=/tmp/pwn"):
+            with pytest.raises(InvalidParamsError, match="embedded NUL"):
+                handle_unsafe_exec(session, workspace, {"command": hidden})
+
 
 class TestUnsafeExecVcsBlacklist:
     def test_blocks_git_command(self, tmp_path: Path) -> None:
@@ -229,6 +240,16 @@ class TestUnsafeExecVcsBlacklist:
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_unsafe_exec(session, workspace, {"command": "./release"})
+
+    def test_blocks_a_script_hiding_git_behind_an_embedded_nul(self, tmp_path: Path) -> None:
+        """``sh`` drops NULs from a script, so the scanner must drop them too:
+        ``gi<NUL>t tag`` scans as an unknown word but executes as ``git tag``."""
+        script = tmp_path / "deploy.sh"
+        script.write_bytes(b"#!/bin/sh\necho deploying\ngi\x00t tag v9\n")
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "bash deploy.sh"})
 
     def test_allows_shell_script_without_git(self, tmp_path: Path) -> None:
         script = tmp_path / "build.sh"

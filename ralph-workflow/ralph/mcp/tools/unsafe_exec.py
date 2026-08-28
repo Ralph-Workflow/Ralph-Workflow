@@ -59,9 +59,14 @@ def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
     its subcommand is in ``_GIT_READ_ONLY_SUBCOMMANDS`` and (for ``diff``)
     the flag guard passes; the shared ``_scan_text_for_vcs_violation``
     scanner enforces the same policy as ``exec``. The scanner walks the
-    whole joined text so a VCS call hidden in a quoted ``sh -c`` string,
-    in ``$(...)`` / backtick substitutions, or across newline-separated
-    sequences is still caught. Executed shell scripts (``bash deploy.sh``,
+    whole joined text, so a VCS call hidden in a quoted ``sh -c`` string or
+    across newline-separated sequences is still caught.
+
+    It is a static text scan, not a shell: a name the shell only assembles
+    at runtime is NOT caught (``gi$(echo)t tag``, ``X=; gi${X}t tag``).
+    Like the per-segment blacklist in ``exec``, this is defense-in-depth,
+    not a sandbox — the trust boundary is the ``ProcessExecUnbounded``
+    capability. Executed shell scripts (``bash deploy.sh``,
     ``./release``) are additionally content-scanned so a state-mutating
     git call cannot be laundered through a file.
     """
@@ -93,6 +98,14 @@ def handle_unsafe_exec(
         raise InvalidParamsError("'command' must be a non-empty string")
 
     command = command_value.strip()
+    # An embedded NUL is rejected BEFORE the VCS denylist below, and before the
+    # command reaches ``sh -c``. ``ProcessManager`` strips NULs out of argv
+    # (execve cannot carry one), so a command accepted here with a NUL inside
+    # would run WITHOUT it: ``gi<NUL>t init`` scans as an unknown word, passes
+    # the denylist, and executes as ``git init``. Nothing legitimate puts a NUL
+    # in a shell command, so this fails closed at the boundary that decides.
+    if "\x00" in command:
+        raise InvalidParamsError("'command' must not contain an embedded NUL")
     _enforce_vcs_blacklist(command, workspace)
 
     # Require a strictly positive timeout: 0/negative/non-int falls back to the

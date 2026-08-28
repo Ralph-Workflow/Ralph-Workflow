@@ -342,7 +342,12 @@ def find_vcs_usage_in_scripts(
             continue
         if not (token.endswith(_SCRIPT_EXTENSIONS) or head_bytes.startswith(_SHEBANG_PREFIX)):
             continue
-        reason = _scan_text_for_vcs_violation(head_bytes.decode("utf-8", errors="replace"))
+        # NULs are dropped before scanning because ``sh`` drops them too: a
+        # script holding ``gi<NUL>t tag`` scans as the unknown word ``gi?t``
+        # but executes as ``git tag``. Scan the text the shell will actually
+        # run, not the bytes on disk.
+        script_text = head_bytes.decode("utf-8", errors="replace").replace("\x00", "")
+        reason = _scan_text_for_vcs_violation(script_text)
         if reason is not None:
             return token, "git/hg/svn"
     return None

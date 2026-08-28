@@ -17,9 +17,14 @@ was lost was the diagnosis.
 These tests pin the observable post-fix contract for the sync, PTY and
 async spawn seams:
 
-  * a NUL byte anywhere in command, cwd, or the environment map that
-    actually reaches the child, and an empty argv, are rejected BEFORE
-    the process factory runs;
+  * a NUL byte in the program name (argv[0]), cwd, or the environment map
+    that actually reaches the child, and an empty argv, are rejected
+    BEFORE the process factory runs -- rewriting any of those would run
+    something other than what the caller asked for;
+  * a NUL byte in argv[1:] is STRIPPED instead, because that is where
+    authored content rides (an agent prompt carrying a git diff of a
+    source file with a literal NUL), and aborting the phase over a byte
+    the child would have read happily helps nobody;
   * the raised error names the offending argument and never echoes an
     environment value, which can hold a credential;
   * the raised error is an ``OSError`` as well as a ``ValueError``, so
@@ -128,27 +133,46 @@ def _failed_events(events: Sequence[ProcessEvent]) -> list[ProcessEvent]:
     return [event for event in events if event.new_status is ProcessStatus.FAILED]
 
 
-def test_spawn_rejects_null_byte_in_command_without_launching_a_child() -> None:
-    """A NUL byte in argv must fail before the sync factory runs."""
+def test_spawn_rejects_null_byte_in_the_program_name_without_launching_a_child() -> None:
+    """A NUL byte in argv[0] must fail before the sync factory runs.
+
+    argv[0] names the program: stripping it would launch a DIFFERENT binary
+    than the caller asked for, so it is rejected like cwd and env. argv[1:]
+    is stripped instead — see the companion test below and
+    ``tests/process/test_spawn_nul_sanitization.py`` for why.
+    """
     events: list[ProcessEvent] = []
     factory = _RecordingSyncFactory()
     manager = ProcessManager(policy=_QUIET_POLICY, sync_process_factory=factory)
     manager.register_listener(events.append)
 
-    with pytest.raises(ValueError, match="null byte") as excinfo:
-        manager.spawn(["/bin/echo", "hello\x00world"])
+    with pytest.raises(ValueError, match=r"command\[0\]") as excinfo:
+        manager.spawn(["/bin/ec\x00ho", "hello"])
 
     assert factory.calls == 0, (
-        "a command with a NUL byte must never reach the injected process factory, "
-        "which is the seam every real child is created through"
+        "a program name with a NUL byte must never reach the injected process "
+        "factory, which is the seam every real child is created through"
     )
-    message = str(excinfo.value)
-    assert "command[1]" in message, f"error must name the offending argument; got {message!r}"
     failed = _failed_events(events)
     assert len(failed) == 1, f"exactly one FAILED transition expected; got {events!r}"
-    assert failed[0].record.failure_message == message
-    assert failed[0].record.command == ("/bin/echo", "hello\x00world")
+    assert failed[0].record.failure_message == str(excinfo.value)
+    assert failed[0].record.command == ("/bin/ec\x00ho", "hello")
     assert manager.list_active() == []
+
+
+def test_spawn_strips_a_null_byte_from_an_argument_and_launches_the_child() -> None:
+    """argv[1:] carries authored content: an agent prompt holding a git diff of
+    a source file with a literal NUL must not abort the phase."""
+    events: list[ProcessEvent] = []
+    factory = _RecordingSyncFactory()
+    manager = ProcessManager(policy=_QUIET_POLICY, sync_process_factory=factory)
+    manager.register_listener(events.append)
+
+    handle = manager.spawn(["/bin/echo", "hello\x00world"])
+
+    assert factory.calls == 1
+    assert handle.record.command == ("/bin/echo", "helloworld")
+    assert _failed_events(events) == []
 
 
 def test_spawn_rejects_null_byte_in_env_value_and_names_the_variable() -> None:
@@ -205,15 +229,15 @@ def test_spawn_records_failed_transition_when_factory_raises_value_error() -> No
     assert failed[0].record.cause == "failed"
 
 
-def test_spawn_pty_rejects_null_byte_in_command_without_launching_a_child() -> None:
-    """The PTY seam rejects a NUL byte before the factory runs."""
+def test_spawn_pty_rejects_null_byte_in_the_program_name() -> None:
+    """The PTY seam rejects a NUL program name before the factory runs."""
     events: list[ProcessEvent] = []
     factory = _RecordingPtyFactory()
     manager = ProcessManager(policy=_QUIET_POLICY, pty_process_factory=factory)
     manager.register_listener(events.append)
 
-    with pytest.raises(ValueError, match="null byte") as excinfo:
-        manager.spawn_pty(["claude", "--prompt\x00"])
+    with pytest.raises(ValueError, match=r"command\[0\]") as excinfo:
+        manager.spawn_pty(["clau\x00de", "--prompt"])
 
     assert factory.calls == 0
     failed = _failed_events(events)
@@ -264,15 +288,15 @@ def test_spawn_pty_records_failed_transition_when_factory_raises_value_error() -
 
 
 @pytest.mark.asyncio
-async def test_spawn_async_rejects_null_byte_in_command_without_launching_a_child() -> None:
-    """The async seam rejects a NUL byte before the factory runs."""
+async def test_spawn_async_rejects_null_byte_in_the_program_name() -> None:
+    """The async seam rejects a NUL program name before the factory runs."""
     events: list[ProcessEvent] = []
     factory = _RecordingAsyncFactory()
     manager = ProcessManager(policy=_QUIET_POLICY, async_process_factory=factory)
     manager.register_listener(events.append)
 
-    with pytest.raises(ValueError, match="null byte") as excinfo:
-        await manager.spawn_async(["claude", "--prompt\x00"])
+    with pytest.raises(ValueError, match=r"command\[0\]") as excinfo:
+        await manager.spawn_async(["clau\x00de", "--prompt"])
 
     assert factory.calls == 0
     failed = _failed_events(events)
@@ -356,7 +380,7 @@ def test_spawn_invalid_argument_failure_is_also_an_os_error() -> None:
     manager = ProcessManager(policy=_QUIET_POLICY, sync_process_factory=_RecordingSyncFactory())
 
     with pytest.raises(OSError, match="null byte"):
-        manager.spawn(["/bin/echo", "a\x00b"])
+        manager.spawn(["/bin/ec\x00ho", "ab"])
 
 
 def test_spawn_accepts_null_byte_in_a_scrubbed_relay_control_variable() -> None:
@@ -448,14 +472,14 @@ def test_failed_spawn_log_line_carries_the_failure_message() -> None:
             sync_process_factory=_RecordingSyncFactory(),
         )
         with pytest.raises(ValueError, match="null byte"):
-            manager.spawn(["/bin/echo", "a\x00b"])
+            manager.spawn(["/bin/ec\x00ho", "ab"])
     finally:
         logger.remove(sink_id)
 
     logged = "\n".join(lines)
-    assert "command[1]" in logged, (
+    assert "command[0]" in logged, (
         f"the FAILED log line must carry the legible failure message; got {logged!r}"
     )
-    assert "/bin/echo" in logged, (
+    assert "/bin/ec" in logged, (
         f"the FAILED log line must name the command that could not be spawned; got {logged!r}"
     )

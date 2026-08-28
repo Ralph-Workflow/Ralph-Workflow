@@ -35,6 +35,7 @@
     "recovery_record_retained": false,
     "resolution_exhausted": false,
     "resolution_exhaustion_reason": null,
+    "unresolved_integration_carried": false,
     "legacy_checkpoint_blocked": false,
     "legacy_phase": null,
     "legacy_conflicted_files": [],

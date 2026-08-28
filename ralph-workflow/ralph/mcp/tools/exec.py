@@ -153,8 +153,28 @@ class WorkspaceWithRoot(Protocol):
         ...
 
 
+def _reject_nul_params(params: Mapping[str, object]) -> None:
+    """Reject any string parameter carrying an embedded NUL.
+
+    ``ProcessManager`` strips NULs out of argv (execve cannot carry one),
+    so a token accepted here with a NUL inside would reach the child
+    WITHOUT it: ``su<NUL>do`` passes every blacklist check in
+    ``check_command`` and then executes as ``sudo``. The same holds for a
+    compound shell string, whose segments are checked but whose full text
+    is what ``sh -c`` runs. Every exec parameter is an argv token, a shell
+    string, or a timeout — none of them has a legitimate NUL — so the
+    denylist boundary fails closed here instead.
+    """
+    for name, value in params.items():
+        items: list[object] = list(value) if isinstance(value, list) else [value]
+        for item in items:
+            if isinstance(item, str) and "\x00" in item:
+                raise InvalidParamsError(f"exec rejects an embedded NUL in {name!r}: {item!r}")
+
+
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
+    _reject_nul_params(params)
     timeout_ms = _parse_exec_timeout(params)
 
     # A command/argv STRING carrying an unquoted shell operator is a compound

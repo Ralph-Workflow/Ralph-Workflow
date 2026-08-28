@@ -220,6 +220,14 @@ def _validate_diff_args(args: Sequence[str]) -> None:
     a flag not in the list is forwarded unchanged.
     """
     for arg in args:
+        # An embedded NUL is rejected BEFORE the flag checks below.
+        # ``ProcessManager`` strips NULs out of argv (execve cannot carry
+        # one), so an arg accepted here with a NUL inside would reach git
+        # WITHOUT it -- ``--ext-di<NUL>ff`` would pass this denylist and
+        # run as ``--ext-diff``. Nothing legitimate puts a NUL in a git
+        # flag, so this fails closed at the boundary that decides.
+        if "\x00" in arg:
+            raise InvalidParamsError(f"read-only git_diff rejects an embedded NUL in: {arg!r}")
         # ``args`` is already filtered to strings by
         # ``parse_git_diff_params``; no ``isinstance`` guard
         # is needed. The ``Sequence[str]`` annotation carries
@@ -277,6 +285,19 @@ def parse_git_show_params(params: Mapping[str, object]) -> GitShowParams:
     ref_value = params.get("ref")
     if not isinstance(ref_value, str):
         raise InvalidParamsError("Missing 'ref' parameter")
+    # A ref is a revision, never a flag: ``git show`` would otherwise accept
+    # ``--output=<path>`` here and write a file from a READ-ONLY tool, the same
+    # escape ``_validate_diff_args`` denies for ``git_diff``. An embedded NUL is
+    # rejected for the reason given there: the spawn strips it, so a
+    # NUL-hidden flag would reach git without it.
+    if ref_value.startswith("-"):
+        raise InvalidParamsError(
+            f"read-only git_show rejects a flag-shaped ref: {ref_value!r}; pass a revision"
+        )
+    if "\x00" in ref_value:
+        raise InvalidParamsError(
+            f"read-only git_show rejects an embedded NUL in ref: {ref_value!r}"
+        )
     format_value = params.get("format", "raw")
     if format_value not in ("raw", "summary"):
         raise InvalidParamsError(
@@ -307,6 +328,12 @@ def _resolve_git_cwd(
     raw: object = params.get("cwd") if params else None
     if raw is not None and not isinstance(raw, str):
         raise InvalidParamsError(f"Invalid cwd: expected a string, got {type(raw).__name__}")
+    if isinstance(raw, str) and "\x00" in raw:
+        # Named here rather than left to ``Path.resolve`` below, which raises a
+        # bare ``ValueError: lstat: embedded null character in path`` — an
+        # internal-looking error that names neither the tool nor the parameter
+        # the caller has to fix.
+        raise InvalidParamsError(f"Invalid cwd: must not contain an embedded NUL: {raw!r}")
     return resolve_git_cwd(
         workspace_root=_workspace_root(workspace),
         requested_cwd=raw if isinstance(raw, str) else None,

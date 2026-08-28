@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from ralph.mcp.tools.coordination import InvalidParamsError
 from ralph.mcp.tools.git_read import (
     parse_git_diff_params,
 )
@@ -33,3 +36,10 @@ class TestParseGitDiffParams:
         params: dict[str, object] = {}
         result = parse_git_diff_params(params)
         assert result.args == []
+
+    def test_rejects_an_embedded_nul_that_would_hide_a_denied_flag(self) -> None:
+        """``ProcessManager`` strips NULs out of argv, so a NUL-hidden denied
+        flag would reach git without it: ``--ext-di<NUL>ff`` must fail here."""
+        for hidden in ("--ext-di\x00ff", "--out\x00put=/tmp/pwn"):
+            with pytest.raises(InvalidParamsError, match="embedded NUL"):
+                parse_git_diff_params({"args": [hidden]})

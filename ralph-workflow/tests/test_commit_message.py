@@ -12,6 +12,7 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     read_commit_message_artifact,
     read_commit_message_from_path,
+    render_commit_message_content,
 )
 
 if TYPE_CHECKING:
@@ -175,3 +176,54 @@ def test_normalize_commit_message_content_rejects_invalid_excluded_files_payload
 ) -> None:
     with pytest.raises(ValueError):
         normalize_commit_message_content(payload)
+
+
+def test_render_commit_message_content_drops_a_nul_from_the_body() -> None:
+    """Git writes a NUL straight into the commit object: ``git log`` then
+    truncates the message at that byte and ``git fsck`` reports nulInCommit
+    forever, so the message must never carry one."""
+    rendered = render_commit_message_content(
+        {
+            "type": "commit",
+            "subject": "fix(auth): prevent token expiry race",
+            "body": "Serialize refresh\x00INJECTED so a concurrent refresh cannot lose a token.",
+        }
+    )
+
+    assert "\x00" not in rendered
+    assert rendered.endswith(
+        "Serialize refreshINJECTED so a concurrent refresh cannot lose a token."
+    )
+
+
+def test_render_commit_message_content_leaves_a_clean_body_untouched() -> None:
+    body = "Serialize refresh so a concurrent refresh cannot lose a token."
+    rendered = render_commit_message_content(
+        {"type": "commit", "subject": "fix(auth): prevent token expiry race", "body": body}
+    )
+
+    assert rendered == f"fix(auth): prevent token expiry race\n\n{body}"
+
+
+def test_render_commit_message_content_drops_a_nul_from_the_subject() -> None:
+    """The subject is prose too, and it is the line every git reader shows."""
+    rendered = render_commit_message_content(
+        {"type": "commit", "subject": "fix(auth): prevent a token\x00 race"}
+    )
+
+    assert rendered == "fix(auth): prevent a token race"
+
+
+def test_normalize_commit_message_content_rejects_a_nul_in_a_path_field() -> None:
+    """A path is not prose: stripping ``src/se<NUL>cret.env`` would silently
+    name ``src/secret.env`` — a different, real file — and exclude the wrong one."""
+    for payload in (
+        {"type": "commit", "subject": "fix(auth): scope the commit", "files": ["src/au\x00th.py"]},
+        {
+            "type": "commit",
+            "subject": "fix(auth): scope the commit",
+            "excluded_files": [{"path": "src/se\x00cret.env", "reason": "generated"}],
+        },
+    ):
+        with pytest.raises(ValueError, match="embedded NUL"):
+            normalize_commit_message_content(payload)

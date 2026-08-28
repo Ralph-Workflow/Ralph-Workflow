@@ -21,6 +21,7 @@ own structured outcome -- not the exception class it happens to catch.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -37,7 +38,6 @@ from ralph.testing.fake_process import FakeAsyncProcess, FakePopen, FakePsutil
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
 _QUIET_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.0,
@@ -46,7 +46,10 @@ _QUIET_POLICY = ProcessManagerPolicy(
     enable_zombie_reaper=False,
 )
 
-_NUL_ARGUMENT = "a\x00b"
+#: A program name carrying a NUL: still unusable under the spawn contract,
+#: where a NUL in argv[1:] is stripped instead (authored content rides there).
+#: See ``ralph/process/_spawn_argv.py``.
+_NUL_PROGRAM = "ec\x00ho"
 
 
 def _sync_factory(command: Sequence[str], opts: SpawnOptions) -> FakePopen:
@@ -80,9 +83,9 @@ def _manager() -> ProcessManager:
 
 
 async def test_agent_executor_reports_failed_and_raises_executor_error() -> None:
-    """A NUL in the agent command must not skip the status callback."""
+    """A NUL in the agent program name must not skip the status callback."""
     statuses: list[WorkerStatus] = []
-    executor = SubprocessAgentExecutor(command=("claude", _NUL_ARGUMENT), _pm=_manager())
+    executor = SubprocessAgentExecutor(command=(_NUL_PROGRAM, "--print"), _pm=_manager())
 
     with pytest.raises(ExecutorError) as excinfo:
         await executor.run(
@@ -103,8 +106,8 @@ def test_exec_mcp_tool_raises_execution_error_for_a_nul_argument(tmp_path: Path)
     """Agent-supplied argv is agent-reachable, so it must honour the tool contract."""
     with pytest.raises(ExecutionError) as excinfo:
         run_command(
-            "echo",
-            [_NUL_ARGUMENT],
+            _NUL_PROGRAM,
+            ["hello"],
             tmp_path,
             5000,
             deps=ExecRunDeps(process_manager=_manager(), cwd_provider=lambda: tmp_path),
@@ -118,7 +121,7 @@ def test_exec_mcp_tool_raises_execution_error_for_a_nul_argument(tmp_path: Path)
 def test_run_process_raises_process_execution_error_for_a_nul_argument() -> None:
     """``run_process`` promises ``ProcessExecutionError`` for every spawn failure."""
     with pytest.raises(ProcessExecutionError) as excinfo:
-        run_process("echo", [_NUL_ARGUMENT], _pm=_manager())
+        run_process(_NUL_PROGRAM, ["hello"], _pm=_manager())
 
     assert "null byte" in str(excinfo.value), (
         f"the ProcessExecutionError must carry the legible spawn diagnosis; got {excinfo.value!r}"
@@ -128,4 +131,4 @@ def test_run_process_raises_process_execution_error_for_a_nul_argument() -> None
 def test_run_git_spawn_failure_stays_catchable_as_an_os_error() -> None:
     """``ralph.git.operations`` falls back to GitPython on ``except OSError``."""
     with pytest.raises(OSError, match="null byte"):
-        run_git(("log", _NUL_ARGUMENT), cwd=None, label="git-log")
+        run_git(("log",), cwd=Path("/tm\x00p"), label="git-log")
