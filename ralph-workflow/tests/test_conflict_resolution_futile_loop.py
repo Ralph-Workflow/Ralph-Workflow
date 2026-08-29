@@ -96,8 +96,14 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     assert called[0] == "primary"
     assert "fallback" in called
     assert called.count("primary") == 1
-    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-    assert session.charge_conflict_budget is False
+    # The transport loop is recorded against the candidate that produced
+    # it. The round's REASON is the last attempt's own -- carrying an
+    # earlier candidate's fault forward reported a healthy agent's
+    # genuine failure under somebody else's fault, and made the whole
+    # stop unchargeable, which discarded its exhaustion evidence.
+    assert session.dead_tool_surfaces == ("primary",)
+    assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
+    assert session.charge_conflict_budget is True
 
 
 def test_known_dead_surface_is_not_reentered(
@@ -123,7 +129,10 @@ def test_known_dead_surface_is_not_reentered(
         invoke=_invoke,
         session=session,
     )
-    assert called == ["fallback"]
+    # The dead surface is never re-entered; the live candidate still gets
+    # every round, because a round that invoked nobody was the bug.
+    assert "primary" not in called
+    assert set(called) == {"fallback"}
 
 
 def test_status_does_not_report_health_from_ralph_fault_text() -> None:
@@ -147,3 +156,204 @@ def test_status_does_not_report_health_from_ralph_fault_text() -> None:
     }})()
     reporter.observe(event)
     assert reporter._last_emitted_at is None
+
+
+def test_agent_prose_about_tool_surfaces_is_not_a_ralph_fault() -> None:
+    """A resolver quoting this repo's own words must not be recorded as dead.
+
+    The payload scanned here carries the agent's own activity text, and a
+    match kills that agent for the rest of the rebase. Ralph emits no
+    fault containing these phrases, so matching them could only ever
+    punish an agent for reading the code it was asked to fix.
+    """
+    assert classify_ralph_origin_fault("edited driver.py: the MCP tool surface is fine") is None
+    assert classify_ralph_origin_fault("the tool service comment explains the seam") is None
+    assert classify_ralph_origin_fault("noted repeated identical tool calls in a docstring") is None
+
+
+def test_real_ralph_fault_tokens_are_still_classified() -> None:
+    """Narrowing the prose must not cost the markers Ralph actually writes."""
+    assert (
+        classify_ralph_origin_fault("HTTP 503: transport_loop_detected")
+        is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+    )
+    assert (
+        classify_ralph_origin_fault("SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: x")
+        is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
+    )
+
+
+def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The markers live in Ralph's source, so a resolver reading it echoes them.
+
+    The conflict being resolved is frequently in this repository, where
+    ``transport_loop_detected`` and ``SUPERVISION_INFRASTRUCTURE_FAILURE``
+    are ordinary source tokens. Scanning the agent's own progress text
+    for them killed the only resolver in the shipped one-agent chain for
+    quoting a line it had just read.
+    """
+    from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
+    from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
+    from ralph.pipeline.conflict_resolution.session import _wrap_activity_listener
+
+    session = ResolutionSession()
+    listener = _wrap_activity_listener(None, session, agent_name="claude")
+    assert listener is not None
+    for echoed in (
+        'read attempt_fault.py: _TRANSPORT_LOOP = "transport_loop_detected"',
+        "grep: transport_loop_detected (3 matches)",
+        'edit: SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: {exc}',
+    ):
+        listener(
+            WaitingStatusEvent(
+                kind=next(iter(WaitingStatusKind)),
+                cumulative_seconds=1.0,
+                current_run_seconds=1.0,
+                idle_elapsed_seconds=1.0,
+                ceiling_seconds=900.0,
+                suspect_threshold_seconds=None,
+                diagnostic={"last_activity_kind": "mcp_tool", "current_subagent_tool_call": echoed},
+                subagent_activity=echoed,
+                stall_active=False,
+            )
+        )
+    assert session.dead_tool_surfaces == ()
+    assert session.terminal_reason is None
+
+
+def test_a_watchdog_authored_fault_still_kills_the_surface(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Narrowing to Ralph-authored fields must not disarm the detection."""
+    from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
+    from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
+    from ralph.pipeline.conflict_resolution.session import _wrap_activity_listener
+
+    session = ResolutionSession()
+    listener = _wrap_activity_listener(None, session, agent_name="claude")
+    assert listener is not None
+    listener(
+        WaitingStatusEvent(
+            kind=next(iter(WaitingStatusKind)),
+            cumulative_seconds=1.0,
+            current_run_seconds=1.0,
+            idle_elapsed_seconds=1.0,
+            ceiling_seconds=900.0,
+            suspect_threshold_seconds=None,
+            diagnostic={"last_activity_kind": "transport_loop_detected"},
+            subagent_activity="working",
+            stall_active=False,
+        )
+    )
+    assert session.dead_tool_surfaces == ("claude",)
+    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+
+
+def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The reason must reach the outcome, not only the console line."""
+    _install_seams(monkeypatch)
+    session = ResolutionSession(dead_tool_surfaces=("primary", "fallback"))
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_args: True,
+        session=session,
+    )
+    assert outcome.succeeded is False
+    assert outcome.reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    assert session.exhaustion_reason is not None
+    assert session.exhaustion_reason.startswith(
+        ResolutionTerminationReason.TOOL_SURFACE_DEAD.value
+    )
+
+
+def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End to end: progress text mentioning a tool surface leaves the chain live."""
+    from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
+    from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
+    from ralph.pipeline.conflict_resolution.session import _wrap_activity_listener
+
+    session = ResolutionSession()
+    listener = _wrap_activity_listener(None, session, agent_name="claude")
+    assert listener is not None
+    listener(
+        WaitingStatusEvent(
+            kind=next(iter(WaitingStatusKind)),
+            cumulative_seconds=1.0,
+            current_run_seconds=1.0,
+            idle_elapsed_seconds=1.0,
+            ceiling_seconds=900.0,
+            suspect_threshold_seconds=None,
+            diagnostic={"last_activity_kind": "mcp_tool"},
+            subagent_activity="reading tool_contract.py: the live Ralph-owned tool surface",
+            stall_active=False,
+        )
+    )
+    assert session.dead_tool_surfaces == ()
+    assert session.terminal_reason is None
+
+
+def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A dead tool surface is Ralph's fault, not the resolver giving up.
+
+    Recording it as an exhausted chain wrote durable terminal evidence
+    that the resolver had failed, and the next seam then refused to try
+    at all -- for a conflict no agent had actually been unable to fix.
+    """
+    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+
+    captured: dict[str, object] = {}
+
+    def _fake_resolve(root: Path, target: str, resolver: object, *, session: object) -> bool:
+        captured["session"] = session
+        session.exhaustion_reason = "TOOL_SURFACE_DEAD: conflict markers survive in: a.py"
+        session.charge_conflict_budget = False
+        return False
+
+    monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", _fake_resolve)
+    resolved, reason = rebase_merge._resolve_rebase_with_config(
+        tmp_path, "main", lambda *_a: False, None
+    )
+    assert resolved is False
+    assert reason is None, "an infrastructure fault must not become exhaustion evidence"
+
+
+def test_a_real_resolver_exhaustion_is_still_recorded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Suppressing infrastructure faults must not suppress genuine exhaustion."""
+    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+
+    def _fake_resolve(root: Path, target: str, resolver: object, *, session: object) -> bool:
+        session.exhaustion_reason = "ATTEMPT_FAILED: conflict markers survive in: a.py"
+        return False
+
+    monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", _fake_resolve)
+    resolved, reason = rebase_merge._resolve_rebase_with_config(
+        tmp_path, "main", lambda *_a: False, None
+    )
+    assert resolved is False
+    assert reason == "ATTEMPT_FAILED: conflict markers survive in: a.py"
+
+
+def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:
+    """The flag describes the stop that failed, not one three stops ago."""
+    from ralph.pipeline.conflict_resolution.session import begin_resolution_stop
+
+    session = ResolutionSession(charge_conflict_budget=False)
+    begin_resolution_stop(session)
+    assert session.charge_conflict_budget is True

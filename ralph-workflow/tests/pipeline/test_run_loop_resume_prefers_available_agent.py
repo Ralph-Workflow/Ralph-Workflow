@@ -400,6 +400,139 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     assert len(built) == 1
 
 
+def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: Any) -> None:
+    """An exhausted record describes ONE conflict; it must not refuse another.
+
+    Treating `resolution_exhausted` as an unconditional stop ended the
+    run without invoking a resolver at all, so a conflict that had since
+    changed was refused by evidence recorded about a different one.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import (
+        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        ConflictIdentity,
+    )
+    from ralph.pipeline.rebase_state import RebaseState
+
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, target, **_kwargs: ConflictIdentity(
+            feature_sha="feature-2", target_sha="target-2", scope="feature"
+        ),
+    )
+    spent_on_another_conflict = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        resolution_exhausted=True,
+        resolution_exhaustion_reason="ATTEMPT_FAILED: conflict markers survive in: a.py",
+        last_conflict_feature_sha="feature-1",
+        last_conflict_target_sha="target-1",
+        last_conflict_scope="feature",
+    )
+    assert run_loop._exhaustion_still_binds(ctx, spent_on_another_conflict) is False
+
+    same_conflict = spent_on_another_conflict.model_copy(
+        update={"last_conflict_feature_sha": "feature-2", "last_conflict_target_sha": "target-2"}
+    )
+    assert run_loop._exhaustion_still_binds(ctx, same_conflict) is True
+
+
+def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
+    monkeypatch: Any,
+) -> None:
+    """The whole point: a non-binding exhaustion must reach conflict resolution."""
+    from ralph.pipeline.integration_resolution import IntegrationResolutionVerdict
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionStatus
+    from ralph.pipeline.rebase_state import RebaseState
+
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    resolved: list[str] = []
+    monkeypatch.setattr(
+        run_loop,
+        "inspect_integration_resolution",
+        lambda _root, _rebase: IntegrationResolutionVerdict(
+            status=IntegrationResolutionStatus.EXHAUSTED,
+            reasons=("conflict resolver exhausted",),
+        ),
+    )
+    monkeypatch.setattr(run_loop, "_exhaustion_still_binds", lambda _ctx, _rebase: False)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a: None)
+    monkeypatch.setattr(run_loop, "_announce_conflict_resolution_entry", lambda *_a: None)
+    monkeypatch.setattr(run_loop, "_announce_blocked_dispatch", lambda *_a: None)
+    monkeypatch.setattr(run_loop, "_announce_deferred_startup_integration", lambda *_a: None)
+    monkeypatch.setattr(
+        run_loop,
+        "_run_integration_conflict_resolution",
+        lambda _ctx, _rebase: resolved.append("resolver ran") is None,
+    )
+    monkeypatch.setattr(run_loop, "_run_startup_integration", lambda *_a: None)
+
+    state = MagicMock()
+    state.rebase = RebaseState(resolution_exhausted=True)
+    run_loop._block_unresolved_integration(state, ctx, "planning")
+    assert resolved == ["resolver ran"]
+
+
+def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> None:
+    """The budget is spent on ONE conflict, so a new one must not inherit it.
+
+    Consulting the budget without observing which conflict is on disk
+    spends the identity that matches every conflict: a genuinely new
+    conflict then inherits an older one's exhausted count and is
+    escalated without a resolver ever being invoked.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import (
+        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        ConflictIdentity,
+    )
+    from ralph.pipeline.rebase_state import RebaseState
+
+    built: list[str] = []
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, target, **_kwargs: ConflictIdentity(
+            feature_sha="feature-2", target_sha="target-2", scope="feature"
+        ),
+    )
+
+    def _build(**_kwargs: Any) -> Any:
+        built.append("built")
+        return lambda _root, _target: True
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _build)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: True)
+
+    spent_on_another_conflict = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        last_conflict_feature_sha="feature-1",
+        last_conflict_target_sha="target-1",
+        last_conflict_scope="feature",
+    )
+    assert (
+        run_loop._run_integration_conflict_resolution(ctx, spent_on_another_conflict) is True
+    )
+    assert len(built) == 1
+
+    same_conflict = spent_on_another_conflict.model_copy(
+        update={"last_conflict_feature_sha": "feature-2", "last_conflict_target_sha": "target-2"}
+    )
+    assert run_loop._run_integration_conflict_resolution(ctx, same_conflict) is False
+    assert len(built) == 1
+
+
 def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> None:
     """Omitting the state keeps the resolver reachable (no accidental gate)."""
     ctx = MagicMock()

@@ -441,9 +441,12 @@ def _resolve_conflicted_rebase(
                     target=target,
                 ),
             )
+        # Reached with no exhaustion evidence at all -- an unbound drain,
+        # an unreadable stop, a resolver that was never built. None of
+        # those is a resolver declining the conflict, so do not say so.
         logger.info(
-            "auto_integrate: rebase conflict resolution declined for '{}'; "
-            "falling back to the endpoint merge",
+            "auto_integrate: rebase conflict resolution did not complete for '{}' "
+            "and left no terminal evidence; falling back to the endpoint merge",
             target,
         )
         return None
@@ -477,7 +480,23 @@ def _resolve_rebase_with_config(
         )
     )
     resolved = resolve_rebase_in_progress(root, target, resolver, session=session)
-    return resolved, None if resolved else session.exhaustion_reason
+    if resolved:
+        return True, None
+    if not session.charge_conflict_budget:
+        # Ralph's own plumbing broke -- a dead tool surface, a transport
+        # loop, a supervision relay that would not answer. That is not
+        # the resolver chain being exhausted, and recording it as such
+        # made a blip in OUR infrastructure durable terminal evidence
+        # that the resolver had given up: the next seam then refused to
+        # try, for a conflict no agent had actually failed at.
+        logger.warning(
+            "auto_integrate: rebase conflict resolution for '{}' failed on Ralph "
+            "infrastructure ({}); not recording it as an exhausted resolver chain",
+            target,
+            session.exhaustion_reason or "no terminal evidence",
+        )
+        return False, None
+    return False, session.exhaustion_reason
 
 
 def _fallback_to_endpoint_merge(

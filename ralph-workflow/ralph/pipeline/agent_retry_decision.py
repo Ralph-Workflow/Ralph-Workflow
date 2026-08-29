@@ -40,10 +40,17 @@ def resolve_retry_intent(
     tool-registry reset. ``session_id`` is the caller-resolved observed session id
     (the intent clears it when the failure semantics demand a fresh session).
     """
+    # Every name here sets ``skip_same_agent_retries`` on itself because
+    # retrying the SAME agent is futile: a broken agent, absent
+    # credentials, a context pi cannot grow, a provider pi cannot reach.
+    # The intent is the only thing the reducer's fallover reads, so a
+    # name missing from this set silently relaunches the same agent
+    # against the same dead cause.
     if type(exc).__name__ in {
         "BrokenAgentExitError",
         "MissingCredentialsError",
         "PiContextExhaustedExitError",
+        "PiProviderFailureExitError",
     }:
         broken_agent_reason = exc.reason if isinstance(exc, BrokenAgentExitError) else None
         return AgentRetryIntent(

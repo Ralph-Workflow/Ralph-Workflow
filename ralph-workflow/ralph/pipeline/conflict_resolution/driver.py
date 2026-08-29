@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -23,8 +24,11 @@ from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import (
+    ATTEMPT_FAILED_EVIDENCE,
     ResolutionSession,
+    begin_resolution_stop,
     classify_failed_resolution_attempt,
+    conflict_chain_max_retries,
     invoke_resolution_agent,
     resolution_chain_agents,
 )
@@ -61,6 +65,19 @@ type MonotonicClock = Callable[[], float]
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
 
+@dataclass(frozen=True)
+class RoundAttempt:
+    """What one resolution round actually did.
+
+    ``invoked`` is the half the terminal reason depends on: a round that
+    spent no candidate has no resolver verdict to report, so the driver
+    must not describe it as one.
+    """
+
+    succeeded: bool
+    invoked: bool
+
+
 def _sleep_seconds(seconds: float) -> None:
     """Sleep without exposing ``time.sleep`` as the patch target for tests."""
     time.sleep(seconds)  # filesystem-poll-ok: RecoveryController chain retry_delay_ms backoff
@@ -68,6 +85,7 @@ def _sleep_seconds(seconds: float) -> None:
 __all__ = [
     "MonotonicClock",
     "ResolutionInvoker",
+    "RoundAttempt",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",
@@ -306,6 +324,10 @@ def _run_rounds(
     limits = config.conflict_resolution
     round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
     inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
+    # Before anything can return: every early exit below reports through
+    # the session, and an unreset session reports the LAST conflict's
+    # verdict for a stop that never invoked anybody.
+    begin_resolution_stop(session)
     prepared, early = _prepare_conflicted_paths(root, stop, session, display)
     if early is not None:
         return early
@@ -371,16 +393,17 @@ def _run_rounds(
             session.last_activity_kind = None
             session.last_activity_at = None
             session.last_duration_seconds = None
-            succeeded = _run_one_round(
+            attempt = _run_one_round(
                 runner, candidates, prompt_path, round_index, display, session, policy_bundle
             )
+            succeeded = attempt.succeeded
             session.unresolved_paths = tuple(paths_with_conflict_markers(root, conflicted))
             outcome = ResolutionOutcome(
                 succeeded=succeeded and not session.unresolved_paths,
                 reason=(
                     None
                     if succeeded and not session.unresolved_paths
-                    else session.terminal_reason or ResolutionTerminationReason.CANDIDATE_DECLINED
+                    else _round_termination_reason(session, invoked=attempt.invoked)
                 ),
                 duration_seconds=(
                     session.last_duration_seconds
@@ -401,6 +424,18 @@ def _run_rounds(
             if route == TERMINAL_RESOLVED:
                 _emit_success(display, round_index, stop)
                 return True
+            if not attempt.invoked:
+                # Carry the reason OUT of the round: the exhaustion line
+                # and ResolutionOutcome.reason are what the operator and
+                # auto-integrate actually read, and "the chain was
+                # exhausted" does not explain a chain nobody could spend.
+                session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+                emit_conflict_phase_line(
+                    display,
+                    "every resolution candidate is a dead tool surface; "
+                    "no further round can spend one",
+                )
+                break
     finally:
         if prompt_path is not None:
             with contextlib.suppress(OSError):
@@ -413,6 +448,28 @@ def _run_rounds(
         + session.exhaustion_reason,
     )
     return False
+
+
+def _round_termination_reason(
+    session: ResolutionSession, *, invoked: bool
+) -> ResolutionTerminationReason:
+    """Name what ended the round without inventing a verdict nobody gave.
+
+    No reason here is the agent's opinion of the conflict -- it has no
+    way to give one. A round that invoked nobody, one whose candidate
+    never started, and one whose candidate ran without finishing are
+    three different facts, and all three used to be reported as the
+    resolver declining the work.
+    """
+    if session.terminal_reason is not None:
+        return session.terminal_reason
+    if not invoked:
+        return ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    # The invocation came back successful and the markers are still
+    # there: the resolver worked and did not finish. That is unfinished
+    # work, not an answer, and the next round hands it back the paths
+    # that still carry markers.
+    return ResolutionTerminationReason.RESOLUTION_INCOMPLETE
 
 
 def _resolution_exhaustion_reason(
@@ -523,24 +580,63 @@ def _run_one_round(
     display: ParallelDisplay | None,
     session: ResolutionSession,
     policy_bundle: PolicyBundle,
-) -> bool:
-    offset = min(session.chain_cursor, len(candidates))
-    if offset >= len(candidates):
-        if len(candidates) != 1:
-            return False
-        offset = 0
-    while offset < len(candidates):
+) -> RoundAttempt:
+    """Spend every live candidate once, starting where the chain left off.
+
+    ``chain_cursor`` is where the NEXT candidate starts, so walking
+    FORWARD from it and stopping at the end of the tuple could leave the
+    round with nobody to invoke -- either because the cursor had passed
+    the last candidate, or because everything from the cursor on was a
+    dead tool surface while a live candidate sat behind it. Both cases
+    used to end the round with no invocation at all, which the driver
+    then reported as a decline no agent ever made. The traversal is
+    therefore circular: it visits each candidate at most once per round,
+    from the cursor, wrapping past the end. Only a chain with no live
+    candidate left returns without invoking.
+
+    ``terminal_reason`` is cleared before each candidate so the fault
+    filed against an agent is one it actually produced. Without that,
+    the infrastructure reason left by a BROKEN candidate is still set
+    when the NEXT candidate fails ordinarily, and that healthy agent
+    gets recorded as a dead tool surface for the rest of the rebase.
+    The round's reason is therefore the LAST attempt's own; an earlier
+    candidate's infrastructure fault is not lost, it is recorded where
+    it belongs -- in ``dead_tool_surfaces`` and the operator log.
+    """
+    total = len(candidates)
+    if total == 0:
+        return RoundAttempt(succeeded=False, invoked=False)
+    offset = session.chain_cursor % total
+    remaining = total
+    # A candidate is re-invoked only while RecoveryController holds the
+    # cursor on it, which its own retry budget ends. The explicit bound
+    # is here because the alternative to a wrong number is a hung run.
+    attempt_cap = max(1, conflict_chain_max_retries(policy_bundle))
+    attempts_here = 0
+    invoked = False
+    while remaining > 0:
         agent_name = candidates[offset]
         if agent_name in session.dead_tool_surfaces:
-            offset += 1
+            offset = (offset + 1) % total
+            session.chain_cursor = offset
+            remaining -= 1
             continue
         emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
+        invoked = True
+        session.terminal_reason = None
+        # Both describe THIS attempt. Carrying either across candidates
+        # let one bad candidate answer for the next one: a healthy agent
+        # that really ran and really failed was reported under the fault
+        # of the candidate before it, and an unchargeable attempt made
+        # the whole stop unchargeable -- which discarded the exhaustion
+        # evidence the run needs to escalate honestly.
+        session.charge_conflict_budget = True
         try:
             if runner(agent_name, prompt_path, round_index):
-                session.chain_cursor = offset + 1
-                return True
+                session.chain_cursor = (offset + 1) % total
+                return RoundAttempt(succeeded=True, invoked=True)
         except Exception as exc:
             logger.warning(
                 "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
@@ -558,13 +654,26 @@ def _run_one_round(
             # A false return is a failed candidate attempt, never evidence
             # that resolution completed. Preserve a typed reason so the
             # terminal outcome can be persisted as exhaustion if every
-            # configured fallback also declines.
+            # configured fallback also fails.
+            #
+            # WHICH typed reason depends on evidence the invocation seam
+            # left behind: a resolver that ran and refused the conflict
+            # DECLINED it, while one that exited on its own limits -- pi
+            # out of context, a provider it cannot reach -- EXITED. Only
+            # the first is a candidate's verdict on the conflict, and
+            # calling the second a decline is what made an unreachable
+            # provider read as "this conflict is too hard".
+            evidence = session.last_attempt_evidence
             if session.terminal_reason is None:
-                session.terminal_reason = ResolutionTerminationReason.CANDIDATE_DECLINED
+                session.terminal_reason = (
+                    ResolutionTerminationReason.CANDIDATE_EXITED
+                    if evidence
+                    else ResolutionTerminationReason.ATTEMPT_FAILED
+                )
             classify_failed_resolution_attempt(
                 session,
                 agent_name,
-                "candidate declined",
+                session.last_attempt_failure or evidence or ATTEMPT_FAILED_EVIDENCE,
                 candidates=candidates,
                 failed_index=offset,
                 policy_bundle=policy_bundle,
@@ -575,13 +684,27 @@ def _run_one_round(
                 remembered.append(agent_name)
             session.dead_tool_surfaces = tuple(remembered)
             session.charge_conflict_budget = False
-            offset = session.chain_cursor if session.chain_cursor > offset else offset + 1
+            offset = (offset + 1) % total
+            session.chain_cursor = offset
+            remaining -= 1
             continue
-        if session.chain_cursor == offset:
+        attempts_here += 1
+        # The cursor is compared UNWRAPPED: the controller parks it on
+        # ``failed_index`` to ask for another go at the same candidate,
+        # and only that is a retry. A cursor of ``len(candidates)`` means
+        # the chain ran off the end, which is the next candidate's turn.
+        if session.chain_cursor == offset and attempts_here < attempt_cap:
             _sleep_conflict_retry(session, policy_bundle)
             continue
-        offset = session.chain_cursor
-    return False
+        offset = (
+            session.chain_cursor % total
+            if session.chain_cursor != offset
+            else (offset + 1) % total
+        )
+        session.chain_cursor = offset
+        attempts_here = 0
+        remaining -= 1
+    return RoundAttempt(succeeded=False, invoked=invoked)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
@@ -622,6 +745,20 @@ def _default_invoker(
     interval = limits.status_interval_seconds
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        # The cap is also checked between rounds, but a round spends
+        # every live candidate, so it can expire inside one. A zero
+        # remaining cap is rejected by the watchdog's timeout policy,
+        # and that ValueError would be filed as a launch EXCEPTION --
+        # naming the wrong terminal reason for the operator's own cap.
+        remaining = _remaining_operator_cap(cap, session, clock)
+        if remaining is not None and remaining <= 0.0:
+            session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
+            emit_conflict_phase_line(
+                display,
+                f"OPERATOR_CAP_REACHED: the resolution cap expired before "
+                f"round {round_index} could launch {agent_name}",
+            )
+            return False
         reporter = ResolutionStatusReporter(
             display=display,
             target=target,
@@ -644,7 +781,7 @@ def _default_invoker(
             policy_bundle=policy_bundle,
             display=display,
             display_context=display_context,
-            operator_cap_seconds=_remaining_operator_cap(cap, session, clock),
+            operator_cap_seconds=remaining,
             inactivity_timeout_seconds=inactivity_timeout,
             status_interval_seconds=interval,
             activity_status_listener=reporter.observe,

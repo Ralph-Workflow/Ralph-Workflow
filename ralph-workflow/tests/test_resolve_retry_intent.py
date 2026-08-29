@@ -13,6 +13,7 @@ from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
+from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 
 
@@ -142,6 +143,23 @@ def test_pi_context_exhaustion_skips_same_agent_retries() -> None:
     assert intent.failure_reason == "PiContextExhaustedExitError"
     assert intent.failed_agent_name == "pi/zai/glm-5.2"
     assert intent.broken_agent_reason is None
+
+
+def test_pi_provider_failure_skips_same_agent_retries() -> None:
+    """A provider pi cannot reach is futile to retry; the chain must fall over."""
+    exc = PiProviderFailureExitError("pi/zai/glm-5.2", "provider unreachable")
+    intent = resolve_retry_intent(
+        exc,
+        phase="development",
+        agent="pi/zai/glm-5.2",
+        session_id="pi-session",
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+    assert intent is not None
+    assert intent.skip_same_agent_retries is True
+    assert intent.session_id is None
+    assert intent.failure_reason == "PiProviderFailureExitError"
+    assert intent.failed_agent_name == "pi/zai/glm-5.2"
 
 
 def test_broken_agent_regression_intent_captures_reconstruction_data() -> None:

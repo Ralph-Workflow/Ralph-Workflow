@@ -328,8 +328,12 @@ def _resolve_one_stop(
     if _try_deterministic_resolution(root, stop):
         return _stage_and_prove(root, stop) and _continue_past(root, stop)
     if not _resolution_succeeded(resolver(root, target, stop)):
+        # "Declined" is the resolver's own verdict, and this branch is
+        # reached by anything that did not resolve the stop -- including
+        # a launch that never happened and a provider that was never
+        # reachable. Say what is actually known here.
         logger.info(
-            "conflict_resolution: resolver declined rebase stop {} ({})",
+            "conflict_resolution: rebase stop {} ({}) was not resolved",
             stop.stop_index,
             stop.sha,
         )

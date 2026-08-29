@@ -207,6 +207,18 @@ def execute_agent_effect(
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
+        # Name the cause on the retry-intent channel. Without it this is
+        # indistinguishable from an agent that ran and failed, so callers
+        # reported a missing binary as the agent's own answer -- and
+        # retrying the same absent name is futile, which is what
+        # skip_same_agent_retries tells the chain.
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                failure_reason=AGENT_NOT_FOUND_REASON,
+                skip_same_agent_retries=True,
+                failed_agent_name=effect.agent_name,
+            )
+        )
         return PipelineEvent.AGENT_FAILURE
     effective_agents_policy = (
         policy_bundle.agents
@@ -1512,6 +1524,11 @@ def _write_agent_retry_prompt(
 recovery_error_parts = _recovery_error_parts
 resolve_recovery_session_id = _resolve_recovery_session_id
 recovery_context_lines = _recovery_context_lines
+#: ``AgentRetryIntent.failure_reason`` for a name this workspace's
+#: registry cannot produce. Read by callers that must tell a missing
+#: agent apart from one that ran and failed.
+AGENT_NOT_FOUND_REASON = "AgentNotFound"
+
 retry_prompt_file_for_context = _retry_prompt_file_for_context
 
 
@@ -1578,6 +1595,7 @@ def pop_last_captured_retry_intent() -> AgentRetryIntent:
 
 
 __all__ = [
+    "AGENT_NOT_FOUND_REASON",
     "pop_last_captured_retry_intent",
     "stage_files",
 ]

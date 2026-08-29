@@ -1313,7 +1313,8 @@ def _run_integration_conflict_resolution(
     Suppression is announced, never silent. Never raises.
     """
     from ralph.pipeline.auto_integrate import resolve_integration_target
-    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+    from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
 
     try:
         target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
@@ -1322,7 +1323,21 @@ def _run_integration_conflict_resolution(
         return False
     if not target:
         return False
-    if rebase is not None and not resolver_allowed(rebase, target):
+    # The budget is spent on ONE conflict, and this seam can see which
+    # one: it is standing in the worktree that holds it. Consulting the
+    # budget without an identity spends the default that matches every
+    # conflict, so a genuinely NEW conflict inherits the exhausted count
+    # of an older one and is escalated without a resolver ever running --
+    # while the operator line calls it "this unchanged conflict".
+    # Observation reads git, so it can fail; this seam never raises, and
+    # an unreadable identity keeps the conservative default that matches
+    # every conflict rather than handing out a budget on a guess.
+    try:
+        identity = observe_conflict_identity(ctx.workspace_scope.root, target)
+    except Exception as identity_exc:
+        logger.debug("integration resolution: conflict identity unreadable: {}", identity_exc)
+        identity = ConflictIdentity()
+    if rebase is not None and not resolver_allowed(rebase, target, identity):
         logger.warning(
             "integration resolution: resolver budget spent for target '{}'; escalating",
             target,
@@ -1401,6 +1416,47 @@ def _announce_blocked_dispatch(
         )
 
 
+def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bool:
+    """Whether a recorded exhaustion still describes the conflict on disk.
+
+    The conflict budget already owns this judgement for the post-commit
+    seam: it compares the recorded ``(feature tip, target tip, paths,
+    stage oids)`` against what the worktree holds now, and allows
+    :data:`MAX_CONSECUTIVE_RESOLVER_ATTEMPTS` before it suppresses the
+    resolver. Reusing it here is what lets a NEW conflict -- or one the
+    budget has not yet given up on -- reach a resolver instead of being
+    refused by evidence recorded about a different conflict. Never
+    raises: an unreadable identity keeps the record binding, which is
+    the fail-closed answer.
+    """
+    from ralph.pipeline.auto_integrate import resolve_integration_target
+    from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
+
+    if rebase is None:
+        return True
+    try:
+        target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
+    except Exception as exc:
+        logger.debug("integration resolution: unable to resolve target: {}", exc)
+        return True
+    if not target:
+        return True
+    try:
+        identity = observe_conflict_identity(ctx.workspace_scope.root, target)
+    except Exception as exc:
+        logger.debug("integration resolution: conflict identity unreadable: {}", exc)
+        identity = ConflictIdentity()
+    if resolver_allowed(rebase, target, identity):
+        logger.info(
+            "integration resolution: the recorded exhaustion does not bind the conflict "
+            "now on disk for '{}'; giving the resolver another attempt",
+            target,
+        )
+        return False
+    return True
+
+
 def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1419,12 +1475,20 @@ def _block_unresolved_integration(
     if verdict.dispatch_allowed:
         return None
     _save_recovered_rebase_checkpoint(state, ctx)
-    if verdict.status is EXHAUSTED:
+    # An exhausted record describes ONE conflict: the one whose chain it
+    # spent. Treating it as an unconditional stop ended the run here
+    # without invoking a resolver at all -- so a conflict that had since
+    # CHANGED, and one whose anti-thrash budget still had an attempt in
+    # it, were both refused by a record about neither. Ask the budget
+    # (which compares the recorded conflict against the one on disk)
+    # whether the exhaustion still binds; only then is stopping honest.
+    exhausted_still_binds = verdict.status is EXHAUSTED and _exhaustion_still_binds(ctx, state.rebase)
+    if exhausted_still_binds:
         _announce_blocked_dispatch(ctx, verdict)
         _announce_deferred_startup_integration(ctx, state.rebase)
         return state, prev_phase, 1
 
-    if verdict.status is RECOVERABLE:
+    if verdict.status in {RECOVERABLE, EXHAUSTED}:
         # Conflict resolution is unconditional for recoverable evidence. The
         # resolver runs FIRST and directly, because the startup-integration
         # seam below defers on a dirty worktree and every conflicted worktree

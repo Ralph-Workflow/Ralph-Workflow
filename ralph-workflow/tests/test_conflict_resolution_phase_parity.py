@@ -14,6 +14,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
+    classify_failed_resolution_attempt,
     invoke_resolution_agent,
 )
 from ralph.policy.loader import load_policy
@@ -79,7 +80,10 @@ def test_four_agent_chain_tries_every_candidate(
         )
         is False
     )
-    assert called == ["one", "two", "three", "four"]
+    # Every candidate gets a turn, in chain order, before the round ends.
+    # Later rounds wrap back to the head rather than invoking nobody, so
+    # the chain -- not the exact call count -- is what this pins.
+    assert called[:4] == ["one", "two", "three", "four"]
 
 
 def test_transient_failure_retries_the_same_agent_using_recovery_controller_handle(
@@ -400,4 +404,810 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
         )
         is False
     )
-    assert called == ["one", "two", "three", "four"]
+    assert called[:4] == ["one", "two", "three", "four"]
+
+
+def test_round_after_a_spent_chain_still_invokes_a_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A round that starts past the end of the chain wraps instead of no-opping."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    called: list[tuple[int, str]] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append((round_index, agent_name))
+        return agent_name == "two"
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    assert {round_index for round_index, _ in called} == {1, 2, 3}
+
+
+def test_a_new_stop_restarts_the_chain_on_a_reused_session(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One session spans a rebase; a later stop must still spend the chain."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    session = ResolutionSession()
+    _install_seams(monkeypatch, surviving_per_round=[[]])
+
+    def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        return agent_name == "two"
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_first_stop,
+            session=session,
+        )
+        is True
+    )
+    _install_seams(monkeypatch, surviving_per_round=[[]])
+    second_stop: list[str] = []
+
+    def _second_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        second_stop.append(agent_name)
+        return True
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_second_stop,
+            session=session,
+        )
+        is True
+    )
+    assert second_stop == ["one"]
+
+
+def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A chain nobody could spend has no attempt to report as failed."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    session = ResolutionSession(dead_tool_surfaces=("one", "two"))
+    lines: list[str] = []
+    monkeypatch.setattr(
+        driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
+    )
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        return True
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is False
+    )
+    assert called == []
+    assert not any(
+        line.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value) for line in lines
+    )
+    assert any(
+        line.startswith(ResolutionTerminationReason.TOOL_SURFACE_DEAD.value) for line in lines
+    )
+
+
+def test_a_dead_chain_stops_burning_rounds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No live candidate means no later round can spend one, so stop asking."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    session = ResolutionSession(dead_tool_surfaces=("one",))
+    rounds: list[int] = []
+    monkeypatch.setattr(
+        driver_module,
+        "render_conflict_prompt",
+        lambda **kwargs: (
+            rounds.append(int(kwargs["round_index"])),
+            tmp_path / "prompt.md",
+        )[1],
+    )
+    (tmp_path / "prompt.md").write_text("resolve", encoding="utf-8")
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=lambda *_args: True,
+            session=session,
+        )
+        is False
+    )
+    assert rounds == [1]
+
+
+def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """pi exiting on an exhausted context is an exit, not a resolver's verdict."""
+    from ralph.pipeline import effect_executor as effect_executor_module
+    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+    from ralph.pipeline.events import PipelineEvent
+
+    def _exhausted_pi(*args: object, **kwargs: object) -> object:
+        effect_executor_module._set_last_captured_retry_intent(
+            AgentRetryIntent(
+                failure_reason="PiContextExhaustedExitError",
+                skip_same_agent_retries=True,
+                failed_agent_name="pi",
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE
+
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        _exhausted_pi,
+    )
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("resolve", encoding="utf-8")
+    session = ResolutionSession()
+
+    assert (
+        invoke_resolution_agent(
+            agent_name="pi",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    assert session.last_attempt_failure == "PiContextExhaustedExitError"
+    assert session.skip_same_agent_retries is True
+    # The intent is consumed here, never left for the next phase to inherit.
+    assert effect_executor_module.pop_last_captured_retry_intent().failure_reason == ""
+
+
+def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An agent that ran and failed is a failed ATTEMPT, never a refusal.
+
+    Nothing gives the resolver a way to refuse the conflict, so the only
+    honest reading of a non-success from an agent that actually worked
+    is that the attempt failed -- and the chain answers that by trying
+    again, not by accepting it.
+    """
+    from ralph.pipeline.events import PipelineEvent
+
+    def _ran_then_refused(*args: object, **kwargs: object) -> object:
+        # A resolver that really declines has RUN, and running is visible.
+        listener = kwargs.get("effect")
+        activity = getattr(listener, "activity_status_listener", None)
+        if callable(activity):
+            activity("edited src/alpha.py")
+        return PipelineEvent.AGENT_FAILURE
+
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        lambda effect, *args, **kwargs: _ran_then_refused(effect=effect),
+    )
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("resolve", encoding="utf-8")
+    session = ResolutionSession()
+
+    assert (
+        invoke_resolution_agent(
+            agent_name="claude",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    assert session.last_attempt_failure == "conflict attempt failed"
+    assert session.skip_same_agent_retries is False
+    assert session.last_attempt_saw_activity is True
+    assert session.terminal_reason is None
+
+
+def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An instant non-success with no activity is an exit, not a verdict.
+
+    The executor answers with the same event for failures that happen
+    before any agent runs, which is how "invoking X" was followed
+    immediately by X apparently reading the conflict and refusing it.
+    """
+    from ralph.pipeline.events import PipelineEvent
+
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        lambda *args, **kwargs: PipelineEvent.AGENT_FAILURE,
+    )
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("resolve", encoding="utf-8")
+    session = ResolutionSession()
+
+    assert (
+        invoke_resolution_agent(
+            agent_name="claude",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    assert session.last_attempt_saw_activity is False
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXITED
+
+
+def test_an_uninstalled_candidate_is_unavailable_not_declining(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A chain may name an agent this workspace does not have.
+
+    The executor answers a missing binary with the same non-success
+    event a real failure produces, so it read as the agent giving up on
+    the conflict -- instantly, because nothing ran. It now names the
+    cause on the retry-intent channel and the chain hands over.
+    """
+    from ralph.pipeline import effect_executor as effect_executor_module
+    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+    from ralph.pipeline.events import PipelineEvent
+
+    def _agent_not_found(*args: object, **kwargs: object) -> object:
+        # Exactly what execute_agent_effect does for a name the registry
+        # cannot produce: name the cause on the retry-intent channel.
+        effect_executor_module._set_last_captured_retry_intent(
+            AgentRetryIntent(
+                failure_reason=effect_executor_module.AGENT_NOT_FOUND_REASON,
+                skip_same_agent_retries=True,
+                failed_agent_name="pi",
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE
+
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        _agent_not_found,
+    )
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("resolve", encoding="utf-8")
+    session = ResolutionSession()
+
+    assert (
+        invoke_resolution_agent(
+            agent_name="pi",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    assert session.skip_same_agent_retries is True
+
+
+def test_an_uninstalled_candidate_hands_over_to_the_next_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Being absent must cost the chain one candidate, not the whole round."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("pi", "claude"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[[]])
+    session = ResolutionSession()
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        if agent_name == "pi":
+            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+            return False
+        return True
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is True
+    )
+    assert called == ["pi", "claude"]
+    assert "pi" in session.dead_tool_surfaces
+
+
+def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A futile-to-retry exit must cost the next candidate, not the same one again."""
+    session = ResolutionSession(skip_same_agent_retries=True)
+    classify_failed_resolution_attempt(
+        session,
+        "pi",
+        ConnectionError("provider unavailable"),
+        candidates=("pi", "claude"),
+        failed_index=0,
+        policy_bundle=_policy_bundle(),
+    )
+    assert session.chain_cursor == 1
+    assert session.current_agent_retries == 0
+    assert session.skip_same_agent_retries is False
+    # Contrast: without the flag the same environmental failure spends a
+    # same-agent retry instead, which is what makes this assertion mean
+    # something.
+    retried = ResolutionSession()
+    classify_failed_resolution_attempt(
+        retried,
+        "pi",
+        ConnectionError("provider unavailable"),
+        candidates=("pi", "claude"),
+        failed_index=0,
+        policy_bundle=_policy_bundle(),
+    )
+    assert retried.chain_cursor == 0
+    assert retried.current_agent_retries == 1
+
+
+def test_a_live_candidate_behind_the_cursor_is_still_invoked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Dead surfaces ahead of the cursor must not strand the live agent behind it."""
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("alpha", "beta", "gamma")
+    )
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    session = ResolutionSession(chain_cursor=1, dead_tool_surfaces=("beta", "gamma"))
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is False
+    )
+    assert called
+    assert set(called) == {"alpha"}
+
+
+def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A dead tool surface is the agent that faulted, never the one after it."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    session = ResolutionSession()
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        if agent_name == "two":
+            session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is False
+    )
+    assert session.dead_tool_surfaces == ("two",)
+
+
+def test_a_stop_never_inherits_the_previous_stops_verdict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An early exit must not report a reason left behind by an earlier conflict."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
+    session = ResolutionSession()
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_args: False,
+        session=session,
+    )
+    assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
+
+    # Second stop: nothing is conflicted, so no resolver runs at all.
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
+    quiet = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_args: False,
+        session=session,
+    )
+    assert quiet.reason is not ResolutionTerminationReason.ATTEMPT_FAILED
+    assert session.terminal_reason is None
+
+
+def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Rounds re-spend the chain, so pin the ceiling that bounds the cost."""
+    from ralph.pipeline.conflict_resolution.session import conflict_chain_max_retries
+
+    chain = ("one", "two", "three")
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: chain)
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch)
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        return False
+
+    config = _config()
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=config,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    # Declines do not earn a same-agent retry, so the count is exact:
+    # every round spends the chain once, and nothing spends it twice.
+    assert called == list(chain) * config.conflict_resolution.max_rounds_per_stop
+    assert len(called) <= (
+        config.conflict_resolution.max_rounds_per_stop
+        * len(chain)
+        * max(1, conflict_chain_max_retries(_policy_bundle()))
+    )
+
+
+def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two verdicts on one failure spent the same-agent retry budget instantly.
+
+    The default invoker records the failure and the driver classifies
+    it; classifying in both places charged RecoveryController twice for
+    one attempt, so a transient provider error failed over to the next
+    candidate rather than retrying the agent it just lost.
+    """
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("provider unavailable")),
+    )
+    charged: list[str] = []
+    original = classify_failed_resolution_attempt
+
+    def _spy(
+        session: ResolutionSession | None,
+        agent_name: str,
+        raw_failure: BaseException | str,
+        *,
+        candidates: tuple[str, ...] = (),
+        failed_index: int = 0,
+        policy_bundle: PolicyBundle | None = None,
+    ) -> None:
+        charged.append(agent_name)
+        original(
+            session,
+            agent_name,
+            raw_failure,
+            candidates=candidates,
+            failed_index=failed_index,
+            policy_bundle=policy_bundle,
+        )
+
+    monkeypatch.setattr(driver_module, "classify_failed_resolution_attempt", _spy)
+    session = ResolutionSession(max_rounds_per_stop=1)
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    # 'one' is retried on a transient failure before the chain falls over,
+    # which only happens while each attempt is charged once.
+    assert charged.count("one") > 1
+    assert "two" in charged
+
+
+def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The executor parks a retry intent on failure and clears it only on success.
+
+    A candidate that failed through an exception path therefore leaves
+    its intent behind; the next candidate's plain failure used to be
+    reported with that reason and to inherit its skip_same_agent_retries,
+    spending a healthy agent's retry budget on somebody else's exit.
+    """
+    from ralph.pipeline import effect_executor as effect_executor_module
+    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+    from ralph.pipeline.events import PipelineEvent
+
+    effect_executor_module._set_last_captured_retry_intent(
+        AgentRetryIntent(
+            failure_reason="PiProviderFailureExitError",
+            skip_same_agent_retries=True,
+            failed_agent_name="pi",
+        )
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        lambda *args, **kwargs: PipelineEvent.AGENT_FAILURE,
+    )
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("resolve", encoding="utf-8")
+    session = ResolutionSession()
+
+    assert (
+        invoke_resolution_agent(
+            agent_name="claude",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    assert session.last_attempt_failure == "conflict attempt failed"
+    assert session.last_attempt_evidence != "PiProviderFailureExitError"
+    assert session.skip_same_agent_retries is False
+
+
+def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A successful invocation that leaves markers has not answered anything.
+
+    No agent can refuse this work -- the session has no tool for it --
+    so a round that came back successful with markers still on disk is
+    unfinished work, and the next round hands the same agent's successor
+    the paths that still carry markers.
+    """
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    lines: list[str] = []
+    monkeypatch.setattr(
+        driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
+    )
+    session = ResolutionSession()
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=lambda *_args: True,
+            session=session,
+        )
+        is False
+    )
+    assert any(
+        line.startswith(ResolutionTerminationReason.RESOLUTION_INCOMPLETE.value) for line in lines
+    )
+    assert not any(
+        line.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value) for line in lines
+    )
+
+
+def test_no_reason_the_pipeline_can_report_is_an_agent_refusing_the_work() -> None:
+    """The enum must not offer a state that means "the resolver said no".
+
+    There is no MCP tool with which a resolution session could refuse a
+    conflict: ``declare_complete`` is its only completion signal. A
+    reason named for a refusal therefore described something that cannot
+    happen, while hiding what did -- an attempt that failed, a candidate
+    that never started, or work that did not finish.
+    """
+    values = {reason.value for reason in ResolutionTerminationReason}
+    assert not any("DECLIN" in value or "REFUS" in value for value in values)
+    assert {
+        "ATTEMPT_FAILED",
+        "RESOLUTION_INCOMPLETE",
+        "CANDIDATE_EXITED",
+        "CANDIDATE_UNAVAILABLE",
+    } <= values
+
+
+def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A misconfigured candidate must not own the stop's verdict or its budget.
+
+    A chain naming an agent this workspace does not have is ordinary. When
+    the healthy candidate after it really ran and really failed, the round
+    reported the GHOST's fault and left the stop unchargeable -- and an
+    unchargeable stop records no exhaustion evidence at all, so the run
+    could never escalate honestly.
+    """
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("ghost", "healthy")
+    )
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
+    session = ResolutionSession(max_rounds_per_stop=1)
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        if agent_name == "ghost":
+            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        else:
+            session.last_attempt_saw_activity = True
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is False
+    )
+    assert called == ["ghost", "healthy"]
+    assert "ghost" in session.dead_tool_surfaces
+    assert "healthy" not in session.dead_tool_surfaces
+    assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
+    assert session.charge_conflict_budget is True
+    assert session.exhaustion_reason is not None
+    assert session.exhaustion_reason.startswith(
+        ResolutionTerminationReason.ATTEMPT_FAILED.value
+    )
+
+
+def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The registry lookup lives in the executor; only it should do it.
+
+    Duplicating the check in conflict resolution meant building an
+    AgentRegistry per candidate, and building one spawns subprocesses --
+    a process spawn in front of every resolution attempt. The executor
+    already knows, so it says so on the channel callers already read.
+    """
+    from ralph.pipeline import effect_executor as effect_executor_module
+
+    assert effect_executor_module.AGENT_NOT_FOUND_REASON == "AgentNotFound"
+    source = Path(effect_executor_module.__file__).read_text(encoding="utf-8")
+    marker = "if agent_config is None:"
+    assert marker in source
+    branch = source[source.index(marker) : source.index(marker) + 900]
+    assert "AGENT_NOT_FOUND_REASON" in branch, (
+        "the agent-not-found branch must name the cause on the retry intent"
+    )
+    assert "skip_same_agent_retries=True" in branch, (
+        "retrying a name the registry cannot produce is futile"
+    )

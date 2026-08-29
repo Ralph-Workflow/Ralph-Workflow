@@ -43,6 +43,17 @@ def classify_stage_map(
     ours = stages.get(2)
     theirs = stages.get(3)
     if ours is None or theirs is None:
+        # A one-sided stage set is a modify/delete (or an add on one
+        # side): common, and a decision -- keep the edit, or accept the
+        # removal -- that a resolver could make. It stays OUT OF REACH
+        # anyway because nothing downstream can tell a made decision
+        # from an untouched file: such a conflict carries no markers, so
+        # `paths_with_conflict_markers` is empty either way, `git add`
+        # stages the surviving file as readily as a deletion, and this
+        # drain does not require completion evidence -- an agent that
+        # exits having done nothing would silently land "keep", quietly
+        # reversing a deletion the other side meant. Routing it here
+        # needs a decision the round can actually verify first.
         return ConflictSight.AGENT if ours is None and theirs is None else ConflictSight.OUT_OF_REACH
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs

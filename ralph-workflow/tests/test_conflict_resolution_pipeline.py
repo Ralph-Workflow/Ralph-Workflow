@@ -270,7 +270,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     )
 
     assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.CANDIDATE_DECLINED
+    assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
     assert calls == ["primary", "fallback"]
     recovery_state = session.recovery_state

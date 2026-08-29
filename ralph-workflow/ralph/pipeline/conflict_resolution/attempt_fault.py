@@ -21,24 +21,37 @@ INFRASTRUCTURE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = fro
         ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE,
         ResolutionTerminationReason.TOOL_SURFACE_DEAD,
         ResolutionTerminationReason.REPEATED_IDENTICAL_FAILURE,
+        ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
     }
 )
 
 
 def classify_ralph_origin_fault(payload: str) -> ResolutionTerminationReason | None:
-    """Return a typed attempt failure when ``payload`` is Ralph's own fault text."""
+    """Return a typed attempt failure when ``payload`` is Ralph's own fault text.
+
+    Every marker here must be a token Ralph itself EMITS, never an
+    English phrase that describes one. This payload is scanned from the
+    resolver's activity events, which carry the agent's own output, and
+    a match permanently records that agent as a dead tool surface for
+    the rest of the rebase. Prose markers made that a trap: an agent
+    resolving a conflict in this very repository reads and echoes the
+    words "tool surface" constantly, and the only resolver in the
+    shipped one-agent chain was then killed for quoting a comment --
+    after which every later round and every later stop had nobody left
+    to invoke. ``transport_loop_detected`` (the MCP breaker's 503 frame)
+    and ``SUPERVISION_INFRASTRUCTURE_FAILURE`` (the activity relay's
+    own error text) are real strings Ralph writes; "tool service",
+    "tool surface" and "repeated identical" appear nowhere in anything
+    Ralph emits, so they could only ever match the agent quoting us.
+    """
     text = payload.strip()
     if not text:
         return None
     lowered = text.lower()
     if _TRANSPORT_LOOP in lowered:
         return ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-    if _RELAY_FAULT in text or "activity relay" in lowered:
+    if _RELAY_FAULT in text:
         return ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
-    if "repeated identical" in lowered:
-        return ResolutionTerminationReason.REPEATED_IDENTICAL_FAILURE
-    if "tool service" in lowered or "tool surface" in lowered:
-        return ResolutionTerminationReason.TOOL_SURFACE_DEAD
     return None
 
 
