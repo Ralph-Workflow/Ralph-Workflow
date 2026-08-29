@@ -167,3 +167,45 @@ def test_a_markerless_decision_demands_declared_completion(
     )
     assert captured, "the resolver must be invoked for a markerless decision"
     assert all(captured), "and it must be required to declare its decision"
+
+
+def test_a_widened_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) -> None:
+    """`conflict-marker-size` is a documented gitattribute.
+
+    A repository that widens the fence produced ``<<<<<<<< HEAD``, which
+    does not start with ``"<<<<<<< "`` -- and every gate that proves a
+    resolution real reads this one scan, so all of them went blind at
+    once and conflict markers were committed into history as a success.
+    """
+    from ralph.git.merge import paths_with_conflict_markers
+
+    (tmp_path / "default.txt").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> main\n")
+    (tmp_path / "wide.txt").write_text("<<<<<<<< HEAD\na\n========\nb\n>>>>>>>> main\n")
+    # Still not markers: prose punctuation and a doctest prompt.
+    (tmp_path / "prose.md").write_text("Title\n=======\nbody\n")
+    (tmp_path / "doctest.py").write_text(">>> print(1)\n1\n")
+
+    reported = paths_with_conflict_markers(
+        tmp_path, ["default.txt", "wide.txt", "prose.md", "doctest.py"]
+    )
+    assert sorted(reported) == ["default.txt", "wide.txt"]
+
+
+def test_a_markerless_conflict_is_a_decision_however_it_became_markerless() -> None:
+    """`binary`, `-merge` and `merge=binary` all suppress the markers.
+
+    A NUL-byte probe cannot see any of them, so an ASCII lockfile was
+    judged an ordinary conflict -- and an ordinary conflict passes the
+    marker scan the moment it is created, which credited an agent that
+    did nothing and dropped the other side.
+    """
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
+
+    two_sided = {1: ("100644", "base"), 2: ("100644", "ours"), 3: ("100644", "theirs")}
+    assert (
+        classify_stage_map(two_sided, binary=False, has_markers=True) is ConflictSight.AGENT
+    )
+    assert (
+        classify_stage_map(two_sided, binary=False, has_markers=False)
+        is ConflictSight.AGENT_DECISION
+    )

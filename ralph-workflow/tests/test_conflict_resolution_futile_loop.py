@@ -727,3 +727,44 @@ def test_a_clean_stop_is_not_reported_as_a_failure_reason(
     )
     assert outcome.reason is None
     assert session.exhaustion_reason is None
+
+
+def test_mechanical_staging_never_masks_a_path_nobody_can_repair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Staging the reachable paths must not report the rest resolved.
+
+    The early "everything staged" exit never consulted the unreachable
+    remainder, so a submodule bump nobody had chosen was reported as a
+    clean resolution with zero invocations -- and then committed.
+    """
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["mode.txt", "sub"])
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, paths: {
+            "mode.txt": ConflictSight.MECHANICAL,
+            "sub": ConflictSight.OUT_OF_REACH,
+        },
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ("mode.txt",))
+    session = ResolutionSession()
+
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_a: True,
+        session=session,
+    )
+    assert outcome.succeeded is False
+    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert outcome.unresolved_paths == ("sub",)
