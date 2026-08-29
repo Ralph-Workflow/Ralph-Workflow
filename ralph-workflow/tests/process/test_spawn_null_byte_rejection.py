@@ -500,14 +500,20 @@ def test_failed_spawn_log_line_never_leaks_argv_payloads() -> None:
     sink_id = logger.add(lines.append, level="DEBUG")
     try:
         manager = ProcessManager(sync_process_factory=_RecordingSyncFactory())
+        # The NUL sits in argv[0]: a program name is rejected rather than
+        # stripped, so this reaches the FAILED lifecycle transition while the
+        # secret-bearing arguments after it stay in the record's command.
         with pytest.raises(ValueError, match="null byte"):
-            manager.spawn(["/bin/echo", "--mcp-config", mcp_config, "--", secret_prompt, "a\x00b"])
+            manager.spawn(["/bin/ec\x00ho", "--mcp-config", mcp_config, "--", secret_prompt])
     finally:
         logger.remove(sink_id)
 
     logged = "\n".join(lines)
-    assert "/bin/echo" in logged, (
+    assert "/bin/ec" in logged, (
         f"the FAILED log line must still name the executable; got {logged!r}"
+    )
+    assert "withheld" in logged, (
+        f"the FAILED log line must record that arguments were withheld; got {logged!r}"
     )
     assert secret_prompt not in logged, (
         f"the inline prompt body must never reach a log sink; got {logged!r}"
