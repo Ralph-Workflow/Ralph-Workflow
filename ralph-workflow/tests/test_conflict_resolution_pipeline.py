@@ -813,3 +813,28 @@ def test_a_deletion_is_still_unresolved_on_the_round_after_it(
     assert _run(tmp_path, invoke=_deletes_then_heartbeats, session=session) is False
     assert len(rounds) > 1, "the later rounds are where the guard used to lapse"
     assert session.unresolved_paths == ("src/alpha.py",)
+
+
+def test_a_truncated_conflict_is_not_a_resolution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Emptying the file drops BOTH sides, and the markers go with them.
+
+    With nothing left to object to, the marker scan passed and a
+    heartbeat credited the round -- so a resolver that truncated the
+    file had that committed as a clean resolution.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "alpha.py").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
+    session = ResolutionSession(max_rounds_per_stop=1)
+
+    def _truncates(name: str, _p: Path, _r: int) -> bool:
+        (tmp_path / "src" / "alpha.py").write_text("")
+        session.last_attempt_saw_activity = True
+        return False
+
+    assert _run(tmp_path, invoke=_truncates, session=session) is False
+    assert session.unresolved_paths == ("src/alpha.py",)

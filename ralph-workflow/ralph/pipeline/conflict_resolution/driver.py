@@ -414,6 +414,9 @@ def _run_rounds(
     # snapshot stopped calling it vanished -- and the empty marker scan
     # (it cannot read a file that is gone) then credited the deletion.
     present_at_entry = frozenset(path for path in conflicted if (root / path).exists())
+    substantive_at_entry = frozenset(
+        path for path in present_at_entry if not _is_effectively_empty(root / path)
+    )
     prompt_path: Path | None = None
     try:
         for round_index in range(1, round_cap + 1):
@@ -447,7 +450,11 @@ def _run_rounds(
             )
             succeeded = attempt.succeeded
             session.unresolved_paths = _paths_still_unresolved(
-                root, conflicted, decision_paths, present_before=present_at_entry
+                root,
+                conflicted,
+                decision_paths,
+                present_before=present_at_entry,
+                substantive=substantive_at_entry,
             )
             # The worktree decides, but only once an agent has actually
             # been at it. A resolver that repaired every marker and then
@@ -576,12 +583,21 @@ def _escalate_unreachable_remainder(
     return True
 
 
+def _is_effectively_empty(path: Path) -> bool:
+    """Whether a file holds nothing a resolution could have meant to keep."""
+    try:
+        return not path.read_bytes().strip()
+    except OSError:
+        return False
+
+
 def _paths_still_unresolved(
     root: Path,
     conflicted: tuple[str, ...],
     decision_paths: tuple[str, ...],
     *,
     present_before: frozenset[str],
+    substantive: frozenset[str],
 ) -> tuple[str, ...]:
     """Paths a round has NOT resolved, by the evidence on disk.
 
@@ -594,6 +610,16 @@ def _paths_still_unresolved(
     """
     marked = list(paths_with_conflict_markers(root, conflicted))
     decisions = set(decision_paths)
+    # A path both sides wrote content into, now empty, is not a
+    # resolution: a truncating resolver dropped BOTH sides, and with the
+    # markers gone the scan had nothing left to object to.
+    emptied = [
+        path
+        for path in conflicted
+        if path in substantive
+        and path not in marked
+        and _is_effectively_empty(root / path)
+    ]
     vanished = [
         path
         for path in conflicted
@@ -602,7 +628,11 @@ def _paths_still_unresolved(
         and path not in marked
         and not (root / path).exists()
     ]
-    return tuple([*marked, *vanished])
+    unresolved: list[str] = []
+    for path in (*marked, *emptied, *vanished):
+        if path not in unresolved:
+            unresolved.append(path)
+    return tuple(unresolved)
 
 
 def _announce_declared_decisions(

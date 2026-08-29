@@ -811,7 +811,11 @@ def _touched_nothing_unexpected(
     after = _worktree_dirty_paths(root)
     if after is None:
         return False
-    unexpected = sorted(after - before - frozenset(stop.conflicted_files))
+    unexpected = sorted(
+        path
+        for path in after - before - frozenset(stop.conflicted_files)
+        if not _is_ralph_workspace_path(path)
+    )
     if not unexpected:
         return True
     unexpected_paths = tuple(unexpected)
@@ -830,6 +834,22 @@ def _touched_nothing_unexpected(
         unexpected,
     )
     return False
+
+
+#: Ralph's own workspace directory, written DURING the resolution it is
+#: judging: the prompt is rendered to `.agent/tmp/`, and artifacts,
+#: transcripts and progress records land there too. Charging those to
+#: the resolver rejected the resolution -- the agent never touched them,
+#: and the run then abandoned a rebase it had actually resolved.
+_RALPH_WORKSPACE_PREFIX = ".agent/"
+
+
+def _is_ralph_workspace_path(path: str) -> bool:
+    """Whether ``path`` is Ralph's own bookkeeping rather than the agent's."""
+    # `lstrip("./")` would strip the leading dot itself, turning
+    # ".agent/tmp/x" into "agent/tmp/x" and matching nothing.
+    normalised = path.strip().removeprefix("./")
+    return normalised == ".agent" or normalised.startswith(_RALPH_WORKSPACE_PREFIX)
 
 
 def _restore_one_unrequested_path(root: Path, path: str) -> bool:
@@ -892,7 +912,28 @@ def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
     progress = load_progress_for_rebase(root, feature_sha=feature_sha, target_sha=target_sha)
     if progress is None:
         return ()
+    if progress.landed_shas and _is_at_the_first_replay(root):
+        # The identity survives `git rebase --abort` intact -- abort
+        # restores HEAD to orig-head, so a retry reproduces the very same
+        # (orig-head, onto) pair and the record is accepted. But a rebase
+        # that had landed stops cannot be sitting on its FIRST commit, so
+        # this record describes an attempt that no longer exists. Reading
+        # it would skip a genuinely unresolved stop and continue straight
+        # past it, with no resolver ever offered the conflict.
+        logger.warning(
+            "conflict_resolution: discarding a progress record claiming {} landed stop(s) "
+            "while the replay is back at its first commit; the earlier attempt was aborted",
+            len(progress.landed_shas),
+        )
+        clear_progress(root)
+        return ()
     return tuple(progress.landed_shas)
+
+
+def _is_at_the_first_replay(root: Path) -> bool:
+    """Whether the paused rebase is stopped on the first commit it replays."""
+    position = _read_replay_progress(root)
+    return position is not None and position[0] == 1
 
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:

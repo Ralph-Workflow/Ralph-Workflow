@@ -982,3 +982,20 @@ def test_a_staged_stop_with_surviving_markers_is_not_continued(
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
     assert seen == []
+
+
+def test_ralphs_own_agent_directory_is_not_charged_to_the_resolver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The prompt is rendered INSIDE the worktree, under `.agent/tmp/`.
+
+    Anything Ralph writes there during a resolution showed up as a stray
+    edit by the agent, and the stop was rejected -- abandoning a rebase
+    the resolver had actually resolved.
+    """
+    from ralph.pipeline.conflict_resolution.rebase_loop import _is_ralph_workspace_path
+
+    assert _is_ralph_workspace_path(".agent/tmp/rebase_conflict_resolution_prompt.md") is True
+    assert _is_ralph_workspace_path(".agent") is True
+    assert _is_ralph_workspace_path("src/agent_config.py") is False
+    assert _is_ralph_workspace_path("docs/.agentic.md") is False
