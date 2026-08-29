@@ -108,6 +108,27 @@ def _fence_pattern(size: int) -> re.Pattern[str]:
 _UNRESOLVED_FENCE_PATTERN = _fence_pattern(DEFAULT_CONFLICT_MARKER_SIZE)
 
 
+def _readable_text(path: Path) -> str | None:
+    """Decode a worktree file for scanning, or ``None`` if it cannot be.
+
+    ``working-tree-encoding`` makes git write a UTF-16 worktree copy --
+    all NUL bytes to a naive probe, and unreadable as UTF-8 -- while
+    still writing ordinary conflict fences into it. Decoding with
+    ``errors="replace"`` hid those fences behind replacement
+    characters, so the markers were committed and reported as a success.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    for encoding in ("utf-8", "utf-16", "utf-32"):
+        try:
+            return data.decode(encoding)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
 def conflict_marker_sizes(
     repo_root: Path | str, paths: Sequence[str]
 ) -> dict[str, int]:
@@ -369,14 +390,21 @@ def unmerged_paths(repo_root: Path | str) -> list[str]:
     broken repository is never mistaken for "fully resolved".
     """
     repo_root_path = Path(repo_root)
+    # ``-z`` because git QUOTES a path with non-ASCII, a backslash, a
+    # quote or a control character when it is not asked for NUL
+    # separation: `"\303\251.txt"` cannot be opened, so every content
+    # gate that later reads these paths reported "no markers" for a file
+    # it never saw -- and conflict markers were committed under a line
+    # asserting the stop was marker-free. NUL separation is the only
+    # encoding git never mangles.
     result = run_git(
-        ("diff", "--name-only", "--diff-filter=U"),
+        ("diff", "--name-only", "--diff-filter=U", "-z"),
         cwd=repo_root_path,
         label="git-unmerged-paths",
     )
     if result.returncode != 0:
         return ["<unmerged-path-query-failed>"]
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    return [entry for entry in result.stdout.split("\0") if entry]
 
 
 def conflict_stage_entries(
@@ -455,9 +483,13 @@ def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> 
     sizes = conflict_marker_sizes(repo_root_path, list(paths))
     reported: list[str] = []
     for path in paths:
-        try:
-            content = (repo_root_path / path).read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        content = _readable_text(repo_root_path / path)
+        if content is None:
+            # Present but unreadable. An unreadable file is not evidence
+            # of a clean one, and reporting it keeps the resolution from
+            # landing on a path nobody could check.
+            if (repo_root_path / path).exists():
+                reported.append(path)
             continue
         pattern = (
             _fence_pattern(sizes[path])

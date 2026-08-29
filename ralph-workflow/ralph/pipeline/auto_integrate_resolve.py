@@ -168,6 +168,22 @@ def _resolve_and_commit_with_reason(
     return False, "the resolution did not prove out against the worktree"
 
 
+def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:
+    """Drop the ``path~LABEL`` files git's ort backend leaves behind.
+
+    A file-vs-directory conflict makes ort park a side under an invented
+    name. The rebase loop has always removed them; the merge seam did
+    not, so `x~HEAD` -- a path no one wrote and no side has -- was
+    staged and committed as a real file. Never raises.
+    """
+    from ralph.pipeline.conflict_resolution.rebase_loop import _remove_ort_residue
+
+    try:
+        _remove_ort_residue(root, conflicted)
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning("auto_integrate: could not clear ort residue: {}", exc)
+
+
 def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
     """Stage the conflicted paths, prove the resolution, commit the merge.
 
@@ -179,6 +195,7 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
     resolution. The git-authoritative unmerged check is retained as a
     second gate before the deterministic commit.
     """
+    _clear_ort_residue(root, tuple(conflicted))
     if not stage_paths(root, conflicted):
         logger.warning("auto_integrate: failed to stage resolved paths: {}", conflicted)
         return False

@@ -782,3 +782,34 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
 
     assert _run(tmp_path, invoke=_destroys_the_file, session=session) is False
     assert session.unresolved_paths == ("src/alpha.py",)
+
+
+def test_a_deletion_is_still_unresolved_on_the_round_after_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The vanish guard has to describe the STOP, not one round of it.
+
+    A file deleted in round 1 is already absent when round 2 starts, so
+    a per-round snapshot stopped calling it vanished -- and the empty
+    marker scan (it cannot read a file that is gone) credited the
+    deletion. Neither side asked for the file to disappear.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "alpha.py").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
+    session = ResolutionSession()
+    rounds: list[int] = []
+
+    def _deletes_then_heartbeats(name: str, _p: Path, round_index: int) -> bool:
+        rounds.append(round_index)
+        target = tmp_path / "src" / "alpha.py"
+        if target.exists():
+            target.unlink()
+        session.last_attempt_saw_activity = True
+        return False
+
+    assert _run(tmp_path, invoke=_deletes_then_heartbeats, session=session) is False
+    assert len(rounds) > 1, "the later rounds are where the guard used to lapse"
+    assert session.unresolved_paths == ("src/alpha.py",)

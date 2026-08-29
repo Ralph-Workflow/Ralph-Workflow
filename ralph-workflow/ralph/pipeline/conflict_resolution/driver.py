@@ -409,6 +409,11 @@ def _run_rounds(
         f"entering rebase conflict resolution for '{target}' ({len(conflicted)} conflicted file(s))"
         + (f" replaying {stop.sha[:8]} {stop.subject}" if stop is not None else ""),
     )
+    # Snapshotted once for the STOP, not per round: a file deleted in
+    # round 1 is already absent when round 2 starts, so a per-round
+    # snapshot stopped calling it vanished -- and the empty marker scan
+    # (it cannot read a file that is gone) then credited the deletion.
+    present_at_entry = frozenset(path for path in conflicted if (root / path).exists())
     prompt_path: Path | None = None
     try:
         for round_index in range(1, round_cap + 1):
@@ -437,15 +442,12 @@ def _run_rounds(
                 return False
             attempt_started = clock()
             _reset_round_reporting(session)
-            present_before = frozenset(
-                path for path in conflicted if (root / path).exists()
-            )
             attempt = _run_one_round(
                 runner, candidates, prompt_path, round_index, display, session, policy_bundle
             )
             succeeded = attempt.succeeded
             session.unresolved_paths = _paths_still_unresolved(
-                root, conflicted, decision_paths, present_before=present_before
+                root, conflicted, decision_paths, present_before=present_at_entry
             )
             # The worktree decides, but only once an agent has actually
             # been at it. A resolver that repaired every marker and then

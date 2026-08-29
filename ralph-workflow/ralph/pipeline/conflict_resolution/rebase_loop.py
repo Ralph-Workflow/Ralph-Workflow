@@ -430,14 +430,16 @@ def _stop_is_genuinely_staged(root: Path, stop_index: int) -> bool:
 
 def _staged_paths(root: Path) -> list[str]:
     """Paths staged against HEAD, i.e. what continuing would commit."""
+    # ``-z``: git quotes a non-ASCII path otherwise, and the quoted
+    # string cannot be opened by the marker scan that reads this list.
     result = run_git(
-        ("diff", "--cached", "--name-only"),
+        ("diff", "--cached", "--name-only", "-z"),
         cwd=root,
         label="git-staged-paths",
     )
     if result.returncode != 0:
         return []
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [entry for entry in result.stdout.split("\0") if entry]
 
 
 def _try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
@@ -746,18 +748,43 @@ def _worktree_dirty_paths(root: Path) -> frozenset[str] | None:
     worktree is precisely the state in which an unnoticed edit would be
     replayed into the commit.
     """
+    # ``git diff`` lists tracked MODIFICATIONS only, so a file the
+    # resolver CREATED was invisible to the out-of-scope guard: never
+    # reported, never reverted, and then swept up by a later `git add`.
+    # Porcelain sees created and untracked paths too, and ``-z`` keeps a
+    # non-ASCII name from arriving quoted and unopenable.
     result = run_git(
-        ("diff", "--name-only"),
+        ("status", "--porcelain=v1", "-z"),
         cwd=root,
         label="git-worktree-dirty-paths",
     )
     if result.returncode != 0:
         logger.warning(
-            "conflict_resolution: could not read the worktree diff: {}",
+            "conflict_resolution: could not read the worktree status: {}",
             result.stderr.strip(),
         )
         return None
-    return frozenset(line.strip() for line in result.stdout.splitlines() if line.strip())
+    return frozenset(_porcelain_paths(result.stdout))
+
+
+def _porcelain_paths(blob: str) -> list[str]:
+    """Paths from a ``--porcelain=v1 -z`` blob, renames included."""
+    entries = [entry for entry in blob.split("\0") if entry]
+    paths: list[str] = []
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        index += 1
+        if len(entry) < 4:
+            continue
+        code, path = entry[:2], entry[3:]
+        paths.append(path)
+        if "R" in code or "C" in code:
+            # A rename/copy is followed by its source path.
+            if index < len(entries):
+                paths.append(entries[index])
+                index += 1
+    return paths
 
 
 def _touched_nothing_unexpected(
@@ -941,7 +968,44 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
             exc,
         )
         return False
+    if _replay_produced_nothing(root, stop):
+        return False
     record_landed_stop(root, stop)
+    return True
+
+
+def _replay_produced_nothing(root: Path, stop: RebaseStop) -> bool:
+    """Whether continuing DROPPED the replayed commit instead of landing it.
+
+    A resolution that leaves the replay identical to what it is being
+    replayed onto makes git drop the commit -- and the loop counted that
+    as the stop landing, so the commit disappeared from history while
+    the rebase reported success. Deciding to keep one side of a
+    modify/delete is the ordinary way to reach it.
+
+    Only a stop whose commit is genuinely gone is refused: a rebase that
+    is still in progress, or whose log cannot be read, is left to the
+    existing handling.
+    """
+    if rebase_in_progress_at(root):
+        return False
+    result = run_git(
+        ("log", "--format=%s", "-n", "50"),
+        cwd=root,
+        label="git-replayed-subjects",
+    )
+    if result.returncode != 0 or not stop.subject or not result.stdout.strip():
+        # No readable log is not evidence that the commit is gone.
+        return False
+    if stop.subject in {line.strip() for line in result.stdout.splitlines()}:
+        return False
+    logger.warning(
+        "conflict_resolution: the resolution of stop {} ({}) left nothing to replay, so git "
+        "dropped the commit '{}'; refusing to report that as a landed stop",
+        stop.stop_index,
+        stop.sha[:8],
+        stop.subject,
+    )
     return True
 
 

@@ -238,3 +238,68 @@ def test_a_narrow_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) -> 
 
     reported = paths_with_conflict_markers(tmp_path, ["narrow.txt", "wide.txt", "quote.md"])
     assert sorted(reported) == ["narrow.txt", "wide.txt"]
+
+
+def test_a_non_ascii_path_is_not_reported_as_marker_free(tmp_path: Path) -> None:
+    """git QUOTES such a path unless asked for NUL separation.
+
+    The quoted string cannot be opened, so every content gate that reads
+    the path reported "no markers" for a file it never saw -- and the
+    markers were committed under a line asserting the stop was clean.
+    """
+    from ralph.git.merge import paths_with_conflict_markers, unmerged_paths
+    from ralph.git.subprocess_runner import run_git
+
+    def _git(*args: str) -> None:
+        result = run_git(args, cwd=tmp_path, label="test-setup")
+        assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
+
+    _git("init", "-q", ".")
+    _git("config", "user.email", "t@t")
+    _git("config", "user.name", "t")
+    named = "é.txt"
+    (tmp_path / named).write_text("a\n")
+    _git("add", "-A")
+    _git("commit", "-qm", "base")
+    _git("checkout", "-qb", "feature")
+    (tmp_path / named).write_text("FEATURE\n")
+    _git("commit", "-qam", "feature")
+    _git("checkout", "-q", "master")
+    (tmp_path / named).write_text("MAIN\n")
+    _git("commit", "-qam", "main")
+    run_git(("merge", "feature"), cwd=tmp_path, label="test-merge")
+
+    unmerged = unmerged_paths(tmp_path)
+    assert unmerged == [named], "the path must arrive openable, not git-quoted"
+    assert paths_with_conflict_markers(tmp_path, unmerged) == [named]
+
+
+def test_a_file_git_wrote_in_utf16_is_not_reported_as_marker_free(tmp_path: Path) -> None:
+    """`working-tree-encoding` makes git write markers we could not read.
+
+    Decoding with ``errors="replace"`` hid the fences behind replacement
+    characters, so they were committed and reported as a success.
+    """
+    from ralph.git.merge import paths_with_conflict_markers
+
+    conflicted = "a\n<<<<<<< HEAD\nOURS\n=======\nTHEIRS\n>>>>>>> feature\nc\n"
+    (tmp_path / "u16.txt").write_bytes(conflicted.encode("utf-16"))
+    (tmp_path / "clean16.txt").write_bytes("resolved\n".encode("utf-16"))
+
+    assert paths_with_conflict_markers(tmp_path, ["u16.txt", "clean16.txt"]) == ["u16.txt"]
+
+
+def test_a_present_but_unreadable_path_is_not_evidence_of_a_clean_one(
+    tmp_path: Path,
+) -> None:
+    """The scan skipped what it could not read, which passed vacuously."""
+    from ralph.git.merge import paths_with_conflict_markers
+
+    unreadable = tmp_path / "locked.txt"
+    unreadable.write_text("<<<<<<< HEAD\na\n")
+    unreadable.chmod(0o000)
+    try:
+        reported = paths_with_conflict_markers(tmp_path, ["locked.txt", "absent.txt"])
+    finally:
+        unreadable.chmod(0o644)
+    assert reported == ["locked.txt"], "present but unreadable is not clean"
