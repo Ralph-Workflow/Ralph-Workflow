@@ -487,13 +487,33 @@ def test_configured_stop_cap_applies_to_every_rebase_stop(
     assert [stop.stop_cap for stop in seen] == [2, 2]
 
 
-def test_a_paused_rebase_with_no_conflicted_path_declines(
+def test_a_paused_rebase_with_its_stop_already_staged_is_continued(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Nothing to resolve means hand the repository back untouched."""
+    """A staged, marker-free stop needs `--continue`, not an agent.
+
+    Declining left the rebase paused on disk and the run exited having
+    invoked nobody -- for a stop that was already resolved, most likely
+    by a run that died between proving it and continuing past it.
+    """
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
+    monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: [])
+    seen: list[RebaseStop] = []
+
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
+    assert seen == [], "no resolver is needed for a stop that is already staged"
+
+
+def test_a_paused_rebase_that_is_still_conflicted_is_not_continued(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Only a genuinely clean index may be continued past."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
+    monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: ["still.py"])
     seen: list[RebaseStop] = []
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False

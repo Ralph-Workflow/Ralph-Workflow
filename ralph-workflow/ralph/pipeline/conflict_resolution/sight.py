@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ralph.git.merge import conflict_stage_entries, stage_paths
+from ralph.git.merge import (
+    conflict_stage_entries,
+    paths_with_conflict_markers,
+    stage_paths,
+)
 
 _GITLINK_MODE = "160000"
 _TREE_MODE_PREFIX = "040000"
@@ -49,8 +53,20 @@ def classify_stage_map(
     stages: dict[int, tuple[str, str]],
     *,
     binary: bool,
+    has_markers: bool = True,
 ) -> ConflictSight:
-    """Classify one path from its index stages without reading git."""
+    """Classify one path from its index stages without reading git.
+
+    ``has_markers`` is what git actually left in the worktree, and it
+    decides whether the resolution will be READABLE. A NUL-byte probe
+    is not enough on its own: ``conflict-marker-size``, ``-merge``,
+    ``binary`` and ``merge=binary`` are all documented gitattributes
+    that make git write a whole side instead of a marked-up hunk, so an
+    ASCII lockfile can be every bit as markerless as a PNG. Judged as an
+    ordinary conflict, such a path passes the marker scan the moment it
+    is created -- and an agent that did nothing was credited with
+    resolving it.
+    """
     if binary:
         # A binary conflict carries no markers, so Ralph cannot read the
         # resolution off the file -- but the resolver session holds
@@ -74,7 +90,19 @@ def classify_stage_map(
         return ConflictSight.AGENT_DECISION
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
         return _classify_gitlink(ours_mode, ours_blob, theirs_mode, theirs_blob, stages.get(1))
-    return ConflictSight.MECHANICAL if ours_blob == theirs_blob else ConflictSight.AGENT
+    return _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
+
+
+def _classify_two_sided_blob(
+    ours_blob: str, theirs_blob: str, *, has_markers: bool
+) -> ConflictSight:
+    """Classify a conflict where both sides have a blob."""
+    if ours_blob == theirs_blob:
+        return ConflictSight.MECHANICAL
+    # Both sides changed it. If git left no markers, nothing about the
+    # file will show whether a resolution happened, so it is a declared
+    # decision rather than an ordinary edit.
+    return ConflictSight.AGENT if has_markers else ConflictSight.AGENT_DECISION
 
 
 def _classify_one_sided(present: tuple[str, str] | None) -> ConflictSight:
@@ -120,11 +148,13 @@ def _classify_gitlink(
 def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> dict[str, ConflictSight]:
     """Classify every unmerged path at ``root`` before spending the chain."""
     entries = conflict_stage_entries(root, paths)
+    marked = set(paths_with_conflict_markers(root, paths))
     kinds: dict[str, ConflictSight] = {}
     for path in paths:
         kinds[path] = classify_stage_map(
             entries.get(path, {}),
             binary=_path_is_binary(root, path),
+            has_markers=path in marked,
         )
     return kinds
 

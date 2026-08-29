@@ -58,6 +58,7 @@ Public functions (every primitive has a docstring):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -79,6 +80,15 @@ _CONFLICT_MARKER_PREFIXES: tuple[str, ...] = ("<<<<<<< ", "=======", ">>>>>>> ")
 #: appears in an unresolved conflict. ``=======`` is excluded on
 #: purpose: it is also ordinary heading punctuation in prose files.
 _UNRESOLVED_CONFLICT_FENCES: frozenset[str] = frozenset({"<<<<<<< ", ">>>>>>> "})
+
+#: Opening/closing fences of ANY length. git's default fence is seven
+#: characters, but ``conflict-marker-size`` is a documented gitattribute,
+#: and a repository that sets it wider produced ``<<<<<<<< HEAD`` --
+#: which does not start with ``"<<<<<<< "``. Every gate that proves a
+#: resolution real went blind at once, so conflict markers were committed
+#: into history and reported as a success. ``=======`` stays excluded: it
+#: is ordinary heading punctuation in prose.
+_UNRESOLVED_FENCE_PATTERN = re.compile(r"^(?:<{7,}|>{7,})(?:[ \t]|$)")
 
 #: :func:`merge_state` verdicts. ``MERGE_STATE_UNKNOWN`` is the
 #: fail-closed answer: git could not be asked, so "there is no merge
@@ -400,13 +410,7 @@ def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> 
             content = (repo_root_path / path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        seen = {
-            prefix
-            for line in content.splitlines()
-            for prefix in _CONFLICT_MARKER_PREFIXES
-            if line.startswith(prefix)
-        }
-        if seen & _UNRESOLVED_CONFLICT_FENCES:
+        if any(_UNRESOLVED_FENCE_PATTERN.match(line) for line in content.splitlines()):
             reported.append(path)
     return reported
 

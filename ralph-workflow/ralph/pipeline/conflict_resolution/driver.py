@@ -335,11 +335,17 @@ def _prepare_conflicted_paths(
         path for path in declared_decision_paths(kinds) if path in set(conflicted)
     )
     staged = stage_mechanical_conflicts(root, kinds)
-    if not staged:
-        return conflicted, None, decisions
     remaining = tuple(path for path in conflicted if path not in set(staged))
     if remaining:
         return remaining, None, decisions
+    if session.out_of_reach_paths:
+        # Staging the mechanical paths emptied the REACHABLE set, but a
+        # path nobody can repair is still unmerged. Returning success
+        # here reported `unresolved_paths=()` for a conflict the driver
+        # had just classified unrepairable, invoked nobody, and let the
+        # seam commit it -- silently taking one side of a submodule bump.
+        _escalate_unreachable_remainder(session, display)
+        return (), False, ()
     emit_conflict_phase_line(
         display, "mechanical conflicts staged without spending the resolution chain"
     )
@@ -505,7 +511,11 @@ def _run_rounds(
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
-    unresolved = session.unresolved_paths or conflicted
+    # NOT `or conflicted`: an empty scan means the markers are gone, and
+    # falling back to the original list named paths the scan had just
+    # cleared -- directly contradicting the line above it, which reported
+    # `unresolved_count=0`.
+    unresolved = session.unresolved_paths
     session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
     emit_conflict_phase_line(
         display,
@@ -604,7 +614,7 @@ def _resolution_exhaustion_reason(
         if session.terminal_reason is not None
         else "RESOLUTION_CHAIN_EXHAUSTED"
     )
-    paths = ", ".join(unresolved_paths) or "<unreadable>"
+    paths = ", ".join(unresolved_paths) or "none still carrying markers"
     # "Conflict markers survive in ..." was asserted for every reason,
     # including exits that never ran a marker scan and paths that cannot
     # carry markers at all -- a binary file, a modify/delete. Say the

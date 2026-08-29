@@ -193,6 +193,48 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
         return None
 
 
+def _absent_record_is_recordable(path: Path) -> bool:
+    """Decide what an unreadable record means for the caller's flag.
+
+    A TRANSIENT read failure leaves an intact record on disk, and
+    failing closed is right: the file would still say ``false`` while
+    the caller believed it said ``true``. A PERMANENTLY unreadable one
+    is not a record at all -- and reporting it as "could not record"
+    disabled rebase conflict resolution for good, because the caller
+    refuses to start a resolution it cannot describe, nothing on that
+    path removes the file, and every later run ended with no resolver
+    invoked and no way out but deleting the file by hand.
+    """
+    if not path.exists():
+        return True
+    if _record_is_parseable(path):
+        return False
+    logger.warning(
+        "auto_integrate: the in-flight integration record at {} cannot be parsed; "
+        "discarding it rather than blocking every future resolution",
+        path,
+    )
+    try:
+        path.unlink()
+    except OSError as unlink_exc:
+        logger.warning("auto_integrate: could not discard it: {}", unlink_exc)
+        return False
+    return True
+
+
+def _record_is_parseable(path: Path) -> bool:
+    """Whether the file on disk is a valid record this build understands.
+
+    Separates a TRANSIENT read failure -- where the record is intact and
+    failing closed is right -- from a permanently unreadable one, where
+    failing closed disables resolution for good.
+    """
+    try:
+        return IntegrationRecord.model_validate_json(path.read_text(encoding="utf-8")) is not None
+    except Exception:
+        return False
+
+
 def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
     """Flag (or unflag) the durable record as an in-flight rebase resolution.
 
@@ -222,7 +264,7 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
     try:
         current = read_record(workspace_root)
         if current is None:
-            return not record_path(workspace_root).exists()
+            return _absent_record_is_recordable(record_path(workspace_root))
         if current.resolving_rebase == resolving:
             return True
         write_record(

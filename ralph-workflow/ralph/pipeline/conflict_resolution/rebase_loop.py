@@ -323,7 +323,12 @@ def _resolve_one_stop(
     """
     stop = _read_stop(root, stop_index, stop_cap)
     if stop is None:
-        return False
+        # A paused rebase with nothing unmerged needs no agent: its
+        # conflicts are already staged, most likely by a run that died
+        # between proving the stop and continuing past it. Declining
+        # left the rebase paused on disk and the run exited having
+        # invoked nobody -- for a stop that only needed `--continue`.
+        return _continue_already_staged_stop(root, stop_index)
     if stop.sha in entry_landed and stop.sha not in skipped_entry_shas:
         skipped_entry_shas.add(stop.sha)
         logger.info(
@@ -363,6 +368,42 @@ def _resolve_one_stop(
         and _remove_ort_residue(root, stop.conflicted_files)
         and _continue_past(root, stop)
     )
+
+
+def _continue_already_staged_stop(root: Path, stop_index: int) -> bool:
+    """Continue a paused rebase whose stop is staged and marker-free.
+
+    Only when the index really is clean: an unreadable ``REBASE_HEAD``
+    or any surviving unmerged path still declines, because then the stop
+    is not resolved, it is unreadable.
+    """
+    if not rebase_in_progress_at(root):
+        return False
+    if not _rev_parse_rebase_head(root):
+        # No readable identity for the stopped commit. That is the
+        # fail-closed decline, not a resolved stop.
+        return False
+    remaining = [
+        path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
+    ]
+    if remaining:
+        return False
+    logger.info(
+        "conflict_resolution: stop {} is already staged and marker-free; continuing the rebase",
+        stop_index,
+    )
+    try:
+        continue_rebase_at(root)
+    except NoRebaseInProgressError:
+        return True
+    except (ConflictRemainingError, RebaseContinuationError) as exc:
+        logger.warning(
+            "conflict_resolution: could not continue the already-staged stop {}: {}",
+            stop_index,
+            exc,
+        )
+        return False
+    return True
 
 
 def _try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:

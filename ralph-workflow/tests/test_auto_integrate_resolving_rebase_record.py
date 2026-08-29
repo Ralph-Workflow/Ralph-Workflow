@@ -267,3 +267,35 @@ def test_resolver_chain_exhaustion_is_returned_as_terminal_rebase_state(
     assert result.short_circuit is not None
     assert result.short_circuit.resolution_exhausted is True
     assert result.short_circuit.resolution_exhaustion_reason == "RESOLUTION_CHAIN_EXHAUSTED: src/alpha.py"
+
+
+def test_an_unparseable_record_is_discarded_not_left_to_block_every_run(
+    tmp_path: Path,
+) -> None:
+    """A file nothing can parse is not a record, and must not veto resolution.
+
+    The caller refuses to start a resolution it could not record, and
+    nothing on that path ever removes the file -- so an unparseable one
+    disabled rebase conflict resolution for good: every later run ended
+    with no resolver invoked and no way out but deleting it by hand.
+    """
+    from ralph.pipeline.auto_integrate_record import record_path
+
+    for content in ("{not json at all", '{"phase": "a-phase-from-the-future"}'):
+        (tmp_path / ".agent").mkdir(exist_ok=True)
+        record_path(tmp_path).write_text(content, encoding="utf-8")
+        assert set_resolving_rebase(tmp_path, True) is True, content
+        assert not record_path(tmp_path).exists(), content
+
+
+def test_an_intact_record_is_never_discarded_by_a_transient_read_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fail closed where failing closed is right: the file is still good."""
+    from ralph.pipeline.auto_integrate_record import record_path
+
+    write_record(tmp_path, _integrating_record())
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
+
+    assert set_resolving_rebase(tmp_path, True) is False
+    assert record_path(tmp_path).exists(), "an intact record must survive"
