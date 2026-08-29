@@ -68,7 +68,14 @@ class ResolutionSession:
     last_duration_seconds: float | None = None
     chain_cursor: int = 0
     charge_conflict_budget: bool = True
+    #: Candidates this workspace cannot produce at all. Deterministic, so
+    #: it holds for the whole rebase: the name will not appear mid-run.
     dead_tool_surfaces: tuple[str, ...] = ()
+    #: Candidates whose TOOL SURFACE faulted -- a transport loop, an
+    #: unanswered supervision relay. That is Ralph's own plumbing and the
+    #: recovery layer calls it retryable, so it is scoped to the stop it
+    #: happened on rather than killing the agent for the whole rebase.
+    stop_dead_surfaces: tuple[str, ...] = ()
     last_recovery_reason: str | None = None
     recovery_controller: object | None = None
     recovery_state: object | None = None
@@ -103,6 +110,7 @@ def begin_resolution_stop(session: ResolutionSession) -> None:
     from ralph.pipeline.state import PipelineState
 
     session.chain_cursor = 0
+    session.stop_dead_surfaces = ()
     session.current_agent_retries = 0
     session.skip_same_agent_retries = False
     session.last_attempt_evidence = None
@@ -361,7 +369,10 @@ def _candidate_cannot_be_launched(
     Ralph's own refusal, decided before any agent runs, so it must not
     reach the driver as a resolver's verdict.
     """
-    if session is not None and agent_name in session.dead_tool_surfaces:
+    if session is not None and agent_name in (
+        *session.dead_tool_surfaces,
+        *session.stop_dead_surfaces,
+    ):
         logger.warning(
             "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
             agent_name,

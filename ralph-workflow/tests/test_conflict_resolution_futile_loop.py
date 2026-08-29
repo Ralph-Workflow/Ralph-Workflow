@@ -395,3 +395,107 @@ def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
     )
     assert asked == ["resolver"], "the resolver must still be offered the stop"
     assert resolved is False, "and Ralph's own proof still gates the landing"
+
+
+def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The shipped chain is ONE agent; barring it for the run ends resolution.
+
+    A transport loop or an unanswered relay is Ralph's own plumbing --
+    the recovery layer classifies that same failure as retryable -- so a
+    single hiccup must not leave every later stop with nobody to invoke.
+    """
+    _install_seams(monkeypatch)
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("solo",))
+    session = ResolutionSession()
+    calls: list[str] = []
+
+    def _faulting(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        calls.append(agent_name)
+        session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+        return False
+
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=_faulting,
+        session=session,
+    )
+    assert calls, "the faulting agent still had its attempt"
+    assert session.dead_tool_surfaces == (), "a plumbing fault is not a permanent verdict"
+
+    # A later stop must still reach it.
+    _install_seams(monkeypatch)
+    later: list[str] = []
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: later.append(name) is None,
+        session=session,
+    )
+    assert later, "the next stop must still be able to invoke the only agent"
+
+
+def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Doing nothing is the one outcome that cannot resolve the conflict."""
+    _install_seams(monkeypatch)
+    session = ResolutionSession(stop_dead_surfaces=("primary", "fallback"))
+    calls: list[str] = []
+
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: calls.append(name) is None,
+        session=session,
+    )
+    assert calls, "an infrastructure bar must not leave the round with nobody to invoke"
+
+
+def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """That bar IS deterministic: the name will not appear mid-run."""
+    _install_seams(monkeypatch)
+    session = ResolutionSession()
+    calls: list[str] = []
+
+    def _unavailable(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        calls.append(agent_name)
+        if agent_name == "primary":
+            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        return False
+
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=_unavailable,
+        session=session,
+    )
+    assert session.dead_tool_surfaces == ("primary",)

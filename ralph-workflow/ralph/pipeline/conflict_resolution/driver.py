@@ -77,6 +77,12 @@ class RoundAttempt:
 
     succeeded: bool
     invoked: bool
+    #: Whether ANY candidate this round reached a supervised session.
+    #: Per-round, not per-invocation: an earlier candidate can repair the
+    #: worktree and a later one never start, and the round is judged on
+    #: what is on disk by then, so the last invocation's flag would
+    #: discard work a different agent had already finished.
+    agent_ran: bool = False
 
 
 def _sleep_seconds(seconds: float) -> None:
@@ -415,7 +421,7 @@ def _run_rounds(
             # status over the evidence only threw finished work away and
             # sent the same conflict round after round. A round that
             # never reached a supervised agent still proves nothing.
-            agent_ran = attempt.invoked and session.last_attempt_saw_activity
+            agent_ran = attempt.invoked and attempt.agent_ran
             resolved_now = (succeeded or agent_ran) and not session.unresolved_paths
             round_reason = (
                 None if resolved_now else _round_termination_reason(session, invoked=attempt.invoked)
@@ -629,6 +635,19 @@ def _run_one_round(
     total = len(candidates)
     if total == 0:
         return RoundAttempt(succeeded=False, invoked=False)
+    skipped = _skipped_candidates(session, candidates)
+    if len(skipped) == total and len(session.dead_tool_surfaces) < total:
+        # Every remaining candidate is barred by a fault of RALPH's, not
+        # by anything about the agents. Doing nothing is the one outcome
+        # that cannot resolve the conflict, so the stop-scoped bar is
+        # dropped and the chain is spent again rather than skipped.
+        emit_conflict_phase_line(
+            display,
+            "every candidate is barred by an earlier infrastructure fault; "
+            "retrying them rather than leaving the conflict unresolved",
+        )
+        session.stop_dead_surfaces = ()
+        skipped = _skipped_candidates(session, candidates)
     offset = session.chain_cursor % total
     # Visited positions, not a countdown: the recovery controller owns
     # the cursor and may move it BACKWARDS, and a countdown then spent
@@ -641,9 +660,10 @@ def _run_one_round(
     attempt_cap = max(1, conflict_chain_max_retries(policy_bundle))
     attempts_here = 0
     invoked = False
+    agent_ran = False
     while len(visited) < total:
         agent_name = candidates[offset]
-        if agent_name in session.dead_tool_surfaces:
+        if agent_name in skipped:
             visited.add(offset)
             offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
@@ -663,7 +683,7 @@ def _run_one_round(
         try:
             if runner(agent_name, prompt_path, round_index):
                 session.chain_cursor = (offset + 1) % total
-                return RoundAttempt(succeeded=True, invoked=True)
+                return RoundAttempt(succeeded=True, invoked=True, agent_ran=True)
         except Exception as exc:
             logger.warning(
                 "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
@@ -703,11 +723,10 @@ def _run_one_round(
                 failed_index=offset,
                 policy_bundle=policy_bundle,
             )
+        agent_ran = agent_ran or session.last_attempt_saw_activity
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
-            remembered = list(session.dead_tool_surfaces)
-            if agent_name not in remembered:
-                remembered.append(agent_name)
-            session.dead_tool_surfaces = tuple(remembered)
+            _remember_dead_surface(session, agent_name)
+            skipped = _skipped_candidates(session, candidates)
             session.charge_conflict_budget = False
             visited.add(offset)
             offset = _next_unvisited(offset, total, visited)
@@ -726,7 +745,33 @@ def _run_one_round(
         offset = proposed if proposed not in visited else _next_unvisited(offset, total, visited)
         session.chain_cursor = offset
         attempts_here = 0
-    return RoundAttempt(succeeded=False, invoked=invoked)
+    return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
+
+
+def _skipped_candidates(
+    session: ResolutionSession, candidates: tuple[str, ...]
+) -> frozenset[str]:
+    """Candidates this round must not launch, for either reason."""
+    barred = (*session.dead_tool_surfaces, *session.stop_dead_surfaces)
+    return frozenset(name for name in candidates if name in barred)
+
+
+def _remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
+    """Bar a candidate, for the run or only for this stop.
+
+    A name the registry cannot produce will not appear mid-run, so that
+    bar holds. A tool surface that faulted is Ralph's own plumbing --
+    the recovery layer calls the very same failure retryable -- so
+    barring the agent for the whole rebase turned one transport hiccup
+    into a run that could never resolve anything again, which is exactly
+    what the shipped one-agent chain does when its only agent is barred.
+    """
+    if session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
+        if agent_name not in session.dead_tool_surfaces:
+            session.dead_tool_surfaces = (*session.dead_tool_surfaces, agent_name)
+        return
+    if agent_name not in session.stop_dead_surfaces:
+        session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
 
 
 def _next_unvisited(offset: int, total: int, visited: set[int]) -> int:

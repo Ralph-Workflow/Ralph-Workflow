@@ -228,7 +228,6 @@ def test_final_fence_ignores_auto_integration_toggle(
 @pytest.mark.parametrize(
     ("state", "rebase_active", "merge_status"),
     (
-        (RebaseState(last_action="conflict"), False, MERGE_STATE_NONE),
         (RebaseState(), True, MERGE_STATE_NONE),
         (RebaseState(), False, "in_progress"),
     ),
@@ -298,7 +297,30 @@ def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:
     assert verdict.status is RECOVERABLE
 
 
-def test_exhaustion_is_terminal_and_never_dispatches(tmp_path: Path) -> None:
+def test_exhaustion_is_terminal_while_the_conflict_is_still_there(tmp_path: Path) -> None:
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"),
+        porcelain=lambda _: (True, "UU src/a.py\n"),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+
+    assert verdict.status is EXHAUSTED
+    with pytest.raises(RuntimeError, match="exhausted"):
+        assert_non_resolution_dispatch_allowed("planning", verdict)
+
+
+def test_exhaustion_does_not_outlive_the_conflict_it_describes(tmp_path: Path) -> None:
+    """A record of an exhausted chain must not block a clean repository.
+
+    Nothing is unmerged, no rebase or merge is in progress, and every
+    probe answered -- so the conflict the record describes is gone,
+    however it went. Letting the record win anyway was a latch with no
+    exit: it is cleared only by an integration landing, and it blocked
+    the run before anything could land, so every later run exited
+    against a clean tree until someone edited the record by hand.
+    """
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"),
@@ -307,9 +329,21 @@ def test_exhaustion_is_terminal_and_never_dispatches(tmp_path: Path) -> None:
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
+    assert verdict.status is RESOLVED
+    assert verdict.dispatch_allowed is True
+
+
+def test_a_stale_record_still_blocks_when_the_tree_cannot_be_read(tmp_path: Path) -> None:
+    """Fail closed: only a VERIFIABLY clean tree may overrule the record."""
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"),
+        porcelain=lambda _: (False, ""),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+
     assert verdict.status is EXHAUSTED
-    with pytest.raises(RuntimeError, match="exhausted"):
-        assert_non_resolution_dispatch_allowed("planning", verdict)
 
 
 def test_clean_repository_permits_dispatch(tmp_path: Path) -> None:

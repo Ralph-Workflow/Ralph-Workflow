@@ -11,6 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase import rebase_in_progress
@@ -62,17 +64,46 @@ def inspect_integration_resolution(
     remains unsafe.
     """
     persisted = persisted_integration_resolution_verdict(state)
-    if persisted is not None:
-        return persisted
-
     reasons: list[str] = []
     # Non-repository orchestration contexts (unit seams and initial project
     # setup) have no live Git integration state to inspect. Persisted conflict
     # evidence remains blocking even in these synthetic contexts.
-    if porcelain is None and (
-        not isinstance(root, Path) or not (root / ".git").exists()
-    ):
-        return _verdict_from_persisted_reasons(reasons)
+    inspectable = not (
+        porcelain is None and (not isinstance(root, Path) or not (root / ".git").exists())
+    )
+    if not inspectable:
+        return persisted if persisted is not None else _verdict_from_persisted_reasons(reasons)
+    reasons = _live_integration_reasons(
+        root, porcelain=porcelain, rebase_active=rebase_active, merge_status=merge_status
+    )
+    if persisted is not None:
+        if reasons:
+            return persisted
+        # The record describes a repository that no longer exists. Nothing
+        # is unmerged, no rebase or merge is in progress, and the probes
+        # that would have said "unreadable" did not. Letting the record
+        # outrank that is how one exhausted conflict -- or one stale
+        # checkpoint file -- blocked every later run against a clean tree,
+        # with no way out but editing the record by hand.
+        logger.info(
+            "integration resolution: persisted {} evidence describes a repository that is "
+            "now clean ({}); the live tree decides",
+            persisted.status,
+            "; ".join(persisted.reasons) or "no reason recorded",
+        )
+        return IntegrationResolutionVerdict(RESOLVED)
+    return _verdict_from_persisted_reasons(reasons)
+
+
+def _live_integration_reasons(
+    root: Path,
+    *,
+    porcelain: Callable[[Path], tuple[bool, str]] | None,
+    rebase_active: Callable[[Path], bool],
+    merge_status: Callable[[Path], str],
+) -> list[str]:
+    """Collect ground-truth integration evidence; unreadable counts as evidence."""
+    reasons: list[str] = []
     probe = porcelain or _full_porcelain
     try:
         readable, porcelain_output = probe(root)
@@ -97,7 +128,7 @@ def inspect_integration_resolution(
             reasons.append("merge is in progress or merge state is unreadable")
     except Exception:
         reasons.append("unable to inspect merge state")
-    return _verdict_from_persisted_reasons(reasons)
+    return reasons
 
 
 def unmerged_porcelain_paths(porcelain_output: str) -> tuple[str, ...]:

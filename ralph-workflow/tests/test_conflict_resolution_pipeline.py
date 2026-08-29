@@ -312,7 +312,9 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     verdict = inspect_integration_resolution(
         tmp_path,
         persisted,
-        porcelain=lambda _root: (True, ""),
+        # The conflict is still on disk: that is what makes the record
+        # terminal. A record that outlived its conflict does not block.
+        porcelain=lambda _root: (True, "UU src/alpha.py\n"),
         rebase_active=lambda _root: False,
         merge_status=lambda _root: MERGE_STATE_NONE,
     )
@@ -680,3 +682,29 @@ def test_a_round_that_never_reached_an_agent_still_proves_nothing(
         return False
 
     assert _run(tmp_path, invoke=_never_reached_the_agent, session=session) is False
+
+
+def test_an_earlier_candidates_finished_work_survives_a_later_one_not_starting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The round is judged on the worktree, so ANY agent having run counts.
+
+    Reading the flag of the LAST invocation discarded work a different
+    agent had already finished: candidate one repairs every marker and
+    exits badly, candidate two never starts, and the clean worktree was
+    scored a failure -- after which the merge seam threw the repaired
+    tree away.
+    """
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
+    )
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    session = ResolutionSession()
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        # 'one' really ran and repaired the tree; 'two' never started.
+        session.last_attempt_saw_activity = agent_name == "one"
+        return False
+
+    assert _run(tmp_path, invoke=_invoke, session=session) is True

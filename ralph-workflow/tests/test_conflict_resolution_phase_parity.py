@@ -881,7 +881,10 @@ def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
         )
         is False
     )
-    assert session.dead_tool_surfaces == ("two",)
+    # Barred for this stop -- Ralph's plumbing faulted, and the recovery
+    # layer calls that retryable -- and never charged to the other agent.
+    assert session.stop_dead_surfaces == ("two",)
+    assert session.dead_tool_surfaces == ()
 
 
 def test_a_stop_never_inherits_the_previous_stops_verdict(
