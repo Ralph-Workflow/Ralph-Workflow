@@ -290,16 +290,15 @@ def _prepare_conflicted_paths(
     if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
         emit_conflict_phase_line(display, "no readable conflicted paths; nothing a resolver can repair")
         return (), False, ()
+    session.out_of_reach_paths = ()
     kinds = classify_unmerged_conflicts(root, conflicted)
     unreachable = out_of_reach_paths(kinds)
-    if unreachable:
-        # The WHOLE set escalates, including paths an agent could repair.
-        # That is deliberate: a stop holding an unrepairable path cannot
-        # complete, so it is aborted, and any partial resolution beside it
-        # is discarded with it. Spending an agent session on work that is
-        # certain to be thrown away costs the operator money and buys
-        # nothing.
+    reachable = tuple(path for path in conflicted if path not in set(unreachable))
+    if unreachable and not reachable:
+        # Nothing here an agent could carry out. Escalate on sight rather
+        # than spending the chain to prove it.
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        session.unresolved_paths = unreachable
         session.exhaustion_reason = _resolution_exhaustion_reason(session, unreachable)
         emit_conflict_phase_line(
             display,
@@ -307,7 +306,23 @@ def _prepare_conflicted_paths(
             + ", ".join(unreachable),
         )
         return (), False, ()
-    decisions = declared_decision_paths(kinds)
+    if unreachable:
+        # Escalating the WHOLE set on one unreachable path meant an
+        # ordinary text conflict beside a submodule pointer was never
+        # offered to anyone -- on every run, forever, because nothing
+        # about the repository changed in between. The reachable paths
+        # are resolved; the rest is escalated afterwards, named.
+        session.out_of_reach_paths = unreachable
+        emit_conflict_phase_line(
+            display,
+            "OUT_OF_REACH: no resolver can repair "
+            + ", ".join(unreachable)
+            + "; resolving the rest first",
+        )
+        conflicted = reachable
+    decisions = tuple(
+        path for path in declared_decision_paths(kinds) if path in set(conflicted)
+    )
     staged = stage_mechanical_conflicts(root, kinds)
     if not staged:
         return conflicted, None, decisions
@@ -347,20 +362,10 @@ def _run_rounds(
     if early is not None:
         return early
     conflicted = prepared
-    if decision_paths:
-        emit_conflict_phase_line(
-            display,
-            "markerless conflict(s) need a declared decision (keep the edit or accept "
-            f"the deletion): {', '.join(decision_paths)}",
-        )
+    _announce_declared_decisions(display, decision_paths)
     candidates = resolution_chain_agents(policy_bundle)
     if not candidates:
-        # Typed, because this exit is otherwise reason-less: the caller
-        # then records "conflict resolution failed" for a resolution that
-        # was never configured to happen.
-        session.terminal_reason = ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
-        session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
-        emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
+        _record_unconfigured_resolver(session, conflicted, display)
         return False
     if session.started_at is None:
         session.started_at = clock()
@@ -436,7 +441,17 @@ def _run_rounds(
             # sent the same conflict round after round. A round that
             # never reached a supervised agent still proves nothing.
             agent_ran = attempt.invoked and attempt.agent_ran
-            resolved_now = (succeeded or agent_ran) and not session.unresolved_paths
+            # Trusting the worktree over a bad exit is only sound where
+            # the worktree can PROVE it. A markerless conflict -- one
+            # side edited, the other deleted -- has an empty marker scan
+            # before anyone touches it, so crediting a heartbeat there
+            # credited a decision nobody made: Ralph then staged whatever
+            # git happened to leave, reversing the other side's deletion
+            # and, in a rebase, dropping the commit that made it. Where
+            # there are no markers to read, the resolver's declaration is
+            # the only evidence, and that is what `succeeded` carries.
+            proved_by_worktree = agent_ran and not decision_paths
+            resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
             round_reason = (
                 None if resolved_now else _round_termination_reason(session, invoked=attempt.invoked)
             )
@@ -459,12 +474,14 @@ def _run_rounds(
             )
             _emit_attempt_outcome(display, outcome)
             route = route_after_round(
-                agent_ran=succeeded or agent_ran,
+                agent_ran=succeeded or proved_by_worktree,
                 surviving_marker_paths=session.unresolved_paths,
                 round_index=round_index,
                 cap=round_cap,
             )
             if route == TERMINAL_RESOLVED:
+                if _escalate_unreachable_remainder(session, display):
+                    break
                 _emit_success(display, round_index, stop)
                 return True
             if not attempt.invoked:
@@ -491,6 +508,51 @@ def _run_rounds(
         + session.exhaustion_reason,
     )
     return False
+
+
+def _record_unconfigured_resolver(
+    session: ResolutionSession,
+    conflicted: tuple[str, ...],
+    display: ParallelDisplay | None,
+) -> None:
+    """Type an exit that would otherwise carry no reason at all.
+
+    Without it the caller records "conflict resolution failed" for a
+    resolution that was never configured to happen.
+    """
+    session.terminal_reason = ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
+    session.unresolved_paths = conflicted
+    session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
+    emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
+
+
+def _escalate_unreachable_remainder(
+    session: ResolutionSession, display: ParallelDisplay | None
+) -> bool:
+    """Report paths no resolver can repair after the rest were resolved."""
+    if not session.out_of_reach_paths:
+        return False
+    session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+    session.unresolved_paths = session.out_of_reach_paths
+    emit_conflict_phase_line(
+        display,
+        "the resolvable conflicts are repaired, but no resolver can repair "
+        + ", ".join(session.out_of_reach_paths),
+    )
+    return True
+
+
+def _announce_declared_decisions(
+    display: ParallelDisplay | None, decision_paths: tuple[str, ...]
+) -> None:
+    """Name the paths whose resolution Ralph cannot read off the file."""
+    if not decision_paths:
+        return
+    emit_conflict_phase_line(
+        display,
+        "markerless conflict(s) need a declared decision (keep the edit or accept "
+        f"the deletion): {', '.join(decision_paths)}",
+    )
 
 
 def _round_termination_reason(

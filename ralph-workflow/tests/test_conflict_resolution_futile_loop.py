@@ -223,31 +223,45 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     assert session.terminal_reason is None
 
 
-def test_a_watchdog_authored_fault_still_kills_the_surface(
+def test_a_watchdog_authored_fault_still_bars_the_surface(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Narrowing to Ralph-authored fields must not disarm the detection."""
+    """Narrowing to Ralph-authored fields must not disarm the detection.
+
+    Corroboration applies to this channel too: a tripped MCP breaker
+    answers every tool call, so a real fault clears the threshold at
+    once -- while a single tick no longer bars an agent, and no longer
+    discards a conflict that agent had already resolved.
+    """
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
-    from ralph.pipeline.conflict_resolution.session import _wrap_activity_listener
+    from ralph.pipeline.conflict_resolution.session import (
+        _RALPH_FAULT_ESCALATION_HITS,
+        _wrap_activity_listener,
+    )
 
     session = ResolutionSession()
     listener = _wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
-    listener(
-        WaitingStatusEvent(
-            kind=next(iter(WaitingStatusKind)),
-            cumulative_seconds=1.0,
-            current_run_seconds=1.0,
-            idle_elapsed_seconds=1.0,
-            ceiling_seconds=900.0,
-            suspect_threshold_seconds=None,
-            diagnostic={"last_activity_kind": "transport_loop_detected"},
-            subagent_activity="working",
-            stall_active=False,
-        )
+    faulting = WaitingStatusEvent(
+        kind=next(iter(WaitingStatusKind)),
+        cumulative_seconds=1.0,
+        current_run_seconds=1.0,
+        idle_elapsed_seconds=1.0,
+        ceiling_seconds=900.0,
+        suspect_threshold_seconds=None,
+        diagnostic={"last_activity_kind": "transport_loop_detected"},
+        subagent_activity="working",
+        stall_active=False,
     )
-    assert session.dead_tool_surfaces == ("claude",)
+    listener(faulting)
+    assert session.stop_dead_surfaces == (), "one tick is not a barred agent"
+    assert session.last_attempt_saw_activity is True, "a fault tick is still activity"
+
+    for _ in range(_RALPH_FAULT_ESCALATION_HITS):
+        listener(faulting)
+    assert session.stop_dead_surfaces == ("claude",)
+    assert session.dead_tool_surfaces == (), "a plumbing fault is never run-scoped"
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 
 
@@ -565,3 +579,88 @@ def test_the_operator_headline_names_what_the_resolver_reported() -> None:
     )
     assert reason is not None
     assert "OUT_OF_REACH" in reason
+
+
+def test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One PNG must not mean three text conflicts are never offered to anyone.
+
+    Escalating the whole set on sight left nothing about the repository
+    changed, so the next run saw exactly what this one saw: zero
+    invocations, every run, forever.
+    """
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+
+    paths = ["asset.png", "a.py", "b.py"]
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: list(paths))
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, given: {
+            path: (
+                ConflictSight.AGENT_DECISION if path.endswith(".png") else ConflictSight.AGENT
+            )
+            for path in given
+        },
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+    calls: list[str] = []
+
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: calls.append(name) is None,
+        session=ResolutionSession(),
+    )
+    assert calls, "a binary conflict must not starve the text conflicts beside it"
+
+
+def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The unreachable path is escalated by name, AFTER the rest are resolved."""
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+
+    paths = ["vendor/sub", "a.py"]
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: list(paths))
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, given: {
+            path: (
+                ConflictSight.OUT_OF_REACH if path == "vendor/sub" else ConflictSight.AGENT
+            )
+            for path in given
+        },
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+    session = ResolutionSession()
+    calls: list[str] = []
+
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: calls.append(name) is None or True,
+        session=session,
+    )
+    assert calls, "the resolvable path must still reach a resolver"
+    assert outcome.succeeded is False, "the stop cannot land while a path is unreachable"
+    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert outcome.unresolved_paths == ("vendor/sub",), "and it is named"

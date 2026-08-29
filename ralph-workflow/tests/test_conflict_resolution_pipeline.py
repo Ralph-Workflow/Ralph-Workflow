@@ -708,3 +708,52 @@ def test_an_earlier_candidates_finished_work_survives_a_later_one_not_starting(
         return False
 
     assert _run(tmp_path, invoke=_invoke, session=session) is True
+
+
+def test_a_heartbeat_does_not_credit_a_decision_nobody_declared(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A markerless conflict has an empty marker scan before anyone touches it.
+
+    Crediting "an agent ran" there credited a decision nobody made:
+    Ralph then staged whatever git happened to leave -- reversing the
+    other side's deletion and, in a rebase, dropping the commit that
+    made it -- and reported success.
+    """
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["gone.py"])
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, paths: dict.fromkeys(paths, ConflictSight.AGENT_DECISION),
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+    session = ResolutionSession()
+
+    def _ticked_but_declared_nothing(name: str, _p: Path, _r: int) -> bool:
+        session.last_attempt_saw_activity = True
+        return False
+
+    assert _run(tmp_path, invoke=_ticked_but_declared_nothing, session=session) is False
+
+
+def test_a_declared_decision_is_still_accepted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The guard must not make a genuinely declared decision unlandable."""
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["gone.py"])
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, paths: dict.fromkeys(paths, ConflictSight.AGENT_DECISION),
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+
+    assert _run(tmp_path, invoke=lambda *_a: True) is True

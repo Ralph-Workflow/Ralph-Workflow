@@ -52,7 +52,13 @@ def classify_stage_map(
 ) -> ConflictSight:
     """Classify one path from its index stages without reading git."""
     if binary:
-        return ConflictSight.OUT_OF_REACH
+        # A binary conflict carries no markers, so Ralph cannot read the
+        # resolution off the file -- but the resolver session holds
+        # write_file, edit_file and delete_path, so it CAN carry one out.
+        # Calling it unreachable escalated the whole set on sight, which
+        # meant an ordinary text conflict beside a PNG was never offered
+        # to anyone, on every run, forever.
+        return ConflictSight.AGENT_DECISION
     ours = stages.get(2)
     theirs = stages.get(3)
     if ours is None and theirs is None:
@@ -62,7 +68,10 @@ def classify_stage_map(
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
     if _is_tree(ours_mode) != _is_tree(theirs_mode):
-        return ConflictSight.OUT_OF_REACH
+        # A file on one side, a directory on the other. The session can
+        # create directories and delete paths, so this is a decision it
+        # can carry out -- and one Ralph cannot read off a file.
+        return ConflictSight.AGENT_DECISION
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
         return _classify_gitlink(ours_mode, ours_blob, theirs_mode, theirs_blob, stages.get(1))
     return ConflictSight.MECHANICAL if ours_blob == theirs_blob else ConflictSight.AGENT
@@ -87,7 +96,9 @@ def _classify_one_sided(present: tuple[str, str] | None) -> ConflictSight:
     if present is None:
         return ConflictSight.OUT_OF_REACH
     mode, _blob = present
-    if _is_tree(mode) or mode == _GITLINK_MODE:
+    if mode == _GITLINK_MODE:
+        # A submodule pointer. git is denied to the resolution session,
+        # so there is no tool with which it could write a gitlink.
         return ConflictSight.OUT_OF_REACH
     return ConflictSight.AGENT_DECISION
 

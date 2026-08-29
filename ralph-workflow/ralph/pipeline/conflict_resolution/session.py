@@ -76,6 +76,9 @@ class ResolutionSession:
     #: recovery layer calls it retryable, so it is scoped to the stop it
     #: happened on rather than killing the agent for the whole rebase.
     stop_dead_surfaces: tuple[str, ...] = ()
+    #: Paths of this stop that no resolver can repair. The rest are still
+    #: resolved; these are escalated afterwards, by name.
+    out_of_reach_paths: tuple[str, ...] = ()
     last_recovery_reason: str | None = None
     recovery_controller: object | None = None
     recovery_state: object | None = None
@@ -111,6 +114,7 @@ def begin_resolution_stop(session: ResolutionSession) -> None:
 
     session.chain_cursor = 0
     session.stop_dead_surfaces = ()
+    session.out_of_reach_paths = ()
     session.current_agent_retries = 0
     session.skip_same_agent_retries = False
     session.last_attempt_evidence = None
@@ -575,15 +579,19 @@ def _observed_ralph_fault(
     every tool call, so :data:`_RALPH_FAULT_ESCALATION_HITS` sightings
     arrive immediately, while a quotation does not repeat.
     """
-    authored = classify_ralph_origin_fault(_ralph_authored_fault_text(event))
-    if authored is not None:
-        return authored
-    echoed = classify_ralph_origin_fault(str(event))
-    if echoed is None or session is None:
+    observed = classify_ralph_origin_fault(_ralph_authored_fault_text(event))
+    if observed is None:
+        observed = classify_ralph_origin_fault(str(event))
+    if observed is None or session is None:
         return None
+    # Corroboration applies to BOTH channels. A tripped MCP breaker
+    # answers every tool call, so a real fault clears this immediately;
+    # a single tick -- from either channel -- is not enough to bar an
+    # agent and throw away whatever it had already repaired.
     session.ralph_fault_hits += 1
     if session.ralph_fault_hits < _RALPH_FAULT_ESCALATION_HITS:
         return None
+    echoed = observed
     logger.warning(
         "conflict_resolution: '{}' seen in agent activity {} times; "
         "treating it as Ralph's own fault rather than quoted text",
@@ -602,18 +610,27 @@ def _wrap_activity_listener(
     """Escalate Ralph-origin faults from activity events instead of treating them as life."""
 
     def _observe(event: object) -> None:
+        # An event is activity whatever else it carries: the agent is
+        # alive and working. Recording that FIRST is what stops a fault
+        # tick from discarding a conflict the agent had already resolved.
+        if session is not None:
+            session.last_attempt_saw_activity = True
         reason = _observed_ralph_fault(event, session)
         if reason is not None and session is not None:
             session.terminal_reason = reason
             session.charge_conflict_budget = False
-            if reason in INFRASTRUCTURE_TERMINATION_REASONS:
-                remembered = list(session.dead_tool_surfaces)
-                if agent_name not in remembered:
-                    remembered.append(agent_name)
-                session.dead_tool_surfaces = tuple(remembered)
+            # Stop-scoped, like every other infrastructure fault. A
+            # transport loop or an unanswered relay is Ralph's own
+            # plumbing -- the recovery layer calls the very same failure
+            # retryable, and the MCP breaker that raises it resets
+            # itself -- so barring the agent for the whole rebase ended
+            # conflict resolution outright on the shipped one-agent chain.
+            if (
+                reason in INFRASTRUCTURE_TERMINATION_REASONS
+                and agent_name not in session.stop_dead_surfaces
+            ):
+                session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
             return
-        if session is not None:
-            session.last_attempt_saw_activity = True
         if listener is not None:
             listener(event)
 

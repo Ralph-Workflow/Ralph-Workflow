@@ -53,24 +53,33 @@ def test_identical_blobs_are_mechanical() -> None:
     assert kind is ConflictSight.MECHANICAL
 
 
-def test_binary_conflict_is_out_of_reach_without_ralph_side_choice() -> None:
+def test_binary_conflict_is_the_agents_choice_never_ralphs() -> None:
+    """Ralph still picks no side -- the resolver does, and must say so.
+
+    The session holds write_file and delete_path, so a binary conflict
+    is something it can carry out; what it cannot do is leave evidence
+    in the file, since a binary conflict has no markers. So it is a
+    declared DECISION. Calling it unreachable escalated the whole
+    conflict set on sight, starving every text conflict beside it.
+    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     kind = classify_stage_map(
         {2: ("100644", "aa"), 3: ("100644", "bb")},
         binary=True,
     )
-    assert kind is ConflictSight.OUT_OF_REACH
+    assert kind is ConflictSight.AGENT_DECISION
 
 
-def test_file_directory_collision_is_out_of_reach() -> None:
+def test_file_directory_collision_is_the_agents_declared_choice() -> None:
+    """The session can create directories and delete paths."""
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     kind = classify_stage_map(
         {2: ("100644", "aa"), 3: ("040000", "bb")},
         binary=False,
     )
-    assert kind is ConflictSight.OUT_OF_REACH
+    assert kind is ConflictSight.AGENT_DECISION
 
 
 def test_modify_delete_is_the_resolvers_decision_not_out_of_reach() -> None:
@@ -88,17 +97,29 @@ def test_modify_delete_is_the_resolvers_decision_not_out_of_reach() -> None:
     assert classify_stage_map(modified_by_us, binary=False) is ConflictSight.AGENT_DECISION
 
 
-def test_a_one_sided_submodule_or_directory_conflict_stays_out_of_reach() -> None:
-    """Only a text file is something the resolver can actually rewrite."""
+def test_only_a_submodule_pointer_is_genuinely_out_of_reach() -> None:
+    """git is denied to the session, so it cannot write a gitlink.
+
+    Everything else it CAN carry out: the session holds write_file,
+    edit_file, delete_path and create_directory. Calling a binary or a
+    file-vs-directory collision unreachable escalated the whole conflict
+    set on sight, so an ordinary text conflict beside a PNG was never
+    offered to any resolver -- on every run, because nothing about the
+    repository changed in between.
+    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     gitlink = {1: ("160000", "base"), 3: ("160000", "theirs")}
     assert classify_stage_map(gitlink, binary=False) is ConflictSight.OUT_OF_REACH
+    both_gitlinks = {1: ("160000", "b"), 2: ("160000", "o"), 3: ("160000", "t")}
+    assert classify_stage_map(both_gitlinks, binary=False) is ConflictSight.OUT_OF_REACH
+
+    # Carryable, but unreadable off the file: each needs a declaration.
     tree = {1: ("100644", "base"), 2: ("040000", "ours")}
-    assert classify_stage_map(tree, binary=False) is ConflictSight.OUT_OF_REACH
+    assert classify_stage_map(tree, binary=False) is ConflictSight.AGENT_DECISION
     assert (
         classify_stage_map({1: ("100644", "b"), 3: ("100644", "t")}, binary=True)
-        is ConflictSight.OUT_OF_REACH
+        is ConflictSight.AGENT_DECISION
     )
 
 
