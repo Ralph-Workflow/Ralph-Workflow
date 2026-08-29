@@ -34,6 +34,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.conflict_resolution.sight import (
     classify_unmerged_conflicts,
+    declared_decision_paths,
     out_of_reach_paths,
     stage_mechanical_conflicts,
 )
@@ -277,12 +278,12 @@ def _prepare_conflicted_paths(
     stop: RebaseStop | None,
     session: ResolutionSession,
     display: ParallelDisplay | None,
-) -> tuple[tuple[str, ...], bool | None]:
-    """Classify on sight; return remaining paths or an early pipeline verdict."""
+) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
+    """Classify on sight; return remaining paths, an early verdict, and decisions."""
     conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
     if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
         emit_conflict_phase_line(display, "no readable conflicted paths; nothing a resolver can repair")
-        return (), False
+        return (), False, ()
     kinds = classify_unmerged_conflicts(root, conflicted)
     unreachable = out_of_reach_paths(kinds)
     if unreachable:
@@ -292,17 +293,18 @@ def _prepare_conflicted_paths(
             "OUT_OF_REACH: escalating on sight without spending the chain; unresolved_paths="
             + ", ".join(unreachable),
         )
-        return (), False
+        return (), False, ()
+    decisions = declared_decision_paths(kinds)
     staged = stage_mechanical_conflicts(root, kinds)
     if not staged:
-        return conflicted, None
+        return conflicted, None, decisions
     remaining = tuple(path for path in conflicted if path not in set(staged))
     if remaining:
-        return remaining, None
+        return remaining, None, decisions
     emit_conflict_phase_line(
         display, "mechanical conflicts staged without spending the resolution chain"
     )
-    return (), True
+    return (), True, ()
 
 
 def _run_rounds(
@@ -328,10 +330,16 @@ def _run_rounds(
     # the session, and an unreset session reports the LAST conflict's
     # verdict for a stop that never invoked anybody.
     begin_resolution_stop(session)
-    prepared, early = _prepare_conflicted_paths(root, stop, session, display)
+    prepared, early, decision_paths = _prepare_conflicted_paths(root, stop, session, display)
     if early is not None:
         return early
     conflicted = prepared
+    if decision_paths:
+        emit_conflict_phase_line(
+            display,
+            "markerless conflict(s) need a declared decision (keep the edit or accept "
+            f"the deletion): {', '.join(decision_paths)}",
+        )
     candidates = resolution_chain_agents(policy_bundle)
     if not candidates:
         emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
@@ -354,6 +362,7 @@ def _run_rounds(
         stop=stop,
         root=root,
         target=target,
+        require_completion_evidence=bool(decision_paths),
     )
     emit_conflict_phase_line(
         display,
@@ -761,6 +770,7 @@ def _default_invoker(
     stop: RebaseStop | None,
     root: Path,
     target: str,
+    require_completion_evidence: bool = False,
 ) -> ResolutionInvoker:
     """Build a conflict-only invocation that shares session cap and status context."""
     cap = session.total_resolution_cap_seconds
@@ -809,6 +819,7 @@ def _default_invoker(
             activity_status_listener=reporter.observe,
             unresolved_paths=session.unresolved_paths,
             session=session,
+            require_completion_evidence=require_completion_evidence,
         )
 
     return _invoke

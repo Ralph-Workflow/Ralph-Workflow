@@ -39,6 +39,13 @@ Resolve only the conflicted paths listed below; unrelated implementation and rev
 2. Resolve every conflict-marker region thoughtfully. {% if replaying_commit_sha %}Preserve the replayed commit's intent on top of `{{ target }}` without anticipating later commits.{% else %}Preserve the intent of both merge heads.{% endif %}
 3. Remove every `<<<<<<<`, `=======` and `>>>>>>>` marker line, so each file is
    left as valid, self-consistent content.
+4. A listed file with NO conflict markers is a modify/delete: one side edited it,
+   the other removed it, and git left the surviving version in the tree. Decide
+   which outcome is right -- leave the file as it stands to keep the edit, or
+   delete the file to accept the removal. Ralph Workflow stages either answer,
+   but it cannot SEE which one you chose, so you must call the completion tool
+   to say you decided. A round with such a file that ends without it is failed
+   and handed to the next candidate.
 
 ## Hard rules
 

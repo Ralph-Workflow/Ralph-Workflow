@@ -265,8 +265,16 @@ def invoke_resolution_agent(
     activity_status_listener: Callable[[object], None] | None = None,
     unresolved_paths: tuple[str, ...] = (),
     session: ResolutionSession | None = None,
+    require_completion_evidence: bool = False,
 ) -> bool:
-    """Run one activity-only conflict attempt using the chain's retry budget."""
+    """Run one activity-only conflict attempt using the chain's retry budget.
+
+    ``require_completion_evidence`` is set when the stop contains a
+    conflict whose resolution cannot be seen in the file: a modify/delete
+    carries no markers, so the usual textual proof is satisfied before
+    anyone touches it and only the resolver saying it decided can tell a
+    decision from an untouched file.
+    """
     if session is not None:
         session.last_attempt_evidence = None
         session.last_attempt_failure = None
@@ -291,7 +299,7 @@ def invoke_resolution_agent(
         prompt_file=str(prompt_path),
         drain=PHASE_RESOLUTION,
         chain_name=PHASE_RESOLUTION,
-        requires_completion_evidence=False,
+        requires_completion_evidence=require_completion_evidence,
         activity_only_supervision=True,
         activity_only_operator_cap_seconds=operator_cap_seconds,
         activity_only_status_interval_seconds=status_interval_seconds,

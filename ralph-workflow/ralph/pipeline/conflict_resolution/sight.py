@@ -19,12 +19,25 @@ class ConflictSight(StrEnum):
 
     MECHANICAL = "mechanical"
     AGENT = "agent"
+    AGENT_DECISION = "agent_decision"
     OUT_OF_REACH = "out_of_reach"
 
 
 def out_of_reach_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
     """Return paths classified as out of reach."""
     return tuple(path for path, kind in kinds.items() if kind is ConflictSight.OUT_OF_REACH)
+
+
+def declared_decision_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
+    """Return paths whose resolution is a decision, not an edit.
+
+    A modify/delete carries no conflict markers, so "the markers are
+    gone" -- the evidence every other conflict is judged by -- is true
+    of it before anyone touches it. The resolver must therefore SAY it
+    decided, and the round demands completion evidence for these paths
+    rather than crediting a file nobody looked at.
+    """
+    return tuple(path for path, kind in kinds.items() if kind is ConflictSight.AGENT_DECISION)
 
 
 def mechanical_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
@@ -42,19 +55,10 @@ def classify_stage_map(
         return ConflictSight.OUT_OF_REACH
     ours = stages.get(2)
     theirs = stages.get(3)
+    if ours is None and theirs is None:
+        return ConflictSight.AGENT
     if ours is None or theirs is None:
-        # A one-sided stage set is a modify/delete (or an add on one
-        # side): common, and a decision -- keep the edit, or accept the
-        # removal -- that a resolver could make. It stays OUT OF REACH
-        # anyway because nothing downstream can tell a made decision
-        # from an untouched file: such a conflict carries no markers, so
-        # `paths_with_conflict_markers` is empty either way, `git add`
-        # stages the surviving file as readily as a deletion, and this
-        # drain does not require completion evidence -- an agent that
-        # exits having done nothing would silently land "keep", quietly
-        # reversing a deletion the other side meant. Routing it here
-        # needs a decision the round can actually verify first.
-        return ConflictSight.AGENT if ours is None and theirs is None else ConflictSight.OUT_OF_REACH
+        return _classify_one_sided(ours if ours is not None else theirs)
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
     if _is_tree(ours_mode) != _is_tree(theirs_mode):
@@ -62,6 +66,30 @@ def classify_stage_map(
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
         return _classify_gitlink(ours_mode, ours_blob, theirs_mode, theirs_blob, stages.get(1))
     return ConflictSight.MECHANICAL if ours_blob == theirs_blob else ConflictSight.AGENT
+
+
+def _classify_one_sided(present: tuple[str, str] | None) -> ConflictSight:
+    """Classify a conflict where one side has no blob at all.
+
+    Exactly one of stages 2 and 3 missing is a modify/delete: one side
+    edited the file, the other removed it. It is one of the commonest
+    conflicts there is and the decision it needs -- keep the edit, or
+    accept the removal -- is exactly what a resolver is for, so
+    escalating it on sight spent no agent on work an agent could do.
+
+    It is a DECISION rather than an edit because git leaves the
+    surviving version in the worktree with no conflict markers: the
+    marker scan that judges every other conflict is already satisfied,
+    so the round has to require the resolver to declare completion
+    instead. A surviving side that is a submodule or a directory stays
+    out of reach; those are not decisions a text editor can carry out.
+    """
+    if present is None:
+        return ConflictSight.OUT_OF_REACH
+    mode, _blob = present
+    if _is_tree(mode) or mode == _GITLINK_MODE:
+        return ConflictSight.OUT_OF_REACH
+    return ConflictSight.AGENT_DECISION
 
 
 def _classify_gitlink(
