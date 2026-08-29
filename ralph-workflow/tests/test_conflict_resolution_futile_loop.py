@@ -664,3 +664,66 @@ def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
     assert outcome.succeeded is False, "the stop cannot land while a path is unreachable"
     assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
     assert outcome.unresolved_paths == ("vendor/sub",), "and it is named"
+
+
+def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """"Conflict markers survive in X" was asserted for every reason.
+
+    Including exits that never opened a file, and paths that cannot
+    carry markers at all -- a binary, a modify/delete. The sentence has
+    to be true of every reason that uses it.
+    """
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["vendor/sub"])
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, paths: dict.fromkeys(paths, ConflictSight.OUT_OF_REACH),
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
+    session = ResolutionSession()
+
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_a: True,
+        session=session,
+    )
+    assert session.exhaustion_reason is not None
+    assert "markers survive" not in session.exhaustion_reason
+    assert "vendor/sub" in session.exhaustion_reason
+    # And the typed outcome names what is unresolved instead of ().
+    assert outcome.unresolved_paths == ("vendor/sub",)
+
+
+def test_a_clean_stop_is_not_reported_as_a_failure_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Nothing unmerged is nothing to resolve, not a failure of anything."""
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
+    session = ResolutionSession()
+
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_a: True,
+        session=session,
+    )
+    assert outcome.reason is None
+    assert session.exhaustion_reason is None

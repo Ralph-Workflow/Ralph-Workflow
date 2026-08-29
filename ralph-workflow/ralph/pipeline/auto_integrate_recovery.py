@@ -314,12 +314,34 @@ def _recover_rebase_state(root: Path, git_dir: Path) -> None:
     if rebase_state_dir is not None:
         if _rebase_state_dir_is_corrupt(rebase_state_dir):
             _remove_path(rebase_state_dir)
+            _discard_dead_rebase_progress(root)
         elif rebase_state_dir.name == "rebase-apply" and (rebase_state_dir / "applying").exists():
             run_git(("am", "--abort"), cwd=root, label="recovery:git-am-abort")
+            _discard_dead_rebase_progress(root)
         else:
             abort_rebase_discarding_progress(root)
     if (git_dir / "REBASE_HEAD").exists() and not rebase_in_progress(root):
         _remove_path(git_dir / "REBASE_HEAD")
+
+
+def _discard_dead_rebase_progress(root: Path) -> None:
+    """Drop the progress sidecar of a rebase this recovery just ended.
+
+    ``abort_rebase_discarding_progress`` pairs the two so they cannot
+    drift; these branches end a rebase without it. Both restore HEAD to
+    ``orig-head``, so retrying reproduces a byte-identical
+    ``(orig-head, onto)`` identity -- the sidecar is accepted, its dead
+    attempt's stops are read as already landed, and the retry SKIPS a
+    genuinely unresolved stop instead of offering it to a resolver.
+    Never raises: a sidecar that cannot be cleared must not abort
+    recovery.
+    """
+    from ralph.pipeline.conflict_resolution.progress import clear_progress
+
+    try:
+        clear_progress(root)
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning("auto_integrate: could not clear the rebase progress record: {}", exc)
 
 
 def _select_rebase_state_dir(git_dir: Path) -> Path | None:

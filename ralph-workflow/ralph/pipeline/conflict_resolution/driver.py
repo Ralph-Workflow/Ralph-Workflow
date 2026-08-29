@@ -287,8 +287,19 @@ def _prepare_conflicted_paths(
 ) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
     """Classify on sight; return remaining paths, an early verdict, and decisions."""
     conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
-    if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
-        emit_conflict_phase_line(display, "no readable conflicted paths; nothing a resolver can repair")
+    if _QUERY_FAILED_SENTINEL in conflicted:
+        # Ralph cannot see the conflict. Typed, or this exit reports a
+        # failure with no reason at all and the merge seam then calls it
+        # "conflict resolution failed".
+        session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        session.unresolved_paths = tuple(conflicted)
+        session.exhaustion_reason = "OUT_OF_REACH: the conflicted paths could not be read"
+        emit_conflict_phase_line(display, "conflicted paths unreadable; nothing a resolver can repair")
+        return (), False, ()
+    if not conflicted:
+        # Nothing unmerged: there is no conflict to resolve, which is not
+        # a failure of anything and must not be reported as one.
+        emit_conflict_phase_line(display, "no conflicted paths; nothing for a resolver to repair")
         return (), False, ()
     session.out_of_reach_paths = ()
     kinds = classify_unmerged_conflicts(root, conflicted)
@@ -419,14 +430,7 @@ def _run_rounds(
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
             attempt_started = clock()
-            if (
-                session.terminal_reason not in INFRASTRUCTURE_TERMINATION_REASONS
-                and session.terminal_reason is not ResolutionTerminationReason.EXCEPTION
-            ):
-                session.terminal_reason = None
-            session.last_activity_kind = None
-            session.last_activity_at = None
-            session.last_duration_seconds = None
+            _reset_round_reporting(session)
             attempt = _run_one_round(
                 runner, candidates, prompt_path, round_index, display, session, policy_bundle
             )
@@ -490,6 +494,7 @@ def _run_rounds(
                 # auto-integrate actually read, and "the chain was
                 # exhausted" does not explain a chain nobody could spend.
                 session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+                session.unresolved_paths = session.unresolved_paths or conflicted
                 emit_conflict_phase_line(
                     display,
                     "every resolution candidate is a dead tool surface; "
@@ -508,6 +513,18 @@ def _run_rounds(
         + session.exhaustion_reason,
     )
     return False
+
+
+def _reset_round_reporting(session: ResolutionSession) -> None:
+    """Clear per-round reporting state before a fresh round runs."""
+    if (
+        session.terminal_reason not in INFRASTRUCTURE_TERMINATION_REASONS
+        and session.terminal_reason is not ResolutionTerminationReason.EXCEPTION
+    ):
+        session.terminal_reason = None
+    session.last_activity_kind = None
+    session.last_activity_at = None
+    session.last_duration_seconds = None
 
 
 def _record_unconfigured_resolver(
@@ -588,7 +605,11 @@ def _resolution_exhaustion_reason(
         else "RESOLUTION_CHAIN_EXHAUSTED"
     )
     paths = ", ".join(unresolved_paths) or "<unreadable>"
-    return f"{reason}: conflict markers survive in: {paths}"
+    # "Conflict markers survive in ..." was asserted for every reason,
+    # including exits that never ran a marker scan and paths that cannot
+    # carry markers at all -- a binary file, a modify/delete. Say the
+    # thing that is true of all of them.
+    return f"{reason}: unresolved paths: {paths}"
 
 
 def _operator_cap_expired(session: ResolutionSession, clock: MonotonicClock) -> bool:
@@ -719,8 +740,9 @@ def _run_one_round(
         # dropped and the chain is spent again rather than skipped.
         emit_conflict_phase_line(
             display,
-            "every candidate is barred by an earlier infrastructure fault; "
-            "retrying them rather than leaving the conflict unresolved",
+            "every candidate is barred by an earlier infrastructure fault; retrying "
+            + ", ".join(session.stop_dead_surfaces)
+            + " rather than leaving the conflict unresolved",
         )
         session.stop_dead_surfaces = ()
         skipped = _skipped_candidates(session, candidates)
