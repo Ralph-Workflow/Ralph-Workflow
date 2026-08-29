@@ -377,19 +377,11 @@ def _continue_already_staged_stop(root: Path, stop_index: int) -> bool:
     or any surviving unmerged path still declines, because then the stop
     is not resolved, it is unreadable.
     """
-    if not rebase_in_progress_at(root):
-        return False
-    if not _rev_parse_rebase_head(root):
-        # No readable identity for the stopped commit. That is the
-        # fail-closed decline, not a resolved stop.
-        return False
-    remaining = [
-        path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
-    ]
-    if remaining:
+    if not _stop_is_genuinely_staged(root, stop_index):
         return False
     logger.info(
-        "conflict_resolution: stop {} is already staged and marker-free; continuing the rebase",
+        "conflict_resolution: stop {} is staged and its files are marker-free; "
+        "continuing the rebase",
         stop_index,
     )
     try:
@@ -404,6 +396,48 @@ def _continue_already_staged_stop(root: Path, stop_index: int) -> bool:
         )
         return False
     return True
+
+
+def _stop_is_genuinely_staged(root: Path, stop_index: int) -> bool:
+    """Whether a paused rebase's stop really is resolved and stageable.
+
+    A clean INDEX is not enough. ``_stage_and_prove`` stages before it
+    scans -- deliberately, because ``git add`` clears the unmerged bit --
+    so a round refused for surviving markers leaves exactly this state:
+    nothing unmerged, markers still in the files. Continuing without
+    looking committed them, with no agent invoked and a log line
+    claiming the stop was marker-free.
+    """
+    if not rebase_in_progress_at(root):
+        return False
+    if not _rev_parse_rebase_head(root):
+        # No readable identity for the stopped commit: the fail-closed
+        # decline, not a resolved stop.
+        return False
+    if [path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"]:
+        return False
+    marked = paths_with_conflict_markers(root, _staged_paths(root))
+    if marked:
+        logger.warning(
+            "conflict_resolution: stop {} is staged but conflict markers survive in {}; "
+            "not continuing the rebase",
+            stop_index,
+            ", ".join(marked),
+        )
+        return False
+    return True
+
+
+def _staged_paths(root: Path) -> list[str]:
+    """Paths staged against HEAD, i.e. what continuing would commit."""
+    result = run_git(
+        ("diff", "--cached", "--name-only"),
+        cwd=root,
+        label="git-staged-paths",
+    )
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def _try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:

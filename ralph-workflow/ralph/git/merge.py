@@ -81,14 +81,62 @@ _CONFLICT_MARKER_PREFIXES: tuple[str, ...] = ("<<<<<<< ", "=======", ">>>>>>> ")
 #: purpose: it is also ordinary heading punctuation in prose files.
 _UNRESOLVED_CONFLICT_FENCES: frozenset[str] = frozenset({"<<<<<<< ", ">>>>>>> "})
 
-#: Opening/closing fences of ANY length. git's default fence is seven
-#: characters, but ``conflict-marker-size`` is a documented gitattribute,
-#: and a repository that sets it wider produced ``<<<<<<<< HEAD`` --
-#: which does not start with ``"<<<<<<< "``. Every gate that proves a
-#: resolution real went blind at once, so conflict markers were committed
-#: into history and reported as a success. ``=======`` stays excluded: it
-#: is ordinary heading punctuation in prose.
-_UNRESOLVED_FENCE_PATTERN = re.compile(r"^(?:<{7,}|>{7,})(?:[ \t]|$)")
+#: git's default conflict fence width. ``conflict-marker-size`` is a
+#: documented gitattribute that moves it in EITHER direction, and every
+#: gate that proves a resolution real reads this one scan -- so a width
+#: the scan does not expect blinds all of them at once, and conflict
+#: markers get committed into history and reported as a success. The
+#: width is therefore asked of git per path rather than assumed.
+DEFAULT_CONFLICT_MARKER_SIZE = 7
+
+#: Fence widths below this are not guessed at: a narrow ``>`` fence is
+#: indistinguishable from a Markdown blockquote, so a path only gets a
+#: narrow pattern when git itself reports that width for it.
+_MIN_GUESSED_FENCE = DEFAULT_CONFLICT_MARKER_SIZE
+
+
+def _fence_pattern(size: int) -> re.Pattern[str]:
+    """Opening/closing fences at ``size`` characters or wider.
+
+    ``=======`` stays excluded whatever the width: it is ordinary
+    heading punctuation in prose.
+    """
+    width = max(1, size)
+    return re.compile(rf"^(?:<{{{width},}}|>{{{width},}})(?:[ \t]|$)")
+
+
+_UNRESOLVED_FENCE_PATTERN = _fence_pattern(DEFAULT_CONFLICT_MARKER_SIZE)
+
+
+def conflict_marker_sizes(
+    repo_root: Path | str, paths: Sequence[str]
+) -> dict[str, int]:
+    """Return each path's effective ``conflict-marker-size``.
+
+    Asked of git, not inferred: the attribute can live in an untracked
+    ``.git/info/attributes`` or a ``core.attributesFile`` as easily as a
+    committed ``.gitattributes``, so reading files ourselves would miss
+    exactly the repositories that set it. Any path git does not answer
+    for keeps the default width.
+    """
+    sizes: dict[str, int] = {}
+    if not paths:
+        return sizes
+    try:
+        result = run_git(
+            ("check-attr", "conflict-marker-size", "--", *paths),
+            cwd=Path(repo_root),
+            label="git-conflict-marker-size",
+        )
+        if result.returncode != 0:
+            return sizes
+        for line in result.stdout.splitlines():
+            path, _, value = line.rpartition(": conflict-marker-size: ")
+            if path and value.strip().isdigit():
+                sizes[path] = int(value.strip())
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.debug("git: could not read conflict-marker-size: {}", exc)
+    return sizes
 
 #: :func:`merge_state` verdicts. ``MERGE_STATE_UNKNOWN`` is the
 #: fail-closed answer: git could not be asked, so "there is no merge
@@ -404,13 +452,19 @@ def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> 
     (binary or deleted) is skipped rather than reported.
     """
     repo_root_path = Path(repo_root)
+    sizes = conflict_marker_sizes(repo_root_path, list(paths))
     reported: list[str] = []
     for path in paths:
         try:
             content = (repo_root_path / path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if any(_UNRESOLVED_FENCE_PATTERN.match(line) for line in content.splitlines()):
+        pattern = (
+            _fence_pattern(sizes[path])
+            if path in sizes and sizes[path] < _MIN_GUESSED_FENCE
+            else _UNRESOLVED_FENCE_PATTERN
+        )
+        if any(pattern.match(line) for line in content.splitlines()):
             reported.append(path)
     return reported
 

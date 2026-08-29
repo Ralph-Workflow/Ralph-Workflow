@@ -39,13 +39,17 @@ Resolve only the conflicted paths listed below; unrelated implementation and rev
 2. Resolve every conflict-marker region thoughtfully. {% if replaying_commit_sha %}Preserve the replayed commit's intent on top of `{{ target }}` without anticipating later commits.{% else %}Preserve the intent of both merge heads.{% endif %}
 3. Remove every `<<<<<<<`, `=======` and `>>>>>>>` marker line, so each file is
    left as valid, self-consistent content.
-4. A listed file with NO conflict markers is a modify/delete: one side edited it,
-   the other removed it, and git left the surviving version in the tree. Decide
-   which outcome is right -- leave the file as it stands to keep the edit, or
-   delete the file to accept the removal. Ralph Workflow stages either answer,
-   but it cannot SEE which one you chose, so you must call the completion tool
-   to say you decided. A round with such a file that ends without it is failed
-   and handed to the next candidate.
+4. A listed file with NO conflict markers still conflicts -- git just could not
+   write the two sides into it. It may be binary, a file on one side and a
+   directory on the other, a file one side edited and the other deleted, or a
+   path configured so git merges it whole. Open it and work out which case it
+   is (`git` is denied to you, but the file, its neighbours and the rest of the
+   tree are not), then leave the tree holding the outcome you judge right --
+   keeping a side, writing a merged version, or deleting the path. Ralph Workflow
+   stages whatever you leave. Because there are no markers, it cannot SEE which
+   outcome you chose, so you must call the completion tool to say you decided: a
+   round with such a file that ends without it is failed and handed to the next
+   candidate.
 
 ## Hard rules
 
@@ -61,7 +65,10 @@ Resolve only the conflicted paths listed below; unrelated implementation and rev
   rebase, discarding your work on the listed files too.
 {% endif %}- A leftover conflict marker in ANY listed file REJECTS the whole resolution
   and {% if replaying_commit_sha %}aborts the rebase{% else %}aborts the merge{% endif %}. Ralph Workflow re-scans every listed path
-  textually after you return; your own report is never the evidence.
+  textually after you return, so for a file that HAS markers your own report is
+  never the evidence. For a file that has none there is nothing to re-scan --
+  that is why those need the completion call, and why an untouched one is
+  landed exactly as you left it.
 
 ## Completion contract
 

@@ -757,3 +757,28 @@ def test_a_declared_decision_is_still_accepted(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
 
     assert _run(tmp_path, invoke=lambda *_a: True) is True
+
+
+def test_a_file_the_resolver_destroyed_is_not_a_resolution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The marker scan skips a path it cannot read, so a deletion passed it.
+
+    A two-sided content conflict "resolved" by dropping the file is not
+    a resolution -- neither side asked for it to disappear -- and it was
+    being credited to an invocation that had already returned failure.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "alpha.py").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
+    session = ResolutionSession(max_rounds_per_stop=1)
+
+    def _destroys_the_file(name: str, _p: Path, _r: int) -> bool:
+        (tmp_path / "src" / "alpha.py").unlink()
+        session.last_attempt_saw_activity = True
+        return False
+
+    assert _run(tmp_path, invoke=_destroys_the_file, session=session) is False
+    assert session.unresolved_paths == ("src/alpha.py",)

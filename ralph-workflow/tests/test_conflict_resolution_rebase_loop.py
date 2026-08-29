@@ -500,6 +500,8 @@ def test_a_paused_rebase_with_its_stop_already_staged_is_continued(
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: [])
+    monkeypatch.setattr(loop_module, "_staged_paths", lambda _root: ["f.txt"])
+    monkeypatch.setattr(loop_module, "paths_with_conflict_markers", lambda _root, _paths: [])
     seen: list[RebaseStop] = []
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
@@ -955,3 +957,28 @@ def test_four_landed_stops_survive_a_fifth_stop_failure(
     assert progress is not None
     assert progress.landed_shas == ["s1", "s2", "s3", "s4"]
     assert repo.continue_calls == 4
+
+
+def test_a_staged_stop_with_surviving_markers_is_not_continued(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A clean INDEX is not a resolved stop.
+
+    `_stage_and_prove` stages before it scans -- deliberately, because
+    `git add` clears the unmerged bit -- so a round refused for
+    surviving markers leaves nothing unmerged and the markers still in
+    the files. Continuing without looking committed them, with no agent
+    invoked and a log line claiming the stop was marker-free.
+    """
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
+    monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: [])
+    monkeypatch.setattr(loop_module, "_staged_paths", lambda _root: ["f.txt"])
+    monkeypatch.setattr(
+        loop_module, "paths_with_conflict_markers", lambda _root, _paths: ["f.txt"]
+    )
+    seen: list[RebaseStop] = []
+
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
+    assert seen == []

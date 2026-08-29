@@ -437,11 +437,16 @@ def _run_rounds(
                 return False
             attempt_started = clock()
             _reset_round_reporting(session)
+            present_before = frozenset(
+                path for path in conflicted if (root / path).exists()
+            )
             attempt = _run_one_round(
                 runner, candidates, prompt_path, round_index, display, session, policy_bundle
             )
             succeeded = attempt.succeeded
-            session.unresolved_paths = tuple(paths_with_conflict_markers(root, conflicted))
+            session.unresolved_paths = _paths_still_unresolved(
+                root, conflicted, decision_paths, present_before=present_before
+            )
             # The worktree decides, but only once an agent has actually
             # been at it. A resolver that repaired every marker and then
             # ended its session badly still repaired every marker, and
@@ -569,6 +574,35 @@ def _escalate_unreachable_remainder(
     return True
 
 
+def _paths_still_unresolved(
+    root: Path,
+    conflicted: tuple[str, ...],
+    decision_paths: tuple[str, ...],
+    *,
+    present_before: frozenset[str],
+) -> tuple[str, ...]:
+    """Paths a round has NOT resolved, by the evidence on disk.
+
+    Surviving markers are the usual proof, but the marker scan skips a
+    path it cannot read -- so a file the resolver DELETED passed it
+    vacuously, and a two-sided content conflict was reported resolved by
+    dropping both sides. A declared decision may legitimately end in a
+    deletion; an ordinary conflict may not, because neither side asked
+    for the file to disappear.
+    """
+    marked = list(paths_with_conflict_markers(root, conflicted))
+    decisions = set(decision_paths)
+    vanished = [
+        path
+        for path in conflicted
+        if path in present_before
+        and path not in decisions
+        and path not in marked
+        and not (root / path).exists()
+    ]
+    return tuple([*marked, *vanished])
+
+
 def _announce_declared_decisions(
     display: ParallelDisplay | None, decision_paths: tuple[str, ...]
 ) -> None:
@@ -577,8 +611,8 @@ def _announce_declared_decisions(
         return
     emit_conflict_phase_line(
         display,
-        "markerless conflict(s) need a declared decision (keep the edit or accept "
-        f"the deletion): {', '.join(decision_paths)}",
+        "conflict(s) git could not write markers into, so the resolution cannot be "
+        f"read off the file and must be declared: {', '.join(decision_paths)}",
     )
 
 

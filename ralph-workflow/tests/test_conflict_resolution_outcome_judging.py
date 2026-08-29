@@ -209,3 +209,32 @@ def test_a_markerless_conflict_is_a_decision_however_it_became_markerless() -> N
         classify_stage_map(two_sided, binary=False, has_markers=False)
         is ConflictSight.AGENT_DECISION
     )
+
+
+def test_a_narrow_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) -> None:
+    """`conflict-marker-size` moves the fence in BOTH directions.
+
+    A width the scan does not expect blinds every gate that proves a
+    resolution real, so the markers get committed and reported as a
+    success. A narrow ``>`` fence is indistinguishable from a Markdown
+    blockquote, so the width is asked of git per path rather than
+    guessed at.
+    """
+    from ralph.git.merge import paths_with_conflict_markers
+    from ralph.git.subprocess_runner import run_git
+
+    def _git(*args: str) -> None:
+        result = run_git(args, cwd=tmp_path, label="test-setup")
+        assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
+
+    _git("init", "-q", ".")
+    _git("config", "user.email", "t@t")
+    _git("config", "user.name", "t")
+    (tmp_path / ".gitattributes").write_text("narrow.txt conflict-marker-size=4\n")
+    (tmp_path / "narrow.txt").write_text("<<<< HEAD\na\n====\nb\n>>>> other\n")
+    (tmp_path / "wide.txt").write_text("<<<<<<<< HEAD\na\n========\nb\n>>>>>>>> other\n")
+    (tmp_path / "quote.md").write_text("> a quoted line\n>> nested\n")
+    _git("add", "-A")
+
+    reported = paths_with_conflict_markers(tmp_path, ["narrow.txt", "wide.txt", "quote.md"])
+    assert sorted(reported) == ["narrow.txt", "wide.txt"]
