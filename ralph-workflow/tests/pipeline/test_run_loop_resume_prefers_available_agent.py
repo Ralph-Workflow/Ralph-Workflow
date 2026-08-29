@@ -648,3 +648,47 @@ def test_completing_a_merge_declines_when_no_merge_is_in_progress(
     )
 
     assert run_loop._complete_in_progress_merge(tmp_path, "main", lambda _r, _t: True) is False
+
+
+def test_an_unreadable_rebase_state_never_answers_no_rebase(monkeypatch: Any, tmp_path: Any) -> None:
+    """"No rebase" sends a paused rebase down the merge path, which invokes nobody.
+
+    The merge path has nothing to finish for a rebase, so answering "no"
+    on an unreadable state is the one answer that guarantees zero
+    resolution attempts. git's own on-disk markers are the fallback.
+    """
+    from pathlib import Path as _Path
+
+    def _boom(_root: object) -> bool:
+        raise OSError("git dir unreadable")
+
+    monkeypatch.setattr(
+        "ralph.git.rebase.rebase_continuation.rebase_in_progress_at", _boom
+    )
+    root = _Path(str(tmp_path))
+    (root / ".git" / "rebase-merge").mkdir(parents=True)
+    assert run_loop._paused_rebase_at(root) is True
+
+    clean = _Path(str(tmp_path)) / "clean"
+    (clean / ".git").mkdir(parents=True)
+    assert run_loop._paused_rebase_at(clean) is False
+
+
+def test_the_merge_resolver_is_not_built_for_a_paused_rebase(monkeypatch: Any) -> None:
+    """The wrong resolver must not exist to be fallen back on."""
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    built: list[str] = []
+    monkeypatch.setattr(
+        run_loop,
+        "build_agent_conflict_resolver",
+        lambda **_k: built.append("merge-resolver") or (lambda _r, _t: True),
+    )
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _root: True)
+    monkeypatch.setattr(run_loop, "_resolve_paused_rebase", lambda _ctx, _target: True)
+
+    assert run_loop._run_integration_conflict_resolution(ctx) is True
+    assert built == []

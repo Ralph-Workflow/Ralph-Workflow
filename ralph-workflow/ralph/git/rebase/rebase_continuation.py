@@ -33,7 +33,12 @@ __all__ = [
     "verify_rebase_completed_at",
 ]
 
-_REBASE_INDICATORS: Sequence[str] = ("rebase-apply", "rebase-merge")
+#: git's own on-disk markers for a paused rebase. Exported so a caller
+#: that must not answer "no rebase" on an unreadable state can probe the
+#: filesystem directly rather than guessing.
+REBASE_STATE_DIRS: Sequence[str] = ("rebase-apply", "rebase-merge")
+
+_REBASE_INDICATORS: Sequence[str] = REBASE_STATE_DIRS
 _MAX_EMPTY_SKIP_ATTEMPTS: int = 20
 
 

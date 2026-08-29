@@ -1349,6 +1349,15 @@ def _run_integration_conflict_resolution(
                 " escalating instead of re-invoking the resolver",
             )
         return False
+    # A paused REBASE is not a merge, and it is the commoner blocking
+    # state. Handing it the merge resolver built one and dropped it: the
+    # seam returned False having invoked nobody, the startup seam then
+    # deferred on the (always dirty) conflicted worktree, and the run
+    # exited with zero resolution attempts against a conflict a resolver
+    # was standing right there to fix. Decide WHICH resolver is needed
+    # before building one, so the wrong one cannot be the fallback.
+    if _paused_rebase_at(ctx.workspace_scope.root):
+        return _resolve_paused_rebase(ctx, target)
     try:
         resolver = build_agent_conflict_resolver(
             policy_bundle=ctx.policy_bundle,
@@ -1362,25 +1371,45 @@ def _run_integration_conflict_resolution(
     except Exception as build_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", build_exc)
         return False
-    # A paused REBASE is not a merge, and it is the commoner blocking
-    # state. Handing it the merge resolver built one and dropped it: the
-    # seam returned False having invoked nobody, the startup seam then
-    # deferred on the (always dirty) conflicted worktree, and the run
-    # exited with zero resolution attempts against a conflict a resolver
-    # was standing right there to fix.
-    if _paused_rebase_at(ctx.workspace_scope.root):
-        return _resolve_paused_rebase(ctx, target)
     return _complete_in_progress_merge(ctx.workspace_scope.root, target, resolver)
 
 
 def _paused_rebase_at(root: Path) -> bool:
-    """Whether a rebase is paused in ``root``. Never raises."""
+    """Whether a rebase is paused in ``root``. Never raises.
+
+    An unreadable rebase state must not answer "no": that answer sends a
+    paused rebase down the merge path, which has nothing to finish and
+    returns having invoked no resolver at all. git's own on-disk marker
+    is the fallback, so the only way to reach the merge path is a
+    directory that genuinely holds no paused rebase.
+    """
     try:
         from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 
         return bool(rebase_in_progress_at(root))
+    except Exception as exc:
+        logger.warning(
+            "integration resolution: rebase state unreadable ({}); "
+            "falling back to git's on-disk rebase markers",
+            exc,
+        )
+        return _rebase_markers_on_disk(root)
+
+
+def _rebase_markers_on_disk(root: Path) -> bool:
+    """Last-resort probe for git's own paused-rebase directories."""
+    try:
+        from ralph.git.rebase.rebase_continuation import REBASE_STATE_DIRS
+
+        git_dir = Path(root) / ".git"
+        if git_dir.is_file():
+            # A worktree's .git is a file pointing at the real git dir.
+            pointer = git_dir.read_text(encoding="utf-8").strip()
+            _, _, path = pointer.partition("gitdir:")
+            git_dir = Path(path.strip() or str(git_dir))
+        return any((git_dir / name).exists() for name in REBASE_STATE_DIRS)
     except Exception as exc:  # pragma: no cover -- defensive
-        logger.debug("integration resolution: rebase state unreadable: {}", exc)
+        logger.warning("integration resolution: rebase markers unreadable: {}", exc)
         return False
 
 
