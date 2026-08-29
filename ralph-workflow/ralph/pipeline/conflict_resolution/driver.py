@@ -621,19 +621,23 @@ def _run_one_round(
     if total == 0:
         return RoundAttempt(succeeded=False, invoked=False)
     offset = session.chain_cursor % total
-    remaining = total
+    # Visited positions, not a countdown: the recovery controller owns
+    # the cursor and may move it BACKWARDS, and a countdown then spent
+    # the round's steps revisiting one candidate while another was never
+    # offered the conflict at all.
+    visited: set[int] = set()
     # A candidate is re-invoked only while RecoveryController holds the
     # cursor on it, which its own retry budget ends. The explicit bound
     # is here because the alternative to a wrong number is a hung run.
     attempt_cap = max(1, conflict_chain_max_retries(policy_bundle))
     attempts_here = 0
     invoked = False
-    while remaining > 0:
+    while len(visited) < total:
         agent_name = candidates[offset]
         if agent_name in session.dead_tool_surfaces:
-            offset = (offset + 1) % total
+            visited.add(offset)
+            offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
-            remaining -= 1
             continue
         emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
@@ -671,12 +675,10 @@ def _run_one_round(
             # configured fallback also fails.
             #
             # WHICH typed reason depends on evidence the invocation seam
-            # left behind: a resolver that ran and refused the conflict
-            # DECLINED it, while one that exited on its own limits -- pi
-            # out of context, a provider it cannot reach -- EXITED. Only
-            # the first is a candidate's verdict on the conflict, and
-            # calling the second a decline is what made an unreachable
-            # provider read as "this conflict is too hard".
+            # left behind: an attempt that ran and came back unsuccessful
+            # FAILED, while one that ended on its own limits -- pi out of
+            # context, a provider it cannot reach -- EXITED. Neither is a
+            # verdict on the conflict; the agent has no way to give one.
             evidence = session.last_attempt_evidence
             if session.terminal_reason is None:
                 session.terminal_reason = (
@@ -698,9 +700,9 @@ def _run_one_round(
                 remembered.append(agent_name)
             session.dead_tool_surfaces = tuple(remembered)
             session.charge_conflict_budget = False
-            offset = (offset + 1) % total
+            visited.add(offset)
+            offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
-            remaining -= 1
             continue
         attempts_here += 1
         # The cursor is compared UNWRAPPED: the controller parks it on
@@ -710,15 +712,21 @@ def _run_one_round(
         if session.chain_cursor == offset and attempts_here < attempt_cap:
             _sleep_conflict_retry(session, policy_bundle)
             continue
-        offset = (
-            session.chain_cursor % total
-            if session.chain_cursor != offset
-            else (offset + 1) % total
-        )
+        visited.add(offset)
+        proposed = session.chain_cursor % total
+        offset = proposed if proposed not in visited else _next_unvisited(offset, total, visited)
         session.chain_cursor = offset
         attempts_here = 0
-        remaining -= 1
     return RoundAttempt(succeeded=False, invoked=invoked)
+
+
+def _next_unvisited(offset: int, total: int, visited: set[int]) -> int:
+    """Return the next chain position this round has not tried yet."""
+    for step in range(1, total + 1):
+        candidate = (offset + step) % total
+        if candidate not in visited:
+            return candidate
+    return offset
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

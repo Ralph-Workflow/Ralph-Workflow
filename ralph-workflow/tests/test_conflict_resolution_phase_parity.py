@@ -933,10 +933,10 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: chain)
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch)
-    called: list[str] = []
+    called: list[tuple[int, str]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
+        called.append((round_index, agent_name))
         return False
 
     config = _config()
@@ -954,13 +954,17 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
         )
         is False
     )
-    # Declines do not earn a same-agent retry, so the count is exact:
-    # every round spends the chain once, and nothing spends it twice.
-    assert called == list(chain) * config.conflict_resolution.max_rounds_per_stop
+    # Declines earn no same-agent retry, so the count is exact: every
+    # round spends the chain once and nothing spends it twice. WHICH
+    # candidate leads a round rotates -- the next round starts after the
+    # last one tried -- so the property is per-round coverage, not order.
+    rounds = config.conflict_resolution.max_rounds_per_stop
+    assert len(called) == rounds * len(chain)
+    for round_index in range(1, rounds + 1):
+        spent = [agent for index, agent in called if index == round_index]
+        assert sorted(spent) == sorted(chain), f"round {round_index} spent {spent}"
     assert len(called) <= (
-        config.conflict_resolution.max_rounds_per_stop
-        * len(chain)
-        * max(1, conflict_chain_max_retries(_policy_bundle()))
+        rounds * len(chain) * max(1, conflict_chain_max_retries(_policy_bundle()))
     )
 
 

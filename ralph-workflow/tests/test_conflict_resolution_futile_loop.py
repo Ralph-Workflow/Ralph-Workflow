@@ -357,3 +357,41 @@ def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:
     session = ResolutionSession(charge_conflict_budget=False)
     begin_resolution_stop(session)
     assert session.charge_conflict_budget is True
+
+
+def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Ralph's own deterministic try must not consume the stop's only chance.
+
+    A mode-only or gitlink stop is staged without an agent. When that
+    attempt did not prove out, the stop was abandoned -- with a resolver
+    configured, willing, and never asked.
+    """
+    from ralph.pipeline.conflict_resolution import rebase_loop
+
+    stop = rebase_loop.RebaseStop(
+        sha="deadbeef",
+        subject="replayed commit",
+        conflicted_files=("a.py",),
+        stop_index=1,
+        stop_cap=10,
+    )
+    monkeypatch.setattr(rebase_loop, "_read_stop", lambda *_a: stop)
+    monkeypatch.setattr(rebase_loop, "_worktree_dirty_paths", lambda _root: frozenset())
+    monkeypatch.setattr(rebase_loop, "_try_deterministic_resolution", lambda *_a: True)
+    monkeypatch.setattr(rebase_loop, "_stage_and_prove", lambda *_a: False)
+    monkeypatch.setattr(rebase_loop, "_touched_nothing_unexpected", lambda *_a: True)
+    monkeypatch.setattr(rebase_loop, "_remove_ort_residue", lambda *_a: True)
+    monkeypatch.setattr(rebase_loop, "_continue_past", lambda *_a: True)
+    asked: list[str] = []
+
+    def _resolver(_root: Path, _target: str, _stop: object) -> bool:
+        asked.append("resolver")
+        return True
+
+    resolved = rebase_loop._resolve_one_stop(
+        tmp_path, "main", _resolver, 1, 10, frozenset(), set()
+    )
+    assert asked == ["resolver"], "the resolver must still be offered the stop"
+    assert resolved is False, "and Ralph's own proof still gates the landing"

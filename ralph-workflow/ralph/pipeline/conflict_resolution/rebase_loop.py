@@ -335,7 +335,17 @@ def _resolve_one_stop(
     if before is None:
         return False
     if _try_deterministic_resolution(root, stop):
-        return _stage_and_prove(root, stop) and _continue_past(root, stop)
+        if _stage_and_prove(root, stop) and _continue_past(root, stop):
+            return True
+        # Ralph's own mechanical attempt did not hold up. It is not the
+        # resolver's attempt, so it must not consume the stop's only
+        # chance: fall through and let an agent look at the conflict
+        # rather than abandoning a stop no agent was ever offered.
+        logger.info(
+            "conflict_resolution: deterministic resolution of stop {} did not prove out; "
+            "handing the stop to the resolver",
+            stop.stop_index,
+        )
     if not _resolution_succeeded(resolver(root, target, stop)):
         # "Declined" is the resolver's own verdict, and this branch is
         # reached by anything that did not resolve the stop -- including

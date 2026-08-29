@@ -21,7 +21,6 @@ INFRASTRUCTURE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = fro
         ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED,
         ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE,
         ResolutionTerminationReason.TOOL_SURFACE_DEAD,
-        ResolutionTerminationReason.REPEATED_IDENTICAL_FAILURE,
         ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
     }
 )
