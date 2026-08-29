@@ -400,6 +400,62 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     assert len(built) == 1
 
 
+def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(monkeypatch: Any) -> None:
+    """A paused rebase is the commoner blocking state, and it is not a merge.
+
+    The seam built the MERGE resolver and dropped it whenever no merge
+    was in progress, so a conflicted rebase reached a resolver that was
+    standing right there and was never invoked -- the run then exited
+    with zero resolution attempts.
+    """
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    monkeypatch.setattr(
+        run_loop, "build_agent_conflict_resolver", lambda **_k: (lambda _r, _t: True)
+    )
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _root: True)
+    merge_calls: list[str] = []
+    monkeypatch.setattr(
+        run_loop,
+        "_complete_in_progress_merge",
+        lambda *_a: merge_calls.append("merge") is None,
+    )
+    rebase_calls: list[str] = []
+    monkeypatch.setattr(
+        run_loop,
+        "_resolve_paused_rebase",
+        lambda _ctx, target: rebase_calls.append(target) is None or True,
+    )
+
+    assert run_loop._run_integration_conflict_resolution(ctx) is True
+    assert rebase_calls == ["main"]
+    assert merge_calls == []
+
+
+def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -> None:
+    """It must use the rebase-stop resolver, not the two-argument merge one."""
+    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    built: list[str] = []
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_agent.build_agent_rebase_stop_resolver",
+        lambda **_k: built.append("stop-resolver") or (lambda *_a: True),
+    )
+    monkeypatch.setattr(
+        rebase_merge,
+        "_resolve_rebase_with_config",
+        lambda _root, _target, _resolver, _config: (True, None),
+    )
+
+    assert run_loop._resolve_paused_rebase(ctx, "main") is True
+    assert built == ["stop-resolver"]
+
+
 def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: Any) -> None:
     """An exhausted record describes ONE conflict; it must not refuse another.
 

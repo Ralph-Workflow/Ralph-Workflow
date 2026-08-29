@@ -263,6 +263,7 @@ def _resolve_stops(
     skipped_entry_shas: set[str] = set()
     stops_spent = 0
     while rebase_in_progress_at(root):
+        skipped_before = len(skipped_entry_shas)
         if not _resolve_one_stop(
             root,
             target,
@@ -273,6 +274,14 @@ def _resolve_stops(
             skipped_entry_shas,
         ):
             return False
+        if len(skipped_entry_shas) > skipped_before:
+            # A stop this rebase had ALREADY landed was replayed past,
+            # not resolved. ``stop_cap`` bounds resolver attempts, and no
+            # resolver was spent here -- counting it meant a rebase
+            # resumed after ``stop_cap`` landed stops was abandoned
+            # before its first UNLANDED stop was ever offered to an
+            # agent. Each sha can be skipped once, so this cannot spin.
+            continue
         stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
         if route == TERMINAL_RESOLVED:

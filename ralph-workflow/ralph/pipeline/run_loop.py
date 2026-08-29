@@ -1362,7 +1362,66 @@ def _run_integration_conflict_resolution(
     except Exception as build_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", build_exc)
         return False
+    # A paused REBASE is not a merge, and it is the commoner blocking
+    # state. Handing it the merge resolver built one and dropped it: the
+    # seam returned False having invoked nobody, the startup seam then
+    # deferred on the (always dirty) conflicted worktree, and the run
+    # exited with zero resolution attempts against a conflict a resolver
+    # was standing right there to fix.
+    if _paused_rebase_at(ctx.workspace_scope.root):
+        return _resolve_paused_rebase(ctx, target)
     return _complete_in_progress_merge(ctx.workspace_scope.root, target, resolver)
+
+
+def _paused_rebase_at(root: Path) -> bool:
+    """Whether a rebase is paused in ``root``. Never raises."""
+    try:
+        from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+
+        return bool(rebase_in_progress_at(root))
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.debug("integration resolution: rebase state unreadable: {}", exc)
+        return False
+
+
+def _resolve_paused_rebase(ctx: _LoopContext, target: str) -> bool:
+    """Drive a paused rebase to completion through the stop resolver.
+
+    The rebase counterpart of :func:`_complete_in_progress_merge`, and it
+    needs the SEPARATE stop resolver: a rebase stop carries which commit
+    is being replayed, which the two-argument merge resolver has no way
+    to express. Ralph stages and continues; the agent only edits.
+    Never raises.
+    """
+    from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
+    from ralph.pipeline.auto_integrate_rebase_merge import _resolve_rebase_with_config
+
+    try:
+        stop_resolver = build_agent_rebase_stop_resolver(
+            policy_bundle=ctx.policy_bundle,
+            registry=ctx.registry,
+            display=ctx.active_display,
+            config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            workspace_scope=ctx.workspace_scope,
+            display_context=ctx.display_context,
+        )
+        resolved, reason = _resolve_rebase_with_config(
+            ctx.workspace_scope.root,
+            target,
+            stop_resolver,
+            ctx.config.conflict_resolution,
+        )
+    except Exception as resolve_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
+        return False
+    if not resolved:
+        logger.warning(
+            "integration resolution: the paused rebase for '{}' was not resolved: {}",
+            target,
+            reason or "no terminal evidence",
+        )
+    return bool(resolved)
 
 
 def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResolver) -> bool:

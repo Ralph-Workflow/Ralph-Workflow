@@ -11,6 +11,7 @@ _RELAY_FAULT = "SUPERVISION_INFRASTRUCTURE_FAILURE"
 
 __all__ = [
     "INFRASTRUCTURE_TERMINATION_REASONS",
+    "RESOLVER_NOT_SPENT_TERMINATION_REASONS",
     "classify_ralph_origin_fault",
     "ralph_origin_counts_as_liveness",
 ]
@@ -23,6 +24,28 @@ INFRASTRUCTURE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = fro
         ResolutionTerminationReason.REPEATED_IDENTICAL_FAILURE,
         ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
     }
+)
+
+
+#: Reasons that are a failure of something OTHER than the resolver: a
+#: launch that never happened, a name the registry could not produce, an
+#: operator's own wall-clock cap, Ralph's infrastructure. None of them
+#: means the agents spent the chain, so none may be written down as an
+#: exhausted resolver -- that record says the AGENTS gave up, and the
+#: next seam reads it and refuses to try a conflict none of them ever
+#: got to attempt. Anything NOT listed here is treated as genuinely
+#: spent: an unrecognised reason must escalate honestly rather than
+#: silently buy another lap.
+RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = (
+    INFRASTRUCTURE_TERMINATION_REASONS
+    | frozenset(
+        {
+            ResolutionTerminationReason.EXCEPTION,
+            ResolutionTerminationReason.OPERATOR_CAP_REACHED,
+            ResolutionTerminationReason.CANDIDATE_EXITED,
+            ResolutionTerminationReason.OUT_OF_REACH,
+        }
+    )
 )
 
 

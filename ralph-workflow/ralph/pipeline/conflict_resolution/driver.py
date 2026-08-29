@@ -398,13 +398,27 @@ def _run_rounds(
             )
             succeeded = attempt.succeeded
             session.unresolved_paths = tuple(paths_with_conflict_markers(root, conflicted))
+            # The worktree decides, but only once an agent has actually
+            # been at it. A resolver that repaired every marker and then
+            # ended its session badly still repaired every marker, and
+            # the rebase loop re-proves it (stage, re-scan, no unmerged
+            # paths) before anything lands -- so believing the exit
+            # status over the evidence only threw finished work away and
+            # sent the same conflict round after round. A round that
+            # never reached a supervised agent still proves nothing.
+            agent_ran = attempt.invoked and session.last_attempt_saw_activity
+            resolved_now = (succeeded or agent_ran) and not session.unresolved_paths
+            round_reason = (
+                None if resolved_now else _round_termination_reason(session, invoked=attempt.invoked)
+            )
+            # Carry it on the session: the exhaustion line, the durable
+            # record and every caller downstream read it from there, and
+            # a round that computed a reason only for its own console
+            # line left them all saying RESOLUTION_CHAIN_EXHAUSTED.
+            session.terminal_reason = round_reason
             outcome = ResolutionOutcome(
-                succeeded=succeeded and not session.unresolved_paths,
-                reason=(
-                    None
-                    if succeeded and not session.unresolved_paths
-                    else _round_termination_reason(session, invoked=attempt.invoked)
-                ),
+                succeeded=resolved_now,
+                reason=round_reason,
                 duration_seconds=(
                     session.last_duration_seconds
                     if session.last_duration_seconds is not None
@@ -416,7 +430,7 @@ def _run_rounds(
             )
             _emit_attempt_outcome(display, outcome)
             route = route_after_round(
-                invocation_succeeded=succeeded,
+                agent_ran=succeeded or agent_ran,
                 surviving_marker_paths=session.unresolved_paths,
                 round_index=round_index,
                 cap=round_cap,

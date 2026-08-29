@@ -484,6 +484,36 @@ _NO_OUTPUT_SUBSTRINGS: tuple[str, ...] = (
     "without producing output",
 )
 
+#: Conflict resolution's own typed outcomes. The resolver pipeline
+#: already KNOWS what went wrong -- it classifies the attempt itself and
+#: reports a typed reason -- but it has no exception to hand over, so
+#: these arrived as bare prose and fell through to AMBIGUOUS: an
+#: "unrecognised fault, flagged for review" warning for the one failure
+#: Ralph understands best. They are agent-attributed, and deliberately
+#: NOT counted against the budget: an attempt that failed is answered by
+#: trying the next candidate, which is what the conflict chain does.
+_CONFLICT_ATTEMPT_SUBSTRINGS: tuple[str, ...] = (
+    "conflict attempt failed",
+    "candidate produced no activity before it exited",
+)
+
+#: Ralph's own typed exit errors, by NAME. They normally arrive as
+#: exceptions and are classified from the object -- but the executor
+#: swallows a terminal invocation error and parks only its class name on
+#: the retry-intent channel, which is all conflict resolution ever gets.
+#: Classifying the name is the difference between "an unrecognised fault,
+#: flagged for review" and knowing that a provider is unreachable.
+_TYPED_EXIT_REASON_CATEGORIES: dict[str, tuple[FailureCategory, bool, bool]] = {
+    # pi ran out of context: its own limit, answered by the next candidate.
+    "PiContextExhaustedExitError": (FailureCategory.AGENT, False, False),
+    # pi could not reach its provider: the environment, not the agent.
+    "PiProviderFailureExitError": (FailureCategory.ENVIRONMENTAL, False, False),
+    "BrokenAgentExitError": (FailureCategory.AGENT, False, False),
+    "MissingCredentialsError": (FailureCategory.USER_CONFIG, False, False),
+    # A name this workspace's registry cannot produce is configuration.
+    "AgentNotFound": (FailureCategory.USER_CONFIG, False, False),
+}
+
 _TIMEOUT_SUBSTRINGS: tuple[str, ...] = (
     "timed out",
     "timeout",
@@ -1024,6 +1054,16 @@ class FailureClassifier:
             (
                 _is_artifact_validation_message(raw_message),
                 (FailureCategory.ARTIFACT_VALIDATION, False, False),
+            ),
+            (
+                contains_casefolded_marker(detail_parts, _CONFLICT_ATTEMPT_SUBSTRINGS),
+                (FailureCategory.AGENT, False, False),
+            ),
+            (
+                raw_message.strip() in _TYPED_EXIT_REASON_CATEGORIES,
+                _TYPED_EXIT_REASON_CATEGORIES.get(
+                    raw_message.strip(), (FailureCategory.AGENT, False, False)
+                ),
             ),
             (
                 not _message_looks_environmental(raw_message)

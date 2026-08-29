@@ -111,6 +111,7 @@ def _run(
     *,
     invoke: driver_module.ResolutionInvoker,
     display: _FakeDisplay | None = None,
+    session: ResolutionSession | None = None,
 ) -> bool:
     return run_conflict_resolution_pipeline(
         root=tmp_path,
@@ -122,6 +123,7 @@ def _run(
         display=display,
         display_context=None,
         invoke=invoke,
+        session=session,
     )
 
 
@@ -639,3 +641,42 @@ def test_configured_operator_cap_reaches_the_active_invocation(
     )
     assert captured
     assert all(isinstance(value, float) and 0.0 < value <= 60.0 for value in captured)
+
+
+def test_work_the_agent_finished_is_not_thrown_away_by_a_bad_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The worktree is the evidence, exactly as the resolver's prompt promises.
+
+    The prompt tells every resolver "Ralph Workflow re-scans every listed
+    path textually after you return; your own report is never the
+    evidence" -- and then the round demanded that the INVOCATION return
+    success as well. An agent that resolved every marker and ended its
+    session in any way the executor calls unsuccessful therefore had
+    finished work discarded, the same conflict handed to the next
+    candidate, and a repaired worktree abandoned when the rounds ran out.
+    """
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    session = ResolutionSession()
+
+    def _worked_then_exited_badly(name: str, path: Path, index: int) -> bool:
+        # The supervision stream saw the agent working ...
+        session.last_attempt_saw_activity = True
+        # ... and the invocation still came back unsuccessful.
+        return False
+
+    assert _run(tmp_path, invoke=_worked_then_exited_badly, session=session) is True
+
+
+def test_a_round_that_never_reached_an_agent_still_proves_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fail closed: clean markers are not a resolution nobody performed."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    session = ResolutionSession()
+
+    def _never_reached_the_agent(name: str, path: Path, index: int) -> bool:
+        session.last_attempt_saw_activity = False
+        return False
+
+    assert _run(tmp_path, invoke=_never_reached_the_agent, session=session) is False
