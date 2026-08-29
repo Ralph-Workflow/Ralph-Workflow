@@ -499,3 +499,69 @@ def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
         session=session,
     )
     assert session.dead_tool_surfaces == ("primary",)
+
+
+def test_every_reason_less_exit_now_names_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An exit with no reason is reported downstream as a failed resolution.
+
+    Two exits returned before the exhaustion block, leaving
+    `ResolutionOutcome.reason` empty and `exhaustion_reason` unset -- so
+    the operator was told "conflict resolution failed" for a resolution
+    that was never configured, or whose prompt could not be written.
+    """
+    _install_seams(monkeypatch)
+
+    # No agent bound to the drain.
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ())
+    session = ResolutionSession()
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_a: True,
+        session=session,
+    )
+    assert outcome.reason is ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
+    assert session.exhaustion_reason is not None
+
+    # The prompt could not be materialized.
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
+    monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_k: None)
+    session = ResolutionSession()
+    outcome = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_a: True,
+        session=session,
+    )
+    assert outcome.reason is ResolutionTerminationReason.PROMPT_UNAVAILABLE
+    assert session.exhaustion_reason is not None
+
+
+def test_the_operator_headline_names_what_the_resolver_reported() -> None:
+    """"Conflict resolution failed" was recorded for never-attempted work."""
+    from ralph.git.merge import MergeResult
+    from ralph.git.rebase.rebase import RebaseConflicts
+    from ralph.pipeline.auto_integrate_outcome import classify_rebase_outcome
+    from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
+
+    _action, reason = classify_rebase_outcome(
+        rebase_outcome=RebaseConflicts(files=["a.py"]),
+        merge_attempted=True,
+        merge_outcome=MergeResult(outcome=RESOLUTION_FAILED, reason="OUT_OF_REACH"),
+    )
+    assert reason is not None
+    assert "OUT_OF_REACH" in reason

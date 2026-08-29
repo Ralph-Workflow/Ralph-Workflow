@@ -113,10 +113,11 @@ def endpoint_merge_with_resolution(
         # The merge refused to start (no MERGE_HEAD): there are no
         # conflict markers on disk for a resolver to repair.
         return result
-    if _resolve_and_commit(root, target, resolver):
+    landed, reason = _resolve_and_commit_with_reason(root, target, resolver)
+    if landed:
         return MergeResult(outcome="success")
     _abort_merge_safely(root)
-    return MergeResult(outcome=RESOLUTION_FAILED)
+    return MergeResult(outcome=RESOLUTION_FAILED, reason=reason)
 
 
 def _resolve_and_commit(
@@ -124,6 +125,16 @@ def _resolve_and_commit(
     target: str,
     resolver: ConflictResolver,
 ) -> bool:
+    """Backwards-compatible boolean projection of the typed result."""
+    landed, _reason = _resolve_and_commit_with_reason(root, target, resolver)
+    return landed
+
+
+def _resolve_and_commit_with_reason(
+    root: Path,
+    target: str,
+    resolver: ConflictResolver,
+) -> tuple[bool, str | None]:
     """Run the resolver against the in-progress merge and commit it.
 
     True only when the resolver reported success, Ralph staged every
@@ -139,15 +150,22 @@ def _resolve_and_commit(
             "auto_integrate: no readable conflicted paths to resolve: {}",
             conflicted,
         )
-        return False
+        return False, "no readable conflicted paths"
     try:
-        resolved = _resolution_succeeded(resolver(root, target))
+        result = resolver(root, target)
     except Exception as resolver_exc:
         logger.warning("auto_integrate: conflict resolver raised: {}", resolver_exc)
-        return False
-    if not resolved:
-        return False
-    return _stage_verify_and_commit(root, conflicted)
+        return False, f"resolver raised: {resolver_exc}"
+    reason = (
+        result.reason.value
+        if isinstance(result, ResolutionOutcome) and result.reason is not None
+        else None
+    )
+    if not _resolution_succeeded(result):
+        return False, reason
+    if _stage_verify_and_commit(root, conflicted):
+        return True, None
+    return False, "the resolution did not prove out against the worktree"
 
 
 def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:

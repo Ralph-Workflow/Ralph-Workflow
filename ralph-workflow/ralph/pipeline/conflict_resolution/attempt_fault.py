@@ -43,6 +43,8 @@ RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] =
             ResolutionTerminationReason.OPERATOR_CAP_REACHED,
             ResolutionTerminationReason.CANDIDATE_EXITED,
             ResolutionTerminationReason.OUT_OF_REACH,
+            ResolutionTerminationReason.NO_RESOLVER_CONFIGURED,
+            ResolutionTerminationReason.PROMPT_UNAVAILABLE,
         }
     )
 )

@@ -293,7 +293,14 @@ def _prepare_conflicted_paths(
     kinds = classify_unmerged_conflicts(root, conflicted)
     unreachable = out_of_reach_paths(kinds)
     if unreachable:
+        # The WHOLE set escalates, including paths an agent could repair.
+        # That is deliberate: a stop holding an unrepairable path cannot
+        # complete, so it is aborted, and any partial resolution beside it
+        # is discarded with it. Spending an agent session on work that is
+        # certain to be thrown away costs the operator money and buys
+        # nothing.
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        session.exhaustion_reason = _resolution_exhaustion_reason(session, unreachable)
         emit_conflict_phase_line(
             display,
             "OUT_OF_REACH: escalating on sight without spending the chain; unresolved_paths="
@@ -348,6 +355,11 @@ def _run_rounds(
         )
     candidates = resolution_chain_agents(policy_bundle)
     if not candidates:
+        # Typed, because this exit is otherwise reason-less: the caller
+        # then records "conflict resolution failed" for a resolution that
+        # was never configured to happen.
+        session.terminal_reason = ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
+        session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
         emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
         return False
     if session.started_at is None:
@@ -397,6 +409,8 @@ def _run_rounds(
                 stop_cap=stop.stop_cap if stop is not None else None,
             )
             if prompt_path is None:
+                session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE
+                session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
             attempt_started = clock()

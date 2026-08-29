@@ -1289,6 +1289,17 @@ def _announce_conflict_resolution_entry(
         )
 
 
+def _integration_target_or_none(ctx: _LoopContext) -> str | None:
+    """Resolve the integration target, or ``None`` when it cannot be read."""
+    from ralph.pipeline.auto_integrate import resolve_integration_target
+
+    try:
+        return resolve_integration_target(ctx.config, ctx.workspace_scope.root)
+    except Exception as target_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution: unable to resolve target: {}", target_exc)
+        return None
+
+
 def _run_integration_conflict_resolution(
     ctx: _LoopContext,
     rebase: RebaseState | None = None,
@@ -1312,15 +1323,10 @@ def _run_integration_conflict_resolution(
     for an agent every time. A fresh state always allows the first attempt.
     Suppression is announced, never silent. Never raises.
     """
-    from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
 
-    try:
-        target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
-    except Exception as target_exc:  # pragma: no cover -- defensive
-        logger.warning("integration resolution: unable to resolve target: {}", target_exc)
-        return False
+    target = _integration_target_or_none(ctx)
     if not target:
         return False
     # The budget is spent on ONE conflict, and this seam can see which
@@ -1371,7 +1377,61 @@ def _run_integration_conflict_resolution(
     except Exception as build_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", build_exc)
         return False
-    return _complete_in_progress_merge(ctx.workspace_scope.root, target, resolver)
+    if _complete_in_progress_merge(ctx.workspace_scope.root, target, resolver):
+        return True
+    # Unmerged paths with NO operation in progress. Ralph's own recovery
+    # makes this state: quitting a foreign cherry-pick or revert removes
+    # CHERRY_PICK_HEAD and leaves the conflicted index behind. It is not
+    # a rebase and not a merge, so both branches above decline it and the
+    # run used to exit having invoked nobody -- against a verdict that
+    # named a resolver as its executor. Nothing needs continuing here:
+    # repairing the files and staging them IS the whole resolution.
+    return _resolve_orphaned_unmerged_index(ctx, target)
+
+
+def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
+    """Resolve a conflicted index that no rebase or merge owns. Never raises."""
+    from ralph.git.merge import stage_paths, unmerged_paths
+    from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+
+    root = ctx.workspace_scope.root
+    try:
+        paths = tuple(
+            path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
+        )
+        if not paths:
+            return False
+        logger.warning(
+            "integration resolution: {} unmerged path(s) belong to no rebase or merge; "
+            "resolving them in place",
+            len(paths),
+        )
+        if ctx.pipeline_deps is None:
+            logger.warning(
+                "integration resolution: no pipeline deps threaded to this seam; "
+                "cannot resolve the orphaned conflicted index"
+            )
+            return False
+        if not run_conflict_resolution_pipeline(
+            root=root,
+            target=target,
+            config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            workspace_scope=ctx.workspace_scope,
+            policy_bundle=ctx.policy_bundle,
+            display=ctx.active_display,
+            display_context=ctx.display_context,
+        ):
+            return False
+        if not stage_paths(root, paths):
+            logger.warning("integration resolution: could not stage the resolved paths")
+            return False
+        return not [
+            path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
+        ]
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution: orphaned index resolution failed: {}", exc)
+        return False
 
 
 def _paused_rebase_at(root: Path) -> bool:

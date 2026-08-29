@@ -141,7 +141,16 @@ def _classify_rebase_conflict_outcome(
     # was already aborted by ``_resolve_rebase_conflict`` so the
     # resulting branch state is the merged tree.
     if merge_outcome.outcome == RESOLUTION_FAILED:
-        return ACTION_CONFLICT, "conflict resolution failed; merge aborted"
+        # Name what the resolver actually reported. "Conflict resolution
+        # failed" was recorded even for a resolution nobody attempted,
+        # which is the message an operator sees while it explains
+        # nothing about why nobody resolved anything.
+        detail = merge_outcome.reason
+        return ACTION_CONFLICT, (
+            f"conflict resolution did not complete ({detail}); merge aborted"
+            if detail
+            else "conflict resolution failed; merge aborted"
+        )
     if merge_outcome.outcome == "conflict":
         return ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
     if merge_outcome.outcome in {"success", "noop"}:

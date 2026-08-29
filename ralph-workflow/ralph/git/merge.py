@@ -108,6 +108,12 @@ class MergeResult:
     """
 
     outcome: str
+    #: Typed evidence from the resolver, when one ran and reported it.
+    #: Without it every unsuccessful resolution is reported to the
+    #: operator as "conflict resolution failed" -- including one that
+    #: was never attempted, which is the message a stalled run shows
+    #: while explaining nothing about why nobody resolved anything.
+    reason: str | None = None
 
 
 def branch_exists(repo_root: Path | str, name: str) -> bool:

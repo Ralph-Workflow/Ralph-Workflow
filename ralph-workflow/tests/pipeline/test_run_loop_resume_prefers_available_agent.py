@@ -692,3 +692,56 @@ def test_the_merge_resolver_is_not_built_for_a_paused_rebase(monkeypatch: Any) -
 
     assert run_loop._run_integration_conflict_resolution(ctx) is True
     assert built == []
+
+
+def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(monkeypatch: Any) -> None:
+    """Ralph's own recovery makes this state, and nothing handled it.
+
+    Quitting a foreign cherry-pick or revert removes CHERRY_PICK_HEAD and
+    leaves the conflicted index behind: unmerged paths with no rebase and
+    no merge. Both branches declined it, so the run exited having invoked
+    nobody -- against a verdict that named a resolver as its executor.
+    """
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    monkeypatch.setattr(
+        run_loop, "build_agent_conflict_resolver", lambda **_k: (lambda _r, _t: True)
+    )
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _root: False)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: False)
+    orphaned: list[str] = []
+    monkeypatch.setattr(
+        run_loop,
+        "_resolve_orphaned_unmerged_index",
+        lambda _ctx, target: orphaned.append(target) is None or True,
+    )
+
+    assert run_loop._run_integration_conflict_resolution(ctx) is True
+    assert orphaned == ["main"]
+
+
+def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -> None:
+    """Nothing needs continuing: repairing and staging IS the resolution."""
+    ctx = MagicMock()
+    ctx.workspace_scope.root = Path("/workspace")
+    ctx.pipeline_deps = MagicMock()
+    unmerged = ["a.py"]
+    monkeypatch.setattr("ralph.git.merge.unmerged_paths", lambda _root: list(unmerged))
+    staged: list[list[str]] = []
+
+    def _stage(_root: object, paths: object) -> bool:
+        staged.append(list(paths))
+        unmerged.clear()
+        return True
+
+    monkeypatch.setattr("ralph.git.merge.stage_paths", _stage)
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.driver.run_conflict_resolution_pipeline",
+        lambda **_k: True,
+    )
+
+    assert run_loop._resolve_orphaned_unmerged_index(ctx, "main") is True
+    assert staged == [["a.py"]]
