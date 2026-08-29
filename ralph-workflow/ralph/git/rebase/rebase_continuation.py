@@ -150,8 +150,22 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
     return verify_rebase_completed_at(path, upstream_branch)
 
 
-def continue_rebase_at(repo_root: Path | str) -> None:
-    """Resume a paused rebase at ``repo_root``, raising if conflicts remain."""
+class EmptyReplayError(RebaseContinuationError):
+    """The replayed commit became empty, and skipping it would drop it."""
+
+
+def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> None:
+    """Resume a paused rebase at ``repo_root``, raising if conflicts remain.
+
+    ``skip_empty`` decides what an EMPTIED replay means. For an ordinary
+    replay it means the commit was already applied upstream, and git's
+    own advice is to skip it -- that is the default. After a RESOLUTION
+    it means something else entirely: the resolver chose the other
+    side, and skipping silently deletes a commit the author wrote while
+    the rebase reports success. Callers that just resolved a conflict
+    pass ``skip_empty=False`` and get :class:`EmptyReplayError`, so the
+    stop can be escalated with the history intact.
+    """
     repo = open_repo(repo_root)
     try:
         if not rebase_in_progress_impl(repo):
@@ -197,6 +211,11 @@ def continue_rebase_at(repo_root: Path | str) -> None:
         if not is_empty_rebase_stop(stderr, stdout) or not rebase_in_progress_at(repo_root):
             detail = stderr.strip() or stdout.strip() or str(exc)
             raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
+        if not skip_empty:
+            raise EmptyReplayError(
+                "The replayed commit is empty after resolution; skipping it would "
+                "drop it from history"
+            ) from exc
 
         # C15 continuation-path half: a resolver can make this replayed
         # commit empty, so skip it just as the initial rebase path does.

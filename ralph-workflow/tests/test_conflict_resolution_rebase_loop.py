@@ -72,7 +72,7 @@ class _FakeRepo:
     def in_progress(self, _root: Path) -> bool:
         return self.never_finishes or self.remaining > 0
 
-    def continue_rebase(self, _root: Path) -> None:
+    def continue_rebase(self, _root: Path, *, skip_empty: bool = True) -> None:
         self.continue_calls += 1
         if not self.never_finishes:
             self.remaining -= 1
@@ -177,7 +177,7 @@ def test_resolve_rebase_in_progress_lands_after_empty_commit_skip(
     _install_seams(monkeypatch, repo)
     empty_stop_handled = {"value": False}
 
-    def _continue_after_empty_stop(root: Path) -> None:
+    def _continue_after_empty_stop(root: Path, *, skip_empty: bool = True) -> None:
         if not empty_stop_handled["value"]:
             empty_stop_handled["value"] = True
         repo.continue_rebase(root)
@@ -197,7 +197,7 @@ def test_rebase_empty_stop_continuation_failure_abandons(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
-    def _old_continue(_root: Path) -> None:
+    def _old_continue(root: Path, *, skip_empty: bool = True) -> None:
         raise RebaseContinuationError("previous cherry-pick is empty")
 
     monkeypatch.setattr(loop_module, "continue_rebase_at", _old_continue)
@@ -367,7 +367,7 @@ def test_conflict_remaining_error_from_continue_declines(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
-    def _raise(_root: Path) -> None:
+    def _raise(root: Path, *, skip_empty: bool = True) -> None:
         raise ConflictRemainingError("conflicts still exist in the index")
 
     monkeypatch.setattr(loop_module, "continue_rebase_at", _raise)
@@ -383,7 +383,7 @@ def test_continuation_error_from_continue_declines(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
-    def _raise(_root: Path) -> None:
+    def _raise(root: Path, *, skip_empty: bool = True) -> None:
         raise RebaseContinuationError("failed to continue rebase")
 
     monkeypatch.setattr(loop_module, "continue_rebase_at", _raise)
@@ -406,7 +406,7 @@ def test_a_continue_that_lands_but_hits_the_next_conflict_is_success(
     heads = iter(["sha-one", "sha-two"])
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: next(heads, "sha-two"))
 
-    def _continue_then_conflict(root: Path) -> None:
+    def _continue_then_conflict(root: Path, *, skip_empty: bool = True) -> None:
         repo.continue_rebase(root)
         if repo.remaining > 0:
             raise RebaseContinuationError("could not apply the next commit")
@@ -424,7 +424,7 @@ def test_a_continue_that_fails_on_the_same_stop_declines(
     repo = _FakeRepo(stops=1, never_finishes=True)
     _install_seams(monkeypatch, repo)
 
-    def _raise(_root: Path) -> None:
+    def _raise(root: Path, *, skip_empty: bool = True) -> None:
         raise RebaseContinuationError("hook rejected the commit")
 
     monkeypatch.setattr(loop_module, "continue_rebase_at", _raise)
@@ -442,7 +442,7 @@ def test_rebase_finishing_during_continue_is_success(
     _install_seams(monkeypatch, repo)
     calls: list[int] = []
 
-    def _finish(_root: Path) -> None:
+    def _finish(_root: Path, *, skip_empty: bool = True) -> None:
         calls.append(1)
         repo.remaining = 0
         raise NoRebaseInProgressError("no rebase in progress")
@@ -999,3 +999,36 @@ def test_ralphs_own_agent_directory_is_not_charged_to_the_resolver(
     assert _is_ralph_workspace_path(".agent") is True
     assert _is_ralph_workspace_path("src/agent_config.py") is False
     assert _is_ralph_workspace_path("docs/.agentic.md") is False
+
+
+def test_a_stray_file_is_moved_aside_not_destroyed(tmp_path: Path) -> None:
+    """Strays are INFERRED to be the resolver's, so destroying them is a guess.
+
+    Anything that appears during the session looks the same -- including
+    an operator's own file in a shared checkout -- and `unlink()` made
+    that guess unrecoverable.
+    """
+    from ralph.pipeline.conflict_resolution.rebase_loop import _move_stray_aside
+
+    stray = tmp_path / "OPERATOR_NOTES.md"
+    stray.write_text("hours of notes\n")
+
+    assert _move_stray_aside(stray) is True
+    assert not stray.exists()
+    aside = tmp_path / "OPERATOR_NOTES.md.ralph-set-aside-1"
+    assert aside.read_text() == "hours of notes\n", "the content must survive"
+
+
+def test_an_untracked_directory_does_not_discard_a_proven_resolution(
+    tmp_path: Path,
+) -> None:
+    """One `__pycache__/` used to reject the stop, deterministically, every run."""
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        _restore_one_unrequested_path,
+    )
+
+    (tmp_path / "scratch").mkdir()
+    (tmp_path / "scratch" / "data.csv").write_text("1,2\n")
+
+    assert _restore_one_unrequested_path(tmp_path, "scratch") is True
+    assert (tmp_path / "scratch" / "data.csv").exists(), "and it is left alone"

@@ -45,6 +45,7 @@ from ralph.git.merge import (
 from ralph.git.rebase.rebase import get_conflicted_files
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
+    EmptyReplayError,
     NoRebaseInProgressError,
     RebaseContinuationError,
     continue_rebase_at,
@@ -872,14 +873,44 @@ def _restore_one_unrequested_path(root: Path, path: str) -> bool:
             label="git-revert-stray",
         )
         return restored.returncode == 0
-    try:
-        target = root / path
-        if target.is_dir():
+    target = root / path
+    if target.is_dir():
+        # An untracked directory is not an edit to anything git tracks,
+        # and refusing here threw away a resolution that had already
+        # been proven -- one `__pycache__/` was enough, every run.
+        logger.info(
+            "conflict_resolution: leaving untracked directory '{}' in place", path
+        )
+        return True
+    return _move_stray_aside(target)
+
+
+def _move_stray_aside(target: Path) -> bool:
+    """Take an untracked stray out of the way WITHOUT destroying it.
+
+    These paths are only inferred to be the resolver's: anything that
+    appeared during the session looks the same, including an operator's
+    own file in a shared checkout. Unlinking made that guess
+    unrecoverable, so the file is renamed instead and the operator is
+    told where it went.
+    """
+    if not target.exists() and not target.is_symlink():
+        return True
+    for suffix in range(1, 100):
+        aside = target.with_name(f"{target.name}.ralph-set-aside-{suffix}")
+        if aside.exists():
+            continue
+        try:
+            target.rename(aside)
+        except OSError:
             return False
-        target.unlink(missing_ok=True)
-    except OSError:
-        return False
-    return True
+        logger.warning(
+            "conflict_resolution: '{}' was not part of the conflict; moved it aside to '{}'",
+            target.name,
+            aside.name,
+        )
+        return True
+    return False
 
 
 def _revert_unrequested_paths(root: Path, paths: tuple[str, ...]) -> bool:
@@ -991,7 +1022,28 @@ def _is_ort_residue_name(conflicted_name: str, candidate_name: str) -> bool:
     label = candidate_name[len(conflicted_name) + 1 :]
     if not label or label.endswith("~"):
         return False
-    return not label.strip("0123456789") == ""
+    if not label.strip("0123456789"):
+        return False
+    return True
+
+
+def _label_names_a_git_ref(root: Path, label: str) -> bool:
+    """Whether ``label`` is something git could have named a side after.
+
+    ort names its residue after the ref or commit the side came from, so
+    a label git cannot resolve was written by somebody else -- an
+    operator's `notes.md~draft`, say -- and deleting it destroys a file
+    no side of the conflict ever mentioned.
+    """
+    candidate = label.split(" ", maxsplit=1)[0]
+    if not candidate:
+        return False
+    resolved = run_git(
+        ("rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}"),
+        cwd=root,
+        label="git-ort-residue-label",
+    )
+    return resolved.returncode == 0
 
 
 def _remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
@@ -1003,6 +1055,9 @@ def _remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
                 candidate
                 for candidate in candidate_parent.glob(f"{Path(path).name}~*")
                 if _is_ort_residue_name(Path(path).name, candidate.name)
+                and _label_names_a_git_ref(
+                    root, candidate.name[len(Path(path).name) + 1 :]
+                )
             )
         except OSError:
             return False
@@ -1017,7 +1072,13 @@ def _remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
                 continue
             try:
                 if candidate.is_dir():
-                    return False
+                    # Not something to delete, and not a reason to throw
+                    # away a resolution that has already been proven.
+                    logger.info(
+                        "conflict_resolution: leaving directory '{}' in place",
+                        candidate.name,
+                    )
+                    continue
                 candidate.unlink()
             except OSError:
                 return False
@@ -1042,7 +1103,23 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
       never got the multi-stop resolution this module exists to provide.
     """
     try:
-        continue_rebase_at(root)
+        # `skip_empty=False`: an emptied replay here is the resolver's
+        # doing, and skipping it deletes a commit its author wrote while
+        # the rebase reports success. The subject-string check below
+        # cannot be the guard -- two commits share a subject often
+        # enough (`wip`, a backport, the mainline commit this one
+        # conflicted with) -- and by the time it looks, the commit is
+        # already gone.
+        continue_rebase_at(root, skip_empty=False)
+    except EmptyReplayError:
+        logger.warning(
+            "conflict_resolution: resolving stop {} ({}) left nothing to replay; refusing to "
+            "drop the commit '{}' from history",
+            stop.stop_index,
+            stop.sha[:8],
+            stop.subject,
+        )
+        return False
     except NoRebaseInProgressError:
         record_landed_stop(root, stop)
         return True
