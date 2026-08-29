@@ -29,10 +29,12 @@ The agent receives exactly three inputs, in this order:
 3. **Plan item text** — the prose intent the verdict must ground in.
 
 Anything else — source diff, DOM snapshot, stylesheet, single-screenshot
-description — is **not an input** and must be rejected at the artifact
-boundary. The criterion 8 verdict accepts only
-:class:`~ralph.visual.capture_set.CaptureSet` (before) +
-:class:`~ralph.visual.capture_set.CaptureSet` (after) + plan-item text.
+description — is **not an input**. The criterion 8 verdict grounds only
+in the retained :class:`~ralph.visual.capture_set.CaptureSet` (before),
+the freshly captured :class:`~ralph.visual.capture_set.CaptureSet`
+(after), and the plan-item text. Code-reading wording carried into
+``## Design Intent`` is rejected at the artifact boundary with
+diagnostic ``DV008``.
 
 ## Workflow
 
@@ -58,18 +60,35 @@ failing step.
    :class:`ralph.visual.capture_cell.CaptureCell` carries the
    ``ralph://media/{artifact_id}`` handle; the agent reads the bytes
    from the wire-ledger-minted artifact.
-4. **Build the verdict.** Construct
-   :class:`ralph.visual.design_verdict.DesignVerdict` from the three
-   inputs. The constructor rejects any input that smuggles in source,
-   diff, DOM, or stylesheet references; the agent must not try to
-   rephrase those into the intent narrative.
+4. **Draft the verdict markdown.** The agent's only output channel is
+   a markdown artifact, so the verdict is authored as a
+   ``design_verdict`` document: ``## Capture Provenance``,
+   ``## Design Intent``, ``## Verdict`` (``status | summary``), and
+   ``## Findings`` (``capture_id | x,y,w,h | dimension | severity |
+   narrative``). The grammar is shipped to the workspace as
+   ``.agent/artifact-formats/design_verdict.md`` (from
+   :mod:`ralph.mcp.artifacts.format_docs`). ``## Design Intent`` must
+   stay the verbatim plan-item prose; the agent must not rephrase
+   source, diff, DOM, CSS, class, or style wording into it.
 5. **Submit the verdict.** The agent itself submits the criterion 8
-   ``design_verdict`` artifact. The submission is a
-   ``design_verdict`` artifact (see
-   :mod:`ralph.mcp.artifacts.development_result`); the agent MUST
-   cite the ``before_set_id`` and ``after_set_id`` and every
-   ``capture_id`` in the cited findings. The wire-ledger HMAC is the
-   source of truth for the capture IDs.
+   ``design_verdict`` artifact by calling ``ralph_submit_md_artifact``
+   with ``artifact_type: design_verdict``
+   (:mod:`ralph.mcp.tools.md_artifact`), which validates the document
+   against ``get_spec("design_verdict")`` — the markdown spec at
+   :mod:`ralph.mcp.artifacts.markdown.specs.design_verdict`, whose
+   mapper output is then shape-checked by
+   :func:`ralph.mcp.artifacts.design_verdict.normalize_design_verdict_content`.
+   ``## Capture Provenance`` MUST declare ``run_id``, ``verdict_id``,
+   ``target``, ``before_id``, ``after_id``, ``cell_ids``,
+   ``before_handles``, and ``after_handles``, and every
+   ``capture_id`` cited in a finding MUST appear in ``cell_ids``
+   (``DV003``). The submission is additionally rejected when the
+   ``run_id`` is not the active session run (``DV009``), the
+   ``judgement_tier`` is absent (``DV010``), the ``verdict_id`` is
+   empty (``DV011``), either handle list is empty (``DV012``), or a
+   handle is not authenticated by the active-run wire ledger
+   (``DV013``). The wire-ledger HMAC is the source of truth for the
+   capture handles.
 6. **Report status.** Return the verdict status (``pass`` / ``fail``
    / ``blocked``) plus the list of
    :class:`~ralph.visual.visual_finding.VisualFinding` records. The
@@ -94,10 +113,14 @@ failing step.
 - **Substituted baselines.** The agent MUST NOT compare against a
   re-captured pre-change set, a fabricated baseline, or any
   pre-change set whose ``capture_run_id`` is not the run ID passed
-  in by the parent. The
-  :class:`~ralph.visual.design_verdict.DesignVerdict` constructor
-  enforces matrix parity; the agent must surface a ``blocked``
-  verdict rather than retry with a fresh baseline.
+  in by the parent. Matrix parity between the ``before`` and
+  ``after`` sets is **not** checked at the artifact boundary — the
+  submission path authenticates the cited handles against the
+  active-run wire ledger (``DV013``) and pins the ``run_id`` to the
+  active session (``DV009``), but nothing re-derives the matrix from
+  the submitted markdown. Parity is therefore the agent's own
+  obligation: on a non-aligned matrix the agent must surface a
+  ``blocked`` verdict rather than retry with a fresh baseline.
 
 ## Judgement tier
 
@@ -121,7 +144,8 @@ capture evidence transport and does not make a taste assertion.
   capture ID and a regional pixel rectangle.
 - A successful comparison with no regression → ``pass`` with no
   findings (or only ``minor`` / ``info`` findings, which the
-  :class:`DesignVerdict` status-consistency check permits).
+  ``DV006`` status-consistency check permits; a ``blocker`` or
+  ``major`` finding under a ``pass`` status is rejected).
 
 ## Trust boundaries
 
@@ -132,13 +156,17 @@ capture evidence transport and does not make a taste assertion.
   :func:`ralph.mcp.tools.workspace._media_capture.handle_media_capture`;
   that handler is the only path that mints
   ``ralph://media/{artifact_id}`` handles.
-- The agent constructs the
-  :class:`~ralph.visual.design_verdict.DesignVerdict` against the
-  pre-change and post-change :class:`~ralph.visual.capture_set.CaptureSet`
-  instances — not against descriptions of them.
-- The agent submits the verdict as a ``design_verdict`` artifact;
-  the wire-ledger record carries the agent's
-  ``agent_id`` and resolved identity per ADR-0002 D8.
+- The agent grounds the verdict in the pre-change and post-change
+  :class:`~ralph.visual.capture_set.CaptureSet` pixels — not in
+  descriptions of them.
+- The agent submits the verdict as a ``design_verdict`` markdown
+  artifact through ``ralph_submit_md_artifact``; the code-reading
+  prohibition is enforced there by
+  :mod:`ralph.mcp.artifacts.markdown.specs.design_verdict`
+  (``DV008``), and the cited capture handles are authenticated
+  against the active-run wire ledger (``DV013``). The wire-ledger
+  record carries the agent's ``agent_id`` and resolved identity per
+  ADR-0002 D8.
 
 ## Provisioning
 

@@ -64,10 +64,25 @@ A design verdict accepts ONLY:
 3. The **design intent** text from the plan item plus managed-repo
    declarations.
 
-Source, diff, DOM, stylesheets, and any other judgement input are
-rejected by typed validation at the artifact boundary. The verified
-verdict cites capture IDs and regional pixel rectangles already on
-the ledger; an absent handle fails validation.
+Source, diff, DOM, stylesheets, and any other judgement input have no
+place in a verdict. **The enforcement built for that rule is narrower
+than the rule**, and this ADR records what exists rather than what was
+intended. The only automated check is a case-insensitive,
+word-boundary regex over `## Design Intent` in the `design_verdict`
+markdown spec (`ralph/mcp/artifacts/markdown/specs/design_verdict.py`,
+diagnostic `DV008`). That is a wording heuristic, not a typed
+boundary: a paraphrase that names a code artifact with an unlisted
+word passes it. The typed three-input contract does exist in code as
+`ralph.visual.design_verdict.DesignVerdict`, but **no production path
+constructs it** — it is reached only from `tests/test_visual_verdict.py`,
+so it constrains nothing an agent actually submits.
+
+What does hold structurally is the evidence chain, not the input
+prohibition: the verdict cites capture IDs and regional pixel
+rectangles already on the ledger, every `capture_id` cited in a
+finding must appear in the artifact's own `cell_ids` (`DV003`), and a
+capture handle the active-run wire ledger cannot authenticate fails
+validation (`DV013`).
 
 ### D5. Pre-change baseline is run-scoped and immutable
 
@@ -161,8 +176,15 @@ underlying media call usable but never grades perception.
    timeout, no shell-string interpretation, target injection only.
 3. **Server-minted handle** — `ralph.mcp.multimodal.resources`. The
    only path that mints `ralph://media/{artifact_id}` artifacts.
-4. **Verdict inputs** — `ralph.visual.design_verdict`. Rejects any
-   input beyond the three inputs above by typed validation.
+4. **Verdict inputs** — `ralph/mcp/artifacts/markdown/specs/design_verdict.py`.
+   A submitted `design_verdict` markdown artifact is the only channel a
+   verdict arrives on, so this spec is the boundary in practice: it
+   rejects code-reading wording in `## Design Intent` (`DV008`) and
+   capture handles the active-run ledger cannot authenticate
+   (`DV013`). It is a **partial** boundary — the typed three-input
+   contract in `ralph.visual.design_verdict` is not wired into any
+   production path (D4), so no code enforces the three-input rule
+   itself.
 5. **Per-call agent identity** — `ralph.mcp.server._wire_ledger`.
    Every record carries `agent_id` plus resolved identity and
    delivery mode.
@@ -174,7 +196,7 @@ underlying media call usable but never grades perception.
 | Declared command | managed repo (`design-system-policy.md`) | `ralph.visual.policy_facts` |
 | Capture argv execution | `ralph.executor.process` | `_media_capture.py` |
 | Server-minted handle | `ralph.mcp.multimodal.resources` | `_wire_ledger.append_wire_record` |
-| Verdict inputs | `ralph.visual.design_verdict` | `tests/test_visual_verdict.py` |
+| Verdict inputs | `ralph/mcp/artifacts/markdown/specs/design_verdict.py` | `tests/test_visual_evidence_artifact.py` |
 | Per-call agent identity | `ralph.mcp.server._wire_ledger` | `_wire_ledger_capture.py` |
 
 ## Dependency Direction

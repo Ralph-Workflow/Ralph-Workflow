@@ -483,3 +483,35 @@ def test_failed_spawn_log_line_carries_the_failure_message() -> None:
     assert "/bin/ec" in logged, (
         f"the FAILED log line must name the command that could not be spawned; got {logged!r}"
     )
+
+
+def test_failed_spawn_log_line_never_leaks_argv_payloads() -> None:
+    """The FAILED log line must name the executable without echoing its arguments.
+
+    Agent argv carries two classes of secret in ordinary operation: the inline
+    prompt body appended as the trailing argument, and third-party credentials
+    embedded in the ``--mcp-config`` JSON. ``ralph.agents.invoke._commands``
+    already redacts the former before logging an invocation; a FAILED spawn
+    must not reintroduce the leak through a different sink.
+    """
+    secret_prompt = "CONFIDENTIAL PROMPT BODY api_key=sk-live-DEADBEEF"
+    mcp_config = '{"mcpServers":{"x":{"env":{"THIRD_PARTY_TOKEN":"tok-XYZ"}}}}'
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="DEBUG")
+    try:
+        manager = ProcessManager(sync_process_factory=_RecordingSyncFactory())
+        with pytest.raises(ValueError, match="null byte"):
+            manager.spawn(["/bin/echo", "--mcp-config", mcp_config, "--", secret_prompt, "a\x00b"])
+    finally:
+        logger.remove(sink_id)
+
+    logged = "\n".join(lines)
+    assert "/bin/echo" in logged, (
+        f"the FAILED log line must still name the executable; got {logged!r}"
+    )
+    assert secret_prompt not in logged, (
+        f"the inline prompt body must never reach a log sink; got {logged!r}"
+    )
+    assert "tok-XYZ" not in logged, (
+        f"a third-party credential in argv must never reach a log sink; got {logged!r}"
+    )

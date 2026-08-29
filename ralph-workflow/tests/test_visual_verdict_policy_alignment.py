@@ -70,3 +70,68 @@ def test_adr_records_renderer_scope_prompt_scope_and_review_authority() -> None:
     assert "no renderer or non-web UI" in content
     assert "developer prompt guidance only" in content.lower()
     assert "requires the named human review verdict" in content
+
+
+def _package_path(relative: str) -> Path:
+    """Resolve a path inside the ``ralph-workflow`` package from either root."""
+    candidates = [
+        Path("ralph-workflow") / relative,
+        Path(relative),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _flattened(path: Path) -> str:
+    """Read a shipped document with its line wrapping collapsed to spaces."""
+    return " ".join(path.read_text(encoding="utf-8").split())
+
+
+VISION_VERDICT_BRIEF = "ralph/agents/content/vision-verdict-agent.md"
+ADR_0002 = "docs/architecture/adr-0002-visual-design-verification.md"
+
+
+def test_vision_verdict_brief_describes_the_markdown_submission_channel() -> None:
+    """The shipped brief must name the channel the subagent actually has.
+
+    The brief is prompt text handed to an LLM subagent whose only output
+    channel is ``ralph_submit_md_artifact``. A brief that instructs a
+    different mechanism is an unactionable instruction, so the submission
+    tool, the spec that validates the submission, and the diagnostic that
+    enforces the code-reading prohibition are all pinned here.
+    """
+    brief = _flattened(_package_path(VISION_VERDICT_BRIEF))
+
+    assert "ralph_submit_md_artifact" in brief
+    assert "ralph.mcp.artifacts.markdown.specs.design_verdict" in brief
+    assert "DV008" in brief
+
+
+def test_vision_verdict_brief_never_instructs_constructing_a_python_object() -> None:
+    """The brief must not tell the subagent to construct a Python object.
+
+    ``ralph.visual.design_verdict.DesignVerdict`` is constructed by no
+    production path, and an LLM subagent could not call it if there were
+    one. Citing it as the enforcement mechanism contradicts the DV008
+    rule the brief states elsewhere.
+    """
+    brief = _flattened(_package_path(VISION_VERDICT_BRIEF))
+
+    assert "DesignVerdict" not in brief
+    assert "constructor" not in brief
+    assert "ralph.mcp.artifacts.development_result" not in brief
+
+
+def test_adr_records_the_verdict_input_boundary_as_actually_built() -> None:
+    """ADR-0002 must not claim a typed verdict-input boundary that is unbuilt."""
+    adr = _flattened(_package_path(ADR_0002))
+
+    assert "rejected by typed validation at the artifact boundary" not in adr
+    assert "**Verdict inputs** — `ralph.visual.design_verdict`" not in adr
+    assert "no production path constructs it" in adr
+    assert (
+        "| Verdict inputs | `ralph/mcp/artifacts/markdown/specs/design_verdict.py` |"
+        in adr
+    )

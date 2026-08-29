@@ -26,12 +26,16 @@ the cross-section invariants that the consumer relies on:
   review; wording that tries to pivot the review into a code-reading
   task is rejected so a verdict cannot be smuggled in by escaping the
   visual review. The vocabulary covers ``DOM``, ``CSS``,
-  ``stylesheet``, ``diff``, ``classname``, the code-artifact compounds
-  of ``source``/``class``/``style`` (``source code``, ``class name``,
-  ``inline style``, ...), and ``source`` as the object of a
-  code-reading directive (``inspect the source``). Matching is
-  whole-word and case insensitive, so ``dom`` is rejected while
-  ``kingdom``, ``different``, and ``the visual style`` are not.
+  ``stylesheet``, ``diff``, ``classname`` (with their plurals and
+  inflections), the code-artifact compounds of ``class``/``style``
+  (``class name``, ``inline style``, ...), and ``source`` in every
+  sense except the "root cause" idiom ``source of``. Matching is
+  whole-word, hyphen-tolerant, and case insensitive, so ``dom``,
+  ``DOMs``, ``diffing``, and ``source-code`` are rejected while
+  ``kingdom``, ``different``, ``resource``, ``the visual style``, and
+  ``the source of truth for spacing`` are not. The check is a
+  heuristic, not a trust boundary: see the ``CEILING`` note beside
+  the vocabulary for what it cannot catch.
 
 Section bodies tolerate multi-line prose and unknown continuation
 lines under items; the consumed structure above is what this spec
@@ -75,27 +79,40 @@ _REGION_COORDINATES = 4
 # * Substring matching was both leaky and over-eager. ``"DOM" in text`` missed
 #   ``dom`` and ``Dom``; ``"diff" in text`` rejected the perfectly ordinary
 #   design words ``different`` and ``difference``.
-# * Head words that are ordinary design vocabulary on their own -- ``source``
-#   (the source of a defect), ``class`` (a class of bugs), ``style`` (the
-#   visual style) -- are therefore listed ONLY in the compound forms that name
-#   a code artifact, or bound to a verb that directs code reading. This mirrors
-#   the phrase-shaped vocabulary already documented in
-#   ``ralph.visual.design_verdict._INPUT_SMUGGLE_FRAGMENTS``.
+# * Head words that are ordinary design vocabulary on their own -- ``class``
+#   (a class of bugs) and ``style`` (the visual style) -- are therefore listed
+#   ONLY in the compound forms that name a code artifact.
+# * ``source`` is handled by exempting its one design-prose sense (the "root
+#   cause" idiom, ``the source of the crowding`` / ``the source of truth for
+#   spacing``) rather than by enumerating the verbs that can precede it. An
+#   allowlist of one idiom covers every verb, tense, and punctuation variant;
+#   a verb blocklist covered only the verbs someone had thought of.
+#
+# CEILING -- READ BEFORE TRUSTING THIS CHECK. This is a heuristic that raises
+# the cost of pivoting a visual review into a code review; it is NOT a trust
+# boundary and must never be relied on as one. It matches a fixed vocabulary,
+# so any paraphrase that names a code artifact by another word walks straight
+# past it -- ``examine the html``, ``look at the markup``, ``check the
+# template``, ``read the component`` are all accepted today. The boundary that
+# actually holds is structural: a verdict can only cite ``capture_id`` values
+# minted on the wire ledger (DV003), so a smuggled intent still cannot produce
+# evidence the agent did not capture. Enumerating more evasions here is an
+# arms race with no end state; strengthen the structural checks instead.
 
 # Terms that name a code artifact on their own and have no design-prose sense.
+# Plurals and verb inflections are spelled out so ``DOMs`` and ``diffing`` are
+# the same smuggle as ``DOM`` and ``diff``, while ``kingdom``, ``different``,
+# and ``difference`` stay ordinary prose (the trailing ``\b`` rejects them).
 _SMUGGLE_TERMS: tuple[str, ...] = (
-    "dom",
+    "doms?",
     "css",
     "stylesheets?",
-    "diffs?",
+    "diff(?:s|ing|ed)?",
     "classnames?",
 )
 
 # Compounds whose head word is ordinary design vocabulary in isolation.
 _SMUGGLE_COMPOUNDS: tuple[str, ...] = (
-    "source code",
-    "source files?",
-    "source trees?",
     "class names?",
     "class attributes?",
     "inline styles?",
@@ -104,18 +121,34 @@ _SMUGGLE_COMPOUNDS: tuple[str, ...] = (
     "computed styles?",
 )
 
-# ``source`` as the object of a code-reading directive ("inspect the source").
+# ``source`` in every sense except the "root cause" idiom (``source of``).
+# The negative lookahead is the whole rule: it rejects ``consult the source``,
+# ``looked at the source``, ``the source-code``, and ``the source's contents``
+# without naming a single verb.
+_SMUGGLE_SOURCE: tuple[str, ...] = (r"sources?(?!\s+of\b)",)
+
+# A code-reading directive still names a code artifact when the ``source of``
+# idiom follows it (``read the source of the header``), which the exemption
+# above would otherwise let through. This narrow verb family is the supplement
+# for exactly that overlap -- it is not the primary ``source`` rule.
 _SMUGGLE_DIRECTIVES: tuple[str, ...] = (
     "(?:read|reads|reading|inspect|inspects|examine|examines|review|reviews"
     "|check|checks|open|opens|grep|greps|walk|walks|trace|traces|look at"
     "|looks at) (?:the |its |their |this |our )?sources?",
 )
 
+# Word separators tolerate hyphenation so ``source-code`` and ``class-name``
+# cannot evade a compound by joining its words.
 _SMUGGLE_PATTERN = re.compile(
     r"\b(?:"
     + "|".join(
-        phrase.replace(" ", r"\s+")
-        for phrase in (*_SMUGGLE_TERMS, *_SMUGGLE_COMPOUNDS, *_SMUGGLE_DIRECTIVES)
+        phrase.replace(" ", r"[\s-]+")
+        for phrase in (
+            *_SMUGGLE_TERMS,
+            *_SMUGGLE_COMPOUNDS,
+            *_SMUGGLE_DIRECTIVES,
+            *_SMUGGLE_SOURCE,
+        )
     )
     + r")\b",
     re.IGNORECASE,

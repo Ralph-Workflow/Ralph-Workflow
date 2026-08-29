@@ -293,6 +293,62 @@ def test_intent_accepts_ordinary_design_prose(intent: str) -> None:
     assert _errors(_build_document(intent=intent)) == []
 
 
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Consult the source before judging the header spacing.",
+        "View the source for the header component.",
+        "Audit the source that renders the header.",
+        "Study the source that produces the banner.",
+        "Cat the source for the card grid component.",
+        "Pull up the source for the card grid component.",
+        "I looked at the source while drafting this intent.",
+        "Compare the source-code against the rendered header.",
+        "Judge the header against the source's contents.",
+    ],
+)
+def test_intent_rejects_source_reading_however_it_is_worded(intent: str) -> None:
+    """``source`` names a code artifact under any verb, inflection, or punctuation.
+
+    The check exempts only the "root cause" idiom (``source of``), so an
+    unlisted verb, a past tense, a hyphenated compound, or a possessive
+    cannot walk a code-reading directive past the check.
+    """
+    assert "DV008" in _errors(_build_document(intent=intent))
+
+
+def test_intent_rejects_a_code_reading_directive_before_the_source_of_idiom() -> None:
+    """A code-reading verb still smuggles when the ``source of`` idiom follows it."""
+    intent = "Read the source of the header component before judging it."
+    assert "DV008" in _errors(_build_document(intent=intent))
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Check the DOMs emitted for each breakpoint.",
+        "Report on diffing the builds before and after the change.",
+        "Confirm the diffed output matches the rendered header.",
+    ],
+)
+def test_intent_rejects_plural_and_inflected_code_artifact_terms(intent: str) -> None:
+    """Plurals and verb inflections of a code-artifact term are the same smuggle."""
+    assert "DV008" in _errors(_build_document(intent=intent))
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Keep the resource card grid aligned across breakpoints.",
+        "The spacing scale stays the source of truth for spacing.",
+        "Fix the source of the crowding in the sidebar.",
+    ],
+)
+def test_intent_accepts_the_root_cause_and_resource_senses(intent: str) -> None:
+    """``resource`` and the ``source of`` idiom are ordinary design prose."""
+    assert _errors(_build_document(intent=intent)) == []
+
+
 def test_missing_capture_provenance_field_is_rejected() -> None:
     """A missing required provenance field must surface as a hard error."""
     text = _build_document(target="")

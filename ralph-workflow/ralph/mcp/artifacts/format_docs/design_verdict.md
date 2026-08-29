@@ -82,11 +82,13 @@ and the section shapes above remain strict.
 Structural hard errors: missing `## Capture Provenance`, `## Design Intent`,
 `## Verdict`, or `## Findings`; a required structural `Capture Provenance` body
 field missing or empty; a `Design Intent` that smuggles a code-reading
-phrase (`DOM`, `CSS`, `stylesheet`, `diff`, `classname`, the code-artifact
-compounds `source code` / `class name` / `inline style` and their kin, or
-`source` as the object of a directive such as `inspect the source`) --
-matched whole-word and case-insensitively, so `different`, `kingdom`, and
-`the visual style` are not rejected; a `Verdict` not shaped
+phrase (`DOM`, `CSS`, `stylesheet`, `diff`, `classname` with their plurals
+and inflections, the code-artifact compounds `class name` / `inline style`
+and their kin, and `source` in every sense except the "root cause" idiom
+`source of`) -- matched whole-word, hyphen-tolerantly, and
+case-insensitively, so `DOMs`, `diffing`, `source-code`, and `the source's
+contents` are rejected while `different`, `kingdom`, `resource`, `the
+visual style`, and `the source of truth for spacing` are not; a `Verdict` not shaped
 `status | summary`; a `Findings` item not shaped
 `capture_id | x,y,w,h | dimension | severity | narrative`; a finding
 whose `capture_id` does not appear in `Capture Provenance` cell_ids; a
