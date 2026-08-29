@@ -39,6 +39,7 @@ from ralph.git.merge import (
     conflict_stage_entries,
     paths_with_conflict_markers,
     stage_paths,
+    staged_conflict_marker_paths,
     unmerged_paths,
 )
 from ralph.git.rebase.rebase import get_conflicted_files
@@ -416,7 +417,10 @@ def _stop_is_genuinely_staged(root: Path, stop_index: int) -> bool:
         return False
     if [path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"]:
         return False
-    marked = paths_with_conflict_markers(root, _staged_paths(root))
+    marked: list[str] = [
+        *paths_with_conflict_markers(root, _staged_paths(root)),
+        *staged_conflict_marker_paths(root),
+    ]
     if marked:
         logger.warning(
             "conflict_resolution: stop {} is staged but conflict markers survive in {}; "
@@ -828,6 +832,36 @@ def _touched_nothing_unexpected(
     return False
 
 
+def _restore_one_unrequested_path(root: Path, path: str) -> bool:
+    """Undo one stray edit: restore a tracked path, delete an untracked one.
+
+    Reverting the batch in a single ``git checkout`` failed whenever ONE
+    of the strays was a file the resolver created -- and the fallback
+    then unlinked every path in the batch, tracked ones included, which
+    turned an out-of-scope edit into an out-of-scope deletion.
+    """
+    tracked = run_git(
+        ("ls-files", "--error-unmatch", "--", path),
+        cwd=root,
+        label="git-stray-tracked",
+    )
+    if tracked.returncode == 0:
+        restored = run_git(
+            ("checkout", "--", path),
+            cwd=root,
+            label="git-revert-stray",
+        )
+        return restored.returncode == 0
+    try:
+        target = root / path
+        if target.is_dir():
+            return False
+        target.unlink(missing_ok=True)
+    except OSError:
+        return False
+    return True
+
+
 def _revert_unrequested_paths(root: Path, paths: tuple[str, ...]) -> bool:
     """Drop resolver edits that were outside the conflicted paths."""
     if not paths:
@@ -839,16 +873,11 @@ def _revert_unrequested_paths(root: Path, paths: tuple[str, ...]) -> bool:
     )
     if checkout.returncode == 0:
         return True
-    for path in paths:
-        target = root / path
-        try:
-            if target.is_file() or target.is_symlink():
-                target.unlink()
-            elif target.exists():
-                return False
-        except OSError:
-            return False
-    return True
+    # The batch fails as a whole if ANY stray is a file the resolver
+    # created, so each path is undone on its own terms: a tracked file
+    # is restored, an untracked one is removed. Unlinking the whole
+    # batch deleted tracked files the resolver had merely edited.
+    return all(_restore_one_unrequested_path(root, path) for path in paths)
 
 
 def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
@@ -887,12 +916,15 @@ def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
             paths,
         )
         return False
-    marked = paths_with_conflict_markers(root, paths)
+    marked: list[str] = [
+        *paths_with_conflict_markers(root, paths),
+        *staged_conflict_marker_paths(root),
+    ]
     if marked:
         logger.warning(
             "conflict_resolution: conflict markers survive at stop {}: {}",
             stop.stop_index,
-            marked,
+            ", ".join(sorted(set(marked))),
         )
         return False
     remaining = unmerged_paths(root)
@@ -906,12 +938,31 @@ def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
     return True
 
 
+def _is_ort_residue_name(conflicted_name: str, candidate_name: str) -> bool:
+    """Whether ``candidate_name`` is git's ort residue for ``conflicted_name``.
+
+    ort parks a side under ``<path>~<LABEL>`` where LABEL is the ref it
+    came from. An editor backup is ``<path>~`` or ``<path>~4~``, and
+    deleting those destroys operator files that no side of the conflict
+    ever mentioned -- which this glob was doing on every merge
+    resolution and every rebase stop.
+    """
+    label = candidate_name[len(conflicted_name) + 1 :]
+    if not label or label.endswith("~"):
+        return False
+    return not label.strip("0123456789") == ""
+
+
 def _remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
     """Remove only untracked ``path~label`` files left by an ort D/F conflict."""
     for path in paths:
         candidate_parent = (root / path).parent
         try:
-            candidates = tuple(candidate_parent.glob(f"{Path(path).name}~*"))
+            candidates = tuple(
+                candidate
+                for candidate in candidate_parent.glob(f"{Path(path).name}~*")
+                if _is_ort_residue_name(Path(path).name, candidate.name)
+            )
         except OSError:
             return False
         for candidate in candidates:
@@ -987,10 +1038,13 @@ def _replay_produced_nothing(root: Path, stop: RebaseStop) -> bool:
     is still in progress, or whose log cannot be read, is left to the
     existing handling.
     """
-    if rebase_in_progress_at(root):
-        return False
+    # NOT gated on the rebase having finished: `git rebase --continue`
+    # answers an emptied replay with `--skip`, which drops the commit and
+    # stops on the NEXT one -- so a mid-rebase stop is exactly where a
+    # commit disappears, and returning early here confined the guard to
+    # the last stop of a rebase.
     result = run_git(
-        ("log", "--format=%s", "-n", "50"),
+        ("log", "--format=%s", "-n", "200"),
         cwd=root,
         label="git-replayed-subjects",
     )

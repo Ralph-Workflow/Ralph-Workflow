@@ -303,3 +303,50 @@ def test_a_present_but_unreadable_path_is_not_evidence_of_a_clean_one(
     finally:
         unreadable.chmod(0o644)
     assert reported == ["locked.txt"], "present but unreadable is not clean"
+
+
+def test_git_itself_corroborates_the_marker_scan(tmp_path: Path) -> None:
+    """Our scan reads the worktree; git reads what would be committed.
+
+    A clean/smudge `filter`, a `working-tree-encoding`, or an unusual
+    `conflict-marker-size` all put the committed bytes out of reach of
+    an outside reader -- so git's own check is the corroborating gate.
+    """
+    from ralph.git.merge import staged_conflict_marker_paths
+    from ralph.git.subprocess_runner import run_git
+
+    def _git(*args: str) -> None:
+        result = run_git(args, cwd=tmp_path, label="test-setup")
+        assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
+
+    _git("init", "-q", ".")
+    _git("config", "user.email", "t@t")
+    _git("config", "user.name", "t")
+    (tmp_path / "f.txt").write_text("a\n")
+    _git("add", "-A")
+    _git("commit", "-qm", "base")
+
+    (tmp_path / "f.txt").write_text("a\n<<<<<<< HEAD\nX\n=======\nY\n>>>>>>> other\n")
+    (tmp_path / "narrow.txt").write_text("a\n<<< HEAD\nX\n===\nY\n>>> other\n")
+    (tmp_path / ".gitattributes").write_text("narrow.txt conflict-marker-size=3\n")
+    (tmp_path / "clean.txt").write_text("resolved\n")
+    _git("add", "-A")
+
+    reported = staged_conflict_marker_paths(tmp_path)
+    assert sorted(reported) == ["f.txt", "narrow.txt"]
+
+
+def test_operator_backup_files_are_not_mistaken_for_git_residue() -> None:
+    """`f.txt~` is vim's; `f.txt~HEAD` is ort's.
+
+    The residue glob deleted both, destroying operator files that no
+    side of the conflict ever mentioned, on every merge resolution and
+    every rebase stop.
+    """
+    from ralph.pipeline.conflict_resolution.rebase_loop import _is_ort_residue_name
+
+    assert _is_ort_residue_name("f.txt", "f.txt~HEAD") is True
+    assert _is_ort_residue_name("f.txt", "f.txt~feature-branch") is True
+    assert _is_ort_residue_name("f.txt", "f.txt~") is False
+    assert _is_ort_residue_name("f.txt", "f.txt~4~") is False
+    assert _is_ort_residue_name("f.txt", "f.txt~2") is False

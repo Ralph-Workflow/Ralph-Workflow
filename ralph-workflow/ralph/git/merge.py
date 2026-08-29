@@ -108,6 +108,33 @@ def _fence_pattern(size: int) -> re.Pattern[str]:
 _UNRESOLVED_FENCE_PATTERN = _fence_pattern(DEFAULT_CONFLICT_MARKER_SIZE)
 
 
+def staged_conflict_marker_paths(repo_root: Path | str) -> list[str]:
+    """Paths whose STAGED content git itself reports as marker-bearing.
+
+    ``git diff --cached --check`` is git's own detection, so it honours
+    everything our own scan cannot see from the outside: the effective
+    ``conflict-marker-size``, ``working-tree-encoding``, clean/smudge
+    ``filter`` drivers, and the exact bytes that would be committed
+    rather than whatever the worktree happens to hold. It is the
+    corroborating gate for the textual scan, not a replacement -- a
+    resolution has to pass both.
+    """
+    result = run_git(
+        ("diff", "--cached", "--check"),
+        cwd=Path(repo_root),
+        label="git-staged-marker-check",
+    )
+    reported: list[str] = []
+    for line in result.stdout.splitlines():
+        head, marker, _rest = line.partition(": leftover conflict marker")
+        if not marker:
+            continue
+        path, _, _line_no = head.rpartition(":")
+        if path and path not in reported:
+            reported.append(path)
+    return reported
+
+
 def _readable_text(path: Path) -> str | None:
     """Decode a worktree file for scanning, or ``None`` if it cannot be.
 
@@ -121,11 +148,28 @@ def _readable_text(path: Path) -> str | None:
         data = path.read_bytes()
     except OSError:
         return None
-    for encoding in ("utf-8", "utf-16", "utf-32"):
-        try:
-            return data.decode(encoding)
-        except (UnicodeDecodeError, UnicodeError):
-            continue
+    # BOM first: an explicit mark is evidence, where guessing is not.
+    # Trying utf-16 on anything that merely FAILS utf-8 turned ordinary
+    # latin-1 text of even length into mojibake and hid its fences.
+    for bom, encoding in (
+        (b"\xff\xfe\x00\x00", "utf-32-le"),
+        (b"\x00\x00\xfe\xff", "utf-32-be"),
+        (b"\xff\xfe", "utf-16-le"),
+        (b"\xfe\xff", "utf-16-be"),
+        (b"\xef\xbb\xbf", "utf-8-sig"),
+    ):
+        if data.startswith(bom):
+            try:
+                return data.decode(encoding)
+            except (UnicodeDecodeError, UnicodeError):
+                return None
+    if b"\x00" in data:
+        # NULs and no BOM: either a BOM-less UTF-16/32 worktree copy --
+        # whose ASCII characters are valid UTF-8 with NULs interleaved,
+        # so the fences survive but never match -- or genuinely binary.
+        # Dropping the NULs reads the first correctly and cannot invent
+        # a fence in the second.
+        return data.replace(b"\x00", b"").decode("utf-8", errors="replace")
     return data.decode("utf-8", errors="replace")
 
 
@@ -145,16 +189,22 @@ def conflict_marker_sizes(
         return sizes
     try:
         result = run_git(
-            ("check-attr", "conflict-marker-size", "--", *paths),
+            ("check-attr", "-z", "conflict-marker-size", "--", *paths),
             cwd=Path(repo_root),
             label="git-conflict-marker-size",
         )
         if result.returncode != 0:
             return sizes
-        for line in result.stdout.splitlines():
-            path, _, value = line.rpartition(": conflict-marker-size: ")
-            if path and value.strip().isdigit():
-                sizes[path] = int(value.strip())
+        # ``-z`` emits NUL-separated (path, attribute, value) triples.
+        # Without it git QUOTES a non-ASCII path, and the quoted key
+        # never matched the real path the caller looks up -- so the file
+        # silently fell back to the default width and its narrower
+        # fences were invisible.
+        fields = [field for field in result.stdout.split("\0") if field != ""]
+        for index in range(0, len(fields) - 2, 3):
+            path, _attribute, value = fields[index], fields[index + 1], fields[index + 2]
+            if value.isdigit():
+                sizes[path] = int(value)
     except Exception as exc:  # pragma: no cover -- defensive
         logger.debug("git: could not read conflict-marker-size: {}", exc)
     return sizes

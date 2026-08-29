@@ -49,6 +49,7 @@ from ralph.git.merge import (
     merge_target_into_current,
     paths_with_conflict_markers,
     stage_paths,
+    staged_conflict_marker_paths,
     unmerged_paths,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -199,7 +200,10 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
     if not stage_paths(root, conflicted):
         logger.warning("auto_integrate: failed to stage resolved paths: {}", conflicted)
         return False
-    marked = paths_with_conflict_markers(root, conflicted)
+    marked = [
+        *paths_with_conflict_markers(root, conflicted),
+        *staged_conflict_marker_paths(root),
+    ]
     if marked:
         logger.warning(
             "auto_integrate: conflict markers remain after resolution: {}",
