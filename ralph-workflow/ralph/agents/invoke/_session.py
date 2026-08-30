@@ -231,6 +231,11 @@ _TRANSPORT_JSON_TYPES = frozenset(
         "session_ready",
         "session_start",
         "session_resume",
+        # Codex calls its session a "thread" and announces it once, on the
+        # first frame of `codex exec --json`. Without this entry a live Codex
+        # run was graded "session ID was not observed" even though its very
+        # first line carried the resumable id.
+        "thread.started",
     }
 )
 
@@ -265,7 +270,10 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
         or is_agy_init
         or _is_kimi_meta_session_frame(parsed)
     ):
-        for key in ("session_id", "sessionId", "conversation_id", "id"):
+        # ``thread_id`` is Codex's spelling; it is scanned only for the frame
+        # types above, so an item or turn frame carrying one cannot pose as
+        # the transport's session announcement.
+        for key in ("session_id", "sessionId", "conversation_id", "thread_id", "id"):
             session_id = parsed.get(key)
             if isinstance(session_id, str) and session_id:
                 return session_id

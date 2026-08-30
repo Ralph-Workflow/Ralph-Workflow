@@ -63,7 +63,7 @@ Reference: https://opencode.ai/docs
 
 ### Codex - Best-Effort Only
 
-Codex is configured via a `config.toml` file. Ralph Workflow prepares this file in `_prepare_codex_home()` by preserving the user's existing `config.toml`, replacing any stale `[mcp_servers.ralph]` block with the live run-scoped endpoint, and setting the following in the `[features]` block (`CODEX_NATIVE_FEATURE_OVERRIDES` in `ralph/mcp/tools/names.py`):
+Codex is configured via a `config.toml` file, and Ralph Workflow points `CODEX_HOME` at a run-scoped directory of its own. Because that replaces the operator's `~/.codex/config.toml` rather than layering on top of it, `prepare_codex_home()` (in `ralph/mcp/transport/codex.py`) has to combine the two: it parses the operator's config with `tomllib`, layers Ralph Workflow's settings over the resulting mapping, and re-serializes the merge with `tomli_w`. Merging mappings rather than splicing text is deliberate -- TOML rejects a duplicate key, and a mapping cannot hold one, so no combination of operator settings can produce a config Codex refuses to load. Every operator key Ralph Workflow does not own is carried through untouched; the keys it does own are `model_instructions_file`, the `[mcp_servers]` table, and the following entries of `[features]` (`CODEX_NATIVE_FEATURE_OVERRIDES` in `ralph/mcp/tools/names.py`):
 
 ```
 features.shell_tool = false
@@ -78,7 +78,7 @@ features.apps = false
 Codex MCP tool restriction is best-effort: apply_patch and core editing primitives cannot be disabled.
 ```
 
-In strict Ralph Workflow authority mode, the provider-visible `[mcp_servers]` section contains only the run-scoped `ralph` entry for the Ralph Workflow MCP server. User upstream MCP server definitions are extracted and passed to Ralph Workflow separately; they are not included in the provider-visible config. Ralph Workflow re-exposes upstream tools as Ralph Workflow-owned proxied aliases.
+In strict Ralph Workflow authority mode, the provider-visible `[mcp_servers]` section contains only the run-scoped `ralph` entry for the Ralph Workflow MCP server. In unsafe mode the operator's own servers are kept alongside it, minus any stale `ralph` entry the live endpoint replaces. User upstream MCP server definitions are extracted and passed to Ralph Workflow separately; they are not included in the provider-visible config. Ralph Workflow re-exposes upstream tools as Ralph Workflow-owned proxied aliases.
 
 Do not rely on Codex for environments that require strict tool isolation. Ralph Workflow's best-effort for Codex is explicitly logged as a warning at runtime.
 

@@ -50,6 +50,7 @@ dependencies = [
   "selectolax>=0.3.21",
   "psutil>=5.9",
   "sentry-sdk>=2.0",
+  "tomli-w>=1.0",
 ]
 
 [project.optional-dependencies]

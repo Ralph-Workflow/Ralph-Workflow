@@ -127,20 +127,6 @@ class TestMergeExistingUpstreams:
                     }
                 },
             ),
-            # codex: use mcp_servers.X keys (TOML-style)
-            (
-                "codex",
-                lambda: {
-                    "mcp_servers.github": {
-                        "url": "https://api.example.com/mcp/",
-                        "enabled": True,
-                    },
-                    "mcp_servers.ralph": {
-                        "url": "http://127.0.0.1:9999/mcp",
-                        "enabled": True,
-                    },
-                },
-            ),
         ],
     )
     def test_helper_handles_each_supported_agent_path_layout(
@@ -153,7 +139,6 @@ class TestMergeExistingUpstreams:
         Each agent uses its native config format:
         - claude/agy/nanocoder: {"mcpServers": {"<name>": {...}}}
         - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
-        - codex: {"mcp_servers.X": {...}}  (TOML-style keys)
         """
         current_config = current_config_factory()
 
@@ -166,9 +151,6 @@ class TestMergeExistingUpstreams:
         elif agent_name == "opencode":
             assert "mcp" in result
             assert "ralph" in result["mcp"]
-        elif agent_name == "codex":
-            # Codex returns flat dict with mcp_servers.X keys
-            assert "mcp_servers.ralph" in result
 
     def test_opencode_preserves_native_fields(
         self,
@@ -228,52 +210,3 @@ class TestMergeExistingUpstreams:
         assert "mcp" in result
         assert "ralph" in result["mcp"]
         assert "github" not in result["mcp"]
-
-    def test_codex_preserves_toml_style_keys(
-        self,
-    ) -> None:
-        """Codex entries use TOML-style mcp_servers.X keys (not mcpServers)."""
-        current_config = {
-            "mcp_servers.github": {
-                "url": "https://existing.invalid/sse",
-                "enabled": True,
-            },
-            "mcp_servers.ralph": {
-                "url": "http://127.0.0.1:9999/sse",
-                "enabled": True,
-            },
-        }
-
-        result = merge_existing_upstreams("codex", current_config, unsafe_mode=True)
-
-        assert "mcp_servers.github" in result
-        assert "mcp_servers.ralph" in result
-        assert "mcpServers" not in result
-        # Ralph must NOT leak into a top-level 'ralph' key - it must stay under
-        # the proper mcp_servers.ralph TOML key. This catches the bug where
-        # result[RALPH_MCP_SERVER_NAME] was used instead of result[codex_ralph_key].
-        assert "ralph" not in result, (
-            f"Ralph entry leaked to top-level 'ralph' key. Result keys: {list(result.keys())}"
-        )
-        assert result["mcp_servers.github"]["url"] == "https://existing.invalid/sse"
-        assert result["mcp_servers.ralph"]["url"] == "http://127.0.0.1:9999/sse"
-
-    def test_codex_unsafe_mode_false_returns_only_ralph(
-        self,
-    ) -> None:
-        """When unsafe_mode=False, Codex result contains only the ralph entry."""
-        current_config = {
-            "mcp_servers.github": {
-                "url": "https://existing.invalid/sse",
-                "enabled": True,
-            },
-            "mcp_servers.ralph": {
-                "url": "http://127.0.0.1:9999/sse",
-                "enabled": True,
-            },
-        }
-
-        result = merge_existing_upstreams("codex", current_config, unsafe_mode=False)
-
-        assert "mcp_servers.ralph" in result
-        assert "mcp_servers.github" not in result

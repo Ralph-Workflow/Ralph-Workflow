@@ -259,7 +259,7 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             run_id=run_id,
         )
     if agent_name == "codex" or agent_name.startswith("codex/"):
-        # ``codex/<model>`` (e.g. ``codex/gpt-5-flash``) follows the
+        # ``codex/<model>`` follows the
         # same dynamic-alias pattern as ``agy/<model>`` -- the
         # command builder strips the leading ``codex/`` and passes
         # ``<model>`` to ``codex exec``. A sanitized run_id keeps

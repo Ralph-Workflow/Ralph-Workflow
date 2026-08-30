@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import atexit
 import collections
-import json
-import re
 import shutil
 import tempfile
 import tomllib
 from pathlib import Path
 from typing import Final, cast
 
+import tomli_w
 from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -20,7 +19,6 @@ from ralph.mcp.tools.names import (
     CODEX_NATIVE_FEATURE_OVERRIDES,
     RALPH_MCP_SERVER_NAME,
 )
-from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 from ralph.workspace.agent_dir_retention import (
     register_temporary_path_owner,
@@ -164,17 +162,99 @@ def prepare_codex_home(
     return codex_home
 
 
-def _flat_dict_to_toml_servers(flat_dict: dict[str, object]) -> str:
-    """Convert a flat dict with mcp_servers.X keys to TOML server sections."""
-    lines: list[str] = []
-    for key, value in sorted(flat_dict.items()):
-        if not isinstance(key, str) or not key.startswith("mcp_servers."):
-            continue
-        lines.append(f"[{key}]")
-        if isinstance(value, dict):
-            for k, v in sorted(value.items()):
-                lines.append(f"{k} = {json.dumps(v)}")
-    return "\n".join(lines)
+def _mapping_at(config: dict[str, object], key: str) -> dict[str, object]:
+    """Return the mapping stored at *key*, or an empty one when it is absent."""
+    value = config.get(key)
+    if isinstance(value, dict):
+        return cast("dict[str, object]", value)
+    return {}
+
+
+def _ralph_feature_overrides() -> dict[str, object]:
+    """Return Ralph's ``[features]`` settings as real TOML booleans."""
+    return {key.split(".", 1)[1]: value == "true" for key, value in CODEX_NATIVE_FEATURE_OVERRIDES}
+
+
+def _merge_codex_config(
+    base: dict[str, object],
+    *,
+    endpoint: str | None,
+    master_prompt_file: str | None,
+    unsafe_mode: bool,
+) -> dict[str, object]:
+    """Layer Ralph's required settings over the operator's parsed config.
+
+    Merging mappings -- rather than splicing text into the operator's file --
+    is what makes this algorithm safe by construction: a mapping cannot hold
+    the same key twice, so no combination of operator settings can produce the
+    duplicate key that makes Codex abort with "Error loading config.toml". A
+    key Ralph owns is overwritten; every other operator key is carried through
+    untouched.
+    """
+    merged = dict(base)
+    if endpoint:
+        merged["features"] = {**_mapping_at(base, "features"), **_ralph_feature_overrides()}
+        # Restricted mode hides every operator upstream: Ralph loads them
+        # itself and re-exposes them as proxied tools. Unsafe mode keeps them,
+        # minus any stale Ralph entry the live endpoint replaces.
+        operator_servers = _mapping_at(base, "mcp_servers") if unsafe_mode else {}
+        merged["mcp_servers"] = {
+            **{
+                name: value
+                for name, value in operator_servers.items()
+                if name != RALPH_MCP_SERVER_NAME
+            },
+            RALPH_MCP_SERVER_NAME: {"url": endpoint, "enabled": True},
+        }
+    if master_prompt_file:
+        merged["model_instructions_file"] = master_prompt_file
+    return merged
+
+
+def _parse_source_config(base_config: str, source_config: Path) -> dict[str, object]:
+    """Parse the operator's config, degrading to Ralph-only settings if it is invalid."""
+    if not base_config.strip():
+        return {}
+    try:
+        parsed: object = tomllib.loads(base_config)
+    except ValueError as exc:
+        logger.error(
+            "Source Codex config {} is not loadable TOML ({}); Codex could not load it "
+            "either. Continuing with Ralph-only settings -- operator settings such as "
+            "model_provider will NOT apply until that file is fixed.",
+            source_config,
+            exc,
+        )
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return cast("dict[str, object]", parsed)
+
+
+def _render_codex_config(merged: dict[str, object], config_path: Path) -> str:
+    """Serialize *merged* to TOML, verifying it reads back as what was intended.
+
+    The round-trip check is the standing guarantee that this function cannot
+    hand Codex a config that means something other than the merge decided --
+    it runs on every invocation, not only under test.
+    """
+    config_text = tomli_w.dumps(merged)
+    try:
+        reparsed: object = tomllib.loads(config_text)
+    except ValueError as exc:  # pragma: no cover - unreachable via TOML types
+        logger.error(
+            "Synthesized Codex config {} did not round-trip ({}); Codex will refuse to start.",
+            config_path,
+            exc,
+        )
+        return config_text
+    if reparsed != merged:  # pragma: no cover - unreachable via TOML types
+        logger.error(
+            "Synthesized Codex config {} does not read back as the merged settings; "
+            "Codex may behave differently from what Ralph configured.",
+            config_path,
+        )
+    return config_text
 
 
 def prepare_codex_home_with_upstreams(
@@ -198,74 +278,24 @@ def prepare_codex_home_with_upstreams(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
-    upstreams = _extract_codex_upstream_servers(base_config)
-    prefix_sections: list[str] = []
-    appended_sections: list[str] = []
+    base = _parse_source_config(base_config, source_config)
+    upstreams = _extract_codex_upstream_servers(base)
     if endpoint:
         logger.warning(
             "Codex MCP tool restriction is best-effort: apply_patch and core "
             "editing primitives cannot be disabled. See "
             "ralph-workflow/docs/mcp-tool-restriction.md."
         )
-        existing_from_base: dict[str, object] = {}
-        if base_config.strip():
-            try:
-                parsed: object = tomllib.loads(base_config)
-                if isinstance(parsed, dict):
-                    existing_from_base = {
-                        key: value
-                        for key, value in parsed.items()
-                        if isinstance(key, str) and key.startswith("mcp_servers.")
-                    }
-            except Exception:
-                pass
-        if not unsafe_mode:
-            base_config = _remove_all_toml_mcp_server_tables(base_config)
-        merged = merge_existing_upstreams(
-            "codex",
-            existing_from_base,
-            unsafe_mode=unsafe_mode,
-        )
-        merged_toml = _flat_dict_to_toml_servers(merged)
-        if merged_toml:
-            appended_sections.append(merged_toml + "\n")
-        ralph_section = (
-            f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
-        )
-        if ralph_section.strip() not in merged_toml:
-            appended_sections.append(ralph_section)
-        features_in_base = "[features]" in base_config
-        feature_lines = [
-            f"{key.split('.', 1)[1]} = {value}" for key, value in CODEX_NATIVE_FEATURE_OVERRIDES
-        ]
-        feature_block = "\n".join(feature_lines) + "\n"
-        if features_in_base:
-            base_config = base_config.replace("[features]\n", "[features]\n" + feature_block, 1)
-        if not features_in_base:
-            appended_sections.append("[features]\n" + feature_block)
-    if master_prompt_file:
-        prefix_sections.append(f"model_instructions_file = {json.dumps(master_prompt_file)}\n")
-    config_suffix = "\n".join(section.rstrip() for section in appended_sections if section.strip())
-    prefix_text = "\n".join(section.rstrip() for section in prefix_sections if section.strip())
-    config_text = "\n\n".join(
-        part for part in [prefix_text, base_config.rstrip(), config_suffix] if part
+    merged = _merge_codex_config(
+        base,
+        endpoint=endpoint,
+        master_prompt_file=master_prompt_file,
+        unsafe_mode=unsafe_mode,
     )
-    write_text_if_changed(
-        DEFAULT_FILE_BACKEND, codex_root / "config.toml", config_text, encoding="utf-8"
-    )
+    config_path = codex_root / "config.toml"
+    config_text = _render_codex_config(merged, config_path)
+    write_text_if_changed(DEFAULT_FILE_BACKEND, config_path, config_text, encoding="utf-8")
     return str(codex_root), upstreams
-
-
-def _remove_toml_table(config_text: str, table_name: str) -> str:
-    pattern = re.compile(
-        rf"(?ms)^\[{re.escape(table_name)}\]\n.*?(?=^\[|\Z)",
-    )
-    return pattern.sub("", config_text).strip()
-
-
-def _remove_all_toml_mcp_server_tables(config_text: str) -> str:
-    pattern = re.compile(r"(?ms)^\[mcp_servers(?:\.[^\]]+)?\]\n.*?(?=^\[|\Z)")
-    return pattern.sub("", config_text).strip()
 
 
 def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
@@ -341,19 +371,12 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
     return codex_root
 
 
-def _extract_codex_upstream_servers(config_text: str) -> tuple[UpstreamMcpServer, ...]:
-    if not config_text.strip():
+def _extract_codex_upstream_servers(base: dict[str, object]) -> tuple[UpstreamMcpServer, ...]:
+    """Return the operator's own MCP servers so Ralph can re-expose them as proxied tools."""
+    mcp_servers = _mapping_at(base, "mcp_servers")
+    if not mcp_servers:
         return ()
-    try:
-        parsed: object = tomllib.loads(config_text)
-    except Exception:
-        return ()
-    if not isinstance(parsed, dict):
-        return ()
-    mcp_servers = parsed.get("mcp_servers")
-    if not isinstance(mcp_servers, dict):
-        return ()
-    return normalize_upstream_mcp_servers(cast("dict[str, object]", mcp_servers))
+    return normalize_upstream_mcp_servers(mcp_servers)
 
 
 __all__ = [

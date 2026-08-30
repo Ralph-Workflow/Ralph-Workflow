@@ -31,7 +31,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -772,6 +772,11 @@ def _worktree_dirty_paths(root: Path) -> frozenset[str] | None:
     return frozenset(_porcelain_paths(result.stdout))
 
 
+#: A porcelain v1 entry is a two-letter status code, a space, then the path,
+#: so anything shorter carries no path to report.
+_PORCELAIN_ENTRY_MIN_LEN: Final[int] = 4
+
+
 def _porcelain_paths(blob: str) -> list[str]:
     """Paths from a ``--porcelain=v1 -z`` blob, renames included."""
     entries = [entry for entry in blob.split("\0") if entry]
@@ -780,15 +785,14 @@ def _porcelain_paths(blob: str) -> list[str]:
     while index < len(entries):
         entry = entries[index]
         index += 1
-        if len(entry) < 4:
+        if len(entry) < _PORCELAIN_ENTRY_MIN_LEN:
             continue
         code, path = entry[:2], entry[3:]
         paths.append(path)
-        if "R" in code or "C" in code:
-            # A rename/copy is followed by its source path.
-            if index < len(entries):
-                paths.append(entries[index])
-                index += 1
+        # A rename/copy is followed by its source path.
+        if ("R" in code or "C" in code) and index < len(entries):
+            paths.append(entries[index])
+            index += 1
     return paths
 
 
@@ -1022,9 +1026,7 @@ def _is_ort_residue_name(conflicted_name: str, candidate_name: str) -> bool:
     label = candidate_name[len(conflicted_name) + 1 :]
     if not label or label.endswith("~"):
         return False
-    if not label.strip("0123456789"):
-        return False
-    return True
+    return bool(label.strip("0123456789"))
 
 
 def _label_names_a_git_ref(root: Path, label: str) -> bool:

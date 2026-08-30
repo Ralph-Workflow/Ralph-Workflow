@@ -787,7 +787,7 @@ def smoke_interactive_agy_command(
 
 
 def smoke_interactive_codex_command(
-    agent_name: str = "codex/gpt-5-flash",
+    agent_name: str = "codex",
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -798,9 +798,11 @@ def smoke_interactive_codex_command(
 ) -> int:
     """Run the manual smoke harness for the Codex CLI.
 
-    The alias follows the dynamic ``codex/<model>`` pattern (e.g.
-    ``codex/gpt-5-flash``); the command builder strips the leading
-    ``codex/`` and passes ``<model>`` to ``codex exec``. This
+    Bare ``codex`` passes no ``--model``, so Codex uses whatever model
+    the operator configured -- a default that cannot go stale as OpenAI
+    retires model ids. To pin one, pass the dynamic ``codex/<model>``
+    alias: the command builder strips the leading ``codex/`` and passes
+    ``<model>`` to ``codex exec``. This
     command lives for parity with the other interactive smoke
     commands; the production harness uses the same
     ``smoke_harness_agent_command`` plumbing with a ``cmd_override``
@@ -823,15 +825,15 @@ def smoke_interactive_codex_command(
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
-            "Agent '{}' is not available. Use --agent with a codex/<model> alias, "
-            "e.g. --agent 'codex/gpt-5-flash'.",
+            "Agent '{}' is not available. Use --agent with 'codex' or a "
+            "codex/<model> alias.",
             agent_name,
         )
         return 2
     if agent_config.transport is None or agent_config.transport != AgentTransport.CODEX:
         logger.error(
             "Agent '{}' resolves to transport '{}', not CODEX. "
-            "Use --agent with a codex/<model> alias.",
+            "Use --agent with 'codex' or a codex/<model> alias.",
             agent_name,
             agent_config.transport.value if agent_config.transport else "None",
         )

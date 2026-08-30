@@ -1524,8 +1524,11 @@ app.command(name="smoke-interactive-opencode")(smoke_interactive_opencode)
 
 def smoke_interactive_codex(
     agent: str = typer.Option(
-        "codex/gpt-5-flash",
-        help="Codex model alias to smoke (e.g. codex/gpt-5-flash).",
+        "codex",
+        help=(
+            "Codex agent to smoke. Bare 'codex' uses the model from the operator's "
+            "Codex config; pass a codex/<model> alias to pin one."
+        ),
     ),
     subagents: bool = typer.Option(
         False,
