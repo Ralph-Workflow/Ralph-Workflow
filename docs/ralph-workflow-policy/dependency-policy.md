@@ -44,7 +44,7 @@ RALPH-FACT: package_manager: uv (primary; `[project]` dependencies and `[project
 RALPH-FACT: lockfile_path: ralph-workflow/uv.lock (uv-managed; pinned by `uv sync`). The skills-package artefact does not produce a package-lock.json because it ships zero runtime dependencies.
 RALPH-FACT: license_allowlist: project distribution license is `AGPL-3.0-or-later` (per ralph-workflow/pyproject.toml `[project].license`). Dependencies MUST use OSI-approved permissive or copyleft licenses compatible with AGPL-3.0-or-later distribution: MIT, BSD-2/3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1-or-later, LGPL-3.0-or-later, PSF-2.0, and similar. Non-OSI / source-available licenses (BSL, SSPL, Elastic, BUSL) MUST NOT be merged without a documented exception naming the license, the scope, the owner, and the review date. GPL-family (other than LGPL) is incompatible with downstream proprietary linking without an explicit dual-license strategy.
 RALPH-FACT: security_audit_command: Bandit (the Python-best-practice static analyzer; it is the language-scoped scanner called out in security-policy.md). Bandit is NOT currently pinned in `ralph-workflow/pyproject.toml`, NOT installed by `make dev`, and NOT wired into `make -C ralph-workflow verify`; the Verification section below records the corresponding deferred gate. A broader CVE audit depends on the GitHub Advisory Database (Dependabot) and is wired through CODEOWNERS + Renovate rather than a CLI command.
-RALPH-FACT: type_info_policy: every added Python dependency MUST either ship type information in its own wheel (the default for httpx, pydantic, typer, rich, mcp, loguru, tqdm, gitpython, sentry-sdk, watchdog, jinja2, readability-lxml, selectolax) or carry a companion types package declared in `[project.optional-dependencies].dev` (`types-psutil>=5.9` is the canonical example for the untyped `psutil` runtime dep). Pure-stdlib reimplementations are preferred over dependencies that drag type stubs across the dep graph.
+RALPH-FACT: type_info_policy: every added Python dependency MUST either ship type information in its own wheel (the default for httpx, pydantic, typer, rich, mcp, loguru, tqdm, gitpython, sentry-sdk, watchdog, jinja2, readability-lxml, selectolax, tomli-w) or carry a companion types package declared in `[project.optional-dependencies].dev` (`types-psutil>=5.9` is the canonical example for the untyped `psutil` runtime dep). Pure-stdlib reimplementations are preferred over dependencies that drag type stubs across the dep graph.
 RALPH-FACT: ci_install_command: CI installs `uv` and runs `cd ralph-workflow && make verify` directly; the target resolves the checkout environment through `uv run` against `uv.lock`. `make dev` is separate: it delegates to `python -m ralph.install`, which copies the checkout, runs `uv sync --extra dev` in the copied dev snapshot, and writes `rdev`.
 RALPH-FACT: dependency_evaluation_record: each existing runtime dependency is recorded in ralph-workflow/pyproject.toml `[project].dependencies` and was evaluated against four criteria: (1) the upstream is actively maintained (last release within 18 months), (2) the wheel carries type information (or a sibling `types-*` package is declared in dev extras), (3) the license is on the ralph-workflow-pyproject AGPL-3.0-or-later compatible list (MIT / BSD / Apache-2.0 / ISC / MPL-2.0 / PSF / LGPL), and (4) the dependency is the smallest maintained option that satisfies the bound API. Recorded dependencies include httpx (HTTP client), pydantic (data model), typer + rich-click (CLI), rich (terminal), mcp (MCP transport), loguru (logging), tqdm (progress bars), gitpython (git ops), sentry-sdk (error reporting, opt-in), watchdog (filesystem events), jinja2 (templating), readability-lxml + selectolax (HTML extraction), and tomli-w (TOML serialization: the stdlib ships tomllib, which reads TOML but cannot write it, and Ralph must emit a merged config.toml for the Codex CLI; MIT, ships py.typed, maintained by the author of tomli/stdlib tomllib). No BSL/SSPL/Elastic/BUSL/non-OSI licence is present.
 RALPH-FACT: transitive_dependency_policy: transitive dependencies are governed by `ralph-workflow/uv.lock`, not by direct inspection. CI installs `uv` and invokes `make verify`; every Python command in that gate uses `uv run`, which resolves the checkout environment from the lockfile. `make dev` runs `uv sync --extra dev` only in its copied `rdev` snapshot, not in CI. Adding a new top-level dependency requires the four-criteria evaluation in `dependency_evaluation_record`; transitive dependencies arrive through that resolution rather than direct declaration.
@@ -97,6 +97,22 @@ triage each finding under the security-policy.md Exceptions section.
 A dependency with an incompatible license, unmaintained status, or
 known critical CVE may be accepted with a documented rationale, scope
 of the exception, owner of the exception, and a removal or review date.
+
+### tomli-w: criterion (1), last release within 18 months
+
+* **Rationale.** `tomli_w` 1.2.0 is the latest release and was published
+  2025-01-15, so as of 2026-08-30 it is past the 18-month bar in
+  `RALPH-FACT: dependency_evaluation_record`. It is quiet rather than
+  abandoned: two modules and roughly 7 KB with zero transitive
+  dependencies, implementing a frozen spec (TOML 1.0), maintained by the
+  author of `tomli` / the stdlib `tomllib`. There is nothing left for a
+  release to contain. Criteria (2), (3) and (4) pass — it ships
+  `py.typed`, is MIT, and is the smallest maintained option.
+* **Scope.** `tomli-w` only, for serializing the merged Codex
+  `config.toml`. The stdlib reads TOML but cannot write it.
+* **Owner.** ralph-workflow maintainers.
+* **Review date.** 2027-02-28, or immediately if TOML 1.1 ships and
+  `tomli_w` has not adopted it.
 
 ## Maintenance triggers
 

@@ -284,7 +284,7 @@ def prepare_codex_home_with_upstreams(
         logger.warning(
             "Codex MCP tool restriction is best-effort: apply_patch and core "
             "editing primitives cannot be disabled. See "
-            "ralph-workflow/docs/mcp-tool-restriction.md."
+            "ralph-workflow/docs/sphinx/mcp-tool-restriction.md."
         )
     merged = _merge_codex_config(
         base,
@@ -372,8 +372,20 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
 
 
 def _extract_codex_upstream_servers(base: dict[str, object]) -> tuple[UpstreamMcpServer, ...]:
-    """Return the operator's own MCP servers so Ralph can re-expose them as proxied tools."""
-    mcp_servers = _mapping_at(base, "mcp_servers")
+    """Return the operator's own MCP servers so Ralph can re-expose them as proxied tools.
+
+    Ralph's own entry is dropped first. ``ralph`` is a reserved upstream name
+    and ``normalize_upstream_mcp_servers`` raises on it, so an operator config
+    that already names it -- one copied back from a synthesized Codex home, or
+    written by hand -- used to abort every Codex invocation instead of being
+    replaced by the live endpoint. Every other agent drops it the same way
+    before normalizing (see ``mcp_config_as_upstreams``).
+    """
+    mcp_servers = {
+        name: value
+        for name, value in _mapping_at(base, "mcp_servers").items()
+        if name != RALPH_MCP_SERVER_NAME
+    }
     if not mcp_servers:
         return ()
     return normalize_upstream_mcp_servers(mcp_servers)

@@ -792,6 +792,70 @@ def test_copy_install_tree_preserves_runtime_assets_and_omits_build_artifacts(
     assert not (destination / ".venv").exists()
 
 
+def test_copy_install_tree_regression_keeps_the_snapshot_interpreter_alive(
+    tmp_path: Path,
+) -> None:
+    """A reinstall MUST NOT delete the snapshot's virtualenv.
+
+    ``rdev`` runs *from* the snapshot, so its interpreter is
+    ``<snapshot>/.venv/bin/python`` and ``sys.executable`` -- the very
+    binary Ralph re-spawns for the MCP server subprocess. Wiping the
+    snapshot wholesale used to take that binary with it, so a reinstall
+    during a live run killed the run with
+    ``FileNotFoundError: .../.venv/bin/python``. The virtualenv is never
+    copied from the source checkout either, so deleting it only forced a
+    full rebuild for nothing.
+    """
+    from ralph._install_copy_tree import copy_install_tree
+
+    source = tmp_path / "source"
+    destination = tmp_path / "snapshot"
+    (source / "ralph").mkdir(parents=True)
+    (source / "ralph" / "__init__.py").write_text("new", encoding="utf-8")
+
+    interpreter = destination / ".venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("live interpreter", encoding="utf-8")
+    (destination / "ralph").mkdir()
+    (destination / "ralph" / "__init__.py").write_text("stale", encoding="utf-8")
+    (destination / "gone.py").write_text("stale", encoding="utf-8")
+
+    copy_install_tree(source, destination)
+
+    assert interpreter.read_text(encoding="utf-8") == "live interpreter"
+    assert (destination / "ralph" / "__init__.py").read_text(encoding="utf-8") == "new"
+    assert not (destination / "gone.py").exists()
+
+
+def test_copy_install_tree_never_overwrites_the_preserved_virtualenv(
+    tmp_path: Path,
+) -> None:
+    """A preserved entry survives the copy as well as the delete.
+
+    Preserving ``.venv`` from the wipe would be a no-op that reads like a
+    guarantee if the copy then wrote the source checkout's own ``.venv`` over
+    it. Both halves have to hold for the running interpreter to stay valid,
+    so both are pinned here.
+    """
+    from ralph._install_copy_tree import copy_install_tree
+
+    source = tmp_path / "source"
+    destination = tmp_path / "snapshot"
+    (source / ".venv" / "bin").mkdir(parents=True)
+    (source / ".venv" / "bin" / "python").write_text("source", encoding="utf-8")
+    (source / ".venv" / "marker").write_text("source", encoding="utf-8")
+    (source / "ralph").mkdir()
+
+    interpreter = destination / ".venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("live interpreter", encoding="utf-8")
+
+    copy_install_tree(source, destination)
+
+    assert interpreter.read_text(encoding="utf-8") == "live interpreter"
+    assert not (destination / ".venv" / "marker").exists()
+
+
 def test_install_stable_release_leaves_published_package_flavor_clean() -> None:
     """S-4: only a local manual wheel receives the build suffix."""
     writes: list[tuple[Path, str]] = []

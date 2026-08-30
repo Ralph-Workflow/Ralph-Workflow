@@ -248,9 +248,21 @@ def test_any_operator_config_merges_into_a_config_codex_can_load(
     features = _features_of(config_text)
     for key, value in _expected_features().items():
         assert features[key] is value, f"Ralph override for {key} must win"
-    servers = parsed["mcp_servers"]
-    assert isinstance(servers, dict)
-    assert servers["ralph"] == {"url": _ENDPOINT, "enabled": True}
+    operator_servers = base.get("mcp_servers")
+    # Restricted mode hides every operator upstream (Ralph re-exposes them as
+    # proxied tools instead); unsafe mode keeps them, minus any stale Ralph
+    # entry the live endpoint replaces. Asserting equality rather than just
+    # ``servers["ralph"]`` is what makes the drawn ``unsafe_mode`` mean
+    # something -- a regression in either direction now fails here.
+    surviving = (
+        {name: value for name, value in operator_servers.items() if name != "ralph"}
+        if unsafe_mode and isinstance(operator_servers, dict)
+        else {}
+    )
+    assert parsed["mcp_servers"] == {
+        **surviving,
+        "ralph": {"url": _ENDPOINT, "enabled": True},
+    }
     assert parsed["model_instructions_file"] == master_prompt
     for key, value in base.items():
         if key in _RALPH_OWNED_KEYS:
@@ -282,3 +294,62 @@ def test_operator_features_survive_unless_ralph_overrides_them(
         if key in _expected_features():
             continue
         assert features[key] == value, f"operator feature {key!r} must survive untouched"
+
+
+def test_codex_config_regression_stale_ralph_entry_does_not_abort_the_run(
+    tmp_path: Path,
+) -> None:
+    """A leftover ``[mcp_servers.ralph]`` MUST NOT kill the invocation.
+
+    ``ralph`` is a reserved upstream name: ``normalize_upstream_mcp_servers``
+    raises ``UpstreamConfigError`` on sight of it. Codex handed the operator's
+    ``mcp_servers`` straight to that function, so an operator who had ever
+    pointed Codex at Ralph by hand -- or copied a synthesized config back to
+    ``~/.codex`` -- could not run Codex at all. Ralph replaces its own entry
+    with the live endpoint, so the stale one is dropped before normalization
+    rather than reported as an operator error.
+    """
+    config_text = _synthesize(
+        tmp_path,
+        '[mcp_servers.ralph]\nurl = "http://127.0.0.1:1/mcp"\nenabled = true\n',
+    )
+
+    servers = _parse(config_text)["mcp_servers"]
+    assert isinstance(servers, dict)
+    assert servers["ralph"] == {"url": _ENDPOINT, "enabled": True}
+
+
+def test_codex_config_regression_stale_ralph_entry_is_dropped_in_unsafe_mode(
+    tmp_path: Path,
+) -> None:
+    """Unsafe mode keeps the operator's servers but still replaces Ralph's own."""
+    config_text = _synthesize(
+        tmp_path,
+        "[mcp_servers.ralph]\n"
+        'url = "http://127.0.0.1:1/mcp"\n'
+        "\n"
+        "[mcp_servers.ctx]\n"
+        'command = "ctx-server"\n',
+        unsafe_mode=True,
+    )
+
+    servers = _parse(config_text)["mcp_servers"]
+    assert isinstance(servers, dict)
+    assert servers["ralph"] == {"url": _ENDPOINT, "enabled": True}
+    assert servers["ctx"] == {"command": "ctx-server"}
+
+
+def test_codex_config_regression_unparseable_operator_config_is_not_fatal(
+    tmp_path: Path,
+) -> None:
+    """An operator config Codex itself cannot load degrades to Ralph-only settings.
+
+    Negative case for ``_parse_source_config``: invalid TOML yields no operator
+    keys at all rather than propagating a parse error, and the synthesized
+    config still carries everything Ralph needs to drive the run.
+    """
+    config_text = _synthesize(tmp_path, 'model = "gpt-5"\n[features\n')
+
+    parsed = _parse(config_text)
+    assert parsed["features"] == _expected_features()
+    assert "model" not in parsed
