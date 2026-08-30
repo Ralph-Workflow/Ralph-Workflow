@@ -254,7 +254,9 @@ def test_a_non_ascii_path_is_not_reported_as_marker_free(tmp_path: Path) -> None
         result = run_git(args, cwd=tmp_path, label="test-setup")
         assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
 
-    _git("init", "-q", ".")
+    # -b pins the initial branch: the checkout below names it, and a host whose
+    # init.defaultBranch is "main" would otherwise fail to check out "master".
+    _git("init", "-q", "-b", "master", ".")
     _git("config", "user.email", "t@t")
     _git("config", "user.name", "t")
     named = "é.txt"

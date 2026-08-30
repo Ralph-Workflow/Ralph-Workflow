@@ -30,9 +30,18 @@ def build_nanocoder_mcp_config(
     workspace_path: Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
-    """Build a Nanocoder MCP payload with Ralph injected as the managed server."""
+    """Build a Nanocoder MCP payload with Ralph injected as the managed server.
+
+    Ralph's own entry is dropped before normalization. ``ralph`` is a reserved
+    upstream name and ``normalize_upstream_mcp_servers`` raises on it, so an
+    agent payload that already names it -- one written by hand, or copied back
+    from a payload Ralph synthesized -- used to abort every Nanocoder
+    invocation instead of being replaced by the live endpoint.
+    """
     agent_servers = _parse_nanocoder_mcp_servers(existing)
-    upstreams = normalize_upstream_mcp_servers(agent_servers)
+    upstreams = normalize_upstream_mcp_servers(
+        {name: entry for name, entry in agent_servers.items() if name != RALPH_MCP_SERVER_NAME}
+    )
     ralph_server: dict[str, object] = {
         "transport": "http",
         "url": endpoint,

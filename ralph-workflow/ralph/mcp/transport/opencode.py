@@ -9,6 +9,7 @@ from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_KEEP,
+    RALPH_MCP_SERVER_NAME,
     claude_tool_name,
 )
 from ralph.mcp.transport.common import merge_existing_upstreams
@@ -38,18 +39,23 @@ def merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
 def build_opencode_provider_config(
     existing: str | None, endpoint: str, *, unsafe_mode: bool = False
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
-    """Build a full OpenCode config JSON with Ralph MCP and return it with upstream servers."""
+    """Build a full OpenCode config JSON with Ralph MCP and return it with upstream servers.
+
+    Ralph's own entry is dropped before normalization in BOTH modes. ``ralph``
+    is a reserved upstream name and ``normalize_upstream_mcp_servers`` raises
+    on it, so an operator config that already names it -- one written by hand,
+    or copied back from a config Ralph synthesized -- used to abort every
+    restricted-mode OpenCode invocation instead of being replaced by the live
+    endpoint.
+    """
     config_obj = _parse_opencode_config_content(existing)
     existing_mcp = config_obj.get("mcp")
     if isinstance(existing_mcp, dict):
-        if unsafe_mode:
-            existing_for_upstreams = {
-                name: entry
-                for name, entry in cast("dict[str, object]", existing_mcp).items()
-                if name != "ralph"
-            }
-        else:
-            existing_for_upstreams = cast("dict[str, object]", existing_mcp)
+        existing_for_upstreams = {
+            name: entry
+            for name, entry in cast("dict[str, object]", existing_mcp).items()
+            if name != RALPH_MCP_SERVER_NAME
+        }
         upstreams = normalize_upstream_mcp_servers(existing_for_upstreams)
     else:
         upstreams = ()

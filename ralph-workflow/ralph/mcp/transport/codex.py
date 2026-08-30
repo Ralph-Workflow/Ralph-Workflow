@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import collections
+import math
 import shutil
 import tempfile
 import tomllib
@@ -231,6 +232,33 @@ def _parse_source_config(base_config: str, source_config: Path) -> dict[str, obj
     return cast("dict[str, object]", parsed)
 
 
+def _same_toml_value(left: object, right: object) -> bool:
+    """Compare two parsed-TOML values, treating two NaNs as equal.
+
+    ``float("nan") != float("nan")``, so a plain ``==`` made the round-trip
+    guard report a mismatch for any operator config carrying a NaN -- a config
+    that had in fact serialized correctly. A guard documented as the standing
+    correctness check has to be silent when nothing is wrong, or operators
+    learn to ignore it.
+    """
+    if isinstance(left, float) and isinstance(right, float):
+        return left == right or (math.isnan(left) and math.isnan(right))
+    if isinstance(left, dict) and isinstance(right, dict):
+        left_map = cast("dict[str, object]", left)
+        right_map = cast("dict[str, object]", right)
+        return left_map.keys() == right_map.keys() and all(
+            _same_toml_value(value, right_map[key]) for key, value in left_map.items()
+        )
+    if isinstance(left, list) and isinstance(right, list):
+        left_seq = cast("list[object]", left)
+        right_seq = cast("list[object]", right)
+        return len(left_seq) == len(right_seq) and all(
+            _same_toml_value(one, other)
+            for one, other in zip(left_seq, right_seq, strict=True)
+        )
+    return left == right
+
+
 def _render_codex_config(merged: dict[str, object], config_path: Path) -> str:
     """Serialize *merged* to TOML, verifying it reads back as what was intended.
 
@@ -248,7 +276,7 @@ def _render_codex_config(merged: dict[str, object], config_path: Path) -> str:
             exc,
         )
         return config_text
-    if reparsed != merged:  # pragma: no cover - unreachable via TOML types
+    if not _same_toml_value(reparsed, merged):  # pragma: no cover - unreachable via TOML types
         logger.error(
             "Synthesized Codex config {} does not read back as the merged settings; "
             "Codex may behave differently from what Ralph configured.",
@@ -293,7 +321,29 @@ def prepare_codex_home_with_upstreams(
         unsafe_mode=unsafe_mode,
     )
     config_path = codex_root / "config.toml"
-    config_text = _render_codex_config(merged, config_path)
+    try:
+        config_text = _render_codex_config(merged, config_path)
+    except RecursionError:
+        # ``tomllib`` parses ~1000 levels of nesting happily but ``tomli_w``
+        # exhausts the stack re-serializing it, and ``RecursionError`` is not a
+        # ``ValueError``, so it escaped the render guard and killed the whole
+        # invocation. Degrade the way an unparseable operator config already
+        # does rather than taking the run down with it.
+        logger.error(
+            "Source Codex config {} nests tables too deeply for Ralph to re-serialize; "
+            "continuing with Ralph-only settings -- operator settings such as "
+            "model_provider will NOT apply until that file is flattened.",
+            source_config,
+        )
+        config_text = _render_codex_config(
+            _merge_codex_config(
+                {},
+                endpoint=endpoint,
+                master_prompt_file=master_prompt_file,
+                unsafe_mode=unsafe_mode,
+            ),
+            config_path,
+        )
     write_text_if_changed(DEFAULT_FILE_BACKEND, config_path, config_text, encoding="utf-8")
     return str(codex_root), upstreams
 

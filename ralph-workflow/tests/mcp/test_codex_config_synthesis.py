@@ -10,12 +10,14 @@ the base config looks like, the generated file parses and Ralph's overrides win.
 
 from __future__ import annotations
 
+import math
 import tomllib
 from pathlib import Path
 
 import tomli_w
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from loguru import logger
 
 from ralph.mcp.tools.names import CODEX_NATIVE_FEATURE_OVERRIDES
 from ralph.mcp.transport.codex import prepare_codex_home
@@ -353,3 +355,43 @@ def test_codex_config_regression_unparseable_operator_config_is_not_fatal(
     parsed = _parse(config_text)
     assert parsed["features"] == _expected_features()
     assert "model" not in parsed
+
+
+def test_codex_config_regression_a_nan_does_not_trip_the_round_trip_guard(
+    tmp_path: Path,
+) -> None:
+    """A NaN in the operator config must not be reported as a broken round-trip.
+
+    ``float("nan") != float("nan")``, so comparing the reparsed config to the
+    merged mapping with ``==`` reported a mismatch for a file that had in fact
+    serialized correctly. That is a false alarm in the one guard documented as
+    the standing correctness check, which teaches operators to ignore it.
+    """
+    errors: list[str] = []
+    sink_id = logger.add(lambda message: errors.append(str(message)), level="ERROR")
+    try:
+        config_text = _synthesize(tmp_path, "temperature = nan\n")
+    finally:
+        logger.remove(sink_id)
+
+    temperature = _parse(config_text)["temperature"]
+    assert isinstance(temperature, float)
+    assert math.isnan(temperature)
+    assert errors == []
+
+
+def test_codex_config_regression_a_deeply_nested_config_does_not_crash_the_run(
+    tmp_path: Path,
+) -> None:
+    """An operator config too deeply nested to re-serialize degrades, not crashes.
+
+    ``tomllib`` parses ~1000 levels of nesting happily, but ``tomli_w.dumps``
+    exhausts the stack on it, and ``RecursionError`` is not a ``ValueError`` --
+    so it escaped the render guard and killed the whole invocation. Invalid
+    operator TOML already degrades to Ralph-only settings; this must too.
+    """
+    deep = "[" + ".".join(f"t{index}" for index in range(1200)) + "]\nx = 1\n"
+
+    config_text = _synthesize(tmp_path, deep)
+
+    assert _parse(config_text)["features"] == _expected_features()

@@ -36,8 +36,16 @@ def claude_mcp_config(
 def load_existing_claude_upstream_servers(
     workspace_path: Path | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Read Claude's MCP config files and return any upstream MCP servers found."""
+    """Read Claude's MCP config files and return any upstream MCP servers found.
+
+    Ralph's own entry is dropped first. ``ralph`` is a reserved upstream name
+    and ``normalize_upstream_mcp_servers`` raises on it, so an operator config
+    that already names it -- one written by hand, or copied back from a config
+    Ralph synthesized -- used to abort every Claude invocation instead of being
+    replaced by the live endpoint.
+    """
     servers = _load_mcpservers_from_paths(_claude_mcp_config_paths(workspace_path))
+    servers.pop(RALPH_MCP_SERVER_NAME, None)
     return normalize_upstream_mcp_servers(servers)
 
 

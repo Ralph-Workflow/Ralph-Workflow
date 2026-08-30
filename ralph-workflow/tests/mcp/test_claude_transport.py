@@ -290,3 +290,33 @@ def test_load_existing_claude_upstream_servers_skips_missing_file(
     assert len(result) == 1
     assert result[0].name == "workspace-only"
     assert result[0].url == "https://workspace-only.example.invalid/mcp"
+
+
+def test_claude_transport_regression_stale_ralph_entry_is_dropped_not_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A leftover `ralph` entry in the operator's own config must not abort the load."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ralph": {
+                        "type": "http",
+                        "url": "http://stale.example/mcp",
+                    },
+                    "github": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp/",
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = load_existing_claude_upstream_servers(workspace_path=None)
+
+    assert [server.name for server in result] == ["github"]
+    assert result[0].url == "https://api.example.com/mcp/"

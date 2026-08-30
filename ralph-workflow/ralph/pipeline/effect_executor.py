@@ -883,7 +883,12 @@ def _build_attempt_invoke_options(
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
             requires_completion_evidence=ctx.effect.requires_completion_evidence,
-            pure=ctx.agent_config.transport == AgentTransport.OPENCODE,
+            # NOTE: Ralph does NOT pass opencode's ``--pure``. That flag runs
+            # opencode without external plugins, and a plugin is often what
+            # supplies the operator's model provider -- disabling it makes the
+            # model they configured unresolvable and the run dies with
+            # "UnknownError: Unexpected server error". Ralph runs an operator's
+            # coding harness with the extensions they installed.
             connectivity_state_provider=pipeline_deps.connectivity_state_provider,
             is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,
             activity_only_supervision=ctx.effect.activity_only_supervision,

@@ -80,7 +80,6 @@ from ralph.mcp.transport.codex import prepare_codex_home
 from ralph.mcp.transport.opencode import merge_opencode_config_content
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
-    UpstreamConfigError,
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
@@ -2516,11 +2515,19 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
 
 
 # === consolidated from test_agents_invoke_2.py ===
-def test_claude_mode_rejects_duplicate_ralph_server_name(
+def test_claude_mode_regression_stale_ralph_entry_is_dropped_not_rejected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    prompt_file = tmp_path / "PROMPT.md"
-    prompt_file.write_text("hello", encoding="utf-8")
+    """A leftover `ralph` entry in the operator's config is replaced by the live endpoint.
+
+    ``ralph`` is reserved, so the entry cannot be carried through as an
+    upstream -- but it is the operator's own config, and Ralph always
+    supplies its own endpoint, so a stale entry must be dropped rather
+    than reported as an error that blocks every Claude invocation.
+    """
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
     (tmp_path / ".mcp.json").write_text(
         json.dumps(
             {
@@ -2528,7 +2535,11 @@ def test_claude_mode_rejects_duplicate_ralph_server_name(
                     "ralph": {
                         "type": "http",
                         "url": "http://wrong.example/mcp",
-                    }
+                    },
+                    "github": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp/",
+                    },
                 }
             }
         ),
@@ -2543,18 +2554,21 @@ def test_claude_mode_rejects_duplicate_ralph_server_name(
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    with pytest.raises(UpstreamConfigError, match="ralph"):
-        list(
-            invoke_agent(
-                config,
-                str(prompt_file),
-                options=InvokeOptions(
-                    show_progress=False,
-                    workspace_path=tmp_path,
-                    extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
-                ),
-            )
-        )
+
+    runtime = resolve_invocation_runtime(
+        config,
+        {str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+        tmp_path,
+    )
+
+    assert runtime.mcp_endpoint == "http://127.0.0.1:9999/mcp"
+    assert runtime.agent_env is not None
+    upstream_names = {
+        server.name
+        for server in load_upstream_mcp_servers(runtime.agent_env[UPSTREAM_MCP_CONFIG_ENV])
+    }
+    assert "github" in upstream_names
+    assert str(RALPH_MCP_SERVER_NAME) not in upstream_names
 
 
 # === consolidated from test_agents_invoke_2.py ===
@@ -3069,10 +3083,15 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
 
 
 # === consolidated from test_agents_invoke_3.py ===
-def test_opencode_mode_rejects_duplicate_ralph_server_name() -> None:
+def test_opencode_mode_regression_stale_ralph_entry_is_dropped_not_rejected() -> None:
+    """A leftover `ralph` entry in the OpenCode config is replaced by the live endpoint."""
     existing = '{"mcp": {"ralph": {"type": "remote", "url": "http://wrong.example/mcp"}}}'
-    with pytest.raises(UpstreamConfigError, match="ralph"):
-        merge_opencode_config_content(existing, "http://localhost:0/mcp")
+
+    result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
+
+    mcp_config = must_mapping(_agents_invoke_3_json_object(result)["mcp"])
+    assert set(mcp_config) == {"ralph"}
+    assert must_mapping(mcp_config["ralph"])["url"] == "http://localhost:0/mcp"
 
 
 # === consolidated from test_agents_invoke_3.py ===
@@ -3675,20 +3694,26 @@ def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_pa
 
 
 # === consolidated from test_agents_invoke_4.py ===
-def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:
+def test_codex_mode_regression_stale_ralph_entry_is_dropped_not_rejected(tmp_path: Path) -> None:
+    """A leftover `[mcp_servers.ralph]` is replaced by the live endpoint, not rejected."""
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
     (fake_home / "config.toml").write_text(
         '[mcp_servers.ralph]\nurl = "http://wrong.example/mcp"\nenabled = false\n',
         encoding="utf-8",
     )
-    with pytest.raises(UpstreamConfigError, match="ralph"):
-        prepare_codex_home(
-            "http://localhost:0/mcp",
-            workspace_path=tmp_path,
-            existing_home=str(fake_home),
-            master_prompt_file=None,
-        )
+
+    home = prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=str(fake_home),
+        master_prompt_file=None,
+    )
+
+    parsed = _agents_invoke_4_toml_object((Path(home) / "config.toml").read_text(encoding="utf-8"))
+    ralph_server = must_mapping(must_mapping(parsed["mcp_servers"])["ralph"])
+    assert ralph_server["url"] == "http://localhost:0/mcp"
+    assert ralph_server["enabled"] is True
 
 
 # === consolidated from test_agents_invoke_4.py ===

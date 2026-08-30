@@ -227,6 +227,10 @@ def _load_upstreams_for_agent(
     workspace_path is extracted from current_config if present, to allow callers
     to specify which workspace config files to load.
 
+    opencode never reaches here: ``merge_existing_upstreams`` dispatches it to
+    ``_merge_opencode``, which merges the raw ``mcp`` maps directly. Its
+    upstreams are normalized by ``build_opencode_provider_config`` instead.
+
     For claude/agy/nanocoder: if current_config already contains a populated
     "mcpServers" dict with non-ralph servers (from a prior merge by e.g.
     build_nanocoder_mcp_config or agy_workspace_mcp_endpoint), use those
@@ -295,9 +299,6 @@ def _load_upstreams_for_agent(
             servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
         servers.pop(RALPH_MCP_SERVER_NAME, None)
         return normalize_upstream_mcp_servers(servers)
-    if agent_name == "opencode":
-        existing = _load_opencode_mcp_servers_from_current_config(current_config)
-        return normalize_upstream_mcp_servers(existing)
     return ()
 
 

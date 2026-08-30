@@ -18,7 +18,6 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     iter_with_direct_mcp_recovery,
     summarize_retry_failure_evidence,
 )
-from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -36,6 +35,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.agents.idle_watchdog import WaitingStatusListener
+    from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.policy.models import AgentsPolicy
@@ -362,7 +362,12 @@ class ManagedAgentSessionRuntime:
                 show_progress=False,
                 workspace_path=self._workspace_root,
                 extra_env=runtime_env,
-                pure=self._agent_config.transport == AgentTransport.OPENCODE,
+                # NOTE: Ralph does NOT pass opencode's ``--pure``. That flag runs
+                # opencode without external plugins, and a plugin is often what
+                # supplies the operator's model provider -- disabling it makes the
+                # model they configured unresolvable and the run dies with
+                # "UnknownError: Unexpected server error". Ralph runs an operator's
+                # coding harness with the extensions they installed.
                 session_id=session_id,
                 master_prompt_file=self._master_prompt_file,
                 waiting_listener=waiting_listener,

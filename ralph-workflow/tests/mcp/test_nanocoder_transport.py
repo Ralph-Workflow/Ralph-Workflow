@@ -177,3 +177,61 @@ def test_unsafe_mode_true_merges_existing_env_and_user_config_files(
     assert servers["ralph"]["url"] == "http://ralph.example/mcp"
     assert servers["env-http"]["url"] == "http://env.example/mcp"
     assert servers["file-http"]["url"] == "http://file.example/mcp"
+
+
+def test_nanocoder_transport_regression_stale_ralph_entry_is_dropped_not_rejected() -> None:
+    """A leftover `ralph` entry in the agent payload must not abort the config build."""
+    existing = json.dumps(
+        {
+            "mcpServers": {
+                "ralph": {"transport": "http", "url": "http://stale.example/mcp"},
+                "other": {"transport": "http", "url": "http://o.example/mcp"},
+            }
+        }
+    )
+
+    config_text, upstreams = build_nanocoder_mcp_config(existing, "http://r.example/mcp")
+
+    servers = json.loads(config_text)["mcpServers"]
+    assert servers["ralph"]["url"] == "http://r.example/mcp"
+    assert servers["other"]["url"] == "http://o.example/mcp"
+    assert [server.name for server in upstreams] == ["other"]
+
+
+def test_nanocoder_transport_regression_stale_ralph_entry_is_dropped_in_unsafe_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """unsafe_mode=True also survives a leftover `ralph` entry in the agent payload."""
+    config_dir = tmp_path / "nanocoder-config"
+    config_dir.mkdir()
+    (config_dir / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "user-server": {"transport": "http", "url": "http://user.example/mcp"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NANOCODER_CONFIG_DIR", str(config_dir))
+    monkeypatch.delenv("HOME", raising=False)
+    existing = json.dumps(
+        {
+            "mcpServers": {
+                "ralph": {"transport": "http", "url": "http://stale.example/mcp"},
+                "env-server": {"transport": "http", "url": "http://env.example/mcp"},
+            }
+        }
+    )
+
+    config_text, upstreams = build_nanocoder_mcp_config(
+        existing, "http://r.example/mcp", unsafe_mode=True
+    )
+
+    servers = json.loads(config_text)["mcpServers"]
+    assert servers["ralph"]["url"] == "http://r.example/mcp"
+    assert servers["env-server"]["url"] == "http://env.example/mcp"
+    assert servers["user-server"]["url"] == "http://user.example/mcp"
+    assert sorted(server.name for server in upstreams) == ["env-server"]
