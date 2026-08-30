@@ -49,7 +49,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.registry import AgentRegistry
-from ralph.cli.commands import smoke as smoke_module
+from ralph.cli.commands.smoke_binary_override import (
+    apply_smoke_binary_override,
+    apply_smoke_binary_overrides_to_config,
+    smoke_binary_override_env_var,
+)
+from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.pipeline.factory import DefaultPipelineFactory
@@ -75,10 +80,9 @@ if TYPE_CHECKING:
 # Per-harness redirect seams (S-13). Each entry maps:
 #   (transport_prefix, cli_command, default_agent_name, redirect_method)
 # ``redirect_method`` is one of:
-#   ``"agy_env"``   - via ``RALPH_AGY_BINARY`` env override
-#   ``"cursor_env"`` - via ``RALPH_CURSOR_BINARY`` env override
-#   ``"opencode_env"`` - via ``RALPH_OPENCODE_BINARY`` env override
-#   ``"kimi_env"`` - via ``RALPH_KIMI_BINARY`` env override
+#   ``"<transport>_env"`` - via that transport's ``RALPH_*_BINARY`` env
+#     override, resolved from the single table in
+#     ``ralph.cli.commands.smoke_binary_override``
 #   ``"cmd_override"`` - via in-place ``AgentConfig.cmd`` rewrite to the
 #     stub (the production harness's command builders let
 #     ``agents.<name>.cmd`` override the resolved argv, so a rewrite
@@ -183,29 +187,21 @@ def _apply_redirect(
 
     Each ``redirect_method`` branch rewrites ``agent_config`` and/or
     ``config`` so the harness spawns the multimodal stub instead of
-    the real transport binary. AGY / Cursor / OpenCode use the
-    dedicated ``RALPH_*_BINARY`` env override; the remaining transports
+    the real transport binary. AGY / Cursor / Kimi / OpenCode use the
+    dedicated ``RALPH_*_BINARY`` env override -- resolved through the
+    ONE table in ``ralph.cli.commands.smoke_binary_override``, the same
+    seam the shared harness applies -- while the remaining transports
     use an in-place ``AgentConfig.cmd`` rewrite (the production
     harness's command builders honor that override, so the transport's
     argv shape stays intact without needing a PATH shim for
     ``nanocoder``).
     """
-    if redirect_method == "agy_env":
-        os.environ["RALPH_AGY_BINARY"] = str(stub_path)
-        agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
-        config = smoke_module._apply_agy_binary_override_to_config(config)
-    elif redirect_method == "cursor_env":
-        os.environ["RALPH_CURSOR_BINARY"] = str(stub_path)
-        agent_config = smoke_module._maybe_apply_cursor_binary_override(agent_config)
-        config = smoke_module._apply_cursor_binary_override_to_config(config)
-    elif redirect_method == "opencode_env":
-        os.environ["RALPH_OPENCODE_BINARY"] = str(stub_path)
-        agent_config = smoke_module._maybe_apply_opencode_binary_override(agent_config)
-        config = smoke_module._apply_opencode_binary_override_to_config(config)
-    elif redirect_method == "kimi_env":
-        os.environ["RALPH_KIMI_BINARY"] = str(stub_path)
-        agent_config = smoke_module._maybe_apply_kimi_binary_override(agent_config)
-        config = smoke_module._apply_kimi_binary_override_to_config(config)
+    if redirect_method.endswith("_env"):
+        env_var = smoke_binary_override_env_var(AgentTransport(redirect_method[: -len("_env")]))
+        assert env_var is not None, f"transport {transport!r}: no binary override entry"
+        os.environ[env_var] = str(stub_path)
+        agent_config = apply_smoke_binary_override(agent_config)
+        config = apply_smoke_binary_overrides_to_config(config)
     elif redirect_method == "cmd_override":
         quoted = shlex.quote(str(stub_path))
         new_cmd = f"{quoted} {agent_config.cmd or ''}".strip()

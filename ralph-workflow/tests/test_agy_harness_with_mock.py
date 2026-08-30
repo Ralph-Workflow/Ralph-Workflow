@@ -16,6 +16,10 @@ from ralph.agents.display_capabilities import DisplayCapability
 from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import smoke as smoke_module
+from ralph.cli.commands.smoke_binary_override import (
+    apply_smoke_binary_override,
+    apply_smoke_binary_overrides_to_config,
+)
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
@@ -72,13 +76,13 @@ def _run_agy_smoke_plumbing(
 
     workspace_scope = WorkspaceScope(tmp_path)
     config = load_config(None, {}, workspace_scope=workspace_scope)
-    config = smoke_module._apply_agy_binary_override_to_config(config)
+    config = apply_smoke_binary_overrides_to_config(config)
     # Dynamic agy/<model> aliases are resolved from builtins, not from
     # config.agents, so inject the overridden config under the exact
     # agent name so the mock binary is honored.
     agent_config = AgentRegistry.from_config(config).get(agent_name)
     if agent_config is not None:
-        agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
+        agent_config = apply_smoke_binary_override(agent_config)
         overridden_agents = dict(config.agents)
         overridden_agents[agent_name] = agent_config
         config = config.model_copy(update={"agents": overridden_agents})

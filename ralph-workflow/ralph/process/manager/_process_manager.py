@@ -529,6 +529,7 @@ class ProcessManager:
                 env=child_env_for_spawn(
                     effective.env,
                     allow_activity_relay_controls=effective.allow_activity_relay_controls,
+                    cwd=effective.cwd,
                 ),
             )
             proc: _SyncProcessLike = self._sync_process_factory(cmd, effective)
@@ -598,7 +599,7 @@ class ProcessManager:
         effective = opts or PtySpawnOptions(cwd=cwd, env=env, cols=cols, rows=rows, label=label)
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
-        child_env = child_env_for_spawn(effective.env)
+        child_env = child_env_for_spawn(effective.env, cwd=effective.cwd)
         try:
             # argv[1:] is STRIPPED of execve-illegal NULs so authored
             # content (an agent prompt carrying a git diff of a source
@@ -676,7 +677,7 @@ class ProcessManager:
         effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
-        child_env = child_env_for_spawn(effective.env)
+        child_env = child_env_for_spawn(effective.env, cwd=effective.cwd)
         try:
             # argv[1:] is STRIPPED of execve-illegal NULs so authored
             # content (an agent prompt carrying a git diff of a source

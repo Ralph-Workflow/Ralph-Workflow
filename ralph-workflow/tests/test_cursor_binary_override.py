@@ -8,9 +8,9 @@ combined test budget in ``make verify``.  The tests are pure black-box
 and follow the existing AGY-binary-override pattern documented in
 ``tests/test_agy_plumbing_mock.py``.
 
-Mirrors the AGY override pattern at
-``ralph.cli.commands.smoke._maybe_apply_agy_binary_override`` /
-``_resolve_agy_binary_override``:
+Mirrors the AGY override pattern, which now shares ONE table-driven
+implementation with Cursor, Kimi, and OpenCode in
+``ralph.cli.commands.smoke_binary_override``:
 
 * A relative override is resolved against the current working directory so
   a downstream :class:`subprocess.Popen` always sees an absolute path.
@@ -30,7 +30,11 @@ from pathlib import Path
 
 import pytest
 
-from ralph.cli.commands import smoke as smoke_module
+from ralph.cli.commands.smoke_binary_override import (
+    apply_smoke_binary_override,
+    apply_smoke_binary_overrides_to_config,
+    resolve_smoke_binary_override,
+)
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
 
@@ -76,7 +80,7 @@ class TestCursorBinaryOverride:
             transport=AgentTransport.CURSOR,
         )
 
-        result = smoke_module._maybe_apply_cursor_binary_override(cursor_config)
+        result = apply_smoke_binary_override(cursor_config)
 
         # The override is applied: cmd is no longer the bare ``agent``.
         assert result.cmd != "agent"
@@ -89,14 +93,14 @@ class TestCursorBinaryOverride:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """``_resolve_cursor_binary_override`` returns the absolute path for a relative override."""
+        """``resolve_smoke_binary_override`` returns the absolute path for a relative override."""
         relative_target = tmp_path / "cursor-wrapper.sh"
         relative_target.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         relative_target.chmod(0o755)
         monkeypatch.setenv("RALPH_CURSOR_BINARY", "cursor-wrapper.sh")
         monkeypatch.chdir(tmp_path)
 
-        resolved = smoke_module._resolve_cursor_binary_override()
+        resolved = resolve_smoke_binary_override(AgentTransport.CURSOR)
 
         assert resolved is not None
         assert Path(resolved).is_absolute()
@@ -107,9 +111,9 @@ class TestCursorBinaryOverride:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``_resolve_cursor_binary_override`` returns ``None`` for a non-executable override."""
+        """``resolve_smoke_binary_override`` returns ``None`` for a non-executable override."""
         monkeypatch.setenv("RALPH_CURSOR_BINARY", "/nonexistent/path/to/cursor-wrapper.sh")
-        resolved = smoke_module._resolve_cursor_binary_override()
+        resolved = resolve_smoke_binary_override(AgentTransport.CURSOR)
         assert resolved is None
 
     @pytest.mark.timeout_seconds(3)
@@ -123,7 +127,7 @@ class TestCursorBinaryOverride:
             transport=AgentTransport.CURSOR,
         )
         monkeypatch.setenv("RALPH_CURSOR_BINARY", "/etc/hosts")
-        result = smoke_module._maybe_apply_cursor_binary_override(cursor_config)
+        result = apply_smoke_binary_override(cursor_config)
         # The override is not applied: cmd is the bare ``agent`` binary.
         assert result.cmd == "agent"
 
@@ -132,7 +136,7 @@ class TestCursorBinaryOverride:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``_apply_cursor_binary_override_to_config`` ignores a non-executable override."""
+        """``apply_smoke_binary_overrides_to_config`` ignores a non-executable override."""
         config = UnifiedConfig(
             agents={
                 "cursor/auto": AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
@@ -142,7 +146,7 @@ class TestCursorBinaryOverride:
             }
         )
         monkeypatch.setenv("RALPH_CURSOR_BINARY", "/etc/hosts")
-        result = smoke_module._apply_cursor_binary_override_to_config(config)
+        result = apply_smoke_binary_overrides_to_config(config)
         # The override is not applied: the cursor cmd is unchanged.
         assert result.agents["cursor/auto"].cmd == "agent"
         # Non-cursor agents are preserved.

@@ -200,10 +200,15 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
         )
     if agent_name.startswith("claude-headless/"):
         return _resolve_headless_claude_spec(agent_name)
-    if agent_name.startswith("agy/"):
-        model = agent_name.removeprefix("agy/")
+    if agent_name == "agy" or agent_name.startswith("agy/"):
+        # Bare ``agy`` uses the base AGY harness layout (mirrors the bare
+        # ``cursor`` branch below); ``agy/<model>`` branches off a sanitized
+        # run_id so two model aliases do not collide on completion-sentinel /
+        # receipt paths. The bare alias is the config-driven default when the
+        # operator's [agent_chains] name no AGY entry.
+        model = agent_name.removeprefix("agy").lstrip("/")
         sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model).strip("-")
-        run_id = f"interactive-agy-smoke-{sanitized}"
+        run_id = "interactive-agy-smoke" if not sanitized else f"interactive-agy-smoke-{sanitized}"
         return SmokeHarnessSpec(
             agent_name=agent_name,
             relative_dir=_AGY_SMOKE_RELATIVE_DIR,

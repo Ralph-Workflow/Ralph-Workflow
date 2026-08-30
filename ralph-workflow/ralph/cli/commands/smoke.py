@@ -20,12 +20,12 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.cli.commands._smoke_ccs import smoke_interactive_ccs_command
-from ralph.cli.commands._smoke_opencode_override import (
-    _apply_opencode_binary_override_to_config,
-    _maybe_apply_opencode_binary_override,
-    _resolve_opencode_binary_override,
+from ralph.cli.commands.smoke_agent_defaults import resolve_default_smoke_agent
+from ralph.cli.commands.smoke_binary_override import (
+    apply_smoke_binary_override,
+    apply_smoke_binary_overrides_to_config,
+    smoke_transport_binary,
 )
-from ralph.config.agent_detection import opencode_binary_override
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
@@ -48,11 +48,8 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_MAX_SESSION_SECONDS,
     _SMOKE_MAX_TURNS,
     SmokeRunResult,
-    _agy_binary_override_env,
     _build_smoke_prompt,
-    _cursor_binary_override_env,
     _execute_smoke_turns,
-    _kimi_binary_override_env,
     is_mock_agy_override,
     record_conformance_matrix,
     resolve_smoke_harness_spec,
@@ -68,197 +65,6 @@ if TYPE_CHECKING:
 
 # Re-export plumbing symbols so existing tests can still reach them.
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
-
-
-def get_agy_binary_override() -> str:
-    """Return the AGY binary path, honoring ``RALPH_AGY_BINARY``."""
-    return _agy_binary_override_env() or "agy"
-
-
-def get_cursor_binary_override() -> str:
-    """Return the Cursor binary path, honoring ``RALPH_CURSOR_BINARY``."""
-    return _cursor_binary_override_env() or "agent"
-
-
-def get_kimi_binary_override() -> str:
-    """Return the Kimi binary path, honoring ``RALPH_KIMI_BINARY``."""
-    return _kimi_binary_override_env() or "kimi"
-
-
-def get_opencode_binary_override() -> str:
-    """Return the OpenCode binary path, honoring ``RALPH_OPENCODE_BINARY``."""
-    return opencode_binary_override() or "opencode"
-
-
-def _resolve_agy_binary_override() -> str | None:
-    """Return the validated absolute ``RALPH_AGY_BINARY`` override or ``None``."""
-    override = _agy_binary_override_env()
-    if not override:
-        return None
-    resolved = Path(override).expanduser()
-    if not resolved.is_absolute():
-        resolved = resolved.resolve()
-        logger.info(
-            "Resolved relative RALPH_AGY_BINARY '{}' to absolute path '{}'",
-            override,
-            resolved,
-        )
-    # filesystem-read-ok: explicit binary override validation needs executable-file metadata
-    if shutil.which(str(resolved)) is None and not (
-        # filesystem-read-ok: explicit binary override validation needs executable-file metadata
-        resolved.is_file() and os.access(resolved, os.X_OK)
-    ):
-        logger.warning(
-            "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
-            override,
-        )
-        return None
-    return str(resolved)
-
-
-def _resolve_cursor_binary_override() -> str | None:
-    """Return the validated absolute ``RALPH_CURSOR_BINARY`` override or ``None``."""
-    override = _cursor_binary_override_env()
-    if not override:
-        return None
-    resolved = Path(override).expanduser()
-    if not resolved.is_absolute():
-        resolved = resolved.resolve()
-        logger.info(
-            "Resolved relative RALPH_CURSOR_BINARY '{}' to absolute path '{}'",
-            override,
-            resolved,
-        )
-    # filesystem-read-ok: explicit binary override validation needs executable-file metadata
-    if shutil.which(str(resolved)) is None and not (
-        # filesystem-read-ok: explicit binary override validation needs executable-file metadata
-        resolved.is_file() and os.access(resolved, os.X_OK)
-    ):
-        logger.warning(
-            "RALPH_CURSOR_BINARY points to '{}', which is not executable; ignoring override",
-            override,
-        )
-        return None
-    return str(resolved)
-
-
-def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` using ``RALPH_AGY_BINARY`` when valid."""
-    if agent_config.transport is not AgentTransport.AGY:
-        return agent_config
-    resolved = _resolve_agy_binary_override()
-    if resolved is None:
-        return agent_config
-    if is_mock_agy_override():
-        logger.info("mock AGY binary in use: {}", resolved)
-    else:
-        logger.info("Using RALPH_AGY_BINARY override: {}", resolved)
-    # Quote paths that contain spaces so downstream shlex.split keeps the
-    # binary path as a single argv token.
-    return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
-
-
-def _maybe_apply_cursor_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` using ``RALPH_CURSOR_BINARY`` when valid."""
-    if agent_config.transport is not AgentTransport.CURSOR:
-        return agent_config
-    resolved = _resolve_cursor_binary_override()
-    if resolved is None:
-        return agent_config
-    logger.info("Using RALPH_CURSOR_BINARY override: {}", resolved)
-    return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
-
-
-def _resolve_kimi_binary_override() -> str | None:
-    """Return the validated absolute ``RALPH_KIMI_BINARY`` override or ``None``."""
-    override = _kimi_binary_override_env()
-    if not override:
-        return None
-    resolved = Path(override).expanduser()
-    if not resolved.is_absolute():
-        resolved = resolved.resolve()
-        logger.info(
-            "Resolved relative RALPH_KIMI_BINARY '{}' to absolute path '{}'",
-            override,
-            resolved,
-        )
-    # filesystem-read-ok: explicit binary override validation needs executable-file metadata
-    if shutil.which(str(resolved)) is None and not (
-        # filesystem-read-ok: explicit binary override validation needs executable-file metadata
-        resolved.is_file() and os.access(resolved, os.X_OK)
-    ):
-        logger.warning(
-            "RALPH_KIMI_BINARY points to '{}', which is not executable; ignoring override",
-            override,
-        )
-        return None
-    return str(resolved)
-
-
-def _maybe_apply_kimi_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` using ``RALPH_KIMI_BINARY`` when valid."""
-    if agent_config.transport is not AgentTransport.KIMI:
-        return agent_config
-    resolved = _resolve_kimi_binary_override()
-    if resolved is None:
-        return agent_config
-    logger.info("Using RALPH_KIMI_BINARY override: {}", resolved)
-    return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
-
-
-def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
-    """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
-    resolved = _resolve_agy_binary_override()
-    if resolved is None:
-        return config
-    # Quote paths that contain spaces so downstream shlex.split keeps the
-    # binary path as a single argv token.
-    quoted = shlex.quote(resolved)
-    new_agents: dict[str, AgentConfig] = {}
-    for name, agent_config in config.agents.items():
-        if agent_config.transport is AgentTransport.AGY:
-            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
-        else:
-            new_agents[name] = agent_config
-    return config.model_copy(update={"agents": new_agents})
-
-
-def _apply_cursor_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
-    """Return a config copy with Cursor agents using ``RALPH_CURSOR_BINARY`` when set."""
-    resolved = _resolve_cursor_binary_override()
-    if resolved is None:
-        return config
-    quoted = shlex.quote(resolved)
-    new_agents: dict[str, AgentConfig] = {}
-    for name, agent_config in config.agents.items():
-        if agent_config.transport is AgentTransport.CURSOR:
-            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
-        else:
-            new_agents[name] = agent_config
-    return config.model_copy(update={"agents": new_agents})
-
-
-def _apply_kimi_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
-    """Return a config copy with Kimi agents using ``RALPH_KIMI_BINARY`` when set."""
-    resolved = _resolve_kimi_binary_override()
-    if resolved is None:
-        return config
-    quoted = shlex.quote(resolved)
-    new_agents: dict[str, AgentConfig] = {}
-    for name, agent_config in config.agents.items():
-        if agent_config.transport is AgentTransport.KIMI:
-            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
-        else:
-            new_agents[name] = agent_config
-    return config.model_copy(update={"agents": new_agents})
-
-
-# The OpenCode override helpers (resolver / per-agent / per-config) live in
-# ``_smoke_opencode_override`` so the smoke CLI module can stay under the
-# 1000-line audit cap (see ``audit_repo_structure``). They are imported
-# at the top of this module (see the alphabetical imports block above)
-# so external callers (the smoke test, downstream harnesses) can keep
-# importing them from ``smoke``.
 
 
 _INTERACTIVE_AGENT = "claude/haiku"
@@ -528,6 +334,25 @@ def _ensure_smoke_broker_secret() -> None:
         os.environ["RALPH_BROKER_SECRET"] = secrets.token_hex(32)
 
 
+def _resolve_smoke_agent_name(
+    agent_name: str | None,
+    transport: AgentTransport,
+    config: UnifiedConfig,
+    registry: AgentRegistry,
+) -> str:
+    """Return the explicit ``--agent`` value, or the operator's configured default.
+
+    An explicit ``--agent`` always wins. When the operator passed none, the
+    default comes from their OWN ``[agent_chains]`` -- the same aliases the
+    live pipeline runs -- rather than a hardcoded provider/model literal that
+    the pipeline never runs and that goes stale when the provider retires it.
+    See :mod:`ralph.cli.commands.smoke_agent_defaults`.
+    """
+    if agent_name is not None:
+        return agent_name
+    return resolve_default_smoke_agent(transport, config, registry.get)
+
+
 def smoke_harness_agent_command(
     agent_name: str,
     *,
@@ -577,35 +402,26 @@ def smoke_harness_agent_command(
     if agent_config is None:
         raise RuntimeError(f"Smoke test agent '{agent_name}' is unavailable in the registry")
 
-    agy_override = _agy_binary_override_env()
-    if agy_override and agent_config.transport is AgentTransport.AGY:
-        if is_mock_agy_override():
-            logger.info(
-                "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
-                agy_override,
-            )
-            # The bundled mock writes artifacts under the workspace; real wrappers manage their own cwd.
-            os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
-        else:
-            logger.info(
-                "Using RALPH_AGY_BINARY override for AGY transport: '{}'",
-                agy_override,
-            )
-    cursor_override = _cursor_binary_override_env()
-    if cursor_override and agent_config.transport is AgentTransport.CURSOR:
-        logger.info(
-            "Using RALPH_CURSOR_BINARY override for Cursor transport: '{}'",
-            cursor_override,
-        )
-    agent_config = _maybe_apply_agy_binary_override(agent_config)
-    agent_config = _maybe_apply_cursor_binary_override(agent_config)
-    config = _apply_agy_binary_override_to_config(config)
-    config = _apply_cursor_binary_override_to_config(config)
-    # Dynamic AGY aliases resolve from builtins, so inject the overridden config.
-    if agy_override and agent_config.transport is AgentTransport.AGY:
+    # THE one place any RALPH_*_BINARY override is applied. Every transport in
+    # the override table is handled identically here, so a transport can never
+    # be silently omitted (a per-command application was dead code: the
+    # harness re-resolves everything from ``agent_name`` and discarded it).
+    overridden_config = apply_smoke_binary_override(agent_config)
+    if overridden_config is not agent_config:
+        agent_config = overridden_config
+        config = apply_smoke_binary_overrides_to_config(config)
+        # A dynamic ``<transport>/<model>`` alias resolves from the built-ins,
+        # not from ``config.agents``, and ``run_smoke_plumbing`` re-resolves
+        # the alias against the config it is handed. Injecting the overridden
+        # config under the exact alias is what makes the override reach the
+        # spawned process for EVERY transport, not just AGY.
         overridden_agents = dict(config.agents)
         overridden_agents[agent_name] = agent_config
         config = config.model_copy(update={"agents": overridden_agents})
+        if agent_config.transport is AgentTransport.AGY and is_mock_agy_override():
+            # The bundled mock writes artifacts under the workspace; real
+            # wrappers manage their own cwd.
+            os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     write_text_if_changed(
@@ -724,7 +540,7 @@ def smoke_headless_claude_command(
 
 
 def smoke_interactive_agy_command(
-    agent_name: str = "agy/gemini-3.6-flash-low",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -736,13 +552,13 @@ def smoke_interactive_agy_command(
     """Run the manual AGY end-to-end smoke harness via the PTY contract.
 
     This drives the live ``agy`` binary (or the ``RALPH_AGY_BINARY`` override
-    when set). The default alias is ``agy/gemini-3.6-flash-low``, a low-tier model ID
-    published by the measured AGY v1.1.8 CLI. Its price ordering is
-    unverified, so this remains a manual diagnostic rather than a routine
-    verification path. Use ``--agent`` to pin another published
+    when set). With no ``--agent``, the alias comes from the operator's own
+    ``[agent_chains]`` (the first AGY entry the pipeline would run), falling
+    back to bare ``agy`` -- which passes no ``--model``, so AGY uses the model
+    the operator configured. Use ``--agent`` to pin a published
     ``agy/<model>`` alias.
     """
-    agy_binary = get_agy_binary_override()
+    agy_binary = smoke_transport_binary(AgentTransport.AGY, "agy")
     # filesystem-read-ok: external binary existence check via PATH
     # override (RALPH_AGY_BINARY); operator-controlled system path,
     # not project-filesystem state.
@@ -758,6 +574,7 @@ def smoke_interactive_agy_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.AGY, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -787,7 +604,7 @@ def smoke_interactive_agy_command(
 
 
 def smoke_interactive_codex_command(
-    agent_name: str = "codex",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -822,6 +639,7 @@ def smoke_interactive_codex_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CODEX, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -851,7 +669,7 @@ def smoke_interactive_codex_command(
 
 
 def smoke_interactive_pi_command(
-    agent_name: str = "pi",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -881,6 +699,7 @@ def smoke_interactive_pi_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.PI, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -909,7 +728,7 @@ def smoke_interactive_pi_command(
 
 
 def smoke_interactive_nanocoder_command(
-    agent_name: str = "nanocoder",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -928,6 +747,9 @@ def smoke_interactive_nanocoder_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(
+        agent_name, AgentTransport.NANOCODER, config, registry
+    )
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -956,7 +778,7 @@ def smoke_interactive_nanocoder_command(
 
 
 def smoke_interactive_cursor_command(
-    agent_name: str = "cursor/auto",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -968,14 +790,15 @@ def smoke_interactive_cursor_command(
     """Run the manual end-to-end smoke harness via the Cursor headless contract.
 
     This drives the live ``agent`` binary (or the ``RALPH_CURSOR_BINARY``
-    override when set).  The default alias is ``cursor/auto`` because
-    that exercises the dynamic-alias path and the documented Auto
-    default-routing model.  The command is OUTSIDE ``make verify`` per
-    the cursor non-goal of no live-token-consuming smoke tests in
-    verify (the harness only runs when an operator explicitly invokes
-    it).
+    override when set).  With no ``--agent``, the alias comes from the
+    operator's own ``[agent_chains]`` (the first Cursor entry the
+    pipeline would run), falling back to bare ``cursor`` -- which passes
+    no ``--model``, so Cursor uses its documented Auto routing.  The
+    command is OUTSIDE ``make verify`` per the cursor non-goal of no
+    live-token-consuming smoke tests in verify (the harness only runs
+    when an operator explicitly invokes it).
     """
-    cursor_binary = get_cursor_binary_override()
+    cursor_binary = smoke_transport_binary(AgentTransport.CURSOR, "agent")
     # filesystem-read-ok: external binary existence check via PATH
     # override (RALPH_CURSOR_BINARY); operator-controlled system path,
     # not project-filesystem state.
@@ -991,6 +814,7 @@ def smoke_interactive_cursor_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CURSOR, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -1020,7 +844,7 @@ def smoke_interactive_cursor_command(
 
 
 def smoke_interactive_kimi_command(
-    agent_name: str = "kimi/kimi-code/kimi-for-coding",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -1032,16 +856,18 @@ def smoke_interactive_kimi_command(
     """Run the manual end-to-end smoke harness via the Kimi headless contract.
 
     This drives the live ``kimi`` binary (or the ``RALPH_KIMI_BINARY``
-    override when set).  The default alias is
-    ``kimi/kimi-code/kimi-for-coding``: the authenticated Kimi Code
-    subscription platform configures its models under the
-    ``kimi-code/`` prefix (``~/.kimi-code/config.toml``), and the CLI
-    rejects a bare ``-m kimi-for-coding`` ("Model ... is not configured
-    in config.toml"), so the alias carries the full configured id.  The command
-    is OUTSIDE ``make verify`` -- it consumes live tokens and only runs
-    when an operator explicitly invokes it.
+    override when set).  With no ``--agent``, the alias comes from the
+    operator's own ``[agent_chains]`` (the first Kimi entry the pipeline
+    would run), falling back to bare ``kimi`` -- which passes no ``-m``,
+    so Kimi Code uses the model configured in
+    ``~/.kimi-code/config.toml``.  To pin one, pass the full configured
+    id (the CLI rejects a bare ``-m kimi-for-coding`` with "Model ... is
+    not configured in config.toml"), e.g.
+    ``--agent kimi/kimi-code/kimi-for-coding``.  The command is OUTSIDE
+    ``make verify`` -- it consumes live tokens and only runs when an
+    operator explicitly invokes it.
     """
-    kimi_binary = get_kimi_binary_override()
+    kimi_binary = smoke_transport_binary(AgentTransport.KIMI, "kimi")
     # filesystem-read-ok: external binary existence check via PATH
     # override (RALPH_KIMI_BINARY); operator-controlled system path,
     # not project-filesystem state.
@@ -1057,6 +883,7 @@ def smoke_interactive_kimi_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.KIMI, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -1086,7 +913,7 @@ def smoke_interactive_kimi_command(
 
 
 def smoke_interactive_opencode_command(
-    agent_name: str = "opencode/minimax/MiniMax-M3",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -1097,9 +924,12 @@ def smoke_interactive_opencode_command(
 ) -> int:
     """Run the manual smoke harness against a live ``opencode`` provider/model.
 
-    The alias carries BOTH the provider and the model
-    (``opencode/<provider>/<model>``), so one ``--agent`` value selects the
-    full routing target -- e.g.
+    With no ``--agent``, the alias comes from the operator's own
+    ``[agent_chains]`` (the first OpenCode entry the pipeline would run),
+    falling back to bare ``opencode`` -- which passes no ``--model``, so
+    OpenCode uses the operator's configured default. To pin one, the alias
+    carries BOTH the provider and the model (``opencode/<provider>/<model>``),
+    so a single ``--agent`` value selects the full routing target -- e.g.
     ``--agent 'opencode/minimax/MiniMax-M3'`` or
     ``--agent 'opencode/kimi-for-coding/k2p5'``. Run ``opencode models`` to
     list the provider/model pairs your credentials can reach. The command
@@ -1115,16 +945,23 @@ def smoke_interactive_opencode_command(
     Like the other smoke commands this consumes live tokens and is therefore
     OUTSIDE ``make verify``; it only runs when an operator invokes it.
     """
-    if shutil.which("opencode") is None and _resolve_opencode_binary_override() is None:
+    opencode_binary = smoke_transport_binary(AgentTransport.OPENCODE, "opencode")
+    # filesystem-read-ok: external binary existence check via PATH
+    # override (RALPH_OPENCODE_BINARY); operator-controlled system path,
+    # not project-filesystem state.
+    if shutil.which(opencode_binary) is None and not os.access(opencode_binary, os.X_OK):
         logger.error(
-            "opencode binary not found. Install OpenCode and ensure `opencode` is on PATH."
+            "opencode binary not found at '{}'. Install OpenCode and ensure "
+            "`opencode` is on PATH, or set RALPH_OPENCODE_BINARY to a valid "
+            "wrapper for testing.",
+            opencode_binary,
         )
         return 2
 
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
-    config = _apply_opencode_binary_override_to_config(config)
     registry = AgentRegistry.from_config(config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.OPENCODE, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -1143,7 +980,6 @@ def smoke_interactive_opencode_command(
             agent_config.transport.value if agent_config.transport else "None",
         )
         return 2
-    agent_config = _maybe_apply_opencode_binary_override(agent_config)
 
     return smoke_harness_agent_command(
         agent_name,

@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 from ralph.agents.builtin import builtin_supports
 from ralph.agents.invoke import InvokeOptions
 from ralph.cli.commands import smoke as smoke_module
+from ralph.cli.commands.smoke_binary_override import (
+    apply_smoke_binary_override,
+    apply_smoke_binary_overrides_to_config,
+    resolve_smoke_binary_override,
+)
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
@@ -835,7 +840,7 @@ def test_resolve_agy_binary_override_normalizes_relative_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """``_resolve_agy_binary_override`` returns the absolute path for a relative override.
+    """``resolve_smoke_binary_override`` returns the absolute path for a relative override.
 
     Regression: the relative ``RALPH_AGY_BINARY=tests/_support/mock_agy.sh`` previously
     raised ``FileNotFoundError`` at subprocess spawn time because the harness may
@@ -851,7 +856,7 @@ def test_resolve_agy_binary_override_normalizes_relative_path(
     monkeypatch.setenv("RALPH_AGY_BINARY", "tests/_support/mock_agy.sh")
     monkeypatch.chdir(tmp_path)
 
-    resolved = smoke_module._resolve_agy_binary_override()
+    resolved = resolve_smoke_binary_override(AgentTransport.AGY)
     assert resolved is not None
     assert Path(resolved).is_absolute()
     assert Path(resolved).resolve() == relative_target.resolve()
@@ -861,7 +866,7 @@ def test_resolve_agy_binary_override_normalizes_relative_path(
 def test_resolve_agy_binary_override_returns_none_for_missing_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_resolve_agy_binary_override`` returns ``None`` for a non-executable override.
+    """``resolve_smoke_binary_override`` returns ``None`` for a non-executable override.
 
     The override validation is the safety net that prevents the harness from
     crashing on an unhandled ``OSError`` at subprocess spawn time. When the
@@ -869,7 +874,7 @@ def test_resolve_agy_binary_override_returns_none_for_missing_path(
     ``None`` so the caller falls back to the real ``agy`` binary on ``PATH``.
     """
     monkeypatch.setenv("RALPH_AGY_BINARY", "/nonexistent/path/to/agy-mock.sh")
-    resolved = smoke_module._resolve_agy_binary_override()
+    resolved = resolve_smoke_binary_override(AgentTransport.AGY)
     assert resolved is None
 
 
@@ -942,7 +947,7 @@ def test_maybe_apply_agy_binary_override_ignores_nonexecutable_file(
     """A non-executable RALPH_AGY_BINARY path is ignored (WARNING logged, cmd unchanged)."""
     agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
-    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    result = apply_smoke_binary_override(agy_config)
     assert result.cmd == "agy"
 
 
@@ -953,7 +958,7 @@ def test_maybe_apply_agy_binary_override_accepts_mock_shell_script(
     mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
     agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
-    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    result = apply_smoke_binary_override(agy_config)
     assert result.cmd != "agy"
     assert str(mock_path) in result.cmd
 
@@ -961,7 +966,7 @@ def test_maybe_apply_agy_binary_override_accepts_mock_shell_script(
 def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_apply_agy_binary_override_to_config`` ignores a non-executable override."""
+    """``apply_smoke_binary_overrides_to_config`` ignores a non-executable override."""
     config = UnifiedConfig(
         agents={
             "agy/gemini-3.5-flash-medium": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
@@ -969,7 +974,7 @@ def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
-    result = smoke_module._apply_agy_binary_override_to_config(config)
+    result = apply_smoke_binary_overrides_to_config(config)
     assert result.agents["agy/gemini-3.5-flash-medium"].cmd == "agy"
     assert result.agents["claude/haiku"].cmd == "claude"
 
@@ -977,7 +982,7 @@ def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
 def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_apply_agy_binary_override_to_config`` accepts a valid mock shell script."""
+    """``apply_smoke_binary_overrides_to_config`` accepts a valid mock shell script."""
     mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
     config = UnifiedConfig(
         agents={
@@ -985,7 +990,7 @@ def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
-    result = smoke_module._apply_agy_binary_override_to_config(config)
+    result = apply_smoke_binary_overrides_to_config(config)
     agy_cmd = result.agents["agy/gemini-3.5-flash-medium"].cmd
     assert agy_cmd != "agy"
     assert str(mock_path) in agy_cmd
@@ -1032,7 +1037,7 @@ def test_maybe_apply_agy_binary_override_accepts_non_mock_executable(
 
     agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     monkeypatch.setenv("RALPH_AGY_BINARY", str(stub_path))
-    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    result = apply_smoke_binary_override(agy_config)
     # The override is applied verbatim (no mock substitution), and the cmd
     # is the absolute stub path (quoted because it lives in tmp_path which
     # may contain spaces; the assertion uses ``in`` to allow shlex.quote
@@ -1060,7 +1065,7 @@ def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", str(stub_path))
-    result = smoke_module._apply_agy_binary_override_to_config(config)
+    result = apply_smoke_binary_overrides_to_config(config)
     agy_cmd = result.agents["agy/gemini-3.5-flash-medium"].cmd
     # The override is applied: cmd is no longer ``agy`` and contains the stub.
     assert agy_cmd != "agy"

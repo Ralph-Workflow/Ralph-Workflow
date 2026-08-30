@@ -32,6 +32,7 @@ def child_env_for_spawn(
     env: Mapping[str, str] | None,
     *,
     allow_activity_relay_controls: bool = False,
+    cwd: str | None = None,
 ) -> dict[str, str] | None:
     """Return the environment map a spawned child actually receives.
 
@@ -39,6 +40,16 @@ def child_env_for_spawn(
     unchanged. Otherwise the caller's map is copied and, unless the caller is
     the parent-owned standalone MCP bootstrap, stripped of the private
     activity-relay controls.
+
+    When the child is given a ``cwd``, ``PWD`` is realigned to name it and the
+    now-meaningless ``OLDPWD`` is dropped. ``cwd=`` changes the child's working
+    directory but leaves the inherited ``PWD`` pointing at the parent's, and a
+    surprising number of tools trust ``PWD`` over ``getcwd()`` -- OpenCode
+    resolves its project root as ``resolve(process.env.PWD ?? process.cwd())``,
+    so a stale value silently pointed it at a different tree than the one Ralph
+    was driving whenever Ralph was launched from outside the workspace.
+    ``ralph.mcp.tools.exec`` has always done this for the exec tool; the agent
+    spawn path had not.
 
     Spawn-argument validation runs against this map rather than the caller's:
     a variable removed here can never reach the child, so it can never poison
@@ -48,6 +59,9 @@ def child_env_for_spawn(
     if env is None:
         return None
     child_env = dict(env)
+    if cwd is not None:
+        child_env["PWD"] = cwd
+        child_env.pop("OLDPWD", None)
     if allow_activity_relay_controls:
         return child_env
     return scrub_activity_relay_controls(child_env)

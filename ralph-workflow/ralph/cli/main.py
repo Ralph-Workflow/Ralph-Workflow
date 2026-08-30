@@ -1196,6 +1196,17 @@ def visual_judgement(
 app.command(name="visual-judgement")(visual_judgement)
 
 
+#: Appended to every ``--agent`` help string so ``--help`` states, in one
+#: place, where the default actually comes from. The default itself is
+#: resolved at call time from the operator's config -- see
+#: ``ralph.cli.commands.smoke_agent_defaults``.
+_SMOKE_AGENT_DEFAULT_HELP = (
+    "Defaults to the first {label} entry in your [agent_chains], falling back "
+    "to bare `{bare}` (which passes no model, so the CLI uses the model you "
+    "configured)."
+)
+
+
 def smoke_interactive_claude(
     subagents: bool = typer.Option(
         False,
@@ -1277,9 +1288,12 @@ app.command(name="smoke-headless-claude")(smoke_headless_claude)
 
 
 def smoke_interactive_agy(
-    agent: str = typer.Option(
-        "agy/gemini-3.6-flash-low",
-        help="AGY model alias to smoke (e.g. agy/gemini-3.6-flash-low).",
+    agent: str | None = typer.Option(
+        None,
+        help=(
+            "AGY model alias to smoke (e.g. agy/gemini-3.6-flash-low). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="AGY", bare="agy")
+        ),
     ),
     subagents: bool = typer.Option(
         False,
@@ -1322,9 +1336,12 @@ app.command(name="smoke-interactive-agy")(smoke_interactive_agy)
 
 
 def smoke_interactive_nanocoder(
-    agent: str = typer.Option(
-        "nanocoder",
-        help="Nanocoder alias to smoke (e.g. nanocoder/MiniMax Coding/MiniMax-M3).",
+    agent: str | None = typer.Option(
+        None,
+        help=(
+            "Nanocoder alias to smoke (e.g. nanocoder/MiniMax Coding/MiniMax-M3). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="Nanocoder", bare="nanocoder")
+        ),
     ),
     subagents: bool = typer.Option(
         False,
@@ -1367,9 +1384,12 @@ app.command(name="smoke-interactive-nanocoder")(smoke_interactive_nanocoder)
 
 
 def smoke_interactive_cursor(
-    agent: str = typer.Option(
-        "cursor/auto",
-        help="Cursor model alias to smoke (e.g. cursor/auto, cursor/gpt-5.3-codex-high).",
+    agent: str | None = typer.Option(
+        None,
+        help=(
+            "Cursor model alias to smoke (e.g. cursor/auto, cursor/gpt-5.3-codex-high). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="Cursor", bare="cursor")
+        ),
     ),
     subagents: bool = typer.Option(
         False,
@@ -1412,12 +1432,13 @@ app.command(name="smoke-interactive-cursor")(smoke_interactive_cursor)
 
 
 def smoke_interactive_kimi(
-    agent: str = typer.Option(
-        "kimi/kimi-code/kimi-for-coding",
+    agent: str | None = typer.Option(
+        None,
         help=(
             "Kimi model alias to smoke, as kimi/<model> with the full "
             "configured id (e.g. kimi/kimi-code/kimi-for-coding, "
-            "kimi/kimi-code/k3-256k)."
+            "kimi/kimi-code/k3-256k). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="Kimi", bare="kimi")
         ),
     ),
     subagents: bool = typer.Option(
@@ -1461,12 +1482,13 @@ app.command(name="smoke-interactive-kimi")(smoke_interactive_kimi)
 
 
 def smoke_interactive_opencode(
-    agent: str = typer.Option(
-        "opencode/minimax/MiniMax-M3",
+    agent: str | None = typer.Option(
+        None,
         help=(
             "OpenCode alias to smoke, as opencode/<provider>/<model> "
             "(e.g. opencode/minimax/MiniMax-M3). Run `opencode models` "
-            "to list reachable provider/model pairs."
+            "to list reachable provider/model pairs. "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="OpenCode", bare="opencode")
         ),
     ),
     provider: str | None = typer.Option(
@@ -1523,11 +1545,12 @@ app.command(name="smoke-interactive-opencode")(smoke_interactive_opencode)
 
 
 def smoke_interactive_codex(
-    agent: str = typer.Option(
-        "codex",
+    agent: str | None = typer.Option(
+        None,
         help=(
             "Codex agent to smoke. Bare 'codex' uses the model from the operator's "
-            "Codex config; pass a codex/<model> alias to pin one."
+            "Codex config; pass a codex/<model> alias to pin one. "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="Codex", bare="codex")
         ),
     ),
     subagents: bool = typer.Option(
@@ -1571,9 +1594,12 @@ app.command(name="smoke-interactive-codex")(smoke_interactive_codex)
 
 
 def smoke_interactive_pi(
-    agent: str = typer.Option(
-        "pi",
-        help="Pi model alias to smoke (e.g. pi or pi/<model>).",
+    agent: str | None = typer.Option(
+        None,
+        help=(
+            "Pi model alias to smoke (e.g. pi or pi/<model>). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="Pi", bare="pi")
+        ),
     ),
     subagents: bool = typer.Option(
         False,

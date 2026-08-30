@@ -45,6 +45,7 @@ def _default_sync_process_factory(
     child_env = child_env_for_spawn(
         opts.env,
         allow_activity_relay_controls=opts.allow_activity_relay_controls,
+        cwd=opts.cwd,
     )
     return cast(
         "subprocess.Popen[bytes]",
