@@ -15,7 +15,7 @@ Useful pydoc entry points:
 - ``ralph.workspace`` for filesystem abstractions used by production code and tests
 """
 
-__version__ = "0.9.25"
+__version__ = "0.9.26"
 _BASE_VERSION = __version__
 version = __version__
 __all__ = ["__version__", "version"]
