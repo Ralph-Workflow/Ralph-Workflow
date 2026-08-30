@@ -27,7 +27,8 @@ _IGNORED_NAMES = frozenset({".git", ".venv", "__pycache__", "build", "dist", "tm
 #:
 #: Every preserved name MUST also be ignored by the copy: preserving something
 #: ``copytree`` would overwrite anyway buys nothing and hides the intent.
-#: ``test_preserved_install_names_are_never_copied`` pins that.
+#: ``test_copy_install_tree_never_overwrites_the_preserved_virtualenv``
+#: pins that for ``.venv``.
 _PRESERVED_NAMES = frozenset({".venv"})
 
 
@@ -81,13 +82,16 @@ def _clear_stale_snapshot_entries(destination: Path) -> None:
     interpreter, in place across a reinstall.  Files the new snapshot no
     longer contains still go, so this is a replace and not a merge.
     """
-    for entry in destination.iterdir():
+    # Materialized before deleting: iterating a directory while removing from
+    # it leaves entries skipped on any implementation that streams the listing.
+    for entry in list(destination.iterdir()):
         if entry.name in _PRESERVED_NAMES:
             continue
-        # filesystem-write-ok: clear the disposable dev-install snapshot before copying it anew
         if entry.is_dir() and not entry.is_symlink():
+            # filesystem-write-ok: clear the disposable dev-install snapshot before copying it anew
             shutil.rmtree(entry)
         else:
+            # filesystem-write-ok: clear the disposable dev-install snapshot before copying it anew
             entry.unlink()
 
 

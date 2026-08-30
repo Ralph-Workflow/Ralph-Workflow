@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import tomli_w
 from loguru import logger
 
 import ralph.mcp.transport.agy as _agy_transport
@@ -235,19 +236,40 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
 
 
 def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServer) -> str:
-    section_lines = [f"[mcp_servers.{server.name}]"]
-    if server.transport == "http":
-        section_lines.append(f'url = "{server.url}"')
-    else:
-        section_lines.append(f'command = "{server.command}"')
-        if server.args:
-            args_repr = ", ".join(json.dumps(arg) for arg in server.args)
-            section_lines.append(f"args = [{args_repr}]")
-    section_lines.append("enabled = true")
-    section = "\n".join(section_lines) + "\n"
+    """Return *base_config* with *server* added under ``[mcp_servers]``.
+
+    Built by merging mappings and re-serializing rather than by appending a
+    hand-written section, for the same reason ``ralph.mcp.transport.codex``
+    stopped splicing: text carries no escaping. A server name or URL holding a
+    TOML metacharacter -- a dot, a quote, a backslash -- landed in the file
+    raw, so ``my.server`` became a nested ``mcp_servers.my.server`` table and
+    one quote in a URL closed the string early; either way the caller's own
+    ``tomllib.loads`` raised a bare decode error rather than
+    ``AgentTransportProbeError``. A mapping also cannot hold ``mcp_servers``
+    twice, so an operator's inline ``mcp_servers = {...}`` can no longer
+    collide with an appended ``[mcp_servers.x]`` header and reproduce the
+    "duplicate key" abort this probe exists to rule out.
+    """
+    config: dict[str, object] = {}
     if base_config.strip():
-        return base_config.rstrip() + "\n\n" + section
-    return section
+        parsed: object = tomllib.loads(base_config)
+        if isinstance(parsed, dict):
+            config = cast("dict[str, object]", parsed)
+    existing = config.get("mcp_servers")
+    servers: dict[str, object] = (
+        dict(cast("dict[str, object]", existing)) if isinstance(existing, dict) else {}
+    )
+    entry: dict[str, object] = {}
+    if server.transport == "http":
+        entry["url"] = server.url or ""
+    else:
+        entry["command"] = server.command or ""
+        if server.args:
+            entry["args"] = list(server.args)
+    entry["enabled"] = True
+    servers[server.name] = entry
+    merged: dict[str, object] = {**config, "mcp_servers": servers}
+    return tomli_w.dumps(merged)
 
 
 def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:

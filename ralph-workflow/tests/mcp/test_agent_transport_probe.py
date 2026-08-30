@@ -467,3 +467,46 @@ def test_probe_kimi_accepts_flattenable_schema(
 
     assert len(reports) == 1
     assert reports[0].ok is True
+
+
+def test_probe_regression_codex_augmentation_survives_a_quote_in_the_url() -> None:
+    """A URL carrying TOML metacharacters MUST NOT produce a config Codex rejects.
+
+    The augmentation used to interpolate the URL into ``url = "{...}"`` as raw
+    text, so one double quote or backslash from ``.agent/mcp.toml`` closed the
+    string early and the caller's own ``tomllib.loads`` raised a bare
+    ``TOMLDecodeError`` instead of ``AgentTransportProbeError``. Serializing
+    the entry as a mapping makes the escaping the serializer's problem.
+    """
+    server = _http_server(url='http://example.invalid/mcp?q="x"\\y')
+
+    parsed = tomllib.loads(augment_codex_config_with_server("", server))
+
+    assert must_mapping(must_mapping(parsed["mcp_servers"])["remote"])["url"] == server.url
+
+
+def test_probe_regression_codex_augmentation_survives_a_dotted_server_name() -> None:
+    """A server name that is not a bare TOML key must still land under its own key.
+
+    ``[mcp_servers.{name}]`` written as text turns ``my.server`` into a nested
+    ``mcp_servers.my.server`` table -- a different server than the one probed.
+    """
+    server = _http_server(name="my.server")
+
+    parsed = tomllib.loads(augment_codex_config_with_server("", server))
+
+    assert set(must_mapping(parsed["mcp_servers"])) == {"my.server"}
+
+
+def test_probe_regression_codex_augmentation_does_not_duplicate_an_inline_table() -> None:
+    """Appending to an inline ``mcp_servers`` table must not restate the key.
+
+    TOML forbids defining a key twice, so text-appending a
+    ``[mcp_servers.x]`` header below ``mcp_servers = {...}`` produced exactly
+    the "duplicate key" abort this probe exists to rule out.
+    """
+    base = 'mcp_servers = { other = { url = "http://other.invalid/mcp" } }\n'
+
+    parsed = tomllib.loads(augment_codex_config_with_server(base, _http_server()))
+
+    assert set(must_mapping(parsed["mcp_servers"])) == {"other", "remote"}
