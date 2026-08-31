@@ -22,6 +22,7 @@ from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
+    OpenCodeExecutionStrategy,
     with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
@@ -60,6 +61,11 @@ from ralph.agents.invoke._tool_call_extraction import (
     extract_tool_call_from_activity_signal as _extract_tool_call_from_activity_signal_impl,
 )
 from ralph.agents.invoke._types import AgentRunCtx, ProcessReaderCtx
+from ralph.agents.invoke.opencode_subagent_sessions import (
+    OpenCodeSubagentSessionProbe,
+    SqliteOpenCodeChildPartSource,
+    default_opencode_db_path,
+)
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
@@ -517,6 +523,8 @@ class ProcessLineReader:
         # cache so the watchdog-kill path does not need to retain
         # ``_lines_queue`` content for re-scanning.
         self._captured_session_id: str | None = None
+        self._opencode_child_part_source = ctx.opencode_child_part_source
+        self._opencode_subagent_probe: OpenCodeSubagentSessionProbe | None = None
         self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
 
     def _on_process_event(self, event: ProcessEvent) -> None:
@@ -1118,6 +1126,9 @@ class ProcessLineReader:
         reset_subagent_sink(subagent_token)
         if self._monitor is not None:
             self._monitor.set_on_event(None)
+        if self._opencode_subagent_probe is not None:
+            self._opencode_subagent_probe.close()
+            self._opencode_subagent_probe = None
         self._raw_overflow.close()
         self._unsubscribe()
 
@@ -1258,6 +1269,42 @@ class ProcessLineReader:
         )
         return self._run_drain_window(watchdog, drain_deadline)
 
+    def _build_opencode_subagent_probe(
+        self, watchdog: IdleWatchdog
+    ) -> OpenCodeSubagentSessionProbe | None:
+        """Watch OpenCode's session store for native ``task`` children.
+
+        OpenCode buffers a native task's ``tool_use`` frame until the child
+        finishes, so stdout carries nothing while a subagent works. Every
+        part the child writes to OpenCode's own store is forwarded as
+        demonstrated work: the watchdog's subagent channel and idle
+        baseline (the same treatment a parent output line gets) and the
+        strategy's child-liveness registry. Other transports get no probe.
+        """
+        strategy = self._strategy
+        if not isinstance(strategy, OpenCodeExecutionStrategy):
+            return None
+        source = self._opencode_child_part_source
+        if source is None:
+            source = SqliteOpenCodeChildPartSource(
+                default_opencode_db_path(), monotonic=self._clock.monotonic
+            )
+
+        def _parent_session_id() -> str | None:
+            return self._captured_session_id or self._expected_session_id
+
+        def _subagent_sink(summary: str) -> None:
+            watchdog.record_subagent_work(description=summary)
+            watchdog.record_activity()
+
+        return OpenCodeSubagentSessionProbe(
+            source=source,
+            parent_session_id=_parent_session_id,
+            subagent_sink=_subagent_sink,
+            child_progress_sink=strategy.record_native_child_progress,
+            monotonic=self._clock.monotonic,
+        )
+
     def _build_process_monitor(self) -> ProcessMonitor | None:
         """Build the monitor with transport-scoped child evidence."""
         subagent_pid_source = self._build_subagent_pid_source()
@@ -1309,10 +1356,13 @@ class ProcessLineReader:
         # Establish the watchdog epoch before the producer can advance an
         # injected clock or enqueue its first line. Starting the reader first
         # let a fast producer make an elapsed session ceiling invisible.
+        self._opencode_subagent_probe = self._build_opencode_subagent_probe(watchdog)
         reader = self._start_read_thread()
         try:
             while True:
                 self._lines_event.clear()
+                if self._opencode_subagent_probe is not None:
+                    self._opencode_subagent_probe.poll()
                 queued_line: str | None = None
                 is_done = False
                 with self._lines_lock:

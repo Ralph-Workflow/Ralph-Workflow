@@ -2,7 +2,7 @@
 
 Enforces the subagent/tool-visibility contract (acceptance criteria
 AC-08, AC-09, AC-11) and the timeout policy documented in
-``docs/agents/timeout-policy.md``. The audit performs a
+the ``## Watchdogs`` section of ``docs/sphinx/concepts.md``. The audit performs a
 static AST walk over the production source tree and flags regressions
 in the wiring that keeps the watchdog activity-aware:
 

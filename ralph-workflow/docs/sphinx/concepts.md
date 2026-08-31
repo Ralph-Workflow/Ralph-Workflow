@@ -295,6 +295,8 @@ The current idle watchdog considers four evidence channels before declaring a se
 
 The watchdog verdict is based on **demonstrated work**, not mere existence. An OpenCode subagent process that is alive but has produced no output, no tool calls, and no file changes for the configured idle window is **not** evidence of progress.
 
+Native OpenCode subagents (the `task` tool) are a special case: `opencode run --format json` emits `step_start` when the parent delegates and then nothing until the child finishes, so the stream itself carries no evidence for the whole subagent run. Ralph Workflow therefore reads OpenCode's own session store (`$XDG_DATA_HOME/opencode/opencode.db`, default `~/.local/share`) read-only: every part a child session writes — tool call, reasoning, text — is forwarded as `subagent` evidence and resets the idle baseline exactly as a parent output line would, so a subagent that works for 20 minutes keeps the parent alive for 20 minutes. A child that stops writing goes stale on the same schedule as any other silent channel and the standard ceilings apply; the absolute session ceiling is never extended.
+
 ### Workspace change kinds
 
 The `workspace` channel classifies every file change into one of five `WorkspaceChangeKind` values. Each kind has a configurable weight via the `agent_workspace_change_weights` config key (under `[general]`); the weight is binary — `0.0` drops the change from the verdict (it does **not** defer the `NO_OUTPUT_DEADLINE` fire), `1.0` counts as full activity.

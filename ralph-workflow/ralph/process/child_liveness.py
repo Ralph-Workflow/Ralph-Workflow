@@ -206,6 +206,10 @@ class ChildLivenessRegistry:
         rec.last_ack_at = t
         rec.terminal_state = terminal_state
 
+    def has_child(self, child_id: str) -> bool:
+        """Return True when ``child_id`` currently has a record (terminal or not)."""
+        return child_id in self._records
+
     def has_records(self, scope_prefix: str) -> bool:
         """Return True when any record currently matches the given scope prefix."""
         return any(rec.scope_prefix.startswith(scope_prefix) for rec in self._records.values())

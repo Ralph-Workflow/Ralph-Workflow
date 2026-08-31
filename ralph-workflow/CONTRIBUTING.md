@@ -309,7 +309,7 @@ real work happening on any of four channels as evidence the session is NOT idle:
 |---|---|---|
 | `stdout` | The agent's stdout output (the baseline) | `record_activity()` / `record_lifecycle_activity()` |
 | `mcp_tool` | An MCP `tools/call` invocation/completion (Ralph Workflow MCP server) | `record_mcp_tool_call()` via `ralph/mcp/server/_activity_sink.py` |
-| `subagent` | A subagent progress / heartbeat / tool_call signal routed through `OpenCodeExecutionStrategy.observe_line` | `record_subagent_work()` via the parallel subagent contextvar |
+| `subagent` | A subagent progress / heartbeat / tool_call signal routed through `OpenCodeExecutionStrategy.observe_line`, or a native OpenCode `task` child's session-store update observed by `ralph.agents.invoke.opencode_subagent_sessions` (the stream is silent while a native task runs) | `record_subagent_work()` via the parallel subagent contextvar; the store probe also calls `record_activity()` and `OpenCodeExecutionStrategy.record_native_child_progress()` |
 | `workspace` | A workspace file change captured by `WorkspaceMonitor.record_event` | `record_workspace_event()` |
 
 While ANY non-stdout channel age is below

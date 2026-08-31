@@ -1899,6 +1899,13 @@ ralph.agents.invoke
    :show-inheritance:
    :noindex:
 
+ralph.agents.invoke.opencode_subagent_sessions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.opencode_subagent_sessions
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers
 ~~~~~~~~~~~~~~~~~~~~
 

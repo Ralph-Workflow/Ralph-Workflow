@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from ralph.agents.execution_state import BaseExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
     from ralph.agents.invoke._workspace import WorkspaceMonitor
+    from ralph.agents.invoke.opencode_subagent_sessions import OpenCodeChildPartSource
     from ralph.config.models import AgentConfig
     from ralph.process.liveness import LivenessProbe
     from ralph.process.teardown import ProcessTeardown
@@ -43,6 +44,7 @@ class ProcessReaderCtx:
     input_prompt: str | None = None
     relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
     relay_health_error: Callable[[], str | None] | None = None
+    opencode_child_part_source: OpenCodeChildPartSource | None = None
 
 
 __all__ = [

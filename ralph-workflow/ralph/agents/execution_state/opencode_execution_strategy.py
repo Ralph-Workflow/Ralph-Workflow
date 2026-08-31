@@ -216,6 +216,26 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         if registry.has_records(prefix):
             self._scoped_records_seen = True
 
+    def record_native_child_progress(self, child_id: str) -> None:
+        """Record demonstrated work by a native ``task`` child observed out of band.
+
+        OpenCode buffers a native task's ``tool_use`` frame until the child
+        finishes, so the stream itself carries no progress while the child
+        works. The child's session store does (see
+        ``ralph.agents.invoke.opencode_subagent_sessions``); each observed
+        update lands here as fresh ``running`` progress under the active
+        label scope so ``classify_quiet`` and the corroborator see a live,
+        productive child instead of a silent parent.
+        """
+        registry = self._registry
+        if registry is None:
+            return
+        prefix = self._active_label_prefix() or ""
+        if not registry.has_child(child_id):
+            registry.register_child(child_id, prefix, phase="running")
+        registry.record_progress(child_id, phase="running")
+        self._scoped_records_seen = True
+
     def _update_open_step_liveness(self, line: str) -> None:
         """Track OpenCode turn boundaries that bracket buffered native task work."""
         try:
