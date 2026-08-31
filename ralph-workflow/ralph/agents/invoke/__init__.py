@@ -112,7 +112,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
 )
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.spec import AgentSpec
-from ralph.api.opencode import validate_local_model_support
+from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support
 from ralph.config._agent_overrides import agent_environment_value, opencode_binary_override
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
@@ -167,8 +167,6 @@ from ralph.timeout_defaults import (
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
 )
-
-_MODELED_FLAG_PARTS = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -428,7 +426,6 @@ def invoke_agent(
                 model_flag=opts.model_flag,
                 session_id=opts.session_id,
                 verbose=opts.verbose,
-                pure=opts.pure,
                 mcp_endpoint=mcp_endpoint,
                 allowed_mcp_tool_names=allowed_mcp_tool_names,
                 unsafe_mode=opts.unsafe_mode,
@@ -586,17 +583,6 @@ def invoke_agent(
         _stop_workspace_monitor(monitor)
 
 
-def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
-    if not model_flag:
-        return None
-    parts = model_flag.split()
-    if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
-        return parts[1].removeprefix("opencode/")
-    if len(parts) == 1:
-        return parts[0].removeprefix("opencode/")
-    return None
-
-
 def _fail_for_missing_credentials(
     config: AgentConfig,
     options: InvokeOptions,
@@ -620,7 +606,7 @@ def _fail_for_missing_credentials(
             return
         required_env_var = "ANTHROPIC_API_KEY"
     elif transport == AgentTransport.OPENCODE:
-        model_id = _normalized_opencode_model_id(options.model_flag or config.model_flag)
+        model_id = opencode_model_id_from_flag(options.model_flag or config.model_flag)
         provider = model_id.split("/", maxsplit=1)[0] if model_id is not None else ""
         required_env_var = {
             "anthropic": "ANTHROPIC_API_KEY",
@@ -645,7 +631,7 @@ def _fail_for_unsupported_local_opencode_model(
 ) -> None:
     if _agent_transport(config) != AgentTransport.OPENCODE:
         return
-    model_id = _normalized_opencode_model_id(options.model_flag or config.model_flag)
+    model_id = opencode_model_id_from_flag(options.model_flag or config.model_flag)
     if model_id is None:
         return
     # When the operator has overridden the opencode binary via

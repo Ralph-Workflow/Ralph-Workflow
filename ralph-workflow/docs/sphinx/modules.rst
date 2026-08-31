@@ -366,6 +366,20 @@ ralph.cli.commands.smoke
    :members:
    :show-inheritance:
 
+ralph.cli.commands.smoke_agent_defaults
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.smoke_agent_defaults
+   :members:
+   :show-inheritance:
+
+ralph.cli.commands.smoke_binary_override
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.smoke_binary_override
+   :members:
+   :show-inheritance:
+
 ralph.cli.commands.star
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2565,6 +2579,13 @@ ralph.mcp.transport.kimi
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.transport.kimi
+   :members:
+   :show-inheritance:
+
+ralph.mcp.transport.config_overlay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.config_overlay
    :members:
    :show-inheritance:
 

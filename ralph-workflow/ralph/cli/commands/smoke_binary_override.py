@@ -18,7 +18,7 @@ Everything now flows through :data:`_OVERRIDE_TABLE`, and
 :func:`ralph.cli.commands.smoke.smoke_harness_agent_command` applies it in
 exactly ONE place. A transport added to the table is handled identically to
 every other; a transport that grows an override variable without a table
-entry is caught by ``tests/test_smoke_pipeline_parity.py``.
+entry is caught by ``tests/test_cli_harness_parity.py``.
 """
 
 from __future__ import annotations

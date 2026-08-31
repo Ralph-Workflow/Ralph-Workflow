@@ -7,9 +7,10 @@ discovering available models and providers.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 
 import httpx
 from loguru import logger
@@ -267,6 +268,44 @@ def _local_opencode_version(
         return None
     version = result.stdout.strip() or result.stderr.strip()
     return version or None
+
+
+#: The two spellings of opencode's model flag (``-m, --model <model>``,
+#: per ``opencode run --help`` on 1.18.25). Both take exactly one value.
+_OPENCODE_MODEL_FLAG_NAMES: Final[frozenset[str]] = frozenset({"-m", "--model"})
+_OPENCODE_MODEL_FLAG_TOKENS: Final[int] = 2
+
+
+def opencode_model_id_from_flag(model_flag: str | None) -> str | None:
+    """Extract the ``provider/model`` id an opencode ``-m`` flag selects.
+
+    ``model_flag`` is either a whole flag pair (``-m anthropic/claude-x``,
+    ``--model opencode/big-pickle``) or a bare model id. The value is
+    returned **verbatim**: opencode 1.18.25 parses ``-m`` as
+    ``provider/model`` and publishes a provider literally named
+    ``opencode`` (``opencode models`` lists ``opencode/big-pickle``), so
+    removing an ``opencode/`` prefix here would destroy the provider half
+    of a legitimate id. The Ralph *alias* prefix is stripped exactly once,
+    at alias resolution in :mod:`ralph.agents.registry`.
+
+    Args:
+        model_flag: A flag pair or a bare model id; ``None``/empty yields
+            ``None``.
+
+    Returns:
+        The model id, or ``None`` when no single id can be identified.
+    """
+    if not model_flag:
+        return None
+    try:
+        parts = shlex.split(model_flag)
+    except ValueError:
+        return None
+    if len(parts) == _OPENCODE_MODEL_FLAG_TOKENS and parts[0] in _OPENCODE_MODEL_FLAG_NAMES:
+        return parts[1]
+    if len(parts) == 1:
+        return parts[0]
+    return None
 
 
 def _normalize_local_model_lines(stdout: str) -> tuple[str, ...]:

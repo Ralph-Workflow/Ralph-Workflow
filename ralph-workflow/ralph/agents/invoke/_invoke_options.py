@@ -81,7 +81,6 @@ class InvokeOptions:
     os_descendant_only_suspect_seconds: float | None | object = _INVOKE_OPTS_UNSET
     cpu_idle_seconds: float | None | object = _INVOKE_OPTS_UNSET
     log_growth_seconds: float | None | object = _INVOKE_OPTS_UNSET
-    pure: bool = False
     master_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None

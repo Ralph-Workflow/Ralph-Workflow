@@ -30,7 +30,6 @@ class InvokeRuntimeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
-    pure: bool = False
     session_id: str | None = None
     master_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
@@ -65,7 +64,6 @@ def build_invoke_options_from_config(
         workspace_path=rt.workspace_path,
         extra_env=rt.extra_env,
         unsafe_mode=general_config.workflow.unsafe_mode,
-        pure=rt.pure,
         session_id=rt.session_id,
         master_prompt_file=rt.master_prompt_file,
         waiting_listener=rt.waiting_listener,

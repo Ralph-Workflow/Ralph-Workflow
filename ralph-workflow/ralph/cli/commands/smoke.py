@@ -5,10 +5,8 @@ from __future__ import annotations
 import contextlib
 import os
 import secrets
-import shlex
 import shutil
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
@@ -55,16 +53,18 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
+
+# ``SmokeRunParams`` is re-exported so existing tests can still reach it here.
+from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from pathlib import Path
+
+    from ralph.config.models import UnifiedConfig
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pro_support.hooks import ProPipelineHooks
-
-# Re-export plumbing symbols so existing tests can still reach them.
-from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 
 _INTERACTIVE_AGENT = "claude/haiku"

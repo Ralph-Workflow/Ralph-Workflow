@@ -850,9 +850,19 @@ def _resolve_dynamic_simple_prefixed_agent(
         if len(segments) >= _MIN_OPENCODE_SEGMENTS and all(segments[1:]):
             base_config = base_lookup("opencode")
             if base_config is not None:
+                # ``-m <value>`` is opencode's documented short model flag
+                # (``-m, --model <model>``, ``opencode run --help`` on
+                # 1.18.25) and is emitted as a single argv pair.
+                # ``shlex.quote`` keeps the whole model id in ONE argv
+                # token, matching the kimi / claude / codex / cursor
+                # dynamic-alias quoting contract; without it an alias
+                # carrying whitespace (``opencode/minimax/M3 --agent plan``)
+                # split into extra argv tokens and smuggled flags onto
+                # the opencode command line.
+                model_id = _opencode_alias_model_id(name)
                 return base_config.model_copy(
                     update={
-                        "model_flag": f"-m {_normalize_opencode_model_id(name)}",
+                        "model_flag": f"-m {shlex.quote(model_id)}",
                         "can_commit": True,
                     }
                 )
@@ -938,7 +948,17 @@ def _resolve_dynamic_claude_family(
     )
 
 
-def _normalize_opencode_model_id(name: str) -> str:
+def _opencode_alias_model_id(name: str) -> str:
+    """Strip the Ralph ``opencode/`` ALIAS prefix -- exactly once, here.
+
+    opencode publishes a provider literally named ``opencode``
+    (``opencode models`` lists ``opencode/big-pickle``,
+    ``opencode/nemotron-3-ultra-free``, ...) and parses ``-m`` as
+    ``provider/model``. The alias ``opencode/opencode/big-pickle``
+    therefore has to yield ``opencode/big-pickle``. This function is the
+    single, canonical strip point: nothing downstream may remove the
+    prefix again.
+    """
     return name.removeprefix("opencode/")
 
 

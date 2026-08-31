@@ -14,13 +14,14 @@ import math
 import tomllib
 from pathlib import Path
 
+import pytest
 import tomli_w
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from loguru import logger
 
 from ralph.mcp.tools.names import CODEX_NATIVE_FEATURE_OVERRIDES
-from ralph.mcp.transport.codex import prepare_codex_home
+from ralph.mcp.transport.codex import CodexConfigError, prepare_codex_home
 
 _ENDPOINT = "http://127.0.0.1:9999/mcp"
 #: Keys Ralph owns outright; the operator's values for these are meant to lose.
@@ -341,20 +342,20 @@ def test_codex_config_regression_stale_ralph_entry_is_dropped_in_unsafe_mode(
     assert servers["ctx"] == {"command": "ctx-server"}
 
 
-def test_codex_config_regression_unparseable_operator_config_is_not_fatal(
+def test_codex_config_regression_unparseable_operator_config_fails_the_run(
     tmp_path: Path,
 ) -> None:
-    """An operator config Codex itself cannot load degrades to Ralph-only settings.
+    """An operator config Ralph cannot carry over MUST stop the run, not be dropped.
 
-    Negative case for ``_parse_source_config``: invalid TOML yields no operator
-    keys at all rather than propagating a parse error, and the synthesized
-    config still carries everything Ralph needs to drive the run.
+    Ralph redirects ``CODEX_HOME``, so the synthesized file is the ONLY config
+    Codex sees. Continuing with an empty base silently discards
+    ``model_provider``, ``[model_providers.*]`` and every ``[agents.*]`` block --
+    the run then goes to a different provider, on different credentials, against
+    different billing, and reports success. That is the same failure as
+    disabling an operator's plugins: quieter, and worse.
     """
-    config_text = _synthesize(tmp_path, 'model = "gpt-5"\n[features\n')
-
-    parsed = _parse(config_text)
-    assert parsed["features"] == _expected_features()
-    assert "model" not in parsed
+    with pytest.raises(CodexConfigError, match="not loadable TOML"):
+        _synthesize(tmp_path, 'model = "gpt-5"\n[features\n')
 
 
 def test_codex_config_regression_a_nan_does_not_trip_the_round_trip_guard(
@@ -380,18 +381,17 @@ def test_codex_config_regression_a_nan_does_not_trip_the_round_trip_guard(
     assert errors == []
 
 
-def test_codex_config_regression_a_deeply_nested_config_does_not_crash_the_run(
+def test_codex_config_regression_a_deeply_nested_config_fails_the_run(
     tmp_path: Path,
 ) -> None:
-    """An operator config too deeply nested to re-serialize degrades, not crashes.
+    """An operator config too deep to re-serialize fails with a named error.
 
     ``tomllib`` parses ~1000 levels of nesting happily, but ``tomli_w.dumps``
-    exhausts the stack on it, and ``RecursionError`` is not a ``ValueError`` --
-    so it escaped the render guard and killed the whole invocation. Invalid
-    operator TOML already degrades to Ralph-only settings; this must too.
+    exhausts the stack on it, and ``RecursionError`` is not a ``ValueError``,
+    so it escaped the render guard as a bare stack-overflow traceback. It now
+    stops the run the same way any other uncarryable operator config does.
     """
     deep = "[" + ".".join(f"t{index}" for index in range(1200)) + "]\nx = 1\n"
 
-    config_text = _synthesize(tmp_path, deep)
-
-    assert _parse(config_text)["features"] == _expected_features()
+    with pytest.raises(CodexConfigError, match="too deeply"):
+        _synthesize(tmp_path, deep)

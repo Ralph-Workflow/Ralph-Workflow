@@ -11231,7 +11231,6 @@ def test_invoke_options_with_shared_registry_preserves_unrelated_fields() -> Non
         session_id="sess-abc",
         workspace_path=None,
         show_progress=True,
-        pure=True,
         required_artifact=None,
     )
     registry, source = AgentRegistry().build_subagent_pid_registry(AgentTransport.OPENCODE)
@@ -11248,7 +11247,9 @@ def test_invoke_options_with_shared_registry_preserves_unrelated_fields() -> Non
     assert threaded.session_id == "sess-abc"
     assert threaded.workspace_path is None
     assert threaded.show_progress is True
-    assert threaded.pure is True
+    # ``pure`` used to be asserted here. The field is gone: it emitted
+    # opencode's ``--pure``, which runs opencode WITHOUT external plugins
+    # and made an operator's plugin-provided model provider unresolvable.
 
 
 # === consolidated from test_shared_subagent_pid_registry.py ===

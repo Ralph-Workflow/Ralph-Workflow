@@ -80,10 +80,12 @@ subagent_capability = true
 # @AGENT-BLOCK-END
 
 # @AGENT-BLOCK-START: opencode
+# opencode has no output-format flag beyond the `--format json` Ralph always
+# passes (`opencode run --help`, 1.18.25), so `output_flag` is not offered
+# here: the command builder drops it for this transport by declaration.
 # [agents.opencode]
 # cmd = "opencode"
 # transport = "opencode"
-# output_flag = "--json-stream"
 # json_parser = "opencode"
 # session_flag = "--session {}"
 # can_commit = false

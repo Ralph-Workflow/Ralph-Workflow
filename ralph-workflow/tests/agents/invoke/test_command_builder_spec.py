@@ -113,6 +113,21 @@ def test_spec_frozen_and_hashable() -> None:
 
 
 def test_opencode_command_builder_parity(tmp_path: Path) -> None:
+    """Pin opencode's argv shape after three corrections to this expectation.
+
+    1. ``--pure`` is GONE. It ran opencode without external plugins, which
+       made an operator's plugin-provided model provider unresolvable and
+       killed every run; the flag, its ``options.pure`` field, and this
+       test's assertion of it were all removed together.
+    2. The ``opencode/`` prefix is NO LONGER stripped here. The earlier
+       expectation (``--model opencode/some-model`` -> ``--model
+       some-model``) encoded a bug: opencode publishes a provider literally
+       named ``opencode`` and parses ``-m`` as ``provider/model``, so the
+       second strip made every model under that provider unselectable. The
+       Ralph alias prefix is stripped once, at alias resolution.
+    3. There is no ``--json-stream``: opencode 1.18.25's only output
+       selector is the ``--format json`` already emitted here.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")
 
@@ -124,26 +139,15 @@ def test_opencode_command_builder_parity(tmp_path: Path) -> None:
         transport=AgentTransport.OPENCODE,
     )
     options = BuildCommandOptions(
-        pure=True,
         session_id="sess-123",
         verbose=True,
         model_flag="--model opencode/some-model",
         workspace_path=tmp_path,
     )
 
-    # Old logic:
-    # cmd = [cmd_name, "run"]
-    # pure -> "--pure"
-    # "--format", "json"
-    # session -> "--session", "sess-123"
-    # yolo -> "--skip-stuff"
-    # verbose -> "--verbose"
-    # model -> "--model", "some-model" (normalized)
-    # prompt -> "hello world" (content of PROMPT.md)
     expected = [
         "opencode",
         "run",
-        "--pure",
         "--format",
         "json",
         "--session",
@@ -151,7 +155,7 @@ def test_opencode_command_builder_parity(tmp_path: Path) -> None:
         "--skip-stuff",
         "--verbose",
         "--model",
-        "some-model",
+        "opencode/some-model",
         "hello world",
     ]
 

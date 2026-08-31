@@ -12,7 +12,6 @@ class _BuildCommandOptions:
     model_flag: str | None = None
     session_id: str | None = None
     verbose: bool = False
-    pure: bool = False
     mcp_endpoint: str | None = None
     allowed_mcp_tool_names: tuple[str, ...] = ()
     unsafe_mode: bool = False

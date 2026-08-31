@@ -244,7 +244,12 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         strategy_factory=OpenCodeExecutionStrategy,
         json_parser=JsonParserType.OPENCODE,
         cmd="opencode",
-        output_flag="--json-stream",
+        # No output_flag: opencode 1.18.25 exposes only
+        # ``--format default|json`` (``opencode run --help``) and has no
+        # ``--json-stream``. The command builder declares
+        # ``honors_output_flag=False`` for this transport, so any operator
+        # ``[agents.opencode].output_flag`` override is dropped by
+        # declaration rather than by accident.
         can_commit=False,
         session_flag="--session {}",
         display_capabilities=_OPENCODE_CAPABILITIES,

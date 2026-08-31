@@ -31,12 +31,13 @@ merge flow (``merge_existing_upstreams``), and writes the merged
 config to BOTH paths so the agent picks up MCP regardless of the cwd
 it was launched from.
 
-The write/restore protocol mirrors the AGY pattern in
-``ralph/mcp/transport/agy.py``: a process-local ``threading.Lock``
-serialises concurrent cursors, an atomic ``Path.replace`` keeps the
-write torn-write-safe, and the original-bytes restore happens INSIDE
-the critical section so a parallel sibling cannot interleave its own
-write/restore between our read and our restore.
+The write/restore protocol is the shared one in
+``ralph/mcp/transport/config_overlay.py``: a process-local
+``threading.Lock`` for sibling threads, a bounded cross-process advisory
+lock for sibling PROCESSES, a durable ``mcp.json.ralph-backup`` record
+written before the overwrite so a killed run self-heals on the next
+invocation, and an atomic ``Path.replace`` that keeps every publication
+torn-write-safe.
 """
 
 from __future__ import annotations
@@ -45,22 +46,35 @@ import json
 import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from functools import partial
 from pathlib import Path
 from typing import cast
 
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
+from ralph.mcp.transport.config_overlay import (
+    mcp_config_lock_path,
+    mcp_config_overlay_lock,
+    reclaim_config_overlay,
+    restore_config_overlay,
+    stage_config_overlay,
+)
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 # Process-local lock that serialises concurrent invocations of
-# :func:`cursor_workspace_mcp_endpoint` so two sibling Cursor sessions
-# cannot interleave their read/write/restore steps on the global MCP
-# config file.  See the context manager's docstring for the full
+# :func:`cursor_workspace_mcp_endpoint` so two sibling Cursor sessions IN
+# THIS PROCESS cannot interleave their read/write/restore steps on the
+# global MCP config file.  Cross-process contention is handled by the
+# bounded advisory lock below; both layers are needed because the
+# advisory lock serialises processes while the threading lock keeps the
+# retry loop from racing two threads in this process against one
+# lock-file handle.  See the context manager's docstring for the full
 # concurrency contract.
 _cursor_mcp_lock = threading.Lock()
+
+#: Bounded acquisition budget for the cross-process advisory lock that
+#: guards Cursor's user-global MCP config.  Read at call time so a test
+#: can shrink the budget by assigning this module attribute.
+_CURSOR_CONFIG_LOCK_TIMEOUT_SECONDS = 10.0
 
 
 def _cursor_global_config_path() -> Path:
@@ -100,11 +114,6 @@ def cursor_mcp_config(endpoint: str) -> str:
     return json.dumps(config_payload, separators=(",", ":"))
 
 
-def _prepare_config_parent(path: Path) -> None:
-    """Create a config parent only when a changed publication needs it."""
-    DEFAULT_FILE_BACKEND.mkdir(path, parents=True, exist_ok=True)
-
-
 def _cursor_paths_to_consider(
     workspace_path: Path | None,
 ) -> tuple[Path, ...]:
@@ -135,63 +144,53 @@ def cursor_workspace_mcp_endpoint(
     endpoint.  On exit the original bytes are restored on each path that
     was modified.
 
-    Concurrency safety: this context manager serialises concurrent callers
-    with a single :class:`threading.Lock` (process-local) and writes the
-    merged config atomically (via ``Path.replace``) so a parallel Cursor
-    session cannot observe a torn write or clobber a sibling session's
-    restore step.  The original-bytes read happens INSIDE the critical
-    section so a parallel sibling cannot interleave its own write/restore
-    between our read and our restore.
+    Crash recovery: each overwrite is preceded by a durable
+    ``<name>.ralph-backup`` record, and every transaction begins by
+    reclaiming a record an earlier run was killed before it could apply
+    (:func:`ralph.mcp.transport.config_overlay.reclaim_config_overlay`).
+    An operator whose machine died mid-run gets their own MCP servers back
+    on the next invocation instead of a permanently Ralph-only config file
+    pointing at a dead port.  The reclaim runs BEFORE the snapshot, so this
+    run also cannot mistake an abandoned overlay for the operator's config.
+
+    Concurrency safety: callers are serialised by TWO layers -- a
+    process-local :class:`threading.Lock` for sibling threads, and the
+    bounded cross-process advisory lock in
+    :mod:`ralph.mcp.transport.config_overlay` so two INDEPENDENT Ralph
+    processes cannot interleave their snapshot/write/restore steps on the
+    shared user-global file.  Both the original-bytes read and the restore
+    happen INSIDE the critical section.  The advisory lock is bounded
+    (``_CURSOR_CONFIG_LOCK_TIMEOUT_SECONDS``) and fails closed with
+    :class:`~ralph.mcp.transport.config_overlay.McpConfigOverlayLockTimeoutError`
+    rather than hanging the launch path.
     """
+    config_paths = _cursor_paths_to_consider(workspace_path)
+    lock_path = mcp_config_lock_path(_cursor_global_config_path())
     _cursor_mcp_lock.acquire()
     try:
-        # Snapshot the original bytes BEFORE we write so the restore step
-        # can put each path back exactly as we found it (including the
-        # missing-file case for paths that did not exist).
-        original_by_path: dict[Path, bytes | None] = {}
-        for config_path in _cursor_paths_to_consider(workspace_path):
-            original_by_path[config_path] = (
-                config_path.read_bytes() if config_path.is_file() else None
+        with mcp_config_overlay_lock(
+            lock_path, timeout_seconds=_CURSOR_CONFIG_LOCK_TIMEOUT_SECONDS
+        ):
+            for config_path in config_paths:
+                reclaim_config_overlay(config_path)
+
+            current_config: dict[str, object] = {
+                "mcpServers": {RALPH_MCP_SERVER_NAME: {"url": endpoint}},
+                "workspace_path": workspace_path,
+            }
+            merged_config = merge_existing_upstreams(
+                "cursor", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
             )
-
-        current_config: dict[str, object] = {
-            "mcpServers": {RALPH_MCP_SERVER_NAME: {"url": endpoint}},
-            "workspace_path": workspace_path,
-        }
-        merged_config = merge_existing_upstreams(
-            "cursor", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
-        )
-
-        try:
             config_payload = json.dumps(merged_config, indent=2).encode("utf-8")
-            for config_path in _cursor_paths_to_consider(workspace_path):
-                # Atomically publish only changed bytes. The primitive avoids
-                # staging/replacing an unchanged effective config and defers
-                # parent creation until a changed publish requires it.
-                atomic_write_bytes_if_changed(
-                    DEFAULT_FILE_BACKEND,
-                    config_path,
-                    config_payload,
-                    tmp_path=config_path.with_suffix(config_path.suffix + ".ralph-staging"),
-                    prepare_write=partial(_prepare_config_parent, config_path.parent),
-                )
-            yield
-        finally:
-            for config_path in _cursor_paths_to_consider(workspace_path):
-                original_bytes = original_by_path.get(config_path)
-                if original_bytes is None:
-                    if config_path.is_file():
-                        config_path.unlink()
-                else:
-                    # Restore atomically while avoiding a no-op replace when
-                    # the pre-run bytes are already back in place.
-                    atomic_write_bytes_if_changed(
-                        DEFAULT_FILE_BACKEND,
-                        config_path,
-                        original_bytes,
-                        tmp_path=config_path.with_suffix(config_path.suffix + ".ralph-restore"),
-                        prepare_write=partial(_prepare_config_parent, config_path.parent),
-                    )
+            original_bytes_by_path = {
+                config_path: stage_config_overlay(config_path, config_payload)
+                for config_path in config_paths
+            }
+            try:
+                yield
+            finally:
+                for config_path in config_paths:
+                    restore_config_overlay(config_path, original_bytes_by_path[config_path])
     finally:
         _cursor_mcp_lock.release()
 

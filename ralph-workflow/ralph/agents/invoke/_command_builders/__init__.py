@@ -11,7 +11,7 @@ import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke._process_reader import _agent_command_name
 from ralph.config.enums import AgentTransport
@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
 
 _MODELED_FLAG_PARTS = 2
+#: opencode's two documented spellings of the model flag ("-m, --model <model>").
+_OPENCODE_MODEL_FLAG_NAMES: Final[frozenset[str]] = frozenset({"-m", "--model"})
 _PI_MODEL_FLAG_PARTS = 2
 _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
@@ -215,10 +217,50 @@ def _command_already_enables_print_mode(cmd: list[str]) -> bool:
     return any(part in _HEADLESS_CLAUDE_PRINT_FLAGS for part in cmd)
 
 
-def _normalize_opencode_model_flag(model_flag: str) -> list[str]:
-    parts = model_flag.split()
-    if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
-        return [parts[0], parts[1].removeprefix("opencode/")]
+def _tokenize_opencode_model_flag(model_flag: str) -> list[str]:
+    """Tokenize an opencode model flag into exactly two argv tokens.
+
+    ``opencode run --help`` (1.18.25) documents ``-m, --model <model>`` as
+    one flag plus one ``provider/model`` value. Two rules follow, and both
+    were previously violated:
+
+      1. The value is passed through **verbatim**. opencode publishes a
+         provider literally named ``opencode``, so stripping an
+         ``opencode/`` prefix here destroyed the provider half of ids like
+         ``opencode/big-pickle`` and left opencode parsing
+         ``providerID='big-pickle'`` with an empty model id. The Ralph
+         alias prefix is stripped once, at alias resolution
+         (``ralph.agents.registry``); never again.
+      2. The flag is split with :func:`shlex.split`, not ``str.split``, and
+         a malformed shape is rejected rather than emitted. ``str.split``
+         let an alias or a caller-supplied ``model_flag`` carrying
+         whitespace expand into extra argv tokens (``--agent plan``), which
+         is flag injection into the spawned ``opencode`` process.
+
+    This mirrors the fail-closed posture of
+    :func:`_tokenize_pi_model_flag`.
+
+    Args:
+        model_flag: The ``-m``/``--model`` flag string to tokenize.
+
+    Returns:
+        Exactly ``[<flag name>, <model id>]``.
+
+    Raises:
+        ValueError: When the flag does not tokenize into exactly one flag
+            name plus one value, or when the value itself looks like a flag.
+    """
+    parts = shlex.split(model_flag)
+    if len(parts) != _MODELED_FLAG_PARTS or parts[0] not in _OPENCODE_MODEL_FLAG_NAMES:
+        raise ValueError(
+            "opencode model flag must be exactly two argv tokens "
+            f"('-m <value>' or '--model <value>'); got {parts!r} from {model_flag!r}"
+        )
+    if parts[1].startswith("-"):
+        raise ValueError(
+            "opencode model value must not itself start with '-' "
+            f"(flag-injection guard); got value={parts[1]!r}"
+        )
     return parts
 
 
@@ -364,7 +406,9 @@ class CommandBuilderSpec:
             the binary name).
         format_flag: Optional two-token format flag emitted before the
             output flag.
-        output_flag: Optional output-format flag string.
+        output_flag: Optional output-format flag string. Ignored entirely
+            (spec default AND ``config.output_flag`` operator override)
+            when ``honors_output_flag`` is False.
         yolo_flag: Optional autonomy/yolo flag string.
         model_flag_template: Optional ``str.format`` template for the model
             flag.
@@ -386,6 +430,14 @@ class CommandBuilderSpec:
         workspace_dir_flag: When set, a ``--add-dir``-style flag prefix
             emitted with ``str(options.workspace_path)`` so the agent can
             access the workspace directory (agy uses ``("--add-dir",)``).
+        honors_output_flag: When False the transport has no output-format
+            flag at all, so BOTH the spec default and any operator
+            ``[agents.<name>].output_flag`` override are dropped -- loudly,
+            by this declaration, rather than by a coincidence of argv
+            sniffing. opencode 1.18.25 is the one such transport: its
+            ``run`` sub-command exposes only ``--format default|json``
+            (see ``opencode run --help``); there is no output flag to
+            forward and passing an unknown one aborts the run.
     """
 
     base_argv: tuple[str, ...]
@@ -399,6 +451,7 @@ class CommandBuilderSpec:
     cmd_argv_override: bool = False
     yolo_before_session: bool = False
     workspace_dir_flag: tuple[str, ...] | None = None
+    honors_output_flag: bool = True
 
 
 class ConfigurableCommandBuilder:
@@ -448,7 +501,7 @@ class ConfigurableCommandBuilder:
             if self.spec.base_argv and self.spec.base_argv[0] == "pi":
                 return _tokenize_pi_model_flag(effective_model)
             if " " in effective_model or effective_model.startswith("-"):
-                return _normalize_opencode_model_flag(effective_model)
+                return _tokenize_opencode_model_flag(effective_model)
             formatted = self.spec.model_flag_template.format(effective_model)
             return formatted.split()
         if "codex" in self.spec.base_argv[0]:
@@ -464,17 +517,15 @@ class ConfigurableCommandBuilder:
     ) -> list[str]:
         cmd = self._init_cmd(config)
 
-        if options.pure and "opencode" in self.spec.base_argv[0]:
-            cmd.append("--pure")
-
         if self.spec.format_flag is not None:
             cmd.extend(self.spec.format_flag)
 
-        output_flag = (
-            config.output_flag if config.output_flag is not None else self.spec.output_flag
-        )
-        if output_flag is not None and "opencode" not in self.spec.base_argv[0]:
-            cmd.extend(_split_optional_flag(output_flag))
+        if self.spec.honors_output_flag:
+            output_flag = (
+                config.output_flag if config.output_flag is not None else self.spec.output_flag
+            )
+            if output_flag is not None:
+                cmd.extend(_split_optional_flag(output_flag))
 
         cmd.extend(self._build_yolo_session_flags(config, options))
 
@@ -517,7 +568,14 @@ class OpencodeCommandBuilder(ConfigurableCommandBuilder):
     SPEC = CommandBuilderSpec(
         base_argv=("opencode", "run"),
         format_flag=("--format", "json"),
-        output_flag="--json-stream",
+        # opencode 1.18.25 has NO output-format flag beyond
+        # ``--format default|json`` (``opencode run --help``); an
+        # ``--json-stream`` default used to sit here and was silently
+        # discarded by an argv-name sniff, which also swallowed any
+        # operator ``[agents.opencode].output_flag``. The drop is now
+        # declared, not incidental.
+        output_flag=None,
+        honors_output_flag=False,
         yolo_flag=None,
         model_flag_template="--model {}",
         positional_prompt=True,

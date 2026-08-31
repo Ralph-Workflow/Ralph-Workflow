@@ -967,6 +967,19 @@ def _build_smoke_prompt(
         "stop until the completion call succeeds.\n"
     )
 
+    # AGY-only: AGY's native ``write_to_file`` accepts only its private
+    # artifact directory, so the workspace file must be created through the
+    # dispatcher. Every other transport lists Ralph's ``write_file``
+    # directly, and naming AGY's tools at them is noise that measurably
+    # invites the wrong tool.
+    agy_write_requirement = (
+        "- Create that file only through `call_mcp_tool` targeting Ralph's "
+        "`write_file`; do not use AGY's native `write_to_file` tool, which "
+        "accepts only its private artifact directory.\n"
+        if is_agy
+        else ""
+    )
+
     multimodal_requirements = ""
     if multimodal:
         from ralph.pipeline.plumbing.smoke_multimodal import multimodal_prompt_requirements
@@ -983,9 +996,7 @@ def _build_smoke_prompt(
         "- For any Ralph workspace write tool, pass the requested workspace-relative path "
         "exactly (for example `tmp/interactive-agy-smoke/todo-list.js`), never an "
         "absolute path.\n"
-        "- When AGY is the transport, create that file only through `call_mcp_tool` "
-        "targeting Ralph's `write_file`; do not use AGY's native `write_to_file` tool, "
-        "which accepts only its private artifact directory.\n"
+        f"{agy_write_requirement}"
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
         f"{transport_requirement}"

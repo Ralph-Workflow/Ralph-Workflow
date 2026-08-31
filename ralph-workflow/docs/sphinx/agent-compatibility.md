@@ -238,7 +238,6 @@ json_parser = "codex"
 
 [agents.opencode]
 cmd = "opencode"
-output_flag = "--json-stream"
 session_flag = "--session {}"
 can_commit = false
 json_parser = "opencode"

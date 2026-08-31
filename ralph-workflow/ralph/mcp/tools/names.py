@@ -168,15 +168,19 @@ EXPLORE_TOOLS: tuple[str, ...] = (RALPH_INDEX_STATUS_TOOL, RALPH_REINDEX_TOOL, R
 
 ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName)
 
-# Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys
+# Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys,
+# cross-checked against the installed opencode 1.18.25 binary (its PermissionConfig
+# struct declares read, edit, glob, grep, list, bash, task, external_directory,
+# todowrite, question, webfetch, websearch, lsp, doom_loop, skill).
 # Setting each to false physically removes the tool (unlike permission which is allow-by-default).
 # Only filesystem/exec primitives are disabled — they are funneled through Ralph's MCP
 # surface. Orchestration tools (sub-agents, skills, todos, web access) stay native; see
 # OPENCODE_NATIVE_TOOLS_TO_KEEP. ``question`` stays disabled: it prompts the user and
 # wedges headless runs.
+# ``codesearch`` used to be listed here and was inert: it is not an opencode tool and
+# appears nowhere in the 1.18.25 binary, so the override named a tool that never existed.
 OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = (
     "bash",
-    "codesearch",
     "edit",
     "glob",
     "grep",

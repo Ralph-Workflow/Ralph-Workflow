@@ -110,7 +110,6 @@ def _build_default_options() -> BuildCommandOptions:
         model_flag=None,
         session_id=None,
         verbose=False,
-        pure=False,
         mcp_endpoint=None,
         allowed_mcp_tool_names=(),
         unsafe_mode=False,

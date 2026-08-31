@@ -26,7 +26,7 @@ In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Wo
 Claude Code supports CLI flags that together restrict the native toolset of a session:
 
 - `--tools "Agent,Task,Skill,TodoWrite,WebFetch,WebSearch"` - Restricts the built-in toolset to the orchestration keep-list (`CLAUDE_NATIVE_TOOLS_TO_KEEP` in `ralph/mcp/tools/names.py`); every filesystem/exec built-in (`Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, …) is removed. MCP tools are unaffected by `--tools`. The sub-agent dispatcher was renamed `Task` → `Agent` in claude v2.1.63; unknown names in `--tools` are silently ignored, so listing both keeps every CLI version covered. Sub-agents inherit the parent session's tool restriction and MCP servers unless their own definition overrides them.
-- `--strict-mcp-config` - Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads supported user config files (`~/.claude.json`, workspace `.mcp.json`, workspace `.claude.json`) to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry.
+- `--strict-mcp-config` - Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads every config source Claude itself loads — each enabled plugin's `<plugin-root>/.mcp.json` (enablement from `~/.claude/settings.json` `enabledPlugins`, install paths from `~/.claude/plugins/installed_plugins.json`), `~/.claude.json` `mcpServers` (user scope), workspace `.mcp.json` (project scope), workspace `.claude.json`, and `~/.claude.json` `projects.<workspace>.mcpServers` (local scope, where a plain `claude mcp add` writes) — to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry. Plugin-provided servers are namespaced `plugin_<plugin>_<server>`, mirroring Claude's own `plugin:<plugin>:<server>`, so a plugin server cannot silently replace a same-named user server. Claude.ai account connectors (configured at `claude.ai/customize/connectors`, listed by `claude mcp list` as `claude.ai <Name>`) have no on-disk definition, so `--strict-mcp-config` removes them and Ralph Workflow cannot proxy them back.
 
 Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint, plus the orchestration keep-list. `--allowedTools` only grants permissions — it cannot re-enable a tool that `--tools` removed — so the keep-list must appear in `--tools` to stay available and in `--allowedTools` to run without approval prompts. Ralph Workflow still remains the real policy boundary: provider approval only removes Claude-side prompts, while `ToolBridge` metadata and session capabilities decide whether the forwarded call is actually allowed.
 
@@ -34,10 +34,10 @@ Reference: https://docs.anthropic.com/en/docs/claude-code/cli-reference
 
 ### OpenCode - Full Enforcement
 
-OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow builds this object in `_merge_opencode_config_content()` and disables the 11 native filesystem/exec tools by setting each to `false`:
+OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow builds this object in `_merge_opencode_config_content()` and disables the 10 native filesystem/exec tools by setting each to `false`:
 
 ```
-bash, codesearch, edit, glob, grep, list, lsp, patch, question, read, write
+bash, edit, glob, grep, list, lsp, patch, question, read, write
 ```
 
 (`question` is disabled because it prompts the user and wedges headless runs.)
@@ -107,6 +107,7 @@ result in `tmp/agy-source-of-truth.txt`.
 
 ### Claude Code
 
+- **Claude.ai account connectors are unrecoverable.** Connectors enabled at `claude.ai/customize/connectors` are delivered to the CLI by the signed-in account, not by any file on disk, so there is nothing for Ralph Workflow to discover and re-expose. `--strict-mcp-config` removes them for the duration of the run. Same for session-only plugins passed as `--plugin-dir` / `--plugin-url` to a different invocation.
 - **Bug #25589**: `--disallowedTools` ignores MCP tools when combined with `--mcp-config`. Ralph Workflow avoids this by using a `--tools` keep-list instead of a disallowed-list approach.
 - **Bug #13077**: `--allowedTools` wildcards do not match MCP tools. Ralph Workflow avoids wildcard-based Claude approvals and instead derives an exact per-session Ralph Workflow MCP allowlist from the live runtime endpoint.
 - **Bug #32079**: `--tools ""` combined with `--mcp-config` and a system prompt larger than 18 KB causes Claude Code to exit silently. Ralph Workflow now passes a non-empty `--tools` keep-list, which sidesteps the empty-string variant of this bug; the prompt-size caveat is retained here in case the restriction is ever tightened back to `--tools ""`. Ralph Workflow's system prompt is under 1 KB.

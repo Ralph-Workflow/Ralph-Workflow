@@ -467,10 +467,15 @@ class TestResolveInvocationRuntimeParity:
                 "--skip-stuff",
                 "--verbose",
                 None,
+                # ``--pure`` is gone: it ran opencode without external
+                # plugins and made an operator's plugin-provided model
+                # provider unresolvable. ``opencode/`` is no longer stripped
+                # off the model value either -- opencode publishes a provider
+                # literally named ``opencode``, so the extra strip made every
+                # model under it unselectable.
                 [
                     "opencode",
                     "run",
-                    "--pure",
                     "--format",
                     "json",
                     "--session",
@@ -478,7 +483,7 @@ class TestResolveInvocationRuntimeParity:
                     "--skip-stuff",
                     "--verbose",
                     "--model",
-                    "some-model",
+                    "opencode/some-model",
                     "hello world",
                 ],
             ),
@@ -584,7 +589,6 @@ class TestResolveInvocationRuntimeParity:
             model_flag = "--provider openai --model gpt-4"
 
         options = BuildCommandOptions(
-            pure=True,
             session_id="sess-123",
             verbose=True,
             model_flag=model_flag,

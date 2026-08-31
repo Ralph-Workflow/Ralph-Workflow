@@ -212,21 +212,32 @@ def _merge_codex_config(
     return merged
 
 
+class CodexConfigError(RuntimeError):
+    """Ralph cannot carry the operator's Codex config into the run.
+
+    Ralph redirects ``CODEX_HOME`` at a throwaway directory, so the file it
+    synthesizes is the ONLY config Codex sees. Continuing from an empty base
+    would silently discard ``model_provider``, every ``[model_providers.*]``
+    block and every ``[agents.*]`` block -- sending the run to a different
+    provider, on different credentials, against different billing, and
+    reporting success. Failing loudly is the only honest option: this is the
+    same class of harm as disabling an operator's plugins, just quieter.
+    """
+
+
 def _parse_source_config(base_config: str, source_config: Path) -> dict[str, object]:
-    """Parse the operator's config, degrading to Ralph-only settings if it is invalid."""
+    """Parse the operator's config, or refuse the run when it cannot be carried over."""
     if not base_config.strip():
         return {}
     try:
         parsed: object = tomllib.loads(base_config)
     except ValueError as exc:
-        logger.error(
-            "Source Codex config {} is not loadable TOML ({}); Codex could not load it "
-            "either. Continuing with Ralph-only settings -- operator settings such as "
-            "model_provider will NOT apply until that file is fixed.",
-            source_config,
-            exc,
+        msg = (
+            f"Source Codex config {source_config} is not loadable TOML ({exc}). "
+            "Ralph will not run Codex against settings the operator never configured "
+            "-- fix that file, or move it aside to run with Codex's own defaults."
         )
-        return {}
+        raise CodexConfigError(msg) from exc
     if not isinstance(parsed, dict):
         return {}
     return cast("dict[str, object]", parsed)
@@ -323,27 +334,17 @@ def prepare_codex_home_with_upstreams(
     config_path = codex_root / "config.toml"
     try:
         config_text = _render_codex_config(merged, config_path)
-    except RecursionError:
+    except RecursionError as exc:
         # ``tomllib`` parses ~1000 levels of nesting happily but ``tomli_w``
         # exhausts the stack re-serializing it, and ``RecursionError`` is not a
-        # ``ValueError``, so it escaped the render guard and killed the whole
-        # invocation. Degrade the way an unparseable operator config already
-        # does rather than taking the run down with it.
-        logger.error(
-            "Source Codex config {} nests tables too deeply for Ralph to re-serialize; "
-            "continuing with Ralph-only settings -- operator settings such as "
-            "model_provider will NOT apply until that file is flattened.",
-            source_config,
+        # ``ValueError``, so it escaped the render guard as a bare stack
+        # overflow. Report it as what it is: a config Ralph cannot carry over.
+        msg = (
+            f"Source Codex config {source_config} nests tables too deeply for Ralph "
+            "to re-serialize. Ralph will not run Codex against settings the operator "
+            "never configured -- flatten that file to run with it."
         )
-        config_text = _render_codex_config(
-            _merge_codex_config(
-                {},
-                endpoint=endpoint,
-                master_prompt_file=master_prompt_file,
-                unsafe_mode=unsafe_mode,
-            ),
-            config_path,
-        )
+        raise CodexConfigError(msg) from exc
     write_text_if_changed(DEFAULT_FILE_BACKEND, config_path, config_text, encoding="utf-8")
     return str(codex_root), upstreams
 
@@ -442,6 +443,7 @@ def _extract_codex_upstream_servers(base: dict[str, object]) -> tuple[UpstreamMc
 
 
 __all__ = [
+    "CodexConfigError",
     "cleanup_codex_homes",
     "prepare_codex_home",
     "prepare_codex_home_with_upstreams",

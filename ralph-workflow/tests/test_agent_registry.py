@@ -187,13 +187,21 @@ def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:
 
 
 def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
+    """A dynamic ``opencode/<provider>/<model>`` alias resolves to the built-in.
+
+    ``output_flag`` is asserted to be ``None``: it used to carry
+    ``--json-stream``, a flag opencode 1.18.25 does not have. It never
+    reached the command line (the builder dropped it), so the constant was
+    dead. The one output selector Ralph passes is ``--format json``, which
+    the command builder emits unconditionally for this transport.
+    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get("opencode/minimax/MiniMax-M2.7-highspeed")
 
     assert agent is not None
     assert agent.cmd == "opencode"
-    assert agent.output_flag == "--json-stream"
+    assert agent.output_flag is None
     assert agent.json_parser == "opencode"
     assert agent.model_flag == "-m minimax/MiniMax-M2.7-highspeed"
     assert agent.can_commit is True

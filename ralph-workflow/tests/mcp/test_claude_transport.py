@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.mcp.transport.claude import (
     claude_mcp_config,
     load_existing_claude_upstream_servers,
@@ -320,3 +322,217 @@ def test_claude_transport_regression_stale_ralph_entry_is_dropped_not_rejected(
 
     assert [server.name for server in result] == ["github"]
     assert result[0].url == "https://api.example.com/mcp/"
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_claude_transport_regression_plugin_provided_servers_are_discovered(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An enabled plugin's `.mcp.json` servers must survive `--strict-mcp-config`.
+
+    Claude Code loads `<plugin-root>/.mcp.json` for every enabled plugin and
+    exposes them as `plugin:<plugin>:<server>`. Ralph strips every non-Ralph
+    MCP source from the CLI, so a plugin server it never discovered is simply
+    deleted from the operator's world -- the OpenCode `--pure` defect again.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    install_path = tmp_path / ".claude" / "plugins" / "cache" / "mkt" / "ui-pro" / "2.13.0"
+    _write_json(
+        tmp_path / ".claude" / "settings.json",
+        {"enabledPlugins": {"ui-pro@mkt": True}},
+    )
+    _write_json(
+        tmp_path / ".claude" / "plugins" / "installed_plugins.json",
+        {"version": 2, "plugins": {"ui-pro@mkt": [{"installPath": str(install_path)}]}},
+    )
+    _write_json(
+        install_path / ".mcp.json",
+        {"mcpServers": {"shadcn": {"command": "npx", "args": ["-y", "shadcn@latest", "mcp"]}}},
+    )
+
+    result = load_existing_claude_upstream_servers(workspace_path=None)
+
+    assert [server.name for server in result] == ["plugin_ui-pro_shadcn"]
+    assert result[0].transport == "stdio"
+    assert result[0].command == "npx"
+    assert result[0].args == ("-y", "shadcn@latest", "mcp")
+
+
+def test_claude_transport_regression_disabled_plugin_servers_stay_undiscovered(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A plugin the operator disabled must not be re-exposed as a proxied upstream."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    install_path = tmp_path / ".claude" / "plugins" / "cache" / "mkt" / "ui-pro" / "2.13.0"
+    _write_json(
+        tmp_path / ".claude" / "settings.json",
+        {"enabledPlugins": {"ui-pro@mkt": False}},
+    )
+    _write_json(
+        tmp_path / ".claude" / "plugins" / "installed_plugins.json",
+        {"version": 2, "plugins": {"ui-pro@mkt": [{"installPath": str(install_path)}]}},
+    )
+    _write_json(install_path / ".mcp.json", {"mcpServers": {"shadcn": {"command": "npx"}}})
+
+    result = load_existing_claude_upstream_servers(workspace_path=None)
+
+    assert result == ()
+
+
+def test_claude_transport_regression_plugin_server_does_not_shadow_user_server(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A plugin server sharing a user server's name must not delete either of them."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    install_path = tmp_path / ".claude" / "plugins" / "cache" / "mkt" / "ui-pro" / "2.13.0"
+    _write_json(
+        tmp_path / ".claude" / "settings.json",
+        {"enabledPlugins": {"ui-pro@mkt": True}},
+    )
+    _write_json(
+        tmp_path / ".claude" / "plugins" / "installed_plugins.json",
+        {"version": 2, "plugins": {"ui-pro@mkt": [{"installPath": str(install_path)}]}},
+    )
+    _write_json(
+        install_path / ".mcp.json",
+        {"mcpServers": {"playwright": {"command": "npx", "args": ["-y", "@playwright/mcp"]}}},
+    )
+    _write_json(
+        tmp_path / ".claude.json",
+        {"mcpServers": {"playwright": {"type": "http", "url": "https://user.example/mcp"}}},
+    )
+
+    result = load_existing_claude_upstream_servers(workspace_path=None)
+
+    by_name = {server.name: server for server in result}
+    assert set(by_name) == {"plugin_ui-pro_playwright", "playwright"}
+    assert by_name["playwright"].url == "https://user.example/mcp"
+    assert by_name["plugin_ui-pro_playwright"].command == "npx"
+
+
+def test_claude_transport_regression_local_scope_project_servers_are_discovered(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`claude mcp add -s local` writes ~/.claude.json projects.<cwd>.mcpServers.
+
+    That is the default scope of `claude mcp add`, so it is the most likely
+    place an operator's server lives, and Ralph never looked at it.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    _write_json(
+        tmp_path / ".claude.json",
+        {
+            "mcpServers": {"user-scope": {"type": "http", "url": "https://user.example/mcp"}},
+            "projects": {
+                str(workspace): {
+                    "mcpServers": {
+                        "local-scope": {
+                            "type": "stdio",
+                            "command": "/bin/echo",
+                            "args": ["hi"],
+                        }
+                    }
+                },
+                str(tmp_path / "other"): {
+                    "mcpServers": {"other-project": {"command": "/bin/false"}}
+                },
+            },
+        },
+    )
+
+    result = load_existing_claude_upstream_servers(workspace_path=workspace)
+
+    assert {server.name for server in result} == {"user-scope", "local-scope"}
+
+
+def test_claude_transport_regression_local_scope_outranks_project_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Claude resolves local scope above project scope; Ralph's proxy must agree."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    _write_json(
+        workspace / ".mcp.json",
+        {"mcpServers": {"shared": {"type": "http", "url": "https://project.example/mcp"}}},
+    )
+    _write_json(
+        tmp_path / ".claude.json",
+        {
+            "projects": {
+                str(workspace): {
+                    "mcpServers": {"shared": {"type": "http", "url": "https://local.example/mcp"}}
+                }
+            }
+        },
+    )
+
+    result = load_existing_claude_upstream_servers(workspace_path=workspace)
+
+    assert [server.name for server in result] == ["shared"]
+    assert result[0].url == "https://local.example/mcp"
+
+
+def test_claude_transport_regression_unreadable_config_is_reported_not_swallowed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A corrupt config must warn loudly instead of yielding a silent empty set."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude.json").write_text("{ not json", encoding="utf-8")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        result = load_existing_claude_upstream_servers(workspace_path=None)
+    finally:
+        logger.remove(sink_id)
+
+    assert result == ()
+    warning = "\n".join(records)
+    assert str(tmp_path / ".claude.json") in warning
+
+
+def test_claude_transport_regression_plugin_named_ralph_server_is_dropped_not_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The reserved `ralph` name must still be dropped before normalization."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    install_path = tmp_path / ".claude" / "plugins" / "cache" / "mkt" / "ui-pro" / "2.13.0"
+    _write_json(
+        tmp_path / ".claude" / "settings.json",
+        {"enabledPlugins": {"ui-pro@mkt": True}},
+    )
+    _write_json(
+        tmp_path / ".claude" / "plugins" / "installed_plugins.json",
+        {"version": 2, "plugins": {"ui-pro@mkt": [{"installPath": str(install_path)}]}},
+    )
+    _write_json(install_path / ".mcp.json", {"mcpServers": {"keep-me": {"command": "npx"}}})
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    _write_json(
+        tmp_path / ".claude.json",
+        {
+            "mcpServers": {"ralph": {"type": "http", "url": "http://stale.example/mcp"}},
+            "projects": {
+                str(workspace): {
+                    "mcpServers": {"ralph": {"type": "http", "url": "http://stale2.example/mcp"}}
+                }
+            },
+        },
+    )
+
+    result = load_existing_claude_upstream_servers(workspace_path=workspace)
+
+    assert [server.name for server in result] == ["plugin_ui-pro_keep-me"]

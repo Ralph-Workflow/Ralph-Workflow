@@ -1197,7 +1197,22 @@ def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Pat
 
 
 # === consolidated from test_agents_invoke_1.py ===
-def test_build_command_uses_opencode_pure_mode_when_requested(tmp_path: Path) -> None:
+def test_opencode_regression_no_pure_flag_and_no_output_flag_in_argv(
+    tmp_path: Path,
+) -> None:
+    """Two flags that must never reach an ``opencode run`` command line.
+
+    This test previously asserted ``--pure`` WAS emitted, which encoded a
+    bug: ``--pure`` runs opencode without external plugins, so an operator
+    whose model provider comes from a plugin had every run die on an
+    unresolvable provider. The flag and its ``pure`` option field are gone.
+
+    It also pins the second half: opencode 1.18.25 has no output-format flag
+    beyond ``--format json``, so an operator ``[agents.opencode]
+    output_flag`` is dropped -- now by an explicit
+    ``honors_output_flag=False`` declaration rather than by an argv-name
+    sniff that happened to swallow it.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("say hello", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
@@ -1205,13 +1220,12 @@ def test_build_command_uses_opencode_pure_mode_when_requested(tmp_path: Path) ->
     cmd = build_command(
         config,
         str(prompt_file),
-        options=BuildCommandOptions(verbose=False, pure=True),
+        options=BuildCommandOptions(verbose=False),
     )
 
     assert cmd == [
         "opencode",
         "run",
-        "--pure",
         "--format",
         "json",
         "say hello",
@@ -2755,14 +2769,21 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
 def test_invoke_agent_fails_fast_when_local_opencode_does_not_support_model(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """The preflight sees the model id verbatim, ``provider/model``.
+
+    The fixture previously wrote the Ralph ALIAS (``-m
+    opencode/minimax/MiniMax-M3``) into ``model_flag`` and relied on the
+    invoke layer stripping ``opencode/`` a second time. That second strip
+    was a bug -- opencode publishes a provider literally named ``opencode``
+    -- so the fixture now carries what alias resolution actually emits.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
         cmd="opencode",
-        output_flag="--json-stream",
         json_parser=JsonParserType.OPENCODE,
         transport=AgentTransport.OPENCODE,
-        model_flag="-m opencode/minimax/MiniMax-M3",
+        model_flag="-m minimax/MiniMax-M3",
     )
 
     monkeypatch.setattr(
