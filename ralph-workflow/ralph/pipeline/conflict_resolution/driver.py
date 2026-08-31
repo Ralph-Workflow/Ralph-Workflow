@@ -122,6 +122,7 @@ def _sleep_seconds(seconds: float) -> None:
     """Sleep without exposing ``time.sleep`` as the patch target for tests."""
     time.sleep(seconds)  # filesystem-poll-ok: RecoveryController chain retry_delay_ms backoff
 
+
 __all__ = [
     "MonotonicClock",
     "ResolutionInvoker",
@@ -191,7 +192,9 @@ def run_rebase_conflict_resolution_outcome(
     session: ResolutionSession | None = None,
 ) -> ResolutionOutcome:
     """Resolve one paused rebase stop with typed terminal evidence."""
-    active_session = session or active_rebase_resolution_session() or _new_resolution_session(config)
+    active_session = (
+        session or active_rebase_resolution_session() or _new_resolution_session(config)
+    )
     try:
         resolved = _run_rounds(
             root=root,
@@ -304,7 +307,9 @@ def _prepare_conflicted_paths(
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         session.unresolved_paths = tuple(conflicted)
         session.exhaustion_reason = "OUT_OF_REACH: the conflicted paths could not be read"
-        emit_conflict_phase_line(display, "conflicted paths unreadable; nothing a resolver can repair")
+        emit_conflict_phase_line(
+            display, "conflicted paths unreadable; nothing a resolver can repair"
+        )
         return (), False, ()
     if not conflicted:
         # Nothing unmerged: there is no conflict to resolve, which is not
@@ -341,9 +346,7 @@ def _prepare_conflicted_paths(
             + "; resolving the rest first",
         )
         conflicted = reachable
-    decisions = tuple(
-        path for path in declared_decision_paths(kinds) if path in set(conflicted)
-    )
+    decisions = tuple(path for path in declared_decision_paths(kinds) if path in set(conflicted))
     staged = stage_mechanical_conflicts(root, kinds)
     remaining = tuple(path for path in conflicted if path not in set(staged))
     if remaining:
@@ -440,9 +443,7 @@ def _run_rounds(
                 conflicted_paths=conflicted,
                 round_index=round_index,
                 round_cap=round_cap,
-                surviving_marker_paths=(
-                    () if round_index == 1 else session.unresolved_paths
-                ),
+                surviving_marker_paths=(() if round_index == 1 else session.unresolved_paths),
                 replaying_commit_sha=stop.sha if stop is not None else None,
                 replaying_commit_subject=stop.subject if stop is not None else None,
                 stop_index=stop.stop_index if stop is not None else None,
@@ -456,7 +457,23 @@ def _run_rounds(
             attempt_started = clock()
             _reset_round_reporting(session)
             attempt = _run_one_round(
-                runner, candidates, prompt_path, round_index, display, session, policy_bundle
+                runner,
+                candidates,
+                prompt_path,
+                round_index,
+                display,
+                session,
+                policy_bundle,
+                worktree_resolved=lambda: (
+                    not decision_paths
+                    and not _paths_still_unresolved(
+                        root,
+                        conflicted,
+                        decision_paths,
+                        present_before=present_at_entry,
+                        substantive=substantive_at_entry,
+                    )
+                ),
             )
             succeeded = attempt.succeeded
             session.unresolved_paths = _paths_still_unresolved(
@@ -487,7 +504,9 @@ def _run_rounds(
             proved_by_worktree = agent_ran and not decision_paths
             resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
             round_reason = (
-                None if resolved_now else _round_termination_reason(session, invoked=attempt.invoked)
+                None
+                if resolved_now
+                else _round_termination_reason(session, invoked=attempt.invoked)
             )
             # Carry it on the session: the exhaustion line, the durable
             # record and every caller downstream read it from there, and
@@ -543,8 +562,7 @@ def _run_rounds(
     session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
     emit_conflict_phase_line(
         display,
-        "abandoning conflict resolution; "
-        + session.exhaustion_reason,
+        "abandoning conflict resolution; " + session.exhaustion_reason,
     )
     return False
 
@@ -606,9 +624,7 @@ def _paths_still_unresolved(
     emptied = [
         path
         for path in conflicted
-        if path in substantive
-        and path not in marked
-        and _is_effectively_empty(root / path)
+        if path in substantive and path not in marked and _is_effectively_empty(root / path)
     ]
     vanished = [
         path
@@ -662,8 +678,14 @@ def _emit_expired_operator_cap(
     )
 
 
-def _emit_success(display: ParallelDisplay | None, round_index: int, stop: RebaseStop | None) -> None:
-    next_action = "verifying and continuing the rebase" if stop is not None else "verifying and committing the merge"
+def _emit_success(
+    display: ParallelDisplay | None, round_index: int, stop: RebaseStop | None
+) -> None:
+    next_action = (
+        "verifying and continuing the rebase"
+        if stop is not None
+        else "verifying and committing the merge"
+    )
     emit_conflict_phase_line(display, f"conflicts resolved in round {round_index}; {next_action}")
 
 
@@ -690,8 +712,15 @@ def _run_one_round(
     display: ParallelDisplay | None,
     session: ResolutionSession,
     policy_bundle: PolicyBundle,
+    worktree_resolved: Callable[[], bool] | None = None,
 ) -> RoundAttempt:
     """Spend every live candidate once, starting where the chain left off.
+
+    ``worktree_resolved`` re-reads the checkout after a candidate that ran
+    and came back unsuccessful. A resolver killed for inactivity AFTER
+    repairing every marker still repaired every marker; without the
+    re-scan the round spent the next candidate re-prompting a conflict
+    that no longer existed.
 
     ``chain_cursor`` is where the NEXT candidate starts, so walking
     FORWARD from it and stopping at the end of the tuple could leave the
@@ -806,6 +835,17 @@ def _run_one_round(
                 policy_bundle=policy_bundle,
             )
         agent_ran = agent_ran or session.last_attempt_saw_activity
+        if (
+            worktree_resolved is not None
+            and session.last_attempt_saw_activity
+            and worktree_resolved()
+        ):
+            emit_conflict_phase_line(
+                display,
+                f"round {round_index}: {agent_name} ended badly but the worktree shows "
+                "every marker repaired; not spending another candidate",
+            )
+            return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             _remember_dead_surface(session, agent_name)
             skipped = _skipped_candidates(session, candidates)
@@ -835,11 +875,7 @@ def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundl
     delay_ms = session.last_retry_delay_ms
     if delay_ms <= 0:
         drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
-        chain = (
-            policy_bundle.agents.agent_chains.get(drain.chain)
-            if drain is not None
-            else None
-        )
+        chain = policy_bundle.agents.agent_chains.get(drain.chain) if drain is not None else None
         if chain is not None:
             delay_ms = chain.retry_delay_ms
     if delay_ms > 0:

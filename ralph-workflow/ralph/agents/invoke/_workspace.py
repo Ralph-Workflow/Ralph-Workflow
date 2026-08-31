@@ -9,7 +9,7 @@ import time
 import weakref
 from collections.abc import Callable
 from contextlib import suppress
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from loguru import logger
@@ -36,6 +36,7 @@ from ralph.workspace._cross_process_watch_lock import (
 from ralph.workspace._shared_awareness import (
     SharedAwarenessError,
     SharedAwarenessState,
+    is_sidecar_path,
     remove_shared_awareness_sidecar,
     shared_awareness_for_workspace,
 )
@@ -510,6 +511,8 @@ class WorkspaceMonitor:
         Args:
             src_path: Path to the changed file.
         """
+        if is_sidecar_path(self._workspace, src_path):
+            return  # our own publication (see _publish_shared_awareness_change), never a change
         kind, weight = self.classify_path(src_path)
         if weight == 0.0:
             return
@@ -541,15 +544,14 @@ class WorkspaceMonitor:
                 )
 
     def classify_path(self, src_path: str) -> tuple[WorkspaceChangeKind, float]:
-        """Classify a single workspace path via the configured classifier.
+        """Classify one path via the configured classifier without recording an event.
 
-        The monitor's classifier is always set (the constructor installs a
-        default source-only classifier when none is supplied), so this is a
-        direct delegation. This helper is the canonical seam for tests and
-        dry-run checks that want to inspect the classifier output without
-        recording an event.
+        Both paths are resolved so the root-relative rules see the spelling
+        the watch backend delivers (macOS reports realpaths).
         """
-        return self._classifier.classify(src_path)
+        root = PurePosixPath(Path(self._workspace).resolve(strict=False).as_posix())
+        resolved = Path(src_path).resolve(strict=False).as_posix()
+        return self._classifier.classify(resolved, workspace_root=root)
 
     def _publish_shared_awareness_change(self, src_path: str) -> None:
         """Publish one observed source change to the cross-process sidecar.

@@ -17,7 +17,9 @@ from ralph.config.models import AgentConfig
 from ralph.mcp.server._activity_sink import reset_active_sink, reset_subagent_sink
 
 
-@pytest.mark.parametrize("recorder", ["record_activity", "record_mcp_tool_call", "record_subagent_work"])
+@pytest.mark.parametrize(
+    "recorder", ["record_activity", "record_mcp_tool_call", "record_subagent_work"]
+)
 def test_conflict_resolution_regression_profile_uses_each_direct_activity_channel(
     recorder: str,
 ) -> None:

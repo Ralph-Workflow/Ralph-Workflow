@@ -298,7 +298,10 @@ def check_broken_agent_timer(
     # test_teardown_subtree_calls_are_verdict_guarded audits that every
     # terminate/teardown site is guarded by a fire-class verdict, and the
     # elapsed-grace window here is that guard for the broken-agent path.
-    if elapsed_seconds < max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, grace_seconds) or evidence.has_meaningful_output:
+    if (
+        elapsed_seconds < max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, grace_seconds)
+        or evidence.has_meaningful_output
+    ):
         return
     if not watchdog.observed_output_is_structurally_small():
         # Substantial observed output without a meaningful-LLM classification
@@ -907,6 +910,15 @@ class ProcessLineReader:
         try:
             return self._strategy.classify_quiet(self._handle, self._probe)
         except Exception:
+            # A dead parent has nothing left to wait for: defaulting to
+            # WAITING_ON_CHILD there held the conflict-resolution drain
+            # (no deadline, exits only when not waiting) until the
+            # inactivity ceiling.
+            if self._handle.poll() is not None:
+                logger.opt(exception=True).debug(
+                    "idle watchdog: classify_quiet raised after exit; defaulting to ACTIVE"
+                )
+                return AgentExecutionState.ACTIVE
             logger.opt(exception=True).debug(
                 "idle watchdog: classify_quiet raised; defaulting to WAITING_ON_CHILD"
             )
@@ -1172,10 +1184,11 @@ class ProcessLineReader:
         if activity_signal is None:
             self._last_activity_meaningful[0] = False
             return
-        activity_signal = with_prompt_echo_flag(
-            activity_signal, queued_line, self._input_prompt
-        )
-        if activity_signal.kind != AgentActivityKind.LIFECYCLE and not activity_signal.is_harness_echo:
+        activity_signal = with_prompt_echo_flag(activity_signal, queued_line, self._input_prompt)
+        if (
+            activity_signal.kind != AgentActivityKind.LIFECYCLE
+            and not activity_signal.is_harness_echo
+        ):
             watchdog.record_any_output(byte_size=len(queued_line.encode("utf-8")))
         self._last_activity_kind = str(activity_signal.kind)
         self._last_activity_meaningful[0] = (
@@ -1252,19 +1265,27 @@ class ProcessLineReader:
         self, watchdog: IdleWatchdog
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         """Stop on durable completion or drain remaining process shutdown evidence."""
+        # stdout is closed: a buffered OpenCode frame can no longer arrive, so
+        # the strategy must stop treating an open turn as a live child.
+        self._strategy.observe_stream_end()
         if self._finish_terminal_completion():
             return None
         # A conflict resolver may exit its foreground parent while scoped MCP
         # or child work continues.  Its activity-only profile must retain that
         # work until liveness ends; an ordinary drain deadline is elapsed-time
         # termination and would discard fresh non-stdout activity here.
-        drain_deadline = None if self._policy.profile.value == "activity_only" else (
-            self._clock.monotonic()
-            + (self._policy.drain_window_seconds or 0)
-            + (
-                self._policy.idle_poll_interval_seconds
-                if self._policy.drain_window_seconds and self._policy.idle_timeout_seconds is not None
-                else 0
+        drain_deadline = (
+            None
+            if self._policy.profile.value == "activity_only"
+            else (
+                self._clock.monotonic()
+                + (self._policy.drain_window_seconds or 0)
+                + (
+                    self._policy.idle_poll_interval_seconds
+                    if self._policy.drain_window_seconds
+                    and self._policy.idle_timeout_seconds is not None
+                    else 0
+                )
             )
         )
         return self._run_drain_window(watchdog, drain_deadline)
@@ -1427,6 +1448,18 @@ class ProcessLineReader:
             self._teardown_read_lines(watchdog, sink_token, subagent_token, reader)
 
 
+def completion_evidence_gates_reader(ctx: AgentRunCtx) -> bool:
+    """Return whether durable completion evidence may stop the reader early.
+
+    Completion-enforced phases opt in explicitly. A conflict resolver
+    (``activity_only`` supervision) is gated too: its ``declare_complete``
+    sentinel is the resolver saying it is finished, and honouring it ends
+    the invocation the moment the work is durable instead of waiting for
+    stdout EOF and then for every liveness signal to go quiet.
+    """
+    return bool(ctx.requires_completion_evidence) or ctx.policy.profile.value == "activity_only"
+
+
 def _append_conflict_termination_diagnostic(
     diagnostic: dict[str, object],
     watchdog: IdleWatchdog,
@@ -1487,7 +1520,7 @@ def _run_subprocess_and_read_lines(
 
         def completion_is_terminal() -> bool:
             if (
-                not ctx.requires_completion_evidence
+                not completion_evidence_gates_reader(ctx)
                 or ctx.workspace_path is None
                 or not strategy.supports_session_continuation()
             ):

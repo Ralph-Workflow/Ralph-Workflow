@@ -32,15 +32,14 @@ from __future__ import annotations
 import json
 import threading
 from contextlib import suppress
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from ralph.workspace._shared_awareness_error import SharedAwarenessError
 from ralph.workspace._shared_awareness_state import SharedAwarenessState
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 SIDECAR_RELPATH = ".agent/.workspace-awareness.json"
+#: Suffix of the scratch file each publication writes before ``os.replace``.
+SIDECAR_TEMP_SUFFIX = ".tmp"
 
 _MAX_PUBLISHED_PATHS = 512
 
@@ -98,7 +97,9 @@ class SharedAwarenessSidecar:
         self._lock = threading.Lock()
         self._owner_id: str | None = None
         self._epoch = 0
-        self._paths: list[str] = []  # bounded-accumulator-ok: capped at _MAX_PUBLISHED_PATHS by publish_changes truncation
+        self._paths: list[
+            str
+        ] = []  # bounded-accumulator-ok: capped at _MAX_PUBLISHED_PATHS by publish_changes truncation
         self._overflowed = False
         self._polled_epoch = _POLL_NEVER
         self._last_claimed_epoch = _CLAIM_NEVER
@@ -230,7 +231,7 @@ class SharedAwarenessSidecar:
     def _write_document(self, document: dict[str, object]) -> None:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = self._path.with_name(self._path.name + ".tmp")
+            temp_path = self._path.with_name(self._path.name + SIDECAR_TEMP_SUFFIX)
             # filesystem-write-ok: atomic shared-awareness sidecar publication.
             temp_path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
             temp_path.replace(self._path)
@@ -259,8 +260,22 @@ class SharedAwarenessSidecar:
             return max(self._epoch, self._polled_epoch)
 
 
-_sidecars: dict[str, SharedAwarenessSidecar] = {}  # bounded-accumulator-ok: release_shared_awareness removes final workspace entry
+_sidecars: dict[
+    str, SharedAwarenessSidecar
+] = {}  # bounded-accumulator-ok: release_shared_awareness removes final workspace entry
 _sidecars_lock = threading.Lock()
+
+
+def is_sidecar_path(workspace_root: Path | str, path: str) -> bool:
+    """Return True when ``path`` is this workspace's sidecar or its scratch file.
+
+    The workspace monitor publishes the sidecar from its own change handler;
+    observing that publication as a change would feed the monitor its own
+    output forever, so the handler consults this before classifying.
+    """
+    sidecar = Path(workspace_root).resolve(strict=False) / SIDECAR_RELPATH
+    candidate = Path(path).resolve(strict=False)
+    return candidate in (sidecar, sidecar.with_name(sidecar.name + SIDECAR_TEMP_SUFFIX))
 
 
 def shared_awareness_for_workspace(workspace_root: Path) -> SharedAwarenessSidecar:
@@ -290,9 +305,11 @@ def remove_shared_awareness_sidecar(workspace_root: Path) -> None:
 
 __all__ = [
     "SIDECAR_RELPATH",
+    "SIDECAR_TEMP_SUFFIX",
     "SharedAwarenessError",
     "SharedAwarenessSidecar",
     "SharedAwarenessState",
+    "is_sidecar_path",
     "release_shared_awareness",
     "remove_shared_awareness_sidecar",
     "shared_awareness_for_workspace",

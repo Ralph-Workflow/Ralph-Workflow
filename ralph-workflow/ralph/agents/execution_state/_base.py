@@ -125,6 +125,17 @@ class BaseExecutionStrategy:
             with contextlib.suppress(Exception):
                 _invoke_subagent_sink(line)
 
+    def observe_stream_end(self) -> None:
+        """Observe that the provider's stdout reached EOF.
+
+        Evidence that is only meaningful while frames can still arrive (an
+        OpenCode turn whose ``step_finish`` is pending) must be released
+        here, because ``classify_quiet`` keeps being consulted while a
+        conflict-resolution drain waits for scoped child work to end. The
+        base strategy tracks no such evidence.
+        """
+        return
+
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify a raw output line for idle-watchdog activity.
 

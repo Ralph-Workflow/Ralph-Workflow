@@ -43,6 +43,17 @@ if TYPE_CHECKING:
     from ._live_descendant_handle import LiveDescendantHandle
 
 
+def _step_frame_message_id(envelope: dict[str, object]) -> str | None:
+    """Return ``part.messageID`` of a step frame, or ``None`` when absent."""
+    part = envelope.get("part")
+    if not isinstance(part, dict):
+        return None
+    message_id = cast("dict[str, object]", part).get("messageID")
+    if isinstance(message_id, str) and message_id:
+        return message_id
+    return None
+
+
 class OpenCodeExecutionStrategy(BaseExecutionStrategy):
     """OpenCode-aware strategy.
 
@@ -92,7 +103,14 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         # but buffers the matching ``task`` tool frame until that work has
         # completed. Keep the turn itself as liveness evidence during that
         # otherwise stdout-silent interval; ``step_finish`` releases it.
-        self._open_step_count = 0
+        # Open steps are keyed by ``part.messageID``: a retried model call
+        # re-emits ``step_start`` for the SAME message and closes it with a
+        # single ``step_finish``, so a plain frame counter never returned to
+        # zero. Frames without a message id fall back to a counter.
+        self._open_step_messages: set[str] = (
+            set()
+        )  # bounded-accumulator-ok: one entry per in-flight OpenCode message; emptied by step_finish and on stream EOF
+        self._anonymous_open_steps = 0
 
     def _active_label_prefix(self) -> str | None:
         if self._label_scope is None:
@@ -236,6 +254,23 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         registry.record_progress(child_id, phase="running")
         self._scoped_records_seen = True
 
+    @property
+    def open_step_count(self) -> int:
+        """Number of OpenCode turns whose ``step_finish`` has not been seen."""
+        return len(self._open_step_messages) + self._anonymous_open_steps
+
+    def observe_stream_end(self) -> None:
+        """Release every open step: after EOF no buffered frame can arrive.
+
+        OpenCode's final turn ends with its text and the process exit; the
+        trailing ``step_finish`` reaches its store but not always stdout.
+        Without this release a conflict-resolution drain that consults
+        ``classify_quiet`` after the process exited waited on a dead parent
+        until the inactivity ceiling.
+        """
+        self._open_step_messages.clear()
+        self._anonymous_open_steps = 0
+
     def _update_open_step_liveness(self, line: str) -> None:
         """Track OpenCode turn boundaries that bracket buffered native task work."""
         try:
@@ -246,17 +281,25 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             return
         envelope = cast("dict[str, object]", decoded)
         event_type = envelope.get("type")
+        if event_type not in {"step_start", "step_finish"}:
+            return
+        message_id = _step_frame_message_id(envelope)
         if event_type == "step_start":
-            self._open_step_count += 1
-        elif event_type == "step_finish":
-            self._open_step_count = max(0, self._open_step_count - 1)
+            if message_id is None:
+                self._anonymous_open_steps += 1
+            else:
+                self._open_step_messages.add(message_id)
+        elif message_id is None:
+            self._anonymous_open_steps = max(0, self._anonymous_open_steps - 1)
+        else:
+            self._open_step_messages.discard(message_id)
 
     def classify_quiet(
         self,
         handle: LiveDescendantHandle,
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
-        if self._open_step_count > 0:
+        if self.open_step_count > 0:
             return AgentExecutionState.WAITING_ON_CHILD
         prefix = self._active_label_prefix()
         probe_prefix = prefix if prefix is not None else ""

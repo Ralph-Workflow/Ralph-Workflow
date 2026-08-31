@@ -744,6 +744,24 @@ def _route_opencode_native_task(
     registry.record_progress(call_id, phase=status)
     if status in {"completed", "error"}:
         registry.record_terminal_ack(call_id, terminal_state=status)
+        # The out-of-band store probe records the same child under its
+        # SESSION id (``state.metadata.sessionId``). Without this ack the
+        # session-keyed record stayed ``running`` until its progress TTL
+        # pruned it, 45 s after the task had visibly finished.
+        child_session_id = _opencode_native_task_session_id(state_obj)
+        if child_session_id is not None:
+            registry.record_terminal_ack(child_session_id, terminal_state=status)
+
+
+def _opencode_native_task_session_id(state: dict[str, object]) -> str | None:
+    """Return ``state.metadata.sessionId`` of a native ``task`` frame, if present."""
+    metadata = state.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    session_id = cast("dict[str, object]", metadata).get("sessionId")
+    if isinstance(session_id, str) and session_id:
+        return session_id
+    return None
 
 
 def _os_descendant_state(

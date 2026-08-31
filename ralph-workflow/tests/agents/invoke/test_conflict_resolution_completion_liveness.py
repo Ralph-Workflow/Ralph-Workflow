@@ -34,7 +34,9 @@ def test_conflict_resolution_regression_parent_exit_keeps_scoped_activity_superv
     clock.advance(899.0)
     watchdog.record_mcp_tool_call()
 
-    assert watchdog.evaluate(lambda: AgentExecutionState.WAITING_ON_CHILD) is WatchdogVerdict.CONTINUE
+    assert (
+        watchdog.evaluate(lambda: AgentExecutionState.WAITING_ON_CHILD) is WatchdogVerdict.CONTINUE
+    )
 
 
 class _ParentExitedHandle:
@@ -55,6 +57,9 @@ class _ScopedChildStrategy:
 
     def __init__(self) -> None:
         self.active = True
+
+    def observe_stream_end(self) -> None:
+        return
 
     def classify_quiet(self, _handle: object, _probe: object) -> AgentExecutionState:
         return AgentExecutionState.WAITING_ON_CHILD if self.active else AgentExecutionState.ACTIVE
@@ -176,7 +181,9 @@ def test_conflict_resolution_regression_pty_termination_exposes_direct_liveness_
         watchdog.record_invocation_start()
         clock.advance(10.0)
 
-        fire_result = reader._check_fire(watchdog, watchdog.evaluate(lambda: AgentExecutionState.ACTIVE))
+        fire_result = reader._check_fire(
+            watchdog, watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
+        )
         assert fire_result is not None
         _pending, timeout_error = fire_result
 
@@ -227,3 +234,68 @@ def test_conflict_resolution_regression_parent_exit_disables_elapsed_reader_drai
     assert reader._finish_reader_done(watchdog) is None
     assert clock.waits == 4
     assert clock.monotonic() == 0.4
+
+
+class _RaisingStrategy(_ScopedChildStrategy):
+    def classify_quiet(self, _handle: object, _probe: object) -> AgentExecutionState:
+        msg = "probe unavailable"
+        raise RuntimeError(msg)
+
+
+def test_conflict_resolution_regression_classify_failure_after_exit_does_not_hold_the_drain(
+    tmp_path: Path,
+) -> None:
+    """A dead parent has nothing to wait for: a raising strategy must not pin WAITING_ON_CHILD."""
+    from ralph.agents.invoke._process_reader import make_line_reader
+    from ralph.agents.invoke._types import ProcessReaderCtx
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+
+    strategy = _RaisingStrategy()
+    clock = _CompletionClock(strategy)
+    reader = make_line_reader(
+        _ParentExitedHandle(),
+        ProcessReaderCtx(
+            config=AgentConfig(cmd="resolver", transport=AgentTransport.GENERIC),
+            policy=TimeoutPolicy(
+                idle_timeout_seconds=10.0,
+                profile=TimeoutProfile.ACTIVITY_ONLY,
+                drain_window_seconds=0.1,
+                idle_poll_interval_seconds=0.1,
+            ),
+            execution_strategy=strategy,
+            workspace_path=tmp_path,
+        ),
+        clock,
+    )
+    watchdog = IdleWatchdog(reader._policy, clock)
+    watchdog.record_invocation_start()
+    clock.watchdog = watchdog
+
+    assert reader._finish_reader_done(watchdog) is None
+    assert clock.waits == 0, "the drain must return on its first tick, not wait for the ceiling"
+
+
+@pytest.mark.parametrize(
+    ("profile", "requires", "expected"),
+    [
+        (TimeoutProfile.ACTIVITY_ONLY, False, True),
+        (TimeoutProfile.STANDARD, False, False),
+        (TimeoutProfile.STANDARD, True, True),
+    ],
+)
+def test_conflict_resolution_completion_evidence_gates_the_activity_only_reader(
+    profile: TimeoutProfile, requires: bool, expected: bool
+) -> None:
+    """A resolver's ``declare_complete`` sentinel may stop its reader like any gated phase."""
+    from ralph.agents.invoke._process_reader import completion_evidence_gates_reader
+
+    ctx = AgentRunCtx(
+        config=AgentConfig(cmd="resolver", transport=AgentTransport.OPENCODE),
+        show_progress=False,
+        extra_env=None,
+        workspace_path=None,
+        policy=TimeoutPolicy(idle_timeout_seconds=10.0, profile=profile),
+        requires_completion_evidence=requires,
+    )
+    assert completion_evidence_gates_reader(ctx) is expected

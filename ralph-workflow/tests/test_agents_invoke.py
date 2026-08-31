@@ -4819,8 +4819,13 @@ def test_opencode_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch
     captured: dict[str, object] = {}
 
     def fake_build(
-        config_content: str | None, endpoint: str, *, unsafe_mode: bool = False
+        config_content: str | None,
+        endpoint: str,
+        *,
+        unsafe_mode: bool = False,
+        workspace_path: Path | None = None,
     ) -> tuple[str, list[object]]:
+        del config_content, endpoint, workspace_path
         captured["unsafe_mode"] = unsafe_mode
         return ("{}", [])
 

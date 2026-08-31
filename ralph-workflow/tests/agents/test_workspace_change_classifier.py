@@ -640,3 +640,129 @@ def test_workspace_monitor_classify_path_helper(tmp_path: Path) -> None:
     kind, weight = monitor.classify_path("/repo/src/foo.py")
     assert kind is WorkspaceChangeKind.SOURCE
     assert weight == 1.0
+
+
+# ---------------------------------------------------------------------------
+# (d'') CACHE every engine-owned ``.agent/`` file and engine-written tree
+# ---------------------------------------------------------------------------
+
+
+def test_classify_cache_agent_top_level_engine_files() -> None:
+    """Every file directly under ``.agent/`` is Ralph bookkeeping, hence CACHE.
+
+    Regression: ``.agent/.workspace-awareness.json`` is REWRITTEN by the
+    workspace monitor on every counted change. Classified SOURCE, each
+    publication was itself a counted change, so a conflict-resolution run
+    whose agent had already exited kept observing fresh ``workspace``
+    activity forever and its inactivity clock never advanced.
+    """
+    classifier = WorkspaceChangeClassifier()
+    for path in (
+        "/repo/.agent/.workspace-awareness.json",
+        "/repo/.agent/.workspace-awareness.json.tmp",
+        "/repo/.agent/.watchdog.lock",
+        "/repo/.agent/active_runs.json",
+        "/repo/.agent/auto_integrate_in_progress.json",
+        "/repo/.agent/rebase_checkpoint.json",
+        "/repo/.agent/CURRENT_PROMPT.md",
+        "/repo/.agent/PLAN.md",
+        "/repo/.agent/PRODUCT_CRITERIA.md",
+        "/repo/.agent/mcp.toml",
+    ):
+        kind, weight = classifier.classify(path)
+        assert kind is WorkspaceChangeKind.CACHE, f"{path} should be CACHE"
+        assert weight == 0.0
+
+
+def test_classify_cache_engine_written_agent_trees() -> None:
+    """Receipts, prompt history and artifact-format mirrors are engine-written."""
+    classifier = WorkspaceChangeClassifier()
+    for path in (
+        "/repo/.agent/receipts/run-1/plan.json",
+        "/repo/.agent/prompt_history/run-1/prompt.md",
+        "/repo/.agent/artifact-formats/plan.md",
+    ):
+        kind, weight = classifier.classify(path)
+        assert kind is WorkspaceChangeKind.CACHE, f"{path} should be CACHE"
+        assert weight == 0.0
+
+
+def test_classify_agent_scoping_keeps_user_files_artifacts_and_worker_trees() -> None:
+    """The ``.agent`` rule is parent-scoped: user files, artifacts and worker trees are untouched."""
+    classifier = WorkspaceChangeClassifier()
+    assert classifier.classify("/repo/src/.workspace-awareness.json") == (
+        WorkspaceChangeKind.SOURCE,
+        1.0,
+    )
+    assert classifier.classify("/repo/docs/PLAN.md") == (WorkspaceChangeKind.SOURCE, 1.0)
+    assert classifier.classify("/repo/.agent/artifacts/plan.md") == (
+        WorkspaceChangeKind.ARTIFACT,
+        0.0,
+    )
+    assert classifier.classify("/repo/.agent/workers/unit-1/src/main.py") == (
+        WorkspaceChangeKind.SOURCE,
+        1.0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# (d''') CACHE engine-written paths outside ``.agent/`` and inside worker units
+# ---------------------------------------------------------------------------
+
+
+def test_classify_cache_engine_root_relative_paths_only_under_the_workspace_root() -> None:
+    """``checkpoint.json`` and the transport MCP overlays are Ralph Workflow's own writes.
+
+    They live at the workspace root, so the rule needs ``workspace_root``;
+    without it the path is indistinguishable from a user file and stays
+    on the ordinary path. A same-named file elsewhere is untouched.
+    """
+    classifier = WorkspaceChangeClassifier()
+    root = PurePosixPath("/repo")
+    for relative in (
+        "checkpoint.json",
+        ".agents/mcp_config.json",
+        ".cursor/mcp.json",
+        ".kimi-code/mcp.json",
+    ):
+        assert classifier.classify(f"/repo/{relative}", workspace_root=root) == (
+            WorkspaceChangeKind.CACHE,
+            0.0,
+        ), relative
+    assert classifier.classify("/repo/checkpoint.json") == (WorkspaceChangeKind.SOURCE, 1.0)
+    assert classifier.classify("/repo/src/checkpoint.json", workspace_root=root) == (
+        WorkspaceChangeKind.SOURCE,
+        1.0,
+    )
+    assert classifier.classify("/elsewhere/checkpoint.json", workspace_root=root) == (
+        WorkspaceChangeKind.SOURCE,
+        1.0,
+    )
+
+
+def test_classify_fan_out_worker_unit_engine_paths() -> None:
+    """Only the engine-written parts of ``.agent/workers/<unit>/`` are dropped."""
+    classifier = WorkspaceChangeClassifier()
+    for path in (
+        "/repo/.agent/workers/unit-1/tmp/checkpoint.json",
+        "/repo/.agent/workers/unit-1/tmp/plan_prompt.md",
+        "/repo/.agent/workers/unit-1/logs/unit-1.jsonl",
+        "/repo/.agent/workers/unit-1/handoffs/plan.md",
+        "/repo/.agent/workers/unit-1/worker-manifest.json",
+        "/repo/.agent/logs/run-1/workers/unit-1.jsonl",
+    ):
+        kind, weight = classifier.classify(path)
+        assert kind is WorkspaceChangeKind.CACHE, f"{path} should be CACHE"
+        assert weight == 0.0
+    assert classifier.classify("/repo/.agent/workers/unit-1/artifacts/plan.md") == (
+        WorkspaceChangeKind.ARTIFACT,
+        0.0,
+    )
+    assert classifier.classify("/repo/.agent/workers/unit-1/src/main.py") == (
+        WorkspaceChangeKind.SOURCE,
+        1.0,
+    )
+    assert classifier.classify("/repo/.agent/workers/unit-1/worker-manifest.json.bak") == (
+        WorkspaceChangeKind.LOG,
+        0.0,
+    )

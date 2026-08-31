@@ -50,8 +50,11 @@ __all__ = [
     "CACHE_FILENAME_GLOBS",
     "CACHE_PARENT_DIRS",
     "DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS",
+    "ENGINE_ROOT_RELATIVE_CACHE_PATHS",
     "LOG_SUFFIXES",
     "SOURCE_EXTENSIONS",
+    "WORKER_ENGINE_CACHE_DIRS",
+    "WORKER_MANIFEST_BASENAME",
     "WorkspaceChangeClassifier",
     "WorkspaceChangeKind",
     "_is_agent_internal_state_db_path",
@@ -82,18 +85,48 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
         ".agent/tmp",
         ".agent/raw",
         ".agent/ralph-explore",
+        # Engine-written trees (see ``ralph.phases._agent_internal_paths``):
+        # completion receipts, prompt history, artifact-format mirrors.
+        ".agent/receipts",
+        ".agent/prompt_history",
+        ".agent/artifact-formats",
+        ".agent/logs",
     }
 )
+
+#: Workspace-root-relative paths Ralph Workflow (or a transport overlay it
+#: stages) writes OUTSIDE ``.agent/``. Matched only when the caller passes
+#: ``workspace_root`` so a user file of the same name elsewhere is untouched:
+#: the runner's ``checkpoint.json`` (``ralph.pipeline.runner._checkpoint_path``,
+#: canonical in ``ralph.phases._agent_internal_paths.AGENT_INTERNAL_ROOT_BASENAMES``)
+#: and the per-transport MCP overlays (agy, cursor, kimi).
+ENGINE_ROOT_RELATIVE_CACHE_PATHS: frozenset[str] = frozenset(
+    {
+        "checkpoint.json",
+        ".agents/mcp_config.json",
+        ".cursor/mcp.json",
+        ".kimi-code/mcp.json",
+    }
+)
+
+#: Sub-directories of a fan-out worker unit (``.agent/workers/<unit>/``)
+#: that the engine writes: prompt renders and the worker checkpoint
+#: (``tmp``), worker logs, and hand-off renders. ``artifacts`` is the
+#: worker's MCP submission tree and classifies ARTIFACT; everything else
+#: under the unit (its source tree) stays user-visible.
+WORKER_ENGINE_CACHE_DIRS: frozenset[str] = frozenset({"tmp", "logs", "handoffs"})
+#: The per-unit manifest ``fan_out`` persists directly under the unit dir.
+WORKER_MANIFEST_BASENAME: str = "worker-manifest.json"
 
 #: Basename glob patterns for CACHE files. Matched against the
 #: ``PurePosixPath`` basename (no directory portion) using fnmatch.
 #:
-#: Note: the engine-internal ``.agent/state.db`` trio (the WAL-mode
-#: SQLite store and its ``-wal`` / ``-shm`` siblings) is NOT in this
-#: tuple. Treating those basenames as CACHE-by-basename would
-#: incorrectly drop user files matching the same name (e.g.
-#: ``/repo/src/state.db``, ``/repo/docs/state.db-wal``). The trio is
-#: matched by the path-scoped rule ``_is_agent_internal_state_db_path``
+#: Note: engine-owned top-level ``.agent/`` files (the ``state.db``
+#: trio, the shared-awareness sidecar, ``PLAN.md``, ``active_runs.json``
+#: ...) are NOT in this tuple. Treating those basenames as
+#: CACHE-by-basename would incorrectly drop user files matching the
+#: same name (e.g. ``/repo/src/state.db``, ``/repo/docs/PLAN.md``).
+#: They are matched by the path-scoped rule ``_is_agent_top_level_path``
 #: instead, which requires the parent directory to be ``.agent``.
 CACHE_FILENAME_GLOBS: tuple[str, ...] = ("completion_seen_*.json",)
 
@@ -246,18 +279,24 @@ class WorkspaceChangeClassifier:
         1. **CACHE parent walk** - if any parent directory of the path
            (after POSIX normalization) is in ``CACHE_PARENT_DIRS``,
            return ``(CACHE, 0.0)``. The ``.agent`` top-level is
-           intentionally NOT in the set; only ``.agent/tmp`` and
-           ``.agent/raw`` are.
+           intentionally NOT in the set (so ``.agent/artifacts`` can
+           still classify as ARTIFACT and ``.agent/workers/<unit>/``
+           stays user-visible); its engine-written sub-trees
+           (``tmp``, ``raw``, ``ralph-explore``, ``receipts``,
+           ``prompt_history``, ``artifact-formats``) are.
         2. **CACHE filename glob** - if the basename matches
            ``completion_seen_*.json`` (or any future glob in
            ``CACHE_FILENAME_GLOBS``), return ``(CACHE, 0.0)``.
-        3. **CACHE agent-internal state.db trio** - if the basename is
-           ``state.db``, ``state.db-wal``, or ``state.db-shm`` AND the
+        3. **CACHE engine-owned ``.agent/`` top level** - if the
            immediate parent directory is exactly ``.agent``, return
-           ``(CACHE, 0.0)``. This scopes the WAL-mode SQLite store to
-           the engine-internal bookkeeping path so a user file at
-           ``/repo/src/state.db`` falls through to OTHER/SOURCE rather
-           than being incorrectly dropped as CACHE.
+           ``(CACHE, 0.0)``. Everything Ralph Workflow writes directly
+           under ``.agent/`` is its own bookkeeping (the ``state.db``
+           trio, the ``.workspace-awareness.json`` sidecar the monitor
+           republishes on every counted change, ``PLAN.md`` and the
+           other prompt renders, ``active_runs.json``, lock files), so
+           none of it is agent activity. Scoping to the immediate
+           parent keeps a user file at ``/repo/src/state.db`` or
+           ``/repo/docs/PLAN.md`` on the OTHER/SOURCE path.
         4. **ARTIFACT parent walk** - if any parent directory is in
            ``ARTIFACT_PARENT_DIRS`` (= ``{".agent/artifacts"}``),
            return ``(ARTIFACT, 0.0)``. ARTIFACT is checked AFTER
@@ -318,22 +357,43 @@ class WorkspaceChangeClassifier:
                 _matches_filename_glob(basename, CACHE_FILENAME_GLOBS),
                 WorkspaceChangeKind.CACHE,
             ),
-            # (3) CACHE agent-internal state.db trio. Scoped to
-            # ``.agent/`` parent so user files matching the basename
-            # (``/repo/src/state.db``, ``/repo/docs/state.db-wal``) are
-            # NOT classified CACHE. Uses the in-memory
-            # ``_AGENT_INTERNAL_STATE_DB_BASENAMES`` set so an unknown
-            # suffix (e.g. ``state.db-journal``) is correctly NOT CACHE
-            # unless explicitly listed.
+            # (3) CACHE engine-owned ``.agent/`` top level. Every file
+            # whose immediate parent is ``.agent`` is Ralph Workflow's
+            # own bookkeeping (the ``state.db`` trio, the shared-awareness
+            # sidecar the monitor itself republishes on every counted
+            # change, ``PLAN.md`` / ``PRODUCT_CRITERIA.md`` / prompt
+            # renders, ``active_runs.json``, the auto-integrate crash
+            # record, lock files). None of it is agent progress -- an
+            # agent's contribution to those files already reaches the
+            # watchdog through the MCP channel -- and counting the
+            # sidecar fed the monitor its own output forever. Scoped to
+            # the immediate parent so ``/repo/docs/PLAN.md`` is still
+            # SOURCE and ``.agent/workers/<unit>/src`` is untouched.
             (
-                _is_agent_internal_state_db_path(parts, basename),
+                _is_agent_top_level_path(parts),
+                WorkspaceChangeKind.CACHE,
+            ),
+            # (3b) CACHE engine files in a fan-out worker unit
+            # (``.agent/workers/<unit>/{tmp,logs,handoffs}/**`` and the
+            # unit manifest); the unit's own source tree is untouched.
+            (
+                _worker_engine_kind(parts) is WorkspaceChangeKind.CACHE,
+                WorkspaceChangeKind.CACHE,
+            ),
+            # (3c) CACHE engine-written paths at the workspace root
+            # (``checkpoint.json``, transport MCP overlays); only decidable
+            # when the caller supplies ``workspace_root``.
+            (
+                _is_engine_root_relative_path(posix, workspace_root),
                 WorkspaceChangeKind.CACHE,
             ),
             # (4) ARTIFACT parent walk. Same windowed-match semantics as
             # CACHE so ``.agent/artifacts/plan.md`` matches
-            # ``.agent/artifacts`` (an explicit two-part entry).
+            # ``.agent/artifacts`` (an explicit two-part entry), and a
+            # worker unit's ``artifacts`` tree.
             (
-                _matches_parent_walk(parts, ARTIFACT_PARENT_DIRS),
+                _matches_parent_walk(parts, ARTIFACT_PARENT_DIRS)
+                or _worker_engine_kind(parts) is WorkspaceChangeKind.ARTIFACT,
                 WorkspaceChangeKind.ARTIFACT,
             ),
             # (5) LOG name/extension
@@ -417,6 +477,56 @@ def _is_agent_internal_state_db_path(
     """
     if basename not in _AGENT_INTERNAL_STATE_DB_BASENAMES:
         return False
+    return _is_agent_top_level_path(path_parts)
+
+
+def _worker_engine_kind(path_parts: tuple[str, ...]) -> WorkspaceChangeKind | None:
+    """Classify a path inside ``.agent/workers/<unit>/``; ``None`` when not engine-owned.
+
+    ``.agent/workers/<unit>/tmp|logs|handoffs/**`` and the unit's
+    ``worker-manifest.json`` are written by the fan-out engine and the
+    worker's own pipeline; ``artifacts/**`` is the worker's MCP submission
+    tree. Any other path under the unit is its checkout and keeps counting.
+    """
+    for index in range(len(path_parts) - 3):
+        if path_parts[index] != ".agent" or path_parts[index + 1] != "workers":
+            continue
+        remainder = path_parts[index + 3 :]
+        if len(remainder) == 1 and remainder[0] == WORKER_MANIFEST_BASENAME:
+            return WorkspaceChangeKind.CACHE
+        if len(remainder) >= _PARENT_DIR_LOOKUP_DEPTH:
+            if remainder[0] in WORKER_ENGINE_CACHE_DIRS:
+                return WorkspaceChangeKind.CACHE
+            if remainder[0] == "artifacts":
+                return WorkspaceChangeKind.ARTIFACT
+        return None
+    return None
+
+
+def _is_engine_root_relative_path(
+    posix: PurePosixPath, workspace_root: PurePosixPath | None
+) -> bool:
+    """Return True iff ``posix`` is one of ``ENGINE_ROOT_RELATIVE_CACHE_PATHS`` under ``workspace_root``."""
+    if workspace_root is None:
+        return False
+    try:
+        relative = posix.relative_to(workspace_root)
+    except ValueError:
+        return False
+    return relative.as_posix() in ENGINE_ROOT_RELATIVE_CACHE_PATHS
+
+
+def _is_agent_top_level_path(path_parts: tuple[str, ...]) -> bool:
+    """Return True iff the path's immediate parent directory is ``.agent``.
+
+    Everything Ralph Workflow writes directly under ``.agent/`` is
+    engine-owned bookkeeping (``ralph.phases._agent_internal_paths``
+    enumerates the deletable subset; the shared-awareness sidecar, lock
+    files and ``active_runs.json`` are the retained remainder). The
+    check is deliberately scoped to the IMMEDIATE parent: a user file
+    at ``/repo/docs/PLAN.md`` and a fan-out worker tree under
+    ``.agent/workers/<unit>/`` must keep counting as workspace activity.
+    """
     if len(path_parts) < _PARENT_DIR_LOOKUP_DEPTH:
         return False
     return path_parts[-_PARENT_DIR_LOOKUP_DEPTH] == ".agent"

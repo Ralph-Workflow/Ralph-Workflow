@@ -423,7 +423,10 @@ def test_capacity_exhaustion_updates_shared_awareness_status(
 
     from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
-    assert awareness_for_workspace(Path("/canonical-fallback")).snapshot()["freshness"] == "live_fallback"
+    assert (
+        awareness_for_workspace(Path("/canonical-fallback")).snapshot()["freshness"]
+        == "live_fallback"
+    )
     release_workspace_awareness(Path("/canonical-fallback"))
 
 
@@ -647,7 +650,7 @@ def test_user_source_paths_classify_as_source() -> None:
         "README.md",
         "pyproject.toml",
         "tests/test_workspace_watch_scoping.py",
-        ".agent/receipts/run-1/plan.json",
+        "docs/guide.md",
     ):
         assert classifier.classify(path) == (WorkspaceChangeKind.SOURCE, 1.0)
 
@@ -659,10 +662,11 @@ def test_user_source_paths_classify_as_source() -> None:
 
 def test_record_event_counts_unchanged_equivalence(tmp_path: Path) -> None:
     """``record_event`` produces identical observable behavior:
-    ``src/app.py``, ``.agent/PLAN.md``, and ``README.md`` count;
-    ``.git/index``, ``.venv/lib/x.py``, ``.agent/raw/out.log``,
-    ``.agent/artifacts/plan.json``, and ``foo.log`` do NOT.
-    ``last_event_at`` advances for the three counted events only."""
+    ``src/app.py`` and ``README.md`` count; ``.git/index``,
+    ``.venv/lib/x.py``, ``.agent/PLAN.md`` (engine-owned bookkeeping),
+    ``.agent/raw/out.log``, ``.agent/artifacts/plan.json``, and
+    ``foo.log`` do NOT. ``last_event_at`` advances for the two counted
+    events only."""
     monitor = WorkspaceMonitor(
         tmp_path,
         classifier=WorkspaceChangeClassifier(),
@@ -681,10 +685,9 @@ def test_record_event_counts_unchanged_equivalence(tmp_path: Path) -> None:
     for p in paths:
         monitor.record_event(str(tmp_path / p))
 
-    assert monitor.event_count == 3
+    assert monitor.event_count == 2
     expected_files = {
         str(tmp_path / "src/app.py"),
-        str(tmp_path / ".agent/PLAN.md"),
         str(tmp_path / "README.md"),
     }
     assert monitor.changed_files == expected_files
@@ -790,3 +793,40 @@ def test_dispatched_directory_event_schedules_no_additional_watch(
     monitor.dispatch_event(event)
 
     assert len(fake.scheduled) == initial_count
+
+
+# ---------------------------------------------------------------------------
+# The monitor must never observe its own shared-awareness sidecar
+# ---------------------------------------------------------------------------
+
+
+def test_record_event_ignores_the_monitors_own_sidecar_even_when_cache_counts(
+    tmp_path: Path,
+) -> None:
+    """The sidecar is published by ``record_event`` itself; observing that
+    publication as a change would feed the monitor its own output forever.
+    The guard must hold even for an operator who opted ``cache`` in."""
+    seen: list[tuple[WorkspaceChangeKind, float]] = []
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        classifier=WorkspaceChangeClassifier(weights={"cache": 1.0}),
+        on_event=lambda kind, weight: seen.append((kind, weight)),
+    )
+    monitor.record_event(str(tmp_path / ".agent" / ".workspace-awareness.json"))
+    monitor.record_event(str(tmp_path / ".agent" / ".workspace-awareness.json.tmp"))
+
+    assert monitor.event_count == 0
+    assert seen == []
+    assert monitor.last_event_at is None
+
+    monitor.record_event(str(tmp_path / ".agent" / "state.db"))
+    assert monitor.event_count == 1, "other cache paths still honour the operator's opt-in"
+
+
+def test_record_event_drops_the_runners_root_checkpoint_but_not_a_user_file(tmp_path: Path) -> None:
+    """The monitor passes its root so ``checkpoint.json`` at the root is engine-owned."""
+    monitor = WorkspaceMonitor(tmp_path, classifier=WorkspaceChangeClassifier())
+    monitor.record_event(str(tmp_path / "checkpoint.json"))
+    assert monitor.event_count == 0
+    monitor.record_event(str(tmp_path / "src" / "checkpoint.json"))
+    assert monitor.event_count == 1

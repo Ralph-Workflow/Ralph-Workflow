@@ -44,3 +44,52 @@ class TestQuietParentWithLiveChild:
         strategy.observe_line('{"type":"step_finish","part":{"type":"step-finish"}}')
 
         assert strategy.classify_quiet(handle, probe) == AgentExecutionState.ACTIVE
+
+
+def _frame(event_type: str, message_id: str | None) -> str:
+    part = f'"messageID":"{message_id}"' if message_id is not None else '"type":"step-start"'
+    return f'{{"type":"{event_type}","sessionID":"ses_parent","part":{{{part}}}}}'
+
+
+def test_opencode_repeated_step_start_for_one_message_closes_with_one_step_finish() -> None:
+    """A retried model call re-emits ``step_start`` for the SAME message.
+
+    Captured from OpenCode's own store (message ``DoXp1777``: two
+    ``step-start`` parts, one ``step-finish``). Counting frames left the
+    turn open forever; the open set must be keyed by message.
+    """
+    strategy = OpenCodeExecutionStrategy()
+    probe = FakeLivenessProbe(active=False)
+    handle = _FakeHandle(has_descendants=False)
+
+    strategy.observe_line(_frame("step_start", "msg_1"))
+    strategy.observe_line(_frame("step_start", "msg_1"))
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.WAITING_ON_CHILD
+
+    strategy.observe_line(_frame("step_finish", "msg_1"))
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.ACTIVE
+
+
+def test_opencode_stream_end_releases_every_open_step() -> None:
+    """Once stdout hit EOF no buffered ``task`` frame can still arrive.
+
+    OpenCode exits its final turn without a trailing ``step_finish`` on
+    stdout; a conflict-resolution drain that keeps asking ``classify_quiet``
+    after the process exited must not be told to wait for a dead parent.
+    """
+    strategy = OpenCodeExecutionStrategy()
+    probe = FakeLivenessProbe(active=False)
+    handle = _FakeHandle(has_descendants=False)
+
+    strategy.observe_line(_frame("step_start", "msg_1"))
+    strategy.observe_line(_frame("step_start", None))
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.WAITING_ON_CHILD
+
+    strategy.observe_stream_end()
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.ACTIVE
+
+    strategy.observe_line(_frame("step_finish", "msg_1"))
+    strategy.observe_line(_frame("step_finish", None))
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.ACTIVE, (
+        "late finish frames after EOF must not underflow the open set"
+    )

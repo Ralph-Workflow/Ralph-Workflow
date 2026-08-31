@@ -305,7 +305,7 @@ The `workspace` channel classifies every file change into one of five `Workspace
 | ----------- | ------------------------------------------------------------ |
 | `source`    | Source code and documentation (`1.0`)                        |
 | `log`       | `*.log`, `*.tmp`, `*.bak`, `*.swp`, `*~`, `*.pyc`, `*.pyo` (`0.0`) |
-| `cache`     | `.git`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `node_modules`, `.venv`, `.agent/tmp`, `.agent/raw`, `completion_seen_*.json` (`0.0`) |
+| `cache`     | `.git`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `node_modules`, `.venv`, `.agent/tmp`, `.agent/raw`, `.agent/ralph-explore`, `.agent/receipts`, `.agent/prompt_history`, `.agent/artifact-formats`, `.agent/logs`, `completion_seen_*.json`, the engine-written parts of a fan-out worker unit (`.agent/workers/<unit>/{tmp,logs,handoffs}`, its `worker-manifest.json`), the runner's root-level `checkpoint.json` and the transport MCP overlays (`.agents/mcp_config.json`, `.cursor/mcp.json`, `.kimi-code/mcp.json`), and every file directly under `.agent/` (the `state.db` trio, the `.workspace-awareness.json` sidecar, `PLAN.md`, `active_runs.json`, lock files — Ralph Workflow's own bookkeeping is never agent activity) (`0.0`) |
 | `artifact`  | `.agent/artifacts` (`0.0`)                                   |
 | `other`     | Anything that does not match a specific rule (`0.0`)          |
 

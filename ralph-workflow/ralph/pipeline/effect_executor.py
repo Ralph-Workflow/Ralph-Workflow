@@ -19,6 +19,7 @@ from ralph.agents.invoke import (
     InvokeOptions,
     InvokeRuntimeOptions,
     PiContextExhaustedExitError,
+    SupervisionInfrastructureError,
     build_invoke_options_from_config,
     extract_transport_session_id,
     invoke_agent,
@@ -108,6 +109,7 @@ if TYPE_CHECKING:
         """
 
         def __call__(self, **kwargs: object) -> str: ...
+
 
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_RAW_OUTPUT_TAIL_LINES = 256
@@ -267,7 +269,7 @@ def execute_agent_effect(
         verbosity=verbosity,
         resolved_display_context=resolved_display_context,
         display_subscriber=display_subscriber,
-        max_recovery_attempts=_same_agent_recovery_attempts(config),
+        max_recovery_attempts=recovery_attempts_for_effect(effect, config),
         effective_agents_policy=effective_agents_policy,
         state=state,
         policy_bundle=policy_bundle,
@@ -598,7 +600,9 @@ def _invoke_agent_with_recovery(
             )
             return PipelineEvent.AGENT_FAILURE
         except ctx.deps.agent_invocation_error as exc:
-            if raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError):
+            if (
+                raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError)
+            ) or surfaces_supervision_error(ctx.effect, exc):
                 raise
             _write_terminal_missing_artifact_hint(ctx, exc, resolved_required_artifact)
             return _handle_terminal_agent_invocation_error(
@@ -642,7 +646,10 @@ def _start_bridge(
                 run_id,
                 worker_namespace=worker_namespace,
             )
-    if ctx.effect.activity_only_supervision and pipeline_deps.bridge_factory is build_session_bridge:
+    if (
+        ctx.effect.activity_only_supervision
+        and pipeline_deps.bridge_factory is build_session_bridge
+    ):
         return cast(
             "RestartAwareMcpBridge",
             build_session_bridge(
@@ -1148,6 +1155,34 @@ def _resolve_recovery_session_id(
         if parsed_session_id:
             return parsed_session_id
     return None
+
+
+def recovery_attempts_for_effect(effect: InvokeAgentEffect, config: UnifiedConfig) -> int:
+    """Same-agent recovery retries the executor may spend on ``effect``.
+
+    A conflict resolver (``activity_only_supervision``) gets none: the
+    conflict-resolution driver owns that retry budget (chain candidates,
+    per-candidate retries, rounds per stop). Executor-level retries were
+    invisible to it and re-launched a resolver whose inactivity kill had
+    followed a finished resolution up to ten times, then let the driver
+    spend the next candidate on the same repaired file.
+    """
+    if effect.activity_only_supervision:
+        return 0
+    return _same_agent_recovery_attempts(config)
+
+
+def surfaces_supervision_error(effect: InvokeAgentEffect, exc: BaseException) -> bool:
+    """Return whether ``exc`` must reach the conflict-resolution session typed.
+
+    ``AgentInactivityTimeoutError`` and ``SupervisionInfrastructureError``
+    carry the watchdog's reason and provenance (``last_activity_kind``,
+    ``last_activity_at``); swallowing them into ``AGENT_FAILURE`` reported
+    every inactivity kill as ``CANDIDATE_EXITED`` with no activity data.
+    """
+    return effect.activity_only_supervision and isinstance(
+        exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError)
+    )
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
