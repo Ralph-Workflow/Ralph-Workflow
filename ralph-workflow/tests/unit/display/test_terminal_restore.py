@@ -53,33 +53,17 @@ def _make_dummy_non_tty_stream() -> _FakeStream:
     return _FakeStream(is_tty=False, fd=2)
 
 
-def test_terminal_restore_sequence_contains_expected_mode_resets() -> None:
+def test_terminal_restore_regression_sequence_is_ownership_safe() -> None:
+    """S-1: controlled cleanup must not mutate terminal state Ralph does not own."""
     seq = terminal_restore_sequence()
-    assert "\x1b[?25h" in seq  # show cursor
-    assert "\x1b[?1049l" in seq  # leave alt screen
-    assert "\x1b[?1047l" in seq  # leave legacy alt screen
-    assert "\x1b[?47l" in seq  # leave legacy alternate buffer
-    assert "\x1b[?9l" in seq  # disable X10 mouse
-    assert "\x1b[?1000l" in seq  # disable mouse
-    assert "\x1b[?1002l" in seq
-    assert "\x1b[?1003l" in seq
-    assert "\x1b[?1006l" in seq
-    assert "\x1b[?1015l" in seq
-    assert "\x1b[?1005l" in seq
-    assert "\x1b[?1016l" in seq
-    assert "\x1b[?2026l" in seq  # disable synchronized output
-    assert "\x1b[?2004l" in seq  # disable bracketed paste
-    assert "\x1b[?1004l" in seq  # disable focus reporting
-    assert "\x1b[?1l" in seq  # normal cursor keys
-    assert "\x1b>" in seq  # numeric keypad
-    assert "\x1b[r" in seq  # reset scroll region
-    assert "\x1b(B" in seq  # ASCII G0 character set
-    assert "\x1b[?7h" in seq  # enable autowrap
-    assert "\x1b[0m" in seq  # reset SGR
-    for code in ("\x1b[?25h", "\x1b[?1049l", "\x1b[?1047l", "\x1b[?47l", "\x1b[?9l", "\x1b[?1005l", "\x1b[?1006l", "\x1b[?1016l", "\x1b[?2026l", "\x1b[?2004l", "\x1b[?1004l", "\x1b[?1l", "\x1b>", "\x1b[r", "\x1b(B"):
-        assert seq.count(code) == 1
-    assert seq.index("\x1b[?1049l") < seq.index("\x1b[?1047l")
-    assert seq.endswith("\r")
+    assert seq == "\x1b[?25h\x1b[0m"
+    assert "\x1b[?1049l" not in seq
+    assert "\x1b[?1047l" not in seq
+    assert "\x1b[?47l" not in seq
+    assert "\x1b[2J" not in seq
+    assert "\x1b[3J" not in seq
+    assert "\x1b[H" not in seq
+    assert "\x1b[r" not in seq
 
 
 def test_restore_terminal_writes_sequence_on_tty_stream(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,7 +72,7 @@ def test_restore_terminal_writes_sequence_on_tty_stream(monkeypatch: pytest.Monk
     restore_terminal(stream=stream, modes=None)
     content = stream.getvalue()
     assert "\x1b[?25h" in content
-    assert "\x1b[?1049l" in content
+    assert "\x1b[?1049l" not in content
 
 
 def test_restore_terminal_dumb_tty_skips_escape_write_but_restores_modes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,7 +84,7 @@ def test_restore_terminal_dumb_tty_skips_escape_write_but_restores_modes(monkeyp
     ):
         restore_terminal(stream=stream, modes=modes)
     assert stream.getvalue() == ""
-    flush.assert_called_once_with(1, termios.TCIFLUSH)
+    flush.assert_not_called()
     set_attrs.assert_called_once_with(1, termios.TCSANOW, modes)
 
 
@@ -110,14 +94,15 @@ def test_restore_terminal_writes_nothing_on_non_tty_stream() -> None:
     assert stream.getvalue() == ""
 
 
-def test_restore_terminal_flushes_pending_input_after_writing_sequence(
+def test_terminal_restore_regression_preserves_pending_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """S-1: generic restoration must never flush queued operator input."""
     monkeypatch.setenv("TERM", "xterm")
     stream = _make_dummy_tty_stream()
     with patch("termios.tcflush") as flush, patch("os.isatty", return_value=True):
         restore_terminal(stream=stream, modes=None)
-    flush.assert_called_once_with(1, termios.TCIFLUSH)
+    flush.assert_not_called()
     assert stream.getvalue() == terminal_restore_sequence()
 
 

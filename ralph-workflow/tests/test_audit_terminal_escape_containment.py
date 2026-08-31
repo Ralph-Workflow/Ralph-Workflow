@@ -41,9 +41,9 @@ from ralph.testing.audit_terminal_escape_containment import main as audit_main
 def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
     # 22 escape-containment invariants (including the package-wide narrow
-    # CSI ban) + 4 markup-parse containment invariants and 8 terminal
+    # CSI ban) + 4 markup-parse containment invariants and 9 terminal
     # restoration wiring invariants, including the Status Bar fallback gate.
-    expected = 34
+    expected = 35
     assert len(audit_module._INVARIANTS) == expected
 
 
@@ -192,29 +192,17 @@ def test_audit_blocks_regression_when_pty_runner_paint_returns(
     assert path in captured.out
 
 
-def test_audit_blocks_regression_when_stdin_none_returns_to_process_reader(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Regression: re-introducing ``stdin=None,`` in the reader must fail."""
-    real_read = audit_module._read
-    path = "agents/invoke/_process_reader.py"
+def test_process_reader_stdin_regression_accepts_conditional_pipe_or_devnull() -> None:
+    """S-3: prompt PIPE and non-prompt DEVNULL are both isolated child-stdin choices."""
+    invariant = next(
+        inv
+        for inv in audit_module._INVARIANTS
+        if isinstance(inv, FunctionBodyInvariant)
+        and inv.rel_path == "agents/invoke/_process_reader.py"
+        and inv.qualname == "_run_subprocess_and_read_lines"
+    )
 
-    def _read_with_inherit(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path != path:
-            return content
-        return content + "\nSpawnOptions(stdin=None,)\n"
-
-    monkeypatch.setattr(audit_module, "_read", _read_with_inherit)
-    _narrow_invariants(monkeypatch, rel_path="agents/invoke/_process_reader.py", invariant_cls=Invariant)
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "stdin=None," in captured.out
+    assert invariant.violations() == []
 
 
 # ---------------------------------------------------------------------------
@@ -408,38 +396,33 @@ def test_audit_blocks_regression_when_render_titled_lines_drops_strip(
     assert "_render_titled_lines body missing required literal" in captured.out
 
 
-def test_audit_blocks_regression_when_spawn_options_drops_devnull(
+@pytest.mark.parametrize("inherited_stdin", ("None", "sys.stdin"))
+def test_process_reader_stdin_regression_rejects_inherited_terminal_input(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    inherited_stdin: str,
 ) -> None:
-    """Adversarial: revert SpawnOptions ``stdin=subprocess.DEVNULL`` back to ``stdin=None``.
-
-    This is the critical regression -- re-introducing INHERIT means the
-    agent child can take over Ralph's TTY. The SpawnOptions call-site
-    invariant must fire.
-    """
+    """S-3: neither implicit inheritance nor a direct terminal stream may reach a child."""
     path = "agents/invoke/_process_reader.py"
 
     def _transform(src: str) -> str:
         return src.replace(
             "stdin=subprocess.DEVNULL,",
-            "stdin=None,",
+            f"stdin={inherited_stdin},",
         )
 
     _patch_rel(monkeypatch, path, _transform)
     _narrow_invariants(
         monkeypatch,
-        rel_path="agents/invoke/_process_reader.py",
-        callee_name="SpawnOptions",
-        invariant_cls=CallSiteInvariant,
+        rel_path=path,
+        qualname="_run_subprocess_and_read_lines",
+        invariant_cls=FunctionBodyInvariant,
     )
 
-    rc = audit_main([])
+    assert audit_main([]) == 1
     captured = capsys.readouterr()
-
-    assert rc == 1
     assert path in captured.out
-    assert "no SpawnOptions call passes" in captured.out
+    assert f"stdin={inherited_stdin}" in captured.out
 
 
 def test_audit_blocks_regression_when_subprocess_executor_drops_devnull(
@@ -854,19 +837,14 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
 @pytest.mark.parametrize(
     ("rel_path", "qualname", "required_literal"),
     (
-        ("display/terminal_restore.py", None, "?1049l"),
-        ("display/terminal_restore.py", None, "?1047l"),
-        ("display/terminal_restore.py", None, "?47l"),
-        ("display/terminal_restore.py", None, "?9l"),
-        ("display/terminal_restore.py", None, "?1005l"),
-        ("display/terminal_restore.py", None, "?1016l"),
-        ("display/terminal_restore.py", None, "?2026l"),
-        ("display/terminal_restore.py", None, "?1004l"),
-        ("display/terminal_restore.py", None, "?1l"),
-        ("display/terminal_restore.py", None, "[r"),
-        ("display/terminal_restore.py", None, "(B"),
-        ("display/terminal_restore.py", None, "tcflush"),
+        ("display/terminal_restore.py", "terminal_restore_sequence", "?25h"),
+        ("display/terminal_restore.py", "terminal_restore_sequence", "[0m"),
+        ("display/terminal_restore.py", "restore_terminal_modes", "_STATE.saved_modes"),
+        ("display/terminal_restore.py", "restore_terminal_modes", "termios.tcsetattr"),
         ("display/_terminal_bg_query.py", "_probe", "get_global_snapshot()"),
+        ("display/_terminal_bg_query.py", "_probe", "parsed_color is None"),
+        ("display/_terminal_bg_query.py", "_probe", "tcflush"),
+        ("display/_terminal_bg_query.py", "_probe", "TCIFLUSH"),
         ("cli/main.py", "ensure_cli_terminal_restore", "SIGTERM"),
         ("cli/main.py", "ensure_cli_terminal_restore", "SIGHUP"),
         ("cli/main.py", "ensure_cli_terminal_restore", "SIGQUIT"),
@@ -880,14 +858,14 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
         ("display/context.py", "install_sigwinch_refresher", "signal.SIG_DFL"),
     ),
 )
-def test_audit_blocks_regression_when_terminal_restore_invariant_literal_is_removed(
+def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     rel_path: str,
     qualname: str | None,
     required_literal: str,
 ) -> None:
-    """S-8: each widened terminal-restoration literal is load-bearing."""
+    """S-3: each owned restore or probe-timeout operation remains load-bearing."""
     _patch_rel(monkeypatch, rel_path, lambda source: source.replace(required_literal, "REMOVED"))
     _narrow_invariants(
         monkeypatch,
@@ -898,3 +876,40 @@ def test_audit_blocks_regression_when_terminal_restore_invariant_literal_is_remo
 
     assert audit_main([]) == 1
     assert required_literal in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "forbidden_literal",
+    ("?1049l", "?1047l", "?47l", "[2J", "[3J", "[H", "[1;1H", "tcflush"),
+)
+def test_terminal_restore_audit_regression_rejects_destructive_parent_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    forbidden_literal: str,
+) -> None:
+    """S-3: parent cleanup may not switch buffers, repaint, reposition, or flush input."""
+    path = "display/terminal_restore.py"
+
+    if forbidden_literal == "tcflush":
+        qualname = "restore_terminal"
+        old_literal = "target_fd = _fd_of(target_stream)"
+        new_literal = "termios.tcflush(0, termios.TCIFLUSH)\n        target_fd = _fd_of(target_stream)"
+    else:
+        qualname = "terminal_restore_sequence"
+        old_literal = 'return "\\x1b[?25h\\x1b[0m"'
+        new_literal = f'return "\\x1b[?25h\\x1b[0m{forbidden_literal}"'
+
+    def _transform(source: str) -> str:
+        assert old_literal in source
+        return source.replace(old_literal, new_literal, 1)
+
+    _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path=path,
+        qualname=qualname,
+        invariant_cls=FunctionBodyInvariant,
+    )
+
+    assert audit_main([]) == 1
+    assert forbidden_literal in capsys.readouterr().out

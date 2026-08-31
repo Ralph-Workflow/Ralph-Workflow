@@ -613,18 +613,14 @@ _INVARIANTS: tuple[
             "tqdm(",
         ),
     ),
-    # _process_reader.py: SpawnOptions(...) call MUST pass
-    # stdin=subprocess.DEVNULL, and the file MUST NOT carry a
-    # stdin=None default (the INHERIT leak).
-    Invariant(
+    # _process_reader.py: OpenCode prompt delivery intentionally uses PIPE;
+    # every other invocation uses DEVNULL. Both choices isolate child stdin
+    # from Ralph's controlling terminal, while None and sys.stdin re-open it.
+    FunctionBodyInvariant(
         rel_path="agents/invoke/_process_reader.py",
-        present=("stdin=subprocess.DEVNULL",),
-        absent=("stdin=None,",),
-    ),
-    CallSiteInvariant(
-        rel_path="agents/invoke/_process_reader.py",
-        callee_name="SpawnOptions",
-        present=("stdin=subprocess.DEVNULL",),
+        qualname="_run_subprocess_and_read_lines",
+        present=("stdin=subprocess.PIPE", "stdin=subprocess.DEVNULL"),
+        absent=("stdin=None", "stdin=sys.stdin"),
     ),
     # subprocess_executor.py: SpawnOptions(...) call MUST pass
     # stdin=_DEVNULL (the file-local alias of subprocess.DEVNULL).
@@ -716,28 +712,25 @@ _INVARIANTS: tuple[
         qualname="spawn_pty_process",
         present=("os.setsid()", "TIOCSCTTY"),
     ),
-    # display/terminal_restore.py: defines terminal_restore_sequence and carries
-    # every reset needed to return input and display modes to normal.
-    Invariant(
+    # display/terminal_restore.py: controlled exit owns only cursor visibility,
+    # neutral text attributes, and restoration of the saved termios snapshot.
+    # It must not switch buffers, repaint/reposition the display, or discard
+    # queued operator input.
+    FunctionBodyInvariant(
         rel_path="display/terminal_restore.py",
-        present=(
-            "def terminal_restore_sequence",
-            "?25h",
-            "?1049l",
-            "?1047l",
-            "?47l",
-            "?9l",
-            "?1005l",
-            "?1006l",
-            "?1016l",
-            "?2026l",
-            "?2004l",
-            "?1004l",
-            "?1l",
-            "[r",
-            "(B",
-            "tcflush",
-        ),
+        qualname="terminal_restore_sequence",
+        present=("?25h", "[0m"),
+        absent=("?1049l", "?1047l", "?47l", "[2J", "[3J", "[H", "[1;1H"),
+    ),
+    FunctionBodyInvariant(
+        rel_path="display/terminal_restore.py",
+        qualname="restore_terminal_modes",
+        present=("_STATE.saved_modes", "termios.tcsetattr"),
+    ),
+    FunctionBodyInvariant(
+        rel_path="display/terminal_restore.py",
+        qualname="restore_terminal",
+        absent=("tcflush",),
     ),
     # StatusBar fallback cleanup may repaint only on a real VT-capable TTY.
     FunctionBodyInvariant(
@@ -784,7 +777,9 @@ _INVARIANTS: tuple[
             "get_global_snapshot()",
             "set_global_snapshot(original)",
             "terminal_understands_vt",
+            "parsed_color is None",
             "tcflush",
+            "TCIFLUSH",
             "tty.setraw",
         ),
         absent=("set_global_snapshot(None)",),
@@ -855,10 +850,10 @@ def main(argv: list[str] | None = None) -> int:
         "strip_terminal_control with markup=False (no _ANSI_ESCAPE, no "
         "unsanitized console.print(line)); activity_model.render_event_line "
         "calls strip_terminal_control before truncation; _pty_runner "
-        "dropped tqdm + file=sys.stdout; _process_reader and "
-        "subprocess_executor pass stdin=DEVNULL to their SpawnOptions call "
-        "sites (no stdin=None INHERIT); _pty_line_reader still yields raw "
-        "VT text. SpawnOptions.stdin defaults to subprocess.DEVNULL and no "
+        "dropped tqdm + file=sys.stdout; _process_reader uses PIPE only for "
+        "prompt delivery and DEVNULL otherwise, while subprocess_executor "
+        "passes DEVNULL (no stdin=None/sys.stdin INHERIT); _pty_line_reader "
+        "still yields raw VT text. SpawnOptions.stdin defaults to subprocess.DEVNULL and no "
         "SpawnOptions call anywhere under ralph/ passes stdin=None. "
         "ralph.logging.configure_logging AND ralph.cli.main._configure_logging "
         "route through an injected console_sink (no raw sys.stderr, "
@@ -866,8 +861,10 @@ def main(argv: list[str] | None = None) -> int:
         "for the DisplayContext Console. Both log_sink factories call "
         "strip_terminal_control with markup=False / highlight=False and "
         "no raw Console construction. display.excepthook strips crash output "
-        "and restores the terminal. ralph.process.pty.spawn_pty_process still "
-        "calls os.setsid() + TIOCSCTTY."
+        "and restores the terminal. Parent restoration shows the cursor, resets "
+        "SGR, restores saved termios, and avoids buffer/display/input destruction; "
+        "the OSC 11 probe retains its owned timeout TCIFLUSH. "
+        "ralph.process.pty.spawn_pty_process still calls os.setsid() + TIOCSCTTY."
     )
     return 0
 

@@ -1,9 +1,7 @@
 """Terminal state restoration utilities.
 
-Provides safe, idempotent restoration of terminal modes (termios) and
-escape sequence states (cursor visibility, alternate screen, mouse and focus
-tracking, bracketed paste, cursor and keypad modes, scroll region, character
-set, line wrap, SGR formatting).
+Provides safe, idempotent restoration of saved terminal modes (termios),
+cursor visibility, and text attributes without mutating unowned console state.
 """
 
 from __future__ import annotations
@@ -63,38 +61,8 @@ def terminal_understands_vt(env: Mapping[str, str] | None = None) -> bool:
 
 
 def terminal_restore_sequence() -> str:
-    """Return escape sequence to reset terminal display modes to standard state.
-
-    Includes:
-    - Show cursor (\\x1b[?25h)
-    - Leave alternate screens (\\x1b[?1049l\\x1b[?1047l\\x1b[?47l)
-    - Disable mouse reporting (\\x1b[?9l\\x1b[?1000l\\x1b[?1002l\\x1b[?1003l\\x1b[?1005l\\x1b[?1006l\\x1b[?1015l\\x1b[?1016l)
-    - Disable synchronized output (\\x1b[?2026l)
-    - Disable bracketed paste (\\x1b[?2004l)
-    - Disable focus reporting (\\x1b[?1004l)
-    - Restore normal cursor keys (\\x1b[?1l) and numeric keypad (\\x1b>)
-    - Reset scroll region (\\x1b[r) and G0 charset to ASCII (\\x1b(B)
-    - Enable autowrap (\\x1b[?7h)
-    - Reset SGR attributes (\\x1b[0m)
-    - Carriage return (\\r)
-    """
-    return (
-        "\x1b[?25h"
-        "\x1b[?1049l"
-        "\x1b[?1047l"
-        "\x1b[?47l"
-        "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l"
-        "\x1b[?2026l"
-        "\x1b[?2004l"
-        "\x1b[?1004l"
-        "\x1b[?1l"
-        "\x1b>"
-        "\x1b[r"
-        "\x1b(B"
-        "\x1b[?7h"
-        "\x1b[0m"
-        "\r"
-    )
+    """Return Ralph-owned controlled-exit terminal restoration output."""
+    return "\x1b[?25h\x1b[0m"
 
 
 def set_global_snapshot(modes: TermiosModes | None) -> None:
@@ -171,9 +139,6 @@ def restore_terminal(
                     target_stream.write(terminal_restore_sequence())
                 if isinstance(target_stream, _Flushable):
                     target_stream.flush()
-                target_fd = _fd_of(target_stream)
-                if target_fd is not None and hasattr(termios, "tcflush") and hasattr(termios, "TCIFLUSH"):
-                    termios.tcflush(target_fd, termios.TCIFLUSH)
             except Exception:
                 pass
 
