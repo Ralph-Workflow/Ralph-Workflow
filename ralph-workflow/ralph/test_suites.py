@@ -723,6 +723,22 @@ def _reap_process(
     return _decode_output(stdout), _decode_output(stderr)
 
 
+def _drain_running_process(
+    process: ShardProcess,
+    *,
+    timeout_seconds: float,
+) -> tuple[int, tuple[str, str]] | None:
+    try:
+        stdout, stderr = process.communicate(timeout=max(0.0, timeout_seconds))
+    except subprocess.TimeoutExpired:
+        return None
+    returncode = process.poll()
+    if returncode is None:
+        return None
+    process.cleanup_orphans()
+    return returncode, (_decode_output(stdout), _decode_output(stderr))
+
+
 def _terminate_and_reap(
     processes: Sequence[ShardProcess],
     *,
@@ -839,11 +855,21 @@ def _run_shards(
                 continue
             returncode = process.poll()
             if returncode is None:
-                continue
-            completed[index] = _reap_process(
-                process,
-                timeout_seconds=_remaining_seconds(deadline, monotonic),
-            )
+                drained = _drain_running_process(
+                    process,
+                    timeout_seconds=min(
+                        _SHARD_POLL_INTERVAL_SECONDS,
+                        _remaining_seconds(deadline, monotonic),
+                    ),
+                )
+                if drained is None:
+                    continue
+                returncode, completed[index] = drained
+            else:
+                completed[index] = _reap_process(
+                    process,
+                    timeout_seconds=_remaining_seconds(deadline, monotonic),
+                )
             if returncode != 0:
                 siblings = [
                     sibling

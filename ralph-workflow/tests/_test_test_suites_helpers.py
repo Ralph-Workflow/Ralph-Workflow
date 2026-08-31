@@ -64,8 +64,52 @@ class _FakeShardProcess:
         self.orphans_cleaned = True
 
 
+class _BackpressuredShardProcess:
+    """Fake shard blocked writing to a full stdout PIPE.
+
+    Models the confirmed pytest-shard PIPE backpressure deadlock: the child
+    has finished its work but cannot report an exit status because it is
+    blocked in ``write`` on a full pipe. Its completion only becomes visible
+    to ``poll()`` once the parent starts draining via ``communicate()``.
+    """
+
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
+
+    def __init__(self, *, stdout: bytes = b"shard output\n", stderr: bytes = b"") -> None:
+        self._stdout = stdout
+        self._stderr = stderr
+        self._drained = False
+        self.terminated = False
+        self.reaped = False
+        self.orphans_cleaned = False
+
+    def poll(self) -> int | None:
+        return 0 if self._drained else None
+
+    def communicate(
+        self,
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        self._drained = True
+        self.reaped = True
+        return self._stdout, self._stderr
+
+    def terminate(self, grace_period_s: float | None = None) -> None:
+        del grace_period_s
+        self.terminated = True
+
+    def cleanup_orphans(self) -> None:
+        self.orphans_cleaned = True
+
+
 class _StubSpawner:
-    def __init__(self, processes: list[_FakeShardProcess]) -> None:
+    def __init__(
+        self, processes: Sequence[_FakeShardProcess | _BackpressuredShardProcess]
+    ) -> None:
         self._processes = list(processes)
         self.calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
 
@@ -75,7 +119,7 @@ class _StubSpawner:
         *,
         cwd: Path,
         env: Mapping[str, str],
-    ) -> _FakeShardProcess:
+    ) -> _FakeShardProcess | _BackpressuredShardProcess:
         self.calls.append((tuple(command), cwd, dict(env)))
         return self._processes.pop(0)
 

@@ -94,11 +94,8 @@ def _install_seams(
 ) -> None:
     """Replace every git call the loop makes with a scripted fake.
 
-    ``dirty_after_resolution`` scripts what the worktree looks like once
-    the resolver has run. The loop reads the worktree twice per stop --
-    once before the resolver, once after -- so the fake alternates, and
-    leaving the argument ``None`` means the resolver touched exactly the
-    conflicted paths it was given.
+    ``dirty_after_resolution`` scripts the post-resolver worktree; the fake alternates
+    across reads, and ``None`` means only the conflicted paths were touched.
     """
     _install_worktree_seam(
         monkeypatch,
@@ -106,6 +103,10 @@ def _install_seams(
         dirty_query_fails=dirty_query_fails,
     )
     monkeypatch.setattr(loop_module, "rebase_in_progress_at", repo.in_progress)
+    monkeypatch.setattr(loop_module, "staged_conflict_marker_paths", lambda _root: [])
+    monkeypatch.setattr(loop_module, "_replay_produced_nothing", lambda _root, _stop: False)
+    if repo.never_finishes:
+        monkeypatch.setattr(loop_module, "record_landed_stop", lambda _root, _stop: None)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED))
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
     monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")

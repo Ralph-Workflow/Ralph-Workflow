@@ -16,6 +16,7 @@ import pytest
 
 from ralph import test_suites as test_suites_module
 from tests._test_test_suites_helpers import (
+    _BackpressuredShardProcess,
     _FakeClock,
     _FakeShardProcess,
     _StubSpawner,
@@ -674,3 +675,47 @@ def test_run_test_suites_charges_static_discovery_to_parent_deadline(
 
     assert exit_code == 124
     assert spawner.calls == []
+
+
+def test_run_test_suites_drains_backpressured_shard_pipe_instead_of_timing_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A shard blocked on a full stdout PIPE must be drained, not timed out.
+
+    Given a shard whose exit status stays unavailable (poll() is None) until
+    the parent drains its PIPE via communicate(); when run_test_suites waits
+    for it under a finite deadline; then the runner must start the drain
+    concurrently with waiting, reap the shard's captured output, and return
+    its successful exit code rather than TIMEOUT_EXIT_CODE (124).
+    """
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        (),
+    )
+    blocked = _BackpressuredShardProcess(stdout=b"pipe drained output\n")
+    done = _FakeShardProcess([0])
+    spawner = _StubSpawner([blocked, done])
+    clock = _FakeClock()
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        suite_timeout_seconds=5.0,
+        spawner=spawner,
+        file_discoverer=lambda _cwd: (
+            "tests/test_alpha.py",
+            "tests/test_bravo.py",
+        ),
+        file_weigher=lambda _cwd, _path: 1,
+        monotonic=clock,
+        wait=clock.advance,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert blocked.reaped
+    assert not blocked.terminated
+    assert "pipe drained output" in captured.out
