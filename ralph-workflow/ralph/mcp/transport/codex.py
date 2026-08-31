@@ -349,6 +349,35 @@ def prepare_codex_home_with_upstreams(
     return str(codex_root), upstreams
 
 
+#: Largest ``~/.codex`` entry Ralph will COPY when it cannot symlink it.
+#:
+#: The mirror normally symlinks, which costs nothing whatever the size. The
+#: copy is a fallback for filesystems that refuse symlinks -- and on Windows
+#: that is not an edge case, because ``symlink_to`` needs developer mode or
+#: admin, so the fallback becomes the only path. A real ``~/.codex`` is mostly
+#: session databases (``logs_*.sqlite``, ``state_*.sqlite``,
+#: ``thread_history_*.sqlite``) and reaches multiple gigabytes; copying that on
+#: every codex invocation reads as a hang and can fill the disk. Codex recreates
+#: its own session state, so the budget is set well above the operator's
+#: settings, auth and plugins -- the things that must survive -- and well below
+#: their history.
+_MIRROR_COPY_BYTE_BUDGET: Final[int] = 64 * 1024 * 1024
+
+
+def _exceeds_copy_budget(entry: Path, budget: int) -> bool:
+    """Return True once *entry* is known to exceed *budget*, without sizing it fully."""
+    if entry.is_file():
+        return entry.stat().st_size > budget
+    total = 0
+    for child in entry.rglob("*"):
+        if not child.is_file() or child.is_symlink():
+            continue
+        total += child.stat().st_size
+        if total > budget:
+            return True
+    return False
+
+
 def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
     for entry in source_home.iterdir():
         if entry.name == "config.toml":
@@ -357,12 +386,27 @@ def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
         try:
             destination.symlink_to(entry, target_is_directory=entry.is_dir())
         except OSError:
-            if entry.is_dir():
-                # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input
-                shutil.copytree(entry, destination, dirs_exist_ok=True)
-            else:
-                # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input
-                shutil.copy2(entry, destination)
+            _copy_codex_home_entry(entry, destination)
+
+
+def _copy_codex_home_entry(entry: Path, destination: Path) -> None:
+    """Copy one un-symlinkable Codex-home entry, skipping anything oversized."""
+    if _exceeds_copy_budget(entry, _MIRROR_COPY_BYTE_BUDGET):
+        logger.warning(
+            "Codex home entry {} could not be symlinked and is larger than {} bytes; "
+            "leaving it out of this run's CODEX_HOME rather than copying it per "
+            "invocation. Codex recreates its own session state; operator settings, "
+            "auth and plugins are unaffected.",
+            entry,
+            _MIRROR_COPY_BYTE_BUDGET,
+        )
+        return
+    if entry.is_dir():
+        # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input
+        shutil.copytree(entry, destination, dirs_exist_ok=True)
+    else:
+        # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input
+        shutil.copy2(entry, destination)
 
 
 def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:

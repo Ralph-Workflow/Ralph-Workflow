@@ -142,6 +142,13 @@ def test_cursor_transport_regression_killed_run_restores_operator_global_config(
         assert _server_names(cursor_global_config) == ["ralph"]
 
     assert cursor_global_config.read_text(encoding="utf-8") == _OPERATOR_CONFIG
+    # No litter left in the operator's config directory: the backup record
+    # is retired with the restore. The advisory lock sidecar is the one
+    # file kept by design -- its contents are never read, only its lock.
+    assert sorted(entry.name for entry in cursor_global_config.parent.iterdir()) == [
+        "mcp.json",
+        "mcp.json.ralph.lock",
+    ]
 
 
 def test_kimi_transport_regression_killed_run_restores_operator_global_config(

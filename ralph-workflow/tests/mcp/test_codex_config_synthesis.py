@@ -395,3 +395,47 @@ def test_codex_config_regression_a_deeply_nested_config_fails_the_run(
 
     with pytest.raises(CodexConfigError, match="too deeply"):
         _synthesize(tmp_path, deep)
+
+
+def _fail_symlinks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ``Path.symlink_to`` raise, as it does on Windows without developer mode."""
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(Path, "symlink_to", refuse)
+
+
+def test_codex_home_regression_a_huge_session_database_is_not_copied_per_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When symlinks are unavailable, Ralph MUST NOT copy the operator's whole Codex home.
+
+    The mirror symlinks every entry of ``~/.codex`` into the throwaway home and
+    falls back to copying on ``OSError``. Windows refuses ``symlink_to`` without
+    developer mode, so on Windows the fallback is the ONLY path -- and a real
+    ``~/.codex`` here is 8.9 GB of session databases. Copying that per codex
+    invocation looks like a hang and fills the disk. Codex recreates its own
+    session state; it is the operator's *settings* that have to survive.
+    """
+    source_home = tmp_path / "source-codex-home"
+    source_home.mkdir()
+    (source_home / "config.toml").write_text("", encoding="utf-8")
+    (source_home / "auth.json").write_text('{"token": "keep-me"}', encoding="utf-8")
+    huge = source_home / "logs_2.sqlite"
+    huge.write_bytes(b"\0" * (2 * 1024 * 1024))
+    monkeypatch.setattr("ralph.mcp.transport.codex._MIRROR_COPY_BYTE_BUDGET", 1024 * 1024)
+    _fail_symlinks(monkeypatch)
+
+    home = Path(
+        prepare_codex_home(
+            _ENDPOINT,
+            workspace_path=tmp_path,
+            existing_home=str(source_home),
+            master_prompt_file=None,
+        )
+    )
+
+    assert (home / "auth.json").read_text(encoding="utf-8") == '{"token": "keep-me"}'
+    assert not (home / "logs_2.sqlite").exists()
