@@ -17,21 +17,29 @@ from ralph.agents.invoke._options import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.general_config import GeneralConfig
+from ralph.timeout_defaults import NO_OUTPUT_AT_START_SECONDS
 
 
-def test_claude_startup_regression_default_grace_tolerates_15_seconds_then_fires_at_15() -> None:
-    """S-3: A silent cold start has a bounded 15-second grace period.
+def test_startup_regression_default_grace_is_bounded_and_fires_after_it_elapses() -> None:
+    """S-3: A silent cold start has a bounded grace period, then fires.
 
-    The default startup ceiling sits just above the broken-agent grace
-    window (12s): a silent startup is unambiguously a broken agent, so
-    the watchdog's NO_OUTPUT_AT_START backstop fires at 15s rather than
-    the historical 120s.
+    This used to assert the grace was 15 seconds, on the reasoning that a
+    silent startup is "unambiguously a broken agent". That reasoning was
+    backwards: an agent owes no output before its first tool call, and
+    OpenCode's JSON stream emits nothing until then -- measured at 14.8s,
+    23.2s and 20.2s to first frame -- so a 15s ceiling killed it before it
+    could speak, and the operator saw no output at all. The duration is read
+    from the production constant rather than written as a literal, because it
+    has moved (120 -> 30 -> 15 -> 360) and a hardcoded advance silently stops
+    exercising the fire path each time. The BOUND is the contract; the value
+    is pinned against the measurement in
+    ``tests/agents/test_startup_grace_accommodates_silent_agents.py``.
     """
     clock = FakeClock()
     watchdog = IdleWatchdog(TimeoutPolicy(idle_timeout_seconds=300.0), clock)
     watchdog.record_invocation_start()
 
-    clock.advance(14.0)
+    clock.advance(NO_OUTPUT_AT_START_SECONDS - 1.0)
     assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) != WatchdogVerdict.FIRE
 
     clock.advance(2.0)

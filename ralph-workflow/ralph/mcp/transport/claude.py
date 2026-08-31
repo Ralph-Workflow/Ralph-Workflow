@@ -148,7 +148,12 @@ def parse_claude_mcp_list_names(output: str) -> tuple[str, ...]:
         match = _MCP_LIST_ENTRY.match(line)
         if match is None:
             continue
-        name = cast("str", match.group("name")).strip()
+        # Narrowed, not cast: the group comes from external CLI output, and
+        # ``audit_cast_policy`` rejects asserting a shape over that.
+        matched = match.group("name")
+        if not isinstance(matched, str):
+            continue
+        name = matched.strip()
         if name and name not in names:
             names.append(name)
     return tuple(names)

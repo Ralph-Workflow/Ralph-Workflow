@@ -72,3 +72,26 @@ def test_opencode_regression_the_builder_really_puts_the_prompt_last(tmp_path: P
 
     assert argv[-1].endswith(_PROMPT)
     assert "ses_1" in argv[:-1]
+
+
+def test_opencode_regression_unattended_run_auto_approves_permissions() -> None:
+    """OpenCode must not silently auto-REJECT permissions in an unattended run.
+
+    Every other transport passes a permission-bypass flag (claude
+    ``--dangerously-skip-permissions``, claude-headless ``--permission-mode auto``,
+    codex ``--dangerously-bypass-approvals-and-sandbox``); OpenCode passed none.
+    Without one its ``run`` handler replies ``reject`` to any permission request
+    it cannot match, and prints a bare ``permission requested: ...`` line into
+    the JSON stream -- a silent tool failure in a run with nobody to ask.
+
+    ``--auto`` is "auto-approve permissions that are NOT explicitly denied", so
+    an operator's explicit denies still win. That is the same rule Ralph follows
+    everywhere else: add what the run needs, override nothing the operator set.
+    """
+    argv = build_command(
+        _opencode_config(),
+        "PROMPT.md",
+        options=BuildCommandOptions(),
+    )
+
+    assert "--auto" in argv

@@ -112,7 +112,11 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert codex.output_flag == "--json"
     assert codex.yolo_flag == "--dangerously-bypass-approvals-and-sandbox"
     assert codex.transport == AgentTransport.CODEX
-    assert opencode.yolo_flag is None
+    # OpenCode used to be the only agent with no permission flag, so in an
+    # unattended run it auto-REJECTED any permission request it could not
+    # match. "--auto" approves what is not explicitly denied, so an
+    # operator's own denies still win.
+    assert opencode.yolo_flag == "--auto"
     assert opencode.transport == AgentTransport.OPENCODE
 
     agy = registry.get("agy")

@@ -250,6 +250,10 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         # ``honors_output_flag=False`` for this transport, so any operator
         # ``[agents.opencode].output_flag`` override is dropped by
         # declaration rather than by accident.
+        # Unattended runs have nobody to answer a permission prompt, and
+        # OpenCode auto-REJECTS anything it cannot match. ``--auto`` approves
+        # what is not explicitly denied, so operator denies still win.
+        yolo_flag="--auto",
         can_commit=False,
         session_flag="--session {}",
         display_capabilities=_OPENCODE_CAPABILITIES,

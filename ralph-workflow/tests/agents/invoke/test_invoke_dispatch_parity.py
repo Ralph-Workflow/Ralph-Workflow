@@ -85,7 +85,11 @@ class TestResolveInvocationRuntimeParity:
             ep: str,
             *,
             unsafe_mode: bool = False,
+            workspace_path: Path | None = None,
         ) -> tuple[str, list[FakeUpstream]]:
+            # ``workspace_path`` reaches the builder so OpenCode's PROJECT-local
+            # config sources (``<ws>/opencode.json``, ``<ws>/.opencode/``) are
+            # discovered; without it only the global sources were ever seen.
             return fake_provider_config, [fake_upstream]
 
         monkeypatch.setattr(

@@ -1139,6 +1139,55 @@ ralph.pipeline.conflict_resolution.rebase_loop
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.deterministic_resolution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.deterministic_resolution
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.stray_paths
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.stray_paths
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.ort_residue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.ort_residue
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.round_verdict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.round_verdict
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.round_status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.round_status
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.operator_cap
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.operator_cap
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.chain_candidates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.chain_candidates
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_conflict_budget
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

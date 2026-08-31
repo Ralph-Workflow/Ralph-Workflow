@@ -61,13 +61,13 @@ torn-write-safe.
 from __future__ import annotations
 
 import json
-import os
 import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
+from ralph.config._agent_overrides import agent_environment_value
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
 from ralph.mcp.transport.config_overlay import (
@@ -103,7 +103,7 @@ def _kimi_global_config_path() -> Path:
     ``$KIMI_CODE_HOME/mcp.json``, defaulting to ``~/.kimi-code/mcp.json``
     when the environment variable is unset or empty.
     """
-    kimi_home = os.environ.get("KIMI_CODE_HOME", "")
+    kimi_home = agent_environment_value("KIMI_CODE_HOME") or ""
     home = Path(kimi_home) if kimi_home else Path.home() / ".kimi-code"
     return home / "mcp.json"
 

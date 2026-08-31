@@ -50,6 +50,9 @@ if TYPE_CHECKING:
 
 class _FakeProcess:
     """Minimal test double for ``subprocess.Popen`` used by the subprocess reader."""
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     pid: int = 12345
 
@@ -123,6 +126,7 @@ def _make_invocation_options(
     max_waiting: float = 0.1,
     max_session: float | None = None,
     session_id: str | None = None,
+    no_output_at_start: float | None = None,
 ) -> InvokeOptions:
     return InvokeOptions(
         show_progress=False,
@@ -134,6 +138,7 @@ def _make_invocation_options(
         waiting_status_interval_seconds=100.0,
         idle_poll_interval_seconds=0.01,
         session_id=session_id,
+        no_output_at_start_seconds=no_output_at_start,
     )
 
 
@@ -581,11 +586,16 @@ def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_gr
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
+    # The startup grace is set explicitly rather than inherited: this test pins
+    # the ORDERING (deferred broken-agent grace => the startup watchdog is what
+    # fires), and the production default is now sized for a genuinely silent
+    # agent startup, which would let the no-output deadline win instead.
     opts = _make_invocation_options(
         tmp_path=tmp_path,
         idle_timeout=300.0,
         max_waiting=600.0,
         session_id="sess-no-output-at-start",
+        no_output_at_start=15.0,
     )
 
     try:

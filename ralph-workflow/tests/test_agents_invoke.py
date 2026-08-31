@@ -482,6 +482,10 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     prompt_file.write_text("hello", encoding="utf-8")
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -1053,7 +1057,10 @@ def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) 
         options=BuildCommandOptions(session_id="abc123", verbose=False),
     )
 
-    assert cmd == ["opencode", "run", "--format", "json", "plain prompt"]
+    # ``--auto`` approves permissions that are not explicitly denied: an
+    # unattended run has nobody to answer a prompt, and OpenCode otherwise
+    # auto-REJECTS anything it cannot match.
+    assert cmd == ["opencode", "run", "--format", "json", "--auto", "plain prompt"]
 
 
 # === consolidated from test_agents_invoke_1.py ===
@@ -1190,6 +1197,7 @@ def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Pat
         "run",
         "--format",
         "json",
+        "--auto",
         "-m",
         "minimax/MiniMax-M2.7-highspeed",
         "say hello",
@@ -1228,6 +1236,7 @@ def test_opencode_regression_no_pure_flag_and_no_output_flag_in_argv(
         "run",
         "--format",
         "json",
+        "--auto",
         "say hello",
     ]
 
@@ -1308,6 +1317,10 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
     run_calls: list[list[str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -1374,6 +1387,10 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -1543,6 +1560,10 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             raise StopIteration
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def __init__(self) -> None:
@@ -1619,6 +1640,10 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             raise StopIteration
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def __init__(self) -> None:
@@ -1702,6 +1727,10 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
     seen_cwds: list[str | None] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -1781,6 +1810,10 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2152,6 +2185,10 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2271,6 +2308,10 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2394,6 +2435,10 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2503,6 +2548,10 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
     )
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2660,6 +2709,10 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
     )
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2736,6 +2789,10 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2860,6 +2917,10 @@ def test_invoke_agent_merges_existing_opencode_config_content(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -2933,6 +2994,10 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3050,6 +3115,10 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3199,6 +3268,10 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3264,6 +3337,10 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     seen_config: list[str] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3340,6 +3417,10 @@ def test_invoke_agent_injects_codex_master_prompt_file_via_config(
     seen_config: list[str] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3411,8 +3492,29 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
     master_prompt_file.write_text("unattended mode", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_cmds: list[list[str]] = []
+    stdin_writes: list[str] = []
+
+    class _CapturingStdin:
+        """Records what Ralph writes to the child's stdin."""
+
+        @staticmethod
+        def write(text: str) -> int:
+            stdin_writes.append(text)
+            return len(text)
+
+        @staticmethod
+        def flush() -> None:
+            return None
+
+        @staticmethod
+        def close() -> None:
+            return None
 
     class FakeProcess:
+        # OpenCode's prompt is delivered on stdin, not argv: the CLI re-quotes
+        # a positional message and backslash-escapes every `"` in it, which
+        # corrupted the JSON examples inside Ralph's prompts.
+        stdin = _CapturingStdin()
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3462,7 +3564,10 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
         )
     )
 
-    assert seen_cmds == [["opencode", "run", "--format", "json", "unattended mode\n\nhello"]]
+    # The composed master+phase prompt is delivered on stdin, byte-identical,
+    # instead of as an argv token the OpenCode CLI would re-quote and escape.
+    assert seen_cmds == [["opencode", "run", "--format", "json", "--auto"]]
+    assert stdin_writes == ["unattended mode\n\nhello"]
 
 
 # === consolidated from test_agents_invoke_3.py ===
@@ -3479,6 +3584,10 @@ def test_invoke_agent_preserves_existing_codex_home_state(
     copied_auth: list[str] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3616,6 +3725,10 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     seen_config: list[str] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3903,6 +4016,10 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -3991,6 +4108,10 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -4094,6 +4215,10 @@ def test_codex_strict_mode_only_exposes_ralph_server(
     seen_config: list[str] = []
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:
@@ -4174,6 +4299,10 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:
+        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+        # positional message), so a process fake must satisfy the
+        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+        stdin = None
         pid: int = 12345
 
         def poll(self) -> int | None:

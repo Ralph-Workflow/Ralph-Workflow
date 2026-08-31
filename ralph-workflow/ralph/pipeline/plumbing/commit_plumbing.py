@@ -143,7 +143,6 @@ _MAX_METADATA_PARTS = 5
 _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_message artifact"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
-_MODELED_FLAG_PARTS = 2
 _COMMIT_RUN_ID = "commit-plumbing"
 
 

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
-    from ralph.pipeline.conflict_resolution.rebase_stop import RebaseStop
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
 __all__ = ["try_deterministic_resolution"]
 

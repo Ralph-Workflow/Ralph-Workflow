@@ -129,6 +129,9 @@ class _FakeManagedProcess:
     attributes off the handle (poll, pid, stdout). We provide no-ops
     so the test focuses on the queue-cap contract.
     """
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     def __init__(self) -> None:
         self.pid: int | None = None

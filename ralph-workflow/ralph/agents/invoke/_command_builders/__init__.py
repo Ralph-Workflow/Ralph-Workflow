@@ -580,6 +580,13 @@ class OpencodeCommandBuilder(ConfigurableCommandBuilder):
     SPEC = CommandBuilderSpec(
         base_argv=("opencode", "run"),
         format_flag=("--format", "json"),
+        # "auto-approve permissions that are not explicitly denied". Without it
+        # OpenCode replies ``reject`` to any permission request it cannot match
+        # and prints a bare ``permission requested: ...`` line into the JSON
+        # stream -- a silent tool failure in a run with nobody to ask. Every
+        # other transport passes an equivalent. The "not explicitly denied"
+        # wording matters: an operator's own denies still win.
+        yolo_flag="--auto",
         # opencode 1.18.25 has NO output-format flag beyond
         # ``--format default|json`` (``opencode run --help``); an
         # ``--json-stream`` default used to sit here and was silently
@@ -588,7 +595,6 @@ class OpencodeCommandBuilder(ConfigurableCommandBuilder):
         # declared, not incidental.
         output_flag=None,
         honors_output_flag=False,
-        yolo_flag=None,
         model_flag_template="--model {}",
         positional_prompt=True,
         print_flag=None,

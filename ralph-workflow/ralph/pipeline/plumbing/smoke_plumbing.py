@@ -2722,15 +2722,16 @@ def run_smoke_plumbing(
             update={
                 "agent_idle_timeout_seconds": _SMOKE_IDLE_TIMEOUT_SECONDS,
                 "agent_max_session_seconds": session_ceiling,
-                # Kimi Code's stream-json banner is a LIFECYCLE frame
-                # (classified non-meaningful), so a slow-thinking Kimi
-                # session has zero meaningful output until its first tool
-                # call -- past the 15s ``NO_OUTPUT_AT_START`` / 12s
-                # broken-agent defaults that kill the run before the model
-                # ever speaks.  Give every smoke transport a startup grace
-                # equal to its session ceiling; genuine broken starts still
-                # fail at that ceiling with the same diagnostics.
-                "agent_no_output_at_start_seconds": session_ceiling,
+                # ``agent_no_output_at_start_seconds`` is deliberately NOT
+                # overridden. It used to be raised to the session ceiling here,
+                # with a comment noting that the production defaults "kill the
+                # run before the model ever speaks" -- so the harness knew the
+                # default was wrong and worked around it for itself instead of
+                # fixing it. That made the smoke strictly MORE permissive than
+                # production on the one axis production was strictest, which is
+                # how OpenCode came to fail every real run while passing every
+                # smoke. The default is now sized for a genuinely silent
+                # startup, and the smoke runs the operator's real value.
             }
         )
         smoke_config = config.model_copy(update={"general": smoke_general})

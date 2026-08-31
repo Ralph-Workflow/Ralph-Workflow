@@ -23,6 +23,9 @@ _PROMPT = "plan the implementation step by step"
 
 
 class _ProcessHandle(ManagedProcess):
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
     def __init__(self) -> None:
         pass
 

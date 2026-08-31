@@ -44,6 +44,9 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 class _FakeProcess:
+    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
     pid: int = 12345
 
     def __init__(self) -> None:

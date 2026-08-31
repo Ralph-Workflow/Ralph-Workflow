@@ -29,6 +29,7 @@ from ralph.mcp.transport.nanocoder import (
 )
 from ralph.mcp.transport.opencode import (
     build_opencode_provider_config,
+    load_existing_opencode_upstream_servers,
     merge_opencode_config_content,
 )
 
@@ -40,6 +41,7 @@ __all__ = [
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",
     "load_existing_nanocoder_upstream_servers",
+    "load_existing_opencode_upstream_servers",
     "mcp_toml_as_upstreams",
     "merge_mcp_toml_into_upstreams",
     "merge_opencode_config_content",

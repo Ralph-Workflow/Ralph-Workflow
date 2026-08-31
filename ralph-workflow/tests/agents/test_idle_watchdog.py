@@ -15852,6 +15852,10 @@ def test_expected_fire_reasons_drift_guard_raises_runtime_error(
 @dataclass
 class FakeProcessMonitor(ProcessMonitor):
     """Fake process monitor for black-box tests."""
+    # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+    # positional message), so a process fake must satisfy the
+    # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+    stdin = None
 
     live_count: int = 0
     classified: tuple = ()
@@ -16256,6 +16260,9 @@ class _NoProcessMonitorNonResumableEndToEnd:
 # === consolidated from test_non_resumable_end_to_end.py ===
 class _FakeManagedProcess:
     """Fake process handle for ``ProcessLineReader._check_fire``."""
+    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     def __init__(self) -> None:
         self.pid: int | None = None
@@ -16269,6 +16276,9 @@ class _FakeManagedProcess:
 @dataclass
 class _FakeCheckFireSelf:
     """Minimal fake reader self for calling ``ProcessLineReader._check_fire``."""
+    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     _policy: TimeoutPolicy
     _clock: FakeClock
@@ -16350,6 +16360,9 @@ class _FakeManagedProcessResumeAfterKillContract:
     ``pid`` as ``None`` so no real process tree teardown runs in the
     test, and we record whether ``terminate`` was invoked.
     """
+    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     def __init__(self) -> None:
         self.pid: int | None = None
@@ -16367,6 +16380,9 @@ class _FakeCheckFireSelfResumeAfterKillContract:
     The method needs the policy, clock, lines queue, last hard-stop
     slot, and a fake handle.  Everything else is ignored.
     """
+    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     _policy: TimeoutPolicy
     _clock: FakeClock
@@ -16430,6 +16446,9 @@ class _LineReaderLike:
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
 class _FakeProcess:
     """Minimal test double for ``subprocess.Popen`` used by the subprocess reader."""
+    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     pid: int = 12345
 

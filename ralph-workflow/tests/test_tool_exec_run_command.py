@@ -210,6 +210,9 @@ def test_run_command_kills_process_when_output_exceeds_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class StreamingFakePopen(FakePopen):
+        # OpenCode's prompt is delivered on stdin, so a process fake must
+        # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+        stdin = None
         def __init__(self) -> None:
             super().__init__(
                 pid=101,
@@ -279,6 +282,9 @@ def test_run_subprocess_streams_output_chunks_in_order(
     """Verify that on_output_chunk receives chunks in order before run_command returns."""
 
     class ChunkedFakePopen(FakePopen):
+        # OpenCode's prompt is delivered on stdin, so a process fake must
+        # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+        stdin = None
         def __init__(self) -> None:
             super().__init__(
                 pid=201,

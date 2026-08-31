@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 
 
 class _FakeProc:
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
     def __init__(self) -> None:
         self.stdout: object = None
         self.stderr: object = None

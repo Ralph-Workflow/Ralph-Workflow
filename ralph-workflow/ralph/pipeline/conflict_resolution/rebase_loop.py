@@ -29,6 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -66,7 +67,6 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress_for_rebase,
     save_progress,
 )
-from ralph.pipeline.conflict_resolution.rebase_stop import RebaseStop
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.stray_paths import (
@@ -131,6 +131,36 @@ _remove_ort_residue = remove_ort_residue
 _is_ralph_workspace_path = is_ralph_workspace_path
 _revert_unrequested_paths = revert_unrequested_paths
 _worktree_dirty_paths = worktree_dirty_paths
+
+
+@dataclass(frozen=True)
+class RebaseStop:
+    """One commit a rebase has paused on because replaying it conflicted.
+
+    Carries exactly the context a resolution session is allowed to see:
+    which commit is being replayed and which paths conflicted, plus two
+    INDEPENDENT counters that are easy to confuse.
+
+    ``stop_index``/``stop_cap`` are the bounded loop's safety counters:
+    how many stops this loop has spent out of the fixed
+    :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`
+    it is allowed, which is what terminates the loop. They say nothing
+    about how long the rebase is.
+
+    ``replay_index``/``replay_total`` are the operator-facing replay
+    position: which of the rebase's own commits is being replayed, read
+    from git's rebase state by :func:`_read_replay_progress`. They are
+    display-only, both ``None`` when that state is unreadable, and must
+    never influence loop termination.
+    """
+
+    sha: str
+    subject: str
+    conflicted_files: tuple[str, ...]
+    stop_index: int
+    stop_cap: int
+    replay_index: int | None = None
+    replay_total: int | None = None
 
 
 #: Resolves ONE rebase stop: ``(root, target, stop) -> resolved``. The

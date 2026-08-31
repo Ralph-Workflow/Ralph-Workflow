@@ -15,14 +15,51 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import INFRASTRUCTURE_TERMINATION_REASONS
+from ralph.pipeline.conflict_resolution.chain_candidates import (
+    next_unvisited as _next_unvisited,
+)
+from ralph.pipeline.conflict_resolution.chain_candidates import (
+    remember_dead_surface as _remember_dead_surface,
+)
+from ralph.pipeline.conflict_resolution.chain_candidates import (
+    skipped_candidates as _skipped_candidates,
+)
 from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
     TERMINAL_RESOLVED,
     route_after_round,
 )
+from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
+from ralph.pipeline.conflict_resolution.operator_cap import (
+    operator_cap_expired as _operator_cap_expired,
+)
+from ralph.pipeline.conflict_resolution.operator_cap import (
+    remaining_operator_cap as _remaining_operator_cap,
+)
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+from ralph.pipeline.conflict_resolution.round_status import (
+    push_round_status as _push_round_status,
+)
+from ralph.pipeline.conflict_resolution.round_status import (
+    restore_previous_status_bar as _restore_status_bar,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
+    is_effectively_empty as _is_effectively_empty,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
+    reset_round_reporting as _reset_round_reporting,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
+    resolution_exhaustion_reason as _resolution_exhaustion_reason,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
+    resolution_outcome as _resolution_outcome,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
+    round_termination_reason as _round_termination_reason,
+)
 from ralph.pipeline.conflict_resolution.session import (
     ATTEMPT_FAILED_EVIDENCE,
     ResolutionSession,
@@ -41,10 +78,7 @@ from ralph.pipeline.conflict_resolution.sight import (
 from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
     capture_status_bar_model,
-    clear_conflict_status_bar,
     emit_conflict_phase_line,
-    push_conflict_status_bar,
-    restore_status_bar,
 )
 
 if TYPE_CHECKING:
@@ -61,7 +95,6 @@ if TYPE_CHECKING:
 
 
 type ResolutionInvoker = Callable[[str, "Path", int], bool]
-type MonotonicClock = Callable[[], float]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -98,18 +131,6 @@ __all__ = [
     "run_rebase_conflict_resolution_outcome",
     "run_rebase_conflict_resolution_pipeline",
 ]
-
-
-def _resolution_outcome(session: ResolutionSession, succeeded: bool) -> ResolutionOutcome:
-    """Expose one resolver invocation as typed outcome evidence."""
-    return ResolutionOutcome(
-        succeeded=succeeded,
-        reason=None if succeeded else session.terminal_reason,
-        duration_seconds=session.last_duration_seconds or 0.0,
-        last_activity_kind=session.last_activity_kind,
-        last_activity_at=session.last_activity_at,
-        unresolved_paths=session.unresolved_paths,
-    )
 
 
 def run_conflict_resolution_outcome(
@@ -266,17 +287,6 @@ def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
         max_fallback_agents=limits.max_fallback_agents,
         total_resolution_cap_seconds=limits.total_resolution_cap_seconds,
     )
-
-
-def _restore_status_bar(display: ParallelDisplay | None, root: Path, previous_model: object | None) -> None:
-    if previous_model is None:
-        clear_conflict_status_bar(
-            display,
-            root,
-            run_started_monotonic=_display_run_started_monotonic(display),
-        )
-    else:
-        restore_status_bar(display, previous_model)
 
 
 def _prepare_conflicted_paths(
@@ -539,18 +549,6 @@ def _run_rounds(
     return False
 
 
-def _reset_round_reporting(session: ResolutionSession) -> None:
-    """Clear per-round reporting state before a fresh round runs."""
-    if (
-        session.terminal_reason not in INFRASTRUCTURE_TERMINATION_REASONS
-        and session.terminal_reason is not ResolutionTerminationReason.EXCEPTION
-    ):
-        session.terminal_reason = None
-    session.last_activity_kind = None
-    session.last_activity_at = None
-    session.last_duration_seconds = None
-
-
 def _record_unconfigured_resolver(
     session: ResolutionSession,
     conflicted: tuple[str, ...],
@@ -581,14 +579,6 @@ def _escalate_unreachable_remainder(
         + ", ".join(session.out_of_reach_paths),
     )
     return True
-
-
-def _is_effectively_empty(path: Path) -> bool:
-    """Whether a file holds nothing a resolution could have meant to keep."""
-    try:
-        return not path.read_bytes().strip()
-    except OSError:
-        return False
 
 
 def _paths_still_unresolved(
@@ -648,56 +638,6 @@ def _announce_declared_decisions(
     )
 
 
-def _round_termination_reason(
-    session: ResolutionSession, *, invoked: bool
-) -> ResolutionTerminationReason:
-    """Name what ended the round without inventing a verdict nobody gave.
-
-    No reason here is the agent's opinion of the conflict -- it has no
-    way to give one. A round that invoked nobody, one whose candidate
-    never started, and one whose candidate ran without finishing are
-    three different facts, and all three used to be reported as the
-    resolver declining the work.
-    """
-    if session.terminal_reason is not None:
-        return session.terminal_reason
-    if not invoked:
-        return ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    # The invocation came back successful and the markers are still
-    # there: the resolver worked and did not finish. That is unfinished
-    # work, not an answer, and the next round hands it back the paths
-    # that still carry markers.
-    return ResolutionTerminationReason.RESOLUTION_INCOMPLETE
-
-
-def _resolution_exhaustion_reason(
-    session: ResolutionSession,
-    unresolved_paths: tuple[str, ...],
-) -> str:
-    """Build durable terminal evidence when the resolver cannot finish."""
-    reason = (
-        session.terminal_reason.value
-        if session.terminal_reason is not None
-        else "RESOLUTION_CHAIN_EXHAUSTED"
-    )
-    paths = ", ".join(unresolved_paths) or "none still carrying markers"
-    # "Conflict markers survive in ..." was asserted for every reason,
-    # including exits that never ran a marker scan and paths that cannot
-    # carry markers at all -- a binary file, a modify/delete. Say the
-    # thing that is true of all of them.
-    return f"{reason}: unresolved paths: {paths}"
-
-
-def _operator_cap_expired(session: ResolutionSession, clock: MonotonicClock) -> bool:
-    """Prevent a zero-second cap from reaching an invocation watchdog."""
-    cap = session.total_resolution_cap_seconds
-    return (
-        cap is not None
-        and session.started_at is not None
-        and clock() - session.started_at >= cap
-    )
-
-
 def _emit_expired_operator_cap(
     display: ParallelDisplay | None,
     session: ResolutionSession,
@@ -722,28 +662,6 @@ def _emit_expired_operator_cap(
     )
 
 
-def _push_round_status(
-    display: ParallelDisplay | None,
-    root: Path,
-    target: str,
-    round_index: int,
-    round_cap: int,
-    stop: RebaseStop | None,
-) -> None:
-    push_conflict_status_bar(
-        display,
-        root,
-        target=target,
-        round_index=round_index,
-        round_cap=round_cap,
-        stop_index=stop.stop_index if stop is not None else None,
-        stop_cap=stop.stop_cap if stop is not None else None,
-        replay_index=stop.replay_index if stop is not None else None,
-        replay_total=stop.replay_total if stop is not None else None,
-        run_started_monotonic=_display_run_started_monotonic(display),
-    )
-
-
 def _emit_success(display: ParallelDisplay | None, round_index: int, stop: RebaseStop | None) -> None:
     next_action = "verifying and continuing the rebase" if stop is not None else "verifying and committing the merge"
     emit_conflict_phase_line(display, f"conflicts resolved in round {round_index}; {next_action}")
@@ -762,16 +680,6 @@ def _emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOu
         f"unresolved_paths={', '.join(outcome.unresolved_paths)}; "
         f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed",
     )
-
-
-def _display_run_started_monotonic(display: ParallelDisplay | None) -> float | None:
-    if display is None:
-        return None
-    try:
-        value: object = display.run_started_monotonic
-    except AttributeError:
-        return None
-    return value if isinstance(value, float) else None
 
 
 def _run_one_round(
@@ -922,41 +830,6 @@ def _run_one_round(
     return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
 
 
-def _skipped_candidates(
-    session: ResolutionSession, candidates: tuple[str, ...]
-) -> frozenset[str]:
-    """Candidates this round must not launch, for either reason."""
-    barred = (*session.dead_tool_surfaces, *session.stop_dead_surfaces)
-    return frozenset(name for name in candidates if name in barred)
-
-
-def _remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
-    """Bar a candidate, for the run or only for this stop.
-
-    A name the registry cannot produce will not appear mid-run, so that
-    bar holds. A tool surface that faulted is Ralph's own plumbing --
-    the recovery layer calls the very same failure retryable -- so
-    barring the agent for the whole rebase turned one transport hiccup
-    into a run that could never resolve anything again, which is exactly
-    what the shipped one-agent chain does when its only agent is barred.
-    """
-    if session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
-        if agent_name not in session.dead_tool_surfaces:
-            session.dead_tool_surfaces = (*session.dead_tool_surfaces, agent_name)
-        return
-    if agent_name not in session.stop_dead_surfaces:
-        session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
-
-
-def _next_unvisited(offset: int, total: int, visited: set[int]) -> int:
-    """Return the next chain position this round has not tried yet."""
-    for step in range(1, total + 1):
-        candidate = (offset + step) % total
-        if candidate not in visited:
-            return candidate
-    return offset
-
-
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
     """Honor RecoveryController backoff, falling back to the chain's retry_delay_ms."""
     delay_ms = session.last_retry_delay_ms
@@ -1042,13 +915,3 @@ def _default_invoker(
         )
 
     return _invoke
-
-
-def _remaining_operator_cap(
-    cap: float | None,
-    session: ResolutionSession,
-    clock: MonotonicClock,
-) -> float | None:
-    if cap is None or session.started_at is None:
-        return None
-    return max(0.0, cap - (clock() - session.started_at))

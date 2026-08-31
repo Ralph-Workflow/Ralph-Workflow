@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
-from ralph.api.opencode import validate_local_model_support
+from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.cli.commands._commit_chain_config import CommitChainConfig
 from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
@@ -80,8 +80,6 @@ __all__ = [
 _MAX_DISPLAY_FILES = 5
 _DEFAULT_COMMIT_AGENT = "claude"
 _VERBOSE_THRESHOLD = 2
-_MODELED_FLAG_PARTS = 2
-
 
 def commit_plumbing(
     *,
@@ -305,22 +303,16 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 def _commit_agent_is_locally_supported(agent: AgentConfig) -> bool:
     if agent.transport != AgentTransport.OPENCODE:
         return True
-    model_id = _normalized_opencode_model_id(agent.model_flag)
+    # Third copy of this extractor deleted: it stripped an ``opencode/``
+    # prefix, which destroys the PROVIDER half of a legitimate id --
+    # opencode publishes a provider literally named ``opencode``
+    # (``opencode models`` lists ``opencode/big-pickle``). The Ralph alias
+    # prefix is stripped exactly once, at alias resolution.
+    model_id = opencode_model_id_from_flag(agent.model_flag)
     if model_id is None:
         return True
     command_name = agent.cmd.split()[0]
     return validate_local_model_support(model_id, command=command_name) is None
-
-
-def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
-    if not model_flag:
-        return None
-    parts = model_flag.split()
-    if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
-        return parts[1].removeprefix("opencode/")
-    if len(parts) == 1:
-        return parts[0].removeprefix("opencode/")
-    return None
 
 
 def working_tree_diff(repo_root: Path) -> str:

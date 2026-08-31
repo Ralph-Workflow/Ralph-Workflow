@@ -377,6 +377,9 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
         prompt_file.write_text("hello", encoding="utf-8")
 
         class _FakeProcess:
+            # OpenCode's prompt is delivered on stdin, so a process fake must
+            # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+            stdin = None
             pid: int = 12345
 
             def __init__(self) -> None:

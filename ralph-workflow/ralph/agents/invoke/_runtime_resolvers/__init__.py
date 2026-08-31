@@ -55,7 +55,12 @@ class _InvokeCompatibilitySeam(Protocol):
     def discover_http_mcp_tool_names(self, endpoint: str) -> list[str]: ...
 
     def build_opencode_provider_config(
-        self, existing: str | None, endpoint: str, *, unsafe_mode: bool = False
+        self,
+        existing: str | None,
+        endpoint: str,
+        *,
+        unsafe_mode: bool = False,
+        workspace_path: Path | None = None,
     ) -> tuple[str, tuple[UpstreamMcpServer, ...]]: ...
 
     def build_nanocoder_mcp_config(
@@ -116,7 +121,12 @@ class _InvokeModule(Protocol):
     def discover_http_mcp_tool_names(self, endpoint: str) -> list[str]: ...
 
     def build_opencode_provider_config(
-        self, existing: str | None, endpoint: str, *, unsafe_mode: bool = False
+        self,
+        existing: str | None,
+        endpoint: str,
+        *,
+        unsafe_mode: bool = False,
+        workspace_path: Path | None = None,
     ) -> tuple[str, tuple[object, ...]]: ...
 
     def build_nanocoder_mcp_config(
@@ -287,6 +297,7 @@ class OpencodeRuntimeResolver:
             opencode_config,
             endpoint,
             unsafe_mode=unsafe_mode,
+            workspace_path=workspace_path,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
 

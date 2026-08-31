@@ -27,6 +27,9 @@ from ralph.timeout_defaults import GIT_OUTPUT_LIMIT_BYTES
 
 class _FakeProc:
     """A fake ManagedProcess that records ``communicate_and_cleanup`` args."""
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
 
     def __init__(self, *, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") -> None:
         self._returncode = returncode
