@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import time
 from typing import TYPE_CHECKING, cast
+from urllib.parse import quote
 
 from ._child_part import OpenCodeChildPart, part_kind_from_data
 
@@ -76,7 +77,7 @@ class SqliteOpenCodeChildPartSource:
             return None
         try:
             self._conn = sqlite3.connect(
-                f"file:{self._db_path}?mode=ro",
+                f"file:{quote(str(self._db_path))}?mode=ro",
                 uri=True,
                 timeout=self._timeout,
                 check_same_thread=False,

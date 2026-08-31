@@ -48,7 +48,7 @@ def summarize_child_part(part: OpenCodeChildPart) -> str:
     """
     label = f"[child:{part.agent}]" if part.agent else "[child]"
     if part.kind.startswith("tool:"):
-        verb = f"tool_use:{part.kind[len('tool:'):]}"
+        verb = f"tool_use:{part.kind[len('tool:') :]}"
     elif part.kind == "reasoning":
         verb = "thinking:"
     elif part.kind == "text":

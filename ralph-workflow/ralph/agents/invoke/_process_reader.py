@@ -1286,7 +1286,13 @@ class ProcessLineReader:
             return None
         source = self._opencode_child_part_source
         if source is None:
-            db_path = default_opencode_db_path()
+            # Observation-only: an unresolvable home directory or a store that
+            # vanishes mid-resolution must cost the evidence, never the run.
+            try:
+                db_path = default_opencode_db_path()
+            except (OSError, RuntimeError):
+                logger.debug("opencode subagent probe: store path unresolved (suppressed)")
+                return None
             if db_path is None:
                 return None
             source = SqliteOpenCodeChildPartSource(db_path, monotonic=self._clock.monotonic)

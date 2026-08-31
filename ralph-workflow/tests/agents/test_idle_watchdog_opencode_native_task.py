@@ -96,7 +96,9 @@ def _run(
         )
 
     watchdog = IdleWatchdog(
-        TimeoutPolicy(idle_timeout_seconds=IDLE_TIMEOUT_SECONDS, max_session_seconds=MAX_SESSION_SECONDS),
+        TimeoutPolicy(
+            idle_timeout_seconds=IDLE_TIMEOUT_SECONDS, max_session_seconds=MAX_SESSION_SECONDS
+        ),
         clock,
         corroborator=corroborate,
     )
@@ -138,28 +140,46 @@ def _run(
         clock.advance(_TICK_SECONDS)
         if probe is not None:
             probe.poll()
-        verdict = watchdog.evaluate(classify_quiet=lambda: strategy.classify_quiet(handle, liveness))
+        verdict = watchdog.evaluate(
+            classify_quiet=lambda: strategy.classify_quiet(handle, liveness)
+        )
         if verdict == WatchdogVerdict.FIRE:
             return clock.monotonic() - started, watchdog.last_fire_reason
     return None, None
 
 
 @pytest.mark.parametrize("os_descendants", [False, True])
-def test_silent_parent_with_buffered_task_used_to_die_within_ten_minutes(os_descendants: bool) -> None:
-    fired_at, reason = _run(task_seconds=1500.0, child_active_seconds=None, os_descendants=os_descendants)
+def test_silent_parent_with_buffered_task_used_to_die_within_ten_minutes(
+    os_descendants: bool,
+) -> None:
+    fired_at, reason = _run(
+        task_seconds=1500.0, child_active_seconds=None, os_descendants=os_descendants
+    )
     assert fired_at is not None and fired_at <= 600.0
-    assert reason in {WatchdogFireReason.NO_PROGRESS_QUIET, WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG}
+    assert reason in {
+        WatchdogFireReason.NO_PROGRESS_QUIET,
+        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+    }
 
 
 @pytest.mark.parametrize("os_descendants", [False, True])
 def test_working_child_keeps_the_parent_alive_for_a_25_minute_task(os_descendants: bool) -> None:
-    fired_at, _ = _run(task_seconds=1500.0, child_active_seconds=1500.0, os_descendants=os_descendants)
+    fired_at, _ = _run(
+        task_seconds=1500.0, child_active_seconds=1500.0, os_descendants=os_descendants
+    )
     assert fired_at is None
 
 
 @pytest.mark.parametrize("os_descendants", [False, True])
 def test_a_child_that_stops_writing_still_reaches_the_ceilings(os_descendants: bool) -> None:
-    fired_at, reason = _run(task_seconds=2400.0, child_active_seconds=600.0, os_descendants=os_descendants)
+    fired_at, reason = _run(
+        task_seconds=2400.0, child_active_seconds=600.0, os_descendants=os_descendants
+    )
     assert fired_at is not None
-    assert 600.0 < fired_at <= 600.0 + 700.0, "the kill lands after the child went quiet, within the standard ceilings"
-    assert reason in {WatchdogFireReason.NO_PROGRESS_QUIET, WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG}
+    assert 600.0 < fired_at <= 600.0 + 700.0, (
+        "the kill lands after the child went quiet, within the standard ceilings"
+    )
+    assert reason in {
+        WatchdogFireReason.NO_PROGRESS_QUIET,
+        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+    }

@@ -11,7 +11,11 @@ from tests.fake_handle import _FakeHandle
 
 def _registry(clock: FakeClock) -> ChildLivenessRegistry:
     return ChildLivenessRegistry(
-        progress_ttl=45.0, heartbeat_ttl=15.0, stale_label_ttl=10.0, exit_reconcile=5.0, now=clock.monotonic
+        progress_ttl=45.0,
+        heartbeat_ttl=15.0,
+        stale_label_ttl=10.0,
+        exit_reconcile=5.0,
+        now=clock.monotonic,
     )
 
 
@@ -55,4 +59,7 @@ def test_repeated_progress_does_not_reset_the_child_start_time() -> None:
 def test_without_a_registry_the_seam_is_a_no_op() -> None:
     strategy = OpenCodeExecutionStrategy()
     strategy.record_native_child_progress("ses_child")
-    assert strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe(active=False)) == AgentExecutionState.ACTIVE
+    assert (
+        strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe(active=False))
+        == AgentExecutionState.ACTIVE
+    )

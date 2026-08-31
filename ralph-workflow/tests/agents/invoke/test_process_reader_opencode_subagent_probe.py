@@ -46,7 +46,14 @@ class _ChildSource:
             return []
         self._n += 1
         return [
-            OpenCodeChildPart("ses_child", "Sisyphus-Junior", "Fix gate", f"prt_{self._n}", "tool:bash", int(now * 1000))
+            OpenCodeChildPart(
+                "ses_child",
+                "Sisyphus-Junior",
+                "Fix gate",
+                f"prt_{self._n}",
+                "tool:bash",
+                int(now * 1000),
+            )
         ]
 
     def close(self) -> None:
@@ -96,7 +103,11 @@ def test_store_updates_keep_a_silent_opencode_parent_alive() -> None:
 
     clock = FakeClock(start=0.0)
     registry = ChildLivenessRegistry(
-        progress_ttl=45.0, heartbeat_ttl=15.0, stale_label_ttl=10.0, exit_reconcile=5.0, now=clock.monotonic
+        progress_ttl=45.0,
+        heartbeat_ttl=15.0,
+        stale_label_ttl=10.0,
+        exit_reconcile=5.0,
+        now=clock.monotonic,
     )
     strategy = OpenCodeExecutionStrategy(label_scope=None, registry=registry)
     source = _ChildSource(clock, active_until=900.0)
@@ -126,7 +137,9 @@ def test_store_updates_keep_a_silent_opencode_parent_alive() -> None:
     assert clock.monotonic() <= 900.0 + 300.0 + 600.0, (
         "once the child goes quiet the idle timeout (300 s) and the no-progress ceiling (600 s) apply"
     )
-    assert set(source.parents) == {"ses_parent"}, "the captured parent sessionID scopes the store query"
+    assert set(source.parents) == {"ses_parent"}, (
+        "the captured parent sessionID scopes the store query"
+    )
     assert len(source.parents) > 10, "the store is polled throughout the silent window, not once"
     assert handle.terminate_count == 1
     assert source.closed is True

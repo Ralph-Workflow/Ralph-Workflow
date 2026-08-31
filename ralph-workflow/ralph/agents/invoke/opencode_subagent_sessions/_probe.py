@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 _MAX_SEEN_PARTS: int = 512
 #: Cache of child session ids already announced to the operator log.
 _MAX_KNOWN_CHILDREN: int = 64
+
+
 class OpenCodeSubagentSessionProbe:
     """Poll the child sessions of one OpenCode parent and forward their work.
 
@@ -58,14 +60,13 @@ class OpenCodeSubagentSessionProbe:
         self._last_status_at: float | None = None
         self._updates_since_status = 0
         self._latest_summary: str | None = None
-        self._seen: OrderedDict[tuple[str, int], None] = OrderedDict()  # bounded-accumulator-ok: capped at _MAX_SEEN_PARTS
-        self._known_children: OrderedDict[str, None] = OrderedDict()  # bounded-accumulator-ok: capped at _MAX_KNOWN_CHILDREN
+        self._seen: OrderedDict[tuple[str, int], None] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: capped at _MAX_SEEN_PARTS
+        self._known_children: OrderedDict[str, None] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: capped at _MAX_KNOWN_CHILDREN
         self._closed = False
-
-    @property
-    def observed_children(self) -> frozenset[str]:
-        """Child session ids that have produced at least one part."""
-        return frozenset(self._known_children)
 
     def poll(self) -> int:
         """Forward every new child part; return how many were forwarded."""

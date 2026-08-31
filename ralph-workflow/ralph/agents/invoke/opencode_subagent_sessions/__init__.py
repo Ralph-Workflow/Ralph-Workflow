@@ -14,9 +14,13 @@ OpenCode does persist every child session as it works. Its SQLite store
 one ``session`` row per subagent with ``parent_id`` set to the dispatching
 session, and upserts one ``part`` row per tool call, reasoning block, or
 text block with an advancing ``time_updated``. Reading that store read-only
-turns each newly updated part into demonstrated child work -- the same
-contract the Claude subagent transcript tailer implements from
-``~/.claude/projects/<key>/<session>/subagents/*.jsonl``.
+turns each newly updated part into demonstrated child work. This is the
+OpenCode counterpart of the Claude subagent transcript tailer
+(``~/.claude/projects/<key>/<session>/subagents/*.jsonl``) with a deliberately
+stronger signal: besides the watchdog's subagent channel, each update resets
+the idle baseline like a parent output line and keeps a ``running`` child in
+the liveness registry, because OpenCode's stream is otherwise silent for the
+entire native task.
 
 The probe is deliberately observation-only and fail-quiet: a missing store,
 a locked page, or an unexpected row shape yields no evidence rather than a
