@@ -18,7 +18,10 @@ from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.tools.names import CLAUDE_NATIVE_TOOLS_TO_KEEP
-from ralph.mcp.transport.claude import claude_mcp_config
+from ralph.mcp.transport.claude import (
+    claude_mcp_config,
+    report_claude_mcp_servers_ralph_cannot_proxy,
+)
 from ralph.mcp.transport.pi import pi_mcp_extension_path
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
@@ -321,6 +324,10 @@ def _extend_claude_transport_flags(
     ):
         return
 
+    # --strict-mcp-config makes the config below the ONLY MCP source Claude
+    # reads, so anything Ralph did not find is gone for this run. Say so, by
+    # name, before building the flag that takes it away.
+    report_claude_mcp_servers_ralph_cannot_proxy(build_options.workspace_path)
     cmd.extend(
         [
             "--mcp-config",

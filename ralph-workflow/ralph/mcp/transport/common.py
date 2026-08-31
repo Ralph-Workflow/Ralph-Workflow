@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -19,7 +20,6 @@ from ralph.mcp.upstream.config import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from ralph.config.mcp_models import McpConfig
 
@@ -231,6 +231,12 @@ def _load_upstreams_for_agent(
     ``_merge_opencode``, which merges the raw ``mcp`` maps directly. Its
     upstreams are normalized by ``build_opencode_provider_config`` instead.
 
+    claude returns early through ``load_existing_claude_upstream_servers``, the
+    single public loader that also feeds strict mode. Re-implementing Claude
+    discovery here made unsafe mode -- the mode whose whole purpose is keeping
+    the operator's servers -- blind to the plugin-provided and local-scope
+    servers strict mode had learned to find.
+
     For claude/agy/nanocoder: if current_config already contains a populated
     "mcpServers" dict with non-ralph servers (from a prior merge by e.g.
     build_nanocoder_mcp_config or agy_workspace_mcp_endpoint), use those
@@ -248,10 +254,11 @@ def _load_upstreams_for_agent(
             servers = cast("dict[str, object]", existing_mcp_servers)
         elif agent_name == "claude":
             mod = importlib.import_module("ralph.mcp.transport.claude")
-            paths = cast(
-                "tuple[Path, ...]", mod._claude_mcp_config_paths(_workspace_path)
+            claude_loader = cast(
+                "Callable[[Path | None], tuple[UpstreamMcpServer, ...]]",
+                mod.load_existing_claude_upstream_servers,
             )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-            servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
+            return claude_loader(_workspace_path if isinstance(_workspace_path, Path) else None)
         elif agent_name == "agy":
             mod = importlib.import_module("ralph.mcp.transport.agy")
             paths = cast(

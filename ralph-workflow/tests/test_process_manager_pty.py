@@ -31,6 +31,13 @@ _ROOT_ONLY_WAIT_CALLS = 2
 
 
 def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
+    """A PTY child gets its caller's env plus a ``PWD`` naming its own ``cwd``.
+
+    ``PWD`` is not the caller's to supply: ``cwd=`` moves the child but leaves
+    any inherited ``PWD`` pointing at the parent, and tools that trust ``PWD``
+    over ``getcwd()`` then act on the wrong tree. The spawn seam realigns it for
+    every child, so it is expected here.
+    """
     factory = _FakePtyFactory()
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -45,7 +52,13 @@ def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
         ),
     )
 
-    assert factory.calls == [(("claude", "PROMPT.md"), str(tmp_path), {"TERM": "xterm-256color"})]
+    assert factory.calls == [
+        (
+            ("claude", "PROMPT.md"),
+            str(tmp_path),
+            {"TERM": "xterm-256color", "PWD": str(tmp_path)},
+        )
+    ]
     assert handle.record.status == ProcessStatus.RUNNING
     assert handle.record.pid == handle.pid
     assert handle.record.pgid == handle.pid

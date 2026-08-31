@@ -64,6 +64,25 @@ def _fake_agy_models_probe() -> Generator[None, None, None]:
         registry._default_agy_models_probe = original_probe
 
 
+@pytest.fixture(autouse=True)
+def _fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep default tests off the locally installed `claude` binary.
+
+    ``report_claude_mcp_servers_ralph_cannot_proxy`` shells out to
+    ``claude mcp list`` once per run to find the MCP servers
+    ``--strict-mcp-config`` strips but Ralph cannot proxy back. That is a real
+    subprocess with real network health checks -- far outside the per-test
+    budget -- and every Claude command-building test would trip it. Stub the
+    lister to "could not be consulted" and clear the per-run memo so each test
+    starts from a known state; tests that exercise the report install their own
+    lister on top.
+    """
+    from ralph.mcp.transport import claude as claude_transport
+
+    claude_transport.report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    monkeypatch.setattr(claude_transport, "claude_cli_mcp_server_lister", lambda: None)
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Disable pytest's unraisableexception teardown gc passes.
 
