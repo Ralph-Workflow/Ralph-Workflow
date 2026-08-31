@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke.opencode_subagent_sessions import (
     OpenCodeChildPart,
@@ -23,6 +24,9 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
     part_kind_from_data,
     summarize_child_part,
 )
+
+if TYPE_CHECKING:
+    from pytest import MonkeyPatch
 
 
 class _FakeSource:
@@ -196,15 +200,29 @@ def test_part_kind_and_summary_vocabulary() -> None:
     assert summarize_child_part(anonymous) == "text: [child]"
 
 
-def test_default_db_path_honours_xdg_data_home(monkeypatch: object) -> None:
-    from pytest import MonkeyPatch
-
-    assert isinstance(monkeypatch, MonkeyPatch)
+def test_default_db_path_resolves_like_the_opencode_binary(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("OPENCODE_DB", raising=False)
     monkeypatch.setenv("XDG_DATA_HOME", "/xdg/data")
     assert default_opencode_db_path() == Path("/xdg/data/opencode/opencode.db")
     monkeypatch.delenv("XDG_DATA_HOME")
     monkeypatch.setenv("HOME", "/home/op")
     assert default_opencode_db_path() == Path("/home/op/.local/share/opencode/opencode.db")
+
+    monkeypatch.setenv("OPENCODE_DB", ":memory:")
+    assert default_opencode_db_path() is None
+    monkeypatch.setenv("OPENCODE_DB", "/elsewhere/store.db")
+    assert default_opencode_db_path() == Path("/elsewhere/store.db")
+    monkeypatch.setenv("OPENCODE_DB", "custom.db")
+    assert default_opencode_db_path() == Path("/home/op/.local/share/opencode/custom.db")
+
+    monkeypatch.delenv("OPENCODE_DB")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    data_dir = tmp_path / "opencode"
+    data_dir.mkdir()
+    (data_dir / "opencode-dev.db").write_bytes(b"")
+    assert default_opencode_db_path() == data_dir / "opencode-dev.db", "a channel store stands in for a missing release store"
+    (data_dir / "opencode.db").write_bytes(b"")
+    assert default_opencode_db_path() == data_dir / "opencode.db"
 
 
 def _build_store(db_path: Path) -> None:
@@ -221,10 +239,12 @@ def _build_store(db_path: Path) -> None:
         INSERT INTO session VALUES ('ses_parent', NULL, 'Sisyphus', 'parent');
         INSERT INTO session VALUES ('ses_child', 'ses_parent', 'Sisyphus-Junior', 'Fix gate');
         INSERT INTO session VALUES ('ses_other', 'ses_elsewhere', 'plan', 'unrelated');
+        INSERT INTO session VALUES ('ses_grandchild', 'ses_child', 'explore', 'Nested lookup');
         INSERT INTO part VALUES ('prt_a', 'msg_1', 'ses_child', 1000, 1000, '{"type":"text","text":"TASK"}');
         INSERT INTO part VALUES ('prt_b', 'msg_1', 'ses_child', 1000, 2500, '{"type":"tool","tool":"bash","callID":"c"}');
         INSERT INTO part VALUES ('prt_c', 'msg_2', 'ses_other', 3000, 3000, '{"type":"text"}');
         INSERT INTO part VALUES ('prt_d', 'msg_3', 'ses_parent', 3000, 3000, '{"type":"text"}');
+        INSERT INTO part VALUES ('prt_e', 'msg_4', 'ses_grandchild', 4000, 4000, '{"type":"reasoning","text":"deep"}');
         """
     )
     conn.commit()
@@ -240,11 +260,13 @@ def test_sqlite_source_reads_children_of_the_parent_only(tmp_path: Path) -> None
     assert [(p.part_id, p.kind, p.time_updated_ms) for p in parts] == [
         ("prt_a", "text", 1000),
         ("prt_b", "tool:bash", 2500),
-    ]
+        ("prt_e", "reasoning", 4000),
+    ], "the parent's own parts are excluded; a nested subagent's parts are included"
     assert parts[0].agent == "Sisyphus-Junior"
     assert parts[0].title == "Fix gate"
+    assert parts[2].child_session_id == "ses_grandchild"
 
-    assert [p.part_id for p in source.fetch("ses_parent", 2500)] == ["prt_b"]
+    assert [p.part_id for p in source.fetch("ses_parent", 2500)] == ["prt_b", "prt_e"]
     assert source.fetch("ses_elsewhere", 0)[0].child_session_id == "ses_other"
     source.close()
 
@@ -257,5 +279,5 @@ def test_sqlite_source_is_quiet_when_the_store_is_missing(tmp_path: Path) -> Non
     _build_store(tmp_path / "missing.db")
     assert source.fetch("ses_parent", 0) == [], "reconnects are backed off, not retried per poll"
     clock.now += 60.0
-    assert len(source.fetch("ses_parent", 0)) == 2
+    assert len(source.fetch("ses_parent", 0)) == 3
     source.close()

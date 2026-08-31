@@ -1462,8 +1462,10 @@ def _rebase_markers_on_disk(root: Path) -> bool:
         from ralph.git.rebase.rebase_continuation import REBASE_STATE_DIRS
 
         git_dir = Path(root) / ".git"
+        # filesystem-read-ok: git metadata probe -- a worktree's .git is a pointer file, not workspace content
         if git_dir.is_file():
             # A worktree's .git is a file pointing at the real git dir.
+            # filesystem-read-ok: reads the worktree gitdir pointer, git metadata outside FileBackend scope
             pointer = git_dir.read_text(encoding="utf-8").strip()
             _, _, path = pointer.partition("gitdir:")
             git_dir = Path(path.strip() or str(git_dir))

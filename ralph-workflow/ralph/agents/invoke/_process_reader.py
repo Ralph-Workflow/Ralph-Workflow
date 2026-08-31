@@ -1286,9 +1286,10 @@ class ProcessLineReader:
             return None
         source = self._opencode_child_part_source
         if source is None:
-            source = SqliteOpenCodeChildPartSource(
-                default_opencode_db_path(), monotonic=self._clock.monotonic
-            )
+            db_path = default_opencode_db_path()
+            if db_path is None:
+                return None
+            source = SqliteOpenCodeChildPartSource(db_path, monotonic=self._clock.monotonic)
 
         def _parent_session_id() -> str | None:
             return self._captured_session_id or self._expected_session_id
