@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution.session import invoke_resolution_agent
-from ralph.policy.loader import load_policy
+from ralph.policy.models import PolicyBundle
 
 if TYPE_CHECKING:
     import pytest
 
 
 def test_invoke_resolution_agent_does_not_require_declare_complete(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[bool] = []
 
@@ -26,17 +26,14 @@ def test_invoke_resolution_agent_does_not_require_declare_complete(
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         _capture_execute,
     )
-    prompt = tmp_path / "prompt.md"
-    prompt.write_text("resolve", encoding="utf-8")
+    prompt = Path("/repo/prompt.md")
     invoke_resolution_agent(
         agent_name="claude",
         prompt_path=prompt,
         config=UnifiedConfig.model_validate({"general": {}}),
         pipeline_deps=None,
         workspace_scope=None,
-        policy_bundle=load_policy(
-            Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-        ),
+        policy_bundle=PolicyBundle.model_construct(),
         display=None,
         display_context=None,
     )
@@ -124,7 +121,7 @@ def test_only_a_submodule_pointer_is_genuinely_out_of_reach() -> None:
 
 
 def test_a_markerless_decision_demands_declared_completion(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ralph cannot SEE a keep-or-delete decision, so it must be declared.
 
@@ -151,17 +148,26 @@ def test_a_markerless_decision_demands_declared_completion(
     )
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _root, _kinds: ())
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
+    monkeypatch.setattr(driver_module, "conflict_chain_max_retries", lambda _bundle: 1)
+    monkeypatch.setattr(
+        driver_module,
+        "classify_failed_resolution_attempt",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(driver_module, "invoke_resolution_agent", _capture)
+    root = Path("/repo")
+    prompt = root / "conflict-prompt.md"
+    monkeypatch.setattr(Path, "exists", lambda _path: False)
+    monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_kwargs: prompt)
+    monkeypatch.setattr(Path, "unlink", lambda _path: None)
 
     driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
+        root=root,
         target="main",
         config=UnifiedConfig.model_validate({"general": {}}),
         pipeline_deps=None,
         workspace_scope=None,
-        policy_bundle=load_policy(
-            Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-        ),
+        policy_bundle=PolicyBundle.model_construct(),
         display=None,
         display_context=None,
     )
@@ -169,7 +175,9 @@ def test_a_markerless_decision_demands_declared_completion(
     assert all(captured), "and it must be required to declare its decision"
 
 
-def test_a_widened_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) -> None:
+def test_a_widened_conflict_marker_is_still_a_conflict_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`conflict-marker-size` is a documented gitattribute.
 
     A repository that widens the fence produced ``<<<<<<<< HEAD``, which
@@ -177,16 +185,20 @@ def test_a_widened_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) ->
     resolution real reads this one scan, so all of them went blind at
     once and conflict markers were committed into history as a success.
     """
-    from ralph.git.merge import paths_with_conflict_markers
+    from ralph.git import merge as merge_module
 
-    (tmp_path / "default.txt").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> main\n")
-    (tmp_path / "wide.txt").write_text("<<<<<<<< HEAD\na\n========\nb\n>>>>>>>> main\n")
-    # Still not markers: prose punctuation and a doctest prompt.
-    (tmp_path / "prose.md").write_text("Title\n=======\nbody\n")
-    (tmp_path / "doctest.py").write_text(">>> print(1)\n1\n")
+    root = Path("/repo")
+    contents = {
+        root / "default.txt": "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> main\n",
+        root / "wide.txt": "<<<<<<<< HEAD\na\n========\nb\n>>>>>>>> main\n",
+        root / "prose.md": "Title\n=======\nbody\n",
+        root / "doctest.py": ">>> print(1)\n1\n",
+    }
+    monkeypatch.setattr(merge_module, "conflict_marker_sizes", lambda _root, _paths: {})
+    monkeypatch.setattr(merge_module, "_readable_text", contents.get)
 
-    reported = paths_with_conflict_markers(
-        tmp_path, ["default.txt", "wide.txt", "prose.md", "doctest.py"]
+    reported = merge_module.paths_with_conflict_markers(
+        root, ["default.txt", "wide.txt", "prose.md", "doctest.py"]
     )
     assert sorted(reported) == ["default.txt", "wide.txt"]
 
@@ -211,7 +223,9 @@ def test_a_markerless_conflict_is_a_decision_however_it_became_markerless() -> N
     )
 
 
-def test_a_narrow_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) -> None:
+def test_a_narrow_conflict_marker_is_still_a_conflict_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`conflict-marker-size` moves the fence in BOTH directions.
 
     A width the scan does not expect blinds every gate that proves a
@@ -220,121 +234,158 @@ def test_a_narrow_conflict_marker_is_still_a_conflict_marker(tmp_path: Path) -> 
     blockquote, so the width is asked of git per path rather than
     guessed at.
     """
-    from ralph.git.merge import paths_with_conflict_markers
-    from ralph.git.subprocess_runner import run_git
+    from ralph.git import merge as merge_module
+    from ralph.git.git_run_result import GitRunResult
 
-    def _git(*args: str) -> None:
-        result = run_git(args, cwd=tmp_path, label="test-setup")
-        assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
+    root = Path("/repo")
+    paths = ["narrow.txt", "wide.txt", "quote.md"]
+    contents = {
+        root / "narrow.txt": "<<<< HEAD\na\n====\nb\n>>>> other\n",
+        root / "wide.txt": "<<<<<<<< HEAD\na\n========\nb\n>>>>>>>> other\n",
+        root / "quote.md": "> a quoted line\n>> nested\n",
+    }
 
-    _git("init", "-q", ".")
-    _git("config", "user.email", "t@t")
-    _git("config", "user.name", "t")
-    (tmp_path / ".gitattributes").write_text("narrow.txt conflict-marker-size=4\n")
-    (tmp_path / "narrow.txt").write_text("<<<< HEAD\na\n====\nb\n>>>> other\n")
-    (tmp_path / "wide.txt").write_text("<<<<<<<< HEAD\na\n========\nb\n>>>>>>>> other\n")
-    (tmp_path / "quote.md").write_text("> a quoted line\n>> nested\n")
-    _git("add", "-A")
+    def _fake_run_vcs(
+        args: tuple[str, ...], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        assert args == ("check-attr", "-z", "conflict-marker-size", "--", *paths)
+        assert cwd == root
+        assert label == "git-conflict-marker-size"
+        return GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout="\0".join(("narrow.txt", "conflict-marker-size", "4", "")),
+            stderr="",
+        )
 
-    reported = paths_with_conflict_markers(tmp_path, ["narrow.txt", "wide.txt", "quote.md"])
+    monkeypatch.setattr(merge_module, "run_git", _fake_run_vcs)
+    monkeypatch.setattr(merge_module, "_readable_text", contents.get)
+
+    reported = merge_module.paths_with_conflict_markers(root, paths)
     assert sorted(reported) == ["narrow.txt", "wide.txt"]
 
-
-def test_a_non_ascii_path_is_not_reported_as_marker_free(tmp_path: Path) -> None:
-    """git QUOTES such a path unless asked for NUL separation.
+def test_a_non_ascii_path_is_not_reported_as_marker_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NUL-separated git output preserves a non-ASCII marker-bearing path.
 
     The quoted string cannot be opened, so every content gate that reads
     the path reported "no markers" for a file it never saw -- and the
     markers were committed under a line asserting the stop was clean.
     """
-    from ralph.git.merge import paths_with_conflict_markers, unmerged_paths
-    from ralph.git.subprocess_runner import run_git
+    from ralph.git import merge as merge_module
+    from ralph.git.git_run_result import GitRunResult
 
-    def _git(*args: str) -> None:
-        result = run_git(args, cwd=tmp_path, label="test-setup")
-        assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
-
-    # -b pins the initial branch: the checkout below names it, and a host whose
-    # init.defaultBranch is "main" would otherwise fail to check out "master".
-    _git("init", "-q", "-b", "master", ".")
-    _git("config", "user.email", "t@t")
-    _git("config", "user.name", "t")
     named = "é.txt"
-    (tmp_path / named).write_text("a\n")
-    _git("add", "-A")
-    _git("commit", "-qm", "base")
-    _git("checkout", "-qb", "feature")
-    (tmp_path / named).write_text("FEATURE\n")
-    _git("commit", "-qam", "feature")
-    _git("checkout", "-q", "master")
-    (tmp_path / named).write_text("MAIN\n")
-    _git("commit", "-qam", "main")
-    run_git(("merge", "feature"), cwd=tmp_path, label="test-merge")
+    root = Path("/repo")
+    git_calls: list[tuple[str, ...]] = []
 
-    unmerged = unmerged_paths(tmp_path)
+    def _fake_run_git(
+        args: tuple[str, ...], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        assert cwd == root
+        assert label == "git-unmerged-paths"
+        git_calls.append(args)
+        return GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout=f"{named}\0",
+            stderr="",
+        )
+
+    def _no_marker_sizes(_root: Path, _paths: list[str]) -> dict[str, int]:
+        return {}
+
+    def _marker_content(path: Path) -> str | None:
+        if path == root / named:
+            return "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> feature\n"
+        return None
+
+    monkeypatch.setattr(merge_module, "run_git", _fake_run_git)
+    monkeypatch.setattr(merge_module, "conflict_marker_sizes", _no_marker_sizes)
+    monkeypatch.setattr(merge_module, "_readable_text", _marker_content)
+
+    unmerged = merge_module.unmerged_paths(root)
+
+    assert git_calls == [("diff", "--name-only", "--diff-filter=U", "-z")]
     assert unmerged == [named], "the path must arrive openable, not git-quoted"
-    assert paths_with_conflict_markers(tmp_path, unmerged) == [named]
+    assert merge_module.paths_with_conflict_markers(root, unmerged) == [named]
 
 
-def test_a_file_git_wrote_in_utf16_is_not_reported_as_marker_free(tmp_path: Path) -> None:
+def test_a_file_git_wrote_in_utf16_is_not_reported_as_marker_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`working-tree-encoding` makes git write markers we could not read.
 
     Decoding with ``errors="replace"`` hid the fences behind replacement
     characters, so they were committed and reported as a success.
     """
-    from ralph.git.merge import paths_with_conflict_markers
+    from ralph.git import merge as merge_module
 
-    conflicted = "a\n<<<<<<< HEAD\nOURS\n=======\nTHEIRS\n>>>>>>> feature\nc\n"
-    (tmp_path / "u16.txt").write_bytes(conflicted.encode("utf-16"))
-    (tmp_path / "clean16.txt").write_bytes("resolved\n".encode("utf-16"))
+    root = Path("/repo")
+    contents = {
+        root / "u16.txt": "a\n<<<<<<< HEAD\nOURS\n=======\nTHEIRS\n>>>>>>> feature\nc\n",
+        root / "clean16.txt": "resolved\n",
+    }
+    monkeypatch.setattr(merge_module, "conflict_marker_sizes", lambda _root, _paths: {})
+    monkeypatch.setattr(merge_module, "_readable_text", contents.get)
 
-    assert paths_with_conflict_markers(tmp_path, ["u16.txt", "clean16.txt"]) == ["u16.txt"]
+    assert merge_module.paths_with_conflict_markers(
+        root, ["u16.txt", "clean16.txt"]
+    ) == ["u16.txt"]
 
 
 def test_a_present_but_unreadable_path_is_not_evidence_of_a_clean_one(
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The scan skipped what it could not read, which passed vacuously."""
-    from ralph.git.merge import paths_with_conflict_markers
+    from ralph.git import merge as merge_module
 
-    unreadable = tmp_path / "locked.txt"
-    unreadable.write_text("<<<<<<< HEAD\na\n")
-    unreadable.chmod(0o000)
-    try:
-        reported = paths_with_conflict_markers(tmp_path, ["locked.txt", "absent.txt"])
-    finally:
-        unreadable.chmod(0o644)
+    root = Path("/repo")
+    unreadable = root / "locked.txt"
+    monkeypatch.setattr(merge_module, "conflict_marker_sizes", lambda _root, _paths: {})
+    monkeypatch.setattr(merge_module, "_readable_text", lambda _path: None)
+    monkeypatch.setattr(Path, "exists", lambda path: path == unreadable)
+
+    reported = merge_module.paths_with_conflict_markers(root, ["locked.txt", "absent.txt"])
     assert reported == ["locked.txt"], "present but unreadable is not clean"
 
 
-def test_git_itself_corroborates_the_marker_scan(tmp_path: Path) -> None:
+def test_git_itself_corroborates_the_marker_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Our scan reads the worktree; git reads what would be committed.
 
     A clean/smudge `filter`, a `working-tree-encoding`, or an unusual
     `conflict-marker-size` all put the committed bytes out of reach of
     an outside reader -- so git's own check is the corroborating gate.
     """
-    from ralph.git.merge import staged_conflict_marker_paths
-    from ralph.git.subprocess_runner import run_git
+    from ralph.git import merge as merge_module
+    from ralph.git.git_run_result import GitRunResult
 
-    def _git(*args: str) -> None:
-        result = run_git(args, cwd=tmp_path, label="test-setup")
-        assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
+    root = Path("/repo")
 
-    _git("init", "-q", ".")
-    _git("config", "user.email", "t@t")
-    _git("config", "user.name", "t")
-    (tmp_path / "f.txt").write_text("a\n")
-    _git("add", "-A")
-    _git("commit", "-qm", "base")
+    def _fake_run_git(
+        args: tuple[str, ...], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        assert args == ("diff", "--cached", "--check")
+        assert cwd == root
+        assert label == "git-staged-marker-check"
+        return GitRunResult(
+            args=("git", *args),
+            returncode=2,
+            stdout=(
+                "f.txt:2: leftover conflict marker\n"
+                "narrow.txt:2: leftover conflict marker\n"
+                "f.txt:6: leftover conflict marker\n"
+                "clean.txt:1: trailing whitespace.\n"
+            ),
+            stderr="",
+        )
 
-    (tmp_path / "f.txt").write_text("a\n<<<<<<< HEAD\nX\n=======\nY\n>>>>>>> other\n")
-    (tmp_path / "narrow.txt").write_text("a\n<<< HEAD\nX\n===\nY\n>>> other\n")
-    (tmp_path / ".gitattributes").write_text("narrow.txt conflict-marker-size=3\n")
-    (tmp_path / "clean.txt").write_text("resolved\n")
-    _git("add", "-A")
+    monkeypatch.setattr(merge_module, "run_git", _fake_run_git)
 
-    reported = staged_conflict_marker_paths(tmp_path)
+    reported = merge_module.staged_conflict_marker_paths(root)
     assert sorted(reported) == ["f.txt", "narrow.txt"]
 
 
