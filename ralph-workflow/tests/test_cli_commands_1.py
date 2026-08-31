@@ -682,7 +682,13 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
     def fake_invoke_agent(_agent_config: object, *_args: object, **kwargs: object) -> object:
         options = kwargs.get("options")
         seen_extra_env.append(None if options is None else options.extra_env)
-        assert options is not None and options.pure is True
+        # This used to assert ``options.pure is True``. Ralph no longer forces
+        # OpenCode's ``--pure``: it runs OpenCode without external plugins, and
+        # a plugin is often what supplies the operator's model provider, so the
+        # model they configured became unresolvable. The commit path must not
+        # reintroduce it -- that is pinned at the command builder, where the
+        # flag would actually be emitted, not here.
+        assert options is not None
         _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 

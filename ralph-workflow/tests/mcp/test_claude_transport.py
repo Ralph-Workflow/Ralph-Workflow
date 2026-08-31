@@ -12,6 +12,7 @@ from ralph.mcp.transport.claude import (
     load_existing_claude_upstream_servers,
     parse_claude_mcp_list_names,
     report_claude_mcp_servers_ralph_cannot_proxy,
+    reset_claude_mcp_proxy_report,
 )
 
 if TYPE_CHECKING:
@@ -678,7 +679,7 @@ def test_claude_transport_regression_account_connectors_are_reported_by_name(
         "ralph.mcp.transport.claude.claude_cli_mcp_server_lister",
         _fixed_cli_lister(("claude.ai Notion", "claude.ai Gmail", "docs-mcp-server")),
     )
-    report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    reset_claude_mcp_proxy_report()
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
@@ -709,7 +710,7 @@ def test_claude_transport_regression_unproxyable_report_is_emitted_once_per_run(
     monkeypatch.setattr(
         "ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _counting_lister
     )
-    report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    reset_claude_mcp_proxy_report()
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
@@ -734,7 +735,7 @@ def test_claude_transport_regression_unavailable_claude_cli_does_not_break_the_r
     monkeypatch.setattr(
         "ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _fixed_cli_lister(None)
     )
-    report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    reset_claude_mcp_proxy_report()
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
@@ -771,7 +772,7 @@ def test_claude_transport_regression_plugin_servers_are_not_reported_as_lost(
         "ralph.mcp.transport.claude.claude_cli_mcp_server_lister",
         _fixed_cli_lister(("plugin:ui-pro:shadcn", "claude.ai Gmail")),
     )
-    report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    reset_claude_mcp_proxy_report()
 
     missing = report_claude_mcp_servers_ralph_cannot_proxy(None)
 

@@ -23,7 +23,7 @@ from loguru import logger
 from ralph.agents.invoke import BuildCommandOptions, build_command
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
-from ralph.mcp.transport.claude import report_claude_mcp_servers_ralph_cannot_proxy
+from ralph.mcp.transport.claude import reset_claude_mcp_proxy_report
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,7 +62,7 @@ def test_command_builders_regression_strict_mcp_config_names_the_servers_it_stri
         "ralph.mcp.transport.claude.claude_cli_mcp_server_lister",
         _lister_returning(("claude.ai Google Drive", "claude.ai Notion")),
     )
-    report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    reset_claude_mcp_proxy_report()
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
@@ -101,7 +101,7 @@ def test_command_builders_regression_strict_mcp_config_report_is_not_per_invocat
     monkeypatch.setattr(
         "ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _counting_lister
     )
-    report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    reset_claude_mcp_proxy_report()
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")

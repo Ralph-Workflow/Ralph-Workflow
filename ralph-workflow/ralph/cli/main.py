@@ -1208,6 +1208,13 @@ _SMOKE_AGENT_DEFAULT_HELP = (
 
 
 def smoke_interactive_claude(
+    agent: str | None = typer.Option(
+        None,
+        help=(
+            "Claude alias to smoke (e.g. claude/sonnet). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="Claude", bare="claude")
+        ),
+    ),
     subagents: bool = typer.Option(
         False,
         "--subagents",
@@ -1236,6 +1243,7 @@ def smoke_interactive_claude(
     """Run the manual PTY/TUI smoke test for interactive Claude using claude/haiku."""
     raise typer.Exit(
         code=smoke_interactive_claude_command(
+            agent_name=agent,
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,
@@ -1248,6 +1256,13 @@ app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
 
 def smoke_headless_claude(
+    agent: str | None = typer.Option(
+        None,
+        help=(
+            "Headless Claude alias to smoke (e.g. claude-headless/sonnet). "
+            + _SMOKE_AGENT_DEFAULT_HELP.format(label="headless Claude", bare="claude-headless")
+        ),
+    ),
     subagents: bool = typer.Option(
         False,
         "--subagents",
@@ -1276,6 +1291,7 @@ def smoke_headless_claude(
     """Run the manual NDJSON smoke test for headless Claude using claude-headless/haiku."""
     raise typer.Exit(
         code=smoke_headless_claude_command(
+            agent_name=agent,
             display_context=_get_cli_context(),
             subagents=subagents,
             subagent_prompt_file=subagent_prompt_file,

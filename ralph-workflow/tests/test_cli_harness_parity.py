@@ -110,8 +110,11 @@ def test_every_agent_taking_command_defers_its_default_to_the_config() -> None:
 def test_command_seam_default_matches_the_cli_default() -> None:
     """The command-function default is not a second, shadowed source of truth."""
     offenders: list[str] = []
-    for name, transport in SMOKE_COMMAND_TRANSPORTS.items():
-        command = getattr(smoke_module, f"smoke_interactive_{transport.value}_command")
+    for name in SMOKE_COMMAND_TRANSPORTS:
+        # Derived from the CLI command name, not the transport: two Claude
+        # commands drive Claude, and neither function is named after its
+        # transport's enum value.
+        command = getattr(smoke_module, name.replace("-", "_") + "_command")
         default = inspect.signature(command).parameters["agent_name"].default
         if default is not None:
             offenders.append(f"{name}: command default {default!r}")
@@ -282,3 +285,26 @@ def test_override_is_a_no_op_for_a_transport_without_one() -> None:
     agent_config = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
 
     assert apply_smoke_binary_override(agent_config) is agent_config
+
+
+@pytest.mark.timeout_seconds(3)
+def test_every_smoke_command_that_drives_an_agent_accepts_an_agent_flag() -> None:
+    """A smoke command with no ``--agent`` cannot run what the pipeline runs.
+
+    ``test_every_agent_taking_command_defers_its_default_to_the_config`` only
+    inspects commands that already take ``--agent``, so a command taking none
+    is exempt by construction -- which is exactly how the two Claude smokes
+    stayed pinned to the bare ``claude`` / ``claude-headless`` built-ins while
+    an operator's chains ran ``claude/sonnet``. Every smoke command that drives
+    an agent must let the operator name one, and must default to their config.
+    """
+    agent_taking = set(_cli_agent_defaults())
+    driving = {
+        command.name
+        for command in cli_main.app.registered_commands
+        if command.name is not None
+        and command.name.startswith("smoke-")
+        and command.callback is not None
+    }
+
+    assert sorted(driving - agent_taking) == []

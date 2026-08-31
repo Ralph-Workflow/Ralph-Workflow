@@ -67,8 +67,6 @@ if TYPE_CHECKING:
     from ralph.pro_support.hooks import ProPipelineHooks
 
 
-_INTERACTIVE_AGENT = "claude/haiku"
-_HEADLESS_CLAUDE_AGENT = "claude-headless/haiku"
 _HEADLESS_SEMANTIC_GUIDE = (
     "session capture, tool activity, completion signal, parser events, and tmp/ artifact creation"
 )
@@ -339,6 +337,8 @@ def _resolve_smoke_agent_name(
     transport: AgentTransport,
     config: UnifiedConfig,
     registry: AgentRegistry,
+    *,
+    bare_alias: str | None = None,
 ) -> str:
     """Return the explicit ``--agent`` value, or the operator's configured default.
 
@@ -350,7 +350,9 @@ def _resolve_smoke_agent_name(
     """
     if agent_name is not None:
         return agent_name
-    return resolve_default_smoke_agent(transport, config, registry.get)
+    return resolve_default_smoke_agent(
+        transport, config, registry.get, bare_alias=bare_alias
+    )
 
 
 def smoke_harness_agent_command(
@@ -478,7 +480,32 @@ def _smoke_emit_exit_code_line(exit_code: int) -> None:
         sys.stdout.flush()
 
 
+def _resolve_claude_smoke_agent(
+    agent_name: str | None,
+    *,
+    transport: AgentTransport,
+    bare_alias: str,
+) -> str:
+    """Return the Claude alias to smoke, defaulting to the operator's own chain entry.
+
+    Both Claude smokes used to hardcode ``claude/haiku`` / ``claude-headless/haiku``.
+    Because neither command exposed ``--agent``, they were exempt from the guard
+    that forbids a pinned ``<transport>/<model>`` default -- so they smoked a model
+    the operator's pipeline never runs, and would fail for reasons unrelated to
+    Ralph once that model id was retired.
+    """
+    if agent_name is not None:
+        return agent_name
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    return _resolve_smoke_agent_name(
+        None, transport, config, registry, bare_alias=bare_alias
+    )
+
+
 def smoke_interactive_claude_command(
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -494,7 +521,11 @@ def smoke_interactive_claude_command(
     :func:`smoke_harness_agent_command` for the wider contract.
     """
     return smoke_harness_agent_command(
-        _INTERACTIVE_AGENT,
+        _resolve_claude_smoke_agent(
+            agent_name,
+            transport=AgentTransport.CLAUDE_INTERACTIVE,
+            bare_alias="claude",
+        ),
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
@@ -505,6 +536,7 @@ def smoke_interactive_claude_command(
 
 
 def smoke_headless_claude_command(
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -529,7 +561,11 @@ def smoke_headless_claude_command(
     invokes it).
     """
     return smoke_harness_agent_command(
-        _HEADLESS_CLAUDE_AGENT,
+        _resolve_claude_smoke_agent(
+            agent_name,
+            transport=AgentTransport.CLAUDE,
+            bare_alias="claude-headless",
+        ),
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,

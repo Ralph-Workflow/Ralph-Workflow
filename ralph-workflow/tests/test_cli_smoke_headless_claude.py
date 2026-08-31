@@ -84,19 +84,28 @@ _RUNNER = CliRunner()
 
 
 def test_smoke_headless_claude_command_default_agent_alias() -> None:
-    """AC #1: the default ``agent_name`` for the headless smoke command is ``claude-headless/haiku``.
+    """AC #1: the headless smoke's default alias comes from the operator's config.
 
-    The headless transport's default alias lives at
-    ``smoke_module._HEADLESS_CLAUDE_AGENT``; the value is the
-    canonical ``claude-headless/haiku`` string so the harness
-    looks up the same ``claude-headless`` ``AgentConfig`` the
-    production pipeline uses. The interactive smoke's
-    equivalent constant is ``_INTERACTIVE_AGENT = "claude/haiku"``
-    (verified separately in ``tests/test_cli_smoke.py``); this
-    test pins the headless counterpart to keep the two
-    transports in lock-step.
+    It used to be the hardcoded ``claude-headless/haiku``. Because the command
+    exposed no ``--agent``, it sat outside the guard that forbids a pinned
+    ``<transport>/<model>`` default, so the smoke drove a model the operator's
+    pipeline never runs. The default now resolves from their ``[agent_chains]``,
+    falling back to the bare ``claude-headless`` built-in -- which still looks up
+    the same ``claude-headless`` ``AgentConfig`` the production pipeline uses,
+    and now with the model they actually configured.
     """
-    assert smoke_module._HEADLESS_CLAUDE_AGENT == "claude-headless/haiku"
+    captured: dict[str, object] = {}
+
+    def _stub(agent_name: str, **_kwargs: object) -> int:
+        captured["agent_name"] = agent_name
+        return 0
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("ralph.cli.commands.smoke.smoke_harness_agent_command", _stub)
+        smoke_module.smoke_headless_claude_command()
+
+    resolved = str(captured["agent_name"])
+    assert resolved == "claude-headless" or resolved.startswith("claude-headless/")
 
 
 def test_smoke_headless_claude_command_delegates_to_shared_harness(
@@ -149,7 +158,9 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
     )
 
     assert exit_code == 0
-    assert captured["agent_name"] == "claude-headless/haiku"
+    resolved = str(captured["agent_name"])
+    # Not a pinned literal: the alias is whatever the operator configured.
+    assert resolved == "claude-headless" or resolved.startswith("claude-headless/")
     assert captured["display_context"] is sentinel_context
     assert captured["pro_hooks"] is sentinel_hooks
     assert captured["model_identity"] is sentinel_identity

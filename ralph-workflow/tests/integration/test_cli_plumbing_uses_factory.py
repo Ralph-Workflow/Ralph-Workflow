@@ -142,7 +142,11 @@ def test_smoke_cli_uses_default_pipeline_factory(
             return cls()
 
         def get(self, name: str) -> AgentConfig | None:
-            if name == "claude/haiku":
+            # The command no longer hardcodes ``claude/haiku``: with no
+            # ``--agent`` it resolves from the operator's ``[agent_chains]``,
+            # and ``load_config`` is stubbed to an empty config below, so it
+            # deterministically falls back to the bare ``claude`` built-in.
+            if name in {"claude", "claude/haiku"}:
                 return interactive
             return None
 

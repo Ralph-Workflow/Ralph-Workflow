@@ -79,7 +79,7 @@ def _fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     from ralph.mcp.transport import claude as claude_transport
 
-    claude_transport.report_claude_mcp_servers_ralph_cannot_proxy.cache_clear()
+    claude_transport.reset_claude_mcp_proxy_report()
     monkeypatch.setattr(claude_transport, "claude_cli_mcp_server_lister", lambda: None)
 
 

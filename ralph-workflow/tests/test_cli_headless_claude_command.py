@@ -30,19 +30,12 @@ Test isolation guarantees (per ``docs/agents/testing-guide.md``):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+import pytest
 import typer
 import typer.testing
 
-from ralph.cli.commands.smoke import (
-    _HEADLESS_CLAUDE_AGENT,
-    smoke_headless_claude_command,
-)
+from ralph.cli.commands.smoke import smoke_headless_claude_command
 from ralph.cli.main import smoke_headless_claude, smoke_interactive_claude
-
-if TYPE_CHECKING:
-    import pytest
 
 _RUNNER = typer.testing.CliRunner()
 _HEADLESS_HELP_APP = typer.Typer()
@@ -51,15 +44,33 @@ _INTERACTIVE_HELP_APP = typer.Typer()
 _INTERACTIVE_HELP_APP.command()(smoke_interactive_claude)
 
 
-def test_smoke_headless_claude_command_default_agent_alias() -> None:
-    """``smoke_headless_claude_command`` defaults to ``claude-headless/haiku``.
+def _resolved_default_agent() -> str:
+    """Return the alias the headless-Claude smoke resolves with no ``--agent``."""
+    captured: dict[str, object] = {}
 
-    The default agent alias matches the headless-Claude alias in
-    the bundled agents template (``ralph-workflow-agents.toml``).
-    Operators can override via ``--agent`` if the build supports
-    other headless-Claude aliases.
+    def _stub(agent_name: str, **_kwargs: object) -> int:
+        captured["agent_name"] = agent_name
+        return 0
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("ralph.cli.commands.smoke.smoke_harness_agent_command", _stub)
+        smoke_headless_claude_command()
+    return str(captured["agent_name"])
+
+
+def test_smoke_headless_claude_command_default_agent_alias_regression_is_not_pinned() -> None:
+    """The default is the operator's own headless-Claude alias, never a pinned model.
+
+    This used to assert a hardcoded ``claude-headless/haiku``. Because the
+    command exposed no ``--agent``, it was exempt from the guard forbidding a
+    pinned ``<transport>/<model>`` default -- so the smoke drove a model the
+    operator's pipeline never runs, and would have failed for reasons unrelated
+    to Ralph once that model id was retired. The default now resolves from
+    ``[agent_chains]``, falling back to the bare built-in.
     """
-    assert _HEADLESS_CLAUDE_AGENT == "claude-headless/haiku"
+    resolved = _resolved_default_agent()
+
+    assert resolved == "claude-headless" or resolved.startswith("claude-headless/")
 
 
 def test_smoke_headless_claude_command_delegates_to_shared_harness(
@@ -98,7 +109,7 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
         subagent_prompt_file=None,
     )
     assert rc == 0
-    assert captured["agent_name"] == _HEADLESS_CLAUDE_AGENT
+    assert captured["agent_name"] == _resolved_default_agent()
     assert captured["subagents"] is True
     assert captured["subagent_prompt_file"] is None
 
@@ -136,7 +147,7 @@ def test_smoke_headless_claude_command_default_no_subagents(
     )
     rc = smoke_headless_claude_command()
     assert rc == 0
-    assert captured["agent_name"] == _HEADLESS_CLAUDE_AGENT
+    assert captured["agent_name"] == _resolved_default_agent()
     assert captured["subagents"] is False
 
 

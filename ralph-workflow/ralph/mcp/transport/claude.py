@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
@@ -118,14 +117,16 @@ def list_claude_cli_mcp_server_names() -> tuple[str, ...] | None:
     failing an operator's run over a diagnostic.
     """
     try:
-        completed = subprocess.run(
-            [_CLAUDE_EXECUTABLE, "mcp", "list"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_MCP_LIST_TIMEOUT_SECONDS,
+        completed = run_process(
+            _CLAUDE_EXECUTABLE,
+            ("mcp", "list"),
+            options=ProcessRunOptions(
+                capture_output=True,
+                timeout=_MCP_LIST_TIMEOUT_SECONDS,
+                label="mcp:claude-mcp-list",
+            ),
         )
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ProcessExecutionError):
         return None
     if completed.returncode != 0:
         return None
@@ -147,7 +148,7 @@ def parse_claude_mcp_list_names(output: str) -> tuple[str, ...]:
         match = _MCP_LIST_ENTRY.match(line)
         if match is None:
             continue
-        name = match.group("name").strip()
+        name = cast("str", match.group("name")).strip()
         if name and name not in names:
             names.append(name)
     return tuple(names)
@@ -178,7 +179,19 @@ def _cli_name_as_ralph_alias(cli_server_name: str) -> str:
     return cli_server_name.replace(_ALIAS_UNSAFE_IN_CLI_NAME, "_")
 
 
-@lru_cache(maxsize=8)
+#: One-slot memo of ``(workspace key, missing server names)``. A run drives one
+#: workspace, so one slot makes the report a once-per-run notice instead of a
+#: ``claude mcp list`` subprocess on every agent cycle, and it cannot grow.
+#: ``functools.lru_cache`` would say the same thing more briefly but erases the
+#: signature to ``Any``, which mypy rejects under ``disallow_any_expr``.
+_PROXY_REPORT_MEMO: list[tuple[str, tuple[str, ...]] | None] = [None]
+
+
+def reset_claude_mcp_proxy_report() -> None:
+    """Forget the memo so the next report re-probes the Claude CLI."""
+    _PROXY_REPORT_MEMO[0] = None
+
+
 def report_claude_mcp_servers_ralph_cannot_proxy(
     workspace_path: Path | None,
 ) -> tuple[str, ...]:
@@ -190,23 +203,27 @@ def report_claude_mcp_servers_ralph_cannot_proxy(
     ``--plugin-dir`` plugin -- the least Ralph owes them is to say which servers
     went missing and why.
 
-    The result is memoized per workspace, which makes this a once-per-run notice
-    rather than a subprocess on every agent cycle. Call ``cache_clear()`` to
-    force a fresh probe.
+    The warning is emitted once per run. Call :func:`reset_claude_mcp_proxy_report`
+    to force a fresh probe.
     """
+    memo_key = "" if workspace_path is None else str(workspace_path)
+    memoized = _PROXY_REPORT_MEMO[0]
+    if memoized is not None and memoized[0] == memo_key:
+        return memoized[1]
     missing = claude_mcp_servers_ralph_cannot_proxy(
         claude_cli_mcp_server_lister(),
         load_existing_claude_upstream_servers(workspace_path),
     )
+    _PROXY_REPORT_MEMO[0] = (memo_key, missing)
     if missing:
         logger.warning(
-            "Claude has {} MCP server(s) Ralph cannot re-expose and this run will "
-            "not have: {}. Ralph passes --strict-mcp-config, which makes its own "
-            "--mcp-config the only MCP source Claude reads, and these servers have "
-            "no on-disk definition for Ralph to proxy back (claude.ai account "
-            "connectors and session-only --plugin-dir/--plugin-url plugins are "
-            "delivered by the account or the invocation, not by a config file). "
-            "Run `claude mcp list` to see them.",
+            "Claude has {} MCP server(s) Ralph Workflow cannot re-expose and this "
+            "run will not have: {}. Ralph Workflow passes --strict-mcp-config, which "
+            "makes its own --mcp-config the only MCP source Claude reads, and these "
+            "servers have no on-disk definition for Ralph Workflow to proxy back "
+            "(claude.ai account connectors and session-only --plugin-dir/--plugin-url "
+            "plugins are delivered by the account or the invocation, not by a config "
+            "file). Run `claude mcp list` to see them.",
             len(missing),
             ", ".join(missing),
         )
@@ -433,4 +450,5 @@ __all__ = [
     "load_existing_claude_upstream_servers",
     "parse_claude_mcp_list_names",
     "report_claude_mcp_servers_ralph_cannot_proxy",
+    "reset_claude_mcp_proxy_report",
 ]

@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CONFIG_ALIAS_DEFAULT_SMOKE_COMMANDS",
+    "SMOKE_COMMAND_BARE_ALIASES",
     "SMOKE_COMMAND_TRANSPORTS",
     "bare_transport_alias",
     "resolve_default_smoke_agent",
@@ -65,6 +66,25 @@ SMOKE_COMMAND_TRANSPORTS: Mapping[str, AgentTransport] = {
     "smoke-interactive-nanocoder": AgentTransport.NANOCODER,
     "smoke-interactive-opencode": AgentTransport.OPENCODE,
     "smoke-interactive-pi": AgentTransport.PI,
+    "smoke-interactive-claude": AgentTransport.CLAUDE_INTERACTIVE,
+    "smoke-headless-claude": AgentTransport.CLAUDE,
+}
+
+#: The bare built-in alias a smoke command falls back to, where it is not the
+#: first built-in claiming the transport.
+#:
+#: The two Claude built-ins do carry distinct transports at runtime
+#: (``claude`` resolves to :data:`AgentTransport.CLAUDE_INTERACTIVE`,
+#: ``claude-headless`` to :data:`AgentTransport.CLAUDE`), but they are declared
+#: against a single transport in ``ralph.agents.builtin``, so
+#: :func:`bare_transport_alias` cannot tell them apart and would answer
+#: ``claude`` for both. Naming the fallback here keeps the headless smoke from
+#: falling back to the interactive built-in, which would drive a PTY the
+#: headless harness cannot read. Every other transport has exactly one
+#: built-in, so it needs no entry.
+SMOKE_COMMAND_BARE_ALIASES: Mapping[str, str] = {
+    "smoke-interactive-claude": "claude",
+    "smoke-headless-claude": "claude-headless",
 }
 
 #: Smoke commands whose ``--agent`` default names an operator-defined alias
@@ -100,6 +120,8 @@ def resolve_default_smoke_agent(
     transport: AgentTransport,
     config: UnifiedConfig,
     lookup: Callable[[str], AgentConfig | None],
+    *,
+    bare_alias: str | None = None,
 ) -> str:
     """Return the alias the operator's own configuration would run for ``transport``.
 
@@ -109,6 +131,8 @@ def resolve_default_smoke_agent(
     Args:
         transport: The transport the smoke command drives.
         config: The operator's loaded configuration.
+        bare_alias: The built-in alias this command drives, when the transport
+            alone is ambiguous (see :data:`SMOKE_COMMAND_BARE_ALIASES`).
         lookup: Alias resolver -- normally ``AgentRegistry.from_config(config).get``
             -- so a dynamic ``<transport>/<model>`` alias resolves exactly the
             way the pipeline resolves it.
@@ -117,9 +141,26 @@ def resolve_default_smoke_agent(
         The first configured chain alias that resolves to ``transport``, or
         the bare transport alias when the operator's chains name none.
     """
+    fallback = bare_alias if bare_alias is not None else bare_transport_alias(transport)
     for chain in config.agent_chains.values():
         for alias in chain.agents:
             agent_config = lookup(alias)
-            if agent_config is not None and agent_config.transport is transport:
-                return alias
-    return bare_transport_alias(transport)
+            if agent_config is None or agent_config.transport is not transport:
+                continue
+            # Two built-ins can share one transport -- ``claude`` (interactive)
+            # and ``claude-headless`` -- and ``AgentConfig`` carries no flag
+            # telling them apart. When the caller names which one it drives,
+            # narrow to that alias family so the headless smoke cannot default
+            # to an interactive chain entry (which would drive a PTY the
+            # headless harness cannot read), and vice versa. Every other
+            # transport has a single built-in and keeps the plain
+            # transport match, so an operator's custom agent name still counts.
+            if bare_alias is not None and not _in_alias_family(alias, bare_alias):
+                continue
+            return alias
+    return fallback
+
+
+def _in_alias_family(alias: str, bare_alias: str) -> bool:
+    """Return True when ``alias`` is ``bare_alias`` itself or one of its models."""
+    return alias == bare_alias or alias.startswith(f"{bare_alias}/")

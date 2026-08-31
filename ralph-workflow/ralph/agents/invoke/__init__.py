@@ -691,23 +691,70 @@ def _provider_allowed_mcp_tool_names(
     config: AgentConfig,
     endpoint: str | None,
 ) -> tuple[str, ...]:
+    """Resolve the Claude ``--allowedTools`` set, failing CLOSED on discovery errors.
+
+    An empty tuple here means "no restriction was ever wanted" -- there is no
+    Ralph MCP endpoint, or the transport is not Claude. It must NEVER mean
+    "the restriction could not be computed": the two were indistinguishable,
+    and the second one silently produced the opposite of the intended
+    posture. ``_extend_claude_transport_flags`` emits ``--tools`` /
+    ``--allowedTools`` only for a non-empty set, while ``--mcp-config`` and
+    ``--strict-mcp-config`` go out unconditionally. A transient ``tools/list``
+    failure (slow MCP start, dropped connection) was swallowed into ``()``,
+    so the agent was launched with the operator's own MCP servers stripped
+    AND every native Claude tool enabled -- while Ralph's prompt still told
+    it those native tools were disabled.
+
+    A discovery failure is therefore surfaced as an
+    :class:`AgentInvocationError` before the process is spawned. It is
+    transient by nature, so the normal retry path can re-attempt it once the
+    MCP server is up.
+
+    Args:
+        config: The agent configuration being launched.
+        endpoint: The Ralph MCP HTTP endpoint, or ``None`` when the run has
+            no Ralph MCP surface.
+
+    Returns:
+        The Claude-aliased tool names to pass to ``--allowedTools``; empty
+        only when no restriction applies to this transport.
+
+    Raises:
+        AgentInvocationError: When the Ralph MCP tool list cannot be
+            discovered, so no honest restriction can be built.
+    """
     if endpoint is None or _agent_transport(config) not in (
         AgentTransport.CLAUDE,
         AgentTransport.CLAUDE_INTERACTIVE,
     ):
         return ()
-    return tuple(
-        claude_tool_name(tool_name) for tool_name in _canonical_http_mcp_tool_names(endpoint)
-    )
+    command_parts = config.cmd.split()
+    agent_name = command_parts[0] if command_parts else "claude"
+    try:
+        canonical_names = _canonical_http_mcp_tool_names(endpoint)
+    except (PreflightError, ValueError) as exc:
+        message = (
+            "Refusing to launch: Ralph could not discover its MCP tools at "
+            f"{endpoint}, so Claude's native-tool restriction cannot be built "
+            f"({exc}). Launching anyway would strip the operator's own MCP "
+            "servers (--strict-mcp-config) while leaving every native Claude "
+            "tool enabled, which is the opposite of the intended posture and "
+            "contradicts the prompt Ralph sends. Retry once the Ralph MCP "
+            "server is reachable."
+        )
+        logger.error(message)
+        raise AgentInvocationError(agent_name, 1, message) from exc
+    return tuple(claude_tool_name(tool_name) for tool_name in canonical_names)
 
 
 def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
-    try:
-        visible_tool_names = discover_http_mcp_tool_names(endpoint)
-    except (PreflightError, ValueError) as exc:
-        logger.warning("Failed to discover Ralph MCP tools for provider allowlist: {}", exc)
-        return ()
-    return canonicalize_tool_names(visible_tool_names)
+    """Discover and canonicalize the Ralph MCP tool names served at ``endpoint``.
+
+    Discovery errors propagate: the caller decides what an unavailable tool
+    list means for the transport it is launching. Swallowing them here is
+    what made a failed ``tools/list`` indistinguishable from an empty one.
+    """
+    return canonicalize_tool_names(discover_http_mcp_tool_names(endpoint))
 
 
 def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:

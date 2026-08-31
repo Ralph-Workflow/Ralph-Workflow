@@ -2181,6 +2181,15 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
+    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
+    # be reached aborts the launch instead of silently emitting
+    # --strict-mcp-config with no --allowedTools. These tests assert on the
+    # --mcp-config payload, not on discovery, so the endpoint is stubbed
+    # rather than dialled (it never listened here in the first place).
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda _endpoint: ["ralph_submit_md_artifact"],
+    )
     list(
         invoke_agent(
             config,
@@ -2291,6 +2300,15 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
+    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
+    # be reached aborts the launch instead of silently emitting
+    # --strict-mcp-config with no --allowedTools. These tests assert on the
+    # --mcp-config payload, not on discovery, so the endpoint is stubbed
+    # rather than dialled (it never listened here in the first place).
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda _endpoint: ["ralph_submit_md_artifact"],
+    )
     list(
         invoke_agent(
             config,
@@ -2404,6 +2422,15 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setenv("HOME", str(fake_home))
 
+    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
+    # be reached aborts the launch instead of silently emitting
+    # --strict-mcp-config with no --allowedTools. These tests assert on the
+    # --mcp-config payload, not on discovery, so the endpoint is stubbed
+    # rather than dialled (it never listened here in the first place).
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda _endpoint: ["ralph_submit_md_artifact"],
+    )
     list(
         invoke_agent(
             config,
@@ -3903,6 +3930,15 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
+    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
+    # be reached aborts the launch instead of silently emitting
+    # --strict-mcp-config with no --allowedTools. These tests assert on the
+    # --mcp-config payload, not on discovery, so the endpoint is stubbed
+    # rather than dialled (it never listened here in the first place).
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda _endpoint: ["ralph_submit_md_artifact"],
+    )
     list(
         invoke_agent(
             config,
@@ -4183,6 +4219,15 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
+    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
+    # be reached aborts the launch instead of silently emitting
+    # --strict-mcp-config with no --allowedTools. These tests assert on the
+    # --mcp-config payload, not on discovery, so the endpoint is stubbed
+    # rather than dialled (it never listened here in the first place).
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda _endpoint: ["ralph_submit_md_artifact"],
+    )
     list(
         invoke_agent(
             claude_config,

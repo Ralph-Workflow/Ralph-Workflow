@@ -97,7 +97,10 @@ if TYPE_CHECKING:
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
-_INTERACTIVE_AGENT = "claude/haiku"
+#: The interactive-Claude model whose on-disk smoke layout predates
+#: per-model run ids. It keeps the unsuffixed run id so artifacts and
+#: tests that name that path are not orphaned.
+_LEGACY_INTERACTIVE_CLAUDE_MODEL = "haiku"
 _SMOKE_RUN_ID = "interactive-claude-smoke"
 _HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR = Path("tmp/headless-claude-smoke")
 _HEADLESS_CLAUDE_SMOKE_OUTPUT_FILE = _HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR / "todo-list.js"
@@ -168,7 +171,7 @@ def _resolve_headless_claude_spec(agent_name: str) -> SmokeHarnessSpec:
     runs with different model aliases do not collide on the
     completion-sentinel / receipt paths.
     """
-    suffix = agent_name.removeprefix("claude-headless/")
+    suffix = agent_name.removeprefix("claude-headless").lstrip("/")
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
     run_id = (
         _HEADLESS_CLAUDE_SMOKE_RUN_ID
@@ -183,6 +186,33 @@ def _resolve_headless_claude_spec(agent_name: str) -> SmokeHarnessSpec:
     )
 
 
+def _resolve_interactive_claude_spec(agent_name: str) -> SmokeHarnessSpec:
+    """Resolve the interactive-Claude smoke harness spec for any Claude alias.
+
+    Bare ``claude`` and the legacy ``claude/haiku`` share the base layout so
+    on-disk artifacts and the tests that name them are not orphaned; any other
+    model branches off a sanitized run id, exactly as the agy, cursor and
+    opencode branches do, so two model aliases cannot collide on the
+    completion-sentinel / receipt paths. Matching the whole family -- rather
+    than the single hardcoded alias this used to compare against -- is what
+    lets the smoke run the Claude entry from the operator's own
+    ``[agent_chains]`` instead of a model Ralph picked for them.
+    """
+    suffix = agent_name.removeprefix("claude").lstrip("/")
+    sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+    run_id = (
+        _SMOKE_RUN_ID
+        if sanitized in {"", _LEGACY_INTERACTIVE_CLAUDE_MODEL}
+        else f"{_SMOKE_RUN_ID}-{sanitized}"
+    )
+    return SmokeHarnessSpec(
+        agent_name=agent_name,
+        relative_dir=_SMOKE_RELATIVE_DIR,
+        output_file=_SMOKE_OUTPUT_FILE,
+        run_id=run_id,
+    )
+
+
 def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
     """Return the smoke harness layout for ``agent_name``.
 
@@ -191,15 +221,10 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
     uses a separate ``tmp/interactive-agy-smoke`` directory so the two
     harnesses can run side by side without collisions.
     """
-    if agent_name == _INTERACTIVE_AGENT:
-        return SmokeHarnessSpec(
-            agent_name=agent_name,
-            relative_dir=_SMOKE_RELATIVE_DIR,
-            output_file=_SMOKE_OUTPUT_FILE,
-            run_id=_SMOKE_RUN_ID,
-        )
-    if agent_name.startswith("claude-headless/"):
+    if agent_name == "claude-headless" or agent_name.startswith("claude-headless/"):
         return _resolve_headless_claude_spec(agent_name)
+    if agent_name == "claude" or agent_name.startswith("claude/"):
+        return _resolve_interactive_claude_spec(agent_name)
     if agent_name == "agy" or agent_name.startswith("agy/"):
         # Bare ``agy`` uses the base AGY harness layout (mirrors the bare
         # ``cursor`` branch below); ``agy/<model>`` branches off a sanitized
