@@ -1201,7 +1201,7 @@ app.command(name="visual-judgement")(visual_judgement)
 #: resolved at call time from the operator's config -- see
 #: ``ralph.cli.commands.smoke_agent_defaults``.
 _SMOKE_AGENT_DEFAULT_HELP = (
-    "Defaults to the first {label} entry in your [agent_chains], falling back "
+    "Defaults to the first {label} entry in your \\[agent_chains], falling back "
     "to bare `{bare}` (which passes no model, so the CLI uses the model you "
     "configured)."
 )
