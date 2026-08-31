@@ -1,18 +1,15 @@
 """Regression coverage: Claude's native-tool restriction must fail CLOSED.
 
-``--strict-mcp-config`` makes Ralph's generated config the only MCP source
-Claude reads, so the operator's own MCP servers are stripped for the run.
-Ralph pays for that by handing Claude an explicit ``--tools`` /
-``--allowedTools`` pair that funnels filesystem and exec work through
-Ralph's MCP surface, and Ralph's prompt tells the agent its native tools
-are disabled.
+Ralph hands Claude an explicit ``--tools`` / ``--allowedTools`` pair that
+funnels filesystem and exec work through Ralph's MCP surface, and Ralph's
+prompt tells the agent its native tools are disabled.
 
 Those restriction flags were emitted only when the discovered MCP tool list
 was non-empty, and a failed ``tools/list`` (slow MCP start, dropped
 connection) was swallowed into an empty tuple with a `warning`. A transient
 discovery failure therefore produced the exact opposite of the intended
-posture: operator MCP servers stripped AND every native Claude tool
-enabled, while the prompt still claimed they were off.
+posture: every native Claude tool enabled, while the prompt still claimed
+they were off.
 
 Empty-because-discovery-failed must not be indistinguishable from
 empty-because-there-are-no-tools.
@@ -93,6 +90,36 @@ def test_claude_tool_restriction_is_emitted_when_discovery_succeeds(
 
     argv = _claude_argv(_claude_config(), tmp_path)
 
-    assert "--strict-mcp-config" in argv
     assert "--allowedTools" in argv
     assert "--tools" in argv
+
+
+def test_claude_regression_operator_mcp_servers_are_not_stripped(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Ralph ADDS its MCP server; it must never remove the operator's.
+
+    ``claude --help``: ``--strict-mcp-config  Only use MCP servers from
+    --mcp-config, ignoring all other MCP configurations``. Ralph used to
+    pass it, which deleted every MCP source the operator had configured for
+    the run. Some of those cannot be given back at all: ``claude mcp list``
+    on this machine reports four claude.ai ACCOUNT CONNECTORS (Notion,
+    Gmail, Google Drive, Google Calendar) that exist in no config file
+    anywhere -- they come from the signed-in account, so Ralph's discovery
+    cannot see them and no proxy can restore them.
+
+    Without the strict flag Claude loads Ralph's ``--mcp-config`` file IN
+    ADDITION to its own sources, which is the intended posture: add ours,
+    keep theirs. Ralph's own ``--tools`` / ``--allowedTools`` restriction is
+    unaffected and still applies.
+    """
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda _endpoint: ["read_file", "ralph_submit_md_artifact"],
+    )
+
+    argv = _claude_argv(_claude_config(), tmp_path)
+
+    assert "--strict-mcp-config" not in argv
+    assert "--mcp-config" in argv

@@ -299,18 +299,26 @@ NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
 #: (no stdout, no tool call, no file change, no subagent output) the watchdog
 #: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
 #: no-progress ceiling. Set to None to opt out.
-#: The 15s default sits just above ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS``
-#: (12s): a silent or prompt-echo-only startup is classified as a broken
-#: agent at the fast grace window (unavailable + short backoff, advancing
-#: recovery to the next agent), and ``NO_OUTPUT_AT_START`` fires shortly
-#: after as the resume-safe backstop when the broken-agent timer does not
-#: apply. The previous 120s default let a silent startup wait ~2 minutes
-#: for a kill and raced the broken-agent timer; the 30s intermediate
-#: default still let a silent startup burn ~30s of recovery wall clock
-#: before the fast kill. Operators can raise it through [general]
-#: agent_no_output_at_start_seconds for agents with genuinely slow
-#: initialization.
-NO_OUTPUT_AT_START_SECONDS: float = 15.0
+#:
+#: This was walked down 120s -> 30s -> 15s chasing faster hang detection, and
+#: each step was reasoned about in terms of how long a kill takes rather than
+#: how long a healthy agent stays silent. That was measured backwards. An agent
+#: is not required to say anything before its first tool call, and OpenCode's
+#: ``run --format json`` says nothing at all until then: measured against the
+#: installed CLI with a real Ralph-sized prompt, it emitted NO frame within
+#: 180 seconds. At 15s the pipeline killed every OpenCode run before it could
+#: speak -- and the smoke harness never caught it, because the smoke rewrote
+#: this same setting to its own 360s ceiling.
+#:
+#: 360s is therefore the floor for a healthy silent startup, not a generous
+#: allowance. Hang detection is not weakened: an agent that produces output and
+#: then stalls is still caught by ``agent_idle_timeout_seconds`` (300s), and
+#: the cumulative no-progress ceiling (600s) and session ceiling are unchanged.
+#: This is the ONE value the broken-agent timer derives from as well
+#: (``_effective_broken_agent_grace_seconds`` = ``max(12, configured - 3)``),
+#: so raising it moves both kills together; lowering it re-breaks both.
+#: Locked by ``tests/agents/test_startup_grace_accommodates_silent_agents.py``.
+NO_OUTPUT_AT_START_SECONDS: float = 360.0
 
 #: Fast grace window for detecting a live agent with no meaningful LLM output.
 #: Deliberately BELOW ``NO_OUTPUT_AT_START_SECONDS`` so the dedicated

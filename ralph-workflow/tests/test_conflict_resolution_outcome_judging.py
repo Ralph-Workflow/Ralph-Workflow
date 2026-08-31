@@ -345,10 +345,10 @@ def test_operator_backup_files_are_not_mistaken_for_git_residue() -> None:
     side of the conflict ever mentioned, on every merge resolution and
     every rebase stop.
     """
-    from ralph.pipeline.conflict_resolution.rebase_loop import _is_ort_residue_name
+    from ralph.pipeline.conflict_resolution.ort_residue import is_ort_residue_name
 
-    assert _is_ort_residue_name("f.txt", "f.txt~HEAD") is True
-    assert _is_ort_residue_name("f.txt", "f.txt~feature-branch") is True
-    assert _is_ort_residue_name("f.txt", "f.txt~") is False
-    assert _is_ort_residue_name("f.txt", "f.txt~4~") is False
-    assert _is_ort_residue_name("f.txt", "f.txt~2") is False
+    assert is_ort_residue_name("f.txt", "f.txt~HEAD") is True
+    assert is_ort_residue_name("f.txt", "f.txt~feature-branch") is True
+    assert is_ort_residue_name("f.txt", "f.txt~") is False
+    assert is_ort_residue_name("f.txt", "f.txt~4~") is False
+    assert is_ort_residue_name("f.txt", "f.txt~2") is False

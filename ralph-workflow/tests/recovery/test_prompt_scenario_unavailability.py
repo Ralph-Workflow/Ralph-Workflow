@@ -74,6 +74,7 @@ from ralph.recovery.unavailability_reason import (
     ReasonBackoffPolicy,
     UnavailabilityReason,
 )
+from ralph.timeout_defaults import NO_OUTPUT_AT_START_SECONDS
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -156,17 +157,20 @@ def _wait_state_backoff_policy() -> dict[UnavailabilityReason, ReasonBackoffPoli
 # ---------------------------------------------------------------------------
 
 
-def test_prompt_scenario_five_hour_stall_caught_at_120s() -> None:
+def test_prompt_scenario_five_hour_stall_caught_at_the_startup_grace() -> None:
     """AC-01: an agent producing zero output despite healthy internet is
-    detected at 120s and the chain falls over to the next agent.
+    detected at the startup grace and the chain falls over to the next agent.
 
     Reproduces the user's exact log scenario (2026-06-15T08:13:18 -
     2026-06-15T08:28:18) where the watchdog took the full 600s waiting
     ceiling to fire. The contract locks:
 
-      1. ``TimeoutPolicy.no_output_at_start_seconds`` defaults to 120.0
-         (the production default from ``ralph.timeout_defaults``).
-      2. After 120+ seconds with zero recorded activity and
+      1. ``TimeoutPolicy.no_output_at_start_seconds`` defaults to the
+         production value in ``ralph.timeout_defaults``. The duration is read
+         from that constant rather than written here as a literal: it has moved
+         (120 -> 30 -> 15 -> 360) and a hardcoded advance silently stops
+         exercising the fire path every time it does.
+      2. After the grace elapses with zero recorded activity and
          ``classify_quiet=lambda: ACTIVE``, the watchdog returns
          ``WatchdogVerdict.FIRE`` with ``last_fire_reason ==
          NO_OUTPUT_AT_START``.
@@ -187,7 +191,7 @@ def test_prompt_scenario_five_hour_stall_caught_at_120s() -> None:
     watchdog = _build_default_watchdog(clock)
     watchdog.record_invocation_start()
 
-    clock.advance(121.0)
+    clock.advance(NO_OUTPUT_AT_START_SECONDS + 1.0)
 
     verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 

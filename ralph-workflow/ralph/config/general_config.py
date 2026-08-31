@@ -373,8 +373,12 @@ class GeneralConfig(RalphBaseModel):
         gt=0.0,
         description=(
             "Initial-output grace in seconds before a completely silent agent"
-            " fires NO_OUTPUT_AT_START. The 120-second default accommodates slow"
-            " Claude initialization while retaining bounded hang detection."
+            " fires NO_OUTPUT_AT_START. An agent need not say anything before"
+            " its first tool call -- OpenCode's JSON stream emits nothing at all"
+            " until then, measured at over 180 seconds on a real prompt -- so the"
+            " 360-second default is the floor for a healthy silent startup, not a"
+            " generous allowance. Hang detection is retained by"
+            " agent_idle_timeout_seconds and the cumulative no-progress ceiling."
         ),
     )
     agent_no_progress_quiet_minimum_invocation_seconds: float | None = Field(

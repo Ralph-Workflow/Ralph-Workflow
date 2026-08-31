@@ -19,6 +19,7 @@ from ralph.recovery.controller import RecoveryController, RecoveryControllerOpti
 from ralph.timeout_defaults import (
     BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
     BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+    NO_OUTPUT_AT_START_SECONDS,
 )
 
 if TYPE_CHECKING:
@@ -56,18 +57,28 @@ def _state(agents: list[str]) -> PipelineState:
     ).copy_with(last_connectivity_state="online")
 
 
+#: The broken-agent deadline the reader actually uses:
+#: ``max(floor, configured_startup_grace - 3)``. Derived rather than written as
+#: a literal so raising the startup grace (as it was, to stop killing agents
+#: that are legitimately silent before their first tool call) cannot silently
+#: turn these tests into no-ops.
+_DERIVED_BROKEN_AGENT_GRACE_SECONDS = max(
+    BROKEN_AGENT_OUTPUT_GRACE_SECONDS, NO_OUTPUT_AT_START_SECONDS - 3.0
+)
+
+
 def _silent_live_detector_failure() -> BrokenAgentExitError:
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(TimeoutPolicy(idle_timeout_seconds=30.0), clock)
     watchdog.record_invocation_start()
-    clock.advance(BROKEN_AGENT_OUTPUT_GRACE_SECONDS + 0.1)
+    clock.advance(_DERIVED_BROKEN_AGENT_GRACE_SECONDS + 0.1)
 
     with pytest.raises(BrokenAgentExitError) as excinfo:
         check_broken_agent_timer(_ManagedHandle(), watchdog, "opencode")
 
     failure = excinfo.value
     assert failure.reason == "no_output"
-    assert failure.elapsed_seconds == BROKEN_AGENT_OUTPUT_GRACE_SECONDS + 0.1
+    assert failure.elapsed_seconds == _DERIVED_BROKEN_AGENT_GRACE_SECONDS + 0.1
     return failure
 
 

@@ -24,6 +24,9 @@ from ralph.git.rebase.rebase_continuation import (
     NoRebaseInProgressError,
     RebaseContinuationError,
 )
+from ralph.pipeline.conflict_resolution import (
+    deterministic_resolution as deterministic_module,
+)
 from ralph.pipeline.conflict_resolution import rebase_loop as loop_module
 from ralph.pipeline.conflict_resolution import status as status_module
 from ralph.pipeline.conflict_resolution.graph import (
@@ -107,7 +110,9 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED))
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
     monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")
-    monkeypatch.setattr(loop_module, "conflict_stage_entries", lambda _root, _paths: {})
+    monkeypatch.setattr(
+        deterministic_module, "conflict_stage_entries", lambda _root, _paths: {}
+    )
 
     def _stage(_root: Path, paths: Sequence[str]) -> bool:
         repo.staged.append(list(paths))
@@ -810,7 +815,7 @@ def test_mode_only_conflict_resolved_without_invoking_resolver(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(
-        loop_module,
+        deterministic_module,
         "conflict_stage_entries",
         lambda _root, _paths: {
             "src/alpha.py": {
@@ -822,6 +827,11 @@ def test_mode_only_conflict_resolved_without_invoking_resolver(
     )
     monkeypatch.setattr(
         loop_module,
+        "run_git",
+        lambda *_args, **_kwargs: GitRunResult(args=(), returncode=0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(
+        deterministic_module,
         "run_git",
         lambda *_args, **_kwargs: GitRunResult(args=(), returncode=0, stdout="", stderr=""),
     )
@@ -839,7 +849,7 @@ def test_gitlink_conflict_resolved_via_ancestor_pick(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(
-        loop_module,
+        deterministic_module,
         "conflict_stage_entries",
         lambda _root, _paths: {"src/alpha.py": {2: ("160000", "old"), 3: ("160000", "new")}},
     )
@@ -850,6 +860,7 @@ def test_gitlink_conflict_resolved_via_ancestor_pick(
         return GitRunResult(args=(), returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(loop_module, "run_git", _run)
+    monkeypatch.setattr(deterministic_module, "run_git", _run)
     called: list[RebaseStop] = []
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
@@ -864,7 +875,7 @@ def test_gitlink_conflict_diverged_declines_to_resolver(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(
-        loop_module,
+        deterministic_module,
         "conflict_stage_entries",
         lambda _root, _paths: {"src/alpha.py": {2: ("160000", "left"), 3: ("160000", "right")}},
     )
@@ -874,6 +885,7 @@ def test_gitlink_conflict_diverged_declines_to_resolver(
         return GitRunResult(args=(), returncode=rc, stdout="", stderr="")
 
     monkeypatch.setattr(loop_module, "run_git", _run)
+    monkeypatch.setattr(deterministic_module, "run_git", _run)
     called: list[RebaseStop] = []
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
@@ -888,7 +900,7 @@ def test_mixed_deterministic_conflict_declines_whole_stop(
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: ["one", "two"])
     monkeypatch.setattr(
-        loop_module,
+        deterministic_module,
         "conflict_stage_entries",
         lambda _root, _paths: {
             "one": {2: ("160000", "left"), 3: ("160000", "right")},
@@ -982,53 +994,3 @@ def test_a_staged_stop_with_surviving_markers_is_not_continued(
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
     assert seen == []
-
-
-def test_ralphs_own_agent_directory_is_not_charged_to_the_resolver(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The prompt is rendered INSIDE the worktree, under `.agent/tmp/`.
-
-    Anything Ralph writes there during a resolution showed up as a stray
-    edit by the agent, and the stop was rejected -- abandoning a rebase
-    the resolver had actually resolved.
-    """
-    from ralph.pipeline.conflict_resolution.rebase_loop import _is_ralph_workspace_path
-
-    assert _is_ralph_workspace_path(".agent/tmp/rebase_conflict_resolution_prompt.md") is True
-    assert _is_ralph_workspace_path(".agent") is True
-    assert _is_ralph_workspace_path("src/agent_config.py") is False
-    assert _is_ralph_workspace_path("docs/.agentic.md") is False
-
-
-def test_a_stray_file_is_moved_aside_not_destroyed(tmp_path: Path) -> None:
-    """Strays are INFERRED to be the resolver's, so destroying them is a guess.
-
-    Anything that appears during the session looks the same -- including
-    an operator's own file in a shared checkout -- and `unlink()` made
-    that guess unrecoverable.
-    """
-    from ralph.pipeline.conflict_resolution.rebase_loop import _move_stray_aside
-
-    stray = tmp_path / "OPERATOR_NOTES.md"
-    stray.write_text("hours of notes\n")
-
-    assert _move_stray_aside(stray) is True
-    assert not stray.exists()
-    aside = tmp_path / "OPERATOR_NOTES.md.ralph-set-aside-1"
-    assert aside.read_text() == "hours of notes\n", "the content must survive"
-
-
-def test_an_untracked_directory_does_not_discard_a_proven_resolution(
-    tmp_path: Path,
-) -> None:
-    """One `__pycache__/` used to reject the stop, deterministically, every run."""
-    from ralph.pipeline.conflict_resolution.rebase_loop import (
-        _restore_one_unrequested_path,
-    )
-
-    (tmp_path / "scratch").mkdir()
-    (tmp_path / "scratch" / "data.csv").write_text("1,2\n")
-
-    assert _restore_one_unrequested_path(tmp_path, "scratch") is True
-    assert (tmp_path / "scratch" / "data.csv").exists(), "and it is left alone"

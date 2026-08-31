@@ -42,6 +42,18 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
 
 
+#: Exceptions that mean the writing surface a sink was bound to is
+#: gone for good: ``ValueError`` is what a closed ``TextIOBase``
+#: raises ("I/O operation on closed file"), ``OSError`` covers
+#: ``BrokenPipeError`` (``ralph run | head``) and a closed file
+#: descriptor. A sink is bound to ONE surface for its whole life, so
+#: neither condition can heal; retrying on every subsequent record
+#: would make loguru's error interceptor dump a full Python traceback
+#: to whatever ``sys.stderr`` happens to be current -- corrupting the
+#: very output the record was meant to annotate.
+_DEAD_SURFACE_ERRORS: Final[tuple[type[Exception], ...]] = (ValueError, OSError)
+
+
 _LEVEL_STYLE_ROLES: Final[dict[str, str]] = {
     "TRACE": "theme.text.muted",
     "DEBUG": "theme.text.muted",
@@ -66,6 +78,46 @@ def _style_role_for_message(message: str) -> str:
     return _LEVEL_STYLE_ROLES.get(level_name, "theme.log.info")
 
 
+def _retiring_on_dead_surface(write: Callable[[str], None]) -> Callable[[str], None]:
+    """Wrap ``write`` so it retires permanently once its surface dies.
+
+    A loguru sink built over a *bound* surface (a ``Console`` that
+    captured one file object) can outlive that surface: the file is
+    closed while the loguru handler holding the sink is still
+    registered. Every later record then raises out of ``emit`` and
+    loguru's error interceptor prints ``--- Logging error in Loguru
+    Handler #N ---`` plus a full traceback to the *current*
+    ``sys.stderr`` -- which is a different stream, belonging to a
+    different consumer, that never asked for it.
+
+    Retiring on the first dead-surface error makes the sink
+    self-limiting: a handler cannot keep writing to, or keep raising
+    about, a stream that no longer exists. The remaining sinks (file
+    sinks in particular) are unaffected, so records are still durably
+    recorded even when the terminal surface has gone away.
+
+    Args:
+        write: The underlying single-argument writer to guard.
+
+    Returns:
+        A callable with the same signature that forwards to ``write``
+        until the first :data:`_DEAD_SURFACE_ERRORS` failure, and is a
+        no-op from then on.
+    """
+    live = True
+
+    def _guarded(text: str) -> None:
+        nonlocal live
+        if not live:
+            return
+        try:
+            write(text)
+        except _DEAD_SURFACE_ERRORS:
+            live = False
+
+    return _guarded
+
+
 def make_sanitizing_log_sink(ctx: DisplayContext) -> Callable[[str], None]:
     """Return a loguru sink that sanitizes via the DisplayContext Console.
 
@@ -86,6 +138,14 @@ def make_sanitizing_log_sink(ctx: DisplayContext) -> Callable[[str], None]:
         through the Console with ``markup=False`` and
         ``highlight=False`` so bracketed paths and ``[bold]``
         tokens survive verbatim.
+
+        The Console is bound once, so the returned sink can outlive
+        the stream that Console writes to. It therefore retires
+        itself (see :func:`_retiring_on_dead_surface`) the first time
+        that stream reports itself closed or broken, instead of
+        raising out of loguru's ``emit`` and having loguru's error
+        interceptor dump a traceback onto an unrelated
+        ``sys.stderr``.
     """
     console = ctx.console
 
@@ -98,7 +158,7 @@ def make_sanitizing_log_sink(ctx: DisplayContext) -> Callable[[str], None]:
             highlight=False,
         )
 
-    return _sink
+    return _retiring_on_dead_surface(_sink)
 
 
 def make_stderr_log_sink(

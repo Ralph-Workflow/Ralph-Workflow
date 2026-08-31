@@ -22,7 +22,10 @@ from ralph.agents.invoke import (
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.manager import ManagedProcess
 from ralph.recovery.failure_classifier import FailureClassifier
-from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+from ralph.timeout_defaults import (
+    BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+    NO_OUTPUT_AT_START_SECONDS,
+)
 
 
 class _LiveHandle(ManagedProcess):
@@ -61,6 +64,16 @@ def _watchdog(clock: FakeClock) -> IdleWatchdog:
     return watchdog
 
 
+#: The broken-agent deadline the reader actually uses:
+#: ``max(floor, configured_startup_grace - 3)``. Derived rather than written as
+#: a literal so raising the startup grace (as it was, to stop killing agents
+#: that are legitimately silent before their first tool call) cannot silently
+#: turn these tests into no-ops.
+_DERIVED_BROKEN_AGENT_GRACE_SECONDS = max(
+    BROKEN_AGENT_OUTPUT_GRACE_SECONDS, NO_OUTPUT_AT_START_SECONDS - 3.0
+)
+
+
 def _lifecycle_only_watchdog(clock: FakeClock) -> IdleWatchdog:
     watchdog = _watchdog(clock)
     # Two harness-only lifecycle frames keep the observed stream inside the
@@ -68,7 +81,7 @@ def _lifecycle_only_watchdog(clock: FakeClock) -> IdleWatchdog:
     # this remains a genuinely tiny harness-only run. The clock advances far
     # past the broken-agent grace window either way.
     for _ in range(2):
-        clock.advance(10.0)
+        clock.advance((_DERIVED_BROKEN_AGENT_GRACE_SECONDS + 10.0) / 2)
         watchdog.record_lifecycle_activity()
     return watchdog
 
@@ -183,7 +196,7 @@ def _assert_completion_gate_classifies_lifecycle_only_run(
     )
 
     assert elapsed_seconds is not None
-    assert elapsed_seconds >= BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+    assert elapsed_seconds >= _DERIVED_BROKEN_AGENT_GRACE_SECONDS
     assert watchdog.has_any_output() is True
 
     with pytest.raises(BrokenAgentExitError) as excinfo:

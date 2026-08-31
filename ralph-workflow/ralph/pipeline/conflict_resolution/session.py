@@ -302,7 +302,7 @@ def invoke_resolution_agent(
     _effect_executor_module.pop_last_captured_retry_intent()
     if _candidate_cannot_be_launched(agent_name, session):
         return False
-    wrapped_listener = _wrap_activity_listener(
+    wrapped_listener = wrap_activity_listener(
         activity_status_listener, session, agent_name=agent_name
     )
     effect = InvokeAgentEffect(
@@ -533,7 +533,7 @@ _RALPH_AUTHORED_DIAGNOSTIC_KEYS = (
 #: quoting it. A tripped MCP breaker answers EVERY tool call with its
 #: 503 frame, so a real transport loop clears this immediately; a
 #: resolver that read the token in this repository's source does not.
-_RALPH_FAULT_ESCALATION_HITS = 5
+RALPH_FAULT_ESCALATION_HITS = 5
 
 
 def _ralph_authored_fault_text(event: object) -> str:
@@ -576,7 +576,7 @@ def _observed_ralph_fault(
     surface for quoting a comment. Scanning that text is still worth it,
     because the 503 frame a tripped MCP breaker returns is only ever
     seen there; it just has to be corroborated. A real breaker answers
-    every tool call, so :data:`_RALPH_FAULT_ESCALATION_HITS` sightings
+    every tool call, so :data:`RALPH_FAULT_ESCALATION_HITS` sightings
     arrive immediately, while a quotation does not repeat.
     """
     observed = classify_ralph_origin_fault(_ralph_authored_fault_text(event))
@@ -589,7 +589,7 @@ def _observed_ralph_fault(
     # a single tick -- from either channel -- is not enough to bar an
     # agent and throw away whatever it had already repaired.
     session.ralph_fault_hits += 1
-    if session.ralph_fault_hits < _RALPH_FAULT_ESCALATION_HITS:
+    if session.ralph_fault_hits < RALPH_FAULT_ESCALATION_HITS:
         return None
     echoed = observed
     logger.warning(
@@ -601,7 +601,7 @@ def _observed_ralph_fault(
     return echoed
 
 
-def _wrap_activity_listener(
+def wrap_activity_listener(
     listener: Callable[[object], None] | None,
     session: ResolutionSession | None,
     *,

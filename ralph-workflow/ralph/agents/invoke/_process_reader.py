@@ -123,6 +123,41 @@ def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
 
 
+def split_prompt_for_stdin_delivery(
+    command: Sequence[str],
+    config: AgentConfig,
+) -> tuple[list[str], str | None]:
+    """Split OpenCode's positional prompt off argv so it can go on stdin.
+
+    ``opencode run`` RE-QUOTES its positional message: every argv token holding
+    a space is wrapped in literal double quotes and every ``"`` inside it is
+    backslash-escaped before the tokens are joined into the message text.
+    Verified against the installed CLI with a live call -- a prompt containing
+    ``{"a": "b"}`` reached the model as ``{\\"a\\": \\"b\\"}`` through argv, and
+    verbatim through stdin. Ralph's prompts carry JSON artifact grammars and
+    tool-call examples, so every OpenCode run was reading a corrupted prompt.
+
+    The CLI falls back to reading the whole message from stdin when no
+    positional message is given, which delivers it byte-for-byte.
+
+    Taking the LAST token is correct because the OpenCode command builder
+    appends the composed prompt last (``positional_prompt``); that coupling is
+    pinned by ``test_opencode_regression_the_builder_really_puts_the_prompt_last``
+    so this cannot start shipping a flag value as the prompt.
+
+    Args:
+        command: The argv the command builder produced.
+        config: The agent being invoked.
+
+    Returns:
+        The argv to spawn, and the prompt to write to stdin (``None`` for every
+        transport that does not need this treatment).
+    """
+    if _agent_transport(config) is not AgentTransport.OPENCODE or not command:
+        return list(command), None
+    return list(command[:-1]), command[-1]
+
+
 def _effective_broken_agent_grace_seconds(watchdog: IdleWatchdog) -> float:
     """Return the broken-agent grace for this invocation.
 
@@ -1345,12 +1380,13 @@ def _run_subprocess_and_read_lines(
         Output lines from the subprocess.
     """
     clock: Clock = ctx.clock or SystemClock()
+    argv, stdin_prompt = split_prompt_for_stdin_delivery(cmd, ctx.config)
     handle = get_process_manager().spawn(
-        cmd,
+        argv,
         SpawnOptions(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if stdin_prompt is not None else subprocess.DEVNULL,
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
             start_new_session=True,
@@ -1361,6 +1397,8 @@ def _run_subprocess_and_read_lines(
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
+        if stdin_prompt is not None:
+            _deliver_prompt_on_stdin(handle, stdin_prompt)
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"

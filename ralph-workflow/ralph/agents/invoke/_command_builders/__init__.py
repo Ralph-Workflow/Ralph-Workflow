@@ -18,10 +18,7 @@ from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.tools.names import CLAUDE_NATIVE_TOOLS_TO_KEEP
-from ralph.mcp.transport.claude import (
-    claude_mcp_config,
-    report_claude_mcp_servers_ralph_cannot_proxy,
-)
+from ralph.mcp.transport.claude import claude_mcp_config
 from ralph.mcp.transport.pi import pi_mcp_extension_path
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
@@ -324,10 +321,19 @@ def _extend_claude_transport_flags(
     ):
         return
 
-    # --strict-mcp-config makes the config below the ONLY MCP source Claude
-    # reads, so anything Ralph did not find is gone for this run. Say so, by
-    # name, before building the flag that takes it away.
-    report_claude_mcp_servers_ralph_cannot_proxy(build_options.workspace_path)
+    # ``--mcp-config`` ADDS Ralph's own MCP server to whatever Claude already
+    # loads. It is deliberately NOT paired with ``--strict-mcp-config``:
+    # per ``claude --help`` that flag means "Only use MCP servers from
+    # --mcp-config, ignoring all other MCP configurations", i.e. it deletes
+    # every MCP source the operator installed in their own harness for the
+    # duration of the run. Some of those cannot be handed back at all --
+    # claude.ai account connectors (``claude mcp list`` shows them as
+    # ``claude.ai <Name>``) are delivered by the signed-in account and exist
+    # in no file on disk, so Ralph can neither discover nor proxy them.
+    # Ralph may add its own server; it must not remove the operator's.
+    # The trade this accepts: the operator's servers now reach Claude
+    # natively, outside Ralph's capability gate. Ralph's OWN restriction --
+    # the ``--tools`` / ``--allowedTools`` pair below -- still applies.
     cmd.extend(
         [
             "--mcp-config",
@@ -336,7 +342,6 @@ def _extend_claude_transport_flags(
                 workspace_path=build_options.workspace_path,
                 unsafe_mode=build_options.unsafe_mode,
             ),
-            "--strict-mcp-config",
         ]
     )
     if build_options.allowed_mcp_tool_names:

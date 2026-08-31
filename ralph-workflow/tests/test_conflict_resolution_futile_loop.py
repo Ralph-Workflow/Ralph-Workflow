@@ -196,10 +196,10 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     """
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
-    from ralph.pipeline.conflict_resolution.session import _wrap_activity_listener
+    from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
 
     session = ResolutionSession()
-    listener = _wrap_activity_listener(None, session, agent_name="claude")
+    listener = wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
     for echoed in (
         'read attempt_fault.py: _TRANSPORT_LOOP = "transport_loop_detected"',
@@ -236,12 +236,12 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import (
-        _RALPH_FAULT_ESCALATION_HITS,
-        _wrap_activity_listener,
+        RALPH_FAULT_ESCALATION_HITS,
+        wrap_activity_listener,
     )
 
     session = ResolutionSession()
-    listener = _wrap_activity_listener(None, session, agent_name="claude")
+    listener = wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
     faulting = WaitingStatusEvent(
         kind=next(iter(WaitingStatusKind)),
@@ -258,7 +258,7 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     assert session.stop_dead_surfaces == (), "one tick is not a barred agent"
     assert session.last_attempt_saw_activity is True, "a fault tick is still activity"
 
-    for _ in range(_RALPH_FAULT_ESCALATION_HITS):
+    for _ in range(RALPH_FAULT_ESCALATION_HITS):
         listener(faulting)
     assert session.stop_dead_surfaces == ("claude",)
     assert session.dead_tool_surfaces == (), "a plumbing fault is never run-scoped"
@@ -297,10 +297,10 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
     """End to end: progress text mentioning a tool surface leaves the chain live."""
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
-    from ralph.pipeline.conflict_resolution.session import _wrap_activity_listener
+    from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
 
     session = ResolutionSession()
-    listener = _wrap_activity_listener(None, session, agent_name="claude")
+    listener = wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
     listener(
         WaitingStatusEvent(

@@ -26,17 +26,15 @@ not stage even if it tried.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.git.merge import (
-    conflict_stage_entries,
     paths_with_conflict_markers,
     stage_paths,
     staged_conflict_marker_paths,
@@ -53,19 +51,29 @@ from ralph.git.rebase.rebase_continuation import (
     verify_rebase_completed_at,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.conflict_resolution.deterministic_resolution import (
+    try_deterministic_resolution,
+)
 from ralph.pipeline.conflict_resolution.graph import (
     TERMINAL_ABANDONED,
     TERMINAL_RESOLVED,
     route_after_stop,
 )
+from ralph.pipeline.conflict_resolution.ort_residue import remove_ort_residue
 from ralph.pipeline.conflict_resolution.progress import (
     RebaseResolutionProgress,
     clear_progress,
     load_progress_for_rebase,
     save_progress,
 )
+from ralph.pipeline.conflict_resolution.rebase_stop import RebaseStop
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.conflict_resolution.stray_paths import (
+    is_ralph_workspace_path,
+    revert_unrequested_paths,
+    worktree_dirty_paths,
+)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -92,9 +100,6 @@ _REBASE_ORIG_HEAD_FILES = ("rebase-merge/orig-head", "rebase-apply/orig-head")
 #: still produced by ``--apply`` and by older gits, counts with
 #: ``next``/``last``. Read for the operator's benefit only -- see
 #: :func:`_read_replay_progress`.
-_CONFLICT_STAGE_OURS = 2
-_CONFLICT_STAGE_THEIRS = 3
-
 _REBASE_PROGRESS_FILES = (
     ("rebase-merge/msgnum", "rebase-merge/end"),
     ("rebase-apply/next", "rebase-apply/last"),
@@ -115,35 +120,17 @@ _ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = Contex
     "active_rebase_resolution_session", default=None
 )
 
-
-@dataclass(frozen=True)
-class RebaseStop:
-    """One commit a rebase has paused on because replaying it conflicted.
-
-    Carries exactly the context a resolution session is allowed to see:
-    which commit is being replayed and which paths conflicted, plus two
-    INDEPENDENT counters that are easy to confuse.
-
-    ``stop_index``/``stop_cap`` are the bounded loop's safety counters:
-    how many stops this loop has spent out of the fixed
-    :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`
-    it is allowed, which is what terminates the loop. They say nothing
-    about how long the rebase is.
-
-    ``replay_index``/``replay_total`` are the operator-facing replay
-    position: which of the rebase's own commits is being replayed, read
-    from git's rebase state by :func:`_read_replay_progress`. They are
-    display-only, both ``None`` when that state is unreadable, and must
-    never influence loop termination.
-    """
-
-    sha: str
-    subject: str
-    conflicted_files: tuple[str, ...]
-    stop_index: int
-    stop_cap: int
-    replay_index: int | None = None
-    replay_total: int | None = None
+# Module-local names for the primitives this loop delegates to. Each one
+# is read through THIS module's globals by the functions below, which is
+# what keeps them substitutable one at a time -- the same seam
+# ``rebase_continuation`` publishes for ``open_repo`` and friends. The
+# ort-residue name is additionally the import path
+# ``auto_integrate_resolve`` reaches the cleanup through.
+_try_deterministic_resolution = try_deterministic_resolution
+_remove_ort_residue = remove_ort_residue
+_is_ralph_workspace_path = is_ralph_workspace_path
+_revert_unrequested_paths = revert_unrequested_paths
+_worktree_dirty_paths = worktree_dirty_paths
 
 
 #: Resolves ONE rebase stop: ``(root, target, stop) -> resolved``. The
@@ -447,138 +434,6 @@ def _staged_paths(root: Path) -> list[str]:
     return [entry for entry in result.stdout.split("\0") if entry]
 
 
-def _try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
-    """Resolve a uniformly mode-only or descendant-gitlink stop, if safe.
-
-    Mixed or unreadable stops deliberately fall through unchanged to the
-    existing resolver/endpoint-merge ladder; this helper never resolves only
-    part of a stop.
-    """
-    try:
-        entries = conflict_stage_entries(root, stop.conflicted_files)
-        if any(
-            _CONFLICT_STAGE_OURS not in entries.get(path, {})
-            or _CONFLICT_STAGE_THEIRS not in entries[path]
-            for path in stop.conflicted_files
-        ):
-            return False
-        stages = [entries[path] for path in stop.conflicted_files]
-        if all(
-            stage[_CONFLICT_STAGE_OURS][0] == stage[_CONFLICT_STAGE_THEIRS][0] == "160000"
-            for stage in stages
-        ):
-            return _resolve_gitlinks(root, stop.conflicted_files, stages)
-        if not all(
-            stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
-            and {
-                stage[_CONFLICT_STAGE_OURS][0],
-                stage[_CONFLICT_STAGE_THEIRS][0],
-            }
-            == {"100644", "100755"}
-            for stage in stages
-        ):
-            return False
-        return _resolve_mode_only(root, stop.conflicted_files, stages)
-    except Exception as exc:
-        logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
-        return False
-
-
-def _resolve_gitlinks(
-    root: Path,
-    paths: tuple[str, ...],
-    stages: list[dict[int, tuple[str, str]]],
-) -> bool:
-    """Pick the descendant for every locally-verifiable gitlink conflict."""
-    chosen: list[tuple[str, str]] = []
-    for path, stage in zip(paths, stages, strict=True):
-        ours = stage[_CONFLICT_STAGE_OURS][1]
-        theirs = stage[_CONFLICT_STAGE_THEIRS][1]
-        submodule = root / path
-        if (
-            run_git(
-                ("-C", str(submodule), "rev-parse", "--git-dir"),
-                cwd=root,
-                label="git-gitlink-dir",
-            ).returncode
-            != 0
-        ):
-            return False
-        if any(
-            run_git(
-                ("-C", str(submodule), "cat-file", "-e", sha),
-                cwd=root,
-                label="git-gitlink-object",
-            ).returncode
-            != 0
-            for sha in (ours, theirs)
-        ):
-            return False
-        ours_before_theirs = run_git(
-            ("-C", str(submodule), "merge-base", "--is-ancestor", ours, theirs),
-            cwd=root,
-            label="git-gitlink-ancestor",
-        ).returncode
-        theirs_before_ours = run_git(
-            ("-C", str(submodule), "merge-base", "--is-ancestor", theirs, ours),
-            cwd=root,
-            label="git-gitlink-ancestor",
-        ).returncode
-        if ours_before_theirs == 0:
-            chosen.append((path, theirs))
-        elif theirs_before_ours == 0:
-            chosen.append((path, ours))
-        else:
-            return False
-    return _stage_deterministic_entries(
-        root,
-        (("160000", sha, path) for path, sha in chosen),
-        label="git-gitlink-resolve",
-    )
-
-
-def _resolve_mode_only(
-    root: Path,
-    paths: tuple[str, ...],
-    stages: list[dict[int, tuple[str, str]]],
-) -> bool:
-    """Prefer target mode unless the feature changed it from the base."""
-    chosen = (
-        (
-            feature_mode if stage.get(1, ("", ""))[0] == target_mode else target_mode,
-            blob,
-            path,
-        )
-        for path, stage in zip(paths, stages, strict=True)
-        for target_mode, blob in (stage[_CONFLICT_STAGE_OURS],)
-        for feature_mode in (stage[_CONFLICT_STAGE_THEIRS][0],)
-    )
-    return _stage_deterministic_entries(
-        root,
-        chosen,
-        label="git-mode-only-resolve",
-    )
-
-
-def _stage_deterministic_entries(
-    root: Path,
-    entries: Iterable[tuple[str, str, str]],
-    *,
-    label: str,
-) -> bool:
-    """Stage an entire deterministic stop through one atomic index update.
-
-    ``git update-index`` holds its lock until all cacheinfo records validate,
-    so a non-zero exit leaves every conflicted path untouched for the normal
-    resolver. Issuing one command prevents a later failure from partially
-    resolving a stop.
-    """
-    args: list[str] = ["update-index"]
-    for mode, blob, path in entries:
-        args.extend(("--cacheinfo", f"{mode},{blob},{path}"))
-    return run_git(tuple(args), cwd=root, label=label).returncode == 0
-
-
 def _rebase_base_sha(root: Path) -> str | None:
     """Commit the paused rebase is replaying onto, or ``None`` if unreadable.
 
@@ -739,63 +594,6 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
     )
 
 
-def _worktree_dirty_paths(root: Path) -> frozenset[str] | None:
-    """Tracked paths whose worktree content differs from the index.
-
-    During a paused rebase this set is exactly the conflicted paths: the
-    replayed commit's non-conflicting changes are already staged, so they
-    match the worktree and do not appear. Anything ELSE in the set after
-    a resolver has run is a file the resolver edited without being asked
-    to.
-
-    Returns ``None`` when git could not answer. The caller must treat
-    that as a rejection rather than as "nothing changed": an unreadable
-    worktree is precisely the state in which an unnoticed edit would be
-    replayed into the commit.
-    """
-    # ``git diff`` lists tracked MODIFICATIONS only, so a file the
-    # resolver CREATED was invisible to the out-of-scope guard: never
-    # reported, never reverted, and then swept up by a later `git add`.
-    # Porcelain sees created and untracked paths too, and ``-z`` keeps a
-    # non-ASCII name from arriving quoted and unopenable.
-    result = run_git(
-        ("status", "--porcelain=v1", "-z"),
-        cwd=root,
-        label="git-worktree-dirty-paths",
-    )
-    if result.returncode != 0:
-        logger.warning(
-            "conflict_resolution: could not read the worktree status: {}",
-            result.stderr.strip(),
-        )
-        return None
-    return frozenset(_porcelain_paths(result.stdout))
-
-
-#: A porcelain v1 entry is a two-letter status code, a space, then the path,
-#: so anything shorter carries no path to report.
-_PORCELAIN_ENTRY_MIN_LEN: Final[int] = 4
-
-
-def _porcelain_paths(blob: str) -> list[str]:
-    """Paths from a ``--porcelain=v1 -z`` blob, renames included."""
-    entries = [entry for entry in blob.split("\0") if entry]
-    paths: list[str] = []
-    index = 0
-    while index < len(entries):
-        entry = entries[index]
-        index += 1
-        if len(entry) < _PORCELAIN_ENTRY_MIN_LEN:
-            continue
-        code, path = entry[:2], entry[3:]
-        paths.append(path)
-        # A rename/copy is followed by its source path.
-        if ("R" in code or "C" in code) and index < len(entries):
-            paths.append(entries[index])
-            index += 1
-    return paths
-
-
 def _touched_nothing_unexpected(
     root: Path,
     stop: RebaseStop,
@@ -839,100 +637,6 @@ def _touched_nothing_unexpected(
         unexpected,
     )
     return False
-
-
-#: Ralph's own workspace directory, written DURING the resolution it is
-#: judging: the prompt is rendered to `.agent/tmp/`, and artifacts,
-#: transcripts and progress records land there too. Charging those to
-#: the resolver rejected the resolution -- the agent never touched them,
-#: and the run then abandoned a rebase it had actually resolved.
-_RALPH_WORKSPACE_PREFIX = ".agent/"
-
-
-def _is_ralph_workspace_path(path: str) -> bool:
-    """Whether ``path`` is Ralph's own bookkeeping rather than the agent's."""
-    # `lstrip("./")` would strip the leading dot itself, turning
-    # ".agent/tmp/x" into "agent/tmp/x" and matching nothing.
-    normalised = path.strip().removeprefix("./")
-    return normalised == ".agent" or normalised.startswith(_RALPH_WORKSPACE_PREFIX)
-
-
-def _restore_one_unrequested_path(root: Path, path: str) -> bool:
-    """Undo one stray edit: restore a tracked path, delete an untracked one.
-
-    Reverting the batch in a single ``git checkout`` failed whenever ONE
-    of the strays was a file the resolver created -- and the fallback
-    then unlinked every path in the batch, tracked ones included, which
-    turned an out-of-scope edit into an out-of-scope deletion.
-    """
-    tracked = run_git(
-        ("ls-files", "--error-unmatch", "--", path),
-        cwd=root,
-        label="git-stray-tracked",
-    )
-    if tracked.returncode == 0:
-        restored = run_git(
-            ("checkout", "--", path),
-            cwd=root,
-            label="git-revert-stray",
-        )
-        return restored.returncode == 0
-    target = root / path
-    if target.is_dir():
-        # An untracked directory is not an edit to anything git tracks,
-        # and refusing here threw away a resolution that had already
-        # been proven -- one `__pycache__/` was enough, every run.
-        logger.info(
-            "conflict_resolution: leaving untracked directory '{}' in place", path
-        )
-        return True
-    return _move_stray_aside(target)
-
-
-def _move_stray_aside(target: Path) -> bool:
-    """Take an untracked stray out of the way WITHOUT destroying it.
-
-    These paths are only inferred to be the resolver's: anything that
-    appeared during the session looks the same, including an operator's
-    own file in a shared checkout. Unlinking made that guess
-    unrecoverable, so the file is renamed instead and the operator is
-    told where it went.
-    """
-    if not target.exists() and not target.is_symlink():
-        return True
-    for suffix in range(1, 100):
-        aside = target.with_name(f"{target.name}.ralph-set-aside-{suffix}")
-        if aside.exists():
-            continue
-        try:
-            target.rename(aside)
-        except OSError:
-            return False
-        logger.warning(
-            "conflict_resolution: '{}' was not part of the conflict; moved it aside to '{}'",
-            target.name,
-            aside.name,
-        )
-        return True
-    return False
-
-
-def _revert_unrequested_paths(root: Path, paths: tuple[str, ...]) -> bool:
-    """Drop resolver edits that were outside the conflicted paths."""
-    if not paths:
-        return True
-    checkout = run_git(
-        ("checkout", "--", *paths),
-        cwd=root,
-        label="git-revert-unrequested-paths",
-    )
-    if checkout.returncode == 0:
-        return True
-    # The batch fails as a whole if ANY stray is a file the resolver
-    # created, so each path is undone on its own terms: a tracked file
-    # is restored, an untracked one is removed. Unlinking the whole
-    # batch deleted tracked files the resolver had merely edited.
-    return all(_restore_one_unrequested_path(root, path) for path in paths)
 
 
 def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
@@ -1011,79 +715,6 @@ def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
             remaining,
         )
         return False
-    return True
-
-
-def _is_ort_residue_name(conflicted_name: str, candidate_name: str) -> bool:
-    """Whether ``candidate_name`` is git's ort residue for ``conflicted_name``.
-
-    ort parks a side under ``<path>~<LABEL>`` where LABEL is the ref it
-    came from. An editor backup is ``<path>~`` or ``<path>~4~``, and
-    deleting those destroys operator files that no side of the conflict
-    ever mentioned -- which this glob was doing on every merge
-    resolution and every rebase stop.
-    """
-    label = candidate_name[len(conflicted_name) + 1 :]
-    if not label or label.endswith("~"):
-        return False
-    return bool(label.strip("0123456789"))
-
-
-def _label_names_a_git_ref(root: Path, label: str) -> bool:
-    """Whether ``label`` is something git could have named a side after.
-
-    ort names its residue after the ref or commit the side came from, so
-    a label git cannot resolve was written by somebody else -- an
-    operator's `notes.md~draft`, say -- and deleting it destroys a file
-    no side of the conflict ever mentioned.
-    """
-    candidate = label.split(" ", maxsplit=1)[0]
-    if not candidate:
-        return False
-    resolved = run_git(
-        ("rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}"),
-        cwd=root,
-        label="git-ort-residue-label",
-    )
-    return resolved.returncode == 0
-
-
-def _remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
-    """Remove only untracked ``path~label`` files left by an ort D/F conflict."""
-    for path in paths:
-        candidate_parent = (root / path).parent
-        try:
-            candidates = tuple(
-                candidate
-                for candidate in candidate_parent.glob(f"{Path(path).name}~*")
-                if _is_ort_residue_name(Path(path).name, candidate.name)
-                and _label_names_a_git_ref(
-                    root, candidate.name[len(Path(path).name) + 1 :]
-                )
-            )
-        except OSError:
-            return False
-        for candidate in candidates:
-            relative = candidate.relative_to(root).as_posix()
-            tracked = run_git(
-                ("ls-files", "--error-unmatch", "--", relative),
-                cwd=root,
-                label="git-ort-residue-tracked",
-            )
-            if tracked.returncode == 0:
-                continue
-            try:
-                if candidate.is_dir():
-                    # Not something to delete, and not a reason to throw
-                    # away a resolution that has already been proven.
-                    logger.info(
-                        "conflict_resolution: leaving directory '{}' in place",
-                        candidate.name,
-                    )
-                    continue
-                candidate.unlink()
-            except OSError:
-                return False
     return True
 
 

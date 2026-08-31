@@ -12,8 +12,10 @@ from git import GitCommandError, InvalidGitRepositoryError, Repo
 from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
 from ralph.git.operations import GitOperationError, find_repo_root
 from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
+from ralph.git.rebase._empty_replay_error import EmptyReplayError
 from ralph.git.rebase._no_rebase_in_progress_error import NoRebaseInProgressError
 from ralph.git.rebase._rebase_continuation_error import RebaseContinuationError
+from ralph.git.rebase._rebase_verification_error import RebaseVerificationError
 from ralph.git.rebase.rebase import is_empty_rebase_stop
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ConflictRemainingError",
+    "EmptyReplayError",
     "NoRebaseInProgressError",
     "RebaseContinuationError",
     "RebaseVerificationError",
@@ -49,10 +52,6 @@ def _git_env() -> dict[str, str]:
     env.setdefault("VISUAL", ":")
     env.setdefault("GIT_SEQUENCE_EDITOR", ":")
     return env
-
-
-class RebaseVerificationError(Exception):
-    """Raised when verifying rebase completion fails."""
 
 
 def _open_repo(repo_root: Path | str) -> Repo:
@@ -148,10 +147,6 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
     """Verify rebase completion, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     return verify_rebase_completed_at(path, upstream_branch)
-
-
-class EmptyReplayError(RebaseContinuationError):
-    """The replayed commit became empty, and skipping it would drop it."""
 
 
 def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> None:

@@ -1861,8 +1861,11 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
     }
+    # ``--strict-mcp-config`` is deliberately gone from this argv: it made
+    # Ralph's config the ONLY MCP source Claude read, deleting every server
+    # the operator installed in their own harness. Ralph adds its server; it
+    # does not remove theirs. Its OWN --tools/--allowedTools gate stays.
     assert cmd[10:] == [
-        "--strict-mcp-config",
         "--tools",
         ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
         "--allowedTools",
@@ -2080,6 +2083,15 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
 def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(
     tmp_path: Path,
 ) -> None:
+    """``--strict-mcp-config`` is deliberately absent: Ralph adds, never removes.
+
+    This used to assert the flag WAS emitted. Per ``claude --help`` it means
+    "Only use MCP servers from --mcp-config, ignoring all other MCP
+    configurations" -- it deleted every MCP server the operator installed in
+    their own harness, including claude.ai account connectors that exist in
+    no file and can never be proxied back. ``--mcp-config`` alone adds
+    Ralph's server on top of the operator's own sources.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("prompt", encoding="utf-8")
     config = AgentConfig(
@@ -2101,7 +2113,7 @@ def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(
     )
 
     assert "--mcp-config" in cmd
-    assert "--strict-mcp-config" in cmd
+    assert "--strict-mcp-config" not in cmd
     assert "--tools" not in cmd
     assert "--allowedTools" not in cmd
 
