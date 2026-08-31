@@ -26,7 +26,11 @@ _PROMPT = 'Submit the artifact.\nExample: {"type": "plan"}\n'
 
 
 def _opencode_config() -> AgentConfig:
-    return AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE)
+    return AgentConfig(
+        cmd="opencode",
+        transport=AgentTransport.OPENCODE,
+        session_flag="--session {}",
+    )
 
 
 def test_opencode_regression_prompt_moves_off_argv_onto_stdin() -> None:

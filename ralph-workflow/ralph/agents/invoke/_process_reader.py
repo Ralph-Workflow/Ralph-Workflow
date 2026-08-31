@@ -62,6 +62,7 @@ from ralph.agents.invoke._tool_call_extraction import (
 from ralph.agents.invoke._types import AgentRunCtx, ProcessReaderCtx
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.agent_config import AgentConfig
+from ralph.config.enums import AgentTransport
 from ralph.display.raw_overflow import (
     get_or_create_raw_overflow_log,
     raw_log_unit_id_for,
@@ -97,7 +98,7 @@ from ralph.timeout_defaults import (
 from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
     from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
@@ -121,6 +122,27 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
 
 def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
+
+
+def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
+    """Write *prompt* to the child's stdin and close it.
+
+    OpenCode blocks on ``Bun.stdin.text()`` until EOF, so the close is what
+    releases the run -- leaving the pipe open hangs the agent before it starts.
+    """
+    stream = handle.stdin
+    if stream is None:  # pragma: no cover - spawn always provides a pipe here
+        return
+    # The spawn below sets ``text=True``, so this pipe is a text stream even
+    # though ``ManagedProcess.stdin`` is annotated for the bytes case.
+    text_stream = cast(
+        "IO[str]", stream
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    try:
+        text_stream.write(prompt)
+        text_stream.flush()
+    finally:
+        text_stream.close()
 
 
 def split_prompt_for_stdin_delivery(
@@ -153,7 +175,7 @@ def split_prompt_for_stdin_delivery(
         The argv to spawn, and the prompt to write to stdin (``None`` for every
         transport that does not need this treatment).
     """
-    if _agent_transport(config) is not AgentTransport.OPENCODE or not command:
+    if config.transport is not AgentTransport.OPENCODE or not command:
         return list(command), None
     return list(command[:-1]), command[-1]
 
