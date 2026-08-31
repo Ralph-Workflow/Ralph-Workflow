@@ -65,15 +65,12 @@ def test_palette_hue_preservation() -> None:
                 assert diff < 15.0, f"{role} on {surface_hex}: hue diff {diff:.1f}° > 15°"
 
 
-@settings(max_examples=25)
-@given(
-    r=st.integers(min_value=0, max_value=255),
-    g=st.integers(min_value=0, max_value=255),
-    b=st.integers(min_value=0, max_value=255),
+@pytest.mark.parametrize(
+    ("r", "g", "b"),
+    [(i * 73 % 256, i * 151 % 256, i * 211 % 256) for i in range(25)],
 )
 @pytest.mark.criteria("C-7")
-def test_palette_contrast_floor_hypothesis(r: int, g: int, b: int) -> None:
-    """Hypothesis test: every role clears 4.5:1 on arbitrary surface hexes."""
+def test_palette_contrast_floor_samples(r: int, g: int, b: int) -> None:
     surface_hex = f"#{r:02X}{g:02X}{b:02X}"
     palette = resolve_palette(surface_hex)
     for role, solved_hex in palette.items():

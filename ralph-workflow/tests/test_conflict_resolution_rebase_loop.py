@@ -80,7 +80,6 @@ class _FakeRepo:
         if not self.never_finishes:
             self.remaining -= 1
 
-
 def _install_seams(
     monkeypatch: pytest.MonkeyPatch,
     repo: _FakeRepo,
@@ -126,7 +125,11 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "_rebase_orig_head_sha", lambda _root: _ORIG_HEAD_SHA)
     monkeypatch.setattr(loop_module, "_read_replay_progress", lambda _root: replay_progress)
     monkeypatch.setattr(loop_module, "verify_rebase_completed_at", lambda _r, _t: verified)
-
+    monkeypatch.setattr(
+        loop_module,
+        "current_rebase_identity",
+        lambda _root: (_ORIG_HEAD_SHA, _BASE_SHA),
+    )
 
 def _install_worktree_seam(
     monkeypatch: pytest.MonkeyPatch,

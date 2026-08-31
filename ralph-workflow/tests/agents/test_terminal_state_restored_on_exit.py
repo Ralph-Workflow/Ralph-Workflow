@@ -50,6 +50,7 @@ def _subprocess_env() -> dict[str, str]:
     """Run child Python from the same locked package tree as this test."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_PACKAGE_ROOT)
+    env["TERM"] = "xterm-256color"
     return env
 
 

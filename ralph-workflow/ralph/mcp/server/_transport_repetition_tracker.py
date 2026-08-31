@@ -13,6 +13,28 @@ timestamps) so a doomed retry that prints a changing token cannot evade
 the bound. Only NON-volatile content differing between attempts resets the
 streak.
 
+A signature is NOT the failure text alone. :func:`failure_signature` is
+the seam the transport must use: it binds the failure to the request
+that produced it (method + tool name + arguments) and it declines to
+count failures that are Ralph's OWN infrastructure fault. Both halves
+are load-bearing, and both were learned the hard way:
+
+* Keying on the error frame alone made three reads of three DIFFERENT
+  files collapse onto one signature, because a corrupt SQLite cache
+  killed ``read_file`` before the path mattered and every call reported
+  the same words. Three distinct calls is normal agent behaviour; the
+  breaker answered the third with ``transport_loop_detected``.
+* Counting infrastructure faults at all is wrong even when the call IS
+  repeated. An agent retrying a tool that is broken server-side is
+  behaving correctly, and tripping the breaker there converts a
+  recoverable server fault into a dead agent while replacing the real
+  cause (``database disk image is malformed``) with a useless breaker
+  message nobody can act on. Those failures pass straight through so
+  the agent sees the truth.
+
+A genuine loop -- the same call, the same arguments, the same
+non-infrastructure failure, over and over -- still trips unchanged.
+
 This module is the transport-layer complement to
 ``ralph/pipeline/_retry_progress_guard.py`` (the agent-recovery layer).
 Both layers share the same intent (cap identical-failure loops) and the
@@ -23,6 +45,8 @@ thread without locks other than the embedded one.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import threading
 import time as _time
@@ -71,6 +95,97 @@ def signature_for(exc: BaseException | str) -> str:
     text = _VOLATILE_TIMESTAMP.sub("<ts>", text)
     text = _VOLATILE_REQUEST_ID.sub("request_id=<id>", text)
     return text.lower()
+
+
+#: Failure text that means RALPH's storage or host resources broke, not
+#: that the caller is looping. Every entry names a concrete fault the
+#: process itself suffered -- a corrupt or unopenable SQLite cache, a
+#: locked database, an exhausted or read-only filesystem, an exhausted
+#: descriptor table. Retrying against one of these is the correct thing
+#: for an agent to do, and the correct thing for us to do is hand back
+#: the real error so the operator can see WHICH resource died.
+#:
+#: Substring matching is safe here in a way it is NOT in
+#: ``ralph.pipeline.conflict_resolution.attempt_fault``: that module
+#: scans the AGENT's output, where an agent discussing this repository
+#: can quote a marker and get itself killed. This module matches the
+#: error frame the SERVER is about to emit -- text Ralph produced, from
+#: an exception Ralph caught. An agent cannot inject it.
+#:
+#: Deliberately excluded: "file not found", "permission denied",
+#: "no such file" and friends. Those are provoked by the caller's own
+#: arguments, so a caller repeating one really is looping.
+INFRASTRUCTURE_FAULT_MARKERS: tuple[str, ...] = (
+    "database disk image is malformed",
+    "database or disk is full",
+    "database is locked",
+    "database table is locked",
+    "file is not a database",
+    "unable to open database file",
+    "attempt to write a readonly database",
+    "disk i/o error",
+    "input/output error",
+    "no space left on device",
+    "read-only file system",
+    "too many open files",
+    "cannot allocate memory",
+)
+
+
+def is_infrastructure_fault(text: str) -> bool:
+    """Return True when ``text`` reports a Ralph-side infrastructure fault.
+
+    A True answer means the failure is the server's own broken storage or
+    exhausted host resources, so the caller must NOT count it toward the
+    repetition bound and must surface the underlying error unchanged.
+    """
+    lowered = text.lower()
+    return any(marker in lowered for marker in INFRASTRUCTURE_FAULT_MARKERS)
+
+
+def _canonical_params(params: object) -> str:
+    """Return a stable, order-independent rendering of a request's params."""
+    try:
+        return json.dumps(params, sort_keys=True, default=repr)
+    except (TypeError, ValueError):
+        # Circular or otherwise unrenderable params: fall back to repr so
+        # the fingerprint stays total rather than raising into the
+        # transport's error path.
+        return repr(params)
+
+
+def request_fingerprint(method: str, params: object) -> str:
+    """Return a bounded identity for one request: its method and its arguments.
+
+    Two calls to the same tool with different arguments are DIFFERENT
+    calls and must not share a repetition key. The params are canonicalized
+    (key order does not matter), run through :func:`signature_for` so a
+    volatile token embedded in the arguments cannot let a real loop evade
+    the bound, then hashed so an arbitrarily large arguments blob cannot
+    grow the tracker's retained state.
+    """
+    canonical = signature_for(f"{method}\x1f{_canonical_params(params)}")
+    digest = hashlib.blake2b(canonical.encode("utf-8", "replace"), digest_size=16)
+    return f"{method}#{digest.hexdigest()}"
+
+
+def failure_signature(
+    method: str, params: object, failure: BaseException | str
+) -> str | None:
+    """Return the repetition key for a failed request, or None to skip it.
+
+    ``None`` means "do not observe this failure": it is a Ralph-side
+    infrastructure fault, and the transport must write the real error
+    frame through to the agent instead of counting it toward the breaker.
+
+    Otherwise the key binds the request identity to the normalized
+    failure text, so the breaker trips only on the same call, with the
+    same arguments, failing the same way.
+    """
+    signature = signature_for(failure)
+    if is_infrastructure_fault(signature):
+        return None
+    return f"{request_fingerprint(method, params)}|{signature}"
 
 
 @dataclass
@@ -132,8 +247,12 @@ __all__ = [
     "BREAKER_CODE",
     "BREAKER_MESSAGE",
     "BREAKER_STATUS",
+    "INFRASTRUCTURE_FAULT_MARKERS",
     "THRESHOLD",
     "WINDOW_SECONDS",
     "TransportRepetitionTracker",
+    "failure_signature",
+    "is_infrastructure_fault",
+    "request_fingerprint",
     "signature_for",
 ]

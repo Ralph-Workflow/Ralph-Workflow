@@ -57,8 +57,15 @@ def test_activity_relay_sender_fails_closed_when_parent_is_unavailable() -> None
         sender.emit("read_file")
 
 
-def test_activity_relay_rejects_stale_sequence() -> None:
-    """S-4: replayed event sequences cannot refresh the watchdog twice."""
+def test_activity_relay_ignores_stale_sequence_without_killing_the_run() -> None:
+    """S-4: a replayed sequence cannot refresh the watchdog twice -- nor kill it.
+
+    The credential is checked first, so a replay that reaches the sequence
+    check is from a process holding our own secret.  It is dropped
+    idempotently (no second refresh) and stays non-fatal; latching a
+    supervision failure here hard-killed healthy agents whose concurrent
+    ``tools/call`` threads raced through one sender.
+    """
     relay = ActivityRelay()
     try:
         observed: list[str] = []
@@ -69,9 +76,11 @@ def test_activity_relay_rejects_stale_sequence() -> None:
             sender.emit("read_file")
             stale = ActivityRelaySender.from_environment(relay.server_environment())
             assert stale is not None
-            with pytest.raises(ActivityRelayError):
-                stale.emit("read_file")
+            stale.emit("read_file")
             assert observed == ["read_file"]
+            assert relay.snapshot().delivered_events == 1
+            assert relay.ignored_events == 1
+            assert relay.health_error() is None
         finally:
             remove()
     finally:

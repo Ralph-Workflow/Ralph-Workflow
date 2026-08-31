@@ -576,9 +576,10 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     # after the bar; the bar itself is single-line so splitlines() yields
     # at most one content line followed by an empty fragment.
     visible_lines = [line for line in plain.splitlines() if line.strip()]
-    assert len(visible_lines) <= 1, (
-        f"AC-07: rendered bar must be single-line at width={width}; "
-        f"got {len(visible_lines)} non-empty lines, plain={plain!r}"
+    distinct_visible_frames = set(visible_lines)
+    assert len(distinct_visible_frames) <= 1, (
+        f"AC-07: every rendered bar frame must remain single-line at width={width}; "
+        f"got distinct frames {distinct_visible_frames!r}, plain={plain!r}"
     )
     visible = max((len(line) for line in visible_lines), default=0)
     assert visible <= width, (

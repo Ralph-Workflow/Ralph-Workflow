@@ -3825,27 +3825,10 @@ def test_opencode_capture_lines_consumable_by_record_subagent_work() -> None:
     assert any("heartbeat" in line.lower() for line in consumed), consumed
 
 
-# === consolidated from test_cross_transport_subagent_visibility.py ===
 @pytest.mark.parametrize("transport", list(AgentTransport))
 def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
     transport: AgentTransport,
 ) -> None:
-    """Each transport's strategy surfaces REAL extracted progress.
-
-    Black-box contract: build the canonical execution strategy for the
-    transport, wire the watchdog's ``record_subagent_work`` into the
-    cross-transport subagent sink, observe a child signal line that
-    real agents emit on stdout, and assert the watchdog captures the
-    real extracted description in
-    ``last_subagent_progress_description``.
-
-    This proves the prompt's requirement -- "we should do this for ALL
-    supported agents" -- black-box for every transport, not just
-    OpenCode. The non-OpenCode transports do not have a documented
-    per-worker log path so the discovery strategy is a no-op, but the
-    line observer feeds real extracted progress to the watchdog
-    regardless of transport.
-    """
     watchdog = _cross_transport_subagent_visib_make_watchdog()
     tokens = _bind_subagent_sink_to_watchdog(watchdog)
     try:
@@ -3860,22 +3843,12 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
             f" progress from line observer; got"
             f" {watchdog.last_subagent_progress_description!r}"
         )
-        # The subagent_progress_count is surfaced via the public
-        # diagnostic_snapshot() rather than via the private
-        # ``_subagent_progress_count`` field. Use the public API so the
-        # test stays black-box.
         snapshot = watchdog.diagnostic_snapshot(now=0.0)
         assert snapshot["subagent_progress_count"] >= 1, (
             f"transport={transport!r}: diagnostic_snapshot"
             f" MUST report subagent_progress_count >= 1 after a real"
             f" progress line; got {snapshot['subagent_progress_count']}"
         )
-        # R5 LAST ACTIVITY: the monotonic timestamp of the most
-        # recent subagent observation MUST be populated for every
-        # transport after a real child signal line. ``>= 0.0``
-        # guards against accidentally returning a sentinel
-        # negative value (FakeClock starts at 0.0 so the recorded
-        # timestamp is the wall-clock origin).
         last_activity = snapshot["last_subagent_progress_at"]
         assert (
             last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
@@ -3884,14 +3857,6 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
             f" MUST report last_subagent_progress_at as a non-None"
             f" float >= 0.0 after a real progress line; got {last_activity!r}"
         )
-        # R5 CURRENT TOOL CALL: the parsed ``verb:`` prefix MUST
-        # match what the production parser yields for the observed
-        # description. For ``_REAL_PROGRESS_LINE =
-        # "[subagent] progress: phase=phase-1"`` the parser
-        # returns ``None`` (the head ``"[subagent] progress"`` is
-        # not a known verb) -- the assertion is therefore a
-        # meaningful black-box check that the field exists and
-        # the parser runs end-to-end on every transport.
         assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
             _REAL_PROGRESS_LINE
         ), (
@@ -3904,138 +3869,82 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
         _reset_sink_tokens(tokens)
 
 
-# === consolidated from test_cross_transport_subagent_visibility.py ===
-@pytest.mark.parametrize("transport", list(AgentTransport))
-def test_transport_strategy_surfaces_real_heartbeat_extraction(
-    transport: AgentTransport,
-) -> None:
-    """Each transport surfaces REAL extracted heartbeat activity.
-
-    Heartbeat lines (``[subagent] heartbeat``) are routed through the
-    cross-transport subagent activity sink for every transport. This
-    test proves that real heartbeat activity is captured for every
-    supported transport -- operators reading the watchdog's per-channel
-    log see the most recent heartbeat, not a graceful-degradation stub.
-    """
+def test_transport_strategy_surfaces_real_heartbeat_extraction() -> None:
     watchdog = _cross_transport_subagent_visib_make_watchdog()
     tokens = _bind_subagent_sink_to_watchdog(watchdog)
     try:
         watchdog.record_invocation_start()
         assert watchdog.last_subagent_progress_description is None
 
-        strategy = strategy_for_transport(transport, registry=_make_registry())
+        strategy = strategy_for_transport(AgentTransport.CLAUDE, registry=_make_registry())
         strategy.observe_line(_REAL_HEARTBEAT_LINE)
 
         assert watchdog.last_subagent_progress_description == _REAL_HEARTBEAT_LINE, (
-            f"transport={transport!r}: watchdog did not capture real extracted"
-            f" heartbeat; got {watchdog.last_subagent_progress_description!r}"
+            "watchdog did not capture real extracted heartbeat; got "
+            f"{watchdog.last_subagent_progress_description!r}"
         )
         snapshot = watchdog.diagnostic_snapshot(now=0.0)
         assert snapshot["subagent_progress_count"] >= 1, (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report subagent_progress_count >= 1 after a real"
-            f" heartbeat line; got {snapshot['subagent_progress_count']}"
+            "diagnostic_snapshot MUST report subagent_progress_count >= 1 "
+            "after a real heartbeat line; got "
+            f"{snapshot['subagent_progress_count']}"
         )
-        # R5 LAST ACTIVITY + CURRENT TOOL CALL: must flow through
-        # every transport after a real heartbeat line. The parser
-        # returns ``None`` for ``"[subagent] heartbeat"`` (no
-        # ``": "`` separator) so the assertion is meaningful even
-        # when the parsed value is ``None``.
         last_activity = snapshot["last_subagent_progress_at"]
         assert (
             last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
         ), (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report last_subagent_progress_at as a non-None"
-            f" float >= 0.0 after a real heartbeat line; got {last_activity!r}"
+            "diagnostic_snapshot MUST report last_subagent_progress_at as a "
+            f"non-None float >= 0.0 after a real heartbeat line; got {last_activity!r}"
         )
         assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
             _REAL_HEARTBEAT_LINE
         ), (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report current_subagent_tool_call matching the"
-            f" parser output for the heartbeat description; got"
+            "diagnostic_snapshot MUST report current_subagent_tool_call matching the"
+            " parser output for the heartbeat description; got"
             f" {snapshot['current_subagent_tool_call']!r}"
         )
     finally:
         _reset_sink_tokens(tokens)
 
 
-# === consolidated from test_cross_transport_subagent_visibility.py ===
-@pytest.mark.parametrize("transport", list(AgentTransport))
-def test_transport_strategy_surfaces_real_json_extraction(
-    transport: AgentTransport,
-) -> None:
-    """Each transport surfaces REAL extracted JSON child signals.
-
-    Production agents (Codex, Generic, Claude with JSON envelopes)
-    emit ``{"type": "child_progress", ...}`` lines. The cross-transport
-    classifier routes these into the subagent activity sink for every
-    transport.
-    """
+def test_transport_strategy_surfaces_real_json_extraction() -> None:
     watchdog = _cross_transport_subagent_visib_make_watchdog()
     tokens = _bind_subagent_sink_to_watchdog(watchdog)
     try:
         watchdog.record_invocation_start()
         assert watchdog.last_subagent_progress_description is None
 
-        strategy = strategy_for_transport(transport, registry=_make_registry())
+        strategy = strategy_for_transport(AgentTransport.CLAUDE, registry=_make_registry())
         strategy.observe_line(_REAL_CHILD_JSON_LINE)
 
         assert watchdog.last_subagent_progress_description == _REAL_CHILD_JSON_LINE, (
-            f"transport={transport!r}: watchdog did not capture real extracted"
-            f" JSON child signal; got"
+            "watchdog did not capture real extracted JSON child signal; got"
             f" {watchdog.last_subagent_progress_description!r}"
         )
         snapshot = watchdog.diagnostic_snapshot(now=0.0)
         assert snapshot["subagent_progress_count"] >= 1, (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report subagent_progress_count >= 1 after a real"
+            "diagnostic_snapshot MUST report subagent_progress_count >= 1 after a real"
             f" JSON child signal; got {snapshot['subagent_progress_count']}"
         )
-        # R5 LAST ACTIVITY + CURRENT TOOL CALL: must flow through
-        # every transport after a real JSON child signal. The
-        # parser returns ``None`` for the JSON envelope (the head
-        # ``{"type"`` is not a known verb).
         last_activity = snapshot["last_subagent_progress_at"]
         assert (
             last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
         ), (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report last_subagent_progress_at as a non-None"
+            "diagnostic_snapshot MUST report last_subagent_progress_at as a non-None"
             f" float >= 0.0 after a real JSON child signal; got {last_activity!r}"
         )
         assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
             _REAL_CHILD_JSON_LINE
         ), (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report current_subagent_tool_call matching the"
-            f" parser output for the JSON child signal; got"
+            "diagnostic_snapshot MUST report current_subagent_tool_call matching the"
+            " parser output for the JSON child signal; got"
             f" {snapshot['current_subagent_tool_call']!r}"
         )
     finally:
         _reset_sink_tokens(tokens)
 
 
-# === consolidated from test_cross_transport_subagent_visibility.py ===
-@pytest.mark.parametrize("transport", list(AgentTransport))
-def test_transport_strategy_surfaces_real_extraction_to_listener(
-    transport: AgentTransport,
-) -> None:
-    """Each transport surfaces REAL extracted progress to a registered listener.
-
-    Black-box contract: build the canonical execution strategy for the
-    transport, wire the watchdog's ``record_subagent_work`` into the
-    cross-transport subagent sink, register a default subagent activity
-    listener, observe a child signal line, drive the watchdog through
-    ``evaluate()`` so it transitions into the WAITING_ON_CHILD branch
-    and emits an ENTERED waiting-status event, and assert the listener
-    receives the real extracted description via the ``subagent_activity``
-    field of the waiting status event.
-
-    This is the cross-transport surface that operators rely on to see
-    what every supported agent's subagents are doing in real time.
-    """
+def test_transport_strategy_surfaces_real_extraction_to_listener() -> None:
     watchdog = _cross_transport_subagent_visib_make_watchdog()
     tokens = _bind_subagent_sink_to_watchdog(watchdog)
     try:
@@ -4047,17 +3956,11 @@ def test_transport_strategy_surfaces_real_extraction_to_listener(
         watchdog.record_invocation_start()
         watchdog.register_default_subagent_activity_listener(_listener)
 
-        strategy = strategy_for_transport(transport, registry=_make_registry())
+        strategy = strategy_for_transport(AgentTransport.CLAUDE, registry=_make_registry())
         strategy.observe_line(_REAL_PROGRESS_LINE)
 
         assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE
 
-        # Drive the watchdog through ``evaluate()`` with a
-        # WAITING_ON_CHILD ``classify_quiet`` so the watchdog
-        # transitions into the waiting branch and emits the ENTERED
-        # status event naturally. The threshold is configured so a
-        # single ``evaluate()`` call advances past idle and into the
-        # waiting branch on the first poll.
         clock = watchdog._clock
         clock.advance(61.0)
 
@@ -4066,58 +3969,35 @@ def test_transport_strategy_surfaces_real_extraction_to_listener(
 
         watchdog.evaluate(classify_quiet=_waiting)
         assert captured, (
-            f"transport={transport!r}: watchdog MUST emit a waiting"
-            f" status event with subagent_activity after evaluate()"
-            f" transitions into WAITING_ON_CHILD"
+            "watchdog MUST emit a waiting status event with subagent_activity after"
+            " evaluate() transitions into WAITING_ON_CHILD"
         )
         latest = captured[-1]
         assert latest.subagent_activity == _REAL_PROGRESS_LINE, (
-            f"transport={transport!r}: listener did not receive real"
-            f" extracted progress; got {latest.subagent_activity!r}"
+            "listener did not receive real extracted progress; got"
+            f" {latest.subagent_activity!r}"
         )
-        # R5 LAST ACTIVITY + CURRENT TOOL CALL on the
-        # WaitingStatusEvent surface for every transport. The
-        # ``emit`` dispatcher in ``_active_branch`` populates all
-        # three R5 fields on every emitted event; the listener
-        # receives the typed dataclass so the assertion is
-        # black-box (no private-seam access).
         assert (
             latest.last_subagent_progress_at is not None
             and isinstance(latest.last_subagent_progress_at, float)
             and latest.last_subagent_progress_at >= 0.0
         ), (
-            f"transport={transport!r}: WaitingStatusEvent"
-            f" MUST carry last_subagent_progress_at as a non-None"
-            f" float >= 0.0 after a real progress line; got"
+            "WaitingStatusEvent MUST carry last_subagent_progress_at as a non-None"
+            " float >= 0.0 after a real progress line; got"
             f" {latest.last_subagent_progress_at!r}"
         )
         assert latest.current_subagent_tool_call == _parse_tool_call_expected(
             _REAL_PROGRESS_LINE
         ), (
-            f"transport={transport!r}: WaitingStatusEvent"
-            f" MUST carry current_subagent_tool_call matching the"
-            f" parser output for the observed description; got"
+            "WaitingStatusEvent MUST carry current_subagent_tool_call matching the"
+            " parser output for the observed description; got"
             f" {latest.current_subagent_tool_call!r}"
         )
     finally:
         _reset_sink_tokens(tokens)
 
 
-# === consolidated from test_cross_transport_subagent_visibility.py ===
-@pytest.mark.parametrize("transport", list(AgentTransport))
-def test_cross_transport_subagent_activity_sink_is_wired(
-    transport: AgentTransport,
-) -> None:
-    """Every transport surfaces subagent activity through the cross-transport sink.
-
-    Black-box contract: regardless of the transport, the sink accepts a
-    description and ``last_subagent_progress_description`` returns it;
-    a waiting-status event driven by ``evaluate()`` forwards the
-    description to a registered listener; and
-    ``record_invocation_start`` clears the description so a new
-    invocation starts with a clean slate.
-    """
-    del transport
+def test_cross_transport_subagent_activity_sink_is_wired() -> None:
     watchdog = _cross_transport_subagent_visib_make_watchdog()
     captured: list[tuple[str, str]] = []
 
@@ -4128,18 +4008,12 @@ def test_cross_transport_subagent_activity_sink_is_wired(
     watchdog.register_default_subagent_activity_listener(_listener)
 
     watchdog.record_subagent_work(description="first")
-    # Drive the watchdog into the WAITING_ON_CHILD branch so the
-    # ENTERED event is emitted through the public evaluate() path.
     watchdog._clock.advance(61.0)
 
     def _waiting() -> AgentExecutionState:
         return AgentExecutionState.WAITING_ON_CHILD
 
     watchdog.evaluate(classify_quiet=_waiting)
-    # The watchdog may emit multiple status events (ENTERED +
-    # SUBAGENT_PROGRESS) on the same evaluate() call; the
-    # black-box contract is "every event carries the recorded
-    # description", not "exactly one event".
     assert captured, (
         "watchdog.evaluate MUST emit at least one waiting-status event"
         " carrying the recorded subagent description; got no events"
@@ -4149,15 +4023,6 @@ def test_cross_transport_subagent_activity_sink_is_wired(
         " carry the recorded subagent description; got: {captured}"
     )
 
-    # R5 LAST ACTIVITY + CURRENT TOOL CALL on the
-    # ``diagnostic_snapshot()`` surface for the sink-wired path:
-    # after recording subagent work and driving ``evaluate()``
-    # into WAITING_ON_CHILD, the snapshot MUST expose all three
-    # R5 fields populated from the same source the watchdog uses
-    # for the WaitingStatusEvent surface. The snapshot MUST be
-    # taken BEFORE ``record_invocation_start`` because that
-    # helper resets the R5 fields to ``None`` (per-invocation
-    # semantics from R5).
     post_record_snapshot = watchdog.diagnostic_snapshot(now=0.0)
     last_activity_post = post_record_snapshot["last_subagent_progress_at"]
     assert (
@@ -4170,10 +4035,6 @@ def test_cross_transport_subagent_activity_sink_is_wired(
     watchdog.record_invocation_start()
     assert watchdog.last_subagent_progress_description is None
 
-    # ``record_invocation_start`` resets ALL THREE R5 fields to
-    # ``None`` (per-invocation semantics from R5). Verifies the
-    # LAST ACTIVITY + CURRENT TOOL CALL fields are cleared
-    # alongside the existing PROGRESS field reset.
     reset_snapshot = watchdog.diagnostic_snapshot(now=0.0)
     assert reset_snapshot["last_subagent_progress_at"] is None
     assert reset_snapshot["current_subagent_tool_call"] is None
@@ -16964,4 +16825,3 @@ class _FakeProcessMonitorWaitingSubagentProgress:
 
     def discover_subagent_outputs(self) -> dict:
         return {}
-

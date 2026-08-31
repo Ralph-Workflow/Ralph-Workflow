@@ -15,7 +15,7 @@ from ralph.mcp.server._metrics import get_default_metrics
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
 from ralph.mcp.server._transport_repetition_tracker import (
     TransportRepetitionTracker,
-    signature_for,
+    failure_signature,
 )
 from ralph.mcp.server._trust_boundary import require_trust_boundary
 from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
@@ -253,8 +253,12 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 lambda: server.mcp_server.handle_request(request, server.state)
             )
         except Exception as exc:
-            sig = signature_for(exc)
-            if _transport_repetition_tracker.observe(sig):
+            # failure_signature() binds the failure to the request that
+            # produced it and returns None for a Ralph-side infrastructure
+            # fault, which must be re-raised into the normal error path
+            # rather than counted as a repetition.
+            sig = failure_signature(request.method, request.params, exc)
+            if sig is not None and _transport_repetition_tracker.observe(sig):
                 self._write_json(
                     {
                         "jsonrpc": "2.0",
@@ -292,9 +296,22 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         # exceptions into a -32603 JSON-RPC error frame. Observe that frame
         # too: a doomed retry loop produces 3 identical -32603 errors, and
         # the breaker must trip on the 3rd.
+        #
+        # The frame alone is NOT the key. A corrupt SQLite cache killed
+        # read_file before the path mattered, so three reads of three
+        # different files produced three identical frames and the third was
+        # answered with transport_loop_detected. failure_signature() binds
+        # the frame to the request (method + tool + arguments) so distinct
+        # calls stay distinct, and returns None for a Ralph-side
+        # infrastructure fault so the agent sees the real error instead of
+        # a breaker message it cannot act on.
         if response is not None and response.error is not None:
-            sig = signature_for(f"{response.error.get('code')}:{response.error.get('message')}")
-            if _transport_repetition_tracker.observe(sig):
+            sig = failure_signature(
+                request.method,
+                request.params,
+                f"{response.error.get('code')}:{response.error.get('message')}",
+            )
+            if sig is not None and _transport_repetition_tracker.observe(sig):
                 self._write_json(
                     {
                         "jsonrpc": "2.0",

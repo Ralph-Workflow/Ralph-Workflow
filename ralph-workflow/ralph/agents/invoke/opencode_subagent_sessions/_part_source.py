@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ._child_part import OpenCodeChildPart
 
 
@@ -22,7 +24,9 @@ class OpenCodeChildPartSource(Protocol):
         ...
 
 
-def default_opencode_db_path() -> Path | None:
+def default_opencode_db_path(
+    env_getter: Callable[[str], str | None] = os.environ.get,
+) -> Path | None:
     """Return OpenCode's SQLite store path the way the 1.18.x binary resolves it.
 
     The data directory is ``$XDG_DATA_HOME/opencode`` (default
@@ -33,10 +37,17 @@ def default_opencode_db_path() -> Path | None:
     channels use ``opencode-<channel>.db``, so when the release store is
     absent the newest channel store beside it is used instead.
     """
-    xdg_data_home = os.environ.get("XDG_DATA_HOME")
-    data_root = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
+    xdg_data_home = env_getter("XDG_DATA_HOME")
+    home = env_getter("HOME")
+    data_root = (
+        Path(xdg_data_home)
+        if xdg_data_home
+        else Path(home) / ".local" / "share"
+        if home
+        else Path.home() / ".local" / "share"
+    )
     data_dir = data_root / "opencode"
-    override = os.environ.get("OPENCODE_DB")
+    override = env_getter("OPENCODE_DB")
     if override:
         if override == ":memory:":
             return None

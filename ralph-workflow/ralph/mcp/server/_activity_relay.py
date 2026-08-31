@@ -3,9 +3,21 @@
 The normal MCP activity sink is process-local.  A standalone MCP server runs in
 another process, so conflict-resolution supervision uses this small parent-owned
 loopback relay to carry a ``tools/call`` event back to the invocation reader.
-Every event is authenticated, sequence checked, and acknowledged before the
-server accepts it as liveness.  A relay fault is supervision infrastructure
-failure, not an idle verdict.
+Every event is authenticated, ordered, and acknowledged before the server
+accepts it as liveness.  A relay fault is supervision infrastructure failure,
+not an idle verdict.
+
+The one-time credential is the security boundary: it is minted per relay, is
+handed only to the standalone MCP server at bootstrap, and is scrubbed from
+every agent environment.  An event that passes the credential check is by
+construction from our own relay client, so its ``sequence`` is an ordering
+hint for idempotent delivery -- not a second authentication factor.  Ralph's
+own client can legitimately repeat or reorder one: the standalone server is a
+``ThreadingHTTPServer`` whose concurrent ``tools/call`` threads share a single
+``ActivityRelaySender``, and ``emit`` advances its counter only after the
+socket round trip completes, so two overlapping tool calls send the same
+value.  Such an event is ignored idempotently and logged; treating it as a
+forgery latched a supervision failure that killed healthy agents mid-run.
 """
 
 from __future__ import annotations
@@ -17,6 +29,8 @@ import threading
 from collections import deque
 from contextlib import suppress
 from typing import TYPE_CHECKING
+
+from loguru import logger
 
 from ralph.mcp.server._activity_relay_error import ActivityRelayError
 from ralph.mcp.server._activity_relay_protocol import decode_json_object, receive_bounded_line
@@ -72,6 +86,7 @@ class ActivityRelay:
         self._sender_error: str | None = None
         self._next_sequence = 1
         self._delivered_events = 0
+        self._ignored_events = 0
         self._recent_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)  # bounded-accumulator-ok: FIFO cap
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
@@ -108,6 +123,12 @@ class ActivityRelay:
                 self._active = False
 
         return _remove
+
+    @property
+    def ignored_events(self) -> int:
+        """Return how many authenticated events were dropped as redeliveries."""
+        with self._lock:
+            return self._ignored_events
 
     def health_error(self) -> str | None:
         """Return the latched relay fault, if any."""
@@ -147,46 +168,96 @@ class ActivityRelay:
                 connection.settimeout(_RELAY_IO_TIMEOUT_SECONDS)
                 self._receive_one(connection)
 
+    def handle_event(self, event: Mapping[str, object]) -> dict[str, object]:
+        """Authenticate, order, and deliver one decoded event; return its ack.
+
+        This is the relay's protocol boundary.  The socket layer only frames
+        and decodes; every authentication, ordering, latching, and delivery
+        decision is made here, so the contract is exercisable without a
+        network round trip.
+        """
+        try:
+            return self._deliver(event)
+        except (ActivityRelayError, OSError, TimeoutError, ValueError) as exc:
+            return self._fault_ack(exc)
+
     def _receive_one(self, connection: socket.socket) -> None:
         try:
-            raw = receive_bounded_line(connection)
-            event = _parse_event(raw)
-            self._validate_event(event)
-            tool_name = event["tool_name"]
-            assert isinstance(tool_name, str)
-            with self._lock:
-                sink = self._sink
+            event = _parse_event(receive_bounded_line(connection))
+            _send_ack(connection, self.handle_event(event))
+        except (ActivityRelayError, OSError, TimeoutError, ValueError) as exc:
+            try:
+                _send_ack(connection, self._fault_ack(exc))
+            except OSError:
+                return
+
+    def _deliver(self, event: Mapping[str, object]) -> dict[str, object]:
+        sequence = self._validate_event(event)
+        tool_name = event["tool_name"]
+        assert isinstance(tool_name, str)
+        with self._lock:
+            expected = self._next_sequence
+            fresh = sequence >= expected
+            sink = self._sink
+            if fresh:
                 if sink is None and self._registered_once:
                     raise ActivityRelayError("relay receiver has no active invocation sink")
-                self._next_sequence += 1
+                # Resynchronise forward across a gap.  A client that raced
+                # itself is permanently ahead of us, and re-demanding our own
+                # next value would silence every later event -- starving the
+                # watchdog and killing the agent for a fault it never had.
+                self._next_sequence = sequence + 1
                 self._delivered_events += 1
                 self._recent_tools.append(tool_name)
                 if sink is None:
                     self._pending_tools.append(tool_name)
-            if sink is not None:
-                sink(tool_name)
-            _send_ack(connection, {"ok": True})
-        except (ActivityRelayError, OSError, TimeoutError, ValueError) as exc:
-            message = f"SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay receiver: {exc}"
-            with self._lock:
-                active = self._active
-            if active:
-                self._latch_receiver_error(message)
-            try:
-                _send_ack(connection, {"ok": False, "error": message})
-            except OSError:
-                return
+            else:
+                self._ignored_events += 1
+        if not fresh:
+            # Authenticated, so this is our own client redelivering.  Drop it
+            # without double-counting the activity, and acknowledge it so the
+            # sender does not fail closed on a benign delivery anomaly.
+            logger.debug(
+                "activity relay: ignoring redelivered event "
+                "(sequence={observed}, expected>={expected}, tool={tool})",
+                observed=sequence,
+                expected=expected,
+                tool=tool_name,
+            )
+            return {"ok": True, "ignored": True}
+        if sink is not None:
+            sink(tool_name)
+        return {"ok": True}
 
-    def _validate_event(self, event: Mapping[str, object]) -> None:
+    def _fault_ack(self, exc: Exception) -> dict[str, object]:
+        """Latch a genuine relay fault for the active invocation and refuse it."""
+        message = f"SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay receiver: {exc}"
+        with self._lock:
+            active = self._active
+        if active:
+            self._latch_receiver_error(message)
+        return {"ok": False, "error": message}
+
+    def _validate_event(self, event: Mapping[str, object]) -> int:
+        """Authenticate one event and return its declared sequence.
+
+        The credential is verified first and remains fatal: an unauthenticated
+        event is hostile whatever sequence it carries, and so is a structurally
+        malformed one from a credential holder.  Ordering is decided by the
+        caller under the lock, because a stale or duplicated sequence on an
+        *authenticated* event is an ordinary delivery anomaly from our own
+        client, not evidence of forgery.
+        """
         credential = event.get("credential")
         sequence = event.get("sequence")
         tool_name = event.get("tool_name")
         if not isinstance(credential, str) or not secrets.compare_digest(credential, self._credential):
             raise ActivityRelayError("foreign or invalid relay credential")
-        if not isinstance(sequence, int) or sequence != self._next_sequence:
-            raise ActivityRelayError("stale or forged relay sequence")
+        if not isinstance(sequence, int):
+            raise ActivityRelayError("malformed relay sequence")
         if not isinstance(tool_name, str) or not tool_name or len(tool_name) > _MAX_TOOL_NAME_LENGTH:
             raise ActivityRelayError("malformed relay tool event")
+        return sequence
 
     def _latch_receiver_error(self, message: str) -> None:
         with self._lock:

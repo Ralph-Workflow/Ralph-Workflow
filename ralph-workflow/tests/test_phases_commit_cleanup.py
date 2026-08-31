@@ -14,6 +14,7 @@ from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
 from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
 from ralph.phases import PhaseContext
 from ralph.phases._commit_cleanup_actions import CleanupApplyReport
+from ralph.phases._commit_cleanup_catalog import LOCKFILE_BASENAMES, UNSAFE_EXTENSIONS
 from ralph.phases._commit_cleanup_outcome import decide_cleanup_outcome
 from ralph.phases.commit_cleanup import (
     _apply_cleanup_actions,
@@ -267,52 +268,30 @@ def test_delete_verify_output_text_file_removes_file(tmp_git_repo: Path) -> None
     assert not verify_output.exists()
 
 
-def test_delete_tracked_verify_output_text_file_returns_failure_event(
-    tmp_git_repo: Path,
-) -> None:
-    """Generated-looking text files stay protected once they are tracked repo content."""
-    workspace = FsWorkspace(tmp_git_repo)
-    verify_output = tmp_git_repo / "verify-output.txt"
-    verify_output.write_text("intentional checked-in artifact")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["verify-output.txt"])
-        repo.index.commit("track verify output")
-    finally:
-        repo.close()
-
-    _write_commit_cleanup_artifact(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "verify-output.txt"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_cleanup",
-        prompt_file="cleanup.txt",
-    )
-
-    result = handle_commit_cleanup_phase(effect, ctx)
-
-    assert len(result) == 1
-    assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
-    assert not isinstance(result[0], PhaseFailureEvent)
-    assert verify_output.exists()
-
-
-@pytest.mark.parametrize(
-    "ext",
-    [
+# Explicit immutable catalog of every source-code/config extension whose
+# deletion must be declined. Pinned equal to the production catalog below so
+# adding/removing a catalog entry cannot silently shrink coverage.
+EXPECTED_UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".go",
+        ".rs",
+        ".rb",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".md",
+        ".rst",
+        ".txt",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".ini",
+        ".cfg",
         ".swift",
         ".kt",
         ".kts",
@@ -366,17 +345,29 @@ def test_delete_tracked_verify_output_text_file_returns_failure_event(
         ".xml",
         ".csv",
         ".tsv",
-    ],
+    }
 )
-def test_delete_source_code_extension_rejected(tmp_git_repo: Path, ext: str) -> None:
+
+
+def test_delete_source_code_extensions_rejected(tmp_git_repo: Path) -> None:
     """Every new source-code and config extension must NOT be deleted."""
+    assert frozenset(UNSAFE_EXTENSIONS) == EXPECTED_UNSAFE_EXTENSIONS
     workspace = FsWorkspace(tmp_git_repo)
-    src = tmp_git_repo / f"App{ext}"
-    src.write_text("source code")
+    extensions = sorted(EXPECTED_UNSAFE_EXTENSIONS)
+    files = []
+    for ext in extensions:
+        src = tmp_git_repo / f"App{ext}"
+        src.write_text("source code")
+        files.append(src)
 
     _write_commit_cleanup_artifact(
         workspace,
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": f"App{ext}"}]},
+        {
+            "analysis_complete": False,
+            "actions": [
+                {"action": "delete_file", "path": f"App{ext}"} for ext in extensions
+            ],
+        },
     )
     ctx = PhaseContext.construct(
         workspace=workspace,
@@ -393,12 +384,15 @@ def test_delete_source_code_extension_rejected(tmp_git_repo: Path, ext: str) -> 
     assert len(result) == 1
     assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
     assert not isinstance(result[0], PhaseFailureEvent)
-    assert src.exists()
+    for src in files:
+        assert src.exists()
 
 
-@pytest.mark.parametrize(
-    "lock_file",
-    [
+# Explicit immutable catalog of every lockfile basename whose deletion must be
+# declined. Pinned equal to the production catalog below so adding/removing a
+# catalog entry cannot silently shrink coverage.
+EXPECTED_LOCKFILE_BASENAMES: frozenset[str] = frozenset(
+    {
         "package-lock.json",
         "yarn.lock",
         "Cargo.lock",
@@ -408,17 +402,29 @@ def test_delete_source_code_extension_rejected(tmp_git_repo: Path, ext: str) -> 
         "composer.lock",
         "Gemfile.lock",
         "go.sum",
-    ],
+    }
 )
-def test_delete_lock_file_rejected(tmp_git_repo: Path, lock_file: str) -> None:
+
+
+def test_delete_lock_files_rejected(tmp_git_repo: Path) -> None:
     """Lock files and dependency manifests must NOT be deleted."""
+    assert frozenset(LOCKFILE_BASENAMES) == EXPECTED_LOCKFILE_BASENAMES
     workspace = FsWorkspace(tmp_git_repo)
-    lock = tmp_git_repo / lock_file
-    lock.write_text("lock content")
+    lockfiles = sorted(EXPECTED_LOCKFILE_BASENAMES)
+    files = []
+    for lock_file in lockfiles:
+        lock = tmp_git_repo / lock_file
+        lock.write_text("lock content")
+        files.append(lock)
 
     _write_commit_cleanup_artifact(
         workspace,
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": lock_file}]},
+        {
+            "analysis_complete": False,
+            "actions": [
+                {"action": "delete_file", "path": lock_file} for lock_file in lockfiles
+            ],
+        },
     )
     ctx = PhaseContext.construct(
         workspace=workspace,
@@ -435,7 +441,8 @@ def test_delete_lock_file_rejected(tmp_git_repo: Path, lock_file: str) -> None:
     assert len(result) == 1
     assert result[0] in {PipelineEvent.AGENT_SUCCESS, PipelineEvent.PHASE_LOOPBACK}
     assert not isinstance(result[0], PhaseFailureEvent)
-    assert lock.exists()
+    for lock in files:
+        assert lock.exists()
 
 
 def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:
@@ -670,45 +677,55 @@ def test_non_repo_directory_inits_git(tmp_path: Path) -> None:
     assert (non_repo / ".git").exists()
 
 
-@pytest.mark.parametrize(
-    "file_path",
-    [
-        "ralph/models.py",  # Python source file
-        "tests/test_foo.py",  # test file in tests/ directory
-        "pyproject.toml",  # TOML configuration file
-        "README.md",  # Markdown documentation file
-        "config.json",  # JSON configuration file
-        "NOTES.txt",  # text documentation file
-    ],
-)
-def test_delete_unsafe_file_returns_failure_event(
-    tmp_git_repo: Path,
-    file_path: str,
-) -> None:
-    """Deleting any source, test, doc, or config file must return PhaseFailureEvent."""
-    workspace = FsWorkspace(tmp_git_repo)
-    target = tmp_git_repo / file_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("content")
-    _write_commit_cleanup_artifact(
-        workspace,
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": file_path}]},
+def test_delete_untracked_repository_content_rejected(tmp_git_repo: Path) -> None:
+    paths_by_category = {
+        "source-test-doc-config": (
+            "ralph/models.py",
+            "tests/test_foo.py",
+            "pyproject.toml",
+            "README.md",
+            "config.json",
+            "NOTES.txt",
+        ),
+        "common-source-basename": (
+            "log.py",
+            "model.py",
+            "worker.py",
+            "message.py",
+            "session.py",
+            "chat.py",
+            "plan.py",
+            "debug.py",
+            "output.py",
+            "report.py",
+            "capture.py",
+            "completion.py",
+            "note.go",
+            "message.rs",
+            "log.ts",
+            "model.js",
+        ),
+        "protected-basename": ("Dockerfile", "Makefile", "LICENSE.txt"),
+        "ordinary-source": ("helper.py",),
+    }
+    paths = tuple(path for category in paths_by_category.values() for path in category)
+    for rel_path in paths:
+        target = tmp_git_repo / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("repository content")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": rel_path} for rel_path in paths],
+        },
     )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_cleanup_phase(effect, ctx)
-    assert len(result) == 1
-    assert result[0] is PipelineEvent.PHASE_LOOPBACK
-    assert target.exists()  # file must NOT be deleted
+
+    assert result == [PipelineEvent.PHASE_LOOPBACK]
+    for category, category_paths in paths_by_category.items():
+        for rel_path in category_paths:
+            assert (tmp_git_repo / rel_path).exists(), f"{category} path was deleted: {rel_path}"
 
 
 def test_delete_file_with_parent_traversal_returns_failure_event(
@@ -947,43 +964,6 @@ def test_delete_in_tmp_directory(tmp_git_repo: Path) -> None:
     assert not artifact.exists()
 
 
-@pytest.mark.timeout_seconds(5)
-def test_delete_tracked_backup_file_rejected(tmp_git_repo: Path) -> None:
-    """Backup files already tracked in git must NOT be deleted."""
-    workspace = FsWorkspace(tmp_git_repo)
-    backup = tmp_git_repo / "config.yml.bak"
-    backup.write_text("backup config")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["config.yml.bak"])
-        repo.index.commit("track backup")
-    finally:
-        repo.close()
-
-    _write_commit_cleanup_artifact(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "config.yml.bak"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_cleanup_phase(effect, ctx)
-    assert len(result) == 1
-    assert result[0] is PipelineEvent.PHASE_LOOPBACK
-    assert backup.exists()
-
-
 def _make_cleanup_ctx(workspace: FsWorkspace) -> PhaseContext:
     """Build a minimal PhaseContext wired to ``workspace`` for cleanup tests."""
     return PhaseContext.construct(
@@ -1050,107 +1030,6 @@ def test_untracked_temporary_source_code_is_deleted(
     assert not target.exists()
 
 
-@pytest.mark.parametrize(
-    "file_path",
-    [
-        "log.py",
-        "model.py",
-        "worker.py",
-        "message.py",
-        "session.py",
-        "chat.py",
-        "plan.py",
-        "debug.py",
-        "output.py",
-        "report.py",
-        "capture.py",
-        "completion.py",
-        "note.go",
-        "message.rs",
-        "log.ts",
-        "model.js",
-    ],
-)
-def test_untracked_legitimate_source_file_rejected(
-    tmp_git_repo: Path,
-    file_path: str,
-) -> None:
-    """Untracked source files with common programming-term names must NOT be deleted.
-
-    Pins the false-positive guarantee: a source file whose name tokenizes to
-    a value in the broad _GENERATED_TEXT_MARKERS set (e.g. ``log``, ``model``,
-    ``worker``) is NOT a candidate for deletion, because the source-file
-    branch uses the narrow ``_SOURCE_FILE_GENERATED_MARKERS`` allowlist which
-    excludes these common programming terms.
-    """
-    workspace = FsWorkspace(tmp_git_repo)
-    target = tmp_git_repo / file_path
-    target.write_text("legitimate source code")
-    assert target.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": file_path}],
-        },
-    )
-
-    assert len(result) == 1
-    assert result[0] is PipelineEvent.PHASE_LOOPBACK
-    assert target.exists()
-
-
-def test_tracked_temporary_source_code_rejected(tmp_git_repo: Path) -> None:
-    """Tracked source files with temporary names must NOT be deleted."""
-    workspace = FsWorkspace(tmp_git_repo)
-    src = tmp_git_repo / "temp_script.py"
-    src.write_text("committed source")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["temp_script.py"])
-        repo.index.commit("track temp script")
-    finally:
-        repo.close()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "temp_script.py"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert src.exists()
-
-
-def test_tracked_source_code_in_tmp_directory_rejected(tmp_git_repo: Path) -> None:
-    """Tracked source files inside tmp/ directories must NOT be deleted."""
-    workspace = FsWorkspace(tmp_git_repo)
-    tmp_dir = tmp_git_repo / "tmp"
-    tmp_dir.mkdir()
-    src = tmp_dir / "utility.py"
-    src.write_text("committed utility")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["tmp/utility.py"])
-        repo.index.commit("track tmp utility")
-    finally:
-        repo.close()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "tmp/utility.py"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert src.exists()
-
-
 def test_delete_coverage_untracked_succeeds(tmp_git_repo: Path) -> None:
     """Untracked ``.coverage`` files are safe housekeeping artifacts."""
     workspace = FsWorkspace(tmp_git_repo)
@@ -1187,112 +1066,6 @@ def test_delete_coverage_xml_untracked_succeeds(tmp_git_repo: Path) -> None:
 
     assert result == [PipelineEvent.AGENT_SUCCESS]
     assert not coverage_xml.exists()
-
-
-def test_reject_delete_untracked_dockerfile(tmp_git_repo: Path) -> None:
-    """Untracked ``Dockerfile`` is protected by ``_PROTECTED_BASENAMES``."""
-    workspace = FsWorkspace(tmp_git_repo)
-    dockerfile = tmp_git_repo / "Dockerfile"
-    dockerfile.write_text("FROM scratch")
-    assert dockerfile.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "Dockerfile"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert dockerfile.exists()
-
-
-def test_reject_delete_untracked_makefile(tmp_git_repo: Path) -> None:
-    """Untracked ``Makefile`` is protected by ``_PROTECTED_BASENAMES``."""
-    workspace = FsWorkspace(tmp_git_repo)
-    makefile = tmp_git_repo / "Makefile"
-    makefile.write_text("all:\n\ttrue\n")
-    assert makefile.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "Makefile"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert makefile.exists()
-
-
-def test_reject_delete_untracked_license_txt(tmp_git_repo: Path) -> None:
-    """``LICENSE.txt`` is protected even though ``.txt`` is a generated-text suffix."""
-    workspace = FsWorkspace(tmp_git_repo)
-    license_txt = tmp_git_repo / "LICENSE.txt"
-    license_txt.write_text("license text")
-    assert license_txt.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "LICENSE.txt"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert license_txt.exists()
-
-
-def test_delete_tracked_coverage_rejected(tmp_git_repo: Path) -> None:
-    """Tracked ``.coverage`` files must NOT be deleted."""
-    workspace = FsWorkspace(tmp_git_repo)
-    coverage = tmp_git_repo / ".coverage"
-    coverage.write_text("committed coverage")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add([".coverage"])
-        repo.index.commit("track coverage")
-    finally:
-        repo.close()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": ".coverage"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert coverage.exists()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_delete_tracked_coverage_xml_rejected(tmp_git_repo: Path) -> None:
-    """Tracked ``coverage.xml`` files must NOT be deleted."""
-    workspace = FsWorkspace(tmp_git_repo)
-    coverage_xml = tmp_git_repo / "coverage.xml"
-    coverage_xml.write_text("<coverage></coverage>")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["coverage.xml"])
-        repo.index.commit("track coverage xml")
-    finally:
-        repo.close()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "coverage.xml"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert coverage_xml.exists()
 
 
 def test_delete_untracked_checkpoint_json(tmp_git_repo: Path) -> None:
@@ -1352,25 +1125,6 @@ def test_delete_untracked_binary_file(tmp_git_repo: Path) -> None:
     assert not binary.exists()
 
 
-def test_reject_delete_untracked_source_code(tmp_git_repo: Path) -> None:
-    """Untracked source code files are NEVER safe to delete."""
-    workspace = FsWorkspace(tmp_git_repo)
-    helper = tmp_git_repo / "helper.py"
-    helper.write_text("def helper(): pass")
-    assert helper.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "helper.py"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert helper.exists()
-
-
 def test_delete_untracked_in_artifacts_directory(tmp_git_repo: Path) -> None:
     """Untracked files inside ``artifacts/`` are safe housekeeping artifacts."""
     workspace = FsWorkspace(tmp_git_repo)
@@ -1424,7 +1178,6 @@ def test_delete_untracked_file_in_generated_directory(tmp_git_repo: Path) -> Non
 # boundary: source-code files under ``.agent/`` that are NOT in the allowlist
 # MUST remain rejected.
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
-    """Stage a relative path in ``repo_root`` and commit it (helper for the 13 positive tests)."""
     repo = Repo(repo_root)
     try:
         repo.index.add([rel_path])
@@ -1433,447 +1186,124 @@ def _track_and_commit(repo_root: Path, rel_path: str) -> None:
         repo.close()
 
 
-def test_delete_tracked_agent_raw_log_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/raw/opencode.log`` is an engine runtime artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "raw" / "opencode.log"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("log content")
-    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/raw/opencode.log"}],
-        },
+def test_delete_tracked_agent_internal_files_succeeds(tmp_git_repo: Path) -> None:
+    tracked_artifacts = (
+        (".agent/raw/opencode.log", "log content"),
+        (".agent/tmp/mcp-server.log", "mcp log"),
+        (".agent/checkpoint.json", '{"phase": "development"}'),
+        ("checkpoint.json", '{"phase": "development"}'),
+        (".agent/completion_seen_run-abc-123.json", '{"run_id": "run-abc-123"}'),
+        (".agent/rebase_checkpoint.json", "rebase state"),
+        (".agent/rebase_checkpoint.json.bak", "rebase backup"),
+        (".agent/rebase.lock", "lock content"),
+        (".agent/start_commit", "baseline sha"),
+        (".agent/PLAN.md", "# Plan"),
+        (".agent/PLANNING_ANALYSIS_DECISION.md", "decision"),
+        (".agent/receipts/run-1/commit_cleanup.json", '{"artifact_type": "commit_cleanup"}'),
+        (".agent/workers/unit-a/tmp/checkpoint.json", '{"phase": "unit"}'),
     )
+    for rel_path, content in tracked_artifacts:
+        target = tmp_git_repo / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
 
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_tmp_mcp_server_log_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/tmp/mcp-server.log`` is an engine runtime artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "tmp" / "mcp-server.log"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("mcp log")
-    _track_and_commit(tmp_git_repo, ".agent/tmp/mcp-server.log")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/tmp/mcp-server.log"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_checkpoint_json_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/checkpoint.json`` is an engine runtime artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "checkpoint.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text('{"phase": "development"}')
-    _track_and_commit(tmp_git_repo, ".agent/checkpoint.json")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/checkpoint.json"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_root_checkpoint_json_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked root-level ``checkpoint.json`` is an engine runtime artifact -- must delete."""
-    target = tmp_git_repo / "checkpoint.json"
-    target.write_text('{"phase": "development"}')
-    _track_and_commit(tmp_git_repo, "checkpoint.json")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_completion_seen_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/completion_seen_*.json`` is an engine sentinel -- must delete (PA-004)."""
-    target = tmp_git_repo / ".agent" / "completion_seen_run-abc-123.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text('{"run_id": "run-abc-123"}')
-    _track_and_commit(tmp_git_repo, ".agent/completion_seen_run-abc-123.json")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add([rel_path for rel_path, _content in tracked_artifacts])
+        repo.index.commit("track canonical engine artifacts")
+    finally:
+        repo.close()
 
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
             "analysis_complete": True,
             "actions": [
-                {"action": "delete_file", "path": ".agent/completion_seen_run-abc-123.json"}
+                {"action": "delete_file", "path": rel_path}
+                for rel_path, _content in tracked_artifacts
             ],
         },
     )
 
     assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_rebase_checkpoint_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/rebase_checkpoint.json`` is an engine artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "rebase_checkpoint.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("rebase state")
-    _track_and_commit(tmp_git_repo, ".agent/rebase_checkpoint.json")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/rebase_checkpoint.json"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_rebase_checkpoint_bak_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/rebase_checkpoint.json.bak`` is an engine artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "rebase_checkpoint.json.bak"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("rebase backup")
-    _track_and_commit(tmp_git_repo, ".agent/rebase_checkpoint.json.bak")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/rebase_checkpoint.json.bak"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_rebase_lock_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/rebase.lock`` is an engine artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "rebase.lock"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("lock content")
-    _track_and_commit(tmp_git_repo, ".agent/rebase.lock")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/rebase.lock"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_start_commit_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/start_commit`` is an engine artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "start_commit"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("baseline sha")
-    _track_and_commit(tmp_git_repo, ".agent/start_commit")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/start_commit"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_plan_md_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/PLAN.md`` is an engine handoff artifact -- must delete."""
-    target = tmp_git_repo / ".agent" / "PLAN.md"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("# Plan")
-    _track_and_commit(tmp_git_repo, ".agent/PLAN.md")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/PLAN.md"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_planning_analysis_decision_md_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/PLANNING_ANALYSIS_DECISION.md`` (PA-001 gap) is an engine artifact."""
-    target = tmp_git_repo / ".agent" / "PLANNING_ANALYSIS_DECISION.md"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("decision")
-    _track_and_commit(tmp_git_repo, ".agent/PLANNING_ANALYSIS_DECISION.md")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [{"action": "delete_file", "path": ".agent/PLANNING_ANALYSIS_DECISION.md"}],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_receipt_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked receipt file under ``.agent/receipts/<run-id>/`` -- must delete."""
-    target = tmp_git_repo / ".agent" / "receipts" / "run-1" / "commit_cleanup.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text('{"artifact_type": "commit_cleanup"}')
-    _track_and_commit(tmp_git_repo, ".agent/receipts/run-1/commit_cleanup.json")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [
-                {"action": "delete_file", "path": ".agent/receipts/run-1/commit_cleanup.json"},
-            ],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
-
-
-def test_delete_tracked_agent_worker_checkpoint_succeeds(tmp_git_repo: Path) -> None:
-    """Tracked nested checkpoint inside ``.agent/workers/<unit>/tmp/`` -- must delete."""
-    target = tmp_git_repo / ".agent" / "workers" / "unit-a" / "tmp" / "checkpoint.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text('{"phase": "unit"}')
-    _track_and_commit(tmp_git_repo, ".agent/workers/unit-a/tmp/checkpoint.json")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": True,
-            "actions": [
-                {"action": "delete_file", "path": ".agent/workers/unit-a/tmp/checkpoint.json"},
-            ],
-        },
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert not target.exists()
+    for rel_path, _content in tracked_artifacts:
+        assert not (tmp_git_repo / rel_path).exists(), f"engine artifact survived: {rel_path}"
 
 
 # --- NEGATIVE security-regression tests (security boundary) ---
 
 
-@pytest.mark.parametrize(
-    "rel_path",
-    [
-        ".agent/test.py",
-        ".agent/utils.py",
-        ".agent/CHANGELOG.md",
-        ".agent/note.txt",
-        ".agent/scripts/build.sh",
-        ".agent/lib/foo.py",
-        ".agent/hooks/pre-commit.py",
-    ],
-)
-def test_delete_tracked_source_code_in_agent_dir_rejected(
-    tmp_git_repo: Path, rel_path: str
-) -> None:
-    """Tracked user-authored source files under ``.agent/`` MUST stay rejected.
+def test_delete_tracked_non_engine_files_rejected(tmp_git_repo: Path) -> None:
+    paths_by_category = {
+        "generated-looking": (
+            "verify-output.txt",
+            "config.yml.bak",
+            "temp_script.py",
+            "tmp/utility.py",
+            ".coverage",
+            "coverage.xml",
+            "checkpoint.json.bak",
+        ),
+        "agent-root-source": (
+            ".agent/test.py",
+            ".agent/utils.py",
+            ".agent/CHANGELOG.md",
+            ".agent/note.txt",
+            ".agent/scripts/build.sh",
+            ".agent/lib/foo.py",
+            ".agent/hooks/pre-commit.py",
+        ),
+        "agent-non-allowlisted-subdirectory": (
+            ".agent/notes/foo.txt",
+            ".agent/data/seed.json",
+        ),
+        "outside-agent-source": (
+            "app/controllers/foo.rb",
+            "src/main.go",
+            "lib/utils.rb",
+            "scripts/build.sh",
+        ),
+        "agent-root-random-json": (".agent/random_config.json",),
+        "engine-directory-wrong-extension": (
+            ".agent/raw/script.py",
+            ".agent/raw/main.go",
+            ".agent/raw/notes.md",
+            ".agent/tmp/config.yaml",
+            ".agent/tmp/main.py",
+            ".agent/artifacts/plan.json",
+            ".agent/receipts/run-1/note.md",
+            ".agent/prompt_history/notes.md",
+            ".agent/artifact-formats/data.json",
+            ".agent/workers/unit-a/src/main.py",
+            ".agent/workers/unit-a/src/foo.go",
+            ".agent/workers/unit-a/sub/dir/foo.rs",
+        ),
+    }
+    paths = tuple(path for category in paths_by_category.values() for path in category)
+    for rel_path in paths:
+        target = tmp_git_repo / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("tracked project content")
 
-    Pins the security boundary: a blanket ``.agent/`` path-prefix match in
-    the fast-path predicate would silently allow deletion of these files.
-    """
-    target = tmp_git_repo / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("source content")
-    _track_and_commit(tmp_git_repo, rel_path)
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
-    )
-
-    _assert_declined_completes(result)
-    assert target.exists()
-
-
-@pytest.mark.parametrize(
-    "rel_path",
-    [
-        ".agent/notes/foo.txt",
-        ".agent/data/seed.json",
-    ],
-)
-def test_delete_tracked_arbitrary_subdir_in_agent_dir_rejected(
-    tmp_git_repo: Path, rel_path: str
-) -> None:
-    """Tracked files under non-allowlisted subdirs of ``.agent/`` MUST stay rejected."""
-    target = tmp_git_repo / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("user content")
-    _track_and_commit(tmp_git_repo, rel_path)
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
-    )
-
-    _assert_declined_completes(result)
-    assert target.exists()
-
-
-@pytest.mark.parametrize(
-    "rel_path",
-    [
-        "app/controllers/foo.rb",
-        "src/main.go",
-        "lib/utils.rb",
-        "scripts/build.sh",
-    ],
-)
-def test_delete_tracked_source_code_outside_agent_dir_rejected(
-    tmp_git_repo: Path, rel_path: str
-) -> None:
-    """Tracked user-authored source files outside ``.agent/`` MUST stay rejected."""
-    target = tmp_git_repo / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("source content")
-    _track_and_commit(tmp_git_repo, rel_path)
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
-    )
-
-    _assert_declined_completes(result)
-    assert target.exists()
-
-
-def test_delete_tracked_checkpoint_json_bak_outside_agent_rejected(tmp_git_repo: Path) -> None:
-    """Tracked ``checkpoint.json.bak`` at the repo root MUST stay rejected.
-
-    Only ``checkpoint.json`` is a canonical root-level engine artifact; the
-    ``.bak`` suffix is a separate extension-based housekeeping rule and a
-    tracked ``.bak`` file is project content.
-    """
-    target = tmp_git_repo / "checkpoint.json.bak"
-    target.write_text("backup")
-    _track_and_commit(tmp_git_repo, "checkpoint.json.bak")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(list(paths))
+        repo.index.commit("track protected project content")
+    finally:
+        repo.close()
 
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
             "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": "checkpoint.json.bak"}],
+            "actions": [{"action": "delete_file", "path": rel_path} for rel_path in paths],
         },
     )
 
-    _assert_declined_completes(result)
-    assert target.exists()
-
-
-def test_delete_tracked_random_json_in_agent_root_rejected(tmp_git_repo: Path) -> None:
-    """Tracked ``.agent/random_config.json`` MUST stay rejected -- not in the allowlist."""
-    target = tmp_git_repo / ".agent" / "random_config.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("user config")
-    _track_and_commit(tmp_git_repo, ".agent/random_config.json")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "delete_file", "path": ".agent/random_config.json"}],
-        },
-    )
-
-    _assert_declined_completes(result)
-    assert target.exists()
-
-
-# --- SECURITY-REGRESSION tests for tightened directory-extension rules ---
-#
-# These pin the security boundary for files inside engine-internal
-# directories (``.agent/raw/``, ``.agent/tmp/``, ``.agent/workers/``,
-# ``.agent/receipts/``, ``.agent/artifacts/``, ``.agent/prompt_history/``,
-# ``.agent/artifact-formats/``). A file is deletable inside one of these
-# directories ONLY when its extension matches the per-directory
-# allowlist (``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``). Files with other
-# extensions are user-authored content and MUST be rejected even when
-# tracked in HEAD.
-
-
-@pytest.mark.parametrize(
-    "rel_path",
-    [
-        # .agent/raw/ only accepts .log files
-        ".agent/raw/script.py",
-        ".agent/raw/main.go",
-        ".agent/raw/notes.md",
-        # .agent/tmp/ only accepts .log, .md, .json
-        ".agent/tmp/config.yaml",
-        ".agent/tmp/main.py",
-        # .agent/artifacts/ only accepts .md
-        ".agent/artifacts/plan.json",
-        # .agent/receipts/ only accepts .json
-        ".agent/receipts/run-1/note.md",
-        # .agent/prompt_history/ only accepts .json
-        ".agent/prompt_history/notes.md",
-        # .agent/artifact-formats/ only accepts .md
-        ".agent/artifact-formats/data.json",
-        # .agent/workers/ only accepts .log, .md, .json (recursive)
-        ".agent/workers/unit-a/src/main.py",
-        ".agent/workers/unit-a/src/foo.go",
-        ".agent/workers/unit-a/sub/dir/foo.rs",
-    ],
-)
-def test_delete_tracked_source_files_inside_engine_dirs_rejected(
-    tmp_git_repo: Path, rel_path: str
-) -> None:
-    """Tracked source files inside engine-internal directories MUST stay rejected.
-
-    Regression for the security gap where any path whose second segment
-    was in ``AGENT_INTERNAL_DIR_GLOBS`` returned True. The tightened
-    rule restricts deletion to files whose extensions match the
-    per-directory allowlist.
-    """
-    target = tmp_git_repo / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("user content")
-    _track_and_commit(tmp_git_repo, rel_path)
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
-    )
-
-    _assert_declined_completes(result)
-    assert target.exists()
+    assert result == [PipelineEvent.PHASE_LOOPBACK]
+    for category, category_paths in paths_by_category.items():
+        for rel_path in category_paths:
+            assert (tmp_git_repo / rel_path).exists(), f"{category} path was deleted: {rel_path}"
 
 
 # ---------------------------------------------------------------------------
@@ -2524,30 +1954,27 @@ def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_pre_emptive_untrack_unindexes_engine_files_with_empty_artifact(
+def test_pre_emptive_untrack_only_unindexes_engine_files_with_empty_artifact(
     tmp_git_repo: Path,
 ) -> None:
-    """Pre-emptive untrack fires even when the artifact has no actions.
+    engine_paths = (
+        ".agent/raw/opencode.log",
+        ".agent/tmp/mcp-server.log",
+        "checkpoint.json",
+    )
+    source_path = "src/app.py"
+    tracked_paths = (*engine_paths, source_path)
+    for rel_path in tracked_paths:
+        target = tmp_git_repo / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("tracked content")
 
-    Pins the rock-solid safety net contract: even when the agent
-    submits an empty ``commit_cleanup`` artifact (``analysis_complete=True,
-    actions=[]``), the pre-emptive untrack step removes tracked
-    engine-internal files from the index. The agent's view of the
-    diff will no longer include those files, so a subsequent
-    ``delete_file`` action targeting them cannot be hard-rejected.
-    """
-    log_path = tmp_git_repo / ".agent" / "raw" / "opencode.log"
-    mcp_log_path = tmp_git_repo / ".agent" / "tmp" / "mcp-server.log"
-    checkpoint_path = tmp_git_repo / "checkpoint.json"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    mcp_log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text("log content")
-    mcp_log_path.write_text("mcp log")
-    checkpoint_path.write_text('{"phase": "development"}')
-
-    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
-    _track_and_commit(tmp_git_repo, ".agent/tmp/mcp-server.log")
-    _track_and_commit(tmp_git_repo, "checkpoint.json")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(list(tracked_paths))
+        repo.index.commit("track engine and source files")
+    finally:
+        repo.close()
 
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
@@ -2562,60 +1989,17 @@ def test_pre_emptive_untrack_unindexes_engine_files_with_empty_artifact(
     repo = Repo(tmp_git_repo)
     try:
         cached = set(repo.git.ls_files("--cached").splitlines())
-        assert ".agent/raw/opencode.log" not in cached, (
-            "Tracked engine file MUST be removed from index by pre-emptive untrack"
-        )
-        assert ".agent/tmp/mcp-server.log" not in cached, (
-            "Tracked engine file MUST be removed from index by pre-emptive untrack"
-        )
-        assert "checkpoint.json" not in cached, (
-            "Tracked engine file MUST be removed from index by pre-emptive untrack"
-        )
         index_paths = {entry_path for entry_path, _stage in repo.index.entries}
-        assert ".agent/raw/opencode.log" not in index_paths
-        assert ".agent/tmp/mcp-server.log" not in index_paths
-        assert "checkpoint.json" not in index_paths
+        for rel_path in engine_paths:
+            assert rel_path not in cached, f"engine path remained cached: {rel_path}"
+            assert rel_path not in index_paths, f"engine path remained indexed: {rel_path}"
+        assert source_path in cached
+        assert source_path in index_paths
     finally:
         repo.close()
 
-    # Working-tree files MUST remain -- the untrack uses ``git rm --cached``,
-    # NOT ``git rm``. The agent decides whether to follow up with a
-    # separate ``delete_file`` action.
-    assert log_path.exists(), "Working-tree file must remain after pre-emptive untrack"
-    assert mcp_log_path.exists(), "Working-tree file must remain after pre-emptive untrack"
-    assert checkpoint_path.exists(), "Working-tree file must remain after pre-emptive untrack"
-
-
-@pytest.mark.timeout_seconds(5)
-def test_pre_emptive_untrack_preserves_non_engine_files(tmp_git_repo: Path) -> None:
-    """Non-engine tracked files are NOT removed by the pre-emptive untrack.
-
-    Pins the safety boundary at the phase level: only engine-internal
-    paths (per ``is_agent_internal_path``) are untracked. A non-engine
-    tracked file (``src/app.py``) must remain in ``git ls-files --cached``
-    after the phase runs -- the pre-emptive untrack must NEVER widen
-    the deletion surface on its own.
-    """
-    src_path = tmp_git_repo / "src" / "app.py"
-    src_path.parent.mkdir(parents=True, exist_ok=True)
-    src_path.write_text("print('hello')\n")
-    _track_and_commit(tmp_git_repo, "src/app.py")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {"analysis_complete": True, "actions": []},
-    )
-
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-
-    repo = Repo(tmp_git_repo)
-    try:
-        cached = set(repo.git.ls_files("--cached").splitlines())
-        assert "src/app.py" in cached, (
-            "Non-engine tracked file MUST remain in git ls-files --cached after pre-emptive untrack"
-        )
-    finally:
-        repo.close()
+    for rel_path in tracked_paths:
+        assert (tmp_git_repo / rel_path).exists(), f"working-tree file was deleted: {rel_path}"
 
 
 @pytest.mark.timeout_seconds(5)

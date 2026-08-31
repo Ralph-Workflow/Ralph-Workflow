@@ -1493,18 +1493,32 @@ def _run_subprocess_and_read_lines(
     """
     clock: Clock = ctx.clock or SystemClock()
     argv, stdin_prompt = split_prompt_for_stdin_delivery(cmd, ctx.config)
-    handle = get_process_manager().spawn(
-        argv,
+    spawn_options = (
         SpawnOptions(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE if stdin_prompt is not None else subprocess.DEVNULL,
+            stdin=subprocess.PIPE,
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
             start_new_session=True,
             label=f"invoke:{_agent_command_name(ctx.config)}",
             text=True,
-        ),
+        )
+        if stdin_prompt is not None
+        else SpawnOptions(
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
+            env=_subprocess_env(ctx.extra_env),
+            start_new_session=True,
+            label=f"invoke:{_agent_command_name(ctx.config)}",
+            text=True,
+        )
+    )
+    handle = get_process_manager().spawn(
+        argv,
+        spawn_options,
     )
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()

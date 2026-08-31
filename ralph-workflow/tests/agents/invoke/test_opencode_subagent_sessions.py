@@ -230,6 +230,17 @@ def test_default_db_path_resolves_like_the_opencode_binary(
     assert default_opencode_db_path() == data_dir / "opencode.db"
 
 
+def test_default_db_path_uses_injected_environment() -> None:
+    env = {
+        "HOME": "/injected/home",
+        "OPENCODE_DB": "custom.db",
+    }
+
+    assert default_opencode_db_path(env.get) == Path(
+        "/injected/home/.local/share/opencode/custom.db"
+    )
+
+
 def _build_store(db_path: Path) -> None:
     conn = sqlite3.connect(str(db_path))
     conn.executescript(
