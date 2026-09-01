@@ -328,8 +328,8 @@ def _default_spawner(
 
 
 def _shard_command(
-    files: Sequence[str],
     *,
+    manifest_path: Path,
     basetemp: Path,
     marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
     xdist_workers: str = "0",
@@ -373,11 +373,15 @@ def _shard_command(
         sys.executable,
         "-m",
         "pytest",
-        *files,
+        "tests",
         "-q",
         "--no-header",
         "-p",
         "no:cacheprovider",
+        "-p",
+        "ralph.testing.pytest_shard_manifest_plugin",
+        "--ralph-shard-manifest",
+        str(manifest_path),
         *xdist_args,
         "-m",
         marker_expression,
@@ -814,15 +818,17 @@ def _run_shards(
                 _print_shard_outputs(outputs)
                 return TIMEOUT_EXIT_CODE
             shard_xdist_workers = xdist_workers
-            if (
-                required_e2e_shard_xdist_workers is not None
-                and shard_index == len(shards) - 1
-            ):
+            if required_e2e_shard_xdist_workers is not None and shard_index == len(shards) - 1:
                 shard_xdist_workers = required_e2e_shard_xdist_workers
+            manifest_path = basetemp_root / f"shard-{shard_index}.manifest"
+            manifest_path.write_text(  # filesystem-write-ok: transient per-run shard scratch
+                "".join(f"{path}\n" for path in shard),
+                encoding="utf-8",
+            )
             processes.append(
                 spawner(
                     _shard_command(
-                        shard,
+                        manifest_path=manifest_path,
                         basetemp=basetemp_root / f"shard-{shard_index}",
                         marker_expression=marker_expression,
                         xdist_workers=shard_xdist_workers,
@@ -976,14 +982,10 @@ def run_test_suites(
         # Required auto-integrate E2E files are subprocess-I/O-bound, so
         # they run on one dedicated shard with bounded in-shard xdist.
         selected_set = set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-        required_e2e_shard = tuple(
-            path for path in selected_files if path in selected_set
-        )
+        required_e2e_shard = tuple(path for path in selected_files if path in selected_set)
         if required_e2e_shard:
             required_e2e_shard_xdist_workers = _REQUIRED_E2E_SHARD_XDIST_WORKERS
-        selected_files = tuple(
-            path for path in selected_files if path not in selected_set
-        )
+        selected_files = tuple(path for path in selected_files if path not in selected_set)
 
     shards = partition_selected_files(
         selected_files,
@@ -992,9 +994,7 @@ def run_test_suites(
     )
     if required_e2e_shard:
         shards = (*shards, required_e2e_shard)
-        validate_exact_file_assignment(
-            (*selected_files, *required_e2e_shard), shards
-        )
+        validate_exact_file_assignment((*selected_files, *required_e2e_shard), shards)
     else:
         validate_exact_file_assignment(selected_files, shards)
     if auto_integrate_e2e_only:

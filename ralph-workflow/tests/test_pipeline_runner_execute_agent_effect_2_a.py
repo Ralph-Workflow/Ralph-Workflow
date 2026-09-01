@@ -1169,9 +1169,11 @@ class TestExecuteAgentEffectA:
             agent_retry_intent=resume_agent_retry_intent("sess-stale"),
         )
 
+        config = self._config()
+        config.general.max_same_agent_retries = 0
         result = effect_executor_module.execute_agent_effect(
             effect,
-            self._config(),
+            config,
             pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             state=state,

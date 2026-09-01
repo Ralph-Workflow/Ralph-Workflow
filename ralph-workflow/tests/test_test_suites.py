@@ -211,12 +211,12 @@ class TestCases:
 """
 
     assert test_suites_module._fast_test_count(source) == 3
-    parametrized = '''
+    parametrized = """
 import pytest
 @pytest.mark.parametrize("value", [1, 2, 3, 4, 5])
 def test_values(value: int) -> None:
     assert value
-'''
+"""
     assert test_suites_module._fast_test_count(parametrized) == 5
     assert test_suites_module._fast_test_count("# helper only\n") == 0
     # Defensive minimum: even empty sources get weight 1 for shard placement.
@@ -499,4 +499,3 @@ def test_static_discovery_populates_source_cache_for_retained_files(
         "tests/test_retained_two.py",
     }
     assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
-

@@ -4209,6 +4209,13 @@ ralph.testing.pytest_timeout_plugin
    :members:
    :show-inheritance:
 
+ralph.testing.pytest_shard_manifest_plugin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.pytest_shard_manifest_plugin
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_artifact_submission_canonical_path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

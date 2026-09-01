@@ -22,6 +22,7 @@ class _FakeShardProcess:
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
+
     def __init__(
         self,
         returncodes: list[int | None],
@@ -107,11 +108,10 @@ class _BackpressuredShardProcess:
 
 
 class _StubSpawner:
-    def __init__(
-        self, processes: Sequence[_FakeShardProcess | _BackpressuredShardProcess]
-    ) -> None:
+    def __init__(self, processes: Sequence[_FakeShardProcess | _BackpressuredShardProcess]) -> None:
         self._processes = list(processes)
         self.calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
+        self.manifest_files: list[tuple[str, ...]] = []
 
     def __call__(
         self,
@@ -121,6 +121,12 @@ class _StubSpawner:
         env: Mapping[str, str],
     ) -> _FakeShardProcess | _BackpressuredShardProcess:
         self.calls.append((tuple(command), cwd, dict(env)))
+        if "--ralph-shard-manifest" in command:
+            manifest_index = command.index("--ralph-shard-manifest") + 1
+            manifest_path = Path(command[manifest_index])
+            self.manifest_files.append(
+                tuple(manifest_path.read_text(encoding="utf-8").splitlines())
+            )
         return self._processes.pop(0)
 
 

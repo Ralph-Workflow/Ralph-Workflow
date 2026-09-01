@@ -21,7 +21,11 @@ from hypothesis import strategies as st
 from loguru import logger
 
 from ralph.mcp.tools.names import CODEX_NATIVE_FEATURE_OVERRIDES
-from ralph.mcp.transport.codex import CodexConfigError, prepare_codex_home
+from ralph.mcp.transport.codex import (
+    CodexConfigError,
+    _synthesize_codex_config,
+    prepare_codex_home,
+)
 
 _ENDPOINT = "http://127.0.0.1:9999/mcp"
 #: Keys Ralph owns outright; the operator's values for these are meant to lose.
@@ -240,9 +244,11 @@ def test_any_operator_config_merges_into_a_config_codex_can_load(
     """For *any* valid operator config: the result loads, Ralph wins, the operator survives."""
     master_prompt = str(tmp_path / "MASTER_PROMPT.md")
 
-    config_text = _synthesize(
-        tmp_path,
+    config_text, _upstreams = _synthesize_codex_config(
         tomli_w.dumps(base),
+        source_config=tmp_path / "source-config.toml",
+        config_path=tmp_path / "generated-config.toml",
+        endpoint=_ENDPOINT,
         master_prompt_file=master_prompt,
         unsafe_mode=unsafe_mode,
     )
@@ -288,7 +294,14 @@ def test_operator_features_survive_unless_ralph_overrides_them(
     operator_features = {**_parse(tomli_w.dumps(base)), "goals": True, "shell_tool": False}
     base_with_features: dict[str, object] = {"features": operator_features}
 
-    config_text = _synthesize(tmp_path, tomli_w.dumps(base_with_features))
+    config_text, _upstreams = _synthesize_codex_config(
+        tomli_w.dumps(base_with_features),
+        source_config=tmp_path / "source-config.toml",
+        config_path=tmp_path / "generated-config.toml",
+        endpoint=_ENDPOINT,
+        master_prompt_file=None,
+        unsafe_mode=False,
+    )
 
     features = _features_of(config_text)
     for key, value in _expected_features().items():

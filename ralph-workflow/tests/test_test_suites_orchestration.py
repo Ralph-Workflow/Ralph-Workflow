@@ -215,7 +215,8 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     )
 
     assert exit_code == 0
-    assert [command[3 : command.index("-q")] for command, _cwd, _env in spawner.calls] == [
+    assert [command[3] for command, _cwd, _env in spawner.calls] == ["tests", "tests"]
+    assert spawner.manifest_files == [
         ("tests/test_alpha.py",),
         ("tests/test_bravo.py",),
     ]
@@ -364,10 +365,9 @@ def test_focused_auto_integrate_profile_shards_exact_registry_without_discovery(
         auto_integrate_e2e_only=True,
     )
 
-    assigned_files = tuple(
-        path for command, _cwd, _env in spawner.calls for path in command[3 : command.index("-q")]
-    )
+    assigned_files = tuple(path for shard in spawner.manifest_files for path in shard)
     assert exit_code == 0
+    assert all(command[3] == "tests" for command, _cwd, _env in spawner.calls)
     assert sorted(assigned_files) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     assert len(assigned_files) == len(set(assigned_files))
 
@@ -400,7 +400,8 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     )
     assert weighed_paths == ["tests/test_e2e.py"]
     command = spawner.calls[0][0]
-    assert command[3 : command.index("-q")] == ("tests/test_e2e.py",)
+    assert command[3] == "tests"
+    assert spawner.manifest_files == [("tests/test_e2e.py",)]
     marker_flag = command.index("-m", command.index("pytest") + 1)
     assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
 
@@ -428,9 +429,8 @@ def test_default_profile_dedicated_required_e2e_shard_uses_two_xdist_workers(
 
     assert exit_code == 0
     dedicated_command = spawner.calls[-1][0]
-    assert dedicated_command[3 : dedicated_command.index("-q")] == (
-        *EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
-    )
+    assert dedicated_command[3] == "tests"
+    assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
     xdist_index = dedicated_command.index("-n")
     assert dedicated_command[xdist_index + 1] == "2"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"

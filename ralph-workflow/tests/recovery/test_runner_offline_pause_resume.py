@@ -28,6 +28,8 @@ from ralph.config.enums import Verbosity
 from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.integration_resolution import RESOLVED
+from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -135,6 +137,9 @@ def _patch_runner_seams(
     monkeypatch.setattr(
         run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None
     )
+    resolved = IntegrationResolutionVerdict(RESOLVED)
+    monkeypatch.setattr(runner_module, "inspect_integration_resolution", lambda *_: resolved)
+    monkeypatch.setattr(run_loop_module, "inspect_integration_resolution", lambda *_: resolved)
 
 
 def _monitor_that_reconnects_on_pause(

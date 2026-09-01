@@ -264,8 +264,7 @@ def _same_toml_value(left: object, right: object) -> bool:
         left_seq = cast("list[object]", left)
         right_seq = cast("list[object]", right)
         return len(left_seq) == len(right_seq) and all(
-            _same_toml_value(one, other)
-            for one, other in zip(left_seq, right_seq, strict=True)
+            _same_toml_value(one, other) for one, other in zip(left_seq, right_seq, strict=True)
         )
     return left == right
 
@@ -296,6 +295,27 @@ def _render_codex_config(merged: dict[str, object], config_path: Path) -> str:
     return config_text
 
 
+def _synthesize_codex_config(
+    base_config: str,
+    *,
+    source_config: Path,
+    config_path: Path,
+    endpoint: str | None,
+    master_prompt_file: str | None,
+    unsafe_mode: bool,
+) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
+    """Synthesize validated config text and discover operator upstreams."""
+    base = _parse_source_config(base_config, source_config)
+    upstreams = _extract_codex_upstream_servers(base)
+    merged = _merge_codex_config(
+        base,
+        endpoint=endpoint,
+        master_prompt_file=master_prompt_file,
+        unsafe_mode=unsafe_mode,
+    )
+    return _render_codex_config(merged, config_path), upstreams
+
+
 def prepare_codex_home_with_upstreams(
     endpoint: str | None,
     *,
@@ -317,23 +337,22 @@ def prepare_codex_home_with_upstreams(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
-    base = _parse_source_config(base_config, source_config)
-    upstreams = _extract_codex_upstream_servers(base)
     if endpoint:
         logger.warning(
             "Codex MCP tool restriction is best-effort: apply_patch and core "
             "editing primitives cannot be disabled. See "
             "ralph-workflow/docs/sphinx/mcp-tool-restriction.md."
         )
-    merged = _merge_codex_config(
-        base,
-        endpoint=endpoint,
-        master_prompt_file=master_prompt_file,
-        unsafe_mode=unsafe_mode,
-    )
     config_path = codex_root / "config.toml"
     try:
-        config_text = _render_codex_config(merged, config_path)
+        config_text, upstreams = _synthesize_codex_config(
+            base_config,
+            source_config=source_config,
+            config_path=config_path,
+            endpoint=endpoint,
+            master_prompt_file=master_prompt_file,
+            unsafe_mode=unsafe_mode,
+        )
     except RecursionError as exc:
         # ``tomllib`` parses ~1000 levels of nesting happily but ``tomli_w``
         # exhausts the stack re-serializing it, and ``RecursionError`` is not a
