@@ -32,6 +32,19 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_broker_secret(monkeypatch: MonkeyPatch) -> None:
+    """Pin the unsigned-evidence boundary this module asserts on.
+
+    An earlier in-process smoke-command test mints ``RALPH_BROKER_SECRET``
+    into the real ``os.environ`` (the composition root mints one when the
+    operator exported none). These tests deliberately run with
+    ``broker_secret = None``; an ambient secret flips receipt/sentinel HMAC
+    verification and fails them order-dependently.
+    """
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
+
+
 def _smoke_markdown() -> str:
     return """---
 type: smoke_test_result

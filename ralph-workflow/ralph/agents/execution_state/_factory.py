@@ -68,6 +68,12 @@ def _make_agy_strategy(
                 return signal
             return super().classify_activity_line(line)
 
+        def supports_incomplete_exit_reprompt(self) -> bool:
+            # AGY opts into the ONE bounded fresh-session reprompt for a
+            # rc=0 exit without completion evidence; see
+            # ``ralph/agents/invoke/_agy_incomplete_exit_error.py``.
+            return True
+
     return AgyExecutionStrategy(
         label_scope=label_scope,
         registry=registry,

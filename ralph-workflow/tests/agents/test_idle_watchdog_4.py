@@ -104,6 +104,9 @@ class _CompletionEnforcingStrategy:
     def supports_completion_enforcement(self) -> bool:
         return True
 
+    def supports_incomplete_exit_reprompt(self) -> bool:
+        return False
+
 
 def testcheck_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path) -> None:
     """When the host process exits with a non-zero code, ``check_process_result``

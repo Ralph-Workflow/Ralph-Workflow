@@ -37,3 +37,9 @@ class AgentRecoveryInput:
     transport: str | None = None
     model: str | None = None
     run_id: str | None = None
+    # One-reprompt bound for ``AgyIncompleteExitError``: True when this
+    # invocation already spent its single automatic completion reprompt,
+    # so ``build_agent_recovery_plan`` MUST return None for a repeated
+    # incomplete-exit failure. APPENDED with a default so existing
+    # construction sites stay valid.
+    completion_reprompt_used: bool = False

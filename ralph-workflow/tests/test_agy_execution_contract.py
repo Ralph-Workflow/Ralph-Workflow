@@ -17,6 +17,7 @@ from ralph.agents.idle_watchdog import (
 )
 from ralph.agents.invoke import (
     AgentInvocationError,
+    AgyIncompleteExitError,
     CompletionCheckOptions,
     check_process_result,
 )
@@ -41,6 +42,12 @@ def test_agy_strategy_enforces_completion_evidence() -> None:
     """AGY strategy reports supports_completion_enforcement() as True."""
     strategy = strategy_for_transport(AgentTransport.AGY)
     assert strategy.supports_completion_enforcement() is True
+
+
+def test_agy_strategy_supports_incomplete_exit_reprompt() -> None:
+    """AGY strategy opts into the ONE bounded incomplete-exit reprompt."""
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    assert strategy.supports_incomplete_exit_reprompt() is True
 
 
 def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
@@ -79,14 +86,15 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
 def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
     tmp_path: Path,
 ) -> None:
-    """AGY exit-0 with no declare_complete and no artifact raises AgentInvocationError.
+    """AGY exit-0 with no declare_complete and no artifact raises AgyIncompleteExitError.
 
-    This is non-retryable, so it does not create a retry loop.
+    The typed error is retryable exactly once (one bounded fresh-session
+    reprompt per invocation), so it never creates an unbounded retry loop.
     """
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
 
-    with pytest.raises(AgentInvocationError):
+    with pytest.raises(AgyIncompleteExitError):
         check_process_result(
             handle,
             "agy",

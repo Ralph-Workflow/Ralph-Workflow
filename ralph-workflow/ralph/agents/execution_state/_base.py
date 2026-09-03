@@ -226,3 +226,18 @@ class BaseExecutionStrategy:
 
     def supports_completion_enforcement(self) -> bool:
         return False
+
+    def supports_incomplete_exit_reprompt(self) -> bool:
+        """Whether a rc=0 exit without completion evidence gets ONE bounded reprompt.
+
+        When True, ``check_process_result`` raises the typed
+        ``AgyIncompleteExitError`` (instead of a plain
+        ``AgentInvocationError``) so the recovery layer issues exactly
+        one automatic fresh-session reprompt carrying the original task
+        plus an explicit completion instruction. Only the AGY strategy
+        opts in: AGY has no resumable session (so the opencode-style
+        session-continuation path cannot apply) and no stable wire-level
+        waiting signal (so the objective exit condition is the only
+        recoverable signal).
+        """
+        return False

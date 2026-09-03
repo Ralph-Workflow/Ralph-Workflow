@@ -424,7 +424,7 @@ def test_execute_smoke_turns_stops_after_one_attempt_when_ceiling_below_wire(
         pipeline_deps=object(),
     )
 
-    all_lines, _live_lines, _session_id, final_exception = _execute_smoke_turns(
+    all_lines, _live_lines, _session_id, final_exception, _ceiling = _execute_smoke_turns(
         params, None, run_id="interactive-agy-smoke-test-model"
     )
 
@@ -535,7 +535,7 @@ def test_execute_smoke_turns_reports_ceiling_early_for_single_turn_run(
     logger.remove()
     handler_id = logger.add(buf, level="INFO")
     try:
-        all_lines, _live_lines, _session_id, final_exception = _execute_smoke_turns(
+        all_lines, _live_lines, _session_id, final_exception, _ceiling = _execute_smoke_turns(
             params, None, run_id="interactive-agy-smoke-test-model"
         )
     finally:

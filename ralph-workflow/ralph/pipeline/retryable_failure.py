@@ -55,6 +55,13 @@ def retryable_agent_failure_reason(
             "agent session exited without required completion evidence",
         ),
         (
+            # AGY rc=0 without the required completion evidence: bounded
+            # to ONE automatic fresh-session reprompt per invocation by
+            # build_agent_recovery_plan and the direct-MCP recovery loop.
+            type(exc).__name__ == "AgyIncompleteExitError",
+            "the agent exited without required completion evidence",
+        ),
+        (
             contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS),
             "a stale session ID (fresh session required)",
         ),

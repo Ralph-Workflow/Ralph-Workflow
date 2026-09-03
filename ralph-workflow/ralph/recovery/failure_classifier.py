@@ -942,7 +942,13 @@ class FailureClassifier:
         # "Ambiguous failure classification ... OpenCodeResumableExitError
         # [flagged_for_review=true]" warning -- the classifier no
         # longer falls through to AMBIGUOUS for this exit signature.
-        if type_name == "OpenCodeResumableExitError":
+        #
+        # AgyIncompleteExitError is the AGY sibling: same deterministic
+        # AGENT-not-AMBIGUOUS requirement; the recovery layer engages
+        # its ONE bounded fresh-session reprompt (the bound itself lives
+        # in build_agent_recovery_plan and the direct-MCP recovery
+        # loop, not here).
+        if type_name in {"OpenCodeResumableExitError", "AgyIncompleteExitError"}:
             return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(

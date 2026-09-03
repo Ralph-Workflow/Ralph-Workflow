@@ -26,6 +26,7 @@ from ralph.agents.invoke import (
     recovery_action_for_failure_reason,
     resolve_resume_session_id,
 )
+from ralph.agents.invoke._agy_incomplete_exit_error import AgyIncompleteExitError
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
@@ -427,6 +428,10 @@ class _AttemptState:
     # ``ctx.state`` inside the recovery path. None when no prior session
     # id is recorded.
     last_agent_session_id: str | None = None
+    # One-reprompt bound for ``AgyIncompleteExitError``: set when the
+    # recovery plan for an AGY incomplete exit is produced, so the SAME
+    # invocation never issues a second automatic completion reprompt.
+    completion_reprompt_used: bool = False
 
 
 def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
@@ -567,6 +572,14 @@ def _invoke_agent_with_recovery(
                     )
                 state.prompt_file = recovery_plan.prompt_file
                 state.resume_session_id = recovery_plan.session_id
+                # One-reprompt bound (enforcement point 1 of 2): once an
+                # AGY incomplete-exit plan is produced, THIS invocation
+                # gets no second completion reprompt. The loop-level
+                # bound in ``run_with_direct_mcp_recovery`` is point 2.
+                state.completion_reprompt_used = (
+                    state.completion_reprompt_used
+                    or isinstance(exc, AgyIncompleteExitError)
+                )
                 retry_intent = resolve_retry_intent(
                     exc,
                     phase=str(ctx.effect.phase),
@@ -1083,6 +1096,13 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     )
     if reason is None:
         return None
+    completion_recovery = isinstance(recovery_input.exc, AgyIncompleteExitError)
+    if completion_recovery and recovery_input.completion_reprompt_used:
+        # One-reprompt bound (enforcement point 1 of 2): this invocation
+        # already spent its single automatic completion reprompt, so a
+        # repeated incomplete exit is terminal. The loop-level bound in
+        # ``run_with_direct_mcp_recovery`` is enforcement point 2.
+        return None
     untruncated = _is_stale_session_failure(recovery_input.exc)
     context_lines = _recovery_context_lines(
         recovery_input.exc,
@@ -1125,6 +1145,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         transport=prompt_transport,
         model=prompt_model,
         run_id=recovery_input.run_id,
+        completion_recovery=completion_recovery,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
@@ -1283,6 +1304,7 @@ def _build_recovery_input_for_attempt(
         transport=_transport_value if is_stale_session_failure else None,
         model=_model_value if is_stale_session_failure else None,
         run_id=run_id,
+        completion_reprompt_used=state.completion_reprompt_used,
     )
 
 
@@ -1356,6 +1378,7 @@ def _retry_prompt_file_for_context(
     transport: str | None = None,
     model: str | None = None,
     run_id: str | None = None,
+    completion_recovery: bool = False,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -1368,6 +1391,7 @@ def _retry_prompt_file_for_context(
         transport=transport,
         model=model,
         run_id=run_id,
+        completion_recovery=completion_recovery,
     )
 
 
@@ -1436,6 +1460,35 @@ def _write_retry_context_file(
     return context_path
 
 
+def _completion_recovery_block() -> str:
+    """Return the ``COMPLETION RECOVERY INSTRUCTION`` block for AGY incomplete-exit reprompts.
+
+    Single source of truth so the completion-instruction wording is one
+    change in one place (and tests can import the helper as a stable
+    token source). The block is appended AFTER the original task body in
+    fresh-mode retry prompts so it is the final instruction the agent
+    reads. It tells the agent to continue autonomously (no interactive
+    input exists), finish the assigned work, submit any required
+    artifact through the canonical MCP tool, and call
+    ``declare_complete`` — the exact evidence the previous attempt
+    failed to leave.
+    """
+    return (
+        "COMPLETION RECOVERY INSTRUCTION\n"
+        "You are running NON-INTERACTIVELY: no user will read or answer questions.\n"
+        "Do NOT wait for user input and do NOT ask for clarification; make "
+        "reasonable decisions autonomously and finish the assigned work.\n"
+        "The previous attempt exited without the required completion evidence, "
+        "which failed the run. Before exiting you MUST:\n"
+        "1. Finish the assigned work from the ORIGINAL TASK PROMPT above.\n"
+        "2. If the task requires an artifact, submit it through the canonical "
+        "MCP tool `ralph_submit_md_artifact`.\n"
+        "3. Call the `declare_complete` MCP tool to declare the task complete.\n"
+        "Exiting without this evidence fails the run; this is the only "
+        "automatic recovery attempt."
+    )
+
+
 def _write_agent_retry_prompt(
     *,
     workspace_root: Path,
@@ -1448,6 +1501,7 @@ def _write_agent_retry_prompt(
     transport: str | None = None,
     model: str | None = None,
     run_id: str | None = None,
+    completion_recovery: bool = False,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -1549,6 +1603,14 @@ def _write_agent_retry_prompt(
                 ),
             ]
         )
+    # Completion-recovery framing: when this fresh-mode retry was triggered
+    # by an AGY incomplete exit (``completion_recovery`` is set), append the
+    # explicit completion instruction AFTER the original task body so it is
+    # the final instruction the agent reads: continue autonomously, finish
+    # the assigned work, submit any required artifact via
+    # ``ralph_submit_md_artifact``, and call ``declare_complete``.
+    if completion_recovery:
+        body_parts.extend(["", _completion_recovery_block()])
     # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
     retry_prompt_path.write_text(
         "\n".join(body_parts) + "\n",

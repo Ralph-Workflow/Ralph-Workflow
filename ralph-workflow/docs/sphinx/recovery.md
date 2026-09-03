@@ -225,6 +225,52 @@ covers the deterministic classification, the propagation of
 `resumable_session_id` from the typed exception, and the resume/fresh
 recovery action mapping.
 
+## AGY incomplete-exit recovery
+
+An AGY run can end cleanly (`rc=0`) without the required completion
+evidence — the durable `declare_complete` sentinel, or the receipt for a
+required artifact. Measured causes include AGY's provider-owned print
+deadline expiring mid-run (the headless default is five minutes; every
+Ralph Workflow invocation now passes `--print-timeout 1h`), a permission
+auto-deny that empties the stream, and the model stopping early —
+including runs where it waited for interactive input or asked for
+clarification that a non-interactive run can never answer.
+
+AGY exposes **no stable waiting signal**: no measured wire capture
+contains a waiting-for-input or clarification event, and Ralph Workflow
+does not guess one from conversational prose. Recovery is therefore
+limited to the objective condition "the process exited without required
+completion evidence", which `check_process_result` raises as the typed
+`AgyIncompleteExitError` (an `AgentInvocationError` subclass) for the
+AGY strategy only; every other completion-enforcing transport keeps its
+existing behavior. The condition is never conflated with
+`WAITING_ON_CHILD` (live descendant work), which the execution
+strategies classify separately.
+
+When the condition fires, Ralph Workflow issues exactly **one** bounded
+reprompt per invocation:
+
+- AGY has no demonstrably resumable session (the v1.1.8 continuation
+  probes did not expose session identity), so the reprompt is always a
+  **fresh invocation** carrying the original task plus an explicit
+  completion instruction: continue autonomously (no interactive input
+  exists), finish the assigned work, submit any required artifact
+  through the canonical `ralph_submit_md_artifact` MCP tool, and call
+  `declare_complete`.
+- The bound is enforced at two points — `build_agent_recovery_plan`
+  declines a second plan, and the direct-MCP recovery loop stops
+  driving retries — so there is no unbounded retry loop.
+- The reprompt itself is never completion evidence: the fresh
+  invocation re-earns the sentinel and receipt through the real MCP
+  tools, and sentinel, receipt, and artifact-proof requirements are not
+  weakened.
+- If completion evidence is still missing after the bounded reprompt,
+  the run fails with an actionable `AgyIncompleteExitError` naming the
+  missing evidence and the tools the agent must call.
+
+Lock-in regression tests: `tests/recovery/test_agy_incomplete_exit_recovery.py`
+and `tests/test_agy_incomplete_exit_reprompt.py`.
+
 ## Fast no-work exits
 
 A clean agent exit is not resumable when Ralph Workflow has conclusive evidence

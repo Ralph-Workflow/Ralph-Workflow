@@ -45,6 +45,19 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.smoke
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_broker_secret(monkeypatch: MonkeyPatch) -> None:
+    """Pin the unsigned-evidence boundary this module asserts on.
+
+    An earlier in-process smoke-command test mints ``RALPH_BROKER_SECRET``
+    into the real ``os.environ`` (the composition root mints one when the
+    operator exported none). These tests deliberately run with
+    ``broker_secret = None``; an ambient secret flips receipt/sentinel HMAC
+    verification and fails them order-dependently.
+    """
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
+
+
 def _smoke_markdown() -> str:
     return """---
 type: smoke_test_result
@@ -601,12 +614,14 @@ def test_agy_smoke_regression_missing_artifact_is_reported_without_submit_instru
     # -- including the bullet marker and the ``ralph_submit_md_artifact``
     # mention before the dispatcher instruction -- so the prompt has no
     # submission route at all and the run must surface the artifact error.
+    # ``call_mcp_tool`` MAY still appear in the stripped prefix: the prompt
+    # also routes ordinary file writes through it (Ralph's `write_file`),
+    # which is not an artifact-submission route.
     stripped_prompt = prompt.split(
         "- `ralph_submit_md_artifact` is a Ralph Workflow MCP tool",
         maxsplit=1,
     )[0]
     assert "ralph_submit_md_artifact" not in stripped_prompt
-    assert "call_mcp_tool" not in stripped_prompt
     params.prompt_file.write_text(stripped_prompt, encoding="utf-8")
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:

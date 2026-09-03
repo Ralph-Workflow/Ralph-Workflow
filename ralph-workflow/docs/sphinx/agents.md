@@ -192,6 +192,15 @@ created a file and validated/promoted its fallback artifact before completion
 evidence was recorded. The plain-text parser remains the smoke default;
 stream-json is a separately observed CLI format. Session resume remains
 unavailable because the continuation probes did not expose session identity.
+Every headless invocation passes `--print-timeout 1h` immediately before
+`--print`: AGY's internal five-minute print deadline otherwise terminates
+long, healthy sessions around 298 s, and one hour intentionally exceeds
+Ralph Workflow's own 55-minute hard session ceiling, so Ralph Workflow
+stays the lifecycle authority. An exit-0 run that still lacks the
+completion sentinel or a required artifact receipt gets exactly one
+automatic recovery reprompt — a fresh invocation carrying the original
+task plus an explicit completion instruction; see
+[Recovery](recovery.md#agy-incomplete-exit-recovery).
 See `tmp/agy-source-of-truth.txt` for the exact observations.
 
 ### Pi

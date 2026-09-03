@@ -38,6 +38,7 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     grade_verdict,
 )
 from ralph.pipeline.plumbing.smoke_plumbing import is_mock_agy_override
+from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
@@ -221,7 +222,11 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         return scope
 
     def _load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:
-        return UnifiedConfig()
+        # The smoke command resolves its default agent from the operator's
+        # own [agent_chains]; declare one naming the interactive alias.
+        return UnifiedConfig(
+            agent_chains={"default": AgentChainConfig(agents=["claude/haiku"])}
+        )
 
     monkeypatch.setattr(smoke_module, "resolve_workspace_scope", _resolve_workspace_scope)
     monkeypatch.setattr(smoke_module, "load_config", _load_config)
@@ -410,7 +415,13 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     _attach_console(monkeypatch)
     scope = WorkspaceScope(tmp_path)
     monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
-    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+    monkeypatch.setattr(
+        smoke_module,
+        "load_config",
+        lambda *_a, **_k: UnifiedConfig(
+            agent_chains={"default": AgentChainConfig(agents=["claude/haiku"])}
+        ),
+    )
     monkeypatch.setattr(
         smoke_module,
         "submit_artifact_tool_name_for_transport",

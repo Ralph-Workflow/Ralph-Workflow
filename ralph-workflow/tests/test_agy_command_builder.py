@@ -76,6 +76,18 @@ def test_agy_command_yolo_flag_precedes_model_and_print(tmp_path: Path) -> None:
     )
 
 
+def test_agy_command_emits_print_timeout_1h_before_print_flag(tmp_path: Path) -> None:
+    # Given: an AGY agent config using the default transport spec.
+    config = AgentConfig(cmd="agy", print_flag="--print", transport=AgentTransport.AGY)
+
+    # When: the command is built.
+    cmd = build_command(config, str(_make_prompt_file(tmp_path)), options=BuildCommandOptions())
+
+    # Then: the explicit 1h print timeout appears immediately before --print.
+    print_index = cmd.index("--print")
+    assert cmd[print_index - 2 : print_index] == ["--print-timeout", "1h"]
+
+
 def test_agy_command_add_dir_present_with_workspace(tmp_path: Path) -> None:
     config = AgentConfig(cmd="agy", print_flag="--print", transport=AgentTransport.AGY)
 

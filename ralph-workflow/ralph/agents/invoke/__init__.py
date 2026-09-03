@@ -44,6 +44,7 @@ from ralph.agents.invoke._completion import (
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    AgyIncompleteExitError,
     BrokenAgentExitError,
     InactivityTimeoutOpts,
     InteractivePermissionPromptError,
@@ -817,6 +818,7 @@ __all__ = [
     "AgentInactivityTimeoutError",
     "AgentInvocationError",
     "AgentRunCtx",
+    "AgyIncompleteExitError",
     "BrokenAgentExitError",
     "BuildCommandOptions",
     "CompletionCheckOptions",

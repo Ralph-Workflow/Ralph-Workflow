@@ -305,6 +305,7 @@ def test_agy_command_builder_parity(tmp_path: Path) -> None:
     # workspace -> "--add-dir", str(tmp_path)
     # verbose -> "--verbose"
     # model -> "--model", "claude-3"
+    # print timeout -> "--print-timeout", "1h"
     # print -> "--print"
     # prompt -> "hello world"
     expected = [
@@ -319,6 +320,8 @@ def test_agy_command_builder_parity(tmp_path: Path) -> None:
         "--verbose",
         "--model",
         "claude-3",
+        "--print-timeout",
+        "1h",
         "--print",
         "hello world",
     ]

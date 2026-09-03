@@ -550,6 +550,8 @@ class TestResolveInvocationRuntimeParity:
                     "--verbose",
                     "--model",
                     "claude-3",
+                    "--print-timeout",
+                    "1h",
                     "--print",
                     "hello world",
                 ],

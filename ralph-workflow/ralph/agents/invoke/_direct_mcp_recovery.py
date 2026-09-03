@@ -94,6 +94,13 @@ def run_with_direct_mcp_recovery[T](
 ) -> T:
     current_session_id: str | None = None
     retries_used = 0
+    # One-reprompt bound (enforcement point 2 of 2) for
+    # ``AgyIncompleteExitError``: an AGY invocation gets exactly ONE
+    # automatic completion reprompt. The plan-level bound in
+    # ``build_agent_recovery_plan`` is enforcement point 1; this loop
+    # bound keeps non-pipeline callers (commit plumbing, session
+    # runtime) on the same invariant.
+    agy_incomplete_exit_reprompted = False
     while True:
         observed_session_id = current_session_id
 
@@ -108,6 +115,10 @@ def run_with_direct_mcp_recovery[T](
         except Exception as exc:
             if type(exc).__name__ == "OpenCodeResumableExitError" and not retry_resumable_exit:
                 raise
+            if type(exc).__name__ == "AgyIncompleteExitError":
+                if agy_incomplete_exit_reprompted:
+                    raise
+                agy_incomplete_exit_reprompted = True
             if reset_tool_registry is None or retries_used >= max_retries:
                 raise
             retry_plan = _retry_plan_for_exception(
@@ -135,6 +146,9 @@ def iter_with_direct_mcp_recovery(
 ) -> Iterator[str]:
     current_session_id: str | None = None
     retries_used = 0
+    # One-reprompt bound for ``AgyIncompleteExitError`` — same invariant
+    # as ``run_with_direct_mcp_recovery`` above.
+    agy_incomplete_exit_reprompted = False
     while True:
         attempt_lines: deque[str] = deque(maxlen=_MAX_RECOVERY_ATTEMPT_LINES)
         try:
@@ -158,6 +172,10 @@ def iter_with_direct_mcp_recovery(
         except Exception as exc:
             if type(exc).__name__ == "OpenCodeResumableExitError":
                 raise
+            if type(exc).__name__ == "AgyIncompleteExitError":
+                if agy_incomplete_exit_reprompted:
+                    raise _invocation_error_with_output(exc, attempt_lines) from exc
+                agy_incomplete_exit_reprompted = True
             if reset_tool_registry is None or retries_used >= max_retries:
                 raise _invocation_error_with_output(exc, attempt_lines) from exc
             exc_with_output = _invocation_error_with_output(exc, attempt_lines)
@@ -186,6 +204,15 @@ def _invocation_error_with_output(
     for line in exc.parsed_output:
         if line not in merged_lines:
             merged_lines.append(line)
+    if type(exc).__name__ == "AgyIncompleteExitError":
+        # Preserve the typed error: the one-reprompt bound and the
+        # failure classifier's typed-cause branch key on the class
+        # name, so rebuilding a plain AgentInvocationError here would
+        # silently disable the bounded AGY reprompt. Enrich in place
+        # (parsed_output is a mutable list, same as
+        # ``effect_executor._enrich_invocation_error``).
+        exc.parsed_output = merged_lines
+        return exc
     if merged_lines:
         return AgentInvocationError(
             exc.agent_name,

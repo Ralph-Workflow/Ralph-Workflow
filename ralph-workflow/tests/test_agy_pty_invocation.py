@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.agents.invoke import (
     InvokeOptions,
     _clear_session_completion_sentinel,
@@ -414,7 +415,10 @@ def test_ansi_wrapped_completion_marker_detected(
         extra_env={},
         config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
         show_progress=False,
-        policy=SimpleNamespace(process_exit_wait_seconds=0.1),
+        policy=SimpleNamespace(
+            process_exit_wait_seconds=0.1,
+            profile=TimeoutProfile.STANDARD,
+        ),
         execution_strategy=None,
         liveness_probe=None,
         waiting_listener=None,

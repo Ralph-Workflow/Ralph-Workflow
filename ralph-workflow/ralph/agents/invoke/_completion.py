@@ -24,9 +24,13 @@ from ralph.agents.idle_watchdog._circumstantial_evidence import (
     is_structurally_small_bounded_output,
 )
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
+from ralph.agents.invoke._agy_incomplete_exit_error import raise_missing_completion_evidence
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
-from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
+from ralph.agents.invoke._errors import (
+    AgentInvocationError,
+    OpenCodeResumableExitError,
+)
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
 from ralph.agents.invoke._session import (
@@ -822,12 +826,11 @@ def check_process_result(
                 if diagnostic_factory is not None
                 else None
             )
-            canonical = (
-                "agent exited without required completion evidence "
-                "(completion sentinel missing, or required artifact receipt missing)"
+            raise_missing_completion_evidence(
+                agent_name,
+                opts.execution_strategy,
+                diagnostic,
             )
-            message = f"{diagnostic}\n{canonical}" if diagnostic else canonical
-            raise AgentInvocationError(agent_name, 0, message)
 
 
 #: Canonical session-id character class, shared with the parsers in
