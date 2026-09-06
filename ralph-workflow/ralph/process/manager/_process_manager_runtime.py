@@ -62,7 +62,7 @@ def loguru_event_listener(event: ProcessEvent) -> None:
     elif new_status == ProcessStatus.EXITED:
         bound.info("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.KILLED:
-        if record.cause == "zombie_reconciled" and record.returncode == 0:
+        if record.returncode == 0:
             bound.debug("process {} {} rc={}", record.pid, new_status.name, record.returncode)
         else:
             bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)

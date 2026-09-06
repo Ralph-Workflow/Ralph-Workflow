@@ -410,6 +410,126 @@ def test_successful_zombie_reconciliation_logs_below_warning() -> None:
         logger.remove(sink_id)
 
 
+def test_regression_killed_rc_zero_any_cause_logs_below_warning() -> None:
+    """how_to_fix: user-reported process-manager WARNING on KILLED rc=0 cleanup.
+
+    A ``ProcessStatus.KILLED`` event with ``returncode == 0`` is successful
+    cleanup noise regardless of ``cause`` (e.g. ``graceful_shutdown``,
+    ``terminated_by_signal``, operator-initiated stop that exited cleanly)
+    and must NOT be logged at WARNING level. Only ``KILLED`` with a
+    non-zero or ``None`` returncode remains a genuine warning.
+    """
+    records: list[str] = []
+    sink_id = logger.add(
+        lambda msg: records.append(str(msg)),
+        level="WARNING",
+        format="{level}:{message}",
+    )
+    try:
+        for non_zero_cause in ("graceful_shutdown", "operator_terminated", None):
+            record = ProcessRecord(
+                pid=456,
+                pgid=456,
+                command=("python", "-c", "pass"),
+                cwd=None,
+                started_at=datetime.now(tz=UTC),
+                status=ProcessStatus.KILLED,
+                returncode=0,
+                cause=non_zero_cause,
+                label="test",
+            )
+            event = ProcessEvent(
+                record=record,
+                previous_status=ProcessStatus.RUNNING,
+                new_status=ProcessStatus.KILLED,
+                timestamp=datetime.now(tz=UTC),
+            )
+
+            loguru_event_listener(event)
+
+        assert records == [], (
+            "KILLED rc=0 must log below WARNING regardless of cause; "
+            f"got WARNING records: {records}"
+        )
+    finally:
+        logger.remove(sink_id)
+
+
+def test_regression_killed_nonzero_returncode_still_warns() -> None:
+    """Preserve WARNING for KILLED with non-zero/None returncode (real failure)."""
+    records: list[str] = []
+    sink_id = logger.add(
+        lambda msg: records.append(str(msg)),
+        level="WARNING",
+        format="{level}:{message}",
+    )
+    try:
+        for nonzero_rc in (-1, 1, 137):
+            record = ProcessRecord(
+                pid=789,
+                pgid=789,
+                command=("python", "-c", "pass"),
+                cwd=None,
+                started_at=datetime.now(tz=UTC),
+                status=ProcessStatus.KILLED,
+                returncode=nonzero_rc,
+                cause="graceful_shutdown",
+                label="test",
+            )
+            event = ProcessEvent(
+                record=record,
+                previous_status=ProcessStatus.RUNNING,
+                new_status=ProcessStatus.KILLED,
+                timestamp=datetime.now(tz=UTC),
+            )
+
+            loguru_event_listener(event)
+
+        assert len(records) == 3, (
+            f"KILLED with non-zero returncode must still emit WARNING; "
+            f"got {len(records)} records: {records}"
+        )
+    finally:
+        logger.remove(sink_id)
+
+
+def test_regression_killed_none_returncode_still_warns() -> None:
+    """Preserve WARNING for KILLED with returncode=None (signal kill, no rc)."""
+    records: list[str] = []
+    sink_id = logger.add(
+        lambda msg: records.append(str(msg)),
+        level="WARNING",
+        format="{level}:{message}",
+    )
+    try:
+        record = ProcessRecord(
+            pid=321,
+            pgid=321,
+            command=("python", "-c", "pass"),
+            cwd=None,
+            started_at=datetime.now(tz=UTC),
+            status=ProcessStatus.KILLED,
+            returncode=None,
+            cause="signal_killed",
+            label="test",
+        )
+        event = ProcessEvent(
+            record=record,
+            previous_status=ProcessStatus.RUNNING,
+            new_status=ProcessStatus.KILLED,
+            timestamp=datetime.now(tz=UTC),
+        )
+
+        loguru_event_listener(event)
+
+        assert len(records) == 1, (
+            f"KILLED with returncode=None must still emit WARNING; "
+            f"got {len(records)} records: {records}"
+        )
+    finally:
+        logger.remove(sink_id)
+
+
 # ---------------------------------------------------------------------------
 # 11. ManagedProcess.descendant_snapshot() excludes zombies and returns oldest age
 # ---------------------------------------------------------------------------
