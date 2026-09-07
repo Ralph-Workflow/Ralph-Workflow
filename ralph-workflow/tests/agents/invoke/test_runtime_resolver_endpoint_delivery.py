@@ -89,9 +89,7 @@ def _no_tool_discovery(endpoint: str) -> list[str]:
 @pytest.fixture(autouse=True)
 def _stub_tool_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin ``discover_http_mcp_tool_names`` to the offline stub for every case."""
-    monkeypatch.setattr(
-        "ralph.agents.invoke.discover_http_mcp_tool_names", _no_tool_discovery
-    )
+    monkeypatch.setattr("ralph.agents.invoke.discover_http_mcp_tool_names", _no_tool_discovery)
 
 
 def _make_config(transport: AgentTransport) -> AgentConfig:
@@ -104,9 +102,7 @@ def _make_config(transport: AgentTransport) -> AgentConfig:
     return AgentConfig(cmd=transport.value.lower(), transport=transport)
 
 
-def _resolve(
-    transport: AgentTransport, workspace_path: Path
-) -> ResolvedInvocationRuntime:
+def _resolve(transport: AgentTransport, workspace_path: Path) -> ResolvedInvocationRuntime:
     """Resolve ``transport``'s runtime with the shared endpoint + empty base env."""
     resolver_cls = RUNTIME_RESOLVERS[transport]
     return resolver_cls().resolve(
@@ -127,8 +123,7 @@ def _resolve(
 #: ``RUNTIME_RESOLVERS`` except ``GENERIC``, which has its own
 #: contract test.
 _DELIVERY_CHANNELS: tuple[
-    tuple[AgentTransport, tuple[str, ...], Callable[[Path], Path | None]],
-    ...
+    tuple[AgentTransport, tuple[str, ...], Callable[[Path], Path | None]], ...
 ] = (
     # claude / claude_interactive: agent_env is the only channel.
     (AgentTransport.CLAUDE, ("RALPH_MCP_ENDPOINT",), lambda _ws: None),
@@ -202,9 +197,7 @@ class TestRuntimeResolverEndpointDelivery:
         """
         table_transports = {entry[0] for entry in _DELIVERY_CHANNELS}
         registered_transports = {
-            transport
-            for transport in RUNTIME_RESOLVERS
-            if transport is not AgentTransport.GENERIC
+            transport for transport in RUNTIME_RESOLVERS if transport is not AgentTransport.GENERIC
         }
         missing = registered_transports - table_transports
         assert not missing, (
@@ -332,8 +325,7 @@ class TestRuntimeResolverEndpointDelivery:
             if file_path is None:
                 pytest.skip("no file channel for this transport")
             assert file_path.is_file(), (
-                f"transport {transport.name!r}: expected file channel "
-                f"at {file_path} does not exist"
+                f"transport {transport.name!r}: expected file channel at {file_path} does not exist"
             )
             content = file_path.read_text(encoding="utf-8")
             assert _ENDPOINT in content, (
@@ -359,9 +351,7 @@ class TestRuntimeResolverEndpointDelivery:
         try:
             codex_home = runtime.agent_env["CODEX_HOME"]
             config_toml = Path(codex_home) / "config.toml"
-            assert config_toml.is_file(), (
-                f"CODEX config.toml not written at {config_toml}"
-            )
+            assert config_toml.is_file(), f"CODEX config.toml not written at {config_toml}"
             content = config_toml.read_text(encoding="utf-8")
             assert _ENDPOINT in content, (
                 f"CODEX config.toml at {config_toml} does not contain "
@@ -371,9 +361,7 @@ class TestRuntimeResolverEndpointDelivery:
             if runtime.cleanup is not None:
                 runtime.cleanup()
 
-    def test_generic_resolver_raises_when_endpoint_supplied(
-        self, tmp_path: Path
-    ) -> None:
+    def test_generic_resolver_raises_when_endpoint_supplied(self, tmp_path: Path) -> None:
         """``DefaultRuntimeResolver`` raises ``UnsupportedMcpTransportError`` for ``GENERIC``.
 
         Mirrors the AGENTS.md "no special-casing" rule: the negative
@@ -391,9 +379,7 @@ class TestRuntimeResolverEndpointDelivery:
                 base_env={},
             )
 
-    def test_generic_resolver_succeeds_without_endpoint(
-        self, tmp_path: Path
-    ) -> None:
+    def test_generic_resolver_succeeds_without_endpoint(self, tmp_path: Path) -> None:
         """``DefaultRuntimeResolver`` returns a minimal runtime when no endpoint is supplied.
 
         The negative path is paired with a positive path so a future
@@ -408,13 +394,9 @@ class TestRuntimeResolverEndpointDelivery:
             base_env={},
         )
         assert runtime.mcp_endpoint is None
-        assert runtime.agent_env is None or "RALPH_MCP_ENDPOINT" not in (
-            runtime.agent_env or {}
-        )
+        assert runtime.agent_env is None or "RALPH_MCP_ENDPOINT" not in (runtime.agent_env or {})
 
-    def test_opencode_resolver_returns_endpoint_after_s2_fix(
-        self, tmp_path: Path
-    ) -> None:
+    def test_opencode_resolver_returns_endpoint_after_s2_fix(self, tmp_path: Path) -> None:
         """``OpencodeRuntimeResolver`` returns the endpoint after the S-2 fix.
 
         Pre-fix the OpencodeRuntimeResolver returned

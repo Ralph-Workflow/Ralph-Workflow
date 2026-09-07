@@ -62,6 +62,7 @@ class FakeProcessExecutor(ProcessExecutor):
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
+
     def __init__(self, responses: Mapping[tuple[str, tuple[str, ...]], ProcessResult]) -> None:
         self.responses = responses
         self.calls: list[tuple[str, tuple[str, ...]]] = []

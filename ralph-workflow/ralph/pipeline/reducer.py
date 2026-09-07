@@ -59,6 +59,7 @@ from ralph.pipeline.cycle_timing import (
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
+    CommitResidualEvent,
     Event,
     ExecutionResultEvent,
     PhaseFailureEvent,
@@ -304,13 +305,19 @@ def _reduce_captured_agent_failure(
 
 _EVENT_HANDLERS: dict[  # bounded-accumulator-ok: static
     PipelineEvent,
-    Callable[[PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]],
+    Callable[
+        [PipelineState, PipelinePolicy | None, RoutingTiming | None],
+        tuple[PipelineState, list[Effect]],
+    ],
 ] = {}
 
 
 def _get_event_handlers() -> dict[
     PipelineEvent,
-    Callable[[PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]],
+    Callable[
+        [PipelineState, PipelinePolicy | None, RoutingTiming | None],
+        tuple[PipelineState, list[Effect]],
+    ],
 ]:
     if not _EVENT_HANDLERS:
         _EVENT_HANDLERS.update(
@@ -374,7 +381,22 @@ def reduce(
         effect handler to execute.
     """
     reduced_event: tuple[PipelineState, list[Effect]] | None = None
-    if isinstance(event, PostFanoutVerificationEvent):
+    if event == PipelineEvent.COMMIT_RESIDUAL:
+        reduced_event = (state, [])
+    elif isinstance(event, CommitResidualEvent):
+        committed = event.committed_paths
+        remaining = event.remaining_paths
+        if (
+            not committed
+            or not remaining
+            or len(committed) != len(set(committed))
+            or len(remaining) != len(set(remaining))
+            or not set(committed).isdisjoint(remaining)
+        ):
+            reduced_event = (state, [])
+        else:
+            reduced_event = _handle_commit_residual(state, pipeline_policy, routing_timing)
+    elif isinstance(event, PostFanoutVerificationEvent):
         reduced_event = _reduce_post_fanout_verification(state, event, pipeline_policy)
     elif isinstance(event, PhaseFailureEvent):
         reduced_event = _reduce_phase_failure(
@@ -411,7 +433,9 @@ def reduce(
 
 def _ignore_policy(
     handler: Callable[[PipelineState], tuple[PipelineState, list[Effect]]],
-) -> Callable[[PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]]:
+) -> Callable[
+    [PipelineState, PipelinePolicy | None, RoutingTiming | None], tuple[PipelineState, list[Effect]]
+]:
     def wrapper(
         state: PipelineState,
         _policy: PipelinePolicy | None,
@@ -528,9 +552,7 @@ def _handle_phase_failure(
                     skip_same_agent_retries=True,
                 )
             )
-        return _handle_agent_failure(
-            state_with_error, policy=policy, routing_timing=routing_timing
-        )
+        return _handle_agent_failure(state_with_error, policy=policy, routing_timing=routing_timing)
     # Non-recoverable failures: check workflow_fallback before global failure route.
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
     if policy is not None:
@@ -586,7 +608,9 @@ def _handle_agent_success(
     if phase_def.role == "analysis":
         return _handle_analysis_success(state, policy, routing_timing)
 
-    return _resolve_or_terminal(state, "success", policy, "agent success", routing_timing=routing_timing)
+    return _resolve_or_terminal(
+        state, "success", policy, "agent success", routing_timing=routing_timing
+    )
 
 
 def redirect_expired_cycle_in_place(
@@ -603,9 +627,7 @@ def redirect_expired_cycle_in_place(
     """
     if policy is None or routing_timing is None:
         return None
-    decision = apply_cycle_timebox(
-        state, state.phase, policy=policy, routing_timing=routing_timing
-    )
+    decision = apply_cycle_timebox(state, state.phase, policy=policy, routing_timing=routing_timing)
     if not decision.redirected:
         return None
     logger.bind(component="policy.routing").warning(decision.redirect_reason)
@@ -630,9 +652,7 @@ def _retry_or_fall_over(
         if chain.retries < max_retries:
             new_chain = chain.with_retry_increment()
             new_metrics = state.metrics.with_retry_increment()
-            return state.with_phase_chain(state.phase, new_chain).copy_with(
-                metrics=new_metrics
-            ), []
+            return state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics), []
 
         if chain.current_index + 1 < len(chain.agents):
             new_chain = chain.with_advance()
@@ -925,7 +945,9 @@ def _handle_execution_result(
         post_commit_phase_override=phase_def.result_status_post_commit.get(event.status),
         last_execution_result_status=event.status,
     )
-    new_state, effects = _resolve_or_terminal(routed_state, "success", policy, "execution result", routing_timing=routing_timing)
+    new_state, effects = _resolve_or_terminal(
+        routed_state, "success", policy, "execution result", routing_timing=routing_timing
+    )
     return new_state, effects
 
 
@@ -951,11 +973,15 @@ def _handle_analysis_loopback(
             phase_def,
             review_outcome=phase_def.loop_policy.loopback_review_outcome,
             advance_to_failed=_advance_to_failed,
-            resolve_or_terminal=functools.partial(_resolve_or_terminal, routing_timing=routing_timing),
+            resolve_or_terminal=functools.partial(
+                _resolve_or_terminal, routing_timing=routing_timing
+            ),
             advance_phase=functools.partial(_advance_phase, routing_timing=routing_timing),
         )
 
-    return _resolve_or_terminal(state, "loopback", policy, "analysis loopback", routing_timing=routing_timing)
+    return _resolve_or_terminal(
+        state, "loopback", policy, "analysis loopback", routing_timing=routing_timing
+    )
 
 
 def _handle_phase_loopback(
@@ -978,11 +1004,15 @@ def _handle_phase_loopback(
             phase_def,
             review_outcome=None,
             advance_to_failed=_advance_to_failed,
-            resolve_or_terminal=functools.partial(_resolve_or_terminal, routing_timing=routing_timing),
+            resolve_or_terminal=functools.partial(
+                _resolve_or_terminal, routing_timing=routing_timing
+            ),
             advance_phase=functools.partial(_advance_phase, routing_timing=routing_timing),
         )
 
-    return _resolve_or_terminal(state, "loopback", policy, "phase loopback", routing_timing=routing_timing)
+    return _resolve_or_terminal(
+        state, "loopback", policy, "phase loopback", routing_timing=routing_timing
+    )
 
 
 def _handle_analysis_decision(
@@ -1048,7 +1078,9 @@ def _handle_analysis_decision(
                 iteration_field,
                 max_iterations=max_iter,
                 review_outcome=lp.loopback_review_outcome,
-                increment=not progress.analysis_loopback_is_already_charged(event.phase, state, policy),
+                increment=not progress.analysis_loopback_is_already_charged(
+                    event.phase, state, policy
+                ),
             )
 
     progress_state = progress.apply_budget_counter_increment(
@@ -1070,7 +1102,9 @@ def _handle_analysis_decision(
         )
         return _enter_failed_recovery(progress_state, failure_reason, policy)
 
-    advanced_state, advanced_target = _prepare_phase_advance(progress_state, route.target, policy, routing_timing=routing_timing)
+    advanced_state, advanced_target = _prepare_phase_advance(
+        progress_state, route.target, policy, routing_timing=routing_timing
+    )
     logger.bind(component="policy.routing").info(
         explain_routing_decision(event.phase, advanced_target, "decision", event.decision)
     )
@@ -1106,10 +1140,14 @@ def _handle_review_clean(
                 state.phase, next_phase, "bypass route", phase_def.clean_outcome
             )
         )
-        new_state, effects = _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
+        new_state, effects = _advance_phase(
+            state, next_phase, policy, routing_timing=routing_timing
+        )
         return new_state.copy_with(review_outcome=None), effects
 
-    new_state, effects = _resolve_or_terminal(state, "success", policy, "review clean", routing_timing=routing_timing)
+    new_state, effects = _resolve_or_terminal(
+        state, "success", policy, "review clean", routing_timing=routing_timing
+    )
     return new_state.copy_with(review_outcome=None), effects
 
 
@@ -1139,7 +1177,9 @@ def _handle_review_issues_found(
             "See docs/sphinx/concepts.md.",
             policy,
         )
-    new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found", routing_timing=routing_timing)
+    new_state, effects = _resolve_or_terminal(
+        state, "loopback", policy, "review issues found", routing_timing=routing_timing
+    )
     return new_state.copy_with(review_outcome=phase_def.issues_outcome), effects
 
 
@@ -1151,7 +1191,9 @@ def _handle_fix_success(
     """Handle successful fix."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for fix success routing", policy)
-    return _resolve_or_terminal(state, "success", policy, "fix success", routing_timing=routing_timing)
+    return _resolve_or_terminal(
+        state, "success", policy, "fix success", routing_timing=routing_timing
+    )
 
 
 def _handle_fix_failure(
@@ -1192,9 +1234,7 @@ def _handle_commit_success(
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
-        return _advance_through_invocation_gate(
-            progress_state, next_phase, policy, routing_timing
-        )
+        return _advance_through_invocation_gate(progress_state, next_phase, policy, routing_timing)
     except ValueError as exc:
         return _advance_to_failed(
             state, f"Routing error after commit success in '{state.phase}': {exc}", policy
@@ -1232,9 +1272,7 @@ def _handle_commit_skipped(
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
-        return _advance_through_invocation_gate(
-            progress_state, next_phase, policy, routing_timing
-        )
+        return _advance_through_invocation_gate(progress_state, next_phase, policy, routing_timing)
     except ValueError as exc:
         return _advance_to_failed(
             state, f"Routing error after commit skipped in '{state.phase}': {exc}", policy
@@ -1375,7 +1413,9 @@ def _handle_phase_advance(
     """Handle explicit phase advance request."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for phase advance routing", policy)
-    return _resolve_or_terminal(state, "success", policy, "phase advance", routing_timing=routing_timing)
+    return _resolve_or_terminal(
+        state, "success", policy, "phase advance", routing_timing=routing_timing
+    )
 
 
 def _prepare_phase_advance(
@@ -1391,9 +1431,7 @@ def _prepare_phase_advance(
 
     # Apply the plan-to-final-commit cycle timebox guard first so every route
     # that can enter the configured guarded phase uses one timing authority.
-    timebox = apply_cycle_timebox(
-        state, target_phase, policy=policy, routing_timing=routing_timing
-    )
+    timebox = apply_cycle_timebox(state, target_phase, policy=policy, routing_timing=routing_timing)
     if timebox.redirected and timebox.redirect_reason is not None:
         logger.bind(component="policy.routing").warning(timebox.redirect_reason)
     state = timebox.state

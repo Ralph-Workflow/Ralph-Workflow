@@ -353,18 +353,14 @@ def test_missing_capture_provenance_field_is_rejected() -> None:
     """A missing required provenance field must surface as a hard error."""
     text = _build_document(target="")
     rule_ids = _all_diagnostics(text)
-    assert any(
-        rule_id.startswith("DV") or rule_id == "SPEC010" for rule_id in rule_ids
-    )
+    assert any(rule_id.startswith("DV") or rule_id == "SPEC010" for rule_id in rule_ids)
 
 
 def test_missing_cell_ids_is_rejected() -> None:
     """An empty cell_ids list is not a valid provenance — must be rejected."""
     text = _build_document(cell_ids="")
     rule_ids = _all_diagnostics(text)
-    assert any(
-        rule_id.startswith("DV") or rule_id == "SPEC010" for rule_id in rule_ids
-    )
+    assert any(rule_id.startswith("DV") or rule_id == "SPEC010" for rule_id in rule_ids)
 
 
 def test_unknown_type_frontmatter_is_rejected() -> None:

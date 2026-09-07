@@ -242,6 +242,4 @@ def test_cli_help_for_both_claude_commands_advertise_same_subagent_options() -> 
         assert option in interactive_help.stdout, (
             f"smoke-interactive-claude --help is missing {option}"
         )
-        assert option in headless_help.stdout, (
-            f"smoke-headless-claude --help is missing {option}"
-        )
+        assert option in headless_help.stdout, f"smoke-headless-claude --help is missing {option}"

@@ -90,7 +90,9 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
 def test_planning_and_development_share_the_verification_only_procedure() -> None:
     templates = TemplateContext.default().registry
     for template_name in ("planning_analysis", "development_analysis"):
-        assert "shared/_criterion_verification_procedure.j2" in templates.get_template(template_name)
+        assert "shared/_criterion_verification_procedure.j2" in templates.get_template(
+            template_name
+        )
 
 
 def test_development_verifier_excludes_implementer_account() -> None:

@@ -131,7 +131,4 @@ def test_adr_records_the_verdict_input_boundary_as_actually_built() -> None:
     assert "rejected by typed validation at the artifact boundary" not in adr
     assert "**Verdict inputs** — `ralph.visual.design_verdict`" not in adr
     assert "no production path constructs it" in adr
-    assert (
-        "| Verdict inputs | `ralph/mcp/artifacts/markdown/specs/design_verdict.py` |"
-        in adr
-    )
+    assert "| Verdict inputs | `ralph/mcp/artifacts/markdown/specs/design_verdict.py` |" in adr

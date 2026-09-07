@@ -87,7 +87,9 @@ class TestWorkspaceContext:
         with workspace_context(target) as ctx:
             assert isinstance(ctx, WorkspaceContext)
             assert ctx.target_scope.root == target.resolve()
-            assert (ctx.target_scope.root / "PROMPT.md").read_text(encoding="utf-8") == "TARGET PROMPT"
+            assert (ctx.target_scope.root / "PROMPT.md").read_text(
+                encoding="utf-8"
+            ) == "TARGET PROMPT"
             assert ctx.config is not None
             assert ctx.policy_bundle is not None
             assert ctx.registry is not None

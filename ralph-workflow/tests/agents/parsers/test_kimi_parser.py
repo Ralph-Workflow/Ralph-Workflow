@@ -122,9 +122,7 @@ class TestKimiAssistantMessages:
 
     def test_string_content_yields_text_event(self) -> None:
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line({"role": "assistant", "content": "hello world"})))
-        )
+        results = list(parser.parse(_lines(_line({"role": "assistant", "content": "hello world"}))))
         assert len(results) == 1
         assert results[0].type == "text"
         assert results[0].content == "hello world"
@@ -368,9 +366,7 @@ class TestKimiToolMessages:
 
     def test_tool_result_without_call_id(self) -> None:
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line({"role": "tool", "content": "orphan result"})))
-        )
+        results = list(parser.parse(_lines(_line({"role": "tool", "content": "orphan result"}))))
         assert len(results) == 1
         assert results[0].type == "tool_result"
         assert results[0].metadata["tool"] == "tool_call"
@@ -391,9 +387,7 @@ class TestKimiToolMessages:
 
     def test_is_error_true_yields_error_event(self) -> None:
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line(self._tool_frame(is_error=True, content="boom"))))
-        )
+        results = list(parser.parse(_lines(_line(self._tool_frame(is_error=True, content="boom")))))
         assert len(results) == 1
         assert results[0].type == "error"
         assert results[0].content == "boom"
@@ -410,17 +404,13 @@ class TestKimiToolMessages:
 
     def test_iserror_string_false_yields_tool_result(self) -> None:
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line(self._tool_frame(isError="false"))))
-        )
+        results = list(parser.parse(_lines(_line(self._tool_frame(isError="false")))))
         assert len(results) == 1
         assert results[0].type == "tool_result"
 
     def test_error_tool_frame_with_empty_content_gets_default_text(self) -> None:
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line(self._tool_frame(is_error=True, content=""))))
-        )
+        results = list(parser.parse(_lines(_line(self._tool_frame(is_error=True, content="")))))
         assert len(results) == 1
         assert results[0].type == "error"
         assert results[0].content == "tool execution failed"
@@ -485,9 +475,7 @@ class TestKimiMetaFrames:
     def test_unknown_meta_type_degrades_observably(self) -> None:
         """A future meta type surfaces as a lifecycle line, never disappears."""
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line({"role": "meta", "type": "telemetry.counter"})))
-        )
+        results = list(parser.parse(_lines(_line({"role": "meta", "type": "telemetry.counter"}))))
         assert len(results) == 1
         assert results[0].type == "lifecycle"
         assert results[0].content == "kimi meta telemetry.counter"
@@ -506,9 +494,7 @@ class TestKimiUserAndUnknownRoles:
     def test_user_message_suppressed(self) -> None:
         """user messages are the input echo of JSON-input mode."""
         parser = KimiParser()
-        results = list(
-            parser.parse(_lines(_line({"role": "user", "content": "do the thing"})))
-        )
+        results = list(parser.parse(_lines(_line({"role": "user", "content": "do the thing"}))))
         assert results == []
 
     def test_unknown_role_passes_through(self) -> None:

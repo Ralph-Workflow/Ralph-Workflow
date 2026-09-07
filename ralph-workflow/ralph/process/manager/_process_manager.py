@@ -1055,6 +1055,12 @@ class ProcessManager:
         if first_termination_error is not None:
             raise first_termination_error
 
+    def drain_completed(self) -> None:
+        """Stop the idle reaper once all tracked processes have completed."""
+        if self.list_active():
+            return
+        self._stop_zombie_reaper()
+
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
     ) -> None:

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from git import GitCommandError
 
+from ralph.git.commit_result import CommitCreationStatus
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
     GitOperationError,
@@ -324,18 +325,46 @@ def test_create_commit() -> None:
             return FakeCommit()
 
     fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=fake_config_reader)
+    fake_repo.head = SimpleNamespace(commit=SimpleNamespace(hexsha="a" * FULL_SHA_LENGTH))
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
     try:
-        sha = create_commit(Path("/tmp/repo"), "Test commit message")
+        result = create_commit(
+            Path("/tmp/repo"), "Test commit message", expected_head="a" * FULL_SHA_LENGTH
+        )
     finally:
         monkeypatch.undo()
 
-    assert sha == "a" * FULL_SHA_LENGTH
+    assert result.status is CommitCreationStatus.CREATED
+    assert result.sha == "a" * FULL_SHA_LENGTH
     assert captured["message"] == (
         "Test commit message\n\nCo-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
     )
+
+
+def test_create_commit_expected_head_mismatch_returns_already_advanced() -> None:
+    current_head = "e" * FULL_SHA_LENGTH
+
+    class FakeIndex:
+        def commit(self, **_kwargs: object) -> object:
+            raise AssertionError("commit must not run after HEAD changed")
+
+    fake_repo = SimpleNamespace(
+        head=SimpleNamespace(commit=SimpleNamespace(hexsha=current_head)),
+        index=FakeIndex(),
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+    try:
+        result = create_commit(
+            Path("/tmp/repo"), "Test commit", expected_head="f" * FULL_SHA_LENGTH
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result.status is CommitCreationStatus.ALREADY_ADVANCED
+    assert result.sha == current_head
 
 
 @pytest.mark.subprocess_e2e
@@ -378,17 +407,20 @@ def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> Non
     fake_repo = SimpleNamespace(
         index=FakeIndex(),
         config_reader=fake_config_reader,
+        head=SimpleNamespace(commit=SimpleNamespace(hexsha="a" * FULL_SHA_LENGTH)),
         close=lambda: None,
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
     try:
-        sha = create_commit(Path("/tmp/repo"), "Test commit message")
+        result = create_commit(
+            Path("/tmp/repo"), "Test commit message", expected_head="a" * FULL_SHA_LENGTH
+        )
     finally:
         monkeypatch.undo()
 
-    assert sha == "c" * FULL_SHA_LENGTH
+    assert result.sha == "c" * FULL_SHA_LENGTH
     assert calls["count"] == 2
     assert not lock_path.exists()
 
@@ -407,22 +439,27 @@ def test_create_commit_with_author() -> None:
             captured["committer"] = committer
             return FakeCommit()
 
-    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=lambda: None)
+    fake_repo = SimpleNamespace(
+        index=FakeIndex(),
+        config_reader=lambda: None,
+        head=SimpleNamespace(commit=SimpleNamespace(hexsha="a" * FULL_SHA_LENGTH)),
+    )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
     try:
-        sha = create_commit(
+        result = create_commit(
             Path("/tmp/repo"),
             "Custom author commit",
             author_name="Custom User",
             author_email="custom@example.com",
+            expected_head="a" * FULL_SHA_LENGTH,
         )
     finally:
         monkeypatch.undo()
 
     author = captured["author"]
-    assert sha == "b" * FULL_SHA_LENGTH
+    assert result.sha == "b" * FULL_SHA_LENGTH
     assert captured["message"] == (
         "Custom author commit\n\nCo-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
     )
@@ -455,17 +492,25 @@ def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
             captured["committer"] = committer
             return FakeCommit()
 
-    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=fake_config_reader)
+    fake_repo = SimpleNamespace(
+        index=FakeIndex(),
+        config_reader=fake_config_reader,
+        head=SimpleNamespace(commit=SimpleNamespace(hexsha="a" * FULL_SHA_LENGTH)),
+    )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
     try:
-        sha = create_commit(Path("/tmp/repo"), "feat(cli): support generated commits")
+        result = create_commit(
+            Path("/tmp/repo"),
+            "feat(cli): support generated commits",
+            expected_head="a" * FULL_SHA_LENGTH,
+        )
     finally:
         monkeypatch.undo()
 
     author = captured["author"]
-    assert sha == "d" * FULL_SHA_LENGTH
+    assert result.sha == "d" * FULL_SHA_LENGTH
     assert captured["message"] == (
         "feat(cli): support generated commits\n\n"
         "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"

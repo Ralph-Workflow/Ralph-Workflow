@@ -167,7 +167,9 @@ def _build_status_styles(palette: Mapping[str, str]) -> dict[str, tuple[str, str
 
 STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(_pal_dark)
 STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(_pal_light)
-STATUS_STYLES_ON_UNKNOWN_BG: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(_pal_unknown)
+STATUS_STYLES_ON_UNKNOWN_BG: Final[dict[str, tuple[str, str, str]]] = _build_status_styles(
+    _pal_unknown
+)
 
 
 def _build_display_styles(palette: Mapping[str, str]) -> dict[str, str]:
@@ -455,17 +457,32 @@ RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
 RALPH_THEME_ON_LIGHT_BG: Final[Theme] = Theme(_THEME_STYLES_ON_LIGHT_BG)
 RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
+
 def _fresh_style(style: str) -> Style:
     """Build one style whose mutable ANSI cache cannot cross consoles."""
     tokens = style.split()
     background_index = tokens.index("on") + 1 if "on" in tokens else None
     fresh = Style(
-        color=next((token for index, token in enumerate(tokens) if token.startswith("#") and index != background_index), None), bgcolor=tokens[background_index] if background_index is not None else None,
-        bold=True if "bold" in tokens else None, dim=True if "dim" in tokens else None, italic=True if "italic" in tokens else None, underline=True if "underline" in tokens else None, reverse=True if "reverse" in tokens else None, strike=True if "strike" in tokens else None,
+        color=next(
+            (
+                token
+                for index, token in enumerate(tokens)
+                if token.startswith("#") and index != background_index
+            ),
+            None,
+        ),
+        bgcolor=tokens[background_index] if background_index is not None else None,
+        bold=True if "bold" in tokens else None,
+        dim=True if "dim" in tokens else None,
+        italic=True if "italic" in tokens else None,
+        underline=True if "underline" in tokens else None,
+        reverse=True if "reverse" in tokens else None,
+        strike=True if "strike" in tokens else None,
     )
     # Per-instance hash isolates Rich's ANSI cache; equality differs, so adjacent segments may not merge.
     fresh._hash = id(fresh)
     return fresh
+
 
 def _fresh_theme(styles: Mapping[str, str]) -> Theme:
     return Theme({name: _fresh_style(style) for name, style in styles.items()})
@@ -482,6 +499,7 @@ def theme_for_background(
     if terminal_bg_is_light is False:
         return _fresh_theme(_THEME_STYLES)
     return _fresh_theme(_THEME_STYLES_ON_UNKNOWN_BG)
+
 
 _MIN_CONTRAST_RATIO: Final[float] = 4.5
 
@@ -691,9 +709,7 @@ def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
     """
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
-    measured = query_terminal_background_hex(
-        timeout=_terminal_background_timeout_seconds(env)
-    )
+    measured = query_terminal_background_hex(timeout=_terminal_background_timeout_seconds(env))
     if measured is not None:
         return measured
 

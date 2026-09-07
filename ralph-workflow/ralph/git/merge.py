@@ -173,9 +173,7 @@ def _readable_text(path: Path) -> str | None:
     return data.decode("utf-8", errors="replace")
 
 
-def conflict_marker_sizes(
-    repo_root: Path | str, paths: Sequence[str]
-) -> dict[str, int]:
+def conflict_marker_sizes(repo_root: Path | str, paths: Sequence[str]) -> dict[str, int]:
     """Return each path's effective ``conflict-marker-size``.
 
     Asked of git, not inferred: the attribute can live in an untracked
@@ -208,6 +206,7 @@ def conflict_marker_sizes(
     except Exception as exc:  # pragma: no cover -- defensive
         logger.debug("git: could not read conflict-marker-size: {}", exc)
     return sizes
+
 
 #: :func:`merge_state` verdicts. ``MERGE_STATE_UNKNOWN`` is the
 #: fail-closed answer: git could not be asked, so "there is no merge

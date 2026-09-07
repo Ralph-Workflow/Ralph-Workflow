@@ -65,6 +65,7 @@ _PLAIN_CONFLICT = (
 
 class FakeProcessExecutor(ProcessExecutor):
     """Executor returning canned :class:`ProcessResult` values per argv."""
+
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None

@@ -202,9 +202,7 @@ def test_a_deadline_redirect_is_announced_on_the_routing_log() -> None:
             _in_cycle("development_analysis", consumed=14_400.0),
             PipelineEvent.ANALYSIS_LOOPBACK,
             _pipeline(),
-            routing_timing=RoutingTiming(
-                total_elapsed_seconds=14_400.0
-            ),
+            routing_timing=RoutingTiming(total_elapsed_seconds=14_400.0),
         )
     finally:
         logger.remove(sink_id)
@@ -259,9 +257,7 @@ def test_no_warning_is_issued_once_the_deadline_has_passed() -> None:
         _in_cycle("development", consumed=14_400.0),
         "development",
         policy=_pipeline(),
-        routing_timing=RoutingTiming(
-            total_elapsed_seconds=14_400.0
-        ),
+        routing_timing=RoutingTiming(total_elapsed_seconds=14_400.0),
     )
 
     assert warning is None

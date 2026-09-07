@@ -155,7 +155,9 @@ class TestOpenCodeDisplayFidelity:
         assert results[0].content == "task"
         assert results[1].content == "MCP error -32001: Request timed out"
 
-    def test_every_non_lifecycle_event_in_opencode_wire_fixture_produces_a_parsed_line(self) -> None:
+    def test_every_non_lifecycle_event_in_opencode_wire_fixture_produces_a_parsed_line(
+        self,
+    ) -> None:
         """Every non-lifecycle event in the captured fixture must produce
         at least one parsed ``AgentOutputLine`` -- a frame that drops
         silently is exactly the defect the parser-vs-display seam
@@ -181,6 +183,7 @@ class TestOpenCodeDisplayFidelity:
         lines = _OPENCODE_WIRE_FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
         non_lifecycle_count = 0
         import json as _json
+
         for raw in lines:
             if not raw:
                 continue
@@ -377,9 +380,7 @@ def test_captured_fixture_drives_all_three_display_surfaces() -> None:
         if line.type != "tool_use":
             continue
         meta = line.metadata or {}
-        assert "tool" in meta, (
-            f"Tool envelope missing canonical name for {line.content!r}"
-        )
+        assert "tool" in meta, f"Tool envelope missing canonical name for {line.content!r}"
         payload = payload_from_tool_event(line.content, meta)
         assert payload is not None, (
             f"payload_from_tool_event returned None for "
@@ -392,16 +393,13 @@ def test_captured_fixture_drives_all_three_display_surfaces() -> None:
     # three display surfaces (read -> file_preview, write ->
     # syntax_preview, edit -> diff_preview).
     assert "read" in operations_seen, (
-        f"Captured fixture missing read operation; saw "
-        f"{sorted(operations_seen)}"
+        f"Captured fixture missing read operation; saw {sorted(operations_seen)}"
     )
     assert "write" in operations_seen, (
-        f"Captured fixture missing write operation; saw "
-        f"{sorted(operations_seen)}"
+        f"Captured fixture missing write operation; saw {sorted(operations_seen)}"
     )
     assert "replace" in operations_seen, (
-        f"Captured fixture missing edit (replace) operation; saw "
-        f"{sorted(operations_seen)}"
+        f"Captured fixture missing edit (replace) operation; saw {sorted(operations_seen)}"
     )
 
 
@@ -420,12 +418,10 @@ def test_captured_fixture_write_envelope_has_syntax_content() -> None:
     parsed = _parse(parser, iter(fixture_lines))
 
     write_tool_uses = [
-        line for line in parsed
-        if line.type == "tool_use" and line.content == "write"
+        line for line in parsed if line.type == "tool_use" and line.content == "write"
     ]
     assert len(write_tool_uses) == 1, (
-        f"Captured fixture should produce exactly one write tool_use, "
-        f"got {len(write_tool_uses)}"
+        f"Captured fixture should produce exactly one write tool_use, got {len(write_tool_uses)}"
     )
     write_meta = write_tool_uses[0].metadata or {}
     payload = payload_from_tool_event("write", write_meta)
@@ -460,13 +456,9 @@ def test_captured_fixture_edit_envelope_has_diff_hunks() -> None:
     parser = OpenCodeParser()
     parsed = _parse(parser, iter(fixture_lines))
 
-    edit_tool_uses = [
-        line for line in parsed
-        if line.type == "tool_use" and line.content == "edit"
-    ]
+    edit_tool_uses = [line for line in parsed if line.type == "tool_use" and line.content == "edit"]
     assert len(edit_tool_uses) == 1, (
-        f"Captured fixture should produce exactly one edit tool_use, "
-        f"got {len(edit_tool_uses)}"
+        f"Captured fixture should produce exactly one edit tool_use, got {len(edit_tool_uses)}"
     )
     edit_meta = edit_tool_uses[0].metadata or {}
     payload = payload_from_tool_event("edit", edit_meta)
@@ -478,12 +470,10 @@ def test_captured_fixture_edit_envelope_has_diff_hunks() -> None:
     )
     hunk = payload.hunks[0]
     assert "this.items = [];" in hunk.old_text, (
-        f"Edit hunk old_text missing captured old string; got "
-        f"{hunk.old_text!r}"
+        f"Edit hunk old_text missing captured old string; got {hunk.old_text!r}"
     )
     assert "this.nextId = 0;" in hunk.new_text, (
-        f"Edit hunk new_text missing captured new string; got "
-        f"{hunk.new_text!r}"
+        f"Edit hunk new_text missing captured new string; got {hunk.new_text!r}"
     )
 
 
@@ -502,10 +492,7 @@ def test_captured_fixture_read_envelope_has_path() -> None:
     parser = OpenCodeParser()
     parsed = _parse(parser, iter(fixture_lines))
 
-    read_tool_uses = [
-        line for line in parsed
-        if line.type == "tool_use" and line.content == "read"
-    ]
+    read_tool_uses = [line for line in parsed if line.type == "tool_use" and line.content == "read"]
     assert len(read_tool_uses) == 2, (
         f"Captured fixture should produce 2 read tool_uses (one "
         f"errored initial read + one successful read-back), got "

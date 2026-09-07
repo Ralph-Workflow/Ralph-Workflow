@@ -59,9 +59,7 @@ def observe_conflict_identity(
     except GitOperationError as exc:
         logger.debug("auto_integrate: conflict-identity HEAD read failed: {}", exc)
         feature_sha = None
-    paths = tuple(
-        path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
-    )
+    paths = tuple(path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>")
     entries = conflict_stage_entries(root, paths)
     stage_oids = tuple(
         f"{path}:{stage}:{blob}"

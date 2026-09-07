@@ -106,7 +106,9 @@ def handle_submit_md_artifact(
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
-    diagnostics.extend(_planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps))
+    diagnostics.extend(
+        _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
+    )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
@@ -189,7 +191,9 @@ def handle_edit_md_artifact(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
     diagnostics.extend(
-        _planning_finding_target_diagnostics(session, workspace, artifact_type, outcome.content, deps)
+        _planning_finding_target_diagnostics(
+            session, workspace, artifact_type, outcome.content, deps
+        )
     )
     submitted = not any(item.severity == "error" for item in diagnostics)
     if submitted:
@@ -316,7 +320,9 @@ def handle_finalize_md_artifact(
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
-    diagnostics.extend(_planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps))
+    diagnostics.extend(
+        _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
+    )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
@@ -727,7 +733,9 @@ def _development_result_context_diagnostics(
                 )
                 continue
             diagnostics.extend(
-                _ledger_handle_diagnostics(session, workspace, session_run_id, handles_value, "DEV013")
+                _ledger_handle_diagnostics(
+                    session, workspace, session_run_id, handles_value, "DEV013"
+                )
             )
     return diagnostics
 

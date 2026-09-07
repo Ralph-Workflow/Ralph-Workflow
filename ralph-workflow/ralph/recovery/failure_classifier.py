@@ -782,11 +782,9 @@ class FailureClassifier:
         # clear ``last_agent_session_id`` -- silently dropping the
         # captured id and starting a fresh session.
         broken_agent = exc_obj is not None and type(exc_obj).__name__ == "BrokenAgentExitError"
-        base_unavailable = (
-            broken_agent
-            or (
-                category == FailureCategory.AGENT
-                and (connectivity_state or "").casefold() == "online"
+        base_unavailable = broken_agent or (
+            category == FailureCategory.AGENT
+            and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
             and (
                 (
@@ -819,7 +817,6 @@ class FailureClassifier:
                         or _is_subscription_limit_message(detail_parts)
                     )
                 )
-            )
             )
         )
         resumable_kill = (

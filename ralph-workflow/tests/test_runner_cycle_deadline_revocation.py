@@ -83,9 +83,7 @@ def _drive_step(
     def _materialize(*_args: object, **_kwargs: object) -> None:
         # Stands in for real materialization, whose only relevant effect here
         # is publishing the deadline for the invocation about to start.
-        runner_module.publish_cycle_deadline_env(
-            state, "development", _bundle(), _ELAPSED_SECONDS
-        )
+        runner_module.publish_cycle_deadline_env(state, "development", _bundle(), _ELAPSED_SECONDS)
         if raise_missing_plan_handoff:
             raise MissingPlanHandoffError("no plan handoff at .agent/PLAN.md")
 

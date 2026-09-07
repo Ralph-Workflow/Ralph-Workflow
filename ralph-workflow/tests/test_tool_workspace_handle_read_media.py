@@ -53,6 +53,7 @@ def _first_non_warning_block(blocks):
             return block
     raise AssertionError("no non-warning content block found")
 
+
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 

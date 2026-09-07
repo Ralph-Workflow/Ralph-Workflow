@@ -28,8 +28,16 @@ from typing import TYPE_CHECKING, cast
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
+
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
+
+    class _CreateCommitFn(Protocol):
+        def __call__(
+            self, repo_root: Path | str, message: str, *, expected_head: str
+        ) -> CommitCreationResult: ...
 
 
 # ``git status --porcelain`` lines start with a 2-char status code followed
@@ -141,7 +149,7 @@ def commit_scoped_updates(
     scopes: tuple[str, ...],
     subject: str,
     body_builder: Callable[[list[str]], str],
-    create_commit_fn: Callable[[Path | str, str], str],
+    create_commit_fn: _CreateCommitFn,
     stage_fn: Callable[[Path | str, list[str]], None],
     path_filter: Callable[[str], bool] | None = None,
     exclude: frozenset[str] = frozenset(),
@@ -202,7 +210,11 @@ def commit_scoped_updates(
             try:
                 stage_fn(repo_root_path, all_dirty)
                 message = f"{subject}\n\n{body_builder(all_dirty)}"
-                return create_commit_fn(repo_root_path, message)
+                expected_head = str(repo.head.commit.hexsha)
+                result = create_commit_fn(repo_root_path, message, expected_head=expected_head)
+                if result.status is not CommitCreationStatus.CREATED or result.sha is None:
+                    return None
+                return result.sha
             finally:
                 # Best-effort restore -- a broken git state MUST NOT block
                 # the pipeline. Worst case the user re-runs ``git add``.

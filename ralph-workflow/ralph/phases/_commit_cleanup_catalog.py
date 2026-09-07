@@ -219,8 +219,7 @@ def render_delete_decision_rules_markdown() -> str:
     generated_markers = ", ".join(sorted(GENERATED_TEXT_MARKERS))
     source_markers = ", ".join(f"`{marker}`" for marker in sorted(SOURCE_FILE_GENERATED_MARKERS))
     source_dirs = ", ".join(
-        f"`{directory}/`"
-        for directory in ("tmp", "temp", "generated", "artifacts")
+        f"`{directory}/`" for directory in ("tmp", "temp", "generated", "artifacts")
     )
     lockfiles = ", ".join(f"`{name}`" for name in sorted(LOCKFILE_BASENAMES))
     return (

@@ -11,16 +11,24 @@ if TYPE_CHECKING:
 
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
 _DEUTERANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7)
+    (0.625, 0.375, 0.0),
+    (0.7, 0.3, 0.0),
+    (0.0, 0.3, 0.7),
 )
 _PROTANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.567, 0.433, 0.0), (0.558, 0.442, 0.0), (0.0, 0.242, 0.758)
+    (0.567, 0.433, 0.0),
+    (0.558, 0.442, 0.0),
+    (0.0, 0.242, 0.758),
 )
 _TRITANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.95, 0.05, 0.0), (0.0, 0.433, 0.567), (0.0, 0.475, 0.525)
+    (0.95, 0.05, 0.0),
+    (0.0, 0.433, 0.567),
+    (0.0, 0.475, 0.525),
 )
 _CVD_MATRICES: Final[tuple[tuple[tuple[float, float, float], ...], ...]] = (
-    _DEUTERANOPIA_MATRIX, _PROTANOPIA_MATRIX, _TRITANOPIA_MATRIX
+    _DEUTERANOPIA_MATRIX,
+    _PROTANOPIA_MATRIX,
+    _TRITANOPIA_MATRIX,
 )
 
 
@@ -78,7 +86,9 @@ def identity_color(
         occupied_cvd = {simulate(color, matrix) for color in occupied for matrix in _CVD_MATRICES}
         for offset in range(len(palette)):
             candidate = palette[(base + offset) % len(palette)]
-            if candidate not in occupied and not ({simulate(candidate, matrix) for matrix in _CVD_MATRICES} & occupied_cvd):
+            if candidate not in occupied and not (
+                {simulate(candidate, matrix) for matrix in _CVD_MATRICES} & occupied_cvd
+            ):
                 resolved[other] = candidate
                 break
         else:
@@ -89,6 +99,8 @@ def identity_color(
     active_cvd = {simulate(color, matrix) for color in active_hexes for matrix in _CVD_MATRICES}
     for offset in range(len(palette)):
         candidate = palette[(base_slot + offset) % len(palette)]
-        if candidate not in active_hexes and not ({simulate(candidate, matrix) for matrix in _CVD_MATRICES} & active_cvd):
+        if candidate not in active_hexes and not (
+            {simulate(candidate, matrix) for matrix in _CVD_MATRICES} & active_cvd
+        ):
             return candidate
     return palette[base_slot]

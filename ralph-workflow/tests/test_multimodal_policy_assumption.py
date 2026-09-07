@@ -78,9 +78,7 @@ _DEFAULT_AGENTS_POLICY = AgentsPolicy(
         "development_analysis": AgentDrainConfig(
             chain="development_analysis", drain_class="analysis"
         ),
-        "development_commit": AgentDrainConfig(
-            chain="development_commit", drain_class="commit"
-        ),
+        "development_commit": AgentDrainConfig(chain="development_commit", drain_class="commit"),
         "review": AgentDrainConfig(chain="review", drain_class="review"),
         "review_analysis": AgentDrainConfig(chain="review_analysis", drain_class="analysis"),
         "analysis": AgentDrainConfig(chain="analysis", drain_class="analysis"),
@@ -130,9 +128,7 @@ def test_media_config_explicit_false_is_coerced_to_true() -> None:
         "commit",
     ],
 )
-def test_default_prompt_capability_grants_media_read(
-    isolated_home: Path, drain: str
-) -> None:
+def test_default_prompt_capability_grants_media_read(isolated_home: Path, drain: str) -> None:
     """Every drain's default capabilities grant ``media.read`` (criterion 1)."""
     del isolated_home
     from ralph.mcp.protocol.capability_mapping import SessionDrain
@@ -202,9 +198,7 @@ def test_media_read_capability_present_in_every_drain() -> None:
         "fix",
         "commit",
     ):
-        identifiers = default_prompt_capability_identifiers(
-            SessionDrain(drain_name)
-        )
+        identifiers = default_prompt_capability_identifiers(SessionDrain(drain_name))
         assert "media.read" in identifiers, drain_name
 
 
@@ -216,10 +210,7 @@ def test_media_read_capability_present_in_every_drain() -> None:
 def test_shipped_agent_policy_carries_multimodal_assumption_clause() -> None:
     """The shipped ``agent-policy.md`` (S-8 / criterion 4) carries the multimodal clause."""
     shipped = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "ralph-workflow-policy"
-        / "agent-policy.md"
+        Path(__file__).resolve().parents[1] / "docs" / "ralph-workflow-policy" / "agent-policy.md"
     )
     text = shipped.read_text(encoding="utf-8")
     assert "Ralph's multimodal MCP endpoints work" in text, (

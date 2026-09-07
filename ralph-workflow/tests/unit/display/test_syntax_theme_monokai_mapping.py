@@ -73,10 +73,12 @@ def _assert_matches_role(hex_val: str, role: str, *, label: str, tol: float = 15
     diff = abs(hue - anchor.hue) % 360.0
     if diff > 180.0:
         diff = 360.0 - diff
-    assert diff < tol, f"{label}: expected role {role} (hue {anchor.hue}), got hue {hue:.1f} ({hex_val})"
+    assert diff < tol, (
+        f"{label}: expected role {role} (hue {anchor.hue}), got hue {hue:.1f} ({hex_val})"
+    )
+
+
 @pytest.mark.criteria("D-1")
-
-
 def test_syntax_tokens_follow_monokai_pro_scope_convention() -> None:
     """Each Pygments token class carries the hue of the Monokai Pro scope it
     represents, not an arbitrary role. Regression coverage for

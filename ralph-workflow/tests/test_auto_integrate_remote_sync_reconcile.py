@@ -173,6 +173,7 @@ def test_rejected_push_passes_resolver_to_target_reconciliation(
     from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *_a, **_kw: REFRESH_DIVERGED)
+
     def resolver(*_args: object) -> bool:
         return True
 
@@ -180,8 +181,10 @@ def test_rejected_push_passes_resolver_to_target_reconciliation(
     monkeypatch.setattr(
         remote_reconcile,
         "reconcile_target_onto_remote",
-        lambda *_a, **kwargs: received.append(kwargs.get("rebase_stop_resolver"))
-        or remote_reconcile.ReconciliationOutcome(False, "blocked"),
+        lambda *_a, **kwargs: (
+            received.append(kwargs.get("rebase_stop_resolver"))
+            or remote_reconcile.ReconciliationOutcome(False, "blocked")
+        ),
     )
 
     reconcile_after_rejected_push(
@@ -225,8 +228,10 @@ def test_rejected_push_honors_target_reclaim_opt_out(
     monkeypatch.setattr(
         remote_reconcile,
         "reconcile_target_onto_remote",
-        lambda *_a, **kwargs: received.append(kwargs["reclaim_target_worktree"])
-        or remote_reconcile.ReconciliationOutcome(False, "blocked"),
+        lambda *_a, **kwargs: (
+            received.append(kwargs["reclaim_target_worktree"])
+            or remote_reconcile.ReconciliationOutcome(False, "blocked")
+        ),
     )
 
     result = reconcile_after_rejected_push(
@@ -248,7 +253,9 @@ def test_target_reconciliation_regression_aborts_owner_rebase_after_conflict(
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -273,7 +280,9 @@ def test_target_reconciliation_regression_abort_restores_without_destructive_res
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -300,7 +309,9 @@ def test_target_reconciliation_regression_success_cleanup_failure_is_retained(
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseSuccess())
@@ -327,14 +338,18 @@ def test_target_reconciliation_regression_success_requires_no_active_rebase(
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseSuccess())
     states = iter((True, True, True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
     aborts: list[bool] = []
-    monkeypatch.setattr(remote_reconcile, "abort_rebase_discarding_progress", lambda _root: aborts.append(True))
+    monkeypatch.setattr(
+        remote_reconcile, "abort_rebase_discarding_progress", lambda _root: aborts.append(True)
+    )
     monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a: "before")
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
 
@@ -353,7 +368,9 @@ def test_target_reconciliation_regression_clear_record_failure_is_retained(
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -382,7 +399,9 @@ def test_target_reconciliation_regression_record_write_failure_is_deferred(
     """S-2: reconciliation refuses to mutate when recovery ownership cannot persist."""
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(
         remote_reconcile,
@@ -408,7 +427,9 @@ def test_target_reconciliation_regression_precondition_probe_failure_is_deferred
 ) -> None:
     """S-2: an unobservable target owner becomes a retryable result, never an exception."""
     monkeypatch.setattr(remote_reconcile, "find_main_worktree_root", lambda *_args: Path("/main"))
-    monkeypatch.setattr(remote_reconcile, "worktree_lookup", lambda *_args: ("found", Path("/owner")))
+    monkeypatch.setattr(
+        remote_reconcile, "worktree_lookup", lambda *_args: ("found", Path("/owner"))
+    )
     monkeypatch.setattr(
         remote_reconcile,
         "is_repo_clean",
@@ -445,7 +466,9 @@ def test_target_reconciliation_regression_retains_record_when_abort_cannot_resto
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -472,7 +495,9 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -484,8 +509,9 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
     monkeypatch.setattr(
         remote_reconcile,
         "resolve_rebase_in_progress",
-        lambda _root, _target, resolver, *, session: sessions.append(session)
-        or resolver(_root, _target, object()),
+        lambda _root, _target, resolver, *, session: (
+            sessions.append(session) or resolver(_root, _target, object())
+        ),
     )
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
 
@@ -511,7 +537,9 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -547,7 +575,9 @@ def test_target_reconciliation_regression_resolver_success_requires_finished_reb
 
     owner = Path("/target-owner")
     monkeypatch.setattr(
-        remote_reconcile, "_reconciliation_preconditions", lambda *_a, **_kw: (owner, "before", None)
+        remote_reconcile,
+        "_reconciliation_preconditions",
+        lambda *_a, **_kw: (owner, "before", None),
     )
     monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
     monkeypatch.setattr(
@@ -642,9 +672,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         (agent_dir / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
 
     @staticmethod
-    def _install_workspace_seams(
-        monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path
-    ) -> None:
+    def _install_workspace_seams(monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path) -> None:
         """Mock git ops so each workspace resolves to its own root."""
 
         canonical = {p.resolve(): p.resolve() for p in workspace_roots}
@@ -704,7 +732,9 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             observations["prompt_bytes"] = (workspace_scope.root / "PROMPT.md").read_bytes()
             return True
 
-        monkeypatch.setattr(resolver_module, "run_rebase_conflict_resolution_pipeline", _record_pipeline)
+        monkeypatch.setattr(
+            resolver_module, "run_rebase_conflict_resolution_pipeline", _record_pipeline
+        )
 
         # Drive the shared resolver with a target that is NOT the calling
         # worktree's root. The integration step passes the main-owner

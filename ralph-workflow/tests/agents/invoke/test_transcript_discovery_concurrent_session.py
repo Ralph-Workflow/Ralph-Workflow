@@ -52,9 +52,7 @@ def test_pty_line_reader_snapshots_pre_existing_transcript_names(
     project_root = tmp_path / ".claude" / "projects" / project_dir_name
     project_root.mkdir(parents=True)
     (project_root / "orchestrator-session.jsonl").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_transcript.Path.home", lambda: tmp_path
-    )
+    monkeypatch.setattr("ralph.agents.invoke._pty_transcript.Path.home", lambda: tmp_path)
 
     master_fd = os.open("/dev/null", os.O_RDONLY)
     try:
@@ -66,9 +64,7 @@ def test_pty_line_reader_snapshots_pre_existing_transcript_names(
             FakeClock(start=0.0),
             extras=None,
         )
-        assert reader._pre_existing_transcript_names == frozenset(
-            {"orchestrator-session.jsonl"}
-        )
+        assert reader._pre_existing_transcript_names == frozenset({"orchestrator-session.jsonl"})
     finally:
         os.close(master_fd)
 
@@ -112,9 +108,7 @@ def test_transcript_discovery_end_to_end_prefers_the_new_child_over_a_live_sibli
     sibling = project_root / "sibling-session.jsonl"
     sibling.write_text("{}\n", encoding="utf-8")
     os.utime(sibling, (10.0, 10.0))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_transcript.Path.home", lambda: tmp_path
-    )
+    monkeypatch.setattr("ralph.agents.invoke._pty_transcript.Path.home", lambda: tmp_path)
 
     master_fd = os.open("/dev/null", os.O_RDONLY)
     try:
@@ -168,9 +162,7 @@ def test_pty_line_reader_prefers_extras_snapshot_over_live_snapshot(
     # the child had already been spawned and written its first line)
     # but was NOT part of the caller's pre-spawn snapshot.
     (project_root / "child-session.jsonl").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_transcript.Path.home", lambda: tmp_path
-    )
+    monkeypatch.setattr("ralph.agents.invoke._pty_transcript.Path.home", lambda: tmp_path)
 
     master_fd = os.open("/dev/null", os.O_RDONLY)
     try:

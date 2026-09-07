@@ -99,6 +99,7 @@ class _DuplicateBaselineError(_BaselineError):
 class _BaselineStorageError(_BaselineError):
     """Raised when the baseline manifest cannot be persisted or loaded safely."""
 
+
 # ---------------------------------------------------------------------------
 # Typed structures
 # ---------------------------------------------------------------------------
@@ -166,9 +167,7 @@ class _RetainedBaselineCell:
     @classmethod
     def from_dict(cls, payload: object) -> RetainedBaselineCell:
         if not isinstance(payload, dict):
-            raise BaselineStorageError(
-                f"cell entry must be a dict, got {type(payload).__name__}"
-            )
+            raise BaselineStorageError(f"cell entry must be a dict, got {type(payload).__name__}")
         required = (
             "target",
             "viewport_name",
@@ -180,9 +179,7 @@ class _RetainedBaselineCell:
         )
         for key in required:
             if key not in payload:
-                raise BaselineStorageError(
-                    f"cell entry missing required field {key!r}"
-                )
+                raise BaselineStorageError(f"cell entry missing required field {key!r}")
         target = payload["target"]
         viewport_name = payload["viewport_name"]
         viewport_width = payload["viewport_width"]
@@ -282,9 +279,7 @@ class _RetainedBaselineEntry:
         )
         for key in required:
             if key not in payload:
-                raise BaselineStorageError(
-                    f"baseline entry missing required field {key!r}"
-                )
+                raise BaselineStorageError(f"baseline entry missing required field {key!r}")
         artifact_id = payload["artifact_id"]
         target = payload["target"]
         matrix_key = payload["matrix_key"]
@@ -303,9 +298,7 @@ class _RetainedBaselineEntry:
             raise BaselineStorageError("capture_run_id must be a non-empty string")
         if not isinstance(cycle_id, str) or not cycle_id:
             raise BaselineStorageError("cycle_id must be a non-empty string")
-        if not isinstance(captured_at_unix, (int, float)) or isinstance(
-            captured_at_unix, bool
-        ):
+        if not isinstance(captured_at_unix, (int, float)) or isinstance(captured_at_unix, bool):
             raise BaselineStorageError("captured_at_unix must be a number")
         if not isinstance(cells, list):
             raise BaselineStorageError("cells must be a list")
@@ -525,12 +518,16 @@ class CaptureLifecycle:
         set's cell coverage.
         """
         capture_set = self._validate_capture_set_against_matrix(
-            capture_set=capture_set, target=target, matrix_key=matrix_key,
+            capture_set=capture_set,
+            target=target,
+            matrix_key=matrix_key,
         )
 
         manifest = self._load_manifest()
         existing = manifest.find(
-            cycle_id=self._cycle_id, target=target, matrix_key=matrix_key,
+            cycle_id=self._cycle_id,
+            target=target,
+            matrix_key=matrix_key,
         )
         if existing is not None:
             raise DuplicateBaselineError(target=target, matrix_key=matrix_key)
@@ -574,7 +571,9 @@ class CaptureLifecycle:
         self._validate_lookup_keys(target=target, matrix_key=matrix_key)
         manifest = self._load_manifest()
         entry = manifest.find(
-            cycle_id=self._cycle_id, target=target, matrix_key=matrix_key,
+            cycle_id=self._cycle_id,
+            target=target,
+            matrix_key=matrix_key,
         )
         if entry is None:
             return None
@@ -615,9 +614,7 @@ class CaptureLifecycle:
         try:
             raw = path.read_text(encoding="utf-8")
         except OSError as exc:
-            raise BaselineStorageError(
-                f"failed to read baseline manifest {path}: {exc}"
-            ) from exc
+            raise BaselineStorageError(f"failed to read baseline manifest {path}: {exc}") from exc
         try:
             payload: object = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -681,8 +678,7 @@ class CaptureLifecycle:
         self._validate_lookup_keys(target=target, matrix_key=matrix_key)
         if not isinstance(capture_set, CaptureSet):
             raise BaselineStorageError(
-                "capture_before_set requires a CaptureSet, got "
-                f"{type(capture_set).__name__}"
+                f"capture_before_set requires a CaptureSet, got {type(capture_set).__name__}"
             )
         if capture_set.target != target:
             raise BaselineStorageError(

@@ -115,7 +115,6 @@ def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
     return transport in _INTERACTIVE_PTY_TRANSPORTS
 
 
-
 def detect_raw_log_breaks(
     raw_path: Path, *, transport: AgentTransport | None = None
 ) -> list[RawLogBreak]:

@@ -237,9 +237,7 @@ def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
                         end_line=child.end_lineno or child.lineno,
                     )
                     for child in node.body
-                    if isinstance(
-                        child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-                    )
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
                 )
     return spans
 
@@ -263,9 +261,7 @@ def _resolve_site(rel_path: str, line: int, package_root: Path) -> str:
     except (OSError, SyntaxError, ValueError):
         return f"{rel_path}:<module>"
     candidates = [
-        span
-        for span in _module_symbols(tree)
-        if span.start_line <= line <= span.end_line
+        span for span in _module_symbols(tree) if span.start_line <= line <= span.end_line
     ]
     if not candidates:
         return f"{rel_path}:<module>"
@@ -405,17 +401,12 @@ def _validate_owner_entries(
                 WorkspaceResourceInventoryViolation(
                     kind="missing_field",
                     site=site,
-                    message=(
-                        "workspace_owners entry requires a non-empty "
-                        "'responsibilities' list"
-                    ),
+                    message=("workspace_owners entry requires a non-empty 'responsibilities' list"),
                 )
             )
         elif isinstance(responsibilities, list):
             invalid = [
-                str(item)
-                for item in responsibilities
-                if str(item) not in _OWNER_RESPONSIBILITIES
+                str(item) for item in responsibilities if str(item) not in _OWNER_RESPONSIBILITIES
             ]
             if invalid:
                 violations.append(
@@ -446,10 +437,7 @@ def _validate_required_string_fields(
                 WorkspaceResourceInventoryViolation(
                     kind="missing_field",
                     site=site or f"<{section_label}>",
-                    message=(
-                        f"{section_label} entry requires a non-empty string "
-                        f"field {field!r}"
-                    ),
+                    message=(f"{section_label} entry requires a non-empty string field {field!r}"),
                 )
             )
     return violations
@@ -473,18 +461,14 @@ def _validate_watch_entries(
             continue
         site = str(entry.get("site", ""))
         violations.extend(
-            _validate_required_string_fields(
-                entry, _REQUIRED_WATCH_FIELDS, site, "watch_consumers"
-            )
+            _validate_required_string_fields(entry, _REQUIRED_WATCH_FIELDS, site, "watch_consumers")
         )
         if site and site in seen_sites:
             violations.append(
                 WorkspaceResourceInventoryViolation(
                     kind="duplicate_site",
                     site=site,
-                    message=(
-                        "duplicate 'site' key within watch_consumers; merge the entries"
-                    ),
+                    message=("duplicate 'site' key within watch_consumers; merge the entries"),
                 )
             )
         if site:
@@ -532,9 +516,7 @@ def _validate_storage_entries(
                 WorkspaceResourceInventoryViolation(
                     kind="duplicate_site",
                     site=site,
-                    message=(
-                        "duplicate 'site' key within storage_classes; merge the entries"
-                    ),
+                    message=("duplicate 'site' key within storage_classes; merge the entries"),
                 )
             )
         if site:
@@ -653,10 +635,7 @@ def _load_inventory(
             WorkspaceResourceInventoryViolation(
                 kind="invalid_inventory_root",
                 site=str(json_path),
-                message=(
-                    "inventory JSON root must be an object with the three "
-                    "top-level arrays"
-                ),
+                message=("inventory JSON root must be an object with the three top-level arrays"),
             )
         ]
     return parsed, []

@@ -27,7 +27,13 @@ _VERIFICATION_TYPES = frozenset(_ANALYSIS_TYPES) - {"review_analysis_decision"}
 _STATUSES = ("completed", "request_changes", "failed")
 _FINDING_TARGET_PATTERN = re.compile(r"(?:Step:\s*)?\[(S-[1-9][0-9]*)\]|Plan-level:", re.IGNORECASE)
 _STEP_REFERENCE_PATTERN = re.compile(r"Step:\s*\[(S-[1-9][0-9]*)\]")
-_REQUIRED_VERDICT_FIELDS = ("Criterion:", "Expected observation:", "Verdict:", "Evidence:", "Location:")
+_REQUIRED_VERDICT_FIELDS = (
+    "Criterion:",
+    "Expected observation:",
+    "Verdict:",
+    "Evidence:",
+    "Location:",
+)
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
 
 
@@ -38,6 +44,8 @@ def _extract_verdict(text: str) -> str | None:
         return None
     value = match.group(1)
     return value.casefold() if isinstance(value, str) else None
+
+
 _EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
 _LOCATION_PATTERN = re.compile(r"Location:\s*(.*?)\s*$", re.IGNORECASE)
 _REMAINING_WORK_PATTERN = re.compile(r"Remaining work:\s*(.+)", re.IGNORECASE)
@@ -167,7 +175,9 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                 )
             )
         location_match = _LOCATION_PATTERN.search(item.text)
-        location = "" if location_match is None else str(location_match.group(1)).strip().rstrip(".")
+        location = (
+            "" if location_match is None else str(location_match.group(1)).strip().rstrip(".")
+        )
         if not location:
             diagnostics.append(
                 _validation_diagnostic(
@@ -396,7 +406,8 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
             if v_item.identifier in shortfall_item_by_id
             and _extract_verdict(v_item.text) is not None
             and _extract_verdict(shortfall_item_by_id[v_item.identifier].text) is not None
-            and _extract_verdict(v_item.text) != _extract_verdict(shortfall_item_by_id[v_item.identifier].text)
+            and _extract_verdict(v_item.text)
+            != _extract_verdict(shortfall_item_by_id[v_item.identifier].text)
         )
         if artifact_type == "development_analysis_decision" and status == "request_changes":
             diagnostics.extend(_validate_request_changes_predicate(what_items))
@@ -407,12 +418,22 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
     what_ids = {item.identifier for item in what_items}
     fix_ids = {item.identifier for item in fix_items}
     diagnostics.extend(
-        _validation_diagnostic(item.line, "What Came Up Short", "ANALYSIS003", "What Came Up Short item has no matching How To Fix item")
+        _validation_diagnostic(
+            item.line,
+            "What Came Up Short",
+            "ANALYSIS003",
+            "What Came Up Short item has no matching How To Fix item",
+        )
         for item in what_items
         if item.identifier not in fix_ids
     )
     diagnostics.extend(
-        _validation_diagnostic(item.line, "How To Fix", "ANALYSIS003", "How To Fix item has no matching What Came Up Short item")
+        _validation_diagnostic(
+            item.line,
+            "How To Fix",
+            "ANALYSIS003",
+            "How To Fix item has no matching What Came Up Short item",
+        )
         for item in fix_items
         if item.identifier not in what_ids
     )

@@ -679,9 +679,15 @@ def _assert_two_scoped_commits(repo_root: Path, new_reflog_shas: set[str]) -> No
     try:
         second_commit = repo.head.commit
         first_commit = second_commit.parents[0]
-        assert (first_commit.tree / FIRST_COMMIT_SCOPE).data_stream.read().decode() == "updated first scope\n"
-        assert (first_commit.tree / SECOND_COMMIT_SCOPE).data_stream.read().decode() == "initial second scope\n"
-        assert (second_commit.tree / SECOND_COMMIT_SCOPE).data_stream.read().decode() == "updated second scope\n"
+        assert (
+            first_commit.tree / FIRST_COMMIT_SCOPE
+        ).data_stream.read().decode() == "updated first scope\n"
+        assert (
+            first_commit.tree / SECOND_COMMIT_SCOPE
+        ).data_stream.read().decode() == "initial second scope\n"
+        assert (
+            second_commit.tree / SECOND_COMMIT_SCOPE
+        ).data_stream.read().decode() == "updated second scope\n"
     finally:
         repo.close()
 

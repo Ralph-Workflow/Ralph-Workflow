@@ -57,9 +57,7 @@ def _fresh_state() -> PipelineState:
     return PipelineState(
         phase="development_commit",
         phase_chains={
-            "development_commit": AgentChainState(
-                agents=["claude"], current_index=0, retries=0
-            )
+            "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0)
         },
     )
 
@@ -110,9 +108,7 @@ def test_ambiguous_failure_loop_is_bounded_by_the_cycle_cap() -> None:
 
     rounds, _, effects = _drive_until_exit(failure)
 
-    assert effects, (
-        "an ambiguous failure re-entered its phase forever; the cycle cap never fired"
-    )
+    assert effects, "an ambiguous failure re-entered its phase forever; the cycle cap never fired"
     assert rounds == _CAP
     exits = [item for item in effects if isinstance(item, ExitFailureEffect)]
     assert exits, "the bounded loop must terminate with an ExitFailureEffect"

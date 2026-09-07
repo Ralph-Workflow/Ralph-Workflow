@@ -182,7 +182,8 @@ def test_vision_verdict_agent_is_NOT_provided_when_no_design_system_policy() -> 
     # the unconditional registration path.
     registry = AgentRegistry(catalog=catalog)
     registry_provisioned = registry.provision_vision_verdict_agent(
-        workspace=workspace, stack=stack,
+        workspace=workspace,
+        stack=stack,
     )
     assert registry_provisioned is False, (
         "AgentRegistry.provision_vision_verdict_agent must return False when the design-system policy is absent"
@@ -200,7 +201,9 @@ def test_vision_verdict_agent_is_NOT_provided_when_no_design_system_policy() -> 
     ) as predicate:
         catalog2 = AgentCatalog()
         registered2 = provision_vision_verdict_agent(
-            catalog2, workspace=workspace, stack=stack,
+            catalog2,
+            workspace=workspace,
+            stack=stack,
         )
         assert registered2 is False
         assert predicate.called, (
@@ -220,7 +223,9 @@ def test_vision_verdict_agent_is_NOT_provided_when_no_design_system_policy() -> 
     ):
         catalog3 = AgentCatalog()
         registered3 = provision_vision_verdict_agent(
-            catalog3, workspace=workspace, stack=stack,
+            catalog3,
+            workspace=workspace,
+            stack=stack,
         )
         assert registered3 is True
         assert catalog3.get(VISION_VERDICT_AGENT_NAME) is not None

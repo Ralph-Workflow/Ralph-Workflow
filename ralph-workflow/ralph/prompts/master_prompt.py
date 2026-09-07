@@ -29,9 +29,7 @@ def _write_master_prompt_file(
         master_prompt_path,
         content,
         encoding="utf-8",
-        prepare_write=lambda: backend.mkdir(
-            master_prompt_path.parent, parents=True, exist_ok=True
-        ),
+        prepare_write=lambda: backend.mkdir(master_prompt_path.parent, parents=True, exist_ok=True),
     )
 
 

@@ -369,6 +369,5 @@ def test_every_audit_module_is_wired_into_verify_steps() -> None:
         f"wire them into _VERIFY_STEPS or delete them: {sorted(on_disk - wired)}"
     )
     assert wired - on_disk == set(), (
-        "_VERIFY_STEPS runs audit modules that no longer exist on disk: "
-        f"{sorted(wired - on_disk)}"
+        f"_VERIFY_STEPS runs audit modules that no longer exist on disk: {sorted(wired - on_disk)}"
     )

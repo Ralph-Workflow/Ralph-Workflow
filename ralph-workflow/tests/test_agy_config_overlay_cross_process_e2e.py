@@ -172,9 +172,7 @@ def test_independent_processes_serialize_and_restore_byte_exact(tmp_path: Path) 
         _wait_staged(holder)
 
         # B starts while A holds the lock; it must block, then proceed.
-        waiter = _run_child(
-            primary, secondary, hold_seconds=0.0, timeout_seconds=10.0
-        )
+        waiter = _run_child(primary, secondary, hold_seconds=0.0, timeout_seconds=10.0)
         assert waiter.returncode == 0, waiter.stderr
         assert "STAGED" in waiter.stdout
         assert "DONE" in waiter.stdout
@@ -201,9 +199,7 @@ def test_lock_timeout_fails_closed_and_preserves_configs(tmp_path: Path) -> None
 
         # B's timeout (0.5s) is far shorter than A's hold (3s): B must
         # fail closed with the lock-timeout signal, not race A.
-        waiter = _run_child(
-            primary, secondary, hold_seconds=0.0, timeout_seconds=0.5
-        )
+        waiter = _run_child(primary, secondary, hold_seconds=0.0, timeout_seconds=0.5)
         assert waiter.returncode == 3, (waiter.returncode, waiter.stdout, waiter.stderr)
         assert "LOCK_TIMEOUT" in waiter.stdout
         # B never staged its own endpoint over A's active overlay.

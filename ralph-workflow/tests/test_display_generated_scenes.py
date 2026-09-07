@@ -87,9 +87,9 @@ def test_generated_scene_support_matrix_declares_all_dimensions() -> None:
     assert {case.width for case in matrix} == {40, 80, 120}
     assert {case.destination for case in matrix} == {"tty", "redirect", "ci"}
     assert len(matrix) == 162
+
+
 @pytest.mark.criteria("B-6")
-
-
 def test_generated_scene_context_no_color_wins_over_forced_ci_capture() -> None:
     stream = StringIO()
     context = make_display_context(
@@ -201,20 +201,25 @@ def test_generated_scene_colours_every_named_semantic_category() -> None:
     error_esc = _rgb_escape(pick_status_styles(None)["error"][0])
     warning_esc = _rgb_escape(pick_status_styles(None)["warning"][0])
 
-
     cases = (
         ("first_screen", (("SCENE first_screen", meta_esc),)),
-        ("clean_run", (
-            ("implemented Unicode-safe output", agent_esc),
-            ("waiting for an external review response", agent_esc),
-        )),
-        ("burst", (
-            ("edit_file path=café-00.py", running_esc),
-            ("edit_file complete", success_esc),
-            ("output condensed count=24 bytes=768", elision_esc),
-            ("-", diff_rem_esc),
-            ("+", diff_add_esc),
-        )),
+        (
+            "clean_run",
+            (
+                ("implemented Unicode-safe output", agent_esc),
+                ("waiting for an external review response", agent_esc),
+            ),
+        ),
+        (
+            "burst",
+            (
+                ("edit_file path=café-00.py", running_esc),
+                ("edit_file complete", success_esc),
+                ("output condensed count=24 bytes=768", elision_esc),
+                ("-", diff_rem_esc),
+                ("+", diff_add_esc),
+            ),
+        ),
         ("failure", (("tests failed", error_esc),)),
         ("idle_stretch", (("WAITING", warning_esc),)),
     )
@@ -233,7 +238,6 @@ def test_generated_scene_colours_every_named_semantic_category() -> None:
                 rf"{sgr}{foreground}m(?:[^\x1b]*?){re.escape(carrier)}",
                 rendered,
             ), carrier
-
 
 
 def test_generated_scene_named_category_keeps_foreground_in_reduced_colour() -> None:
@@ -261,9 +265,7 @@ def test_generated_scene_named_category_keeps_foreground_in_reduced_colour() -> 
         rf"\x1b\[(38;5;\d+)m[^\x1b]*{re.escape(carrier)}",
         rendered,
     )
-    assert elision_match is not None, (
-        "reduced-colour scene lost its foreground on the elision body"
-    )
+    assert elision_match is not None, "reduced-colour scene lost its foreground on the elision body"
     assert elision_match.group(1).startswith("38;5;"), elision_match.group(1)
 
 
@@ -276,9 +278,7 @@ def test_generated_scene_named_category_loses_foreground_when_stripped() -> None
     )
 
     # Production: every named category emits a 256-colour foreground.
-    elision_match = re.search(
-        r"\x1b\[(38;5;\d+)m[^\x1b]*output condensed count=", rendered
-    )
+    elision_match = re.search(r"\x1b\[(38;5;\d+)m[^\x1b]*output condensed count=", rendered)
     assert elision_match is not None
     production_escape = elision_match.group(1)
 
@@ -323,9 +323,9 @@ def test_generated_scene_opening_capabilities_and_closing_success_use_semantic_c
             SupportCase("dark", "truecolour", "unicode", 80, destination),
             terminal_bg_is_light=False,
         )
-        assert re.search(
-            rf"\x1b\[1;{success_esc}mOK — always available", captured_opening
-        ), destination
+        assert re.search(rf"\x1b\[1;{success_esc}mOK — always available", captured_opening), (
+            destination
+        )
 
 
 def test_generated_scene_colours_primary_agent_content_and_waiting_state() -> None:
@@ -358,7 +358,6 @@ def test_generated_scene_elision_body_uses_its_named_semantic_colour() -> None:
     assert re.search(rf"\x1b\[{elision_esc}moutput condensed count=24 bytes=768", rendered)
 
 
-
 def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -> None:
     """S-2/S-5 regression: graceful degradation keeps the activity carrier visible."""
     rendered = render_scene(
@@ -372,7 +371,9 @@ def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -
     assert all(cell_len(line) <= GRACEFUL_WIDTH_FLOOR for line in rendered.splitlines())
 
 
-def test_generated_scene_streaming_rows_repeat_their_greppable_carrier_at_the_40_column_floor() -> None:
+def test_generated_scene_streaming_rows_repeat_their_greppable_carrier_at_the_40_column_floor() -> (
+    None
+):
     """S-5 regression: folded stream closes retain their category and unit on every row."""
     rendered = render_scene(
         "clean_run",
@@ -514,21 +515,13 @@ def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_e
 def test_generated_scene_catalog_names_non_emitter_production_seams() -> None:
     """S-1 regression: non-``emit_*`` surfaces cannot become unowned metadata."""
     catalog = {surface.name: surface for surface in SURFACE_CATALOG}
-    assert catalog["tool_call"].production_entry_points == (
-        "ParallelDisplay.emit_activity_line",
-    )
-    assert catalog["tool_result"].production_entry_points == (
-        "ParallelDisplay.emit_activity_line",
-    )
-    assert catalog["tool_error"].production_entry_points == (
-        "ParallelDisplay.emit_activity_line",
-    )
+    assert catalog["tool_call"].production_entry_points == ("ParallelDisplay.emit_activity_line",)
+    assert catalog["tool_result"].production_entry_points == ("ParallelDisplay.emit_activity_line",)
+    assert catalog["tool_error"].production_entry_points == ("ParallelDisplay.emit_activity_line",)
     assert catalog["syntax_preview"].production_entry_points == ("build_edit_preview",)
     assert catalog["diff_preview"].production_entry_points == ("build_edit_preview",)
     assert catalog["elision"].production_entry_points == ("condense_content",)
-    assert catalog["status_bar"].production_entry_points == (
-        "ParallelDisplay.update_status_bar",
-    )
+    assert catalog["status_bar"].production_entry_points == ("ParallelDisplay.update_status_bar",)
 
 
 def test_generated_scene_catalog_production_entry_points_resolve_to_real_owners() -> None:
@@ -763,7 +756,13 @@ def test_generated_scene_salience_decisions_never_exceed_the_depth_budget(
     decisions = scene_salience_decisions(
         scene_name, case, terminal_bg_is_light=case.terminal_background_is_light
     )
-    depth = "truecolor" if case.colour == "truecolour" else "256" if case.colour == "reduced" else "none"
+    depth = (
+        "truecolor"
+        if case.colour == "truecolour"
+        else "256"
+        if case.colour == "reduced"
+        else "none"
+    )
     budget = ACCENT_BUDGET_BY_DEPTH[depth]
     frames: dict[int, list[object]] = {}
     for decision in decisions:
@@ -819,9 +818,9 @@ _E3_ROUTINE_ACCENT_CEILING: dict[str, int] = {
     "idle_stretch": 2,
     "closing_screen": 1,
 }
+
+
 @pytest.mark.criteria("E-3")
-
-
 def test_generated_scene_routine_output_never_exceeds_the_e3_accent_ceiling() -> None:
     """PLAN.md S-3 / G-10: "a frame of routine output lights no more than
     the stated tier-3/4 accent count" is a *distinct* assertion from G-8's
@@ -890,7 +889,9 @@ def test_generated_scene_replay_of_an_identical_event_sequence_is_byte_identical
         assert first_decisions == second_decisions, scene_name
 
 
-def test_generated_scene_no_role_oscillates_between_lit_and_demoted_without_a_state_change() -> None:
+def test_generated_scene_no_role_oscillates_between_lit_and_demoted_without_a_state_change() -> (
+    None
+):
     """G-7: within one scene's decision sequence, a role that repeats without
     an intervening state change must never flip from demoted back to lit --
     demotion is one-way until a real transition (see ``SalienceAllocator``'s
@@ -981,4 +982,3 @@ def test_generated_scene_idle_stretch_decisions_never_empty() -> None:
     decisions = scene_salience_decisions("idle_stretch", case, terminal_bg_is_light=False)
     assert decisions, "idle_stretch must bid at least one salience frame"
     assert len({d.frame_index for d in decisions}) > 0
-

@@ -58,6 +58,15 @@ from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+    from typing import Protocol
+
+    from ralph.git.commit_result import CommitCreationResult
+
+    class _CreateCommitFn(Protocol):
+        def __call__(
+            self, repo_root: Path | str, message: str, *, expected_head: str
+        ) -> CommitCreationResult: ...
+
 
 # The deterministic conventional-commit subject line. Pinned by
 # ralph.testing.audit_skill_auto_commit.
@@ -107,7 +116,7 @@ def _build_body(dirty_paths: list[str]) -> str:
 
 def commit_skill_updates(
     repo_root: Path | str,
-    create_commit_fn: Callable[[Path | str, str], str],
+    create_commit_fn: _CreateCommitFn,
     *,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
 ) -> str | None:

@@ -78,8 +78,7 @@ def test_no_payload_field_reaches_a_rendered_string() -> None:
     vocabulary_fields = [
         rendered
         for rendered in _every_rendered_string(profile)
-        if rendered != (profile.identity.model_id or "")
-        and "model_id" not in rendered
+        if rendered != (profile.identity.model_id or "") and "model_id" not in rendered
     ]
     for rendered in vocabulary_fields:
         assert "ignore previous instructions" not in rendered, rendered

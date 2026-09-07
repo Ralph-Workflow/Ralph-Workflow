@@ -159,7 +159,12 @@ def test_probe_restores_terminal_mode_in_finally_even_when_the_exchange_raises(
     assert attempted is True
     assert result is None
     assert fake_tty.calls == [(17, fake_termios.TCSANOW)]
-    assert ("tcsetattr", 17, fake_termios.TCSADRAIN, fake_termios.original_attrs) in fake_termios.calls
+    assert (
+        "tcsetattr",
+        17,
+        fake_termios.TCSADRAIN,
+        fake_termios.original_attrs,
+    ) in fake_termios.calls
 
 
 def test_probe_completes_a_full_exchange_and_still_restores_terminal_mode(
@@ -198,7 +203,12 @@ def test_probe_completes_a_full_exchange_and_still_restores_terminal_mode(
     assert attempted is True
     assert result == "#2D2A2E"
     assert written and written[0][0] == 17
-    assert ("tcsetattr", 17, fake_termios.TCSADRAIN, fake_termios.original_attrs) in fake_termios.calls
+    assert (
+        "tcsetattr",
+        17,
+        fake_termios.TCSADRAIN,
+        fake_termios.original_attrs,
+    ) in fake_termios.calls
 
 
 def test_probe_dumb_terminal_skips_osc_write_but_restores_modes(
@@ -210,13 +220,20 @@ def test_probe_dumb_terminal_skips_osc_write_but_restores_modes(
     monkeypatch.setitem(sys.modules, "termios", fake_termios)
     monkeypatch.setitem(sys.modules, "tty", fake_tty)
     monkeypatch.setattr(_mod, "_tty_fd", lambda: (17, False))
-    monkeypatch.setattr(os, "write", lambda _fd, _data: pytest.fail("must not send OSC on TERM=dumb"))
+    monkeypatch.setattr(
+        os, "write", lambda _fd, _data: pytest.fail("must not send OSC on TERM=dumb")
+    )
 
     attempted, result = _mod._probe(0.05)
 
     assert attempted is True
     assert result is None
-    assert ("tcsetattr", 17, fake_termios.TCSADRAIN, fake_termios.original_attrs) in fake_termios.calls
+    assert (
+        "tcsetattr",
+        17,
+        fake_termios.TCSADRAIN,
+        fake_termios.original_attrs,
+    ) in fake_termios.calls
 
 
 def test_probe_closes_an_owned_fd_and_never_enters_raw_mode_when_tcgetattr_fails(
@@ -345,9 +362,8 @@ def test_probe_restores_snapshot_that_existed_before_raw_window(
     assert get_global_snapshot() == previous
     set_global_snapshot(None)
 
+
 @pytest.mark.criteria("B-5")
-
-
 def test_query_terminal_background_hex_probes_once_and_caches_for_process_lifetime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

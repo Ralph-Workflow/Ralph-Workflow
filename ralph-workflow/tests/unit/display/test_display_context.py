@@ -123,9 +123,7 @@ def test_display_context_has_theme_for_resolved_background() -> None:
     ctx = make_display_context(env={})
     expected = theme_for_background(ctx.terminal_background_is_light)
     assert set(ctx.theme.styles) == set(expected.styles)
-    assert {
-        name: str(style) for name, style in ctx.theme.styles.items()
-    } == {
+    assert {name: str(style) for name, style in ctx.theme.styles.items()} == {
         name: str(style) for name, style in expected.styles.items()
     }
 
@@ -229,9 +227,9 @@ def test_display_context_threads_measured_surface_hex_through_resolved_theme() -
     expected_hex = _theme._extract_hex(expected_style)
     actual_hex = _theme._extract_hex(str(ctx.theme.styles["theme.status.warning"]))
     assert expected_hex and actual_hex.lower() == expected_hex.lower()
+
+
 @pytest.mark.criteria("B-1")
-
-
 def test_malformed_terminal_bg_hex_falls_through_to_the_osc11_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -339,9 +337,9 @@ def test_explicit_override_is_honored_only_when_the_probe_cannot_measure(
         # `#000000`/`#FFFFFF` endpoint (zero headroom) instead of the
         # representative surface.
         assert _theme.contrast_ratio(pigment, real_dark_surface) >= CONTRAST_FLOOR
+
+
 @pytest.mark.criteria("F-3")
-
-
 def test_make_display_context_probes_the_terminal_at_most_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

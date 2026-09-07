@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import tempfile
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -18,8 +19,10 @@ from git import Actor, InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph.git.commit_result import CommitCreationResult
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
-from ralph.git.subprocess_runner import run_git
+from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -185,6 +188,48 @@ def _append_ralph_workflow_coauthor_trailer(message: str) -> str:
     if _RALPH_WORKFLOW_COAUTHOR_TRAILER.lower() in lowered_lines:
         return stripped_message
     return f"{stripped_message}\n\n{_RALPH_WORKFLOW_COAUTHOR_TRAILER}"
+
+
+def _resolve_commit_identity(
+    repo: Repo, author_name: str | None, author_email: str | None
+) -> tuple[str, str]:
+    if author_name and author_email:
+        return author_name, author_email
+    try:
+        config = repo.config_reader()
+        return (
+            author_name or str(config.get_value("user", "name", "Ralph")),
+            author_email or str(config.get_value("user", "email", "ralph@ai")),
+        )
+    except Exception:
+        return author_name or "Ralph", author_email or "ralph@ai"
+
+
+def _run_commit_hooks(
+    repo_root: Path,
+    hooks_dir: Path,
+    message_path: Path,
+    hook_env: dict[str, str],
+) -> None:
+    hook_specs: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("pre-commit", ()),
+        ("prepare-commit-msg", (str(message_path), "message")),
+        ("commit-msg", (str(message_path),)),
+    )
+    for hook_name, hook_args in hook_specs:
+        if not (hooks_dir / hook_name).exists():
+            continue
+        hook_command: tuple[str, ...] = ("hook", "run", hook_name)
+        if hook_args:
+            hook_command += ("--", *hook_args)
+        hook_result = run_git(
+            hook_command,
+            cwd=repo_root,
+            label=f"git-hook-{hook_name}",
+            options=GitRunOptions(env=hook_env),
+        )
+        if hook_result.returncode != 0:
+            raise GitOperationError("create_commit", hook_result.stderr.strip())
 
 
 def find_repo_root(start: Path | str = Path()) -> Path:
@@ -493,9 +538,11 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
 def create_commit(
     repo_root: Path | str,
     message: str,
+    *,
     author_name: str | None = None,
     author_email: str | None = None,
-) -> str:
+    expected_head: str,
+) -> CommitCreationResult:
     """Create a git commit.
 
     Args:
@@ -503,9 +550,10 @@ def create_commit(
         message: Commit message.
         author_name: Optional author name override.
         author_email: Optional author email override.
+        expected_head: HEAD SHA required for the ref compare-and-swap.
 
     Returns:
-        SHA of the created commit.
+        Typed result describing commit creation.
 
     Raises:
         GitOperationError: If commit fails.
@@ -514,27 +562,93 @@ def create_commit(
     try:
         repo = Repo(repo_root)
         message = _append_ralph_workflow_coauthor_trailer(message)
+        if hasattr(repo, "head") and repo.head.commit.hexsha != expected_head:
+            return CommitCreationResult.already_advanced(repo.head.commit.hexsha)
+        if not hasattr(repo, "git_dir"):
+            author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
+            actor = Actor(author_name, author_email)
+            commit = _run_git_operation_with_stale_lock_recovery(
+                "create_commit",
+                lambda: repo.index.commit(message, author=actor, committer=actor),
+            )
+            return CommitCreationResult.created(commit.hexsha)
+        author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
 
-        if not author_name or not author_email:
-            try:
-                config = repo.config_reader()
-                author_name = author_name or str(config.get_value("user", "name", "Ralph"))
-                author_email = author_email or str(config.get_value("user", "email", "ralph@ai"))
-            except Exception:
-                author_name = author_name or "Ralph"
-                author_email = author_email or "ralph@ai"
-
-        actor = Actor(author_name, author_email)
-        commit = _run_git_operation_with_stale_lock_recovery(
-            "create_commit",
-            lambda: repo.index.commit(message, author=actor, committer=actor),
+        ref_result = run_git(
+            ("symbolic-ref", "--quiet", "HEAD"),
+            cwd=Path(repo_root),
+            label="git-symbolic-ref-head",
         )
+        if ref_result.returncode != 0 or not ref_result.stdout.strip():
+            raise GitOperationError("create_commit", "HEAD is detached")
+        ref_name = ref_result.stdout.strip()
+
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as message_file:
+            message_file.write(message)
+            message_path = Path(message_file.name)
+        try:
+            hook_env = {"GIT_REFLOG_ACTION": "ralph create_commit"}
+            hooks_dir = Path(repo.git_dir) / "hooks"
+            _run_commit_hooks(Path(repo_root), hooks_dir, message_path, hook_env)
+            message = DEFAULT_FILE_BACKEND.read_text(message_path, encoding="utf-8")
+        finally:
+            message_path.unlink(  # filesystem-write-ok: transient hook message scratch
+                missing_ok=True
+            )
+
+        tree_result = run_git(("write-tree",), cwd=Path(repo_root), label="git-write-tree")
+        if tree_result.returncode != 0:
+            raise GitOperationError("create_commit", tree_result.stderr.strip())
+        commit_result = run_git(
+            ("commit-tree", tree_result.stdout.strip(), "-p", expected_head),
+            cwd=Path(repo_root),
+            label="git-commit-tree",
+            options=GitRunOptions(
+                env={
+                    "GIT_AUTHOR_NAME": author_name,
+                    "GIT_AUTHOR_EMAIL": author_email,
+                    "GIT_COMMITTER_NAME": author_name,
+                    "GIT_COMMITTER_EMAIL": author_email,
+                    "GIT_REFLOG_ACTION": "ralph create_commit",
+                },
+                input_data=message,
+            ),
+        )
+        if commit_result.returncode != 0:
+            raise GitOperationError("create_commit", commit_result.stderr.strip())
+        candidate_sha = commit_result.stdout.strip()
+        update_ref = run_git(
+            ("update-ref", ref_name, candidate_sha, expected_head),
+            cwd=Path(repo_root),
+            label="git-update-ref-cas",
+            options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph create_commit"}),
+        )
+        if update_ref.returncode != 0:
+            current_head = get_head_sha(repo_root)
+            if current_head != expected_head:
+                return CommitCreationResult.already_advanced(current_head)
+            detail = update_ref.stderr.strip() or "git update-ref failed without diagnostics"
+            raise GitOperationError("create_commit", detail)
+        post_commit = hooks_dir / "post-commit"
+        if post_commit.exists():
+            post_result = run_git(
+                ("hook", "run", "post-commit"),
+                cwd=Path(repo_root),
+                label="git-hook-post-commit",
+                options=GitRunOptions(env=hook_env),
+            )
+            if post_result.returncode != 0:
+                logger.warning(
+                    "post-commit hook failed after commit {}: {}",
+                    candidate_sha[:8],
+                    post_result.stderr.strip() or "no diagnostics",
+                )
         logger.info(
             "Created commit {}: {}",
-            commit.hexsha[:8],
+            candidate_sha[:8],
             message.splitlines()[0] if message else "(no message)",
         )
-        return commit.hexsha
+        return CommitCreationResult.created(candidate_sha)
     except Exception as exc:
         raise GitOperationError("create_commit", str(exc)) from exc
     finally:

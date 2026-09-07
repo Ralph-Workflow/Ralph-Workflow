@@ -103,9 +103,7 @@ def test_two_models_of_one_executable_are_distinguished() -> None:
     executable and differ only in ``model_flag``. A chain listing one per
     phase, or two as fallbacks within a phase, is ordinary configuration.
     """
-    assert _capture_name("pi/anthropic/claude-sonnet-4-5") != _capture_name(
-        "pi/openai/gpt-5-codex"
-    )
+    assert _capture_name("pi/anthropic/claude-sonnet-4-5") != _capture_name("pi/openai/gpt-5-codex")
     assert _capture_name("opencode/anthropic/claude") != _capture_name("opencode/openai/gpt5")
     assert _capture_name("nanocoder/ollama/llama3") != _capture_name("nanocoder/openrouter/qwen")
 
@@ -138,9 +136,7 @@ def test_two_flags_that_sanitise_alike_stay_apart() -> None:
     the whole defect class this module guards.
     """
     assert _capture_name("nanocoder/ollama/llama3") != _capture_name("nanocoder/ollama-llama3")
-    assert _capture_name("opencode/anthropic/claude") != _capture_name(
-        "opencode/anthropic_claude"
-    )
+    assert _capture_name("opencode/anthropic/claude") != _capture_name("opencode/anthropic_claude")
 
 
 def test_the_model_still_reaches_the_filename() -> None:
@@ -258,7 +254,12 @@ def test_the_model_flag_branch_disambiguates_its_model_too() -> None:
         config = AgentConfig(cmd="mytool", model_flag="--provider acme turbo", model=model)
         return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=model).name
 
-    folding_models = ("anthropic/sonnet", "anthropic:sonnet", "anthropic@sonnet", "anthropic sonnet")
+    folding_models = (
+        "anthropic/sonnet",
+        "anthropic:sonnet",
+        "anthropic@sonnet",
+        "anthropic sonnet",
+    )
     captures = {capture_for(model) for model in folding_models}
 
     assert len(captures) == len(folding_models), captures
@@ -387,9 +388,7 @@ def test_agents_differing_only_outside_the_readable_name_stay_apart() -> None:
     from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
 
     def capture_for(config: AgentConfig) -> str:
-        return raw_log_path_for(
-            Path("/w"), raw_log_unit_id_for(config), model=config.model
-        ).name
+        return raw_log_path_for(Path("/w"), raw_log_unit_id_for(config), model=config.model).name
 
     stream_json = "--output-format=stream-json"
     agents = {

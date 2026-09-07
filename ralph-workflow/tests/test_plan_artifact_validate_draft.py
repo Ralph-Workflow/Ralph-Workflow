@@ -77,9 +77,7 @@ def test_get_draft_reports_cross_reference_error_without_mutating_content(
 
     diagnostics = must_dict_list(first["diagnostics"])
     assert first["valid"] is False
-    assert any(
-        item["rule_id"] == "PLAN021" and item["severity"] == "error" for item in diagnostics
-    )
+    assert any(item["rule_id"] == "PLAN021" and item["severity"] == "error" for item in diagnostics)
     assert first["content"] == invalid
     assert second["content"] == invalid
     assert second["diagnostics"] == diagnostics

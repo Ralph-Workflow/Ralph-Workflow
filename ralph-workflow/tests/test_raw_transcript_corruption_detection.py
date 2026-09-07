@@ -93,7 +93,9 @@ def test_headless_claude_uses_a_distinct_raw_log_identity(
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig
 
-    interactive = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE, model="haiku")
+    interactive = AgentConfig(
+        cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE, model="haiku"
+    )
     headless = AgentConfig(cmd="claude -p", transport=AgentTransport.CLAUDE, model="haiku")
     non_claude = AgentConfig(cmd="agy --print", transport=AgentTransport.AGY, model="flash")
 
@@ -277,13 +279,9 @@ def test_detect_smoke_errors_surfaces_corrupted_raw_transcript(
     # for a capture that was never read.
     from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
 
-    raw_path = raw_log_path_for(
-        isolated_workspace, raw_log_unit_id_for(config), model=config.model
-    )
+    raw_path = raw_log_path_for(isolated_workspace, raw_log_unit_id_for(config), model=config.model)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_path.write_bytes(
-        b'{"event":"init","tools":["call_mcp_tool"]}\n' + (b"\x00" * 512)
-    )
+    raw_path.write_bytes(b'{"event":"init","tools":["call_mcp_tool"]}\n' + (b"\x00" * 512))
 
     params = SmokeRunParams(
         agent_name="agy/gemini-3.6-flash-low",
@@ -404,8 +402,8 @@ def test_agy_print_tool_result_status_line_is_not_a_break(
             '{"event":"step_update","step_update":{"step_index":8,"state":"DONE",'
             '"step_type":"tool","tool_name":"call_mcp_tool"}}\n'
             "\u2713 PASS \u21b3 call_mcp_tool (Arguments={'artifact_type': "
-            "'smoke_test_result'}) {\"artifact_type\": \"smoke_test_result\", "
-            '\"valid\": true}\n'
+            '\'smoke_test_result\'}) {"artifact_type": "smoke_test_result", '
+            '"valid": true}\n'
             '{"event":"result","result":{"status":"SUCCESS"}}\n'
         ).encode("utf-8")
     )
@@ -558,7 +556,8 @@ def test_valid_claude_transcript_with_tool_activity_is_not_corrupted(
         "Session ID: abc 123",
         "Resume this session with --resume ",
         "Task declared complete without session_id",
-    ],)
+    ],
+)
 def test_non_canonical_session_lines_are_still_breaks(isolated_workspace: Path, line: str) -> None:
     """Only the exact canonical shapes are tolerated; near-matches remain NON_JSONL.
 
@@ -782,10 +781,7 @@ def test_headless_claude_transport_rejects_multiline_session_id(
 
     raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_path.write_bytes(
-        b"Session ID:\n"
-        b"28ee58c0-0614-474f-b609-80cc6c252f90\n"
-    )
+    raw_path.write_bytes(b"Session ID:\n28ee58c0-0614-474f-b609-80cc6c252f90\n")
 
     breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CLAUDE)
     non_jsonl = [item for item in breaks if item.kind == "NON_JSONL"]
@@ -800,10 +796,7 @@ def test_headless_claude_transport_keeps_strict_jsonl(
 
     raw_path = isolated_workspace / ".agent" / "raw" / "claude.log"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_path.write_bytes(
-        b'{"type":"system","message":"hello"}\n'
-        b"visible text line\n"
-    )
+    raw_path.write_bytes(b'{"type":"system","message":"hello"}\nvisible text line\n')
 
     breaks = detect_raw_log_breaks(raw_path, transport=AgentTransport.CLAUDE)
     non_jsonl = [b for b in breaks if b.kind == "NON_JSONL"]

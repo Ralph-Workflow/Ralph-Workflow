@@ -63,9 +63,7 @@ _DEFAULT_AGENTS_POLICY = AgentsPolicy(
         "development_analysis": AgentDrainConfig(
             chain="development_analysis", drain_class="analysis"
         ),
-        "development_commit": AgentDrainConfig(
-            chain="development_commit", drain_class="commit"
-        ),
+        "development_commit": AgentDrainConfig(chain="development_commit", drain_class="commit"),
         "review": AgentDrainConfig(chain="review", drain_class="review"),
         "review_analysis": AgentDrainConfig(chain="review_analysis", drain_class="analysis"),
         "analysis": AgentDrainConfig(chain="analysis", drain_class="analysis"),
@@ -122,9 +120,7 @@ class TestMediaReadExplicitOptOutRetired:
         )
 
         # The validator emits one warning -- not zero (silent), not two (double-fire).
-        with caplog.at_level(
-            logging.WARNING, logger="ralph.config.media"
-        ):
+        with caplog.at_level(logging.WARNING, logger="ralph.config.media"):
             plan = build_session_mcp_plan(
                 transport=AgentTransport.CLAUDE,
                 drain=drain,

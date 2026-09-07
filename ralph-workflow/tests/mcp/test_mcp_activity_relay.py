@@ -51,7 +51,9 @@ def test_activity_relay_sender_fails_closed_when_parent_is_unavailable() -> None
     endpoint = relay.endpoint
     env = relay.server_environment()
     assert relay.close() is True
-    sender = ActivityRelaySender.from_environment({**env, "RALPH_MCP_ACTIVITY_RELAY_ENDPOINT": endpoint})
+    sender = ActivityRelaySender.from_environment(
+        {**env, "RALPH_MCP_ACTIVITY_RELAY_ENDPOINT": endpoint}
+    )
     assert sender is not None
     with pytest.raises(ActivityRelayError, match="SUPERVISION_INFRASTRUCTURE_FAILURE"):
         sender.emit("read_file")

@@ -141,6 +141,7 @@ if TYPE_CHECKING:
 _MCP_RALPH_PREFIX: Final[str] = "mcp__ralph__"
 _RA_PREFIX: Final[str] = "ralph."
 
+
 def _normalize_tool_name(name: str) -> str:
     """Strip the MCP / alias prefix and return the bare tool name."""
     if name.startswith(_MCP_RALPH_PREFIX):

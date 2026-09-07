@@ -78,7 +78,9 @@ class CapabilityObservationRecorder:
         self._observations: deque[CapabilityObservation] = deque(
             maxlen=_OBSERVATION_LOG_CAPACITY
         )  # bounded-accumulator-ok: deque(maxlen=...) caps the per-event log at _OBSERVATION_LOG_CAPACITY entries
-        self._observed_capabilities: set[DisplayCapability] = set()  # bounded-accumulator-ok: the per-capability set is bounded by the catalog-derived vocabulary size, which is small (3 entries today)
+        self._observed_capabilities: set[DisplayCapability] = (
+            set()
+        )  # bounded-accumulator-ok: the per-capability set is bounded by the catalog-derived vocabulary size, which is small (3 entries today)
 
     def record(self, observation: CapabilityObservation) -> None:
         """Append an observation. Idempotent on the per-capability set."""

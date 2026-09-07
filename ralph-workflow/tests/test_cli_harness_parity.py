@@ -222,8 +222,7 @@ class _FakePipelineFactory:
 def test_override_table_covers_every_documented_env_var() -> None:
     """The table is the single source of truth for the four override vars."""
     assert {
-        smoke_binary_override_env_var(transport)
-        for transport in smoke_binary_override_transports()
+        smoke_binary_override_env_var(transport) for transport in smoke_binary_override_transports()
     } == {
         "RALPH_AGY_BINARY",
         "RALPH_CURSOR_BINARY",

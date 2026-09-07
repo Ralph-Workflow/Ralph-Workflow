@@ -110,13 +110,9 @@ class Region:
         if self.y < 0:
             raise ValueError(f"Region.y must be >= 0, got {self.y}")
         if self.w < REGION_MIN_PIXELS:
-            raise ValueError(
-                f"Region.w must be >= {REGION_MIN_PIXELS} pixel, got {self.w}"
-            )
+            raise ValueError(f"Region.w must be >= {REGION_MIN_PIXELS} pixel, got {self.w}")
         if self.h < REGION_MIN_PIXELS:
-            raise ValueError(
-                f"Region.h must be >= {REGION_MIN_PIXELS} pixel, got {self.h}"
-            )
+            raise ValueError(f"Region.h must be >= {REGION_MIN_PIXELS} pixel, got {self.h}")
         if self.w * self.h > REGION_MAX_PIXELS:
             raise ValueError(
                 f"Region area {self.w * self.h} exceeds REGION_MAX_PIXELS={REGION_MAX_PIXELS}; "

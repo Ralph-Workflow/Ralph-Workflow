@@ -140,9 +140,7 @@ def _run_fallback_with_sidecar(
         lambda _target, repo_root: RebaseConflicts(files=["src/omega.py"]),
     )
     monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
-    monkeypatch.setattr(
-        merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False
-    )
+    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: True)
     monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
     monkeypatch.setattr(

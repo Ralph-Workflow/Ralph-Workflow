@@ -115,8 +115,7 @@ def _live_integration_reasons(
         unmerged = unmerged_porcelain_paths(porcelain_output)
         if unmerged:
             reasons.append(
-                "unmerged paths remain from an unfinished rebase or merge: "
-                + ", ".join(unmerged)
+                "unmerged paths remain from an unfinished rebase or merge: " + ", ".join(unmerged)
             )
     try:
         if rebase_active(root):

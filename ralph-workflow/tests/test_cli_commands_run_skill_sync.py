@@ -59,12 +59,8 @@ def _stub_heavy_sync_paths(
         # (the names are bound into ``run_module`` at import time), so
         # patching the installer module is a no-op for these two names.
         # Patch the rebinding on ``run_module`` instead.
-        monkeypatch.setattr(
-            run_module, "_project_skills_need_install", lambda _root: False
-        )
-        monkeypatch.setattr(
-            run_module, "install_project_baseline_skills", lambda _root: ({}, [])
-        )
+        monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: False)
+        monkeypatch.setattr(run_module, "install_project_baseline_skills", lambda _root: ({}, []))
     if skip_auto_commit:
         monkeypatch.setattr(
             "ralph.skills._auto_commit.commit_skill_updates",

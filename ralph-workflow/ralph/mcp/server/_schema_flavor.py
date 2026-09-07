@@ -129,25 +129,15 @@ def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
             # one JSON Schema type union and lift the array branch's
             # ``items`` when exactly one array branch exists.
             flattened_prop: JsonObject = {
-                key: subschema[key]
-                for key in _ROOT_KEYS_PRESERVED
-                if key in subschema
+                key: subschema[key] for key in _ROOT_KEYS_PRESERVED if key in subschema
             }
             flattened_prop["type"] = branch_types
-            array_items = [
-                b.get("items")
-                for b in branch_dicts
-                if b.get("type") == "array"
-            ]
+            array_items = [b.get("items") for b in branch_dicts if b.get("type") == "array"]
             if len(array_items) == 1 and isinstance(array_items[0], dict):
                 flattened_prop["items"] = array_items[0]
             return flattened_prop
-    if "type" in subschema and any(
-        key in subschema for key in ("oneOf", "anyOf", "allOf", "not")
-    ):
-        return {
-            key: subschema[key] for key in _ROOT_KEYS_PRESERVED if key in subschema
-        }
+    if "type" in subschema and any(key in subschema for key in ("oneOf", "anyOf", "allOf", "not")):
+        return {key: subschema[key] for key in _ROOT_KEYS_PRESERVED if key in subschema}
     return subschema
 
 
@@ -169,10 +159,7 @@ def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
             if (
                 "type" not in schema_dict
                 and isinstance(enum_members, list)
-                and all(
-                    isinstance(member, str)
-                    for member in cast("list[object]", enum_members)
-                )
+                and all(isinstance(member, str) for member in cast("list[object]", enum_members))
             ):
                 repaired[name] = {**schema_dict, "type": "string"}
             else:
@@ -197,9 +184,7 @@ def flatten_root_schema_for_openai_function(schema: JsonObject) -> JsonObject:
 
     The input is never mutated; a new root dict is always returned.
     """
-    flattened: JsonObject = {
-        key: schema[key] for key in _ROOT_KEYS_PRESERVED if key in schema
-    }
+    flattened: JsonObject = {key: schema[key] for key in _ROOT_KEYS_PRESERVED if key in schema}
     flattened.setdefault("type", "object")
     properties = flattened.get("properties")
     if isinstance(properties, dict):

@@ -155,9 +155,7 @@ def test_recovery_plan_is_fresh_with_completion_instruction(tmp_path: Path) -> N
     AGY does not demonstrably support resumable sessions (the continuation
     probes did not expose session identity), so the plan must never resume.
     """
-    plan = build_agent_recovery_plan(
-        _make_recovery_input(AgyIncompleteExitError("agy"), tmp_path)
-    )
+    plan = build_agent_recovery_plan(_make_recovery_input(AgyIncompleteExitError("agy"), tmp_path))
 
     assert plan is not None, "expected a recovery plan for the first incomplete exit"
     assert plan.recovery_action == "fresh"
@@ -229,6 +227,4 @@ def test_direct_mcp_recovery_bound_is_scoped_to_agy_incomplete_exit() -> None:
             retry_resumable_exit=True,
         )
 
-    assert attempts[0] == 3, (
-        f"non-AGY failures keep max_retries=2 (3 attempts); got {attempts[0]}"
-    )
+    assert attempts[0] == 3, f"non-AGY failures keep max_retries=2 (3 attempts); got {attempts[0]}"

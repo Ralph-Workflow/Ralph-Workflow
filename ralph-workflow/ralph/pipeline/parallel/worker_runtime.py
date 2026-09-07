@@ -287,9 +287,10 @@ def run_worker_auto_integration(
     swallowed, because an integration problem must never abort the
     worker whose actual job is the phase it was launched for.
     """
-    if state is not None and not inspect_integration_resolution(
-        Path(workspace_scope.root), state
-    ).dispatch_allowed:
+    if (
+        state is not None
+        and not inspect_integration_resolution(Path(workspace_scope.root), state).dispatch_allowed
+    ):
         return state
     # Cheap stat guard BEFORE anything else, mirroring the one
     # ``auto_integrate_on_phase_transition`` opens with: a worker whose
@@ -458,9 +459,7 @@ def run_parallel_worker_from_manifest(
         # The worker's state carries no cycle timing (it is built from the
         # manifest), so the deadline reaches it only through the environment
         # its parent published before spawning the fan-out.
-        cycle_timebox_warning=cycle_timebox_warning_from_env(
-            os.environ, now_epoch=time.time()
-        ),
+        cycle_timebox_warning=cycle_timebox_warning_from_env(os.environ, now_epoch=time.time()),
     )
     rendered_prompt = workspace.read(prompt_path)
     resolved_prompt_path = Path(manifest.prompt_file)

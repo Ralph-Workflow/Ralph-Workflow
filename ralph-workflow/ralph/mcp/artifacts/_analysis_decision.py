@@ -27,7 +27,7 @@ class AnalysisDecision(RalphBaseModel):
     def _check_status_and_findings(self) -> Self:
         if self.status == "completed" and self.what_came_up_short:
             raise ValueError(
-                "what_came_up_short must be omitted when status is \"completed\"; "
+                'what_came_up_short must be omitted when status is "completed"; '
                 "known gaps require a non-completed status"
             )
         if self.status in ("request_changes", "failed") and not self.what_came_up_short:

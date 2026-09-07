@@ -48,7 +48,9 @@ PROBES: dict[str, Callable[[pytest.MonkeyPatch], None]] = {}
 # in ruff.
 
 
-def register_probe(criterion_id: str) -> Callable[[Callable[[pytest.MonkeyPatch], None]], Callable[[pytest.MonkeyPatch], None]]:
+def register_probe(
+    criterion_id: str,
+) -> Callable[[Callable[[pytest.MonkeyPatch], None]], Callable[[pytest.MonkeyPatch], None]]:
     """Decorator that registers a probe under ``criterion_id``.
 
     Used by the per-criterion probe definitions below so a missing
@@ -85,6 +87,7 @@ def _set_dict_item(
     # in-module globals, the simplest is to assign the dict's
     # reference on the proxy module.
     new_dict = {**target_dict, key: value}
+
     # The probe registry is the only caller -- we just need a
     # best-effort undo. Use the monkeypatch's setattr via a wrapper
     # object that holds the dict reference.
@@ -430,7 +433,9 @@ def _probe_c_6(monkeypatch: pytest.MonkeyPatch) -> None:
     # Force the "info" theme role to recede to dim alone (no hex).
     theme = _theme.theme_for_background(False)
     original = theme.styles["theme.text.muted"]
-    monkeypatch.setattr(theme.styles, "__getitem__", lambda key: "dim" if key == "theme.text.muted" else original)
+    monkeypatch.setattr(
+        theme.styles, "__getitem__", lambda key: "dim" if key == "theme.text.muted" else original
+    )
 
 
 # -- C-7: a role clears its floor unbolded. Regression: make the
@@ -683,7 +688,11 @@ def _probe_f_1(monkeypatch: pytest.MonkeyPatch) -> None:
         # Quick path: just make the hex non-deterministic via a
         # random hue offset, then solve through the regular path.
         sabotaged = sabotaged._replace(hue=(anchor.hue + random.random()) % 360.0)
-        return _palette.solve_for_surface.__wrapped__(sabotaged, surface_hex, min_ratio=min_ratio) if hasattr(_palette.solve_for_surface, "__wrapped__") else _palette.solve_for_surface(sabotaged, surface_hex, min_ratio=min_ratio)
+        return (
+            _palette.solve_for_surface.__wrapped__(sabotaged, surface_hex, min_ratio=min_ratio)
+            if hasattr(_palette.solve_for_surface, "__wrapped__")
+            else _palette.solve_for_surface(sabotaged, surface_hex, min_ratio=min_ratio)
+        )
 
     monkeypatch.setattr(_palette, "solve_for_surface", random_solve)
     _palette.reset_palette_solve_stats()

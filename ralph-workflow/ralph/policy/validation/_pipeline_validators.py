@@ -112,7 +112,6 @@ def _validate_shared_drain_history_consistency(
             drain_enabled[drain] = enabled
 
 
-
 def _route_budget_counter(
     policy: PipelinePolicy,
     phase_name: str,
@@ -135,7 +134,6 @@ def _route_budget_counter(
         return None
     counter = commit_policy.route_counter or commit_policy.increments_counter
     return str(counter) if counter else None
-
 
 
 def _validate_spent_budget_can_end_the_run(
@@ -164,9 +162,7 @@ def _validate_spent_budget_can_end_the_run(
         # failure terminal says nothing about where a completed cycle goes.
         for outcome in sorted({route.when.cycle_outcome for route in routes}, key=str):
             target = _routed_target(routes, outcome)
-            if target is None or _terminal_is_reachable(
-                policy, target, terminals, outcome=outcome
-            ):
+            if target is None or _terminal_is_reachable(policy, target, terminals, outcome=outcome):
                 continue
             errors.append(
                 f"phases.{phase_name}: with budget_state='{state_name}' and cycle outcome "
@@ -229,9 +225,7 @@ def _terminal_is_reachable(
         # Follow only the routes THIS outcome can take: pooling every route for
         # the phase let a failure-outcome route supply a terminal the outcome
         # under test could never reach.
-        phase_routes = [
-            route for route in policy.post_commit_routes if route.when.phase == phase
-        ]
+        phase_routes = [route for route in policy.post_commit_routes if route.when.phase == phase]
         routed = _routed_target(phase_routes, outcome) if phase_routes else None
         if routed is not None:
             frontier.append(routed)

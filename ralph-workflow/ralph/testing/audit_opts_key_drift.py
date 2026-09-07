@@ -225,11 +225,7 @@ def _direct_reads(fn: _FuncNode, variable: str) -> tuple[set[str], bool]:
                         keys.add(node.left.value)
                     else:
                         dynamic = True
-        elif (
-            isinstance(node, ast.Name)
-            and node.id == variable
-            and isinstance(node.ctx, ast.Store)
-        ):
+        elif isinstance(node, ast.Name) and node.id == variable and isinstance(node.ctx, ast.Store):
             dynamic = True
     return keys, dynamic
 
@@ -282,9 +278,7 @@ def _reachable_names(
                 dynamic = True
                 continue
             callee_module, callee = resolved
-            positional = [
-                arg.arg for arg in (*callee.args.posonlyargs, *callee.args.args)
-            ]
+            positional = [arg.arg for arg in (*callee.args.posonlyargs, *callee.args.args)]
             if position >= len(positional):
                 dynamic = True
                 continue

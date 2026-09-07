@@ -55,15 +55,13 @@ class PlanStep(RalphBaseModel):
     content: str = Field(
         default="",
         max_length=20000,
-        description="Step purpose or detailed execution context (max 20000 chars)."
+        description="Step purpose or detailed execution context (max 20000 chars).",
     )
     step_type: str = Field(
         default=StepType.FILE_CHANGE.value,
         min_length=1,
         max_length=200,
-        description=(
-            "One supported executor step type."
-        ),
+        description=("One supported executor step type."),
     )
     priority: str | None = Field(
         default=None,
@@ -190,7 +188,11 @@ class PlanStep(RalphBaseModel):
         if requires_targets(self.step_type) and not self.targets:
             msg = "file_change step must declare at least one target"
             raise ValueError(msg)
-        if requires_verify_handle(self.step_type) and self.verify_command is None and self.location is None:
+        if (
+            requires_verify_handle(self.step_type)
+            and self.verify_command is None
+            and self.location is None
+        ):
             msg = "verify step must declare verify_command or location"
             raise ValueError(msg)
         if self.verify_command is not None and self.expected_outcome is None:

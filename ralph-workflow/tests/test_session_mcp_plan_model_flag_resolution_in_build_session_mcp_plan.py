@@ -353,4 +353,3 @@ class TestModelIdentityResolution:
         identity = resolve_model_identity(None, "--model anything")
 
         assert identity == UNKNOWN_IDENTITY
-

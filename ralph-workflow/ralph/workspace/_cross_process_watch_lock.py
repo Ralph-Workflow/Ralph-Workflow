@@ -62,8 +62,12 @@ class CrossProcessWatchLock:
     owner id so ``release`` can match without re-reading the file.
     """
 
-    _holds: ClassVar[dict[str, tuple[TextIO, str]]] = {}  # bounded-accumulator-ok: release removes the final workspace entry
-    _last_released: ClassVar[dict[str, str]] = {}  # bounded-accumulator-ok: one entry per workspace, replaced on each release
+    _holds: ClassVar[
+        dict[str, tuple[TextIO, str]]
+    ] = {}  # bounded-accumulator-ok: release removes the final workspace entry
+    _last_released: ClassVar[
+        dict[str, str]
+    ] = {}  # bounded-accumulator-ok: one entry per workspace, replaced on each release
     _counter_lock: ClassVar[threading.Lock] = threading.Lock()
     _counter: ClassVar[int] = 0
 

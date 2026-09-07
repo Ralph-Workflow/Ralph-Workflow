@@ -29,10 +29,10 @@ status: completed
 
     assert diagnostics == []
     assert content["plan_items_proven"] == [
-            {
-                "plan_item": "S-4",
-                "disposition": "completed",
-                "proof": "The header UI is capture-backed.",
+        {
+            "plan_item": "S-4",
+            "disposition": "completed",
+            "proof": "The header UI is capture-backed.",
             "verdict_id": "verdict-001",
             "capture_handles": (
                 "ralph://media/11111111-1111-1111-1111-111111111111",

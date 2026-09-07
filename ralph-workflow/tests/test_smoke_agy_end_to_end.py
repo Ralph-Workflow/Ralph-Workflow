@@ -374,4 +374,3 @@ def test_mock_agy_evidence_ceiling_grades_below_wire() -> None:
 
     assert ceiling == Provenance.TRANSCRIPT
     assert ceiling < Provenance.WIRE
-

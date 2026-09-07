@@ -428,9 +428,7 @@ def test_the_capability_profile_beside_the_identity_is_canonicalised_too() -> No
 
     digests = set()
     for spelling in ("codex", "CODEX", "  Codex  "):
-        identity = MultimodalModelIdentity(
-            provider="openai", model_id="gpt-5", transport=spelling
-        )
+        identity = MultimodalModelIdentity(provider="openai", model_id="gpt-5", transport=spelling)
         session = AgentSession(
             session_id="s",
             run_id="r",

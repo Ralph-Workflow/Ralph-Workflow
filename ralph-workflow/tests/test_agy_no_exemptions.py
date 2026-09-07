@@ -29,11 +29,7 @@ import re
 from pathlib import Path
 
 _SMOKE_PLUMBING_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "ralph"
-    / "pipeline"
-    / "plumbing"
-    / "smoke_plumbing.py"
+    Path(__file__).resolve().parent.parent / "ralph" / "pipeline" / "plumbing" / "smoke_plumbing.py"
 )
 
 

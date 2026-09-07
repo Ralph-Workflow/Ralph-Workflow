@@ -125,7 +125,9 @@ def restore_terminal(
     Swallows all exceptions.
     """
     try:
-        target_stream, close_stream = (stream, False) if stream is not None else _default_tty_stream()
+        target_stream, close_stream = (
+            (stream, False) if stream is not None else _default_tty_stream()
+        )
         is_tty = False
         try:
             if isinstance(target_stream, _IsATty):
@@ -162,9 +164,12 @@ def _default_tty_stream() -> tuple[TextIO | object | None, bool]:
         fd = os.open(  # resource-lifecycle-ok: wrapped stream is closed by restore_terminal after its one restore write; filesystem-write-ok: transient controlling-tty output fd, never persists content
             "/dev/tty", os.O_WRONLY | os.O_NOCTTY
         )
-        return os.fdopen(  # filesystem-write-ok: transient controlling-tty output stream closed after one restore write
-            fd, "w"
-        ), True
+        return (
+            os.fdopen(  # filesystem-write-ok: transient controlling-tty output stream closed after one restore write
+                fd, "w"
+            ),
+            True,
+        )
     except Exception:
         return None, False
 

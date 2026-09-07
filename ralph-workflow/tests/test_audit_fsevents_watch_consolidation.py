@@ -183,8 +183,7 @@ def test_audit_allows_non_watch_dynamic_invocation(tmp_path: Path) -> None:
         ),
     )
     (package_root / "plugin_dispatch.py").write_text(
-        "def run(plugin, method_name):\n"
-        "    getattr(plugin, method_name)()\n",
+        "def run(plugin, method_name):\n    getattr(plugin, method_name)()\n",
         encoding="utf-8",
     )
 
@@ -357,9 +356,7 @@ def test_audit_flags_observer_construction_in_unknown_production_module(tmp_path
     extra_module = package_root / "pipeline" / "extra_observer.py"
     extra_module.parent.mkdir(parents=True)
     extra_module.write_text(
-        "from watchdog.observers import Observer\n\n"
-        "def start() -> None:\n"
-        "    Observer()\n",
+        "from watchdog.observers import Observer\n\ndef start() -> None:\n    Observer()\n",
         encoding="utf-8",
     )
 

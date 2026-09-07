@@ -461,9 +461,7 @@ def _read_identity_state(ctx: PhaseContext) -> tuple[str, str, int] | None:
     return (phase, fingerprint, count)
 
 
-def _write_identity_state(
-    ctx: PhaseContext, phase_name: str, fingerprint: str, count: int
-) -> None:
+def _write_identity_state(ctx: PhaseContext, phase_name: str, fingerprint: str, count: int) -> None:
     payload = {"phase": phase_name, "fingerprint": fingerprint, "count": count}
     try:
         ctx.workspace.write(_IDENTITY_STATE_PATH, json.dumps(payload))
@@ -513,5 +511,3 @@ def _cleanup_failed_event(phase_name: str, exc: BaseException) -> list[Event]:
             failure_category=FailureCategory.ARTIFACT_VALIDATION,
         )
     ]
-
-

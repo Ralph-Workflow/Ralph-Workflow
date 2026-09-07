@@ -93,9 +93,7 @@ def test_recorder_clear_drops_all_observations() -> None:
 def test_recorder_iter_yields_observations() -> None:
     recorder = CapabilityObservationRecorder()
     for capability in all_display_capabilities():
-        recorder.record(
-            CapabilityObservation(capability=capability, tool_name="t", unit_id="u")
-        )
+        recorder.record(CapabilityObservation(capability=capability, tool_name="t", unit_id="u"))
     assert [o.capability for o in recorder] == list(all_display_capabilities())
 
 
@@ -154,12 +152,18 @@ def test_infer_surface_for_preview_routes_all_known_operations(
     operation: PreviewOperation, expected_surface: str
 ) -> None:
     """Every PreviewOperation maps to the correct catalog surface."""
-    assert infer_surface_for_preview(renderable=None, canonical_operation=operation) == expected_surface
+    assert (
+        infer_surface_for_preview(renderable=None, canonical_operation=operation)
+        == expected_surface
+    )
 
 
 def test_infer_surface_for_preview_defaults_to_syntax_preview() -> None:
     """Unknown operations fall back to ``syntax_preview`` defensively."""
-    assert infer_surface_for_preview(renderable=None, canonical_operation="unknown") == "syntax_preview"
+    assert (
+        infer_surface_for_preview(renderable=None, canonical_operation="unknown")
+        == "syntax_preview"
+    )
 
 
 # ---------------------------------------------------------------------------

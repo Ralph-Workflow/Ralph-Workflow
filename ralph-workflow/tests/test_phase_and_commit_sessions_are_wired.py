@@ -38,9 +38,7 @@ class _RecordingBridgeFactory:
 def injected_identity() -> object:
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 
-    return MultimodalModelIdentity(
-        provider="claude", model_id="claude-opus-5", transport="claude"
-    )
+    return MultimodalModelIdentity(provider="claude", model_id="claude-opus-5", transport="claude")
 
 
 def _drive_bridge(factory: _RecordingBridgeFactory, identity: object, *, drop: bool) -> None:

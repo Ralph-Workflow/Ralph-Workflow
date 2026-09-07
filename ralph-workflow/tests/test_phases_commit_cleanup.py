@@ -364,9 +364,7 @@ def test_delete_source_code_extensions_rejected(tmp_git_repo: Path) -> None:
         workspace,
         {
             "analysis_complete": False,
-            "actions": [
-                {"action": "delete_file", "path": f"App{ext}"} for ext in extensions
-            ],
+            "actions": [{"action": "delete_file", "path": f"App{ext}"} for ext in extensions],
         },
     )
     ctx = PhaseContext.construct(
@@ -421,9 +419,7 @@ def test_delete_lock_files_rejected(tmp_git_repo: Path) -> None:
         workspace,
         {
             "analysis_complete": False,
-            "actions": [
-                {"action": "delete_file", "path": lock_file} for lock_file in lockfiles
-            ],
+            "actions": [{"action": "delete_file", "path": lock_file} for lock_file in lockfiles],
         },
     )
     ctx = PhaseContext.construct(
@@ -1544,7 +1540,9 @@ def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
     )
 
     _assert_declined_completes(result)
-    hint = (tmp_git_repo / ".agent" / "tmp" / "last_retry_error_development_commit_cleanup.txt").read_text()
+    hint = (
+        tmp_git_repo / ".agent" / "tmp" / "last_retry_error_development_commit_cleanup.txt"
+    ).read_text()
     assert "module.py" in hint
     assert source.exists()
 
@@ -1680,7 +1678,9 @@ def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
     )
 
     _assert_declined_completes(result)
-    hint = (tmp_git_repo / ".agent" / "tmp" / "last_retry_error_development_commit_cleanup.txt").read_text()
+    hint = (
+        tmp_git_repo / ".agent" / "tmp" / "last_retry_error_development_commit_cleanup.txt"
+    ).read_text()
     assert "a.py" in hint
     assert "b.py" in hint
     assert source_a.exists()

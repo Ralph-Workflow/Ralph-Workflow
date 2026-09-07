@@ -50,10 +50,12 @@ def test_broken_agent_same_shape_options_default_and_override() -> None:
     """S-7: options use the bounded broken-agent default and retain overrides."""
     assert BROKEN_AGENT_SAME_SHAPE_DEFAULT == 2
     assert (
-        RecoveryControllerOptions().broken_agent_same_shape_limit
-        == BROKEN_AGENT_SAME_SHAPE_DEFAULT
+        RecoveryControllerOptions().broken_agent_same_shape_limit == BROKEN_AGENT_SAME_SHAPE_DEFAULT
     )
-    assert RecoveryControllerOptions(broken_agent_same_shape_limit=4).broken_agent_same_shape_limit == 4
+    assert (
+        RecoveryControllerOptions(broken_agent_same_shape_limit=4).broken_agent_same_shape_limit
+        == 4
+    )
 
 
 def test_broken_agent_same_shape_limit_from_general_config_reaches_runtime_builder(
@@ -111,7 +113,9 @@ def test_broken_agent_same_shape_bound_fails_second_consecutive_sole_agent_attem
     assert second_state.last_retry_delay_ms == 0
     assert "BROKEN_AGENT_NO_FALLOVER" in (second_state.last_error or "")
     bound_warnings = [
-        message for message in warning_messages if "broken-agent same-shape bound reached" in message
+        message
+        for message in warning_messages
+        if "broken-agent same-shape bound reached" in message
     ]
     assert len(bound_warnings) == 1
     assert "phase=development" in bound_warnings[0]

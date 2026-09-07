@@ -170,17 +170,22 @@ class ClaudeSubagentTranscriptTails:
         #     file_handle, parser, byte_offset)``. The dict is mutated
         # in-place as new files appear and old files complete; ``stop``
         # closes every open handle and clears the dict.
-        self._tails: dict[str, tuple[
-            Path,
-            Path | None,
-            dict[str, object] | None,
-            TextIOBase,
-            ClaudeInteractiveTranscriptParser,
-            int,
-        ]] = {}  # bounded-accumulator-ok: drained in stop(); bounded by dispatch fan-out
+        self._tails: dict[
+            str,
+            tuple[
+                Path,
+                Path | None,
+                dict[str, object] | None,
+                TextIOBase,
+                ClaudeInteractiveTranscriptParser,
+                int,
+            ],
+        ] = {}  # bounded-accumulator-ok: drained in stop(); bounded by dispatch fan-out
         # Per-dispatch probe registry so R7 fires once per
         # ``tool_use_id``. The key is ``dispatch_tool_use_id``.
-        self._probed_dispatch_ids: set[str] = set()  # bounded-accumulator-ok: bounded by dispatch fan-out
+        self._probed_dispatch_ids: set[str] = (
+            set()
+        )  # bounded-accumulator-ok: bounded by dispatch fan-out
         # ``tool_use_id`` values the parent has marked completed via
         # ``note_completion``. A discovered child whose ``toolUseId``
         # is in this set is dropped immediately (the parent's
@@ -188,7 +193,9 @@ class ClaudeSubagentTranscriptTails:
         # discovered, which is the common case when the child wrote
         # its transcript AFTER the parent's ``tool_result`` for the
         # fast-returning subagent dispatch).
-        self._completed_dispatch_ids: set[str] = set()  # bounded-accumulator-ok: bounded by dispatch fan-out
+        self._completed_dispatch_ids: set[str] = (
+            set()
+        )  # bounded-accumulator-ok: bounded by dispatch fan-out
         # Parent Claude Code version captured from the first user /
         # assistant record. ``None`` until observed.
         self._claude_code_version: str | None = None
@@ -413,19 +420,14 @@ class ClaudeSubagentTranscriptTails:
         fast-returning-child pattern and the test surface asserts
         it explicitly.
         """
-        for transcript_path, meta_path in find_claude_subagent_transcripts(
-            self._session_id
-        ):
+        for transcript_path, meta_path in find_claude_subagent_transcripts(self._session_id):
             key = str(transcript_path)
             if key in self._tails:
                 continue
             meta_dict = read_meta_file(meta_path) if meta_path is not None else None
             if isinstance(meta_dict, dict):
                 child_use_id: object = meta_dict.get("toolUseId")
-                if (
-                    isinstance(child_use_id, str)
-                    and child_use_id in self._completed_dispatch_ids
-                ):
+                if isinstance(child_use_id, str) and child_use_id in self._completed_dispatch_ids:
                     # The parent's ``tool_result`` already landed
                     # for this child. Drop on first observation;
                     # do not register a tail entry, do not open a

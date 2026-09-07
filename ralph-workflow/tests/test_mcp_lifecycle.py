@@ -798,6 +798,22 @@ def test_session_payload_json_omits_model_identity_for_sessions_without_attribut
     assert "model_identity" not in payload
 
 
+def test_session_payload_json_omits_non_bool_activity_only_supervision() -> None:
+    class _SessionWithInvalidActivityOnly:
+        session_id = "sid-invalid-activity"
+        run_id = "run-invalid-activity"
+        drain = "development"
+        capabilities: set[str]
+        activity_only_supervision = "true"
+
+        def __init__(self) -> None:
+            self.capabilities = set()
+
+    payload = json.loads(session_payload_json(_SessionWithInvalidActivityOnly()))
+
+    assert "activity_only_supervision" not in payload
+
+
 # ---------------------------------------------------------------------------
 # capability_profile serialization tests
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ including staging/commit helpers, managed hook installation, and rebase support.
 Implementation uses GitPython rather than the retired Rust/libgit2 stack.
 """
 
+from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.hooks import (
     HOOK_MARKER,
@@ -40,6 +41,8 @@ from .wrapper import (
 __all__ = [
     "HOOK_MARKER",
     "RALPH_HOOK_NAMES",
+    "CommitCreationResult",
+    "CommitCreationStatus",
     "GitHelpers",
     "GitOperationError",
     "GitRunResult",

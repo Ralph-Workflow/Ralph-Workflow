@@ -273,9 +273,7 @@ def _validate_loop_policy_role(
         )
 
 
-def _phases_reachable_via_success(
-    policy: PipelinePolicy, start: str
-) -> set[str]:
+def _phases_reachable_via_success(policy: PipelinePolicy, start: str) -> set[str]:
     """Collect phases reachable from *start* via ``on_success`` transitions only."""
     visited: set[str] = set()
     queue: list[str] = [start]

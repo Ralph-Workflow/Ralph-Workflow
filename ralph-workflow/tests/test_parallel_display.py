@@ -214,7 +214,9 @@ def test_oversized_text_preserves_full_payload_in_overflow_log(tmp_path: Path) -
     pd._emit_activity_event("unit-hard-limit", ActivityEventKind.TEXT, original_payload, None, {})
     pd.drop_unit("unit-hard-limit")
 
-    written = (tmp_path / ".agent" / "raw" / "unit-hard-limit.overflow.log").read_text(encoding="utf-8")
+    written = (tmp_path / ".agent" / "raw" / "unit-hard-limit.overflow.log").read_text(
+        encoding="utf-8"
+    )
     assert original_payload in written
 
 
@@ -517,8 +519,6 @@ def test_parallel_display_wrap_close_body_wide_chrome_prefix_with_trailer() -> N
     # Must wrap into readable rows, not 150+ single-character rows.
     assert len(rows) <= 15
     assert all(len(r) >= 5 for r in rows)
-
-
 
 
 def test_a_dropped_unit_cannot_write_again_through_a_retained_handle(tmp_path: Path) -> None:

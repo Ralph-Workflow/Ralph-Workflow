@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-
 class _ClosableStore(Protocol):
     def close(self) -> None: ...
 

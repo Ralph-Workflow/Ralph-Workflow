@@ -655,7 +655,6 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
     assert save_calls == []
 
 
-
 def _bundled_pipeline_policy() -> object:
     """Return the real bundled pipeline policy.
 

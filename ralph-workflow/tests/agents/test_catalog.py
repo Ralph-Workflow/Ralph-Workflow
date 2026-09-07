@@ -224,7 +224,9 @@ class TestReplaceBuiltin:
         assert catalog.get("pi") is original
         assert catalog.get("pi")  # by cmd too
 
-        new_support = _make_support("pi", transport=AgentTransport.PI, cmd="pi-custom", is_builtin=True)
+        new_support = _make_support(
+            "pi", transport=AgentTransport.PI, cmd="pi-custom", is_builtin=True
+        )
         catalog.replace_builtin("pi", new_support)
 
         # ``_entries['pi']`` must point at the override.

@@ -149,9 +149,7 @@ def test_explicit_disabled_media_surface_matches_default(tmp_path: Path) -> None
     ``read_image`` (media-tool regression).
     """
     default_names = _tool_names(_server(tmp_path, McpConfig()))
-    disabled_names = _tool_names(
-        _server(tmp_path, McpConfig(media=MediaConfig(enabled=False)))
-    )
+    disabled_names = _tool_names(_server(tmp_path, McpConfig(media=MediaConfig(enabled=False))))
 
     assert "read_file" in default_names
     assert "read_file" in disabled_names

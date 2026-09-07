@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 
 from ralph.phases.phase_timing_record import PhaseTimingRecord
-from ralph.pipeline.events import AnalysisDecisionEvent, Event, ExecutionResultEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
+    CommitResidualEvent,
+    Event,
+    ExecutionResultEvent,
+    PipelineEvent,
+)
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
@@ -131,13 +137,41 @@ def test_residual_commit_reinvokes_same_commit_phase_with_fresh_state() -> None:
         commit={"message_prepared": True, "diff_prepared": True, "agent_invoked": True},
     )
 
-    next_state, effects = reducer_reduce(commit_state, PipelineEvent.COMMIT_RESIDUAL, policy)
+    next_state, effects = reducer_reduce(
+        commit_state,
+        CommitResidualEvent(committed_paths=("right.py",), remaining_paths=("left.py",)),
+        policy,
+    )
 
     assert next_state.phase == "savepoint"
     assert next_state.previous_phase == "savepoint"
     assert next_state.commit.message_prepared is False
     assert next_state.commit.diff_prepared is False
     assert next_state.commit.agent_invoked is False
+    assert effects == []
+
+
+def test_unreceipted_commit_residual_enum_fails_closed_without_reentry() -> None:
+    policy = _custom_policy()
+    state = PipelineState(phase="savepoint")
+
+    next_state, effects = reducer_reduce(state, PipelineEvent.COMMIT_RESIDUAL, policy)
+
+    assert next_state == state
+    assert effects == []
+
+
+def test_typed_commit_residual_reenters_for_nonempty_receipt() -> None:
+    policy = _custom_policy()
+    state = PipelineState(phase="savepoint")
+
+    next_state, effects = reducer_reduce(
+        state,
+        CommitResidualEvent(committed_paths=("right.py",), remaining_paths=("left.py",)),
+        policy,
+    )
+
+    assert next_state.phase == "savepoint"
     assert effects == []
 
 
@@ -485,9 +519,7 @@ def test_always_invoke_statuses_enter_analysis_below_threshold(status: str) -> N
     policy = load_policy(defaults_dir).pipeline
 
     state = _state_with_dev_time(10.0)
-    cleanup_state, _ = reducer_reduce(
-        state, _execution_result_event("development", status), policy
-    )
+    cleanup_state, _ = reducer_reduce(state, _execution_result_event("development", status), policy)
     commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
 

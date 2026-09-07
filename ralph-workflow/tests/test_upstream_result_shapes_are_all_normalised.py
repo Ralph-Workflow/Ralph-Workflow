@@ -104,9 +104,7 @@ def test_a_text_block_that_decodes_to_media_is_not_served_as_a_payload() -> None
     from ralph.mcp.upstream.client import carries_upstream_media_blocks
 
     smuggled = [{"type": "text", "text": json.dumps({"content": [dict(_IMAGE_BLOCK)]})}]
-    ordinary = [
-        {"type": "text", "text": json.dumps({"content": [{"type": "text", "text": "ok"}]})}
-    ]
+    ordinary = [{"type": "text", "text": json.dumps({"content": [{"type": "text", "text": "ok"}]})}]
 
     assert decode_json_payload_from_content(smuggled) is None
     # Not vacuous: an ordinary JSON-in-text payload still decodes.

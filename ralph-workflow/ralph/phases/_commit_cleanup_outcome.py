@@ -85,9 +85,7 @@ def decide_cleanup_outcome(
 def all_applications_failed(report: CleanupApplyReport) -> bool:
     """Return True when every attempted apply threw and nothing applied."""
     attempted = (
-        len(report.failed_delete_paths)
-        + len(report.failed_pattern_tokens)
-        + report.applied_count
+        len(report.failed_delete_paths) + len(report.failed_pattern_tokens) + report.applied_count
     )
     return report.applied_count == 0 and attempted > 0
 

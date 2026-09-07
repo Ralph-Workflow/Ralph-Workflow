@@ -276,9 +276,7 @@ def test_post_preflight_channel_ledger_records_six_channels(
 
     # Build a pty-backed console, start the daemon reader, drive the
     # real orchestrator over the shared root.
-    console, master_fd, slave_fd, accumulated, stop_event = (
-        _spawn_pty_drained_console()
-    )
+    console, master_fd, slave_fd, accumulated, stop_event = _spawn_pty_drained_console()
     display_context = make_display_context(console=console)
     load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
 
@@ -427,9 +425,7 @@ def test_post_preflight_channel_ledger_records_six_channels(
         f" after={'leaked' if remediation_label_leaked else 'neutral'}"
     )
     print(f"channel=threads before=[] after={new_thread_names!r}")
-    print(
-        f"channel=second_preflight before=0 after={len(second_agent_invocations)}"
-    )
+    print(f"channel=second_preflight before=0 after={len(second_agent_invocations)}")
     added_dirty = sorted(after_dirty - before_dirty)
     policy_dirty = sorted(path for path in added_dirty if path in policy_paths)
     print(f"channel=dirty_tree before={sorted(before_dirty)} after={policy_dirty}")

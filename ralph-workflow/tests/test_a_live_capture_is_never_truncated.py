@@ -52,9 +52,7 @@ def _tag_of(line: str) -> str:
 
 
 def _write_one(root: Path, tag: str) -> None:
-    log = get_or_create_raw_overflow_log(
-        root, raw_log_unit_id_for(_CONFIG), model=_CONFIG.model
-    )
+    log = get_or_create_raw_overflow_log(root, raw_log_unit_id_for(_CONFIG), model=_CONFIG.model)
     frame: dict[str, object] = {"w": tag}
     log.append(json.dumps(frame) + "\n")
     log.close()

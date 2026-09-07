@@ -576,9 +576,8 @@ def _invoke_agent_with_recovery(
                 # AGY incomplete-exit plan is produced, THIS invocation
                 # gets no second completion reprompt. The loop-level
                 # bound in ``run_with_direct_mcp_recovery`` is point 2.
-                state.completion_reprompt_used = (
-                    state.completion_reprompt_used
-                    or isinstance(exc, AgyIncompleteExitError)
+                state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
+                    exc, AgyIncompleteExitError
                 )
                 retry_intent = resolve_retry_intent(
                     exc,

@@ -200,7 +200,10 @@ def test_render_phase_failure_report_omits_corruption_when_config_not_supplied(
 
     assert len(captured) == 1
     message = str(captured[0][1][1])
-    assert message == "Verdict: FAILED (no artifact) — no receipt for 'plan'; .agent/artifacts/plan.md absent"
+    assert (
+        message
+        == "Verdict: FAILED (no artifact) — no receipt for 'plan'; .agent/artifacts/plan.md absent"
+    )
     assert "raw transcript corrupted:" not in message
 
 

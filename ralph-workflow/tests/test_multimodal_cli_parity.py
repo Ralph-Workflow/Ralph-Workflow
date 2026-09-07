@@ -33,6 +33,7 @@ def _wide_help_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv("COLUMNS", "200")
 
+
 #: Every smoke command that exposes ``--multimodal``. The plan locks
 #: parity so the multimodal scenario is reachable on every major
 #: coding harness (criterion 5).
@@ -91,4 +92,3 @@ def test_smoke_interactive_opencode_help_advertises_multimodal() -> None:
     exit_code, output = _invoke_help("smoke-interactive-opencode")
     assert exit_code == 0, output
     assert "--multimodal" in output
-

@@ -274,10 +274,7 @@ def smoke_media_config_toml() -> str:
     guarantee every harness identity takes the handle-mint path so the
     replay-hop assertion can be uniform across the six transports.
     """
-    return (
-        "[media]\n"
-        f"max_inline_bytes = {SMOKE_MEDIA_MAX_INLINE_BYTES}\n"
-    )
+    return f"[media]\nmax_inline_bytes = {SMOKE_MEDIA_MAX_INLINE_BYTES}\n"
 
 
 def multimodal_prompt_requirements(fixture_relpath: str) -> str:
@@ -297,15 +294,15 @@ def multimodal_prompt_requirements(fixture_relpath: str) -> str:
         "Multimodal contract (DO NOT skip any of these):\n"
         f"- Read the on-disk fixture `{fixture_relpath}` with the media tool this "
         "transport exposes (for example, `read_media` or `read_image` with "
-        "`path=\"" + fixture_relpath + "\"`).\n"
+        '`path="' + fixture_relpath + '"`).\n'
         "- The first response will mint a fresh `ralph://media/{artifact_id}` "
         "handle. You MUST take that handle exactly as returned and call "
         "`read_media` (or `read_image`) AGAIN with `path=<that handle>, "
-        "format=\"inline\"` as a second, fresh tool call. The replay hop's "
+        'format="inline"` as a second, fresh tool call. The replay hop\'s '
         "`params_digest` is the "
         "graded proof you consumed the first response -- skipping it fails "
         "the run, even if a receipt line is written.\n"
-        "- Then call `read_image` with `format=\"metadata\"` against the same "
+        '- Then call `read_image` with `format="metadata"` against the same '
         "fixture (or the handle) and read off the server-computed `width`, "
         "`height`, and `sha256` it returns. These three values are the "
         "ground truth for the output file -- do NOT guess them.\n"
@@ -413,9 +410,7 @@ def _check_receipt_token_shape(receipt_token: str) -> Evidence | None:
     stays well below the audit's PLR0912 branch-count cap.
     """
     if not receipt_token:
-        return absent(
-            "MEDIA_RECEIPT=<handle> line was not written to the smoke output file"
-        )
+        return absent("MEDIA_RECEIPT=<handle> line was not written to the smoke output file")
     if not receipt_token.startswith("ralph://media/"):
         return Evidence(
             holds=False,
@@ -559,15 +554,11 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
     if present is not None:
         return present
 
-    replay_check = _check_replay_record(
-        workspace_root, run_id, secret, server_uri
-    )
+    replay_check = _check_replay_record(workspace_root, run_id, secret, server_uri)
     if replay_check is not None:
         return replay_check
 
-    geometry = _check_geometry_match(
-        output_file, width, height
-    )
+    geometry = _check_geometry_match(output_file, width, height)
     if geometry is not None:
         return geometry
 
@@ -585,9 +576,7 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
                 provenance=Provenance.WORKSPACE_EFFECT,
                 detail="fixture has no readable pixel-only PERCEPTION_SECRET",
             )
-        secret_check = _check_perception_secret_token(
-            output_file, expected_perception_secret
-        )
+        secret_check = _check_perception_secret_token(output_file, expected_perception_secret)
         if secret_check is not None:
             return secret_check
         delivery_check = _check_delivery_mode_perceptible(

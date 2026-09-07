@@ -214,7 +214,9 @@ def _render_smoke_report(
         if result.tool_activity_seen.holds:
             working.append(_evidence_line("tool activity", result.tool_activity_seen))
         if result.artifact_submitted.holds:
-            working.append(_evidence_line("smoke_test_result artifact submitted", result.artifact_submitted))
+            working.append(
+                _evidence_line("smoke_test_result artifact submitted", result.artifact_submitted)
+            )
         _append_subagent_working_lines(result, working)
         lines.extend(working or ["- none"])
         lines.append("Observed output:")
@@ -223,7 +225,9 @@ def _render_smoke_report(
         break_lines = [f"- {error}" for error in result.errors]
         if not break_lines and verdict != "PASS":
             below_wire = sum(
-                1 for ev in evidence.values() if not ev.holds or ev.provenance is not ev.provenance.WIRE
+                1
+                for ev in evidence.values()
+                if not ev.holds or ev.provenance is not ev.provenance.WIRE
             )
             break_lines = [
                 f"- {verdict}: {below_wire} of {len(evidence)} required fact(s) graded below WIRE; "
@@ -350,9 +354,7 @@ def _resolve_smoke_agent_name(
     """
     if agent_name is not None:
         return agent_name
-    return resolve_default_smoke_agent(
-        transport, config, registry.get, bare_alias=bare_alias
-    )
+    return resolve_default_smoke_agent(transport, config, registry.get, bare_alias=bare_alias)
 
 
 def smoke_harness_agent_command(
@@ -499,9 +501,7 @@ def _resolve_claude_smoke_agent(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    return _resolve_smoke_agent_name(
-        None, transport, config, registry, bare_alias=bare_alias
-    )
+    return _resolve_smoke_agent_name(None, transport, config, registry, bare_alias=bare_alias)
 
 
 def smoke_interactive_claude_command(
@@ -667,9 +667,7 @@ def smoke_interactive_codex_command(
     runs when an operator invokes it.
     """
     if shutil.which("codex") is None:
-        logger.error(
-            "codex binary not found. Install Codex CLI and ensure `codex` is on PATH."
-        )
+        logger.error("codex binary not found. Install Codex CLI and ensure `codex` is on PATH.")
         return 2
 
     workspace_scope = resolve_workspace_scope()
@@ -679,8 +677,7 @@ def smoke_interactive_codex_command(
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
-            "Agent '{}' is not available. Use --agent with 'codex' or a "
-            "codex/<model> alias.",
+            "Agent '{}' is not available. Use --agent with 'codex' or a codex/<model> alias.",
             agent_name,
         )
         return 2
@@ -727,9 +724,7 @@ def smoke_interactive_pi_command(
     runs when an operator invokes it.
     """
     if shutil.which("pi") is None:
-        logger.error(
-            "pi binary not found. Install Pi and ensure `pi` is on PATH."
-        )
+        logger.error("pi binary not found. Install Pi and ensure `pi` is on PATH.")
         return 2
 
     workspace_scope = resolve_workspace_scope()
@@ -783,9 +778,7 @@ def smoke_interactive_nanocoder_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(
-        agent_name, AgentTransport.NANOCODER, config, registry
-    )
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.NANOCODER, config, registry)
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(

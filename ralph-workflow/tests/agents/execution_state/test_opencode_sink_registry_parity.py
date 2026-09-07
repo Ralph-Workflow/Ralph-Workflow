@@ -249,7 +249,12 @@ def test_invalid_lifecycle_pids_are_not_published_as_subagent_pids() -> None:
     registry = _make_registry()
     strategy, _sink_calls, _registry = _make_strategy_with_sink(registry=registry)
 
-    for child_id, pid in (("boolean", "true"), ("fraction", "12.5"), ("zero", "0"), ("negative", "-1")):
+    for child_id, pid in (
+        ("boolean", "true"),
+        ("fraction", "12.5"),
+        ("zero", "0"),
+        ("negative", "-1"),
+    ):
         strategy.observe_line(f'{{"type":"child_started","child_id":"{child_id}","pid":{pid}}}')
 
     assert registry.active_pids("agent:test:") == set()

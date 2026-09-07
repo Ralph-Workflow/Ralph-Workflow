@@ -31,7 +31,9 @@ _STATE = _State()
 def install_sanitizing_excepthook(
     *,
     stderr: TextIO | None = None,
-    sys_setter: Callable[[Callable[[type[BaseException], BaseException, TracebackType | None], None]], object]
+    sys_setter: Callable[
+        [Callable[[type[BaseException], BaseException, TracebackType | None], None]], object
+    ]
     | None = None,
     thread_setter: Callable[[Callable[[threading.ExceptHookArgs], None]], object] | None = None,
     restore: Callable[[], None] | None = None,

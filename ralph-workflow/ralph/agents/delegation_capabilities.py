@@ -107,10 +107,7 @@ def _build_codex() -> DelegationCapability:
     return DelegationCapability(
         transport=AgentTransport.CODEX,
         stance=DelegationStance.SUPPORTED,
-        mechanism=(
-            "features.multi_agent = true set explicitly via "
-            "CODEX_NATIVE_FEATURE_OVERRIDES"
-        ),
+        mechanism=("features.multi_agent = true set explicitly via CODEX_NATIVE_FEATURE_OVERRIDES"),
         citation="ralph-workflow/ralph/mcp/tools/names.py:213-221",
     )
 

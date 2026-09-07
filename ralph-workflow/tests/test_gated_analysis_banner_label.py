@@ -55,7 +55,7 @@ def test_an_ungated_analysis_phase_is_unchanged() -> None:
 
 
 def test_the_final_hint_waits_for_the_last_gated_pass() -> None:
-    """"Final, skipping next" must not appear while another pass will run."""
+    """ "Final, skipping next" must not appear while another pass will run."""
     pipeline = _pipeline()
     cap = pipeline.loop_counters["development_analysis_iteration"].default_max
     field = "development_analysis_iteration"

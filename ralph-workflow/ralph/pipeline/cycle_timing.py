@@ -195,7 +195,6 @@ def apply_cycle_timebox(
     return CycleTimeboxDecision(state=state, target_phase=target_phase)
 
 
-
 def conclude_cycle_on_route_out_of_cycle(
     state: PipelineState,
     next_phase: str,

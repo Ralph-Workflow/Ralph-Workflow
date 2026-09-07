@@ -424,7 +424,8 @@ def test_planning_analysis_to_development_clears_history_per_policy(
 ) -> None:
     """planning_analysis→development clears planning and development history per policy."""
     monkeypatch.setattr(
-        "ralph.prompts.materialize.SkillManager.get_docs_mcp_available", lambda *_args, **_kwargs: False
+        "ralph.prompts.materialize.SkillManager.get_docs_mcp_available",
+        lambda *_args, **_kwargs: False,
     )
     pipeline_policy = PipelinePolicy(
         phases={

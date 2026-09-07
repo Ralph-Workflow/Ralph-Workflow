@@ -276,10 +276,7 @@ class TestRenderExplanationAscii:
         output = render_explanation_ascii(explanation)
 
         lines = output.split("\n")
-        assert any(
-            "[failed]" in line and "-->" in line and "planning" in line
-            for line in lines
-        )
+        assert any("[failed]" in line and "-->" in line and "planning" in line for line in lines)
         assert (
             bundle.pipeline.phases["development_analysis"].decisions["failed"].target
             == "development_final_commit_cleanup"
@@ -288,8 +285,7 @@ class TestRenderExplanationAscii:
         assert "failed_terminal" in output
         # No analysis [failed] branch short-circuits to failed_terminal.
         assert not any(
-            "[failed]" in line and "-->" in line and "failed_terminal" in line
-            for line in lines
+            "[failed]" in line and "-->" in line and "failed_terminal" in line for line in lines
         ), (
             "Analysis [failed] branches must route through the commit boundary, "
             "not directly to failed_terminal"

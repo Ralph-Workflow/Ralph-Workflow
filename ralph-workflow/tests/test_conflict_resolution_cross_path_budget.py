@@ -145,9 +145,7 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
             applied.append(ident)
         return record
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply)
 
     original_start = start_conflict_attempt
 
@@ -156,9 +154,7 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
         started.append(allowed)
         return allowed
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync.start_conflict_attempt", _start
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_sync.start_conflict_attempt", _start)
 
     config = UnifiedConfig.model_validate({"general": {}})
     assert start_conflict_attempt(identity) is True
@@ -214,9 +210,7 @@ def test_remote_refresh_failure_still_books_conflict_budget(
             applied.append(ident)
         return record
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply)
     config = UnifiedConfig.model_validate({"general": {}})
     result = pull_and_reconcile_target(config, tmp_path, "main")
     assert applied == [identity]
@@ -257,9 +251,7 @@ def test_endpoint_merge_does_not_reinvoke_the_same_identity(
         lambda _target, repo_root: RebaseConflicts(files=["a.py"]),
     )
     monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
-    monkeypatch.setattr(
-        merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False
-    )
+    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
     monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
 

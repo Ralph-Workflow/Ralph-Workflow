@@ -36,9 +36,7 @@ def _default_toplevel_runner(resolved_cwd: Path) -> Path | None:
                 label="git-cwd-toplevel-probe",
             ),
         )
-        stdout, _stderr = proc.communicate_and_cleanup(
-            timeout=_TOPLEVEL_PROBE_TIMEOUT_SECONDS
-        )
+        stdout, _stderr = proc.communicate_and_cleanup(timeout=_TOPLEVEL_PROBE_TIMEOUT_SECONDS)
         returncode = proc.returncode if proc.returncode is not None else 1
     except (subprocess.TimeoutExpired, OSError):
         return None

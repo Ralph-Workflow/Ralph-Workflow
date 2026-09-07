@@ -64,6 +64,7 @@ def test_pipeline_phase_stamps_canonical_receipt(
     marginally over 1 s, so the per-test cap is widened to 3 s to match
     the sibling audit test in this file.
     """
+
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         del args, kwargs
         return PipelineEvent.AGENT_SUCCESS

@@ -35,9 +35,7 @@ def _seed_workspace(root: Path, *, prompt: str) -> None:
     (agent_dir / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
 
 
-def _install_workspace_seams(
-    monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path
-) -> None:
+def _install_workspace_seams(monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path) -> None:
     """Mock git ops so each workspace resolves to its own root."""
 
     canonical = {p.resolve(): p.resolve() for p in workspace_roots}

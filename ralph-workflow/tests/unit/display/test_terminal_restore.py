@@ -75,12 +75,16 @@ def test_restore_terminal_writes_sequence_on_tty_stream(monkeypatch: pytest.Monk
     assert "\x1b[?1049l" not in content
 
 
-def test_restore_terminal_dumb_tty_skips_escape_write_but_restores_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_restore_terminal_dumb_tty_skips_escape_write_but_restores_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     stream = _make_dummy_tty_stream()
     modes: list[int | list[bytes | int]] = [1, 2, 3, 4, 5, 6, []]
     monkeypatch.setenv("TERM", "dumb")
-    with patch("termios.tcsetattr") as set_attrs, patch("termios.tcflush") as flush, patch(
-        "os.isatty", return_value=True
+    with (
+        patch("termios.tcsetattr") as set_attrs,
+        patch("termios.tcflush") as flush,
+        patch("os.isatty", return_value=True),
     ):
         restore_terminal(stream=stream, modes=modes)
     assert stream.getvalue() == ""
@@ -112,9 +116,12 @@ def test_restore_terminal_uses_stderr_when_default_stdout_is_not_a_tty(
     monkeypatch.setenv("TERM", "xterm")
     stdout = _make_dummy_non_tty_stream()
     stderr = _make_dummy_tty_stream()
-    with patch("ralph.display.terminal_restore.sys.stdout", stdout), patch(
-        "ralph.display.terminal_restore.sys.stderr", stderr
-    ), patch("termios.tcflush"), patch("os.isatty", return_value=True):
+    with (
+        patch("ralph.display.terminal_restore.sys.stdout", stdout),
+        patch("ralph.display.terminal_restore.sys.stderr", stderr),
+        patch("termios.tcflush"),
+        patch("os.isatty", return_value=True),
+    ):
         restore_terminal(modes=None)
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == terminal_restore_sequence()
@@ -122,8 +129,9 @@ def test_restore_terminal_uses_stderr_when_default_stdout_is_not_a_tty(
 
 def test_restore_terminal_modes_swallows_raising_tcsetattr() -> None:
     fake_modes: list[int | list[bytes | int]] = [0, 0, 0, 0, 0, 0, []]
-    with patch("termios.tcsetattr", side_effect=OSError("tcsetattr failed")), patch(
-        "os.isatty", return_value=True
+    with (
+        patch("termios.tcsetattr", side_effect=OSError("tcsetattr failed")),
+        patch("os.isatty", return_value=True),
     ):
         result = restore_terminal_modes(fd=1, modes=fake_modes)
         assert result is False
@@ -131,9 +139,11 @@ def test_restore_terminal_modes_swallows_raising_tcsetattr() -> None:
 
 def test_snapshot_and_restore_terminal_modes() -> None:
     fake_modes: list[int | list[bytes | int]] = [1, 2, 3, 4, 5, 6, [b"a"]]
-    with patch("termios.tcgetattr", return_value=fake_modes) as mock_getattr, patch(
-        "termios.tcsetattr"
-    ) as mock_setattr, patch("os.isatty", return_value=True):
+    with (
+        patch("termios.tcgetattr", return_value=fake_modes) as mock_getattr,
+        patch("termios.tcsetattr") as mock_setattr,
+        patch("os.isatty", return_value=True),
+    ):
         snap = snapshot_terminal_modes(fd=1)
         assert snap == fake_modes
         mock_getattr.assert_called_once_with(1)
@@ -161,11 +171,18 @@ def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_pr
         installed[signum] = handler
 
     saved_modes: list[int | list[bytes | int]] = [1, 2, 3, 4, 5, 6, []]
-    with patch("ralph.cli.main.threading.current_thread", return_value=__import__("threading").main_thread()), patch(
-        "ralph.cli.main.os.write", side_effect=lambda fd, data: writes.append((fd, data)) or len(data)
-    ), patch("ralph.cli.main._resolve_fd", return_value=1), patch(
-        "ralph.cli.main.restore_terminal_modes"
-    ) as restore_modes:
+    with (
+        patch(
+            "ralph.cli.main.threading.current_thread",
+            return_value=__import__("threading").main_thread(),
+        ),
+        patch(
+            "ralph.cli.main.os.write",
+            side_effect=lambda fd, data: writes.append((fd, data)) or len(data),
+        ),
+        patch("ralph.cli.main._resolve_fd", return_value=1),
+        patch("ralph.cli.main.restore_terminal_modes") as restore_modes,
+    ):
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
         from ralph.display.terminal_restore import set_global_snapshot
 

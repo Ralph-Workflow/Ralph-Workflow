@@ -82,6 +82,7 @@ _REPLY_TERMINATORS: Final[tuple[str, ...]] = ("\x07", "\x1b\\")
 
 _HEX_DIGITS_PER_BYTE: Final[int] = 2
 
+
 class _BackgroundCacheState:
     """Process-lifetime OSC 11 cache; ``probed`` disambiguates ``None``."""
 
@@ -160,9 +161,12 @@ def _tty_fd() -> tuple[int, bool] | None:
             return None
         if isinstance(stdin, IOBase) and stdin.isatty():
             return stdin.fileno(), False
-        return os.open(  # resource-lifecycle-ok: closed in _probe's finally after one OSC exchange; filesystem-write-ok: transient controlling-tty fd, never persisted
-            "/dev/tty", os.O_RDWR | os.O_NOCTTY
-        ), True
+        return (
+            os.open(  # resource-lifecycle-ok: closed in _probe's finally after one OSC exchange; filesystem-write-ok: transient controlling-tty fd, never persisted
+                "/dev/tty", os.O_RDWR | os.O_NOCTTY
+            ),
+            True,
+        )
     except Exception:
         return None
 
@@ -200,7 +204,11 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
         return True, None
     finally:
         with contextlib.suppress(Exception):
-            if parsed_color is None and hasattr(termios, "tcflush") and hasattr(termios, "TCIFLUSH"):
+            if (
+                parsed_color is None
+                and hasattr(termios, "tcflush")
+                and hasattr(termios, "TCIFLUSH")
+            ):
                 termios.tcflush(fd, termios.TCIFLUSH)
             termios.tcsetattr(fd, termios.TCSADRAIN, original)
         set_global_snapshot(previous)

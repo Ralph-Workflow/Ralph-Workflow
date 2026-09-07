@@ -46,10 +46,7 @@ class DisplayCapabilityStance:
 
     def __post_init__(self) -> None:
         if self.kind not in _STANCE_KINDS:
-            msg = (
-                f"DisplayCapabilityStance.kind must be one of {_STANCE_KINDS}, "
-                f"got {self.kind!r}"
-            )
+            msg = f"DisplayCapabilityStance.kind must be one of {_STANCE_KINDS}, got {self.kind!r}"
             raise ValueError(msg)
         if self.kind != "supported" and (not self.reason or not self.reason.strip()):
             msg = (
@@ -74,9 +71,7 @@ class DisplayCapabilityStance:
         return cls(capability=capability, kind="supported", reason=detail)
 
     @classmethod
-    def not_applicable(
-        cls, capability: DisplayCapability, reason: str
-    ) -> DisplayCapabilityStance:
+    def not_applicable(cls, capability: DisplayCapability, reason: str) -> DisplayCapabilityStance:
         """Declare a capability as ``NOT_APPLICABLE(reason)``.
 
         Use this when the transport is structurally incapable of
@@ -90,9 +85,7 @@ class DisplayCapabilityStance:
         return cls(capability=capability, kind="not_applicable", reason=stripped)
 
     @classmethod
-    def unimplemented(
-        cls, capability: DisplayCapability, reason: str
-    ) -> DisplayCapabilityStance:
+    def unimplemented(cls, capability: DisplayCapability, reason: str) -> DisplayCapabilityStance:
         """Declare a capability as ``UNIMPLEMENTED(reason)``.
 
         Use this when the transport CAN produce the surface in

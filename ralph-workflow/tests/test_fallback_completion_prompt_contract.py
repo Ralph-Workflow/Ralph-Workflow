@@ -107,7 +107,9 @@ def test_fallback_templates_state_completion_gate_promotes_after_final_call(
     source = " ".join(TemplateContext.default().registry.get_template(template_name).split())
     if template_name == "developer_iteration_fallback.jinja":
         source += " " + " ".join(
-            TemplateContext.default().registry.get_template("shared/_artifact_submission.j2").split()
+            TemplateContext.default()
+            .registry.get_template("shared/_artifact_submission.j2")
+            .split()
         )
 
     assert "completion gate" in source

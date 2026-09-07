@@ -335,8 +335,7 @@ def test_missing_completion_selector_produces_zero_wire_receipts(tmp_path: Path)
             if record.get("method") == "tools/call":
                 tool_names.add(record.get("tool_name"))
     assert "ralph_submit_md_artifact" not in tool_names, (
-        f"missing_completion must not leave a submit wire record; ledger "
-        f"tool_names={tool_names!r}"
+        f"missing_completion must not leave a submit wire record; ledger tool_names={tool_names!r}"
     )
     assert "declare_complete" not in tool_names, (
         f"missing_completion must not leave a declare_complete wire record; "

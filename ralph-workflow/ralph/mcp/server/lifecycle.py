@@ -844,7 +844,7 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json")
     path = Path(temp_path)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:  # filesystem-write-ok: unique run-scoped transient handshake file, removed by StandaloneMcpProcess.shutdown
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:  # filesystem-write-ok: transient handshake stream
             stream.write(session_payload_json(session))
         return path
     except BaseException:
@@ -892,8 +892,13 @@ def session_payload_json(session: SessionLike) -> str:
         "drain": session.drain,
         "capabilities": sorted(session.capabilities),
     }
-    activity_only_supervision = cast(
-        "bool", getattr(session, "activity_only_supervision", False)
+    raw_activity_only_supervision: object = getattr(
+        session, "activity_only_supervision", False
+    )
+    activity_only_supervision = (
+        raw_activity_only_supervision
+        if isinstance(raw_activity_only_supervision, bool)
+        else False
     )
     if activity_only_supervision:
         session_payload["activity_only_supervision"] = True

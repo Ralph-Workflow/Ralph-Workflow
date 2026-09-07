@@ -26,9 +26,7 @@ if TYPE_CHECKING:
 __all__ = ["next_unvisited", "remember_dead_surface", "skipped_candidates"]
 
 
-def skipped_candidates(
-    session: ResolutionSession, candidates: tuple[str, ...]
-) -> frozenset[str]:
+def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) -> frozenset[str]:
     """Candidates this round must not launch, for either reason."""
     barred = (*session.dead_tool_surfaces, *session.stop_dead_surfaces)
     return frozenset(name for name in candidates if name in barred)

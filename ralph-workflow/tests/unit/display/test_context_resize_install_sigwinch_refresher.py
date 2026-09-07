@@ -119,8 +119,9 @@ class TestInstallSigwinchRefresher:
         )
 
         assert ("get", signal.SIGWINCH) in calls
-        assert any(c[0] == "set" and c[1][0] == signal.SIGWINCH for c in calls if isinstance(c[1], tuple))
+        assert any(
+            c[0] == "set" and c[1][0] == signal.SIGWINCH for c in calls if isinstance(c[1], tuple)
+        )
 
         stop()
         assert calls[-1] == ("set", (signal.SIGWINCH, previous_handler))
-

@@ -435,7 +435,9 @@ def _run_representative(
 ) -> dict[str, object]:
     """Run the representative A/B workload and return the summary block."""
     file_count = _QUICK_REPRESENTATIVE_FILE_COUNT if quick else REPRESENTATIVE_FILE_COUNT
-    lines_per_file = _QUICK_REPRESENTATIVE_LINES_PER_FILE if quick else REPRESENTATIVE_LINES_PER_FILE
+    lines_per_file = (
+        _QUICK_REPRESENTATIVE_LINES_PER_FILE if quick else REPRESENTATIVE_LINES_PER_FILE
+    )
     workspace, total_bytes = _seeded_workspace(
         files=file_count,
         lines_per_file=lines_per_file,

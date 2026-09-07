@@ -7,6 +7,7 @@ import types
 from pathlib import Path
 from unittest.mock import patch
 
+from ralph.git.commit_result import CommitCreationResult
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.state import PipelineState
@@ -223,14 +224,19 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
 
     effect = CommitEffect(message_file=msg_path)
 
-    def _fake_create_commit(repo_root: str, message: str) -> str:
-        del repo_root, message
-        return "abc1234567890"
+    def _fake_create_commit(
+        repo_root: str, message: str, *, expected_head: str
+    ) -> CommitCreationResult:
+        del repo_root, message, expected_head
+        return CommitCreationResult.created("abc1234567890")
 
     def _fake_stage_all(repo_root: str) -> None:
         del repo_root
 
-    with patch("ralph.pipeline.runner.repo_has_commit_work", return_value=True):
+    with (
+        patch("ralph.pipeline.runner.repo_has_commit_work", return_value=True),
+        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="head"),
+    ):
         runner_module.execute_commit_effect(
             effect,
             _fake_create_commit,
@@ -302,14 +308,19 @@ def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
 
     effect = CommitEffect(message_file=msg_path)
 
-    def _fake_create_commit(repo_root: str, message: str) -> str:
-        del repo_root, message
-        return "def4567890ab"
+    def _fake_create_commit(
+        repo_root: str, message: str, *, expected_head: str
+    ) -> CommitCreationResult:
+        del repo_root, message, expected_head
+        return CommitCreationResult.created("def4567890ab")
 
     def _fake_stage_all(repo_root: str) -> None:
         del repo_root
 
-    with patch("ralph.pipeline.runner.repo_has_commit_work", return_value=True):
+    with (
+        patch("ralph.pipeline.runner.repo_has_commit_work", return_value=True),
+        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="head"),
+    ):
         runner_module.execute_commit_effect(
             effect,
             _fake_create_commit,

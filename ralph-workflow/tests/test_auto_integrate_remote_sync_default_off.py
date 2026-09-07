@@ -22,7 +22,9 @@ def _config(**overrides: object) -> GeneralConfig:
     return GeneralConfig.model_validate(overrides)
 
 
-def test_remote_sync_default_on_fetches_and_pushes_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_remote_sync_default_on_fetches_and_pushes_when_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """S-2: default configuration enables configured-remote operations."""
     calls: list[str] = []
     monkeypatch.setattr(

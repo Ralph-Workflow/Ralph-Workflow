@@ -86,9 +86,7 @@ def _write_target_agent_config(root: Path, script: Path) -> None:
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "ralph-workflow.toml").write_text(
-        "[agents.claude]\n"
-        f"cmd = {json.dumps(cmd)}\n"
-        'transport = "agy"\n',
+        f'[agents.claude]\ncmd = {json.dumps(cmd)}\ntransport = "agy"\n',
         encoding="utf-8",
     )
 

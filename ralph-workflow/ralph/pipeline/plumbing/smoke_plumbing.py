@@ -407,7 +407,9 @@ _MIN_MEANINGFUL_OUTPUT_LINES = 3
 # --- headless is 2x interactive (linear with the depth of streamed
 # partial messages) --- is operator-acceptable; reading anything more is
 # a regression in the display's debouncer.
-_MAX_VISIBLE_OUTPUT_LINES_BY_AGENT: dict[str, int] = {  # bounded-accumulator-ok: static per-agent ceiling map, never mutated
+_MAX_VISIBLE_OUTPUT_LINES_BY_AGENT: dict[
+    str, int
+] = {  # bounded-accumulator-ok: static per-agent ceiling map, never mutated
     "claude-headless": 250,
 }
 _MAX_VISIBLE_OUTPUT_LINES = 80
@@ -756,9 +758,11 @@ def render_capability_matrix_markdown(
     )
 
     capabilities = tuple(all_display_capabilities())
-    rows = capability_rows if capability_rows is not None else {
-        support.name: support.display_capabilities for support in builtin_supports()
-    }
+    rows = (
+        capability_rows
+        if capability_rows is not None
+        else {support.name: support.display_capabilities for support in builtin_supports()}
+    )
     lines = [
         "## Display-capability declarations (S-4)",
         "",
@@ -948,7 +952,7 @@ def _build_smoke_prompt(
     submit_call_instruction = (
         (
             agy_dispatcher_hint_text(submit_artifact_tool_name)
-            + f"\n- Pass `artifact_type=\"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}\"` and "
+            + f'\n- Pass `artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}"` and '
             "this complete Markdown document as the content argument when "
             "you make the call. The artifact body is given to you below:\n"
         )
@@ -1008,6 +1012,7 @@ def _build_smoke_prompt(
     multimodal_requirements = ""
     if multimodal:
         from ralph.pipeline.plumbing.smoke_multimodal import multimodal_prompt_requirements
+
         fixture_relpath = multimodal_fixture_relpath or "smoke-fixture.png"
         multimodal_requirements = "\n" + multimodal_prompt_requirements(fixture_relpath)
 
@@ -1168,9 +1173,7 @@ def _subagent_smoke_evidence(
             #       ``tool_use_id == toolu_X``), so this preserves the
             #       "one dispatch, one correlated result" guarantee.
             correlate_by_name = tool_name in _SUBAGENT_TOOL_NAMES
-            correlate_by_id = (
-                result_id is not None and result_id in dispatch_ids
-            )
+            correlate_by_id = result_id is not None and result_id in dispatch_ids
             if correlate_by_name or correlate_by_id:
                 if result_id is not None:
                     resulted_ids.add(result_id)
@@ -1408,13 +1411,9 @@ def _detect_capability_breaks(
         if exercising and target not in observed:
             tools = ", ".join(sorted(exercising))
             breaks.append(
-                f"declared capability {target.name} never rendered despite "
-                f"{tools} tool call"
+                f"declared capability {target.name} never rendered despite {tools} tool call"
             )
     return breaks
-
-
-
 
 
 def _nanocoder_prompt_submission_error(
@@ -1491,9 +1490,7 @@ def _execute_smoke_turns(
             highest_latched_ceiling = max(highest_latched_ceiling, cur_c)
             if ceiling_reported:
                 return
-            ceiling_reported = _report_evidence_ceiling_once(
-                params.config, list(_turn_raw_lines)
-            )
+            ceiling_reported = _report_evidence_ceiling_once(params.config, list(_turn_raw_lines))
 
         effect = InvokeAgentEffect(
             agent_name=params.agent_name,
@@ -1651,9 +1648,7 @@ def _clear_mock_broken_signals(workspace_root: Path, run_id: str) -> None:
             db.close()
     clear_run_receipts(workspace_root, run_id)
     if selector == "missing_artifact":
-        fallback = (
-            workspace_root / ".agent" / "tmp" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
-        )
+        fallback = workspace_root / ".agent" / "tmp" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
         fallback.unlink(missing_ok=True)
         _clear_smoke_artifact(workspace_root)
     else:
@@ -1990,9 +1985,7 @@ def _detect_multimodal_break(
     carries the well-named break string the operator-visible
     table renders when the multimodal fact is not at WIRE.
     """
-    fixture_size = (
-        params.multimodal_fixture_size if params.multimodal_fixture_size else (0, 0)
-    )
+    fixture_size = params.multimodal_fixture_size if params.multimodal_fixture_size else (0, 0)
     mult_evidence = grade_multimodal_evidence(
         params.workspace_root,
         run_id,
@@ -2053,9 +2046,7 @@ def _detect_smoke_errors(  # 15 branches: each contract check is a documented sh
     errors.extend(_raw_transcript_corruption_errors(params.workspace_root, params.config))
     if support is not None and params.agent_name:
         errors.extend(
-            _detect_capability_breaks(
-                support, observed_capabilities, params.config, lines
-            )
+            _detect_capability_breaks(support, observed_capabilities, params.config, lines)
         )
     if final_exception is not None:
         errors.append(str(final_exception))
@@ -2133,9 +2124,7 @@ def _raw_transcript_corruption_errors(workspace_root: Path, config: AgentConfig)
     ]
 
 
-def _visible_output_overrun_error(
-    config: AgentConfig, visible_output_count: int
-) -> str | None:
+def _visible_output_overrun_error(config: AgentConfig, visible_output_count: int) -> str | None:
     """Return the visible-output overrun error string, or ``None`` when within the ceiling.
 
     The cmd carries transport-specific flags (``claude -p``,
@@ -2506,9 +2495,7 @@ def _run_smoke_agent(
         submitted=artifact_submitted,
         secret=secret,
     )
-    transport_ceiling = max(
-        latched_ceiling, transport_evidence_ceiling(params.config, lines)
-    )
+    transport_ceiling = max(latched_ceiling, transport_evidence_ceiling(params.config, lines))
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
@@ -2564,9 +2551,7 @@ def _run_smoke_agent(
 
     config = params.config
     transport_name = config.transport.value if config.transport is not None else "generic"
-    multimodal_tool_used: Evidence | None = getattr(
-        params, "_multimodal_tool_used_evidence", None
-    )
+    multimodal_tool_used: Evidence | None = getattr(params, "_multimodal_tool_used_evidence", None)
     if multimodal_tool_used is None and not params.multimodal_requested:
         # Default to absent(...) so the dataclass always carries a
         # non-None value -- the operator-visible report renders it
@@ -2650,7 +2635,9 @@ def run_smoke_plumbing(
             mcp_toml_path,
             smoke_media_config_toml(),
             encoding="utf-8",
-            prepare_write=lambda: DEFAULT_FILE_BACKEND.mkdir(mcp_toml_path.parent, parents=True, exist_ok=True),
+            prepare_write=lambda: DEFAULT_FILE_BACKEND.mkdir(
+                mcp_toml_path.parent, parents=True, exist_ok=True
+            ),
         )
     spec = resolve_smoke_harness_spec(agent_name)
     if pipeline_deps is not None:

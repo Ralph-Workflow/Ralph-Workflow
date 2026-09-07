@@ -134,7 +134,9 @@ def test_broken_agent_regression_falls_over_without_direct_mcp_retries(
         captured_intents.append(intent)
         return intent
 
-    monkeypatch.setattr(effect_executor_module, "pop_last_captured_retry_intent", capture_retry_intent)
+    monkeypatch.setattr(
+        effect_executor_module, "pop_last_captured_retry_intent", capture_retry_intent
+    )
     captured_state = apply_session_capture(state)
 
     assert result == PipelineEvent.AGENT_FAILURE

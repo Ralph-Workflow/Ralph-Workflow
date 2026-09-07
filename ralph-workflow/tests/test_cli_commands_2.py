@@ -1232,9 +1232,7 @@ def test_local_config_aliases_create_the_complete_parseable_override_set(
     }
     for path in local_files:
         assert isinstance(tomllib.loads(path.read_text(encoding="utf-8")), dict)
-    normalized_created = " ".join(
-        re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split()
-    )
+    normalized_created = " ".join(re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split())
     assert f"Local config scope: project; directory: {tmp_path / '.agent'}" in normalized_created
 
     already_exists = typer.testing.CliRunner().invoke(main_module.app, [alias])
@@ -1260,7 +1258,11 @@ def _assert_complete_local_config_set(agent_dir: Path) -> None:
 
 @pytest.mark.parametrize(
     ("scope_argument", "target_name", "scope_label"),
-    ((None, "worktree", "worktree"), ("worktree", "worktree", "worktree"), ("project", "main", "project")),
+    (
+        (None, "worktree", "worktree"),
+        ("worktree", "worktree", "worktree"),
+        ("project", "main", "project"),
+    ),
 )
 def test_local_config_scope_selects_the_requested_linked_worktree_layer(
     monkeypatch: pytest.MonkeyPatch,
@@ -1296,7 +1298,10 @@ def test_local_config_scope_selects_the_requested_linked_worktree_layer(
     normalized_output = " ".join(re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split())
     assert f"Local config scope: {scope_label}; directory: {target_dir}" in normalized_output
     if scope_label == "worktree":
-        assert f"Inherits project config: {main_checkout / '.agent' / 'ralph-workflow.toml'}" in normalized_output
+        assert (
+            f"Inherits project config: {main_checkout / '.agent' / 'ralph-workflow.toml'}"
+            in normalized_output
+        )
 
 
 @pytest.mark.parametrize("scope_argument", ("worktree", "project"))
@@ -1318,11 +1323,15 @@ def test_local_config_scope_values_use_the_project_layer_in_a_plain_checkout(
     assert f"Local config scope: project; directory: {target_dir}" in normalized_output
 
 
-def test_local_config_scope_rejects_unknown_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_local_config_scope_rejects_unknown_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Plan S-3: scope validation names the two accepted values."""
     monkeypatch.chdir(tmp_path)
 
-    result = typer.testing.CliRunner().invoke(main_module.app, ["--init-local-config", "--scope", "bad"])
+    result = typer.testing.CliRunner().invoke(
+        main_module.app, ["--init-local-config", "--scope", "bad"]
+    )
 
     assert result.exit_code != 0
     assert "worktree" in result.output

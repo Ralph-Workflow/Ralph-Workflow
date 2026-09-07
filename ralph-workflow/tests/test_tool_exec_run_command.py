@@ -213,6 +213,7 @@ def test_run_command_kills_process_when_output_exceeds_limit(
         # OpenCode's prompt is delivered on stdin, so a process fake must
         # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
         stdin = None
+
         def __init__(self) -> None:
             super().__init__(
                 pid=101,
@@ -285,6 +286,7 @@ def test_run_subprocess_streams_output_chunks_in_order(
         # OpenCode's prompt is delivered on stdin, so a process fake must
         # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
         stdin = None
+
         def __init__(self) -> None:
             super().__init__(
                 pid=201,

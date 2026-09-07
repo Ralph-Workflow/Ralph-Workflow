@@ -35,9 +35,7 @@ def operator_cap_expired(session: ResolutionSession, clock: MonotonicClock) -> b
     """Prevent a zero-second cap from reaching an invocation watchdog."""
     cap = session.total_resolution_cap_seconds
     return (
-        cap is not None
-        and session.started_at is not None
-        and clock() - session.started_at >= cap
+        cap is not None and session.started_at is not None and clock() - session.started_at >= cap
     )
 
 

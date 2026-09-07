@@ -46,7 +46,7 @@ def test_testing_policy_requires_a_suite_admission_section() -> None:
 
 
 def test_verification_policy_requires_a_gate_lanes_section() -> None:
-    """"Wire it in, or delete it" is correct anti-rot policy but leaves a
+    """ "Wire it in, or delete it" is correct anti-rot policy but leaves a
     check that CANNOT meet the default gate's constraints (live third-party
     service, device matrix, long soak) with nowhere legitimate to live.
     "Gate lanes" is that home, and it is only safe because it demands an

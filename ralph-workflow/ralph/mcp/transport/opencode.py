@@ -410,8 +410,7 @@ def _read_config_object(config_path: Path) -> dict[str, object] | None:
         return None
     if not isinstance(decoded, dict):
         logger.warning(
-            "OpenCode config {} is not a JSON object; ignoring it and any MCP "
-            "server it defines.",
+            "OpenCode config {} is not a JSON object; ignoring it and any MCP server it defines.",
             config_path,
         )
         return None

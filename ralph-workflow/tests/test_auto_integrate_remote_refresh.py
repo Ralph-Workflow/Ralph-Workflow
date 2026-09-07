@@ -292,7 +292,10 @@ def test_refresh_regression_git_observation_failure_degrades_without_raising(
             lambda *_args: (_ for _ in ()).throw(OSError("ref query failed")),
         )
 
-    assert refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0) == REFRESH_UNREACHABLE
+    assert (
+        refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
+        == REFRESH_UNREACHABLE
+    )
 
 
 def _inject_remote_position(
@@ -362,11 +365,13 @@ def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     monkeypatch.setattr(
         auto_integrate,
         "pull_and_reconcile_target",
-        lambda *_args, **_kwargs: events.append("remote refresh")
-        or RebaseState(
-            last_remote_sync="already current",
-            freshness_verdict="verified",
-            freshness_source="fetch",
+        lambda *_args, **_kwargs: (
+            events.append("remote refresh")
+            or RebaseState(
+                last_remote_sync="already current",
+                freshness_verdict="verified",
+                freshness_source="fetch",
+            )
         ),
     )
 

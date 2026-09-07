@@ -405,15 +405,16 @@ def test_ignore_response_multimodal_run_exits_nonzero(
     """
     result = _end_to_end_test_for_harness(tmp_path, transport, positive=False)
     assert result.multimodal_tool_used is not None
-    assert result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE, (
+    assert (
+        result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE
+    ), (
         f"transport {transport!r}: ignore-response stub dials the endpoint once "
         f"and discards the response; the multimodal fact must NOT grade WIRE "
         f"(got {result.multimodal_tool_used.provenance.name!r}; "
         f"detail: {result.multimodal_tool_used.detail})"
     )
     assert any("multimodal break" in err.lower() for err in result.errors), (
-        f"transport {transport!r}: expected a multimodal break in errors, "
-        f"got: {result.errors!r}"
+        f"transport {transport!r}: expected a multimodal break in errors, got: {result.errors!r}"
     )
 
 
@@ -426,7 +427,9 @@ def test_skip_media_multimodal_run_exits_nonzero(tmp_path: Path) -> None:
     finally:
         os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
     assert result.multimodal_tool_used is not None
-    assert result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE, (
+    assert (
+        result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE
+    ), (
         f"skip-media stub never makes the media call; the multimodal fact "
         f"must NOT grade WIRE (got {result.multimodal_tool_used.provenance.name!r}; "
         f"detail: {result.multimodal_tool_used.detail})"
@@ -449,9 +452,7 @@ def test_stub_agent_module_imports_cleanly() -> None:
         pytest.skip("stub agent not on disk")
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "mock_multimodal_agent", spec_path
-    )
+    spec = importlib.util.spec_from_file_location("mock_multimodal_agent", spec_path)
     if spec is None or spec.loader is None:
         pytest.skip("stub agent spec not loadable")
     module = importlib.util.module_from_spec(spec)

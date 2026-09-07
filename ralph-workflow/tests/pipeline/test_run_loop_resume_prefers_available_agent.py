@@ -183,7 +183,9 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
     )
     inspections = iter((recoverable, resolved))
     startup = MagicMock(return_value=state.rebase)
-    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_args: next(inspections))
+    monkeypatch.setattr(
+        run_loop, "inspect_integration_resolution", lambda *_args: next(inspections)
+    )
     monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
 
@@ -413,9 +415,7 @@ def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(monkeypatch
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
-    monkeypatch.setattr(
-        run_loop, "build_agent_conflict_resolver", lambda **_k: (lambda _r, _t: True)
-    )
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", lambda **_k: lambda _r, _t: True)
     monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _root: True)
     merge_calls: list[str] = []
     monkeypatch.setattr(
@@ -577,9 +577,7 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> 
         last_conflict_target_sha="target-1",
         last_conflict_scope="feature",
     )
-    assert (
-        run_loop._run_integration_conflict_resolution(ctx, spent_on_another_conflict) is True
-    )
+    assert run_loop._run_integration_conflict_resolution(ctx, spent_on_another_conflict) is True
     assert len(built) == 1
 
     same_conflict = spent_on_another_conflict.model_copy(
@@ -596,9 +594,7 @@ def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> Non
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
-    monkeypatch.setattr(
-        run_loop, "build_agent_conflict_resolver", lambda **_k: (lambda _r, _t: True)
-    )
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", lambda **_k: lambda _r, _t: True)
     monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: True)
 
     assert run_loop._run_integration_conflict_resolution(ctx) is True
@@ -617,9 +613,7 @@ def test_completing_a_merge_stages_and_commits_not_just_resolves(
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS
 
     calls: list[str] = []
-    monkeypatch.setattr(
-        "ralph.git.merge.merge_state", lambda _root: MERGE_STATE_IN_PROGRESS
-    )
+    monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_IN_PROGRESS)
 
     def _resolve_and_commit(_root: Path, _target: str, _resolver: Any) -> bool:
         calls.append("resolve_and_commit")
@@ -643,15 +637,15 @@ def test_completing_a_merge_declines_when_no_merge_is_in_progress(
         raise AssertionError("_resolve_and_commit must not run without a merge")
 
     monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_NONE)
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_resolve._resolve_and_commit", _must_not_run
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_resolve._resolve_and_commit", _must_not_run)
 
     assert run_loop._complete_in_progress_merge(tmp_path, "main", lambda _r, _t: True) is False
 
 
-def test_an_unreadable_rebase_state_never_answers_no_rebase(monkeypatch: Any, tmp_path: Any) -> None:
-    """"No rebase" sends a paused rebase down the merge path, which invokes nobody.
+def test_an_unreadable_rebase_state_never_answers_no_rebase(
+    monkeypatch: Any, tmp_path: Any
+) -> None:
+    """ "No rebase" sends a paused rebase down the merge path, which invokes nobody.
 
     The merge path has nothing to finish for a rebase, so answering "no"
     on an unreadable state is the one answer that guarantees zero
@@ -662,9 +656,7 @@ def test_an_unreadable_rebase_state_never_answers_no_rebase(monkeypatch: Any, tm
     def _boom(_root: object) -> bool:
         raise OSError("git dir unreadable")
 
-    monkeypatch.setattr(
-        "ralph.git.rebase.rebase_continuation.rebase_in_progress_at", _boom
-    )
+    monkeypatch.setattr("ralph.git.rebase.rebase_continuation.rebase_in_progress_at", _boom)
     root = _Path(str(tmp_path))
     (root / ".git" / "rebase-merge").mkdir(parents=True)
     assert run_loop._paused_rebase_at(root) is True
@@ -707,9 +699,7 @@ def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(monkeypatc
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
-    monkeypatch.setattr(
-        run_loop, "build_agent_conflict_resolver", lambda **_k: (lambda _r, _t: True)
-    )
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", lambda **_k: lambda _r, _t: True)
     monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _root: False)
     monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: False)
     orphaned: list[str] = []

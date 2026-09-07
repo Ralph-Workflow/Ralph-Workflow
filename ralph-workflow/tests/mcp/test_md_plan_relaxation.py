@@ -31,7 +31,9 @@ type: plan
 {extra}"""
 
 
-@pytest.mark.parametrize("section", ["Subplan: Alpha / API", "Équipe — données", "検証・API (第2期)"])
+@pytest.mark.parametrize(
+    "section", ["Subplan: Alpha / API", "Équipe — données", "検証・API (第2期)"]
+)
 def test_plan_grammar_regression_punctuated_unicode_h2_titles_are_safe(section: str) -> None:
     """Executor-ready steps remain valid below arbitrary descriptive headings."""
     content, diagnostics = parse_and_validate(_document(section=section), PLAN_SPEC)
@@ -73,7 +75,10 @@ def test_plan_grammar_discovers_criterion_after_nested_step() -> None:
 
     assert diagnostics == []
     assert must_dict_list(content["steps"])[0]["number"] == 1
-    assert must_dict_list(must_mapping(content["design"])["acceptance_criteria"]["criteria"])[0]["id"] == "AC-01"
+    assert (
+        must_dict_list(must_mapping(content["design"])["acceptance_criteria"]["criteria"])[0]["id"]
+        == "AC-01"
+    )
 
 
 def test_custom_fan_out_lookalike_remains_descriptive() -> None:
@@ -104,13 +109,18 @@ type: plan
 
     assert diagnostics == []
     assert [unit["unit_id"] for unit in must_dict_list(content["work_units"])] == ["api"]
-    assert must_dict_list(must_mapping(content["design"])["acceptance_criteria"]["criteria"])[0]["id"] == "AC-01"
+    assert (
+        must_dict_list(must_mapping(content["design"])["acceptance_criteria"]["criteria"])[0]["id"]
+        == "AC-01"
+    )
 
 
 def test_plan_grammar_regression_vague_document_wide_proof_is_advisory() -> None:
     """Descriptive global proof remains advisory while step evidence is strict."""
     content, diagnostics = parse_and_validate(
-        _document(extra="\n## Proof Matrix\n- [V-1] check it manually\n  Expect: everything works\n"),
+        _document(
+            extra="\n## Proof Matrix\n- [V-1] check it manually\n  Expect: everything works\n"
+        ),
         PLAN_SPEC,
     )
 

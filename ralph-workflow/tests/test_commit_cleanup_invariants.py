@@ -470,7 +470,7 @@ def test_prompt_and_engine_generated_text_classes_agree() -> None:
 def test_untracked_config_file_is_never_deleted(tmp_git_repo: Path) -> None:
     workspace = FsWorkspace(tmp_git_repo)
     config = tmp_git_repo / "pyproject.toml"
-    config.write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+    config.write_text('[project]\nname = "demo"\n', encoding="utf-8")
     _write_commit_cleanup_artifact(
         workspace,
         {

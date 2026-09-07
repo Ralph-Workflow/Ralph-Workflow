@@ -20,9 +20,9 @@ def test_developer_iters_flag_becomes_an_iteration_override() -> None:
 
 
 def test_explicit_counter_override_wins_over_the_flag() -> None:
-    assert counter_overrides_with_developer_iters(
-        {"iteration": _EXPLICIT_COUNTER}, _REQUESTED
-    ) == {"iteration": _EXPLICIT_COUNTER}
+    assert counter_overrides_with_developer_iters({"iteration": _EXPLICIT_COUNTER}, _REQUESTED) == {
+        "iteration": _EXPLICIT_COUNTER
+    }
 
 
 def test_unspecified_flag_adds_nothing() -> None:

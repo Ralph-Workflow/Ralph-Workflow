@@ -26,7 +26,11 @@ def collect_violations() -> list[str]:
             path.read_text(encoding="utf-8") for path in packaged_template_root().rglob("*.j2")
         )
     )
-    return [statement for statement in _POLICY_ONLY_STATEMENTS if statement not in policy or statement in templates]
+    return [
+        statement
+        for statement in _POLICY_ONLY_STATEMENTS
+        if statement not in policy or statement in templates
+    ]
 
 
 def main() -> int:

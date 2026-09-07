@@ -44,9 +44,7 @@ def test_planning_time_does_not_start_timer() -> None:
     policy = _policy()
     state = _state("planning")
     # planning AGENT_SUCCESS -> planning_analysis; timer must remain stopped.
-    next_state, _ = reduce(
-        state, "agent_success", policy, routing_timing=_rt(10_000.0)
-    )
+    next_state, _ = reduce(state, "agent_success", policy, routing_timing=_rt(10_000.0))
     assert next_state.phase == "planning_analysis"
     assert next_state.cycle_timebox_active is False
 
@@ -56,9 +54,7 @@ def test_timer_starts_on_planning_to_development_handoff() -> None:
     policy = _policy()
     state = _state("planning_analysis")
     # planning_analysis ANALYSIS_SUCCESS -> development (the start transition).
-    next_state, _ = reduce(
-        state, "analysis_success", policy, routing_timing=_rt(0.0)
-    )
+    next_state, _ = reduce(state, "analysis_success", policy, routing_timing=_rt(0.0))
     assert next_state.phase == "development"
     assert next_state.cycle_timebox_active is True
     assert next_state.cycle_timebox_consumed_seconds == 0.0
@@ -67,12 +63,13 @@ def test_timer_starts_on_planning_to_development_handoff() -> None:
 def test_no_reset_on_intermediate_activity() -> None:
     """Advancing through commit/analysis phases preserves the active timer."""
     policy = _policy()
-    state = _state("development_commit_cleanup", cycle_timebox_active=True,
-                    cycle_timebox_consumed_seconds=500.0)
-    # commit_cleanup has role commit_cleanup; AGENT_SUCCESS -> development_commit.
-    next_state, _ = reduce(
-        state, "agent_success", policy, routing_timing=_rt(500.0)
+    state = _state(
+        "development_commit_cleanup",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=500.0,
     )
+    # commit_cleanup has role commit_cleanup; AGENT_SUCCESS -> development_commit.
+    next_state, _ = reduce(state, "agent_success", policy, routing_timing=_rt(500.0))
     # Timer remains active; the reducer does not touch consumed on non-guarded
     # transitions (the runner folds elapsed time).
     assert next_state.cycle_timebox_active is True
@@ -100,9 +97,7 @@ def test_entering_final_commit_path_ends_timing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _request_changes_to_development(
-    state: PipelineState, elapsed: float
-) -> PipelineState:
+def _request_changes_to_development(state: PipelineState, elapsed: float) -> PipelineState:
     policy = _policy()
     event = AnalysisDecisionEvent(phase="development_analysis", decision="request_changes")
     next_state, _ = reduce(state, event, policy, routing_timing=_rt(elapsed))
@@ -148,16 +143,18 @@ def test_custom_deadline_keeps_redirect_at_new_boundary() -> None:
     # Replace the duration with a 600s custom deadline via a copy.
     from ralph.policy.models import CycleTimeboxPolicy
 
-    custom = policy.model_copy(update={
-        "cycle_timebox": CycleTimeboxPolicy(
-            duration_seconds=600.0,
-            start_source="planning_analysis",
-            start_entry="development",
-            guarded_entry="development",
-            end_entry="development_final_commit_cleanup",
-            finalization_target="development_final_commit_cleanup",
-        )
-    })
+    custom = policy.model_copy(
+        update={
+            "cycle_timebox": CycleTimeboxPolicy(
+                duration_seconds=600.0,
+                start_source="planning_analysis",
+                start_entry="development",
+                guarded_entry="development",
+                end_entry="development_final_commit_cleanup",
+                finalization_target="development_final_commit_cleanup",
+            )
+        }
+    )
     state = _state(
         "development_analysis",
         cycle_timebox_active=True,
@@ -174,9 +171,7 @@ def test_first_development_entry_always_permitted_even_if_clock_advanced() -> No
     """The first entry while inactive starts the timer and is never redirected."""
     state = _state("planning_analysis")  # inactive
     policy = _policy()
-    next_state, _ = reduce(
-        state, "analysis_success", policy, routing_timing=_rt(99_999.0)
-    )
+    next_state, _ = reduce(state, "analysis_success", policy, routing_timing=_rt(99_999.0))
     assert next_state.phase == "development"
     assert next_state.cycle_timebox_active is True
 
@@ -260,14 +255,10 @@ def test_agent_failure_workflow_fallback_enforces_deadline() -> None:
         cycle_timebox_active=True,
         cycle_timebox_consumed_seconds=7200.0,
         phase_chains={
-            "development_analysis": AgentChainState(
-                agents=["claude"], current_index=0, retries=3
-            )
+            "development_analysis": AgentChainState(agents=["claude"], current_index=0, retries=3)
         },
     )
-    next_state, _ = reduce(
-        state, PipelineEvent.AGENT_FAILURE, policy, routing_timing=_rt(7200.0)
-    )
+    next_state, _ = reduce(state, PipelineEvent.AGENT_FAILURE, policy, routing_timing=_rt(7200.0))
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.cycle_timebox_active is False
 
@@ -289,9 +280,7 @@ def test_timer_does_not_start_on_unrelated_route_into_guarded_phase() -> None:
     # Inactive cycle, routing from a phase that is NOT the declared start_source
     # (planning_analysis) into development (the guarded/start entry).
     state = _state("development_commit")
-    decision = apply_cycle_timebox(
-        state, "development", policy=policy, routing_timing=_rt(0.0)
-    )
+    decision = apply_cycle_timebox(state, "development", policy=policy, routing_timing=_rt(0.0))
     assert decision.timing_started is False
     assert decision.state.cycle_timebox_active is False
     # The entry is still permitted (not redirected) — it just isn't timed.
@@ -305,9 +294,7 @@ def test_timer_starts_only_from_declared_start_source() -> None:
 
     policy = _policy()
     state = _state("planning_analysis")  # == start_source
-    decision = apply_cycle_timebox(
-        state, "development", policy=policy, routing_timing=_rt(0.0)
-    )
+    decision = apply_cycle_timebox(state, "development", policy=policy, routing_timing=_rt(0.0))
     assert decision.timing_started is True
     assert decision.state.cycle_timebox_active is True
 
@@ -349,23 +336,21 @@ def test_legacy_checkpoint_without_cycle_state_resumes_safely() -> None:
 
 def test_warning_absent_before_threshold() -> None:
     policy = _policy()
-    state = _state("development_analysis", cycle_timebox_active=True,
-                    cycle_timebox_consumed_seconds=100.0)
+    state = _state(
+        "development_analysis", cycle_timebox_active=True, cycle_timebox_consumed_seconds=100.0
+    )
     assert (
-        cycle_timebox_warning(
-            state, "development", policy=policy, routing_timing=_rt(100.0)
-        )
+        cycle_timebox_warning(state, "development", policy=policy, routing_timing=_rt(100.0))
         is None
     )
 
 
 def test_warning_present_at_80_percent_under_default() -> None:
     policy = _policy()
-    state = _state("development_analysis", cycle_timebox_active=True,
-                    cycle_timebox_consumed_seconds=5760.0)
-    warning = cycle_timebox_warning(
-        state, "development", policy=policy, routing_timing=_rt(5760.0)
+    state = _state(
+        "development_analysis", cycle_timebox_active=True, cycle_timebox_consumed_seconds=5760.0
     )
+    warning = cycle_timebox_warning(state, "development", policy=policy, routing_timing=_rt(5760.0))
     assert warning is not None
     assert warning["elapsed_seconds"] == 5760.0
     # 7200 - 5760 = 1440s = 24 minutes remaining.
@@ -377,23 +362,23 @@ def test_warning_absent_for_inactive_cycle() -> None:
     policy = _policy()
     state = _state("planning_analysis")  # inactive
     assert (
-        cycle_timebox_warning(
-            state, "development", policy=policy, routing_timing=_rt(5760.0)
-        )
+        cycle_timebox_warning(state, "development", policy=policy, routing_timing=_rt(5760.0))
         is None
     )
 
 
 def test_warning_absent_for_non_guarded_phase() -> None:
     policy = _policy()
-    state = _state("development_analysis", cycle_timebox_active=True,
-                    cycle_timebox_consumed_seconds=5760.0)
+    state = _state(
+        "development_analysis", cycle_timebox_active=True, cycle_timebox_consumed_seconds=5760.0
+    )
     assert (
         cycle_timebox_warning(
             state, "development_commit", policy=policy, routing_timing=_rt(5760.0)
         )
         is None
     )
+
 
 # ---------------------------------------------------------------------------
 # Runner per-step fold simulation
@@ -462,9 +447,7 @@ def test_per_step_fold_accumulates_consumed_time_across_steps() -> None:
     clock = [0.0]
 
     # Step 1: planning_analysis → development (timer starts, consumed = 0).
-    state = _runner_sim_step(
-        _state("planning_analysis"), "analysis_success", custom, box, clock
-    )
+    state = _runner_sim_step(_state("planning_analysis"), "analysis_success", custom, box, clock)
     assert state.phase == "development"
     assert state.cycle_timebox_active is True
     assert state.cycle_timebox_consumed_seconds == 0.0
@@ -502,9 +485,7 @@ def test_consumed_time_survives_checkpoint_roundtrip_and_continues() -> None:
     clock = [0.0]
 
     # Accumulate 80s of cycle time.
-    state = _runner_sim_step(
-        _state("planning_analysis"), "analysis_success", custom, box, clock
-    )
+    state = _runner_sim_step(_state("planning_analysis"), "analysis_success", custom, box, clock)
     clock[0] = 80.0
     state = _runner_sim_step(state, "agent_success", custom, box, clock)
     assert state.cycle_timebox_consumed_seconds == 80.0
@@ -547,9 +528,7 @@ def test_new_cycle_starts_after_final_commit() -> None:
     clock = [0.0]
 
     # First cycle: start, accumulate, end via final-commit.
-    state = _runner_sim_step(
-        _state("planning_analysis"), "analysis_success", custom, box, clock
-    )
+    state = _runner_sim_step(_state("planning_analysis"), "analysis_success", custom, box, clock)
     clock[0] = 100.0
     state = _runner_sim_step(state, "agent_success", custom, box, clock)
     assert state.cycle_timebox_consumed_seconds == 100.0
@@ -616,9 +595,7 @@ def test_distinct_start_entry_starts_timer_separately_from_guarded_entry() -> No
         cycle_timebox_consumed_seconds=400.0,
     )
     # analysis_success from development_analysis routes to final-commit.
-    end_state, _ = reduce(
-        concluded, "analysis_success", policy, routing_timing=_rt(400.0)
-    )
+    end_state, _ = reduce(concluded, "analysis_success", policy, routing_timing=_rt(400.0))
     assert end_state.phase == "development_final_commit_cleanup"
     assert end_state.cycle_timebox_active is False
     # Consumed is preserved through conclusion.
@@ -650,9 +627,7 @@ def test_initialize_legacy_cycle_on_resume_noop_when_already_active() -> None:
     from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
 
     policy = _policy()
-    state = _state(
-        "development", cycle_timebox_active=True, cycle_timebox_consumed_seconds=500.0
-    )
+    state = _state("development", cycle_timebox_active=True, cycle_timebox_consumed_seconds=500.0)
     result = initialize_legacy_cycle_on_resume(state, policy)
     assert result.cycle_timebox_active is True
     assert result.cycle_timebox_consumed_seconds == 500.0

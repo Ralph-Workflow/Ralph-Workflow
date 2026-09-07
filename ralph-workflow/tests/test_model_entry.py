@@ -57,9 +57,7 @@ def test_model_entry_modalities_input_retained_from_catalog() -> None:
 
 def test_model_entry_modalities_input_defaults_to_empty_tuple_when_omitted() -> None:
     """An entry without a ``modalities`` field carries an empty input tuple."""
-    entry = ModelEntry.model_validate(
-        {"id": "anthropic/claude-sonnet-4", "provider": "anthropic"}
-    )
+    entry = ModelEntry.model_validate({"id": "anthropic/claude-sonnet-4", "provider": "anthropic"})
 
     assert entry.modalities_input == ()
 

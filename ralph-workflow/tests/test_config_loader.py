@@ -102,7 +102,7 @@ def test_config_loader_regression_stale_prompt_helper_table_is_ignored(
 ) -> None:
     """S-2: retired prompt-helper config must not block normal config loading."""
     config_path = tmp_path / "ralph-workflow.toml"
-    config_path.write_text("[prompt_helper]\nagent = \"legacy\"\n", encoding="utf-8")
+    config_path.write_text('[prompt_helper]\nagent = "legacy"\n', encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
 
     config = load_config(config_path=config_path)

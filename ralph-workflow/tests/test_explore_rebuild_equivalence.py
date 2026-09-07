@@ -57,11 +57,7 @@ class _Workspace:
 
     def iter_files(self, base: str) -> object:
         base_path = self.root / base if base else self.root
-        return (
-            str(path.relative_to(self.root))
-            for path in base_path.rglob("*")
-            if path.is_file()
-        )
+        return (str(path.relative_to(self.root)) for path in base_path.rglob("*") if path.is_file())
 
 
 def _decode(result: ToolResult) -> dict[str, object]:

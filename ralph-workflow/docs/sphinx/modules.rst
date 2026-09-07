@@ -21,7 +21,6 @@ ralph.pipeline.integration_resolution
 
 .. automodule:: ralph.pipeline.integration_resolution
    :members:
-   :show-inheritance:
 
 ----
 
@@ -857,6 +856,13 @@ ralph.pipeline.events.analysis_decision_event
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.events.analysis_decision_event
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.events.commit_residual_event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.events.commit_residual_event
    :members:
    :show-inheritance:
 
@@ -1730,6 +1736,12 @@ ralph.agents.builtin
 ~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.builtin
+    :members:
+
+ralph.agents.registry_types
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.registry_types
    :members:
    :show-inheritance:
 
@@ -2921,6 +2933,15 @@ ralph.git.operations
 
 .. automodule:: ralph.git.operations
    :members:
+   :exclude-members: CommitCreationStatus
+
+ralph.git.commit_result
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.commit_result
+   :members:
+   :exclude-members: CommitCreationStatus
+
    :show-inheritance:
 
 ralph.git.merge

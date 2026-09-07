@@ -155,6 +155,7 @@ def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> No
     config = UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": True}}
     )
+
     def resolver(*_args: object) -> bool:
         return True
 

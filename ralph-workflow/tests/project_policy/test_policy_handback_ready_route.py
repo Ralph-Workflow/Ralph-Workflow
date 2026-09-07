@@ -352,7 +352,9 @@ def _run_ready_route(
     original_executor = effect_executor_module.execute_agent_effect
     original_inspect = effect_executor_module.inspect_integration_resolution
     cli_integration._build_pipeline_deps_for_remediation = lambda _lr, _dc: deps
-    effect_executor_module.inspect_integration_resolution = lambda *_args: IntegrationResolutionVerdict(RESOLVED)
+    effect_executor_module.inspect_integration_resolution = lambda *_args: (
+        IntegrationResolutionVerdict(RESOLVED)
+    )
 
     def patched_executor(
         effect: object,
@@ -421,9 +423,7 @@ def _collect_retry_artifact_paths(tmp_git_repo: Path) -> list[str]:
     if not tmp_dir.exists():
         return []
     return sorted(
-        str(p.relative_to(tmp_git_repo))
-        for p in tmp_dir.glob("agent_retry_*.md")
-        if p.is_file()
+        str(p.relative_to(tmp_git_repo)) for p in tmp_dir.glob("agent_retry_*.md") if p.is_file()
     )
 
 
@@ -477,9 +477,7 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
 
     pre_run_process_records = len(get_process_manager().list_active())
 
-    rc, _workspace, _deps, bridge_calls, load_result = _run_ready_route(
-        tmp_git_repo, load_result
-    )
+    rc, _workspace, _deps, bridge_calls, load_result = _run_ready_route(tmp_git_repo, load_result)
 
     _assert_ready_cache_written(tmp_git_repo)
     assert rc == 0, (
@@ -521,10 +519,7 @@ def test_post_remediation_ready_route_ledger_records_executor_body_channels(
     # pair before _finalize_ready_state returns.
     bridge_constructions = len(bridge_calls)
     bridge_shutdowns = _shutdown_counter["count"]
-    print(
-        f"channel=bridge before=0 after={bridge_constructions} "
-        f"shutdowns={bridge_shutdowns}"
-    )
+    print(f"channel=bridge before=0 after={bridge_constructions} shutdowns={bridge_shutdowns}")
 
     # Channel 3 (initial_state_identity) -- the orchestrator must NOT
     # mutate ``load_result.initial_state`` in place. The state goes

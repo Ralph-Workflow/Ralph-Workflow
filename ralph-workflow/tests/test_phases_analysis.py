@@ -56,9 +56,7 @@ def _load_default_pipeline_policy() -> object:
 
 def _development_analysis_markdown(status: str) -> str:
     remaining_work = (
-        " Remaining work: implement the required behavior."
-        if status == "request_changes"
-        else ""
+        " Remaining work: implement the required behavior." if status == "request_changes" else ""
     )
     feedback = (
         "\n## What Came Up Short\n\n"

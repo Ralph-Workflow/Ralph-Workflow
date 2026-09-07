@@ -82,9 +82,13 @@ def _invariant_cases() -> list[_CaseSpec]:
         '"filesystem polling/invocation ownership audit (audit_filesystem_polling_invocation)"'
     )
     polling_label_gone = '"filesystem polling/invocation ownership audit (REMOVED)"'
-    write_label_anchor = '"filesystem write consolidation audit (audit_filesystem_write_consolidation)"'
+    write_label_anchor = (
+        '"filesystem write consolidation audit (audit_filesystem_write_consolidation)"'
+    )
     write_label_gone = '"filesystem write consolidation audit (REMOVED)"'
-    read_label_anchor = '"filesystem read consolidation audit (audit_filesystem_read_consolidation)"'
+    read_label_anchor = (
+        '"filesystem read consolidation audit (audit_filesystem_read_consolidation)"'
+    )
     read_label_gone = '"filesystem read consolidation audit (REMOVED)"'
 
     return [

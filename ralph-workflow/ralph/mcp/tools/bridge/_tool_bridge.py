@@ -141,9 +141,7 @@ class ToolBridge:
     def list_metadata(self) -> list[ToolMetadata]:
         """Return tool metadata in registration order."""
         return [
-            tool.metadata
-            for tool in self._tools.values()
-            if self._is_tool_allowed(tool.metadata)
+            tool.metadata for tool in self._tools.values() if self._is_tool_allowed(tool.metadata)
         ]
 
     def list_definitions(self) -> list[ToolDefinition]:

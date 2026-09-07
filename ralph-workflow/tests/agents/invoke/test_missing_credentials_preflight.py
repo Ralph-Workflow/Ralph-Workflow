@@ -71,9 +71,7 @@ def test_official_claude_cli_is_exempt_from_anthropic_key_preflight() -> None:
     for cmd in ("claude", "claude -p"):
         for transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
             config = AgentConfig(cmd=cmd, transport=transport)
-            _fail_for_missing_credentials(
-                config, InvokeOptions(), env_getter=lambda _name: None
-            )
+            _fail_for_missing_credentials(config, InvokeOptions(), env_getter=lambda _name: None)
 
 
 def test_ccs_alias_is_exempt_from_anthropic_key_preflight() -> None:

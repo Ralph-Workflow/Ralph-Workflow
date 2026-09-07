@@ -95,9 +95,7 @@ def test_command_builders_regression_building_claude_argv_does_not_shell_out(
         calls.append(1)
         return ("claude.ai Notion",)
 
-    monkeypatch.setattr(
-        "ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _counting_lister
-    )
+    monkeypatch.setattr("ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _counting_lister)
 
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")

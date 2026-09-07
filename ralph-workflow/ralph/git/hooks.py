@@ -26,7 +26,9 @@ RALPH_HOOK_NAMES = (
     "pre-commit",
     "pre-push",
     "pre-merge-commit",
+    "prepare-commit-msg",
     "commit-msg",
+    "post-commit",
 )
 """Hook names managed by Ralph workflows."""
 
@@ -34,7 +36,9 @@ _HOOK_DISPLAY_LABELS = {
     "pre-commit": "Commit",
     "pre-push": "Push",
     "pre-merge-commit": "Merge commit",
+    "prepare-commit-msg": "Prepare commit message",
     "commit-msg": "Commit message",
+    "post-commit": "Post-commit",
 }
 
 

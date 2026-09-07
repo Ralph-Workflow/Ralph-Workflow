@@ -97,14 +97,13 @@ def _minimal_agents_policy() -> object:
 
     return AgentsPolicy(
         agent_chains={
-            "development": AgentChainConfig(
-                agents=["codex"], max_retries=1, retry_delay_ms=1000
-            )
+            "development": AgentChainConfig(agents=["codex"], max_retries=1, retry_delay_ms=1000)
         },
         agent_drains={
             "development": AgentDrainConfig(chain="development", drain_class="development")
         },
     )
+
 
 def test_flagless_codex_plan_still_carries_the_transport(tmp_path: Path) -> None:
     """A guard keyed on a value the runtime discards is not a fix.
@@ -224,9 +223,7 @@ def test_codex_replay_ignores_a_stale_inline_image_verdict(tmp_path: Path) -> No
     workspace = FsWorkspace(tmp_path)
 
     first = handle_read_media(session, workspace, {"path": "tiny.png"})
-    handles = [
-        block.uri for block in first.content if isinstance(block, ResourceReferenceContent)
-    ]
+    handles = [block.uri for block in first.content if isinstance(block, ResourceReferenceContent)]
     assert handles, f"expected a replay handle, got {first.content}"
 
     replayed = handle_read_media(session, workspace, {"path": handles[0]})

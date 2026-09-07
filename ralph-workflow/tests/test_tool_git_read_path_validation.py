@@ -146,7 +146,9 @@ def test_all_four_handlers_warn_on_outside_repo_cwd(
     external_repo = _init_repo_with_commit(tmp_path / "external_repo")
     try:
         external = tmp_path / "external_repo"
-        result = handler(_Session(), _Workspace(tmp_path / "workspace"), {**params, "cwd": str(external)})
+        result = handler(
+            _Session(), _Workspace(tmp_path / "workspace"), {**params, "cwd": str(external)}
+        )
         _assert_warning(result, external, tmp_path / "workspace", external)
     finally:
         external_repo.close()

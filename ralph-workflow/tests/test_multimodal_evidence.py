@@ -333,13 +333,16 @@ class TestGradeMultimodalEvidence:
                 delivery_mode="inline_image",
             )
             # Sanity: the recorded row carries that exact digest.
-            assert wire_evidence_for(
-                tmp_path,
-                run_id,
-                tool_name=replay_tool_name,
-                secret=secret,
-                params_digest=replay_digest,
-            ) is True
+            assert (
+                wire_evidence_for(
+                    tmp_path,
+                    run_id,
+                    tool_name=replay_tool_name,
+                    secret=secret,
+                    params_digest=replay_digest,
+                )
+                is True
+            )
         return output_file, secret
 
     def test_full_contract_grades_wire(self, tmp_path: Path) -> None:
@@ -679,9 +682,7 @@ class TestWireLedgerDeliveryModeMetadata:
     (backward compatibility).
     """
 
-    def test_wire_ledger_record_carries_delivery_mode_when_present(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wire_ledger_record_carries_delivery_mode_when_present(self, tmp_path: Path) -> None:
         """When the optional kwargs are passed, the record and on-disk row carry them."""
         record = append_wire_record(
             tmp_path,
@@ -718,9 +719,7 @@ class TestWireLedgerDeliveryModeMetadata:
         assert row["model_id"] == "claude-opus-4-7"
         assert row["agent_id"] == "agent-42"
 
-    def test_wire_ledger_record_omits_optional_fields_when_unset(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wire_ledger_record_omits_optional_fields_when_unset(self, tmp_path: Path) -> None:
         """When the optional kwargs are not passed, the on-disk row omits them.
 
         Backward compatibility: a row written by a post-S-6 server

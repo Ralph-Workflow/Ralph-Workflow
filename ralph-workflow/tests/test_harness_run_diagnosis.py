@@ -435,9 +435,10 @@ def test_normalized_tool_name_falls_through_to_name_field() -> None:
     assert smoke_plumbing_module._normalized_tool_name({"tool_name": "Task"}) == "task"
     assert smoke_plumbing_module._normalized_tool_name({"toolName": "Task"}) == "task"
     # First non-empty key wins (``tool`` beats ``name`` when both exist).
-    assert smoke_plumbing_module._normalized_tool_name(
-        {"tool": "Agent", "name": "SOMETHING_ELSE"}
-    ) == "agent"
+    assert (
+        smoke_plumbing_module._normalized_tool_name({"tool": "Agent", "name": "SOMETHING_ELSE"})
+        == "agent"
+    )
     # Empty / whitespace / non-string values are skipped.
     assert smoke_plumbing_module._normalized_tool_name({"tool": "  "}) == ""
     assert smoke_plumbing_module._normalized_tool_name({"tool": None}) == ""
@@ -1194,9 +1195,7 @@ def _make_completion_sentinel(tmp_path: Path, run_id: str) -> None:
     payload: dict[str, str] = {"run_id": run_id}
     secret = os.environ.get("RALPH_BROKER_SECRET")
     if secret is not None:
-        payload["hmac"] = hmac.new(
-            secret.encode(), run_id.encode(), hashlib.sha256
-        ).hexdigest()
+        payload["hmac"] = hmac.new(secret.encode(), run_id.encode(), hashlib.sha256).hexdigest()
     sentinel.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
@@ -1802,9 +1801,7 @@ def test_clear_smoke_artifact_also_clears_stale_wire_ledger(tmp_path: Path) -> N
     """
     from ralph.mcp.server._wire_ledger import WIRE_LEDGER_RELPATH
 
-    artifact = (
-        tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
-    )
+    artifact = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     artifact.parent.mkdir(parents=True)
     artifact.write_text("stale artifact", encoding="utf-8")
     ledger = tmp_path / WIRE_LEDGER_RELPATH

@@ -189,8 +189,7 @@ def _parse_viewport_token(token: str, *, fallback_name: str) -> Viewport:
         head, _, tail = cleaned.rpartition("x")
         if not head or "x" in head:
             raise ValueError(
-                f"viewport {fallback_name!r} must be in the form NAME=WxH or WxH "
-                f"(got {cleaned!r})"
+                f"viewport {fallback_name!r} must be in the form NAME=WxH or WxH (got {cleaned!r})"
             )
         name = head.strip().lower()
         resolution = tail.strip()
@@ -233,9 +232,7 @@ def _validate_capture_command(command: str) -> None:
     try:
         tokens = shlex.split(command)
     except ValueError as exc:
-        raise ValueError(
-            f"design_capture_command must be shell-parseable: {exc}"
-        ) from exc
+        raise ValueError(f"design_capture_command must be shell-parseable: {exc}") from exc
     if len(tokens) < MIN_CAPTURE_COMMAND_TOKENS:
         raise ValueError(
             "design_capture_command must contain at least an executable and a target "
@@ -320,14 +317,10 @@ def parse_policy_facts(policy_markdown: str, *, target: str | None = None) -> Po
                 f"{_KEY_NARROW_VIEWPORT!r} and {_KEY_WIDE_VIEWPORT!r}"
             )
         viewports.append(
-            _parse_viewport_token(
-                facts[_KEY_NARROW_VIEWPORT], fallback_name=_KEY_NARROW_VIEWPORT
-            )
+            _parse_viewport_token(facts[_KEY_NARROW_VIEWPORT], fallback_name=_KEY_NARROW_VIEWPORT)
         )
         viewports.append(
-            _parse_viewport_token(
-                facts[_KEY_WIDE_VIEWPORT], fallback_name=_KEY_WIDE_VIEWPORT
-            )
+            _parse_viewport_token(facts[_KEY_WIDE_VIEWPORT], fallback_name=_KEY_WIDE_VIEWPORT)
         )
 
     if _KEY_THEMES not in facts:

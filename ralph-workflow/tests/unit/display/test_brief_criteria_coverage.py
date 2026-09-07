@@ -72,13 +72,49 @@ if TYPE_CHECKING:
 # recorded here as known-uncovered IDs so any future test claiming
 # either one is wired in correctly.
 ALL_IDS: tuple[str, ...] = (
-    "A-1", "A-2", "A-3", "A-4", "A-6",
-    "B-1", "B-2", "B-4", "B-5", "B-6",
-    "C-1", "C-2", "C-3", "C-4", "C-5", "C-6", "C-7",
-    "D-1", "D-2", "D-3", "D-4",
-    "E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8",
-    "F-1", "F-2", "F-3", "F-4",
-    "G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7", "G-8", "G-9", "G-10",
+    "A-1",
+    "A-2",
+    "A-3",
+    "A-4",
+    "A-6",
+    "B-1",
+    "B-2",
+    "B-4",
+    "B-5",
+    "B-6",
+    "C-1",
+    "C-2",
+    "C-3",
+    "C-4",
+    "C-5",
+    "C-6",
+    "C-7",
+    "D-1",
+    "D-2",
+    "D-3",
+    "D-4",
+    "E-1",
+    "E-2",
+    "E-3",
+    "E-4",
+    "E-5",
+    "E-6",
+    "E-7",
+    "E-8",
+    "F-1",
+    "F-2",
+    "F-3",
+    "F-4",
+    "G-1",
+    "G-2",
+    "G-3",
+    "G-4",
+    "G-5",
+    "G-6",
+    "G-7",
+    "G-8",
+    "G-9",
+    "G-10",
 )
 
 
@@ -150,11 +186,14 @@ def _parse_criteria_marker(node: ast.AST) -> list[str] | None:
         # the parsed form is ``Attribute(value=Attribute(value=Name('pytest'), attr='mark'), attr='criteria')``
         # (or just ``Attribute(value=Name('mark'), attr='criteria')``
         # inside a test plugin).
-        is_criteria = isinstance(func, ast.Attribute) and func.attr == "criteria" and isinstance(
-            func.value, ast.Attribute
-        ) and func.value.attr == "mark" and isinstance(
-            func.value.value, ast.Name
-        ) and func.value.value.id == "pytest"
+        is_criteria = (
+            isinstance(func, ast.Attribute)
+            and func.attr == "criteria"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "mark"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "pytest"
+        )
         if not is_criteria:
             continue
         for arg in decorator.args:
@@ -281,13 +320,49 @@ def _reset_probes_caches() -> None:
 # re-walk the tree (doing so would be redundant work that the
 # maintained sharded runner does not benefit from).
 ALL_IDS: tuple[str, ...] = (
-    "A-1", "A-2", "A-3", "A-4", "A-6",
-    "B-1", "B-2", "B-4", "B-5", "B-6",
-    "C-1", "C-2", "C-3", "C-4", "C-5", "C-6", "C-7",
-    "D-1", "D-2", "D-3", "D-4",
-    "E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8",
-    "F-1", "F-2", "F-3", "F-4",
-    "G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7", "G-8", "G-9", "G-10",
+    "A-1",
+    "A-2",
+    "A-3",
+    "A-4",
+    "A-6",
+    "B-1",
+    "B-2",
+    "B-4",
+    "B-5",
+    "B-6",
+    "C-1",
+    "C-2",
+    "C-3",
+    "C-4",
+    "C-5",
+    "C-6",
+    "C-7",
+    "D-1",
+    "D-2",
+    "D-3",
+    "D-4",
+    "E-1",
+    "E-2",
+    "E-3",
+    "E-4",
+    "E-5",
+    "E-6",
+    "E-7",
+    "E-8",
+    "F-1",
+    "F-2",
+    "F-3",
+    "F-4",
+    "G-1",
+    "G-2",
+    "G-3",
+    "G-4",
+    "G-5",
+    "G-6",
+    "G-7",
+    "G-8",
+    "G-9",
+    "G-10",
 )
 
 
@@ -309,9 +384,7 @@ def test_every_brief_criterion_id_is_claimed_by_exactly_one_collected_test() -> 
 
     duplicates = sorted(id_ for id_, claims in _CLAIMS.items() if len(claims) > 1)
     if duplicates:
-        claims = ", ".join(
-            f"{id_} -> {[(f, n) for f, n in _CLAIMS[id_]]}" for id_ in duplicates
-        )
+        claims = ", ".join(f"{id_} -> {[(f, n) for f, n in _CLAIMS[id_]]}" for id_ in duplicates)
         raise AssertionError(f"criteria IDs claimed by more than one test: {claims}")
 
 

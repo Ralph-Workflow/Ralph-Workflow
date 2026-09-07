@@ -44,8 +44,8 @@ def test_audit_blocks_regression_when_session_pattern_literal_is_removed(
         content = real_read(rel_path)
         if rel_path == audit_module._SESSION_SOURCE_PATH:
             return content.replace(
-                r'^Claude session ready\. Session ID:\s*([A-Za-z0-9._:-]+)$',
-                r'^removed$',
+                r"^Claude session ready\. Session ID:\s*([A-Za-z0-9._:-]+)$",
+                r"^removed$",
             )
         return content
 

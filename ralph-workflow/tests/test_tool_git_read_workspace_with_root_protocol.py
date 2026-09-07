@@ -17,7 +17,6 @@ CUSTOM_LOG_COUNT = 20
 
 
 class TestWorkspaceWithRootProtocol:
-
     def test_str_workspace_uses_injected_fallback_cwd(self) -> None:
         seen: list[Path] = []
         fallback = Path("/virtual/fallback")

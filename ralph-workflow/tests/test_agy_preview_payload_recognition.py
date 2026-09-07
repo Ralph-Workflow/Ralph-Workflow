@@ -56,9 +56,7 @@ def test_write_to_file_drives_write_payload_and_syntax_render() -> None:
     assert payload.operation == "write"
     assert payload.path == "/workspace/x.py"
     assert payload.content == "print('hi')\n"
-    renderable = build_edit_preview(
-        "write_to_file", metadata, width=80, terminal_bg_is_light=None
-    )
+    renderable = build_edit_preview("write_to_file", metadata, width=80, terminal_bg_is_light=None)
     assert isinstance(renderable, Syntax), type(renderable)
 
 
@@ -96,9 +94,7 @@ def test_done_only_write_tool_update_emits_previewable_use_before_result() -> No
 
 
 def test_replace_file_content_drives_replace_payload_and_group_render() -> None:
-    metadata = _agy_metadata(
-        "replace_file_content", old_string="old", new_string="new"
-    )
+    metadata = _agy_metadata("replace_file_content", old_string="old", new_string="new")
     payload = payload_from_tool_event("replace_file_content", metadata)
     assert payload is not None
     assert payload.operation == "replace"
@@ -137,24 +133,18 @@ def test_sed_file_drives_replace_payload_and_group_render() -> None:
     assert payload.operation == "replace"
     assert payload.path == "/workspace/x.py"
     assert len(payload.hunks) == 1
-    renderable = build_edit_preview(
-        "sed_file", metadata, width=80, terminal_bg_is_light=None
-    )
+    renderable = build_edit_preview("sed_file", metadata, width=80, terminal_bg_is_light=None)
     assert isinstance(renderable, Group), type(renderable)
     assert _render_contains_syntax(renderable)
 
 
 def test_notebook_edit_drives_write_payload_and_syntax_render() -> None:
-    metadata = _agy_metadata(
-        "notebook_edit", target="/workspace/nb.ipynb", new_source="print(1)\n"
-    )
+    metadata = _agy_metadata("notebook_edit", target="/workspace/nb.ipynb", new_source="print(1)\n")
     payload = payload_from_tool_event("notebook_edit", metadata)
     assert payload is not None
     assert payload.operation == "write"
     assert payload.path == "/workspace/nb.ipynb"
-    renderable = build_edit_preview(
-        "notebook_edit", metadata, width=80, terminal_bg_is_light=None
-    )
+    renderable = build_edit_preview("notebook_edit", metadata, width=80, terminal_bg_is_light=None)
     assert isinstance(renderable, Syntax), type(renderable)
 
 

@@ -789,7 +789,6 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
         assert mock_logger.error.call_args_list[idx][0][1] == value
 
 
-
 # ---------------------------------------------------------------------------
 # cycle_timebox policy tests
 # ---------------------------------------------------------------------------
@@ -830,9 +829,7 @@ def test_cycle_timebox_accepts_non_canonical_valid_phase_references(
     """A cycle_timebox may reference any declared phase, not just canonical names."""
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()
-    pipeline = pipeline.replace(
-        'guarded_entry = "development"', 'guarded_entry = "planning"'
-    )
+    pipeline = pipeline.replace('guarded_entry = "development"', 'guarded_entry = "planning"')
     (tmp_path / "pipeline.toml").write_text(pipeline)
     bundle = load_policy(tmp_path)
     ct = bundle.pipeline.cycle_timebox
@@ -955,14 +952,10 @@ def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -
     }
 
     # Inherited (not explicit): the incompatible timebox is disabled silently.
-    inherited = policy_loader._validate_pipeline(
-        custom_graph, cycle_timebox_explicit=False
-    )
+    inherited = policy_loader._validate_pipeline(custom_graph, cycle_timebox_explicit=False)
     assert inherited.cycle_timebox is None
 
     # Explicit: the same incompatible timebox is rejected strictly.
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        policy_loader._validate_pipeline(
-            custom_graph, cycle_timebox_explicit=True
-        )
+        policy_loader._validate_pipeline(custom_graph, cycle_timebox_explicit=True)
     assert "cycle_timebox" in excinfo.value.message

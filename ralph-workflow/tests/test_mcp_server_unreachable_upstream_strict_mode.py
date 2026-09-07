@@ -55,18 +55,14 @@ class _UnreachableClient:
 
 def _install_unreachable_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
     upstream = UpstreamMcpServer(name=_SERVER_NAME, transport="stdio", command=_SERVER_NAME)
-    monkeypatch.setattr(
-        server_runtime, "load_runtime_upstream_servers", lambda cfg: (upstream,)
-    )
+    monkeypatch.setattr(server_runtime, "load_runtime_upstream_servers", lambda cfg: (upstream,))
     monkeypatch.setattr("ralph.mcp.upstream.registry.make_upstream_client", _UnreachableClient)
 
 
 def _build(tmp_path: Path) -> server_runtime.FallbackStandaloneServer:
     config = McpConfig(
         mcp_servers={
-            _SERVER_NAME: McpServerSpec(
-                name=_SERVER_NAME, transport="stdio", command=_SERVER_NAME
-            )
+            _SERVER_NAME: McpServerSpec(name=_SERVER_NAME, transport="stdio", command=_SERVER_NAME)
         }
     )
     return server_runtime.build_standalone_http_server(

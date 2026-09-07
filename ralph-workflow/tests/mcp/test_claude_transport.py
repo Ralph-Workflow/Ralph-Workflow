@@ -707,9 +707,7 @@ def test_claude_transport_regression_unproxyable_report_is_emitted_once_per_run(
         calls.append(1)
         return ("claude.ai Notion",)
 
-    monkeypatch.setattr(
-        "ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _counting_lister
-    )
+    monkeypatch.setattr("ralph.mcp.transport.claude.claude_cli_mcp_server_lister", _counting_lister)
     reset_claude_mcp_proxy_report()
 
     records: list[str] = []

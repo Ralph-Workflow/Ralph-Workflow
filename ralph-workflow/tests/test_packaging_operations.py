@@ -53,7 +53,7 @@ def _write_fake_ruby(bin_dir: Path, *, exit_code: int) -> None:
     formula = PACKAGE_ROOT / "Formula" / "ralph-workflow.rb"
     ruby.write_text(
         f"#!{bash_path}\n"
-        f"if [ \"$1\" != \"-c\" ] || [ \"$2\" != \"{formula}\" ]; then\n"
+        f'if [ "$1" != "-c" ] || [ "$2" != "{formula}" ]; then\n'
         "  exit 9\n"
         "fi\n"
         f"printf 'fake ruby syntax check\\n'\nexit {exit_code}\n"

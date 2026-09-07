@@ -159,7 +159,9 @@ def _forwards_catchall(call: ast.Call, catchall: str) -> bool:
     )
 
 
-def _walk_scope(node: ast.AST, catchall: str, safe: frozenset[str]) -> list[tuple[ast.Call, frozenset[str]]]:
+def _walk_scope(
+    node: ast.AST, catchall: str, safe: frozenset[str]
+) -> list[tuple[ast.Call, frozenset[str]]]:
     """Collect calls reachable from ``node``, carrying each one's safe-name set.
 
     Descending into a nested ``def``/``lambda`` extends the safe set with the
@@ -277,9 +279,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Could not parse a file under audit: {exc}")
         return 1
     if not violations:
-        print(
-            f"No duplicate-keyword forwarding in {scanned} file(s) under {', '.join(roots)}."
-        )
+        print(f"No duplicate-keyword forwarding in {scanned} file(s) under {', '.join(roots)}.")
         return 0
     print(f"DUPLICATE-KEYWORD FORWARDING VIOLATIONS: {len(violations)} in {scanned} file(s)")
     print("=" * 72)

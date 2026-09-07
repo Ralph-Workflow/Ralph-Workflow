@@ -70,8 +70,7 @@ def smoke_interactive_ccs_command(
     """
     if shutil.which("ccs") is None:
         logger.error(
-            "ccs binary not found. Install Claude Code Switch (CCS) and ensure "
-            "`ccs` is on PATH."
+            "ccs binary not found. Install Claude Code Switch (CCS) and ensure `ccs` is on PATH."
         )
         return 2
 

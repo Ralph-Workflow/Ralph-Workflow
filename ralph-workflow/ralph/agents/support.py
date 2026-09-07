@@ -34,7 +34,9 @@ if TYPE_CHECKING:
 #: registration populates it without an import-time cycle; the lookup
 #: helpers in :mod:`ralph.agents.registry` consult it as Phase 2 of the
 #: two-phase lookup.
-_DYNAMIC_ALIAS_HELP_BY_PREFIX: dict[str, Callable[[], str]] = {}  # bounded-accumulator-ok: registration write-once per prefix; cardinality capped by registered agent count
+_DYNAMIC_ALIAS_HELP_BY_PREFIX: dict[
+    str, Callable[[], str]
+] = {}  # bounded-accumulator-ok: registration write-once per prefix; cardinality capped by registered agent count
 
 #: Registered-prefix fallback table for empty-output diagnostic factories,
 #: keyed by agent-name prefix. Same population contract as

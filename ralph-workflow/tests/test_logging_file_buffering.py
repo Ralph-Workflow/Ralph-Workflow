@@ -197,7 +197,9 @@ def test_file_sinks_carry_retention_kwarg(tmp_path: Path) -> None:
         sink_adder=adder,
     )
 
-    assert [_find_call_for(adder.calls, suffix) is not None for suffix in ("ralph.log", "ralph.jsonl")] == [
+    assert [
+        _find_call_for(adder.calls, suffix) is not None for suffix in ("ralph.log", "ralph.jsonl")
+    ] == [
         True,
         True,
     ]

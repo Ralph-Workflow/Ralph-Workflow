@@ -242,10 +242,7 @@ def test_no_response_requested_literal_absent_from_agent_text_stream() -> None:
         # No output / text event should ever carry the synthetic text.
         for event in events:
             if event.kind in {"output", "text"}:
-                pytest.fail(
-                    f"synthetic text leaked into {event.kind!r} stream:"
-                    f" {event.text!r}"
-                )
+                pytest.fail(f"synthetic text leaked into {event.kind!r} stream: {event.text!r}")
         # The lifecycle event is allowed to carry the text (the
         # watchdog surfaces it for diagnostics; the operator never
         # sees it because ``is_lifecycle_kind`` drops it in
@@ -284,9 +281,7 @@ def test_normal_assistant_record_produces_text_event() -> None:
     parser = ClaudeInteractiveTranscriptParser()
     events = parser.feed(_normal_assistant_record("real model output"))
     text_events = [e for e in events if e.kind in {"output", "text"}]
-    assert text_events, (
-        f"normal envelope must produce a text event, got {[e.kind for e in events]}"
-    )
+    assert text_events, f"normal envelope must produce a text event, got {[e.kind for e in events]}"
     assert any("real model output" in e.text for e in text_events)
 
 
@@ -298,12 +293,8 @@ def test_classifier_returns_decision_for_each_envelope_placement() -> None:
     transport invokes it. This test exercises the classifier directly
     so the contract is pinned independently of the parser wrapping.
     """
-    top_level_api_error = classify_assistant_record(
-        json.loads(_top_level_api_error_record())
-    )
-    nested_api_error = classify_assistant_record(
-        json.loads(_nested_api_error_record())
-    )
+    top_level_api_error = classify_assistant_record(json.loads(_top_level_api_error_record()))
+    nested_api_error = classify_assistant_record(json.loads(_nested_api_error_record()))
     synthetic = classify_assistant_record(json.loads(_synthetic_record()))
     zero_usage_heuristic = classify_assistant_record(
         json.loads(_synthetic_record_zero_usage_heuristic())
@@ -421,9 +412,7 @@ def test_headless_parser_normal_envelope_produces_text_line() -> None:
     parser = ClaudeParser()
     lines = list(parser.classify_line(_normal_assistant_record("real model output")))
     text_lines = [ln for ln in lines if ln.type in {"text", "output"}]
-    assert text_lines, (
-        f"normal envelope must produce a text line, got {[ln.type for ln in lines]}"
-    )
+    assert text_lines, f"normal envelope must produce a text line, got {[ln.type for ln in lines]}"
     assert any("real model output" in ln.content for ln in text_lines)
 
 

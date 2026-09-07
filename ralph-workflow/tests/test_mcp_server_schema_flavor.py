@@ -143,9 +143,7 @@ def test_flatten_root_schema_drops_composition_and_keeps_plain_vocabulary() -> N
     assert command["type"] == ["array", "string"]
     assert command["items"] == {"type": "string"}
     # Untouched properties keep their identity.
-    assert (
-        flattened["properties"]["path"] is _COMPOSED_ROOT_SCHEMA["properties"]["path"]
-    )
+    assert flattened["properties"]["path"] is _COMPOSED_ROOT_SCHEMA["properties"]["path"]
 
 
 def test_flatten_root_schema_defaults_type_and_is_idempotent() -> None:

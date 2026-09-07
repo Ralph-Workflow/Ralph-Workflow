@@ -467,9 +467,7 @@ def test_d3_define_and_manage_subagent_stay_ordinary_tool_calls() -> None:
     """D3: define_subagent / manage_subagents stay classified as tools, not subagent dispatches."""
     parsed = _replay(_AGY_WIRE_SUBAGENT_FIXTURE)
 
-    tool_names = {
-        line.metadata.get("tool") for line in parsed if line.type == "tool_use"
-    }
+    tool_names = {line.metadata.get("tool") for line in parsed if line.type == "tool_use"}
     assert "define_subagent" in tool_names
     assert "invoke_subagent" in tool_names
     assert "manage_subagents" in tool_names

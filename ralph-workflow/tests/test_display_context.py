@@ -37,9 +37,7 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
     assert ctx.console is not None
     expected = theme_for_background(ctx.terminal_background_is_light)
     assert set(ctx.theme.styles) == set(expected.styles)
-    assert {
-        name: str(style) for name, style in ctx.theme.styles.items()
-    } == {
+    assert {name: str(style) for name, style in ctx.theme.styles.items()} == {
         name: str(style) for name, style in expected.styles.items()
     }
 

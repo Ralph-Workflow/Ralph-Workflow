@@ -84,9 +84,7 @@ def _mirror_skill_to_sibling_root(
         # filesystem-write-ok: replace managed sibling skill mirror before relinking it to canonical content
         shutil.rmtree(sibling_dir)
     try:
-        _create_symlink(
-            sibling_dir, canonical_root / skill_name, target_is_directory=True
-        )
+        _create_symlink(sibling_dir, canonical_root / skill_name, target_is_directory=True)
     except OSError:
         try:
             # filesystem-write-ok: fallback materialization preserves the managed sibling skill contract

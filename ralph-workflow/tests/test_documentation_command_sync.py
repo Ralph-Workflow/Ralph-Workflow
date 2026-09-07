@@ -176,9 +176,7 @@ def test_cli_callback_docs_do_not_claim_init_scaffolds_local_config() -> None:
 
 def test_developer_internals_documents_explicit_local_config_creation() -> None:
     """Plan S-3: internals must preserve the explicit local-config boundary."""
-    content = (REPO_ROOT / "docs" / "sphinx" / "developer-internals.md").read_text(
-        encoding="utf-8"
-    )
+    content = (REPO_ROOT / "docs" / "sphinx" / "developer-internals.md").read_text(encoding="utf-8")
 
     assert "ralph --init-local-config" in content
     assert "ralph --generate-local-config" in content

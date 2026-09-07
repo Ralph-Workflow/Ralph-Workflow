@@ -85,9 +85,7 @@ def _validate_viewports(viewports: object) -> None:
         )
     for viewport in viewports:
         if not isinstance(viewport, Viewport):
-            raise ValueError(
-                "CaptureRequest.viewports must contain only Viewport instances"
-            )
+            raise ValueError("CaptureRequest.viewports must contain only Viewport instances")
 
 
 def _validate_matrix_cells(matrix: object) -> None:
@@ -96,14 +94,15 @@ def _validate_matrix_cells(matrix: object) -> None:
         raise ValueError("CaptureRequest.matrix must be a tuple of CaptureCell instances")
     for cell in matrix:
         if not isinstance(cell, CaptureCell):
-            raise ValueError(
-                "CaptureRequest.matrix must contain only CaptureCell instances"
-            )
+            raise ValueError("CaptureRequest.matrix must contain only CaptureCell instances")
 
 
 def _expected_matrix(
-    *, target: str, viewports: tuple[Viewport, ...],
-    themes: tuple[str, ...], states: tuple[str, ...],
+    *,
+    target: str,
+    viewports: tuple[Viewport, ...],
+    themes: tuple[str, ...],
+    states: tuple[str, ...],
 ) -> dict[tuple[str, str, int, int, str, str], CaptureCell]:
     """Build the canonical cartesian-product cell set keyed by cell.key."""
     expected: dict[tuple[str, str, int, int, str, str], CaptureCell] = {}
@@ -130,7 +129,10 @@ def _verify_matrix_shape(
 ) -> None:
     """Verify the matrix equals the full cartesian product of the declared axes."""
     expected = _expected_matrix(
-        target=target, viewports=viewports, themes=themes, states=states,
+        target=target,
+        viewports=viewports,
+        themes=themes,
+        states=states,
     )
     present = {cell.key: cell for cell in matrix}
 
@@ -189,9 +191,7 @@ class CaptureRequest:
         if not isinstance(self.target, str) or not self.target.strip():
             raise ValueError("CaptureRequest.target must be a non-empty string")
         if self.target != self.target.strip():
-            raise ValueError(
-                "CaptureRequest.target must not carry leading/trailing whitespace"
-            )
+            raise ValueError("CaptureRequest.target must not carry leading/trailing whitespace")
 
         _validate_viewports(self.viewports)
         _validate_string_tuple(

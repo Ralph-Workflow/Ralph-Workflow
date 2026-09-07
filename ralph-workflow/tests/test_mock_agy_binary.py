@@ -343,4 +343,3 @@ def test_mock_output_format_text_emits_plain_text(
     assert "I will create the todo list implementation." in result.stdout
     assert "[plain] tool:" not in result.stdout
     assert "Writing smoke_test_result artifact." in result.stdout
-

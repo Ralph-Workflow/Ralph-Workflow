@@ -166,9 +166,7 @@ def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> N
 
 def test_opencode_regression_verified_completion_stops_parent_after_stdout_eof() -> None:
     """S-4: durable completion reaps a still-live OpenCode parent after stdout EOF."""
-    handle = _FakeManagedHandle(
-        iter(['{"type":"text","part":{"text":"complete"}}\n'])
-    )
+    handle = _FakeManagedHandle(iter(['{"type":"text","part":{"text":"complete"}}\n']))
     policy = TimeoutPolicy(
         idle_timeout_seconds=5.0,
         max_session_seconds=5.0,

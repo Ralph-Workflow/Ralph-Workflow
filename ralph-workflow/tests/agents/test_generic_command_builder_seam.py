@@ -54,7 +54,9 @@ def test_cmd_argv_override_preserves_wrapper_tokens(tmp_path: Path) -> None:
     """``cmd_argv_override`` splits ``config.cmd`` into separate argv tokens."""
     builder = ConfigurableCommandBuilder(_future_spec())
     argv = builder.build(
-        AgentConfig(cmd="/opt/wrapper/futureagent --telemetry on", transport=AgentTransport.GENERIC),
+        AgentConfig(
+            cmd="/opt/wrapper/futureagent --telemetry on", transport=AgentTransport.GENERIC
+        ),
         _write_prompt(tmp_path),
         options=BuildCommandOptions(workspace_path=tmp_path),
     )
@@ -65,7 +67,9 @@ def test_without_cmd_argv_override_only_the_binary_token_is_used(tmp_path: Path)
     """The default spec keeps the binary-name behaviour: one token from ``cmd``."""
     builder = ConfigurableCommandBuilder(_future_spec(cmd_argv_override=False))
     argv = builder.build(
-        AgentConfig(cmd="/opt/wrapper/futureagent --telemetry on", transport=AgentTransport.GENERIC),
+        AgentConfig(
+            cmd="/opt/wrapper/futureagent --telemetry on", transport=AgentTransport.GENERIC
+        ),
         _write_prompt(tmp_path),
         options=BuildCommandOptions(workspace_path=tmp_path),
     )

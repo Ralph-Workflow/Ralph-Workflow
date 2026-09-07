@@ -105,9 +105,7 @@ def _emit_claude_tool_use(name: str, arguments: dict[str, Any], call_id: str) ->
             "type": "assistant",
             "message": {
                 "role": "assistant",
-                "content": [
-                    {"type": "tool_use", "id": call_id, "name": name, "input": arguments}
-                ],
+                "content": [{"type": "tool_use", "id": call_id, "name": name, "input": arguments}],
             },
         }
     )
@@ -166,7 +164,9 @@ def _emit_agy_text_delta(text: str, session_id: str, step_index: int) -> None:
     )
 
 
-def _emit_agy_tool_call(name: str, parameters: dict[str, Any], session_id: str, step_index: int) -> None:
+def _emit_agy_tool_call(
+    name: str, parameters: dict[str, Any], session_id: str, step_index: int
+) -> None:
     info: dict[str, Any] = {"name": name, "parameters": parameters}
     _emit_json(
         {
@@ -547,9 +547,7 @@ def _dispatch(endpoint: str, name: str, arguments: dict[str, Any]) -> dict[str, 
         return {"result": None, "_empty_body": True}
     # Handle SSE-style responses: lines starting with ``data:`` are JSON.
     sse_lines = [
-        line[len("data:") :].strip()
-        for line in body_text.splitlines()
-        if line.startswith("data:")
+        line[len("data:") :].strip() for line in body_text.splitlines() if line.startswith("data:")
     ]
     if sse_lines:
         last_data = sse_lines[-1]
@@ -646,7 +644,9 @@ def _resolve_transport() -> str:
 
 def _extract_server_uri(first_response: dict[str, Any]) -> str | None:
     """Return the first ``ralph://media/{artifact_id}`` URI the server minted."""
-    sys.stderr.write(f"mock_multimodal_agent: extract_server_uri input={json.dumps(first_response, default=str)[:1000]!r}\n")
+    sys.stderr.write(
+        f"mock_multimodal_agent: extract_server_uri input={json.dumps(first_response, default=str)[:1000]!r}\n"
+    )
     result = first_response.get("result") if isinstance(first_response, dict) else None
     if not isinstance(result, dict):
         sys.stderr.write(f"mock_multimodal_agent: result not dict, got {type(result)!r}\n")
@@ -728,9 +728,7 @@ def _run_dispatch(
                 {"path": server_uri, "format": "inline"},
             )
         except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
-            sys.stderr.write(
-                f"mock_multimodal_agent: read_media(replay) failed: {exc}\n"
-            )
+            sys.stderr.write(f"mock_multimodal_agent: read_media(replay) failed: {exc}\n")
         try:
             metadata = _dispatch(
                 endpoint,
@@ -781,7 +779,6 @@ def _fixture_geometry_from_disk(workspace_root: Path) -> tuple[int, int, str] | 
     width, height = struct.unpack(">II", body[16:24])
     sha = hashlib.sha256(body).hexdigest()
     return width, height, sha
-
 
 
 def _first_idat_payload(body: bytes) -> bytes | None:
@@ -1008,7 +1005,9 @@ def _emit_stop_frame(transport: str, stop_emitter: Any, session_id: str) -> None
 
 def main() -> int:
     endpoint, output_file, run_id = _read_env_or_fail()
-    sys.stderr.write(f"mock_multimodal_agent: main endpoint={endpoint!r} output_file={output_file!r}\n")
+    sys.stderr.write(
+        f"mock_multimodal_agent: main endpoint={endpoint!r} output_file={output_file!r}\n"
+    )
     if not endpoint:
         sys.stderr.write(
             f"mock_multimodal_agent: {ENDPOINT_ENV} not set; smoke harness "

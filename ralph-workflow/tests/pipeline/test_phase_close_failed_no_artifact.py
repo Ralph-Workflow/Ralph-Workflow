@@ -93,7 +93,9 @@ def test_render_phase_failure_report_emits_failed_no_artifact_for_missing_receip
     )
     captured: list[tuple[str, tuple[object, ...]]] = []
 
-    def _fake_emit_via_display(ctx: object, method_name: str, *args: object, **kwargs: object) -> bool:
+    def _fake_emit_via_display(
+        ctx: object, method_name: str, *args: object, **kwargs: object
+    ) -> bool:
         del ctx, kwargs
         captured.append((method_name, args))
         return True

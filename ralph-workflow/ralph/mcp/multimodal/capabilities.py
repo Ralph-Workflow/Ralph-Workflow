@@ -40,9 +40,7 @@ _TYPED_BLOCK_SUPPORT: dict[str, dict[str, str]] = {
 #: above so the two cannot drift. A persisted verdict may name one of
 #: these and nothing else.
 _MINTED_BLOCK_TYPES: frozenset[str] = frozenset(
-    block_type
-    for modalities in _TYPED_BLOCK_SUPPORT.values()
-    for block_type in modalities.values()
+    block_type for modalities in _TYPED_BLOCK_SUPPORT.values() for block_type in modalities.values()
 )
 
 
@@ -310,9 +308,7 @@ def caller_profile_for(
     stored = delegated_profile
     if stored is None and delegated_identity is None:
         stored = session_profile
-    return profile_for_caller(
-        stored, caller_identity_for(session_identity, delegated_identity)
-    )
+    return profile_for_caller(stored, caller_identity_for(session_identity, delegated_identity))
 
 
 def profile_for_caller(
@@ -640,7 +636,9 @@ def _delivery_for_provider(
     # measurement, and it is the conservative direction: the artifact
     # still arrives as a resource reference.
     typed_blocks = (
-        {} if inline_image_roundtrip_unsafe(identity) else _TYPED_BLOCK_SUPPORT.get(provider_lower, {})
+        {}
+        if inline_image_roundtrip_unsafe(identity)
+        else _TYPED_BLOCK_SUPPORT.get(provider_lower, {})
     )
     block_type: str | None = typed_blocks.get(modality)
     delivery = DeliveryMode.TYPED_BLOCK if block_type else DeliveryMode.RESOURCE_REFERENCE_REPLAY
@@ -872,9 +870,7 @@ def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
     # hand-edited ``'CODEX'`` or ``'  codex  '`` propagated a spelling
     # every matcher then had to strip and lower again, and produced a
     # different capability digest for the same run.
-    identity = payload_identity(
-        raw.get("provider"), raw.get("model_id"), raw.get("transport")
-    )
+    identity = payload_identity(raw.get("provider"), raw.get("model_id"), raw.get("transport"))
     raw_verdicts = raw.get("verdicts")
     if not isinstance(raw_verdicts, dict):
         return resolve_capability_profile(identity)

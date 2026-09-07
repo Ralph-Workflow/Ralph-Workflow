@@ -176,7 +176,6 @@ def resolve_exhausted_analysis_bypass(
     )
 
 
-
 def commit_closes_a_cycle(
     phase: PipelinePhase,
     pipeline_policy: PipelinePolicy,

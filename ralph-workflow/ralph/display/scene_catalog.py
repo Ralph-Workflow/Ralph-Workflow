@@ -330,8 +330,7 @@ def _drive_failure(display: ParallelDisplay) -> None:
     """Drive the ``failure`` scene through public display seams."""
     display.emit_phase_start("review", agent_name="reviewer")
     raw_machine_detail = (
-        "tests failed: assertion output retained; trace-detail "
-        "condensed count=48 bytes=624"
+        "tests failed: assertion output retained; trace-detail condensed count=48 bytes=624"
     )
     display.emit_activity_line(
         "reviewer",

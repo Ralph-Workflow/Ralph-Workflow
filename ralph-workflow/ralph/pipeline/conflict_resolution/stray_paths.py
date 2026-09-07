@@ -130,9 +130,7 @@ def restore_one_unrequested_path(root: Path, path: str) -> bool:
         # An untracked directory is not an edit to anything git tracks,
         # and refusing here threw away a resolution that had already
         # been proven -- one `__pycache__/` was enough, every run.
-        logger.info(
-            "conflict_resolution: leaving untracked directory '{}' in place", path
-        )
+        logger.info("conflict_resolution: leaving untracked directory '{}' in place", path)
         return True
     return move_stray_aside(target)
 

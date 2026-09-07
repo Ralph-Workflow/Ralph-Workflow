@@ -134,7 +134,15 @@ _PARALLEL_FIELDS: dict[str, FieldKind] = {
     "directories": "inline_list",
 }
 _EXECUTOR_STEP_TYPES = frozenset(
-    {"file_change", "verify", "file_create", "file_delete", "discovery", "refactor", "config_change"}
+    {
+        "file_change",
+        "verify",
+        "file_create",
+        "file_delete",
+        "discovery",
+        "refactor",
+        "config_change",
+    }
 )
 _WORK_STEP_TYPES = _EXECUTOR_STEP_TYPES - {"verify", "discovery"}
 
@@ -532,8 +540,7 @@ def _check_step_contract(
             )
         )
     if effective == "verify" and (
-        "verify_command" not in step
-        or ("expected_outcome" not in step and "location" not in step)
+        "verify_command" not in step or ("expected_outcome" not in step and "location" not in step)
     ):
         diagnostics.append(
             Diagnostic(
@@ -551,11 +558,47 @@ def _check_step_contract(
         )
     verify = step.get("verify_command")
     if strict and effective in _WORK_STEP_TYPES and not isinstance(verify, str):
-        diagnostics.append(Diagnostic(line, "Steps", "PLAN020", f"{context} must declare Verify: <concrete command>", "error"))
-    if strict and effective in _WORK_STEP_TYPES and not isinstance(step.get("expected_outcome"), str):
-        diagnostics.append(Diagnostic(line, "Steps", "PLAN020", f"{context} must declare Expect: <observable result>", "error"))
-    if strict and effective == "discovery" and not (isinstance(verify, str) or isinstance(step.get("location"), str) or step.get("expected_evidence")):
-        diagnostics.append(Diagnostic(line, "Steps", "PLAN020", f"{context} must declare Verify:, Location:, or Evidence:", "error"))
+        diagnostics.append(
+            Diagnostic(
+                line,
+                "Steps",
+                "PLAN020",
+                f"{context} must declare Verify: <concrete command>",
+                "error",
+            )
+        )
+    if (
+        strict
+        and effective in _WORK_STEP_TYPES
+        and not isinstance(step.get("expected_outcome"), str)
+    ):
+        diagnostics.append(
+            Diagnostic(
+                line,
+                "Steps",
+                "PLAN020",
+                f"{context} must declare Expect: <observable result>",
+                "error",
+            )
+        )
+    if (
+        strict
+        and effective == "discovery"
+        and not (
+            isinstance(verify, str)
+            or isinstance(step.get("location"), str)
+            or step.get("expected_evidence")
+        )
+    ):
+        diagnostics.append(
+            Diagnostic(
+                line,
+                "Steps",
+                "PLAN020",
+                f"{context} must declare Verify:, Location:, or Evidence:",
+                "error",
+            )
+        )
     expected = step.get("expected_outcome")
     if isinstance(verify, str):
         if is_forbidden_shell_invocation(verify):
@@ -1145,7 +1188,9 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
     return content, diagnostics
 
 
-def _apply_document_severity_policy(document: ParsedDocument, diagnostics: list[Diagnostic]) -> None:
+def _apply_document_severity_policy(
+    document: ParsedDocument, diagnostics: list[Diagnostic]
+) -> None:
     del document
     apply_plan_severity_policy(diagnostics)
 
@@ -1169,11 +1214,7 @@ def _document_warnings(document: ParsedDocument) -> list[Diagnostic]:
     """
     _, diagnostics = _analyze(document)
     _apply_document_severity_policy(document, diagnostics)
-    return [
-        diagnostic
-        for diagnostic in diagnostics
-        if diagnostic.severity in {"warning", "error"}
-    ]
+    return [diagnostic for diagnostic in diagnostics if diagnostic.severity in {"warning", "error"}]
 
 
 def analyze_plan_document(

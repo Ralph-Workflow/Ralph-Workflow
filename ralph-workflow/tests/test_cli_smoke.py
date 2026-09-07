@@ -172,7 +172,6 @@ def test_build_smoke_prompt_teaches_agy_to_route_submission_through_call_mcp_too
     assert "call_mcp_tool" not in non_agy_prompt
 
 
-
 def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",
@@ -224,9 +223,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     def _load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:
         # The smoke command resolves its default agent from the operator's
         # own [agent_chains]; declare one naming the interactive alias.
-        return UnifiedConfig(
-            agent_chains={"default": AgentChainConfig(agents=["claude/haiku"])}
-        )
+        return UnifiedConfig(agent_chains={"default": AgentChainConfig(agents=["claude/haiku"])})
 
     monkeypatch.setattr(smoke_module, "resolve_workspace_scope", _resolve_workspace_scope)
     monkeypatch.setattr(smoke_module, "load_config", _load_config)
@@ -1203,7 +1200,9 @@ def test_render_smoke_table_ungraded_multimodal_cell_is_not_not_requested(
         raw_line_count=16,
         parsed_event_count=19,
         tool_activity_seen=Evidence(True, Provenance.WIRE, "tools/call ledger match"),
-        artifact_submitted=Evidence(True, Provenance.WIRE, "receipt matched a tools/call ledger record"),
+        artifact_submitted=Evidence(
+            True, Provenance.WIRE, "receipt matched a tools/call ledger record"
+        ),
         explicit_completion_seen=Evidence(True, Provenance.WIRE, "declare_complete wire match"),
         meaningful_output_lines=[],
         errors=[],
@@ -1230,7 +1229,6 @@ def test_render_smoke_table_ungraded_multimodal_cell_is_not_not_requested(
         "should be the only occurrence"
     )
     assert "DEGRADED (absent)" in rendered
-
 
 
 # ---------------------------------------------------------------------------
@@ -1262,6 +1260,7 @@ def test_subagent_dispatch_missing_is_fatal_exit_code() -> None:
         Evidence,
         Provenance,
     )
+
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",
         transport="claude_interactive",
@@ -1308,6 +1307,7 @@ def test_subagent_no_post_result_activity_is_fatal_exit_code() -> None:
         Evidence,
         Provenance,
     )
+
     result = smoke_module.SmokeRunResult(
         agent_name="claude-headless/haiku",
         transport="claude_headless",
@@ -1350,6 +1350,7 @@ def test_subagent_dispatch_uncorrelated_returns_nonzero_for_both_transports() ->
         Evidence,
         Provenance,
     )
+
     for transport_label in ("claude_interactive", "claude_headless"):
         result = smoke_module.SmokeRunResult(
             agent_name=f"claude/{transport_label}",
@@ -1369,8 +1370,7 @@ def test_subagent_dispatch_uncorrelated_returns_nonzero_for_both_transports() ->
         assert verdict_label in {PASS, DEGRADED}
         exit_code = 0 if not result.errors and verdict_label == PASS else 1
         assert exit_code == 1, (
-            f"{transport_label} subagent contract failure must yield"
-            f" a non-zero exit (DA-002)"
+            f"{transport_label} subagent contract failure must yield a non-zero exit (DA-002)"
         )
 
 
@@ -1386,6 +1386,7 @@ def test_no_subagent_errors_with_pass_verdict_yields_zero_exit() -> None:
         Evidence,
         Provenance,
     )
+
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",
         transport="claude_interactive",

@@ -64,7 +64,11 @@ def _session(
 
 
 def _dispatch_tools_call(
-    tmp_path: Path, *, run_id: str, broker_secret: str | None, tool_name: str = "ralph_submit_md_artifact"
+    tmp_path: Path,
+    *,
+    run_id: str,
+    broker_secret: str | None,
+    tool_name: str = "ralph_submit_md_artifact",
 ) -> None:
     server = McpServer(
         session=_session(run_id, broker_secret=broker_secret),
@@ -105,9 +109,7 @@ def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
         registry=_FakeRegistry(),
     )
     for msg_id, (method, params) in enumerate(_HANDLER_DICT_METHODS, start=1):
-        request = JsonRpcRequest(
-            jsonrpc="2.0", method=method, msg_id=str(msg_id), params=params
-        )
+        request = JsonRpcRequest(jsonrpc="2.0", method=method, msg_id=str(msg_id), params=params)
         response, _ = server.handle_request(request, ServerState.RUNNING)
         assert response is not None
 
@@ -165,9 +167,7 @@ def test_ledger_with_only_handler_dict_rows_grants_no_wire_evidence(tmp_path: Pa
         registry=_FakeRegistry(),
     )
     for msg_id, (method, params) in enumerate(_HANDLER_DICT_METHODS, start=1):
-        request = JsonRpcRequest(
-            jsonrpc="2.0", method=method, msg_id=str(msg_id), params=params
-        )
+        request = JsonRpcRequest(jsonrpc="2.0", method=method, msg_id=str(msg_id), params=params)
         server.handle_request(request, ServerState.RUNNING)
 
     assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is False
@@ -188,9 +188,7 @@ def test_media_tools_call_records_delivery_and_agent_identity(tmp_path: Path) ->
         session=_session(
             "run-1",
             broker_secret="s3cr3t",
-            model_identity=MultimodalModelIdentity(
-                provider="openai", model_id="gpt-future"
-            ),
+            model_identity=MultimodalModelIdentity(provider="openai", model_id="gpt-future"),
         ),
         workspace=_Workspace(tmp_path),
         registry=_FakeRegistry(),
@@ -219,7 +217,9 @@ def test_wire_evidence_matches_tool_name_substring(tmp_path: Path) -> None:
     )
 
     assert wire_evidence_for(tmp_path, "run-1", tool_name="artifact", secret="s3cr3t") is True
-    assert wire_evidence_for(tmp_path, "run-1", tool_name="declare_complete", secret="s3cr3t") is False
+    assert (
+        wire_evidence_for(tmp_path, "run-1", tool_name="declare_complete", secret="s3cr3t") is False
+    )
 
 
 def test_wire_evidence_scoped_to_run_id(tmp_path: Path) -> None:
@@ -295,15 +295,24 @@ def test_wire_evidence_can_be_scoped_to_the_delegated_agent(tmp_path: Path) -> N
         agent_id="vision-verdict-1",
     )
 
-    assert wire_evidence_for(
-        tmp_path, "run-1", tool_name="read_image", agent_id="vision-verdict-1", secret="s3cr3t"
-    ) is True
-    assert wire_evidence_for(
-        tmp_path, "run-1", tool_name="read_image", agent_id="parent-1", secret="s3cr3t"
-    ) is True
-    assert wire_evidence_for(
-        tmp_path, "run-1", tool_name="read_image", agent_id="unrelated-agent", secret="s3cr3t"
-    ) is False
+    assert (
+        wire_evidence_for(
+            tmp_path, "run-1", tool_name="read_image", agent_id="vision-verdict-1", secret="s3cr3t"
+        )
+        is True
+    )
+    assert (
+        wire_evidence_for(
+            tmp_path, "run-1", tool_name="read_image", agent_id="parent-1", secret="s3cr3t"
+        )
+        is True
+    )
+    assert (
+        wire_evidence_for(
+            tmp_path, "run-1", tool_name="read_image", agent_id="unrelated-agent", secret="s3cr3t"
+        )
+        is False
+    )
 
 
 def test_unsigned_server_writes_no_ledger_record(tmp_path: Path) -> None:
@@ -375,7 +384,9 @@ def test_unchained_appended_row_is_rejected(tmp_path: Path) -> None:
         handle.write(json.dumps(rogue, sort_keys=True) + "\n")
 
     assert verify_chain(tmp_path, "s3cr3t") is False
-    assert wire_evidence_for(tmp_path, "run-1", tool_name="declare_complete", secret="s3cr3t") is False
+    assert (
+        wire_evidence_for(tmp_path, "run-1", tool_name="declare_complete", secret="s3cr3t") is False
+    )
 
 
 def test_chain_links_successive_records(tmp_path: Path) -> None:
@@ -458,4 +469,3 @@ def test_concurrent_appends_chain_safely(tmp_path: Path) -> None:
     assert successful, "At least one concurrent append must succeed"
     assert verify_chain(tmp_path, "s3cr3t") is True
     assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is True
-

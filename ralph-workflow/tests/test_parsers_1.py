@@ -982,7 +982,10 @@ def test_opencode_user_type_is_suppressed() -> None:
     parser = OpenCodeParser()
     results = list(parser.parse(_make_lines(['{"type":"user"}'])))
     assert results == [], f"Expected empty, got: {results}"
+
+
 # === consolidated from test_parsers_2.py (lifecycle suppression and modality placeholders) ===
+
 
 def test_generic_message_stop_type_is_suppressed() -> None:
     """Generic message_stop event type must produce no output."""

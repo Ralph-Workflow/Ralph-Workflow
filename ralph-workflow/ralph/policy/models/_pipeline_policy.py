@@ -309,8 +309,7 @@ class PipelinePolicy(_FrozenPolicyModel):
                     if any(
                         route.when.budget_state == budget_state
                         and (
-                            route.when.cycle_outcome is None
-                            or route.when.cycle_outcome == outcome
+                            route.when.cycle_outcome is None or route.when.cycle_outcome == outcome
                         )
                         for route in routes
                     ):
@@ -391,9 +390,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         pass.
         """
         pre_cycle = {self.entry_phase, ct.start_source}
-        forward = self._reachable_avoiding(
-            [ct.start_entry, ct.guarded_entry], avoid=pre_cycle
-        )
+        forward = self._reachable_avoiding([ct.start_entry, ct.guarded_entry], avoid=pre_cycle)
         return {
             phase
             for phase in forward
@@ -463,9 +460,7 @@ def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
     return names
 
 
-def _phase_declares_edge(
-    policy: PipelinePolicy, source: str, target: str
-) -> bool:
+def _phase_declares_edge(policy: PipelinePolicy, source: str, target: str) -> bool:
     """Return whether ``source`` declares a direct route to ``target``.
 
     A declared edge is any transition, decision target, bypass route,

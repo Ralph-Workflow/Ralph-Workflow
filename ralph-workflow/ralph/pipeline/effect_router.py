@@ -92,9 +92,7 @@ def determine_effect_from_policy(
             has_uncommitted_changes_fn=has_uncommitted_changes_fn,
         )
 
-    return _parallel_or_agent_effect(
-        state, phase_def, policy_bundle, config, workspace_scope
-    )
+    return _parallel_or_agent_effect(state, phase_def, policy_bundle, config, workspace_scope)
 
 
 def _skip_invocation_effect(

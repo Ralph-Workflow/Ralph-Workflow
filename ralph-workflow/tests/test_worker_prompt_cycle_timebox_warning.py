@@ -53,9 +53,7 @@ def test_worker_is_warned_once_the_published_warning_point_has_passed() -> None:
 
 def test_worker_is_not_warned_before_the_warning_point() -> None:
     assert (
-        cycle_timebox_warning_from_env(
-            _published(warn_in=60.0, deadline_in=1500.0), now_epoch=_NOW
-        )
+        cycle_timebox_warning_from_env(_published(warn_in=60.0, deadline_in=1500.0), now_epoch=_NOW)
         is None
     )
 
@@ -155,9 +153,7 @@ def _drive_worker(monkeypatch: MonkeyPatch, tmp_path: Path) -> _WorkerCapture:
         return "rendered.md"
 
     def _integrate(**_kwargs: object) -> None:
-        captured.deadline_visible_during_integration.append(
-            CYCLE_DEADLINE_EPOCH_ENV in os.environ
-        )
+        captured.deadline_visible_during_integration.append(CYCLE_DEADLINE_EPOCH_ENV in os.environ)
 
     monkeypatch.setattr(worker_runtime, "run_worker_auto_integration", _integrate)
     monkeypatch.setattr(

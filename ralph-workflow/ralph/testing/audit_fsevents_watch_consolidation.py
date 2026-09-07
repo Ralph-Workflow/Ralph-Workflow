@@ -193,7 +193,11 @@ def _observer_constructor_aliases(tree: ast.Module) -> frozenset[str]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.module != "watchdog.observers":
             continue
-        aliases.update(imported.asname or imported.name for imported in node.names if imported.name == "Observer")
+        aliases.update(
+            imported.asname or imported.name
+            for imported in node.names
+            if imported.name == "Observer"
+        )
     return frozenset(aliases)
 
 
@@ -203,7 +207,9 @@ def _observer_constructor_lines(tree: ast.Module) -> list[int]:
     return [
         node.lineno
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in aliases
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in aliases
     ]
 
 
@@ -224,9 +230,9 @@ def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if (isinstance(func, ast.Attribute) and func.attr == "schedule") or _is_dynamic_schedule_lookup(
-            func
-        ):
+        if (
+            isinstance(func, ast.Attribute) and func.attr == "schedule"
+        ) or _is_dynamic_schedule_lookup(func):
             calls.append(node)
     return calls
 

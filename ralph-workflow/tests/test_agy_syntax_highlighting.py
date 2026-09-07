@@ -29,13 +29,13 @@ if TYPE_CHECKING:
 
 def _parse(frames: list[dict[str, Any]] | list[str]) -> list[AgentOutputLine]:
     """Parse raw NDJSON lines or plain-text lines through a fresh parser."""
-    lines = [
-        frame if isinstance(frame, str) else json.dumps(frame) for frame in frames
-    ]
+    lines = [frame if isinstance(frame, str) else json.dumps(frame) for frame in frames]
     return list(AgyParser().parse(iter(lines)))
 
 
-def _text_events(events: Iterator[AgentOutputLine] | list[AgentOutputLine]) -> list[AgentOutputLine]:
+def _text_events(
+    events: Iterator[AgentOutputLine] | list[AgentOutputLine],
+) -> list[AgentOutputLine]:
     return [event for event in events if event.type == "text"]
 
 

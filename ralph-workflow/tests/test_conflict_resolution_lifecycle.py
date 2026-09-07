@@ -74,7 +74,9 @@ class _UnreapedProcess:
         return None
 
 
-def test_conflict_resolution_lifecycle_keeps_session_artifact_until_server_is_terminal(tmp_path) -> None:
+def test_conflict_resolution_lifecycle_keeps_session_artifact_until_server_is_terminal(
+    tmp_path,
+) -> None:
     """S-5/R9: recovery cannot release an MCP session file after an unproven reap."""
     session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")

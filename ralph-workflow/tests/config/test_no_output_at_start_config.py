@@ -40,10 +40,14 @@ def test_startup_regression_default_grace_is_bounded_and_fires_after_it_elapses(
     watchdog.record_invocation_start()
 
     clock.advance(NO_OUTPUT_AT_START_SECONDS - 1.0)
-    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) != WatchdogVerdict.FIRE
+    assert (
+        watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) != WatchdogVerdict.FIRE
+    )
 
     clock.advance(2.0)
-    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) == WatchdogVerdict.FIRE
+    assert (
+        watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) == WatchdogVerdict.FIRE
+    )
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
 

@@ -9,7 +9,6 @@ Generates random DAGs and asserts invariants after each run:
 from __future__ import annotations
 
 import asyncio
-import random
 from contextlib import suppress
 from typing import Any
 from unittest.mock import MagicMock
@@ -35,15 +34,14 @@ def _build_acyclic_dag(n: int, edge_seed: int) -> list[WorkUnit]:
     Lower-index units may depend only on higher-index units.
     """
 
-    rng = random.Random(edge_seed)
     units = []
     for i in range(n):
         uid = f"unit-{i}"
         # Only depend on units with LOWER index to guarantee acyclicity
         possible_deps = [f"unit-{j}" for j in range(i)]
         # Pick 0-2 random deps from lower-index units
-        k = min(len(possible_deps), rng.randint(0, 2))
-        deps = rng.sample(possible_deps, k) if k > 0 else []
+        k = min(len(possible_deps), (edge_seed + i) % 3)
+        deps = possible_deps[:k]
         units.append(WorkUnit(unit_id=uid, description=f"Work unit {uid}", dependencies=deps))
     return units
 
@@ -69,13 +67,13 @@ def test_coordinator_all_units_reach_terminal_state(
 ) -> None:
     """Every unit must end in SUCCEEDED, FAILED, or CANCELLED — never PENDING or RUNNING."""
 
-    rng = random.Random(exit_seed)
-
     units = _build_acyclic_dag(n_units, edge_seed)
     runs = {
         unit.unit_id: FakeRun(
             outputs=["ok"],
-            exit_code=0 if rng.random() > WORKER_FAILURE_THRESHOLD else 1,
+            exit_code=0
+            if (exit_seed + len(unit.unit_id)) % 10 >= WORKER_FAILURE_THRESHOLD * 10
+            else 1,
             duration_ms=1,
         )
         for unit in units

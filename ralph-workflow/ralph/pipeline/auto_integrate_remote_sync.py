@@ -195,7 +195,9 @@ def pull_and_reconcile_target(
     booked = False
     effective_resolver = rebase_stop_resolver
     if effective_resolver is not None:
-        if not resolver_allowed(prior_state, target, identity) or not start_conflict_attempt(identity):
+        if not resolver_allowed(prior_state, target, identity) or not start_conflict_attempt(
+            identity
+        ):
             effective_resolver = None
         else:
             booked = True

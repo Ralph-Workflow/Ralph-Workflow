@@ -57,10 +57,7 @@ class TestOpenCodeEventAccounting:
 
     def test_text_with_part_text_takes_precedence_over_top_level_content(self) -> None:
         parser = OpenCodeParser()
-        line = (
-            '{"type": "text", "content": "ignored", "part": {"type": "text",'
-            ' "text": "used"}}'
-        )
+        line = '{"type": "text", "content": "ignored", "part": {"type": "text", "text": "used"}}'
         results = _parse(parser, _lines(line))
         assert len(results) == 1
         assert results[0].type == "text"

@@ -229,9 +229,7 @@ def test_opencode_catalog_image_modality_resolves_to_inline_image(
         },
     )
 
-    identity = MultimodalModelIdentity(
-        provider="opencode", model_id="anthropic/claude-sonnet-4-6"
-    )
+    identity = MultimodalModelIdentity(provider="opencode", model_id="anthropic/claude-sonnet-4-6")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
 
     assert verdict.delivery == DeliveryMode.INLINE_IMAGE, (
@@ -286,4 +284,3 @@ def test_opencode_catalog_lookup_miss_still_inlines_image(
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
 
     assert verdict.delivery == DeliveryMode.INLINE_IMAGE
-

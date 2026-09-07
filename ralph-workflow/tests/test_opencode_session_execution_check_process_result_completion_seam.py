@@ -136,9 +136,7 @@ class TestCheckProcessResultCompletionSeam:
                 CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None, parent_exit_grace_seconds=0.0
-                    ),
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
                 ),
             )
 

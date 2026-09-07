@@ -50,9 +50,7 @@ def _fail_with_recovery(state: PipelineState, elapsed: float) -> PipelineState:
             recoverable=True,
         ),
         _bundle().pipeline,
-        recovery=RecoveryController(
-            options=RecoveryControllerOptions(policy_bundle=_bundle())
-        ),
+        recovery=RecoveryController(options=RecoveryControllerOptions(policy_bundle=_bundle())),
         routing_timing=RoutingTiming(total_elapsed_seconds=elapsed),
     )
     return next_state
@@ -101,9 +99,7 @@ def test_a_crash_in_a_spent_cycle_is_redirected_not_retried() -> None:
         _developing(_SPENT),
         _bundle().pipeline,
         reason="Pipeline step crashed: RuntimeError: transport died",
-        recovery=RecoveryController(
-            options=RecoveryControllerOptions(policy_bundle=_bundle())
-        ),
+        recovery=RecoveryController(options=RecoveryControllerOptions(policy_bundle=_bundle())),
         exc=RuntimeError("transport died"),
         routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
     )
@@ -120,9 +116,7 @@ def test_a_crash_inside_the_budget_still_recovers_normally() -> None:
         _developing(1000.0),
         _bundle().pipeline,
         reason="Pipeline step crashed: RuntimeError: transport died",
-        recovery=RecoveryController(
-            options=RecoveryControllerOptions(policy_bundle=_bundle())
-        ),
+        recovery=RecoveryController(options=RecoveryControllerOptions(policy_bundle=_bundle())),
         exc=RuntimeError("transport died"),
         routing_timing=RoutingTiming(total_elapsed_seconds=1000.0),
     )
@@ -152,9 +146,7 @@ def test_a_typed_broken_agent_failure_in_a_spent_cycle_is_redirected() -> None:
         spent,
         PipelineEvent.AGENT_FAILURE,
         _bundle().pipeline,
-        recovery=RecoveryController(
-            options=RecoveryControllerOptions(policy_bundle=_bundle())
-        ),
+        recovery=RecoveryController(options=RecoveryControllerOptions(policy_bundle=_bundle())),
         routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
     )
 
@@ -175,9 +167,7 @@ def test_a_worker_failure_in_a_spent_cycle_is_redirected() -> None:
         _developing(_SPENT),
         WorkerFailedEvent(unit_id="unit-a", exit_code=1, error="worker died"),
         _bundle().pipeline,
-        recovery=RecoveryController(
-            options=RecoveryControllerOptions(policy_bundle=_bundle())
-        ),
+        recovery=RecoveryController(options=RecoveryControllerOptions(policy_bundle=_bundle())),
         routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
     )
 

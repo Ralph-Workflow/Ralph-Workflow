@@ -370,6 +370,7 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
         # OpenCode's prompt is delivered on stdin, so a process fake must
         # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
         stdin = None
+
         def __init__(self) -> None:
             super().__init__(
                 pid=1,
@@ -457,6 +458,7 @@ def test_timeout_kills_snapshot_descendants() -> None:
 
 class _StreamingFakePopen(FakePopen):
     """Fake Popen that returns fixed stdout/stderr bytes for chunk streaming tests."""
+
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None

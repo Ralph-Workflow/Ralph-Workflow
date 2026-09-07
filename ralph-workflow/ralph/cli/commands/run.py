@@ -23,6 +23,11 @@ from ralph.cli.commands._load_result import _LoadResult
 from ralph.cli.commands._policy_preflight_request import _PolicyPreflightRequest
 from ralph.cli.commands._preflight_request import _PreflightRequest
 from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
+from ralph.cli.commands._run_start_setup import (
+    SetupDependencies,
+    run_start_retention_sweep,
+    sync_shipped_skills,
+)
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
@@ -272,7 +277,9 @@ def _load_configuration(
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None
 
-    if workspace_scope is not None and _invalidate_pipeline_state_if_prompt_changed(workspace_scope.root):
+    if workspace_scope is not None and _invalidate_pipeline_state_if_prompt_changed(
+        workspace_scope.root
+    ):
         display.emit_warning(
             "PROMPT.md changed since the last materialized run context; "
             "cleared saved pipeline state and caches."
@@ -514,7 +521,13 @@ def _execute_pipeline(
     from ralph.mcp.explore.dirty_paths import _dirty_scheduler  # S-3: lifecycle hooks
 
     try:
-        kwargs = _build_runner_kwargs(request, display_context=display_context, display=active_display, display_is_active=display_is_active, run_func=run_func)
+        kwargs = _build_runner_kwargs(
+            request,
+            display_context=display_context,
+            display=active_display,
+            display_is_active=display_is_active,
+            run_func=run_func,
+        )
         result = run_func(request.config, request.initial_state, **kwargs)
         _dirty_scheduler.on_workflow_complete()
         return result
@@ -635,119 +648,43 @@ def _sync_shipped_skills_on_pipeline_run(
     keep_run_id: str | None = None,
     retention_max_age_seconds: float | None = None,
 ) -> None:
-    """Sync skills, then run the best-effort run-start retention sweep."""
-    target_root = workspace_root or Path.cwd()
-    update_available = False
-    try:
-        update_available = SkillManager().check_skills_for_updates()
-    except Exception as exc:  # user-global check is best-effort; must not break the pipeline
-        # Non-fatal, but never silently swallowed: a broken user-global skill
-        # root (read-only $XDG_CONFIG_HOME, corrupted JSON, missing index)
-        # is repairable via ``ralph --force-init-skills``.
-        _emit_setup_warning(
-            f"User-global skill update check failed (non-fatal): {exc}. "
-            "Run `ralph --force-init-skills` to repair, or "
-            "`ralph --diagnose` for details.",
-        )
-    if update_available:
-        _print_user_global_update_hint()
-    try:
-        if _project_skills_need_install(target_root):
-            _, failures = install_project_baseline_skills(target_root)
-            if failures:
-                _print_project_skill_conflict_hint(failures)
-    except Exception as exc:  # project-scope install is best-effort; must not break the pipeline
-        _emit_setup_warning(
-            f"Project-scope skill install failed (non-fatal): {exc}. "
-            "Run `ralph --force-init-skills` to retry, or "
-            "check file permissions on .agent/skills/.",
-        )
-    try:
-        from ralph.config.bootstrap import (
-            auto_seed_default_git_exclude,
-            auto_seed_default_gitignore,
-        )
+    """Sync skills, auto-commit updates, then sweep retained run state.
 
-        auto_seed_default_gitignore(target_root)
-        auto_seed_default_git_exclude(target_root)
-    except Exception as exc:  # gitignore / git exclude auto-seed is best-effort
-        _emit_setup_warning(
-            f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. "
-            "Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude.",
-        )
-    # Deterministic skill-update auto-commit (wt-025): runs AFTER the
-    # project-scope install AND the gitignore/exclude auto-seed so the
-    # auto-commit diff is purely skill content (no gitignore noise).
-    try:
-        from ralph.git.operations import create_commit
-        from ralph.skills._auto_commit import commit_skill_updates
-
-        sha = commit_skill_updates(target_root, create_commit)
-        if sha:
-            logger.info("Auto-committed skill updates: {}", sha[:8])
-    except Exception as exc:  # auto-commit is best-effort; never break the pipeline
-        # The literal ``Skill auto-commit failed (non-fatal): {}`` is pinned by
-        # ``ralph.testing.audit_skill_auto_commit`` (plan step 12) so a refactor
-        # that silently drops this handler is caught at audit time.
-        logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
-        _emit_setup_warning(
-            f"Skill auto-commit failed (non-fatal): {exc}. The run "
-            "continues with the new skill content uncommitted; commit "
-            "manually or re-run to retry.",
-        )
-    # RFC-013 P2: run-start retention sweep deletes aged bookkeeping
-    # under ``.agent`` so multi-instance runs don't accumulate state.
-    _run_start_retention_sweep(
-        target_root,
+    The extracted helper performs the equivalent of ``from
+    ``from ralph.skills._auto_commit import commit_skill_updates`` and
+    ``commit_skill_updates(target_root, create_commit)``. The compatibility
+    wrapper keeps the historical ``Auto-committed skill updates`` and
+    ``Skill auto-commit failed (non-fatal): {}`` operator contract while
+    preserving the best-effort boundary (``except Exception as exc:  # auto-commit is best-effort; never break the pipeline``).
+    """
+    sync_shipped_skills(
+        workspace_root,
         keep_run_id=keep_run_id,
         retention_max_age_seconds=retention_max_age_seconds,
+        dependencies=SetupDependencies(
+            emit_warning=_emit_setup_warning,
+            print_user_global_update_hint=_print_user_global_update_hint,
+            print_project_skill_conflict_hint=_print_project_skill_conflict_hint,
+            run_retention_sweep=_run_retention_sweep_for_setup,
+            skill_manager_factory=SkillManager,
+            project_skills_need_install=_project_skills_need_install,
+            install_project_skills=install_project_baseline_skills,
+        ),
     )
 
 
-def _run_start_retention_sweep(
-    target_root: Path,
+def _run_retention_sweep_for_setup(
+    root: Path,
     *,
     keep_run_id: str | None,
     retention_max_age_seconds: float | None,
 ) -> None:
-    """Delete aged ``.agent`` bookkeeping, then register the active run lease.
-
-    Best-effort: any error is swallowed so the pipeline always proceeds. The
-    operator's validated ``[general] retention_max_age_days`` preference is
-    honored; ``None`` keeps the sweep's built-in default.
-    """
-    try:
-        from ralph.workspace.agent_dir_retention import (
-            DEFAULT_MAX_AGE_SECONDS,
-            process_retention_coordinator,
-            sweep_agent_dir,
-        )
-
-        if retention_max_age_seconds is None:
-            retention_max_age_seconds = DEFAULT_MAX_AGE_SECONDS
-        removed = sweep_agent_dir(
-            target_root,
-            keep_run_id=keep_run_id,
-            max_age_seconds=retention_max_age_seconds,
-            coordinator=process_retention_coordinator(),
-        )
-        if removed:
-            logger.debug("Retention sweep removed {} stale .agent entries", removed)
-    except Exception as exc:  # sweep is best-effort; never break the pipeline
-        _emit_setup_warning(
-            f"Retention sweep failed (non-fatal): {exc}. The run "
-            "continues without cleanup; check .agent/ permissions.",
-        )
-    # AC-9: register the active run in the process-local registry so every
-    # in-process retention sweep merges this run into its exclusion set and
-    # never removes an active workflow's receipts, sentinels, or DB rows.
-    if keep_run_id is not None:
-        try:
-            from ralph.workspace.agent_dir_retention import register_active_run
-
-            register_active_run(target_root, keep_run_id)
-        except Exception as exc:  # registration is best-effort; never break the pipeline
-            logger.debug("Active-run registration failed (non-fatal): {}", exc)
+    run_start_retention_sweep(
+        root,
+        keep_run_id=keep_run_id,
+        retention_max_age_seconds=retention_max_age_seconds,
+        emit_warning=_emit_setup_warning,
+    )
 
 
 def _emit_setup_warning(message: str) -> None:

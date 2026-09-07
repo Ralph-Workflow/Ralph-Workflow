@@ -36,11 +36,15 @@ Expect: the focused plan suites pass with exit code 0
 
 
 def _plan(*, step_type: str = "file_change", fields: str | None = None) -> str:
-    body = fields if fields is not None else """Files:
+    body = (
+        fields
+        if fields is not None
+        else """Files:
 - modify ralph/example.py
 Verify: uv run pytest -q tests/mcp/test_md_plan_spec.py
 Expect: the focused plan-contract tests pass with exit code 0
 """
+    )
     return f"""---
 type: plan
 ---
@@ -73,9 +77,17 @@ def test_plan_contract_accepts_executor_ready_work_step() -> None:
     ("step_type", "fields", "rule_id"),
     [
         ("unknown", None, "PLAN010"),
-        ("file_change", "Verify: uv run pytest -q tests/mcp/test_md_plan_spec.py\nExpect: it passes\n", "PLAN010"),
+        (
+            "file_change",
+            "Verify: uv run pytest -q tests/mcp/test_md_plan_spec.py\nExpect: it passes\n",
+            "PLAN010",
+        ),
         ("file_change", "Files:\n- modify ralph/example.py\nExpect: it passes\n", "PLAN020"),
-        ("file_change", "Files:\n- modify ralph/example.py\nVerify: run the tests\nExpect: it passes\n", "PLAN020"),
+        (
+            "file_change",
+            "Files:\n- modify ralph/example.py\nVerify: run the tests\nExpect: it passes\n",
+            "PLAN020",
+        ),
         ("verify", "Verify: uv run pytest -q tests/mcp/test_md_plan_spec.py\n", "PLAN011"),
         ("discovery", "Verify: run the tests\nExpect: it passes\n", "PLAN020"),
     ],
@@ -103,13 +115,16 @@ Describe the requested change without any stable step heading.
 
 def test_plan_contract_rejects_dangling_and_cyclic_dependencies() -> None:
     dangling = _plan().replace("Verify:", "Depends on: S-2\nVerify:")
-    cyclic = _plan() + """
+    cyclic = (
+        _plan()
+        + """
 ### [S-2] Verify the plan contract
 Type: verify
 Depends on: S-1
 Verify: uv run pytest -q tests/mcp/test_md_plan_spec.py
 Expect: the focused plan-contract tests pass with exit code 0
 """
+    )
     cyclic = cyclic.replace("Type: file_change", "Type: file_change\nDepends on: S-2")
 
     assert "PLAN021" in _errors(dangling)

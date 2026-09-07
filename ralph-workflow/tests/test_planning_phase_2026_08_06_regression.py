@@ -257,13 +257,15 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
     # The completion contract fails; the harness must report DEGRADED.
     assert result.artifact_submitted.holds is False
     assert result.explicit_completion_seen.holds is False
-    assert "smoke_test_result artifact was not submitted" in result.errors or (
-        "no tool activity was observed" in result.errors
-    ) or (
-        # The fake emits parser-classified tool events so the
-        # tool-activity gate can pass; the artifact-submitted gate is
-        # the load-bearing one for this regression.
-        result.tool_activity_seen.holds is True
+    assert (
+        "smoke_test_result artifact was not submitted" in result.errors
+        or ("no tool activity was observed" in result.errors)
+        or (
+            # The fake emits parser-classified tool events so the
+            # tool-activity gate can pass; the artifact-submitted gate is
+            # the load-bearing one for this regression.
+            result.tool_activity_seen.holds is True
+        )
     )
 
 

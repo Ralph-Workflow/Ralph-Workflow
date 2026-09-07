@@ -183,7 +183,9 @@ def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero
 
 
 @pytest.mark.timeout_seconds(5)
-def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero_agents() -> None:
+def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero_agents() -> (
+    None
+):
     """AC-CACHE-02: a post-remediation READY preflight (the through-``_finish``
     path) writes a fresh READY cache, and a second preflight over the
     same workspace invokes zero agents.

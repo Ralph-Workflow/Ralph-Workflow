@@ -115,7 +115,9 @@ def test_salience_state_token_fields_is_a_dict_of_str_tuples() -> None:
     ),
     ids=["display.rst", "developer-internals.md"],
 )
-def test_doc_does_not_assert_superseded_signal(doc_path: Path, banned_phrases: tuple[str, ...]) -> None:
+def test_doc_does_not_assert_superseded_signal(
+    doc_path: Path, banned_phrases: tuple[str, ...]
+) -> None:
     """A page that describes the new token model AND the old
     role-alternation signal in affirmative prose is a contradiction.
     The ban is on affirmative statements of the replaced signal only;
@@ -172,9 +174,7 @@ def test_doc_names_every_token_field_for_every_call_site(doc_path: Path) -> None
         if call_site not in text:
             missing.append(f"{call_site!r} (call-site name)")
         missing.extend(
-            f"{field!r} (token field for {call_site!r})"
-            for field in fields
-            if field not in text
+            f"{field!r} (token field for {call_site!r})" for field in fields if field not in text
         )
     assert not missing, (
         f"{doc_path.name} is missing the following token-binding "

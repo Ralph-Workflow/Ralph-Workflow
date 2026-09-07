@@ -831,9 +831,7 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
 
     demoted_ranks = ("WORKSPACE_EFFECT", "HOST_SYNTHESIZED", "TRANSCRIPT", "ABSENT")
     for demoted_rank in demoted_ranks:
-        assert (
-            f"- smoke_test_result artifact submitted observed [{demoted_rank}]" not in output
-        ), (
+        assert f"- smoke_test_result artifact submitted observed [{demoted_rank}]" not in output, (
             f"Artifact submission graded {demoted_rank}, not WIRE, even with the "
             f"secret forced -- a real tools/call dispatch did not happen. "
             f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"

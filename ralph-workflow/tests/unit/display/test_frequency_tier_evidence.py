@@ -68,7 +68,9 @@ def _role_max_resolution_counts(counts: collections.Counter[str]) -> dict[str, i
     observed key count (not a sum across every key that role backs --
     several structural keys share `chrome`'s hex, and summing them would
     understate how concentrated a single role's own busiest style key is)."""
-    palette = {role: hex_val.upper() for role, hex_val in resolve_palette(_PROBE_SURFACE_HEX).items()}
+    palette = {
+        role: hex_val.upper() for role, hex_val in resolve_palette(_PROBE_SURFACE_HEX).items()
+    }
     dark_theme = theme_mod.theme_for_background(False)
 
     role_max: dict[str, int] = {}
@@ -84,9 +86,9 @@ def _role_max_resolution_counts(counts: collections.Counter[str]) -> dict[str, i
             continue
         role_max[role] = max(role_max.get(role, 0), count)
     return role_max
+
+
 @pytest.mark.criteria("E-1")
-
-
 def test_frequency_tier_evidence_top_resolved_role_is_field_tier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -118,7 +120,11 @@ def test_frequency_tier_evidence_no_event_or_alarm_role_out_resolves_the_top_fie
     role_max = _role_max_resolution_counts(counts)
     assert role_max, "no theme-table style resolutions were observed"
 
-    field_counts = [count for role, count in role_max.items() if ROLE_FREQUENCY_TIER[role] is FrequencyTier.FIELD]
+    field_counts = [
+        count
+        for role, count in role_max.items()
+        if ROLE_FREQUENCY_TIER[role] is FrequencyTier.FIELD
+    ]
     assert field_counts, "no FIELD-tier role backed any observed theme key"
     field_ceiling = max(field_counts)
 

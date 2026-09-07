@@ -137,9 +137,7 @@ def test_visual_finding_has_one_public_top_level_class() -> None:
     from ralph.visual import visual_finding
 
     source = inspect.getsource(visual_finding)
-    public_classes, _, _ = audit_repo_structure._scan_structure(
-        source, tuple(source.splitlines())
-    )
+    public_classes, _, _ = audit_repo_structure._scan_structure(source, tuple(source.splitlines()))
 
     assert public_classes == ("Region",)
 

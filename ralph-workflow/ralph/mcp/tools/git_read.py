@@ -346,8 +346,7 @@ def _outside_workspace_warning_text(
     """Return the warning prepended to an outside-workspace git result."""
     root = _workspace_root(workspace).resolve()
     message = (
-        "WARNING: git cwd is outside the workspace: "
-        f"resolved={resolved_path} workspace_root={root}"
+        f"WARNING: git cwd is outside the workspace: resolved={resolved_path} workspace_root={root}"
     )
     if top_level is not None:
         message += f" top_level={top_level}"
@@ -364,7 +363,9 @@ def run_git_command(
 ) -> str:
     """Execute git and require a successful exit status."""
     git_runner = runner or _run_git_subprocess
-    effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
+    effective_cwd = (
+        cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
+    )
     try:
         output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
@@ -402,7 +403,9 @@ def run_git_command_lenient(
     join ``result.stdout`` and ``result.stderr`` themselves.
     """
     git_runner = runner or _run_git_subprocess
-    effective_cwd = cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
+    effective_cwd = (
+        cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
+    )
     try:
         output = git_runner(["git", *args], effective_cwd)
     except subprocess.TimeoutExpired as exc:
@@ -515,9 +518,7 @@ def handle_git_status(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    warning_text = _outside_workspace_warning_text(
-        workspace, resolved_cwd, top_level=top_level
-    )
+    warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "compact"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'compact'")
@@ -922,9 +923,7 @@ def handle_git_diff(
     """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    warning_text = _outside_workspace_warning_text(
-        workspace, resolved_cwd, top_level=top_level
-    )
+    warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
     parsed = parse_git_diff_params(params)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
@@ -1182,9 +1181,7 @@ def handle_git_log(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    warning_text = _outside_workspace_warning_text(
-        workspace, resolved_cwd, top_level=top_level
-    )
+    warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
     parsed = parse_git_log_params(params)
     if parsed.format == "raw":
         return _git_read_result_with_outside_warning(
@@ -1201,9 +1198,7 @@ def handle_git_log(
     )
 
 
-def _build_git_log_summary_payload(
-    workspace: object, count: int, cwd: Path | None = None
-) -> str:
+def _build_git_log_summary_payload(workspace: object, count: int, cwd: Path | None = None) -> str:
     """Build the summary-mode JSON envelope for ``git log``.
 
     Ponytail: isolated helper so the timeout-wrapping
@@ -1272,9 +1267,7 @@ def handle_git_show(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
-    warning_text = _outside_workspace_warning_text(
-        workspace, resolved_cwd, top_level=top_level
-    )
+    warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
     parsed = parse_git_show_params(params)
     if parsed.format == "raw":
         return _git_read_result_with_outside_warning(
@@ -1289,9 +1282,7 @@ def handle_git_show(
     )
 
 
-def _build_git_show_summary_payload(
-    workspace: object, ref: str, cwd: Path | None = None
-) -> str:
+def _build_git_show_summary_payload(workspace: object, ref: str, cwd: Path | None = None) -> str:
     """Build the summary-mode JSON envelope for ``git show``.
 
     Ponytail: isolated helper so the timeout-wrapping

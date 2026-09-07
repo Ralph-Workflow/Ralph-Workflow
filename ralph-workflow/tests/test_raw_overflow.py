@@ -413,8 +413,7 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
     # registry call returns a NEW instance -- proving the previous
     # one was actually reaped.
     assert weak_log() is None, (
-        "the instance must be garbage-collected after dropping the "
-        "last strong reference"
+        "the instance must be garbage-collected after dropping the last strong reference"
     )
     on_disk = path.read_bytes()
     assert b"survive until GC\n" in on_disk, (
@@ -577,9 +576,7 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     overflow.flush()
     raw_path = overflow.path
     on_disk_during_run = raw_path.read_bytes()
-    assert len(on_disk_during_run) > 0, (
-        "the appended block must hit disk after flush"
-    )
+    assert len(on_disk_during_run) > 0, "the appended block must hit disk after flush"
 
     # Capture a WEAK reference to the display's overflow log so we
     # can read post-finalize state without keeping the instance
@@ -614,9 +611,7 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
         assert fresh.append("post-reap\n") is True
         fresh.flush()
         on_disk_after = raw_path.read_bytes()
-        assert b"post-reap\n" in on_disk_after, (
-            "the post-reap append must extend the on-disk file"
-        )
+        assert b"post-reap\n" in on_disk_after, "the post-reap append must extend the on-disk file"
     finally:
         fresh.close()
 
@@ -783,10 +778,10 @@ def test_two_agents_never_share_one_graded_capture() -> None:
         transport=AgentTransport.GENERIC,
     )
 
-    assert raw_log_unit_id_for(headless_claude) .startswith("claude-headless-")
-    assert raw_log_unit_id_for(kimi) .startswith("kimi-")
-    assert raw_log_unit_id_for(ccs_alias) .startswith("ccs-glm-")
-    assert raw_log_unit_id_for(other_ccs_alias) .startswith("ccs-mm-")
+    assert raw_log_unit_id_for(headless_claude).startswith("claude-headless-")
+    assert raw_log_unit_id_for(kimi).startswith("kimi-")
+    assert raw_log_unit_id_for(ccs_alias).startswith("ccs-glm-")
+    assert raw_log_unit_id_for(other_ccs_alias).startswith("ccs-mm-")
     # The point of all of it: no two of these may share a capture.
     identities = {
         raw_log_unit_id_for(config)
@@ -845,8 +840,8 @@ def test_an_agent_invoked_by_path_keeps_its_identity() -> None:
         transport=AgentTransport.GENERIC,
     )
 
-    assert raw_log_unit_id_for(by_path) .startswith("claude-headless-")
-    assert raw_log_unit_id_for(ccs_by_path) .startswith("ccs-glm-")
+    assert raw_log_unit_id_for(by_path).startswith("claude-headless-")
+    assert raw_log_unit_id_for(ccs_by_path).startswith("ccs-glm-")
 
 
 def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
@@ -862,7 +857,7 @@ def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
 
     codex = AgentConfig(cmd="codex exec", output_flag="--json", transport=AgentTransport.CODEX)
 
-    assert raw_log_unit_id_for(codex) .startswith("codex-")
+    assert raw_log_unit_id_for(codex).startswith("codex-")
 
 
 def test_the_nul_scan_is_lazy_by_construction() -> None:

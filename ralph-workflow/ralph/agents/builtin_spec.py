@@ -107,9 +107,7 @@ class BuiltinAgentSpec:
     display_capabilities: tuple[DisplayCapabilityStance, ...] = ()
     dynamic_alias_help: Callable[[], str] | None = None
     dynamic_alias_help_prefix: tuple[str, ...] = ()
-    empty_output_diagnostic_factory: (
-        Callable[[list[str], Path | None], str | None] | None
-    ) = None
+    empty_output_diagnostic_factory: Callable[[list[str], Path | None], str | None] | None = None
     empty_output_diagnostic_prefix: tuple[str, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:
@@ -203,16 +201,12 @@ def vision_verdict_agent_spec() -> BuiltinAgentSpec:
         DisplayCapabilityStance.not_applicable(
             DisplayCapability.SYNTAX_HIGHLIGHTING,
             reason=(
-                "vision-verdict is an in-process vision judge; "
-                "it does not produce a TUI surface"
+                "vision-verdict is an in-process vision judge; it does not produce a TUI surface"
             ),
         ),
         DisplayCapabilityStance.not_applicable(
             DisplayCapability.FILE_PREVIEW,
-            reason=(
-                "vision-verdict emits a DesignVerdict artifact, not a "
-                "file preview"
-            ),
+            reason=("vision-verdict emits a DesignVerdict artifact, not a file preview"),
         ),
         DisplayCapabilityStance.not_applicable(
             DisplayCapability.EDIT_DIFF,

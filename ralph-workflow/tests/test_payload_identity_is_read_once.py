@@ -79,9 +79,7 @@ def test_an_absent_provider_is_unknown_at_every_reader(tmp_path: Path) -> None:
 def test_the_session_identity_seam_agrees_with_the_others() -> None:
     """The seam a declaration goes through reads the field the same way."""
     for raw_provider in _ABSENT_PROVIDERS:
-        identity = session_identity_from_payload(
-            {"provider": raw_provider, "model_id": "m"}, None
-        )
+        identity = session_identity_from_payload({"provider": raw_provider, "model_id": "m"}, None)
         assert identity.provider == "unknown"
         assert not identity.is_known()
 
@@ -98,9 +96,7 @@ def test_a_rehydrated_verdict_quotes_the_canonical_identity() -> None:
         {
             "provider": "  CLAUDE  ",
             "model_id": "  opus  ",
-            "verdicts": {
-                "audio": {"delivery": "unsupported", "reason": "stale reason"}
-            },
+            "verdicts": {"audio": {"delivery": "unsupported", "reason": "stale reason"}},
         }
     )
     assert profile.identity == MultimodalModelIdentity(provider="claude", model_id="opus")
@@ -208,9 +204,7 @@ def test_a_rehydrated_reason_is_ralph_s_words_not_the_payload_s() -> None:
     # A stored verdict that AGREES with a fresh resolution reads as the
     # fresh one; one that disagrees says so in Ralph's own sentence
     # rather than repeating whatever the payload claimed.
-    assert profile.verdicts["pdf"].reason == get_delivery_mode(
-        profile.identity, "pdf"
-    ).reason
+    assert profile.verdicts["pdf"].reason == get_delivery_mode(profile.identity, "pdf").reason
     assert "rehydrated from the session payload" in profile.verdicts["video"].reason
 
 
@@ -223,10 +217,7 @@ def test_an_unreadable_stored_delivery_falls_back_rather_than_raising() -> None:
                 "verdicts": {"pdf": {"delivery": raw_delivery}},
             }
         )
-        assert (
-            profile.verdicts["pdf"].delivery
-            is DeliveryMode.RESOURCE_REFERENCE_REPLAY
-        )
+        assert profile.verdicts["pdf"].delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY
 
 
 def test_an_unknown_provider_still_reaches_the_agent_as_a_warning(
@@ -248,9 +239,7 @@ def test_an_unknown_provider_still_reaches_the_agent_as_a_warning(
         "media.read", model_identity=MultimodalModelIdentity(provider="unknown")
     )
 
-    result = handle_read_media(
-        session, FsWorkspace(tmp_path), {"path": "note.wav"}
-    )
+    result = handle_read_media(session, FsWorkspace(tmp_path), {"path": "note.wav"})
 
     texts = [
         block.text

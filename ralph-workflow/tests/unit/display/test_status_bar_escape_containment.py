@@ -61,7 +61,9 @@ def test_fallback_cleanup_writes_no_escape_codes_to_non_tty() -> None:
     assert status_bar._fallback_frame is None
 
 
-def test_fallback_cleanup_regression_preserves_tty_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fallback_cleanup_regression_preserves_tty_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """S-1: TTY teardown must not erase prior command output or the footer row."""
     stream = _TtyStringIO()
     status_bar = _status_bar_for_cleanup(stream, is_tty=True)

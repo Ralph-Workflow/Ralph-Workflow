@@ -80,6 +80,7 @@ class _FakeRepo:
         if not self.never_finishes:
             self.remaining -= 1
 
+
 def _install_seams(
     monkeypatch: pytest.MonkeyPatch,
     repo: _FakeRepo,
@@ -110,9 +111,7 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED))
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
     monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")
-    monkeypatch.setattr(
-        deterministic_module, "conflict_stage_entries", lambda _root, _paths: {}
-    )
+    monkeypatch.setattr(deterministic_module, "conflict_stage_entries", lambda _root, _paths: {})
 
     def _stage(_root: Path, paths: Sequence[str]) -> bool:
         repo.staged.append(list(paths))
@@ -131,6 +130,7 @@ def _install_seams(
         "current_rebase_identity",
         lambda _root: (_ORIG_HEAD_SHA, _BASE_SHA),
     )
+
 
 def _install_worktree_seam(
     monkeypatch: pytest.MonkeyPatch,
@@ -991,9 +991,7 @@ def test_a_staged_stop_with_surviving_markers_is_not_continued(
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: [])
     monkeypatch.setattr(loop_module, "_staged_paths", lambda _root: ["f.txt"])
-    monkeypatch.setattr(
-        loop_module, "paths_with_conflict_markers", lambda _root, _paths: ["f.txt"]
-    )
+    monkeypatch.setattr(loop_module, "paths_with_conflict_markers", lambda _root, _paths: ["f.txt"])
     seen: list[RebaseStop] = []
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False

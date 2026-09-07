@@ -202,7 +202,9 @@ def test_resolve_workspace_scope_inherits_main_worktree_config_by_default(
         == (main_repo / ".agent" / "pipeline.toml").resolve()
     )
     assert scope.is_linked_worktree
-    assert scope.worktree_config_path == (child_worktree / ".agent" / "ralph-workflow.toml").resolve()
+    assert (
+        scope.worktree_config_path == (child_worktree / ".agent" / "ralph-workflow.toml").resolve()
+    )
     assert scope.project_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
 
 
@@ -313,5 +315,3 @@ class TestSameWorkspaceWorkerScopeFencing:
                 allowed_directories=(f"../{sibling.name}",),
                 worker_namespace=worker_ns,
             )
-
-

@@ -46,9 +46,7 @@ _CANDIDATES: tuple[object, ...] = (
 
 
 def _capture_name(config: AgentConfig) -> str:
-    return raw_log_path_for(
-        _WORKSPACE, raw_log_unit_id_for(config), model=config.model
-    ).name
+    return raw_log_path_for(_WORKSPACE, raw_log_unit_id_for(config), model=config.model).name
 
 
 def _variant_differing_in(field: str, base: AgentConfig) -> AgentConfig | None:

@@ -171,9 +171,7 @@ def test_agent_stdout_decodes_with_replacement() -> None:
     from ralph.process.manager import SpawnOptions, get_process_manager
 
     emit_bad_byte = (
-        "import sys;"
-        "sys.stdout.buffer.write(b'before\\n\\xff\\nafter\\n');"
-        "sys.stdout.buffer.flush()"
+        "import sys;sys.stdout.buffer.write(b'before\\n\\xff\\nafter\\n');sys.stdout.buffer.flush()"
     )
     manager = get_process_manager()
     handle = manager.spawn(
@@ -261,7 +259,7 @@ async def test_every_dropped_oversized_frame_leaves_a_marker() -> None:
 
 @pytest.mark.asyncio
 async def test_the_capture_keeps_bytes_that_are_not_valid_utf8(tmp_path: Path) -> None:
-    """"Verbatim" has to mean the agent's BYTES, not a cleaned-up decoding.
+    """ "Verbatim" has to mean the agent's BYTES, not a cleaned-up decoding.
 
     The capture wrote ``stripped_bytes.decode("utf-8", errors="replace")``,
     which rewrites a torn multi-byte sequence to U+FFFD before the file
@@ -286,7 +284,7 @@ async def test_the_capture_keeps_bytes_that_are_not_valid_utf8(tmp_path: Path) -
         [
             sys.executable,
             "-c",
-            "import sys; sys.stdout.buffer.write(b'{\"bin\":\"\\xff\\xfe\"}\\n')",
+            'import sys; sys.stdout.buffer.write(b\'{"bin":"\\xff\\xfe"}\\n\')',
         ],
         activity_router=ActivityRouter(),
         raw_overflow_root=tmp_path,

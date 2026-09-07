@@ -151,18 +151,8 @@ def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[_Preview
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
             continue
-        old = (
-            item.get("oldText")
-            or item.get("old_string")
-            or item.get("oldString")
-            or ""
-        )
-        new = (
-            item.get("newText")
-            or item.get("new_string")
-            or item.get("newString")
-            or ""
-        )
+        old = item.get("oldText") or item.get("old_string") or item.get("oldString") or ""
+        new = item.get("newText") or item.get("new_string") or item.get("newString") or ""
         hunks.append(
             _PreviewHunk(
                 old if isinstance(old, str) else "",
@@ -254,8 +244,15 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
             if bare != "exec"
             else None
         )
-    if bare in {"edit_file", "edit", "Edit", "str_replace", "ralph_edit_md_artifact",
-                "replace_file_content", "sed_file"}:
+    if bare in {
+        "edit_file",
+        "edit",
+        "Edit",
+        "str_replace",
+        "ralph_edit_md_artifact",
+        "replace_file_content",
+        "sed_file",
+    }:
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=False))
     if bare in {"MultiEdit", "multi_replace_file_content"}:
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=True))

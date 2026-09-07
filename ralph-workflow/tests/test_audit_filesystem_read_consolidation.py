@@ -51,10 +51,13 @@ def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
     """A valid inert production module remains accepted."""
     module_rel = "alpha/inert.py"
     package_root = _write_fake_package(tmp_path, module_rel, "VALUE = 1\n")
-    assert audit.audit_filesystem_read_consolidation(
-        package_root,
-        module_paths=(module_rel,),
-    ) == []
+    assert (
+        audit.audit_filesystem_read_consolidation(
+            package_root,
+            module_paths=(module_rel,),
+        )
+        == []
+    )
 
 
 def test_flags_raw_path_constructor_read_text(tmp_path: Path) -> None:
@@ -190,9 +193,7 @@ def test_flags_raw_os_path_exists(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import os\n"
-        "def has(p):\n"
-        "    return os.path.exists(p)\n",
+        "import os\ndef has(p):\n    return os.path.exists(p)\n",
     )
     violations = audit.audit_filesystem_read_consolidation(
         package_root,
@@ -252,9 +253,7 @@ def test_flags_raw_os_stat(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import os\n"
-        "def probe(p):\n"
-        "    return os.stat(p)\n",
+        "import os\ndef probe(p):\n    return os.stat(p)\n",
     )
     violations = audit.audit_filesystem_read_consolidation(
         package_root,
@@ -568,10 +567,13 @@ def test_unrelated_method_chain_passes(tmp_path: Path) -> None:
         "def enumerate_catalog(catalog: Catalog) -> tuple[str, ...]:\n"
         "    return catalog.walk('x')\n",
     )
-    assert audit.audit_filesystem_read_consolidation(
-        package_root,
-        module_paths=(module_rel,),
-    ) == []
+    assert (
+        audit.audit_filesystem_read_consolidation(
+            package_root,
+            module_paths=(module_rel,),
+        )
+        == []
+    )
 
 
 def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:

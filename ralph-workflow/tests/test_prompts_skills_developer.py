@@ -73,7 +73,9 @@ class TestDeveloperTemplatesShippedSkills:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         _assert_shipped_skills_discovery(prompt)
 
-    def test_developer_iteration_jinja_docs_mcp_false_branch_is_not_advertised(self, tmp_path: Path) -> None:
+    def test_developer_iteration_jinja_docs_mcp_false_branch_is_not_advertised(
+        self, tmp_path: Path
+    ) -> None:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
             assert hint_phrase not in prompt

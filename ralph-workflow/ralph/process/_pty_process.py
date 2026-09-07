@@ -58,7 +58,7 @@ class PtyProcess:
                 return rc
             if time.monotonic() >= deadline:
                 raise TimeoutError from None
-            time.sleep(0.01)  # filesystem-poll-ok: bounded PTY process-exit wait has no event source
+            time.sleep(0.01)  # filesystem-poll-ok: bounded PTY process-exit wait
 
     def terminate(self) -> None:
         with _SuppressMissingProcess():

@@ -419,7 +419,9 @@ class AgyParser(NdjsonParserBase):
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
-        self._emitted_tool_use_ids: set[str] = set()  # bounded-accumulator-ok: bounded set for deduplicating tool_use events per parse run
+        self._emitted_tool_use_ids: set[str] = (
+            set()
+        )  # bounded-accumulator-ok: bounded set for deduplicating tool_use events per parse run
         # Pending usage (token counts) from the most recent agent_response
         # step_update, carried onto the next flushed text event's metadata.
         # bounded-accumulator-ok: single scalar slot, overwritten per update, not a collection.
@@ -601,7 +603,9 @@ class AgyParser(NdjsonParserBase):
         content = f"agy init {model}" if isinstance(model, str) and model else "agy init"
         yield AgentOutputLine(type="lifecycle", content=content, raw=raw, metadata=metadata)
 
-    def _dispatch_legacy_tool_use(self, obj: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
+    def _dispatch_legacy_tool_use(
+        self, obj: dict[str, object], raw: str
+    ) -> Iterator[AgentOutputLine]:
         """Map a bare ``{"type": "tool_use", ...}`` frame (non-AGY-native shape)."""
         tool_name = obj.get("name")
         if isinstance(tool_name, str) and tool_name:
@@ -689,9 +693,7 @@ class AgyParser(NdjsonParserBase):
                 payload = _system_message_payload(step)
                 if payload is not None:
                     _annotate_syntax_highlight(metadata, payload)
-                    yield AgentOutputLine(
-                        type="text", content=payload, raw=raw, metadata=metadata
-                    )
+                    yield AgentOutputLine(type="text", content=payload, raw=raw, metadata=metadata)
                     return
             yield AgentOutputLine(
                 type="lifecycle", content=f"agy step {label}", raw=raw, metadata=metadata

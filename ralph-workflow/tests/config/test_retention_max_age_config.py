@@ -92,9 +92,7 @@ def test_run_start_sweep_receives_configured_retention(
         captured["max_age_seconds"] = max_age_seconds
         return 0
 
-    monkeypatch.setattr(
-        "ralph.workspace.agent_dir_retention.sweep_agent_dir", _fake_sweep
-    )
+    monkeypatch.setattr("ralph.workspace.agent_dir_retention.sweep_agent_dir", _fake_sweep)
     monkeypatch.setattr(
         "ralph.skills.manager.SkillManager.check_skills_for_updates",
         lambda _self: False,

@@ -182,7 +182,9 @@ def advance_phase(
 
     phase_def = policy.phases.get(target_phase)
     updates["execution_cycle_charged"] = (
-        False if phase_def is not None and phase_def.role == "execution" else state.execution_cycle_charged
+        False
+        if phase_def is not None and phase_def.role == "execution"
+        else state.execution_cycle_charged
     )
     is_commit_phase = phase_def is not None and phase_def.role == "commit"
 

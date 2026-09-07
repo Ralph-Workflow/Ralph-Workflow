@@ -90,7 +90,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except BrokenPipeError:
                 break
-            sleep(0.25)  # filesystem-poll-ok: SSE keepalive is a protocol-required bounded connection lifecycle
+            sleep(0.25)  # filesystem-poll-ok: SSE keepalive is protocol-required
 
     def _handle_health_get(self) -> None:
         """Handle GET /health. Returns 200 healthy / 503 unhealthy with latency_ms."""

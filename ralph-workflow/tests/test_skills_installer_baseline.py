@@ -26,9 +26,13 @@ def _isolate_baseline_install_from_user_siblings(
         source_url="",
         is_canonical=True,
     )
-    monkeypatch.setattr("ralph.skills._installer.canonical_agent_skill_root", lambda: canonical_root)
+    monkeypatch.setattr(
+        "ralph.skills._installer.canonical_agent_skill_root", lambda: canonical_root
+    )
     monkeypatch.setattr("ralph.skills._installer.sibling_agent_skill_roots", lambda: ())
-    monkeypatch.setattr("ralph.skills._installer._mirror_baseline_skills_to_siblings", lambda _root: [])
+    monkeypatch.setattr(
+        "ralph.skills._installer._mirror_baseline_skills_to_siblings", lambda _root: []
+    )
 
 
 if TYPE_CHECKING:

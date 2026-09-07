@@ -128,6 +128,7 @@ class GitRunOptions:
     capture_output: bool = True
     text: bool = True
     output_limit_bytes: int | None = None
+    input_data: str | bytes | None = None
 
 
 def run_git(
@@ -157,36 +158,48 @@ def run_git(
         if effective_options.timeout is not None
         else GIT_SUBPROCESS_TIMEOUT_SECONDS
     )
+    input_data = (
+        effective_options.input_data
+        if isinstance(effective_options.input_data, bytes)
+        else effective_options.input_data.encode()
+        if isinstance(effective_options.input_data, str)
+        else None
+    )
     spawn_env = _build_spawn_env(effective_options.env)
     proc = get_process_manager().spawn(
         cmd,
         SpawnOptions(
             cwd=str(cwd) if cwd else None,
             env=spawn_env,
+            stdin=subprocess.PIPE
+            if effective_options.input_data is not None
+            else subprocess.DEVNULL,
             stdout=subprocess.PIPE if effective_options.capture_output else None,
             stderr=subprocess.PIPE if effective_options.capture_output else None,
             label=effective_label,
-            text=effective_options.text,
+            text=effective_options.text and input_data is None,
         ),
     )
     try:
-        raw_stdout, raw_stderr = proc.communicate_and_cleanup(
-            timeout=effective_timeout,
-            cleanup_grace_period_s=0.0,
-            # Bound the captured stdout/stderr when the caller opts in via
-            # ``GitRunOptions.output_limit_bytes``. The default of ``None``
-            # preserves the legacy unbounded path; the recommended cap is
-            # ``GIT_OUTPUT_LIMIT_BYTES`` (10 MiB) in
-            # ``ralph.timeout_defaults``. The bounded branch in
-            # ``communicate_and_cleanup`` truncates at the cap with a
-            # marker (the ``ManagedProcessOutputLimitExceededError``
-            # semantics in ``_communicate_with_output_limit``).
-            output_limit_bytes=effective_options.output_limit_bytes,
-        )
+        if input_data is not None:
+            raw_stdout, raw_stderr = proc.communicate_and_cleanup(
+                input=input_data,
+                timeout=effective_timeout,
+                cleanup_grace_period_s=0.0,
+                output_limit_bytes=effective_options.output_limit_bytes,
+            )
+        else:
+            raw_stdout, raw_stderr = proc.communicate_and_cleanup(
+                timeout=effective_timeout,
+                cleanup_grace_period_s=0.0,
+                output_limit_bytes=effective_options.output_limit_bytes,
+            )
         with contextlib.suppress(Exception):
             proc.poll()
         with contextlib.suppress(Exception):
             proc.wait(timeout=0)
+        with contextlib.suppress(Exception):
+            get_process_manager().drain_completed()
     except subprocess.TimeoutExpired:
         proc.terminate(grace_period_s=0)
         raise

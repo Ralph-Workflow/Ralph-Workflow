@@ -169,9 +169,11 @@ def test_r5_replay_does_not_fire_during_real_capture_window(
         is_waiting_state=False,
         connectivity_state="online",
         evidence_summary=summary,
-        classify_quiet=lambda: __import__(
-            "ralph.agents.execution_state", fromlist=["AgentExecutionState"]
-        ).AgentExecutionState.ACTIVE,
+        classify_quiet=lambda: (
+            __import__(
+                "ralph.agents.execution_state", fromlist=["AgentExecutionState"]
+            ).AgentExecutionState.ACTIVE
+        ),
         activity_evidence_ttl_seconds=30.0,
         silent_subagent_seconds=180.0,
     )
@@ -257,15 +259,18 @@ def test_r5_subagent_tool_use_resets_idle_baseline(
     sub_dir.mkdir(parents=True, exist_ok=True)
     sub_path = sub_dir / "agent-r5reset.jsonl"
     sub_path.write_text(
-        json.dumps({
-            "type": "assistant",
-            "isSidechain": True,
-            "agentId": "r5reset",
-            "message": {
-                "role": "assistant",
-                "content": [{"type": "tool_use", "name": "Read", "id": "tu_r5"}],
-            },
-        }) + "\n",
+        json.dumps(
+            {
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "r5reset",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Read", "id": "tu_r5"}],
+                },
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -311,9 +316,11 @@ def test_r5_subagent_tool_use_resets_idle_baseline(
         is_waiting_state=False,
         connectivity_state="online",
         evidence_summary=summary,
-        classify_quiet=lambda: __import__(
-            "ralph.agents.execution_state", fromlist=["AgentExecutionState"]
-        ).AgentExecutionState.ACTIVE,
+        classify_quiet=lambda: (
+            __import__(
+                "ralph.agents.execution_state", fromlist=["AgentExecutionState"]
+            ).AgentExecutionState.ACTIVE
+        ),
         activity_evidence_ttl_seconds=30.0,
         silent_subagent_seconds=180.0,
     )
@@ -343,12 +350,15 @@ def test_r5_silent_parent_and_silent_children_still_fire(
     sub_dir.mkdir(parents=True, exist_ok=True)
     sub_path = sub_dir / "agent-silent.jsonl"
     sub_path.write_text(
-        json.dumps({
-            "type": "user",
-            "isSidechain": True,
-            "agentId": "silent",
-            "message": {"role": "user", "content": [{"type": "text", "text": "initial"}]},
-        }) + "\n",
+        json.dumps(
+            {
+                "type": "user",
+                "isSidechain": True,
+                "agentId": "silent",
+                "message": {"role": "user", "content": [{"type": "text", "text": "initial"}]},
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -396,9 +406,11 @@ def test_r5_silent_parent_and_silent_children_still_fire(
         is_waiting_state=False,
         connectivity_state="online",
         evidence_summary=summary,
-        classify_quiet=lambda: __import__(
-            "ralph.agents.execution_state", fromlist=["AgentExecutionState"]
-        ).AgentExecutionState.ACTIVE,
+        classify_quiet=lambda: (
+            __import__(
+                "ralph.agents.execution_state", fromlist=["AgentExecutionState"]
+            ).AgentExecutionState.ACTIVE
+        ),
         activity_evidence_ttl_seconds=30.0,
         silent_subagent_seconds=180.0,
     )

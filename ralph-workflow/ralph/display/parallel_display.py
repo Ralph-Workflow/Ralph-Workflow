@@ -427,6 +427,7 @@ def _resolve_transition_meta(
 #: they green-light a surface production drops.
 resolve_transition_meta = _resolve_transition_meta
 
+
 def _build_outer_iteration_suffix(
     iteration: int | None,
     cap: int | None = None,
@@ -606,7 +607,9 @@ class ParallelDisplay:
         # tests may inject a recorder to assert the observation shape
         # without going through a full ParallelDisplay session.
         self._capability_recorder: CapabilityObservationRecorder = (
-            capability_recorder if capability_recorder is not None else CapabilityObservationRecorder()
+            capability_recorder
+            if capability_recorder is not None
+            else CapabilityObservationRecorder()
         )
         # PLAN.md S-7: one allocator per ParallelDisplay instance -- its
         # lifetime is the render session, matching G-6's "frame-indexed
@@ -624,7 +627,9 @@ class ParallelDisplay:
         # (drop-oldest) matching ring_buffer.RingBuffer's own policy, not
         # an unbounded append-only log.
         self._salience_allocator = SalienceAllocator()
-        self._salience_last_token: dict[str, tuple[str, ...]] = {}  # bounded-accumulator-ok: fixed event-tier role-name set
+        self._salience_last_token: dict[
+            str, tuple[str, ...]
+        ] = {}  # bounded-accumulator-ok: fixed event-tier role-name set
         # PLAN.md S-1: role -> lit, EVENT-tier roles only, mirroring the
         # allocator's own ``_was_lit`` bookkeeping so ``_apply_salience``
         # can re-bid every event-tier role it still considers "on screen"
@@ -641,8 +646,12 @@ class ParallelDisplay:
         # rendering at full chroma.
         # bounded-accumulator-ok: keyed only by ROLE_FREQUENCY_TIER's
         # fixed small event-tier role-name set; never grows with frames.
-        self._salience_lit_event_roles: dict[str, bool] = {}  # bounded-accumulator-ok: fixed event-tier role-name set
-        self._salience_decisions: collections.deque[AllocationDecision] = collections.deque(maxlen=_SALIENCE_DECISIONS_MAXLEN)  # bounded-accumulator-ok: drop-oldest ring buffer, matching ring_buffer.RingBuffer's own policy
+        self._salience_lit_event_roles: dict[
+            str, bool
+        ] = {}  # bounded-accumulator-ok: fixed event-tier role-name set
+        self._salience_decisions: collections.deque[AllocationDecision] = collections.deque(
+            maxlen=_SALIENCE_DECISIONS_MAXLEN
+        )  # bounded-accumulator-ok: drop-oldest ring buffer, matching ring_buffer.RingBuffer's own policy
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else (lambda: datetime.now(UTC))
         )
@@ -1180,9 +1189,7 @@ class ParallelDisplay:
         else:
             first_chunk = header
             remaining = visible
-        continuation_rows = ParallelDisplay._wrap_trailing_words(
-            remaining, total_width=cont_budget
-        )
+        continuation_rows = ParallelDisplay._wrap_trailing_words(remaining, total_width=cont_budget)
         return [first_chunk, *continuation_rows]
 
     @staticmethod
@@ -1206,7 +1213,10 @@ class ParallelDisplay:
         head_words = head.split(" ")
         first_head_words: list[str] = []
         if first_budget > 0:
-            while head_words and cell_len(" ".join([*first_head_words, head_words[0]])) <= first_budget:
+            while (
+                head_words
+                and cell_len(" ".join([*first_head_words, head_words[0]])) <= first_budget
+            ):
                 first_head_words.append(head_words.pop(0))
         if first_head_words:
             first_row = f"{header} {' '.join(first_head_words)}"
@@ -1214,7 +1224,9 @@ class ParallelDisplay:
         else:
             first_row = header
             remaining_head = head
-        head_cont_rows = ParallelDisplay._wrap_trailing_words(remaining_head, total_width=cont_budget)
+        head_cont_rows = ParallelDisplay._wrap_trailing_words(
+            remaining_head, total_width=cont_budget
+        )
         trailer_rows = ParallelDisplay._split_long_trailer(trailer, total_width=cont_budget)
         return [first_row, *head_cont_rows, *trailer_rows]
 
@@ -2695,9 +2707,7 @@ class ParallelDisplay:
         capability = capability_for_render(surface_name=operation, tool_name=tool_name)
         if capability is not None:
             self._capability_recorder.record(
-                CapabilityObservation(
-                    capability=capability, tool_name=tool_name, unit_id=unit_id
-                )
+                CapabilityObservation(capability=capability, tool_name=tool_name, unit_id=unit_id)
             )
         path = ""
         payload = preview_input.get("input")
@@ -4156,7 +4166,11 @@ class ParallelDisplay:
                 if opts.counter_overrides.tool_calls is None
                 else opts.counter_overrides.tool_calls
             )
-            err = counters.errors if opts.counter_overrides.errors is None else opts.counter_overrides.errors
+            err = (
+                counters.errors
+                if opts.counter_overrides.errors is None
+                else opts.counter_overrides.errors
+            )
         else:
             cb = counters.content_blocks
             tb = counters.thinking_blocks

@@ -60,14 +60,18 @@ def test_handler_warns_on_cwd_outside_workspace(tmp_path: Path) -> None:
     root.mkdir()
     external.mkdir()
     _assert_warning(
-        _call_with_mocked_git(handle_git_status, _Workspace(root), {"cwd": str(external)}), external, root
+        _call_with_mocked_git(handle_git_status, _Workspace(root), {"cwd": str(external)}),
+        external,
+        root,
     )
 
 
 def test_handler_warns_on_dotdot_bypass(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     root.mkdir()
-    _assert_warning(_call_with_mocked_git(handle_git_status, _Workspace(root), {"cwd": ".."}), root.parent, root)
+    _assert_warning(
+        _call_with_mocked_git(handle_git_status, _Workspace(root), {"cwd": ".."}), root.parent, root
+    )
 
 
 def test_handler_rejects_non_string_cwd(tmp_path: Path) -> None:

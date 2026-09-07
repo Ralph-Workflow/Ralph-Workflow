@@ -102,6 +102,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
+
 def auto_integrate_after_commit(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -289,7 +290,8 @@ def _auto_integrate_after_commit_inner(
                 target,
                 attempt=attempt,
                 initial_refresh=refresh,
-                rebase_stop_resolver=rebase_stop_resolver if allowed else None, prior=state,
+                rebase_stop_resolver=rebase_stop_resolver if allowed else None,
+                prior=state,
             )
             if remote_record is not None and not remote_record.freshness_safe:
                 return remote_record
@@ -386,7 +388,8 @@ def _freshen_attempt_target(
     *,
     attempt: int,
     initial_refresh: str | None,
-    rebase_stop_resolver: RebaseStopResolver | None, prior: RebaseState | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    prior: RebaseState | None = None,
 ) -> tuple[RebaseState | None, str | None]:
     """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
@@ -577,7 +580,9 @@ def _integrate_once(
                 "reclaimed_worktree_path": (
                     reclamation.worktree_path if reclamation is not None else None
                 ),
-                "reclaim_snapshot_ref": reclamation.snapshot_ref if reclamation is not None else None,
+                "reclaim_snapshot_ref": reclamation.snapshot_ref
+                if reclamation is not None
+                else None,
                 "reclaim_discarded_path_count": (
                     reclamation.discarded_path_count if reclamation is not None else 0
                 ),
@@ -645,7 +650,6 @@ def _integrate_once(
         # ff phase and the helper must run to verify the
         # terminal state on the abort path.
         raise
-
 
 
 def _check_early_skips(

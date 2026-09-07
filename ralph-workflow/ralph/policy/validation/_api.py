@@ -50,6 +50,7 @@ _AGY_ALIAS_HELP = (
     "Accepted effort suffixes: low, medium, high."
 )
 
+
 @runtime_checkable
 class _AgentSupport(Protocol):
     name: str

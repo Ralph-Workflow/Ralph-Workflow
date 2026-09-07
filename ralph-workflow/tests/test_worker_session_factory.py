@@ -80,9 +80,7 @@ def test_mcp_handle_stored(tmp_path: Path) -> None:
 def test_bundle_close_releases_mcp_and_explore_store(tmp_path: Path) -> None:
     shutdown = MagicMock()
     handle = McpServerHandle(endpoint="http://localhost:9999", pid=1234, shutdown=shutdown)
-    bundle = build_worker_session(
-        _make_unit(), FakeMcpFactory(handle), _make_scope(tmp_path)
-    )
+    bundle = build_worker_session(_make_unit(), FakeMcpFactory(handle), _make_scope(tmp_path))
     explore_index = bundle.session.explore_index
     assert explore_index is not None
     store = explore_index.store

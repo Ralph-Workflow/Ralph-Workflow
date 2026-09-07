@@ -31,9 +31,7 @@ _HASH_INPUT_TEMPLATE: str = (
 )
 
 
-def _hash_cell(
-    *, target: str, viewport: Viewport, theme: str, state: str
-) -> str:
+def _hash_cell(*, target: str, viewport: Viewport, theme: str, state: str) -> str:
     """Compute the canonical cell id for a (target, viewport, theme, state)."""
     payload = _HASH_INPUT_TEMPLATE.format(
         target=target,
@@ -70,9 +68,7 @@ class CaptureCell:
         if not isinstance(self.state, str) or not self.state.strip():
             raise ValueError("CaptureCell.state must be a non-empty string")
         if not isinstance(self.cell_id, str) or len(self.cell_id) != _CELL_ID_HEX_LEN:
-            raise ValueError(
-                f"CaptureCell.cell_id must be a {_CELL_ID_HEX_LEN}-char hex string"
-            )
+            raise ValueError(f"CaptureCell.cell_id must be a {_CELL_ID_HEX_LEN}-char hex string")
         if self.target != self.target.strip():
             raise ValueError("CaptureCell.target must not carry leading/trailing whitespace")
         if self.theme != self.theme.strip():

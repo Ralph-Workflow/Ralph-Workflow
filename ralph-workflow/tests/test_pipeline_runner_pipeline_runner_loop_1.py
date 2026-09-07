@@ -248,7 +248,10 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "reducer_reduce",
-            lambda current_state, _event, _policy, recovery=None, routing_timing=None: (current_state, []),
+            lambda current_state, _event, _policy, recovery=None, routing_timing=None: (
+                current_state,
+                [],
+            ),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
         display_context = make_display_context()

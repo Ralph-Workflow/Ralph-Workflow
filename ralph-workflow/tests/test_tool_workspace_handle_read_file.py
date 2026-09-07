@@ -39,9 +39,7 @@ class TestHandleReadFile:
                 self.read_count = 0
                 self.stat_count = 0
 
-            def snapshot(
-                self, path: str, *, max_bytes: int | None = None
-            ) -> WorkspaceSnapshot:
+            def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
                 self.snapshot_count += 1
                 return super().snapshot(path, max_bytes=max_bytes)
 
@@ -64,7 +62,9 @@ class TestHandleReadFile:
         assert ws.read_count == 0
         assert ws.stat_count == 0
 
-    def test_snapshot_preserves_directory_type_when_memory_workspace_has_a_name_collision(self) -> None:
+    def test_snapshot_preserves_directory_type_when_memory_workspace_has_a_name_collision(
+        self,
+    ) -> None:
         """S-4: one observation preserves the workspace's public directory semantics."""
         ws = MemoryWorkspace()
         ws.create_dir("occupied")

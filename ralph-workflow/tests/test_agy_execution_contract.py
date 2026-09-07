@@ -30,8 +30,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
-
 def test_agy_strategy_does_not_support_session_continuation() -> None:
     """AGY strategy reports supports_session_continuation() as False."""
     strategy = strategy_for_transport(AgentTransport.AGY)
@@ -57,7 +55,7 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
     """An AGY operator diagnosis supplements, rather than hides, completion failure."""
     monkeypatch.setattr(
         "ralph.agents.invoke._completion.lookup_empty_output_diagnostic_factory",
-        lambda _agent_name: (lambda _output, _cli_log_path: "AGY authentication failed"),
+        lambda _agent_name: lambda _output, _cli_log_path: "AGY authentication failed",
     )
 
     with pytest.raises(AgentInvocationError) as excinfo:

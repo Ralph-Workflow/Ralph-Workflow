@@ -431,8 +431,6 @@ POST_EXIT_WATCHDOG = REPO_ROOT / "ralph" / "agents" / "idle_watchdog" / "_post_e
 UNAVAILABILITY_TRACKER = REPO_ROOT / "ralph" / "recovery" / "agent_unavailability_tracker.py"
 
 
-
-
 # === Helper for test_activity_aware.py ===
 def _activity_aware_active() -> AgentExecutionState:
     return AgentExecutionState.ACTIVE
@@ -697,7 +695,9 @@ def _emit_info_log_throttle_waiting() -> AgentExecutionState:
 
 
 # === Helper for test_evidence_deferral_throttle.py ===
-def _evidence_deferral_throttle_make_watchdog(*, throttle_seconds: float = 30.0) -> tuple[IdleWatchdog, FakeClock]:
+def _evidence_deferral_throttle_make_watchdog(
+    *, throttle_seconds: float = 30.0
+) -> tuple[IdleWatchdog, FakeClock]:
     clock = FakeClock(start=0.0)
     kwargs: dict[str, Any] = {
         "idle_timeout_seconds": 60.0,
@@ -741,7 +741,9 @@ def _invocation_start_full_reset_make_watchdog() -> tuple[IdleWatchdog, FakeCloc
 
 
 # === Helper for test_log_spam_throttle.py ===
-def _log_spam_throttle_make_watchdog(throttle_seconds: float = 30.0) -> tuple[IdleWatchdog, FakeClock]:
+def _log_spam_throttle_make_watchdog(
+    throttle_seconds: float = 30.0,
+) -> tuple[IdleWatchdog, FakeClock]:
     clock = FakeClock(start=0.0)
     policy = TimeoutPolicy(
         idle_timeout_seconds=60.0,
@@ -814,7 +816,9 @@ def _no_output_at_start_make_watchdog(
 
 
 # === Helper for test_no_output_at_start_lifecycle_parity.py ===
-def _no_output_at_start_lifecycle_p_make_policy(*, no_output_at_start_seconds: float = 30.0) -> TimeoutPolicy:
+def _no_output_at_start_lifecycle_p_make_policy(
+    *, no_output_at_start_seconds: float = 30.0
+) -> TimeoutPolicy:
     return TimeoutPolicy(
         idle_timeout_seconds=60.0,
         no_output_at_start_seconds=no_output_at_start_seconds,
@@ -978,7 +982,9 @@ def _resume_contract_invariant_make_watchdog() -> tuple[IdleWatchdog, FakeClock]
         no_progress_quiet_seconds=None,
         activity_evidence_ttl_seconds=180.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorResumeContractInvariant()), clock
+    return IdleWatchdog(
+        policy, clock, process_monitor=_NoProcessMonitorResumeContractInvariant()
+    ), clock
 
 
 # === Helper for test_silent_after_tool_call_wedge.py ===
@@ -1324,7 +1330,11 @@ def _stuck_job_intelligence_make_policy(
         and no_progress_quiet_seconds is not None
     ):
         no_progress_quiet_heartbeat_ceiling_seconds = no_progress_quiet_seconds
-    if no_progress_ceiling is not None and no_output_at_start is not None and no_output_at_start >= no_progress_ceiling:
+    if (
+        no_progress_ceiling is not None
+        and no_output_at_start is not None
+        and no_output_at_start >= no_progress_ceiling
+    ):
         no_output_at_start = None
     return TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -1445,7 +1455,9 @@ def _subagent_progress_surface_make_watchdog() -> tuple[IdleWatchdog, FakeClock]
         no_progress_quiet_seconds=None,
         activity_evidence_ttl_seconds=180.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorSubagentProgressSurface()), clock
+    return IdleWatchdog(
+        policy, clock, process_monitor=_NoProcessMonitorSubagentProgressSurface()
+    ), clock
 
 
 # === Helper for test_tool_result_routing.py ===
@@ -2088,7 +2100,9 @@ def _make_watchdog_with_corroborator(
 ) -> tuple[IdleWatchdog, FakeClock]:
     clock = FakeClock(start=0.0)
     return (
-        IdleWatchdog(_no_output_at_start_lifecycle_p_make_policy(), clock, corroborator=corroborator),
+        IdleWatchdog(
+            _no_output_at_start_lifecycle_p_make_policy(), clock, corroborator=corroborator
+        ),
         clock,
     )
 
@@ -2117,7 +2131,9 @@ def _make_watchdog_for_waiting_fire() -> tuple[IdleWatchdog, FakeClock]:
         os_descendant_only_suspect_seconds=None,
         waiting_status_interval_seconds=100.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorNonResumableEndToEnd()), clock
+    return IdleWatchdog(
+        policy, clock, process_monitor=_NoProcessMonitorNonResumableEndToEnd()
+    ), clock
 
 
 # === Helper: _make_watchdog_for_session_ceiling (from test_non_resumable_end_to_end.py) ===
@@ -2131,7 +2147,9 @@ def _make_watchdog_for_session_ceiling() -> tuple[IdleWatchdog, FakeClock]:
         activity_evidence_ttl_seconds=180.0,
         max_session_seconds=10.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorNonResumableEndToEnd()), clock
+    return IdleWatchdog(
+        policy, clock, process_monitor=_NoProcessMonitorNonResumableEndToEnd()
+    ), clock
 
 
 # === Helper: _fire_in_stream_reason (from test_non_resumable_end_to_end.py) ===
@@ -3225,7 +3243,9 @@ def test_bare_subagent_liveness_defers_fire() -> None:
 # === consolidated from test_activity_aware.py ===
 def test_session_ceiling_unaffected_by_first_party_activity() -> None:
     """AC-13: session ceiling fires regardless of first-party activity."""
-    wd, clock = _activity_aware_make_watchdog(_activity_aware_make_policy(max_session=5.0, activity_ttl=1000.0))
+    wd, clock = _activity_aware_make_watchdog(
+        _activity_aware_make_policy(max_session=5.0, activity_ttl=1000.0)
+    )
     for _ in range(6):
         wd.record_mcp_tool_call()
         clock.advance(1.0)
@@ -3254,7 +3274,9 @@ def test_cumulative_waiting_ceiling_unaffected_by_activity() -> None:
       - verdict is FIRE at the cumulative ceiling regardless of
         fresh mcp_tool activity within ``activity_evidence_ttl_seconds``.
     """
-    wd, clock = _activity_aware_make_watchdog(_activity_aware_make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0))
+    wd, clock = _activity_aware_make_watchdog(
+        _activity_aware_make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0)
+    )
     wd.record_activity()
     clock.advance(0.1)
 
@@ -3974,8 +3996,7 @@ def test_transport_strategy_surfaces_real_extraction_to_listener() -> None:
         )
         latest = captured[-1]
         assert latest.subagent_activity == _REAL_PROGRESS_LINE, (
-            "listener did not receive real extracted progress; got"
-            f" {latest.subagent_activity!r}"
+            f"listener did not receive real extracted progress; got {latest.subagent_activity!r}"
         )
         assert (
             latest.last_subagent_progress_at is not None
@@ -4103,7 +4124,9 @@ def test_cumulative_ceiling_fires_when_classify_stuck_returns_silent_subagent() 
     # classify_quiet returns WAITING_ON_CHILD -> enters waiting
     # branch with current_run_elapsed = 0.
     clock.advance(3.0)
-    first_verdict = watchdog.evaluate(classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child)
+    first_verdict = watchdog.evaluate(
+        classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child
+    )
     assert first_verdict == WatchdogVerdict.WAITING_ON_CHILD, (
         f"first evaluate() MUST enter WAITING_ON_CHILD, got {first_verdict!r}"
     )
@@ -4112,7 +4135,9 @@ def test_cumulative_ceiling_fires_when_classify_stuck_returns_silent_subagent() 
     # below the cumulative ceiling (10s). The next advance tips
     # candidate_total past the ceiling.
     clock.advance(9.0)
-    pre_ceiling_verdict = watchdog.evaluate(classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child)
+    pre_ceiling_verdict = watchdog.evaluate(
+        classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child
+    )
     assert pre_ceiling_verdict == WatchdogVerdict.WAITING_ON_CHILD, (
         f"pre-ceiling evaluate() MUST defer, got {pre_ceiling_verdict!r}"
     )
@@ -4177,7 +4202,9 @@ def test_cumulative_ceiling_fires_when_classify_stuck_returns_loading() -> None:
     watchdog.record_invocation_start()
     # First evaluate() at 3s enters the waiting branch.
     clock.advance(3.0)
-    first_verdict = watchdog.evaluate(classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child)
+    first_verdict = watchdog.evaluate(
+        classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child
+    )
     assert first_verdict == WatchdogVerdict.WAITING_ON_CHILD, (
         f"first evaluate() MUST enter WAITING_ON_CHILD, got {first_verdict!r}"
     )
@@ -4187,7 +4214,9 @@ def test_cumulative_ceiling_fires_when_classify_stuck_returns_loading() -> None:
     # and the ceiling is bypassed. Post-fix the ceiling fires
     # unconditionally.
     clock.advance(9.0)
-    pre_ceiling_verdict = watchdog.evaluate(classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child)
+    pre_ceiling_verdict = watchdog.evaluate(
+        classify_quiet=_cumulative_waiting_ceiling_fir_waiting_on_child
+    )
     assert pre_ceiling_verdict == WatchdogVerdict.WAITING_ON_CHILD, (
         f"pre-ceiling evaluate() MUST defer, got {pre_ceiling_verdict!r}"
     )
@@ -4514,10 +4543,7 @@ def test_resumable_session_id_contract_documented_in_spec() -> None:
     fix below).
     """
     spec_path = (
-        Path(__file__).resolve().parent.parent.parent
-        / "docs"
-        / "agents"
-        / "watchdog-spec.md"
+        Path(__file__).resolve().parent.parent.parent / "docs" / "agents" / "watchdog-spec.md"
     )
     spec_text = spec_path.read_text(encoding="utf-8")
     # The spec MUST name both surfaces explicitly so the
@@ -5291,7 +5317,9 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
     log_file.write_text("line 1\n", encoding="utf-8")
 
     policy = _e2e_activity_aware_make_policy(activity_ttl=1000.0)
-    monitor = _FakeProcessMonitorE2eActivityAware(captures={"w1": FileSubagentOutputCapture(str(log_file))})
+    monitor = _FakeProcessMonitorE2eActivityAware(
+        captures={"w1": FileSubagentOutputCapture(str(log_file))}
+    )
     wd, clock = _e2e_activity_aware_make_watchdog(policy, monitor)
     wd.record_activity()
     clock.advance(1.0)
@@ -5763,7 +5791,10 @@ def test_evidence_deferral_throttle_is_per_channel() -> None:
     # taken with ``active_channel=mcp_tool``.
     watchdog.record_mcp_tool_call(now=0.0)
     clock.advance(61.0)
-    assert watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active) == WatchdogVerdict.CONTINUE
+    assert (
+        watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active)
+        == WatchdogVerdict.CONTINUE
+    )
 
     # The diagnostic snapshot is the public surface for the per-channel
     # evidence summary; assert the mcp_tool channel is fresh in the
@@ -5797,7 +5828,10 @@ def test_evidence_deferral_throttle_is_per_channel() -> None:
     # this round).
     clock.advance(61.0)
     watchdog.record_subagent_work(now=clock.monotonic())
-    assert watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active) == WatchdogVerdict.CONTINUE
+    assert (
+        watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active)
+        == WatchdogVerdict.CONTINUE
+    )
     snap_second = watchdog.diagnostic_snapshot(now=clock.monotonic())
     subagent_channel_second = next(
         (
@@ -5827,7 +5861,10 @@ def test_evidence_deferral_throttle_resets_on_invocation_start() -> None:
     watchdog, clock = _evidence_deferral_throttle_make_watchdog(throttle_seconds=30.0)
     watchdog.record_mcp_tool_call(now=0.0)
     clock.advance(61.0)
-    assert watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active) == WatchdogVerdict.CONTINUE
+    assert (
+        watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active)
+        == WatchdogVerdict.CONTINUE
+    )
     # Reset by invocation_start.
     watchdog.record_invocation_start()
     # Drive a second deferral scenario immediately after the reset.
@@ -5836,7 +5873,10 @@ def test_evidence_deferral_throttle_resets_on_invocation_start() -> None:
     clock.advance(0.0)
     watchdog.record_mcp_tool_call(now=clock.monotonic())
     clock.advance(61.0)
-    assert watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active) == WatchdogVerdict.CONTINUE
+    assert (
+        watchdog.evaluate(classify_quiet=_evidence_deferral_throttle_active)
+        == WatchdogVerdict.CONTINUE
+    )
 
 
 # === consolidated from test_evidence_deferral_throttle.py ===
@@ -5980,7 +6020,9 @@ def test_cumulative_waiting_ceiling_fires_with_helpers_alive() -> None:
     # and classify_quiet returns WAITING_ON_CHILD -> enters the
     # waiting branch (current_run_elapsed=0).
     clock.advance(3.0)
-    first_verdict = watchdog.evaluate(classify_quiet=_hard_ceiling_with_helpers_aliv_waiting_on_child)
+    first_verdict = watchdog.evaluate(
+        classify_quiet=_hard_ceiling_with_helpers_aliv_waiting_on_child
+    )
     assert first_verdict == WatchdogVerdict.WAITING_ON_CHILD
     # Advance the clock by 5s so the current_run_elapsed (5s)
     # reaches the cumulative ceiling (5s). The watchdog MUST fire
@@ -10323,7 +10365,9 @@ def test_deferred_by_stuck_classifier_never_fires() -> None:
         no_progress_quiet_minimum_invocation_seconds=None,
         activity_evidence_ttl_seconds=180.0,
     )
-    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorResumeContractInvariant())
+    watchdog = IdleWatchdog(
+        policy, clock, process_monitor=_NoProcessMonitorResumeContractInvariant()
+    )
     watchdog.record_invocation_start()
     watchdog.set_is_waiting_state(True)
 
@@ -11817,7 +11861,9 @@ def test_classifier_consulted_live_callable_returns_loading() -> None:
     contract is unchanged -- the gate is the boundary that decides
     which branch is consulted in production.
     """
-    wd, clock = _smart_verdict_dumb_kills_make_watchdog(_smart_verdict_dumb_kills_make_policy(activity_ttl=30.0))
+    wd, clock = _smart_verdict_dumb_kills_make_watchdog(
+        _smart_verdict_dumb_kills_make_policy(activity_ttl=30.0)
+    )
     wd.record_activity()
     clock.advance(2.0)
     wd.evaluate(classify_quiet=_smart_verdict_dumb_kills_waiting)
@@ -11846,7 +11892,9 @@ def test_classifier_consulted_live_callable_returns_transitioning() -> None:
     def _resumable() -> AgentExecutionState:
         return AgentExecutionState.RESUMABLE_CONTINUE
 
-    wd, clock = _smart_verdict_dumb_kills_make_watchdog(_smart_verdict_dumb_kills_make_policy(activity_ttl=30.0))
+    wd, clock = _smart_verdict_dumb_kills_make_watchdog(
+        _smart_verdict_dumb_kills_make_policy(activity_ttl=30.0)
+    )
     wd.record_activity()
     clock.advance(2.0)
     wd.evaluate(classify_quiet=_resumable)
@@ -13290,7 +13338,9 @@ def test_stuck_classifier_consulted_at_no_output_at_start_fire() -> None:
     def _empty_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot()
 
-    watchdog = _stuck_job_intelligence_make_watchdog(config, clock, corroborator=_empty_corroborator)
+    watchdog = _stuck_job_intelligence_make_watchdog(
+        config, clock, corroborator=_empty_corroborator
+    )
     watchdog.record_invocation_start()
 
     clock.advance(31.0)
@@ -15379,10 +15429,7 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
             # ``_check_broken_agent_timer`` kills only after the grace
             # window elapsed with zero meaningful output (a fire-class
             # verdict in its own right), so it is a legitimate kill site.
-            if (
-                isinstance(node, ast.Attribute)
-                and node.attr == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS"
-            ):
+            if isinstance(node, ast.Attribute) and node.attr == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS":
                 return True
             if isinstance(node, ast.Name) and node.id == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS":
                 return True
@@ -15713,6 +15760,7 @@ def test_expected_fire_reasons_drift_guard_raises_runtime_error(
 @dataclass
 class FakeProcessMonitor(ProcessMonitor):
     """Fake process monitor for black-box tests."""
+
     # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
     # positional message), so a process fake must satisfy the
     # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
@@ -16121,6 +16169,7 @@ class _NoProcessMonitorNonResumableEndToEnd:
 # === consolidated from test_non_resumable_end_to_end.py ===
 class _FakeManagedProcess:
     """Fake process handle for ``ProcessLineReader._check_fire``."""
+
     # Ralph delivers OpenCode's prompt on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
@@ -16137,6 +16186,7 @@ class _FakeManagedProcess:
 @dataclass
 class _FakeCheckFireSelf:
     """Minimal fake reader self for calling ``ProcessLineReader._check_fire``."""
+
     # Ralph delivers OpenCode's prompt on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
@@ -16221,6 +16271,7 @@ class _FakeManagedProcessResumeAfterKillContract:
     ``pid`` as ``None`` so no real process tree teardown runs in the
     test, and we record whether ``terminate`` was invoked.
     """
+
     # Ralph delivers OpenCode's prompt on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
@@ -16241,6 +16292,7 @@ class _FakeCheckFireSelfResumeAfterKillContract:
     The method needs the policy, clock, lines queue, last hard-stop
     slot, and a fake handle.  Everything else is ignored.
     """
+
     # Ralph delivers OpenCode's prompt on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
@@ -16307,6 +16359,7 @@ class _LineReaderLike:
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
 class _FakeProcess:
     """Minimal test double for ``subprocess.Popen`` used by the subprocess reader."""
+
     # Ralph delivers OpenCode's prompt on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None

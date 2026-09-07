@@ -100,12 +100,18 @@ def _parse_case(raw_case: object) -> EvaluationCase:
     if not case_id or not _safe_relative_path(case_id):
         raise ValueError("evaluation case ID must be a safe non-empty relative name")
     if _PHASES.get(template_name) != artifact_type or expected_artifact_type != artifact_type:
-        raise ValueError("evaluation case must map one supported template to its production artifact type")
-    if not isinstance(criterion_ids, list) or not criterion_ids or not all(
-        isinstance(item, str) and item for item in criterion_ids
+        raise ValueError(
+            "evaluation case must map one supported template to its production artifact type"
+        )
+    if (
+        not isinstance(criterion_ids, list)
+        or not criterion_ids
+        or not all(isinstance(item, str) and item for item in criterion_ids)
     ):
         raise ValueError("evaluation case criterion_ids must be a non-empty string list")
-    if not isinstance(defect_locations, list) or not all(isinstance(item, str) for item in defect_locations):
+    if not isinstance(defect_locations, list) or not all(
+        isinstance(item, str) for item in defect_locations
+    ):
         raise ValueError("evaluation case defect_locations must be a string list")
     safe_workspace_files = _parse_workspace_files(workspace_files)
     return EvaluationCase(
@@ -125,8 +131,14 @@ def _parse_workspace_files(value: object) -> dict[str, str]:
         raise ValueError("evaluation case workspace_files must map safe relative paths to strings")
     parsed: dict[str, str] = {}
     for path, content in value.items():
-        if not isinstance(path, str) or not isinstance(content, str) or not _safe_relative_path(path):
-            raise ValueError("evaluation case workspace_files must map safe relative paths to strings")
+        if (
+            not isinstance(path, str)
+            or not isinstance(content, str)
+            or not _safe_relative_path(path)
+        ):
+            raise ValueError(
+                "evaluation case workspace_files must map safe relative paths to strings"
+            )
         parsed[path] = content
     return parsed
 
@@ -146,7 +158,9 @@ def render_evaluation_prompt(case: EvaluationCase, workspace_path: Path | None =
         template,
         {
             **capability_template_variables(
-                session.capabilities, session.policy_flags, tool_name_prefix=session.tool_name_prefix
+                session.capabilities,
+                session.policy_flags,
+                tool_name_prefix=session.tool_name_prefix,
             ),
             "LAST_RETRY_ERROR": "",
             "HAS_DOCS_MCP": "",
@@ -194,7 +208,9 @@ def run_evaluation(
         for case in cases:
             decisions: list[dict[str, object]] = []
             for _ in range(runs_per_agent):
-                with tempfile.TemporaryDirectory(prefix="ralph-verification-evaluation-") as temporary_directory:
+                with tempfile.TemporaryDirectory(
+                    prefix="ralph-verification-evaluation-"
+                ) as temporary_directory:
                     workspace_path = Path(temporary_directory)
                     _populate_workspace(workspace_path, case)
                     prompt = render_evaluation_prompt(case, workspace_path)
@@ -238,7 +254,9 @@ def score_decisions(
     )
     disagreement = sum(run != verdict_sets[0] for run in verdict_sets[1:])
     return {
-        "localized_defect_recall": _ratio(len(localized & case.defect_locations), len(case.defect_locations)),
+        "localized_defect_recall": _ratio(
+            len(localized & case.defect_locations), len(case.defect_locations)
+        ),
         "false_rejection_rate": _ratio(false_rejections, len(runs)),
         "unsupported_met_rate": _ratio(unsupported_met, met_count),
         "verdict_disagreement_rate": _ratio(disagreement, max(len(runs) - 1, 1)),
@@ -263,7 +281,11 @@ def _verdicts(
         evidence = "Evidence:" in entry_text and bool(
             entry_text.split("Evidence:", 1)[1].split("Location:", 1)[0].strip()
         )
-        location = entry_text.split("Location:", 1)[-1].strip().rstrip(".") if "Location:" in entry_text else ""
+        location = (
+            entry_text.split("Location:", 1)[-1].strip().rstrip(".")
+            if "Location:" in entry_text
+            else ""
+        )
         parsed[identifier_text] = (identifier_text, verdict, evidence, location)
     return parsed
 

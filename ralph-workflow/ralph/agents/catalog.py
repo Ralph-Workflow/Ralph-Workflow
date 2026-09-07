@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
 from ralph.agents._contracts import StrategyFactory
-from ralph.agents.execution_state._factory import (
+from ralph.agents.execution_state._strategy_builders import (
     _make_agy_strategy,
     _make_cursor_strategy,
     _make_kimi_strategy,
@@ -47,6 +47,7 @@ from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
+from ralph.agents.registry_types import ParserRegistryEntry
 from ralph.agents.support import AgentSupport
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
@@ -68,43 +69,7 @@ K = TypeVar("K")
 V = TypeVar("V")
 
 
-@dataclass
-class _ParserRegistryEntry:
-    """Parser factory bundled with the strategy factory registered alongside it.
-
-    Instances are callable so they can be stored directly in the parser
-    registry without changing that dict's public shape.  The bundled
-    ``strategy_factory`` lets runtime resolution select the correct
-    strategy for a specific agent command, not just its transport.
-    """
-
-    parser_factory: Callable[[], "AgentParser"]
-    strategy_factory: "StrategyFactory"
-    transport: "AgentTransport"
-
-    def __call__(
-        self,
-        *,
-        subagent_pid_registry: object | None = None,
-        subagent_source_label: str | None = None,
-    ) -> "AgentParser":
-        # Fast-path: no kwargs (the default for non-R5 callers).
-        if subagent_pid_registry is None and subagent_source_label is None:
-            return self.parser_factory()
-        # R5 production wiring kwargs flow through ``__call__`` to the
-        # underlying ``parser_factory``. The runtime probe preserves
-        # backward-compat with legacy zero-arg factories declared as
-        # ``Callable[[], AgentParser]`` in :class:`AgentSupport`: any
-        # legacy factory that rejects the kwargs raises ``TypeError``
-        # and we fall back to the zero-arg call. The local
-        # ``flexible`` alias widens the callable signature to satisfy
-        # strict mypy without an ``Any``-typed expression at the
-        # function boundary.
-        flexible = _FlexibleFactory(self.parser_factory)
-        return flexible(
-            subagent_pid_registry=subagent_pid_registry,
-            subagent_source_label=subagent_source_label,
-        )
+_ParserRegistryEntry = ParserRegistryEntry
 
 
 class _FlexibleFactory:

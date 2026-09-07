@@ -56,7 +56,9 @@ class BurstDebounceScheduler:
         self._on_fire = on_fire
         self._debounce_window = debounce_window
         self._lock = Lock()
-        self._pending: list[Callable[[], None]] = []  # bounded-accumulator-ok: drained on fire_if_due / lifecycle hooks; bounded by distinct dirty-path marks per debounce window
+        self._pending: list[
+            Callable[[], None]
+        ] = []  # bounded-accumulator-ok: drained on fire_if_due / lifecycle hooks; bounded by distinct dirty-path marks per debounce window
         self._last_mark_at: float | None = None
         # Tracks whether a fire has been suppressed by a lifecycle hook
         # since the last ``mark``. Used only for diagnostics; does not

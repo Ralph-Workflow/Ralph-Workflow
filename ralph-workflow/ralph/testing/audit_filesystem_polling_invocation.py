@@ -245,7 +245,12 @@ def _violation_for_call(
         else "raw_sleep_poll"
         if (
             name == "sleep"
-            and (name in time_names or root in time_names or name in asyncio_names or root in asyncio_names)
+            and (
+                name in time_names
+                or root in time_names
+                or name in asyncio_names
+                or root in asyncio_names
+            )
         )
         else "raw_subprocess_invocation"
         if (

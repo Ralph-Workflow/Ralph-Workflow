@@ -179,6 +179,7 @@ def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
+
     def resolver(*_args: object) -> bool:
         return True
 

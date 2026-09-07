@@ -116,9 +116,7 @@ class RetentionPassCoordinator:
         with self._condition:
             now = time.monotonic()
             if self._wave is not None and (
-                self._in_flight
-                or now < self._published_until
-                or self._late_joiners > 0
+                self._in_flight or now < self._published_until or self._late_joiners > 0
             ):
                 # A published result stays available through the bounded burst
                 # window so work queued behind an executor's worker cap joins
@@ -289,11 +287,7 @@ def register_temporary_path_owner(workspace_root: Path, path: Path, run_id: str)
     with _metadata_lock(workspace_root):
         raw = _read_json(ownership_path)
         owners: dict[str, object] = (
-            {
-                key: cast("object", value)
-                for key, value in raw.items()
-                if isinstance(key, str)
-            }
+            {key: cast("object", value) for key, value in raw.items() if isinstance(key, str)}
             if isinstance(raw, dict)
             else {}
         )
@@ -352,7 +346,6 @@ def _temporary_path_owners(workspace_root: Path) -> dict[str, tuple[str, float]]
             if isinstance(run_id, str) and isinstance(created_at, (int, float)):
                 owners[path] = (run_id, float(created_at))
     return owners
-
 
 
 def _older_than(path: Path, cutoff: float) -> bool:

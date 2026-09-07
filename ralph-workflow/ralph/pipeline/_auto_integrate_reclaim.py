@@ -106,7 +106,15 @@ def _create_snapshot(worktree: Path, target: str) -> _Snapshot | None:
         _restore_index(worktree, staged.stdout)
         return None
     commit = run_git(
-        (*COMMIT_PIN_CONFIG_ARGS, "commit-tree", tree_sha, "-p", "HEAD", "-m", "ralph reclaim snapshot"),
+        (
+            *COMMIT_PIN_CONFIG_ARGS,
+            "commit-tree",
+            tree_sha,
+            "-p",
+            "HEAD",
+            "-m",
+            "ralph reclaim snapshot",
+        ),
         cwd=worktree,
         label="auto-integrate:reclaim-commit",
     )
@@ -155,7 +163,11 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
     retained = {snapshot_ref}
     refs.sort(key=_reclaim_ref_timestamp, reverse=True)
     for ref, ref_timestamp in refs:
-        if ref != snapshot_ref and ref_timestamp >= cutoff and len(retained) < _RECLAIM_REF_MAX_COUNT:
+        if (
+            ref != snapshot_ref
+            and ref_timestamp >= cutoff
+            and len(retained) < _RECLAIM_REF_MAX_COUNT
+        ):
             retained.add(ref)
     for ref, _timestamp in refs:
         if ref in retained:
@@ -170,7 +182,11 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
             logger.warning("auto_integrate: reclaim-ref deletion failed for {}: {}", ref, exc)
             continue
         if deleted.returncode != 0:
-            logger.warning("auto_integrate: reclaim-ref deletion failed for {} (rc={})", ref, deleted.returncode)
+            logger.warning(
+                "auto_integrate: reclaim-ref deletion failed for {} (rc={})",
+                ref,
+                deleted.returncode,
+            )
 
 
 def _reclaim_ref_timestamp(ref: tuple[str, int]) -> int:
@@ -194,7 +210,12 @@ def _restore_discarded_state(worktree: Path, snapshot: _Snapshot) -> None:
 
 def _restore_index(worktree: Path, staged_patch: str) -> None:
     """Restore the pre-snapshot index while preserving working-tree bytes."""
-    if run_git(("read-tree", "HEAD"), cwd=worktree, label="auto-integrate:reclaim-restore-index").returncode != 0:
+    if (
+        run_git(
+            ("read-tree", "HEAD"), cwd=worktree, label="auto-integrate:reclaim-restore-index"
+        ).returncode
+        != 0
+    ):
         return
     if not staged_patch:
         return
@@ -208,10 +229,14 @@ def _apply_patch(worktree: Path, patch_text: str, *, cached: bool) -> None:
     with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".patch") as patch:
         patch.write(patch_text)
         patch.flush()
-        args = ("apply", "--cached", "--binary", patch.name) if cached else (
-            "apply",
-            "--binary",
-            patch.name,
+        args = (
+            ("apply", "--cached", "--binary", patch.name)
+            if cached
+            else (
+                "apply",
+                "--binary",
+                patch.name,
+            )
         )
         run_git(args, cwd=worktree, label="auto-integrate:reclaim-restore-staged")
 

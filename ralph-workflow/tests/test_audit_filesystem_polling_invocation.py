@@ -49,9 +49,7 @@ def test_regression_workspace_monitor_is_not_broadly_exempt_from_polling_enforce
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import time\n"
-        "def poll() -> None:\n"
-        "    time.sleep(1)\n",
+        "import time\ndef poll() -> None:\n    time.sleep(1)\n",
     )
 
     violations = audit.audit_filesystem_polling_invocation(
@@ -176,15 +174,15 @@ def test_regression_aliased_watchdog_module_construction_fails_closed(tmp_path: 
     assert violations[0].kind == "raw_observer_construction"
 
 
-def test_regression_root_watchdog_package_observer_construction_fails_closed(tmp_path: Path) -> None:
+def test_regression_root_watchdog_package_observer_construction_fails_closed(
+    tmp_path: Path,
+) -> None:
     """S-1/S-6: root watchdog imports cannot hide a second recursive watch."""
     module_rel = "feature/watch.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import watchdog\n"
-        "def start() -> object:\n"
-        "    return watchdog.observers.Observer()\n",
+        "import watchdog\ndef start() -> object:\n    return watchdog.observers.Observer()\n",
     )
 
     violations = audit.audit_filesystem_polling_invocation(
@@ -259,9 +257,7 @@ def test_regression_direct_import_subprocess_alias_fails_closed(tmp_path: Path) 
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "from subprocess import run as launch\n"
-        "def invoke() -> None:\n"
-        "    launch(['tool'])\n",
+        "from subprocess import run as launch\ndef invoke() -> None:\n    launch(['tool'])\n",
     )
 
     violations = audit.audit_filesystem_polling_invocation(
@@ -300,9 +296,7 @@ def test_regression_dynamic_subprocess_launcher_fails_closed(tmp_path: Path) -> 
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import subprocess\n"
-        "def invoke() -> None:\n"
-        "    getattr(subprocess, 'run')(['tool'])\n",
+        "import subprocess\ndef invoke() -> None:\n    getattr(subprocess, 'run')(['tool'])\n",
     )
 
     violations = audit.audit_filesystem_polling_invocation(

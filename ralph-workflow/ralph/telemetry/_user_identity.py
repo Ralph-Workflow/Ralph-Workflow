@@ -116,7 +116,7 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
                 continue
             if time.monotonic() - started >= _LOCK_TIMEOUT_SECONDS:
                 raise OSError("timed out acquiring telemetry identity lock") from None
-            time.sleep(_LOCK_POLL_SECONDS)  # filesystem-poll-ok: bounded cross-process lock acquisition lacks a notification primitive
+            time.sleep(_LOCK_POLL_SECONDS)  # filesystem-poll-ok: bounded cross-process lock acquisition
     try:
         yield
     finally:

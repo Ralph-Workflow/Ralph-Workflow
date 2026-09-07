@@ -50,11 +50,13 @@ if TYPE_CHECKING:
     from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+
     class _ToDict(Protocol):
         def __call__(self) -> dict[str, object]: ...
 
     class _ModelDump(Protocol):
         def __call__(self, **kwargs: bool) -> dict[str, object]: ...
+
 
 # Import-time invariant: every RalphToolName alias must be a non-degenerate
 # mcp__<server>__<tool> name. The whole point of exposing aliases in
@@ -354,8 +356,7 @@ class McpServer:
             )
         except (AttributeError, OSError, TypeError):
             logger.opt(exception=True).debug(
-                "MCP server: wire-ledger append failed (suppressed); "
-                "{} dispatch proceeds",
+                "MCP server: wire-ledger append failed (suppressed); {} dispatch proceeds",
                 request.method,
             )
 
@@ -774,8 +775,8 @@ class McpServer:
         # not turn a real tool dispatch into a JSON-RPC error — the ledger is
         # diagnostic evidence, never a load-bearing part of the dispatch path.
         try:
-            delivery_mode, provider, model_id, agent_id, capability_profile_digest = self._wire_ledger_facts(
-                tool_name, dict(arguments_value)
+            delivery_mode, provider, model_id, agent_id, capability_profile_digest = (
+                self._wire_ledger_facts(tool_name, dict(arguments_value))
             )
             append_wire_record(
                 self._workspace.root,

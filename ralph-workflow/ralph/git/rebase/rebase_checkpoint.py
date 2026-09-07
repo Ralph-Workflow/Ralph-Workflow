@@ -193,7 +193,11 @@ class RebaseCheckpoint:
             raise ValueError("Checkpoint timestamp is invalid") from exc
         if any(file not in conflicts for file in resolved):
             raise ValueError("Checkpoint resolved_files must be a subset of conflicted_files")
-        if phase not in {RebasePhase.NotStarted, RebasePhase.RebaseComplete, RebasePhase.RebaseAborted} and not upstream:
+        if (
+            phase
+            not in {RebasePhase.NotStarted, RebasePhase.RebaseComplete, RebasePhase.RebaseAborted}
+            and not upstream
+        ):
             raise ValueError("Active checkpoint requires an upstream_branch")
         last_error_value = data.get("last_error")
         if last_error_value is not None and not isinstance(last_error_value, str):
@@ -232,10 +236,19 @@ def inspect_legacy_rebase_checkpoint(
             reason = "legacy checkpoint primary and backup disagree"
         else:
             checkpoint = RebaseCheckpoint.from_dict(_load_checkpoint_payload(primary))
-            if checkpoint.phase in {RebasePhase.NotStarted, RebasePhase.RebaseComplete, RebasePhase.RebaseAborted}:
+            if checkpoint.phase in {
+                RebasePhase.NotStarted,
+                RebasePhase.RebaseComplete,
+                RebasePhase.RebaseAborted,
+            }:
                 return LegacyCheckpointInspection(LegacyCheckpointStatus.TERMINAL, checkpoint)
-            if checkpoint.phase in {RebasePhase.ConflictDetected, RebasePhase.ConflictResolutionInProgress}:
-                return LegacyCheckpointInspection(LegacyCheckpointStatus.ACTIONABLE_CONFLICT, checkpoint)
+            if checkpoint.phase in {
+                RebasePhase.ConflictDetected,
+                RebasePhase.ConflictResolutionInProgress,
+            }:
+                return LegacyCheckpointInspection(
+                    LegacyCheckpointStatus.ACTIONABLE_CONFLICT, checkpoint
+                )
             reason = "legacy rebase recovery is still active"
             return LegacyCheckpointInspection(LegacyCheckpointStatus.BLOCKED, checkpoint, reason)
     except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:

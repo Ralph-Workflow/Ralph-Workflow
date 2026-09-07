@@ -285,7 +285,12 @@ def test_ceiling_stays_absent_for_opencode_lifecycle_frames_with_no_tool_use() -
             "type": "step_start",
             "timestamp": 1785000001000,
             "sessionID": "s_0001",
-            "part": {"id": "p_0001", "messageID": "m_0001", "sessionID": "s_0001", "type": "step-start"},
+            "part": {
+                "id": "p_0001",
+                "messageID": "m_0001",
+                "sessionID": "s_0001",
+                "type": "step-start",
+            },
         }
     )
 
@@ -838,7 +843,9 @@ def _wire_run_result(
         raw_line_count=16,
         parsed_event_count=19,
         tool_activity_seen=Evidence(True, Provenance.WIRE, "tools/call ledger match"),
-        artifact_submitted=Evidence(True, Provenance.WIRE, "receipt matched a tools/call ledger record"),
+        artifact_submitted=Evidence(
+            True, Provenance.WIRE, "receipt matched a tools/call ledger record"
+        ),
         meaningful_output_lines=[],
         errors=[],
         multimodal_requested=multimodal_requested,

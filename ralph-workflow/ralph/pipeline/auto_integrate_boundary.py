@@ -60,7 +60,9 @@ def phase_boundary_outcome(
 ) -> tuple[bool, RebaseState | None]:
     """Return whether the target, cleanliness, or freshness gate ends this boundary."""
     if target is None:
-        return True, _record_skip(reason=_missing_target_reason(config), target=_configured_target(config))
+        return True, _record_skip(
+            reason=_missing_target_reason(config), target=_configured_target(config)
+        )
     if not _worktree_is_clean(root):
         return True, defer_dirty_boundary(config, root, target)
     outcome = boundary_freshness_outcome(
@@ -86,7 +88,9 @@ def boundary_freshness_outcome(
     refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
     if branch_sha(root, target) != get_head_sha(root):
         return None
-    pending = retry_pending_remote_publish(config, root, target, state, rebase_stop_resolver=rebase_stop_resolver)
+    pending = retry_pending_remote_publish(
+        config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
+    )
     if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
         if pending is not None:
             return pending
@@ -97,7 +101,9 @@ def boundary_freshness_outcome(
                     "last_action": "skipped",
                 }
             )
-        return record_when_stale(_record_skip(reason="no commits beyond target", target=target), refresh)
+        return record_when_stale(
+            _record_skip(reason="no commits beyond target", target=target), refresh
+        )
     return None
 
 

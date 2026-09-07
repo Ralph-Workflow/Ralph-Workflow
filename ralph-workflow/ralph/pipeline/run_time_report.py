@@ -209,8 +209,7 @@ def render_run_time_report(
                     for index, finding in enumerate(memory_findings, start=1)
                 )
                 + (
-                    f"\n- [MF-{len(memory_findings) + 1}] Memory findings list "
-                    "truncated."
+                    f"\n- [MF-{len(memory_findings) + 1}] Memory findings list truncated."
                     if (memory_findings_capped or memory_findings_truncated)
                     else ""
                 )
@@ -235,8 +234,7 @@ def render_run_time_report(
                         + f" last cycle consumed: {_cycle_consumed_text(state)}"
                         + f" Finalization: {_safe_text(cycle_timebox.finalization_target)}.\n"
                         if cycle_timebox is not None
-                        else "- [CT-1] Last cycle consumed: "
-                        + f"{_cycle_consumed_text(state)}\n"
+                        else "- [CT-1] Last cycle consumed: " + f"{_cycle_consumed_text(state)}\n"
                     )
                     + _redirect_line(state)
                 )

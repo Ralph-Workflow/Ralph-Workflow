@@ -248,7 +248,6 @@ def test_a_severed_write_glued_to_the_next_line_is_graded(tmp_path: Path) -> Non
         "a bare timestamp fragment appended": (
             head + b", summary='did" + b" partial-frame timestamp=99"
         ),
-
     }
 
     for label, line in severed.items():
@@ -259,7 +258,7 @@ def test_a_severed_write_glued_to_the_next_line_is_graded(tmp_path: Path) -> Non
     # and grading it meant reporting byte-perfect lines as corrupt. Free
     # text cannot be judged; the delimiters can. This is the residue of
     # that trade, recorded rather than hidden.
-    inside_the_quotes = head + b", summary='x{\"type\":\"item.completed\"}', timestamp=17"
+    inside_the_quotes = head + b', summary=\'x{"type":"item.completed"}\', timestamp=17'
     assert _breaks(tmp_path, inside_the_quotes + b"\n") == []
 
 

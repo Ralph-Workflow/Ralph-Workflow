@@ -35,7 +35,9 @@ from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 __all__ = ["agy_dispatcher_hint_text"]
 
 
-def agy_dispatcher_hint_text(target_tool_name: str, *, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
+def agy_dispatcher_hint_text(
+    target_tool_name: str, *, server_name: str = RALPH_MCP_SERVER_NAME
+) -> str:
     """Return the AGY-shaped MCP-dispatcher hint for one target tool.
 
     The result is the bullet text naming ``call_mcp_tool`` as the only

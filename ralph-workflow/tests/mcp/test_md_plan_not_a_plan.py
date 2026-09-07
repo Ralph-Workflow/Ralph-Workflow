@@ -233,7 +233,10 @@ deviation as a single warning diagnostic that names the line and the rule.
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
     assert content == {}
-    assert any(d.rule_id in {"PLAN010", "PLAN020", "PLAN021", "REF003"} and d.severity == "error" for d in diagnostics)
+    assert any(
+        d.rule_id in {"PLAN010", "PLAN020", "PLAN021", "REF003"} and d.severity == "error"
+        for d in diagnostics
+    )
 
 
 def test_plan_with_dependency_cycle_is_rejected() -> None:

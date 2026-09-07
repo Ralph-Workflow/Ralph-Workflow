@@ -294,9 +294,7 @@ cycle_timebox_warned: true
 
     assert diagnostics == []
     assert content["status"] == "partial"
-    assert content["incomplete_work"] == [
-        "[S-4] Rename API endpoints: half-applied."
-    ]
+    assert content["incomplete_work"] == ["[S-4] Rename API endpoints: half-applied."]
 
 
 def test_warned_partial_without_reason_is_rejected() -> None:

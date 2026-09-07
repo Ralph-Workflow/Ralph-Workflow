@@ -1641,7 +1641,11 @@ class StatusBar:
         # a durable destination. It must not receive footer bytes: unlike a
         # real redirect it has no cold transcript contract and Rich reports it
         # as terminal-capable solely because the caller requested colour.
-        if self._real_tty() or (self._started and self._ctx().console.is_terminal) or bool(self._display._is_quiet):
+        if (
+            self._real_tty()
+            or (self._started and self._ctx().console.is_terminal)
+            or bool(self._display._is_quiet)
+        ):
             return
         # A redirected stream receives only operator-actionable status changes.
         # Phase-only footer updates are transient presentation state and must not

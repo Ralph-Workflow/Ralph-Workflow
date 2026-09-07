@@ -169,9 +169,7 @@ def _free_form_content(document: ParsedDocument) -> Content:
             # Shaped exactly like the warned branch: storing bare text here
             # while every other branch stores the stable ID made one field
             # mean two things.
-            content["incomplete_work"] = [
-                f"[{item.identifier}] {item.text}" for item in existing
-            ]
+            content["incomplete_work"] = [f"[{item.identifier}] {item.text}" for item in existing]
     next_steps = _first_item(document, "Next Steps")
     if next_steps:
         content["next_steps"] = next_steps

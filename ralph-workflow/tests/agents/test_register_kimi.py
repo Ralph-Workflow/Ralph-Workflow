@@ -63,9 +63,7 @@ class TestKimiRegistrationAcrossDispatchTables:
     def test_strategy_dispatch_has_kimi(self) -> None:
         """``_STRATEGY_DISPATCH[AgentTransport.KIMI]`` is a callable factory."""
         factory = _STRATEGY_DISPATCH.get(AgentTransport.KIMI)
-        assert factory is not None, (
-            "_STRATEGY_DISPATCH is missing an entry for AgentTransport.KIMI"
-        )
+        assert factory is not None, "_STRATEGY_DISPATCH is missing an entry for AgentTransport.KIMI"
         assert callable(factory), f"_STRATEGY_DISPATCH[KIMI] is not callable: {factory!r}"
         # The kimi strategy factory must produce a BaseExecutionStrategy subclass
         # (NOT the abstract ``BaseExecutionStrategy`` itself, which would be a
@@ -89,9 +87,7 @@ class TestKimiRegistrationAcrossDispatchTables:
             f"Parser for AgentTransport.KIMI is not a KimiParser: {type(parser)}"
         )
         # Smoke check the parser has a parse() method (the AgentParser protocol).
-        assert hasattr(parser, "parse"), (
-            "Parser for AgentTransport.KIMI is missing parse() method"
-        )
+        assert hasattr(parser, "parse"), "Parser for AgentTransport.KIMI is missing parse() method"
 
 
 class TestKimiCatalogSeeding:

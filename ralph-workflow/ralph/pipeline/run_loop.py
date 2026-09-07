@@ -1426,9 +1426,7 @@ def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
         if not stage_paths(root, paths):
             logger.warning("integration resolution: could not stage the resolved paths")
             return False
-        return not [
-            path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"
-        ]
+        return not [path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"]
     except Exception as exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution: orphaned index resolution failed: {}", exc)
         return False
@@ -1632,7 +1630,9 @@ def _block_unresolved_integration(
     # it, were both refused by a record about neither. Ask the budget
     # (which compares the recorded conflict against the one on disk)
     # whether the exhaustion still binds; only then is stopping honest.
-    exhausted_still_binds = verdict.status is EXHAUSTED and _exhaustion_still_binds(ctx, state.rebase)
+    exhausted_still_binds = verdict.status is EXHAUSTED and _exhaustion_still_binds(
+        ctx, state.rebase
+    )
     if exhausted_still_binds:
         _announce_blocked_dispatch(ctx, verdict)
         _announce_deferred_startup_integration(ctx, state.rebase)
@@ -1748,9 +1748,7 @@ def _run_inner_loop_after_startup(
     # Initialize cycle timing for an older checkpoint resumed directly inside
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
-    state = initialize_legacy_cycle_on_resume(
-        state, ctx.policy_bundle.pipeline
-    )
+    state = initialize_legacy_cycle_on_resume(state, ctx.policy_bundle.pipeline)
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
@@ -1762,9 +1760,7 @@ def _run_inner_loop_after_startup(
         # Per-iteration pipeline_deps with the live providers so the
         # watchdog inside the agent invocation can consult the
         # classifier on every evaluate() call.
-        iter_pipeline_deps = _iteration_pipeline_deps(
-            ctx, _live_connectivity, _live_is_waiting
-        )
+        iter_pipeline_deps = _iteration_pipeline_deps(ctx, _live_connectivity, _live_is_waiting)
         runner_step = cast(
             "_RunPipelineStepFn", _runner_module.run_pipeline_step
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -2303,7 +2299,9 @@ def _execute_with_cleanup(
     state = initial_state
     started_at = time.monotonic()
     try:
-        display_scope = nullcontext(loop_ctx.active_display) if display_is_active else loop_ctx.active_display
+        display_scope = (
+            nullcontext(loop_ctx.active_display) if display_is_active else loop_ctx.active_display
+        )
         with display_scope:
             _emit_run_start(loop_ctx, state)
             if hasattr(loop_ctx.active_display, "begin_phase"):
@@ -2623,5 +2621,6 @@ def _start_pro_heartbeat_if_active(
     _watcher, client = _start_pro_marker_watcher(workspace_root)
     _ = _watcher
     return client
+
 
 resolve_initial_state = _resolve_initial_state

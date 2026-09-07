@@ -124,9 +124,7 @@ def _drive_step(
         timing_enabled: bool,
     ) -> PipelineState:
         captured.folded.append(delta_seconds)
-        return real_fold(
-            before, after, delta_seconds=delta_seconds, timing_enabled=timing_enabled
-        )
+        return real_fold(before, after, delta_seconds=delta_seconds, timing_enabled=timing_enabled)
 
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", _materialize)
     monkeypatch.setattr(
@@ -280,6 +278,4 @@ def test_the_step_hands_the_inline_effect_path_its_routing_timing(
 
     assert seen
     assert seen[0] is not None
-    assert seen[0].total_elapsed_seconds == pytest.approx(
-        _CONSUMED + _STEP_SECONDS, abs=2.0
-    )
+    assert seen[0].total_elapsed_seconds == pytest.approx(_CONSUMED + _STEP_SECONDS, abs=2.0)

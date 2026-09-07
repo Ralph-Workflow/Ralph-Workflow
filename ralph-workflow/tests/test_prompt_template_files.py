@@ -26,7 +26,12 @@ def test_planning_templates_use_standard_markdown_artifact_tools() -> None:
 
 
 def test_planning_partials_are_shared_by_every_authoring_variant() -> None:
-    for name in ("planning.jinja", "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja"):
+    for name in (
+        "planning.jinja",
+        "planning_fallback.jinja",
+        "planning_edit.jinja",
+        "planning_edit_fallback.jinja",
+    ):
         source = _source(name)
         assert "shared/_planning_thinking.j2" in source
         assert "shared/_planning_submission_mechanics.j2" in source

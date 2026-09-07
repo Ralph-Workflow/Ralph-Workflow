@@ -45,7 +45,10 @@ class ResolutionStatusReporter:
     def observe(self, event: object) -> None:
         """Publish a low-cadence status from a watchdog activity event."""
         now = self.clock()
-        if self._last_emitted_at is not None and now - self._last_emitted_at < self.interval_seconds:
+        if (
+            self._last_emitted_at is not None
+            and now - self._last_emitted_at < self.interval_seconds
+        ):
             return
         diagnostic = _status_diagnostic(event)
         kind = diagnostic.get("last_activity_kind", "none")
@@ -149,7 +152,9 @@ def _phase_label(
     replay_total: int | None = None,
 ) -> str:
     if replay_index is not None and replay_total is not None:
-        return f"{PHASE_LABEL} (commit {replay_index}/{replay_total}, round {round_index}/{round_cap})"
+        return (
+            f"{PHASE_LABEL} (commit {replay_index}/{replay_total}, round {round_index}/{round_cap})"
+        )
     if stop_index is None or stop_cap is None:
         return PHASE_LABEL
     return f"{PHASE_LABEL} (commit {stop_index}/{stop_cap}, round {round_index}/{round_cap})"
@@ -215,6 +220,8 @@ def _display_run_started_monotonic(display: object) -> float | None:
 def emit_conflict_phase_line(display: object, message: str) -> None:
     """Emit one operator-visible conflict-resolution transcript line."""
     with contextlib.suppress(Exception):
-        emit = cast("Callable[[str, str, str], None] | None", getattr(display, "emit_warn_line", None))
+        emit = cast(
+            "Callable[[str, str, str], None] | None", getattr(display, "emit_warn_line", None)
+        )
         if emit is not None:
             emit("run", _WARN_CHANNEL, message)

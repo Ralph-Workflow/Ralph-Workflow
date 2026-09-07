@@ -38,7 +38,8 @@ class BrokenAgentExitError(AgentInvocationError):
         super().__init__(
             agent_name,
             returncode,
-            stderr or f"agent appears broken: {context}; check credentials or provider availability",
+            stderr
+            or f"agent appears broken: {context}; check credentials or provider availability",
         )
 
 

@@ -35,6 +35,7 @@ _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 class TestReadLinesFromProcessWaitingOnChildDeferred:
     """_read_lines_from_process defers termination when classify_quiet returns WAITING_ON_CHILD."""
+
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None

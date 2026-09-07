@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 class _FakeManagedProcess:
     """In-memory process handle that supplies one completed output stream."""
+
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None

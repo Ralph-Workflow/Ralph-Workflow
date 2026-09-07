@@ -214,6 +214,7 @@ def build_agent_rebase_stop_resolver(
     Returns:
         The resolver callable. It never raises.
     """
+
     def _resolver(root: Path, target: str, stop: RebaseStop) -> bool:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"

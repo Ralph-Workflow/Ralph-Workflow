@@ -124,9 +124,7 @@ def _validate_and_materialize_support(
     is_builtin: bool = False,
     dynamic_alias_help: Callable[[], str] | None = None,
     dynamic_alias_help_prefix: tuple[str, ...] = (),
-    empty_output_diagnostic_factory: (
-        Callable[[list[str], Path | None], str | None] | None
-    ) = None,
+    empty_output_diagnostic_factory: (Callable[[list[str], Path | None], str | None] | None) = None,
     empty_output_diagnostic_prefix: tuple[str, ...] = (),
 ) -> AgentSupport:
     """Build an :class:`AgentSupport` from the registration kwargs.
@@ -199,9 +197,7 @@ def register_agent_support(
     no_default_session_flag: bool = False,
     dynamic_alias_help: Callable[[], str] | None = None,
     dynamic_alias_help_prefix: tuple[str, ...] = (),
-    empty_output_diagnostic_factory: (
-        Callable[[list[str], Path | None], str | None] | None
-    ) = None,
+    empty_output_diagnostic_factory: (Callable[[list[str], Path | None], str | None] | None) = None,
     empty_output_diagnostic_prefix: tuple[str, ...] = (),
 ) -> AgentConfig:
     """Register support for a new agent in one call.

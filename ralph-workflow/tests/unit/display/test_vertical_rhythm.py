@@ -56,9 +56,9 @@ _PANEL_CALL_RE = re.compile(r"^\s*(?:panel = )?Panel\(\s*$", re.MULTILINE)
 #: count that fails loudly on an *undocumented* regression rather than
 #: silently accepting an ever-growing, unexamined list.
 _DOCUMENTED_PANEL_EXCEPTION_COUNT = 3
+
+
 @pytest.mark.criteria("E-7")
-
-
 def test_parallel_display_panel_usage_stays_at_the_documented_exception_count() -> None:
     """E-7/DA-007: no more than the three documented, reasoned exceptions to
     "prefer a hairline rule to a full box" may exist in the routine render

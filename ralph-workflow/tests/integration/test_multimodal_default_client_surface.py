@@ -72,7 +72,11 @@ def _list_tool_names(server: McpServer, state: ServerState) -> set[str]:
     assert response is not None and response.result is not None
     tools = response.result["tools"]
     assert isinstance(tools, list)
-    return {tool["name"] for tool in tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)}
+    return {
+        tool["name"]
+        for tool in tools
+        if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+    }
 
 
 def test_mcp_multimodal_regression_default_harness_surface() -> None:

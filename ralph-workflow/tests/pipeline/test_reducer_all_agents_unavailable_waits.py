@@ -62,7 +62,9 @@ def test_agent_failure_waits_when_every_chain_agent_is_in_cooldown() -> None:
         },
     )
 
-    reduced_state, effects = reduce(state, PipelineEvent.AGENT_FAILURE, _minimal_policy(), recovery=controller)
+    reduced_state, effects = reduce(
+        state, PipelineEvent.AGENT_FAILURE, _minimal_policy(), recovery=controller
+    )
 
     assert reduced_state.phase == "development"
     assert reduced_state.is_waiting_state is True
@@ -90,7 +92,9 @@ def test_agent_failure_falls_over_when_an_agent_is_available() -> None:
         },
     )
 
-    reduced_state, _effects = reduce(state, PipelineEvent.AGENT_FAILURE, _minimal_policy(), recovery=controller)
+    reduced_state, _effects = reduce(
+        state, PipelineEvent.AGENT_FAILURE, _minimal_policy(), recovery=controller
+    )
     chain = reduced_state.chain_for_phase("development")
 
     assert chain is not None

@@ -201,9 +201,7 @@ def _iter_ledger_rows(ledger_path: Path) -> list[dict[str, object]]:
     return rows
 
 
-def collect_captures(
-    workspace_root: Path, secret: str | None
-) -> list[WireLedgerCapture]:
+def collect_captures(workspace_root: Path, secret: str | None) -> list[WireLedgerCapture]:
     """Return every verified capture row in ``workspace_root``'s wire ledger.
 
     S-9 / F5: the wire-ledger-backed view of every frame a real AGY
@@ -262,8 +260,7 @@ def render_capture_table_markdown(
             .isoformat()
         )
         lines.append(
-            f"| {capture.method} | {capture.tool_name or ''} | "
-            f"{capture.run_id} | {captured_at} |"
+            f"| {capture.method} | {capture.tool_name or ''} | {capture.run_id} | {captured_at} |"
         )
     return "\n".join(lines) + "\n"
 

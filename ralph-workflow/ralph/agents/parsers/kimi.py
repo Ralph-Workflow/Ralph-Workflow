@@ -284,7 +284,9 @@ class KimiParser(NdjsonParserBase):
         elif meta_type == "session.resume_hint":
             session_id = obj.get("session_id")
             content = content or (
-                f"kimi session {session_id}" if isinstance(session_id, str) and session_id else "kimi session"
+                f"kimi session {session_id}"
+                if isinstance(session_id, str) and session_id
+                else "kimi session"
             )
         else:
             content = content or f"kimi meta {meta_type or 'unknown'}"

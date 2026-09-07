@@ -33,8 +33,6 @@ class PhaseInvocationGate(_FrozenPolicyModel):
             "Execution result statuses that bypass the minimum-elapsed gate "
             "and always enter analysis (e.g. ['partial', 'failed']). "
             "Valid values are the closed vocabulary declared by the upstream "
-            "execution artifact: "
-            + ", ".join(EXECUTION_RESULT_STATUSES)
-            + "."
+            "execution artifact: " + ", ".join(EXECUTION_RESULT_STATUSES) + "."
         ),
     )

@@ -220,4 +220,3 @@ def test_force_exit_restores_terminal_before_calling_hard_exit() -> None:
         ("restore", None),
         ("exit", INTERRUPT_EXIT_CODE),
     ]
-

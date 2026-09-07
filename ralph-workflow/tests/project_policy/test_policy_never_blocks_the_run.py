@@ -281,15 +281,10 @@ def test_a_failing_capture_restore_does_not_block_the_run(
         "the run did not exercise the out-of-graph boundary"
     )
     delete_records = [r for r in debug_records if "capture restore is broken" in r]
-    assert delete_records, (
-        f"the restore failure was not logged at DEBUG level: {debug_records!r}"
-    )
-    assert rc == _EXIT_SUCCESS, (
-        f"a failing capture restore must not block the run; got rc={rc}"
-    )
+    assert delete_records, f"the restore failure was not logged at DEBUG level: {debug_records!r}"
+    assert rc == _EXIT_SUCCESS, f"a failing capture restore must not block the run; got rc={rc}"
     assert not any("failed unexpectedly" in line for line in emitted), (
-        f"the injected restore failure reached the module fault boundary: "
-        f"{emitted!r}"
+        f"the injected restore failure reached the module fault boundary: {emitted!r}"
     )
 
 

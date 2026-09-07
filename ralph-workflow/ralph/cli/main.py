@@ -596,7 +596,10 @@ def ensure_cli_terminal_restore(
         reg(restore_terminal)
         install_sanitizing_excepthook()
         _CLI_RESTORE_STATE.registered = True
-    if _CLI_RESTORE_STATE.signals_registered or threading.current_thread() is not threading.main_thread():
+    if (
+        _CLI_RESTORE_STATE.signals_registered
+        or threading.current_thread() is not threading.main_thread()
+    ):
         return
     getter = signal_getter if signal_getter is not None else signal.getsignal
     setter = signal_setter if signal_setter is not None else signal.signal
@@ -610,7 +613,9 @@ def ensure_cli_terminal_restore(
     for signum in signums:
         previous = getter(signum)
 
-        def _restore_then_delegate(received: int, frame: object, *, previous: object = previous) -> None:
+        def _restore_then_delegate(
+            received: int, frame: object, *, previous: object = previous
+        ) -> None:
             fd = _resolve_fd(None)
             if fd is not None:
                 with contextlib.suppress(Exception):
@@ -1897,8 +1902,7 @@ def _handle_commit_plumbing(
     if not (options.generate_commit_msg or options.generate_commit or options.show_commit_msg):
         return None
 
-    commit_plumbing(options=options, display_context=display_context)
-    return 0
+    return commit_plumbing(options=options, display_context=display_context)
 
 
 @dataclass(frozen=True)
@@ -2161,7 +2165,6 @@ def handle_check_config(
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
         return 1
-
 
 
 if __name__ == "__main__":

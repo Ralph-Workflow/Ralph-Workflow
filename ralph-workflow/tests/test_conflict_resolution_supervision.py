@@ -106,7 +106,9 @@ def test_conflict_resolution_regression_cap_is_disabled_by_default_and_named_whe
     assert capped.verdict() == "operator_cap_reached"
 
 
-def test_conflict_resolution_regression_activity_only_profile_ignores_elapsed_session_ceiling() -> None:
+def test_conflict_resolution_regression_activity_only_profile_ignores_elapsed_session_ceiling() -> (
+    None
+):
     """S-2/S-4: fresh MCP-only work outlives ordinary session ceiling math.
 
     This assertion was red before ``TimeoutProfile.ACTIVITY_ONLY`` was added:

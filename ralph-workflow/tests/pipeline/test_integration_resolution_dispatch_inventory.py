@@ -50,7 +50,9 @@ def test_dispatch_inventory_reconciles_every_named_route() -> None:
     """Every ordinary route delegates to the shared verdict or final fence."""
     assert inspect_integration_resolution.__module__ == "ralph.pipeline.integration_resolution"
     for route, owner in ORDINARY_DISPATCH_ROUTES:
-        assert owner in inspect.getsource(route), f"{route.__module__}.{route.__name__} lacks {owner}"
+        assert owner in inspect.getsource(route), (
+            f"{route.__module__}.{route.__name__} lacks {owner}"
+        )
 
 
 def test_every_live_effect_executor_caller_is_inventoried() -> None:

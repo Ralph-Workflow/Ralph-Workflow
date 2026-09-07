@@ -158,13 +158,9 @@ def test_cross_process_holder_blocks_start_and_reports_shared_awareness_consumer
     awareness status carries ``cause="cross_process_holder"`` and the owner
     id."""
     fake_lock = _FakeCrossProcessWatchLock(holder="proc-99:1")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
     fake_sidecar = _FakeSharedAwarenessSidecar()
     fake_sidecar.owner_id = "proc-99:1"
     fake_sidecar.paths = ["src/app.py"]
@@ -198,9 +194,7 @@ def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips(
     ``stop()`` calls ``release`` with that id; a second ``start()`` after
     release succeeds."""
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     observers: list[_FakeObserver] = []
 
     def _factory() -> _FakeObserver:
@@ -208,9 +202,7 @@ def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips(
         observers.append(observer)
         return observer
 
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", _factory
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", _factory)
 
     monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
     monitor.start()
@@ -244,13 +236,9 @@ def test_non_owner_stop_does_not_release_and_does_not_raise(
     """Non-owner stop: a monitor that never won the cross-process lock
     does NOT call ``release`` and does NOT raise."""
     fake_lock = _FakeCrossProcessWatchLock(holder="proc-99:1")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
 
     monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
     monitor.start()  # blocked by the cross-process holder
@@ -269,13 +257,9 @@ def test_shared_lease_releases_cross_process_lock_only_at_final_stop(
     shares the observer must leave the cross-process lock held; only the final
     matching ``stop()`` releases it."""
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
 
     # Monitor A: creates the shared watch and acquires the cross-process lock.
     monitor_a = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
@@ -313,13 +297,9 @@ def test_owner_publishes_source_changes_to_sidecar(
     shared sidecar (owner id, epoch bump, coalesced relative path) while
     Ralph-managed internal paths are excluded."""
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
     fake_sidecar = _FakeSharedAwarenessSidecar()
     monkeypatch.setattr(
         "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
@@ -353,19 +333,13 @@ def test_sidecar_write_failure_enters_live_fallback(
     from ralph.workspace._shared_awareness import SharedAwarenessError
 
     class _FailingSidecar(_FakeSharedAwarenessSidecar):
-        def publish_changes(
-            self, paths: list[str], *, overflowed: bool = False
-        ) -> int:
+        def publish_changes(self, paths: list[str], *, overflowed: bool = False) -> int:
             raise SharedAwarenessError("disk full")
 
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
     monkeypatch.setattr(
         "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
         lambda _root: _FailingSidecar(),
@@ -387,13 +361,9 @@ def test_consumer_sidecar_read_failure_enters_live_fallback(
     owner-reported error) enters bounded ``live_fallback`` instead of
     registering a duplicate observer."""
     fake_lock = _FakeCrossProcessWatchLock(holder="proc-99:1")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake
-    )
+    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
     fake_sidecar = _FakeSharedAwarenessSidecar()
     fake_sidecar.error = "corrupt sidecar"
     monkeypatch.setattr(

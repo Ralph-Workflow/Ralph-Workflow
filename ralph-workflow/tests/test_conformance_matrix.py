@@ -91,7 +91,10 @@ def _degraded(provenance: Provenance, detail: str) -> Evidence:
 
 
 def _full_evidence(provenance: Provenance) -> dict[str, Evidence]:
-    return {fact: _degraded(provenance, f"{fact} at {provenance.name}") for fact in CONFORMANCE_MATRIX_FACTS}
+    return {
+        fact: _degraded(provenance, f"{fact} at {provenance.name}")
+        for fact in CONFORMANCE_MATRIX_FACTS
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +103,9 @@ def _full_evidence(provenance: Provenance) -> dict[str, Evidence]:
 
 
 def test_update_conformance_matrix_adds_a_new_transport_row() -> None:
-    matrix = update_conformance_matrix({}, transport="agy", evidence=_full_evidence(Provenance.TRANSCRIPT))
+    matrix = update_conformance_matrix(
+        {}, transport="agy", evidence=_full_evidence(Provenance.TRANSCRIPT)
+    )
     assert set(matrix) == {"agy"}
     assert set(matrix["agy"]) == set(CONFORMANCE_MATRIX_FACTS)
 
@@ -112,16 +117,24 @@ def test_update_conformance_matrix_is_pure_and_does_not_mutate_input() -> None:
 
 
 def test_update_conformance_matrix_replaces_only_the_named_transport_row() -> None:
-    matrix = update_conformance_matrix({}, transport="agy", evidence=_full_evidence(Provenance.TRANSCRIPT))
-    matrix = update_conformance_matrix(matrix, transport="claude", evidence=_full_evidence(Provenance.WIRE))
+    matrix = update_conformance_matrix(
+        {}, transport="agy", evidence=_full_evidence(Provenance.TRANSCRIPT)
+    )
+    matrix = update_conformance_matrix(
+        matrix, transport="claude", evidence=_full_evidence(Provenance.WIRE)
+    )
     assert set(matrix) == {"agy", "claude"}
     assert all(ev.provenance is Provenance.TRANSCRIPT for ev in matrix["agy"].values())
     assert all(ev.provenance is Provenance.WIRE for ev in matrix["claude"].values())
 
 
 def test_update_conformance_matrix_a_later_run_replaces_the_earlier_row_wholesale() -> None:
-    matrix = update_conformance_matrix({}, transport="agy", evidence=_full_evidence(Provenance.HOST_SYNTHESIZED))
-    matrix = update_conformance_matrix(matrix, transport="agy", evidence=_full_evidence(Provenance.WIRE))
+    matrix = update_conformance_matrix(
+        {}, transport="agy", evidence=_full_evidence(Provenance.HOST_SYNTHESIZED)
+    )
+    matrix = update_conformance_matrix(
+        matrix, transport="agy", evidence=_full_evidence(Provenance.WIRE)
+    )
     assert all(ev.provenance is Provenance.WIRE for ev in matrix["agy"].values())
 
 
@@ -131,7 +144,9 @@ def test_update_conformance_matrix_a_later_run_replaces_the_earlier_row_wholesal
 # ---------------------------------------------------------------------------
 
 
-def test_render_conformance_matrix_markdown_has_one_row_per_transport_with_fact_by_fact_grade() -> None:
+def test_render_conformance_matrix_markdown_has_one_row_per_transport_with_fact_by_fact_grade() -> (
+    None
+):
     matrix = {
         "agy": _full_evidence(Provenance.TRANSCRIPT),
         "claude": _full_evidence(Provenance.WIRE),
@@ -239,7 +254,9 @@ def test_render_conformance_matrix_markdown_names_absent_for_an_unrecorded_fact(
     assert "ABSENT" in agy_row  # never blank -- an unproven fact must stay visible
 
 
-def test_render_conformance_matrix_markdown_reports_no_runs_recorded_yet_for_an_empty_matrix() -> None:
+def test_render_conformance_matrix_markdown_reports_no_runs_recorded_yet_for_an_empty_matrix() -> (
+    None
+):
     assert "No smoke runs recorded yet." in render_conformance_matrix_markdown({})
 
 
@@ -277,10 +294,16 @@ def test_record_conformance_matrix_accumulates_rows_across_separate_runs(
     workspace_root = tmp_path_factory.mktemp("smoke-matrix-ws")
     backend = _MemoryBackend()
     record_conformance_matrix(
-        workspace_root, transport="agy", evidence=_full_evidence(Provenance.TRANSCRIPT), backend=backend
+        workspace_root,
+        transport="agy",
+        evidence=_full_evidence(Provenance.TRANSCRIPT),
+        backend=backend,
     )
     md_path = record_conformance_matrix(
-        workspace_root, transport="claude", evidence=_full_evidence(Provenance.WIRE), backend=backend
+        workspace_root,
+        transport="claude",
+        evidence=_full_evidence(Provenance.WIRE),
+        backend=backend,
     )
     json_path, _ = conformance_matrix_paths(workspace_root)
     matrix = load_conformance_matrix(json_path, backend=backend)
@@ -296,7 +319,10 @@ def test_record_conformance_matrix_a_rerun_of_the_same_transport_replaces_its_ro
     workspace_root = tmp_path_factory.mktemp("smoke-matrix-ws")
     backend = _MemoryBackend()
     record_conformance_matrix(
-        workspace_root, transport="agy", evidence=_full_evidence(Provenance.HOST_SYNTHESIZED), backend=backend
+        workspace_root,
+        transport="agy",
+        evidence=_full_evidence(Provenance.HOST_SYNTHESIZED),
+        backend=backend,
     )
     record_conformance_matrix(
         workspace_root, transport="agy", evidence=_full_evidence(Provenance.WIRE), backend=backend

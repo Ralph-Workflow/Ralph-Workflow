@@ -39,15 +39,21 @@ def test_cycle_timebox_warning_absent_when_option_is_none(
                 transitions=PhaseTransition(on_success="complete"),
             ),
             "complete": PhaseDefinition(
-                drain="complete", role="terminal", terminal_outcome="success",
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
                 transitions=PhaseTransition(on_success="complete"),
             ),
         },
-        entry_phase="development", terminal_phase="complete",
+        entry_phase="development",
+        terminal_phase="complete",
     )
     ctx = PromptPhaseContext(
-        phase="development", workspace=ws, pipeline_policy=p,
-        session_caps=caps, workspace_root=tmp_path,
+        phase="development",
+        workspace=ws,
+        pipeline_policy=p,
+        session_caps=caps,
+        workspace_root=tmp_path,
     )
     monkeypatch.setattr(
         "ralph.prompts.materialize._render_prompt_for_phase",
@@ -68,19 +74,26 @@ def test_cycle_timebox_warning_present_when_option_set(
     p = PipelinePolicy(
         phases={
             "development": PhaseDefinition(
-                drain="development_result", role="execution",
+                drain="development_result",
+                role="execution",
                 transitions=PhaseTransition(on_success="complete"),
             ),
             "complete": PhaseDefinition(
-                drain="complete", role="terminal", terminal_outcome="success",
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
                 transitions=PhaseTransition(on_success="complete"),
             ),
         },
-        entry_phase="development", terminal_phase="complete",
+        entry_phase="development",
+        terminal_phase="complete",
     )
     ctx = PromptPhaseContext(
-        phase="development", workspace=ws, pipeline_policy=p,
-        session_caps=caps, workspace_root=tmp_path,
+        phase="development",
+        workspace=ws,
+        pipeline_policy=p,
+        session_caps=caps,
+        workspace_root=tmp_path,
     )
     warning = {
         "elapsed_seconds": 5760.0,
@@ -94,7 +107,8 @@ def test_cycle_timebox_warning_present_when_option_set(
     )
     rendered = ws.read(
         materialize_prompt_for_phase(
-            ctx, PromptPhaseOptions(cycle_timebox_warning=warning),
+            ctx,
+            PromptPhaseOptions(cycle_timebox_warning=warning),
         )
     )
     assert "Cycle Timebox Warning" in rendered
@@ -108,12 +122,14 @@ def test_cycle_timebox_warning_present_when_option_set(
 
 def test_format_warning_exact_threshold_24min_under_defaults() -> None:
     """At exactly 80% of the default 7200s budget, the wording shows 24 min remaining."""
-    text = _format_cycle_timebox_warning({
-        "elapsed_seconds": 5760.0,
-        "remaining_seconds": 1440.0,
-        "duration_seconds": 7200.0,
-        "finalization_target": "development_final_commit_cleanup",
-    })
+    text = _format_cycle_timebox_warning(
+        {
+            "elapsed_seconds": 5760.0,
+            "remaining_seconds": 1440.0,
+            "duration_seconds": 7200.0,
+            "finalization_target": "development_final_commit_cleanup",
+        }
+    )
     assert "96 minutes" in text
     assert "120-minute" in text
     assert "24 minutes" in text
@@ -136,18 +152,22 @@ def test_format_warning_exact_threshold_24min_under_defaults() -> None:
 
 def test_format_warning_updates_for_later_elapsed() -> None:
     """At 90% elapsed the remaining time is smaller than at 80%."""
-    text_80 = _format_cycle_timebox_warning({
-        "elapsed_seconds": 5760.0,
-        "remaining_seconds": 1440.0,
-        "duration_seconds": 7200.0,
-        "finalization_target": "development_final_commit_cleanup",
-    })
-    text_90 = _format_cycle_timebox_warning({
-        "elapsed_seconds": 6480.0,
-        "remaining_seconds": 720.0,
-        "duration_seconds": 7200.0,
-        "finalization_target": "development_final_commit_cleanup",
-    })
+    text_80 = _format_cycle_timebox_warning(
+        {
+            "elapsed_seconds": 5760.0,
+            "remaining_seconds": 1440.0,
+            "duration_seconds": 7200.0,
+            "finalization_target": "development_final_commit_cleanup",
+        }
+    )
+    text_90 = _format_cycle_timebox_warning(
+        {
+            "elapsed_seconds": 6480.0,
+            "remaining_seconds": 720.0,
+            "duration_seconds": 7200.0,
+            "finalization_target": "development_final_commit_cleanup",
+        }
+    )
     assert "24 minutes" in text_80
     assert "12 minutes" in text_90  # 720s = 12 min
     assert "108 minutes" in text_90  # 6480s = 108 min
@@ -155,12 +175,14 @@ def test_format_warning_updates_for_later_elapsed() -> None:
 
 def test_format_warning_custom_finalization_target() -> None:
     """Custom phase names appear in the warning text."""
-    text = _format_cycle_timebox_warning({
-        "elapsed_seconds": 480.0,
-        "remaining_seconds": 120.0,
-        "duration_seconds": 600.0,
-        "finalization_target": "my_custom_cleanup",
-    })
+    text = _format_cycle_timebox_warning(
+        {
+            "elapsed_seconds": 480.0,
+            "remaining_seconds": 120.0,
+            "duration_seconds": 600.0,
+            "finalization_target": "my_custom_cleanup",
+        }
+    )
     assert "my_custom_cleanup" in text
     assert "10-minute" in text  # 600s = 10 min
     assert "2 minutes" in text  # 120s = 2 min remaining

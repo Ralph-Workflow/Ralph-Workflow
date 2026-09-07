@@ -67,9 +67,9 @@ def test_palette_solve_stats_counts_one_real_solve_per_distinct_surface() -> Non
     hits, real_solves = palette_solve_stats()
     assert real_solves == 3, (hits, real_solves)
     assert hits == 0, (hits, real_solves)
+
+
 @pytest.mark.criteria("F-2")
-
-
 def test_render_scene_does_not_solve_palette_per_rendered_row() -> None:
     """F-2: ``render_scene`` for a clean_run costs one real solve per
     distinct surface the scene paints, not one per rendered row.

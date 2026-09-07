@@ -213,101 +213,101 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
         ToolSpec(
             metadata=_metadata(
                 name=READ_IMAGE_TOOL,
-                    description=(
-                        "Read an image file and return it as a base64-encoded content block. "
-                        "Requires MediaRead capability and explicit media support enablement. "
-                        "Required param: path (string, relative or absolute path). "
-                        "Optional param: format ('inline'|'metadata', default 'inline'). "
-                        "``format='inline'`` returns the image content block with base64 data "
-                        "and MIME type. ``format='metadata'`` returns a bounded JSON "
-                        "envelope with mime_type, size_bytes, sha256, width, height, and "
-                        "an ``inline_only`` flag; no image bytes are echoed inline. "
-                        "Supported formats: png, jpg, jpeg, gif, webp. "
-                        'Example: {"path": "docs/screenshot.png"} returns the image as base64.'
-                    ),
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "path": {
-                                "type": "string",
-                                "description": (
-                                    "File path as a string, relative or absolute inside "
-                                    "the workspace (example values: 'docs/screenshot.png')."
-                                ),
-                            },
-                            "format": {
-                                "type": "string",
-                                "enum": ["inline", "metadata"],
-                                "description": (
-                                    "Output shape. ``inline`` returns the "
-                                    "image content block (base64 + MIME); "
-                                    "``metadata`` returns a bounded JSON "
-                                    "envelope with size, sha256, width, "
-                                    "height, and an ``inline_only`` flag."
-                                ),
-                                "default": "inline",
-                            },
-                        },
-                        "required": ["path"],
-                    },
-                    required_capability=Capability.MEDIA_READ.value,
+                description=(
+                    "Read an image file and return it as a base64-encoded content block. "
+                    "Requires MediaRead capability and explicit media support enablement. "
+                    "Required param: path (string, relative or absolute path). "
+                    "Optional param: format ('inline'|'metadata', default 'inline'). "
+                    "``format='inline'`` returns the image content block with base64 data "
+                    "and MIME type. ``format='metadata'`` returns a bounded JSON "
+                    "envelope with mime_type, size_bytes, sha256, width, height, and "
+                    "an ``inline_only`` flag; no image bytes are echoed inline. "
+                    "Supported formats: png, jpg, jpeg, gif, webp. "
+                    'Example: {"path": "docs/screenshot.png"} returns the image as base64.'
                 ),
-                module_name="ralph.mcp.tools.workspace",
-                handler_name="handle_read_image",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "File path as a string, relative or absolute inside "
+                                "the workspace (example values: 'docs/screenshot.png')."
+                            ),
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["inline", "metadata"],
+                            "description": (
+                                "Output shape. ``inline`` returns the "
+                                "image content block (base64 + MIME); "
+                                "``metadata`` returns a bounded JSON "
+                                "envelope with size, sha256, width, "
+                                "height, and an ``inline_only`` flag."
+                            ),
+                            "default": "inline",
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability=Capability.MEDIA_READ.value,
             ),
-        )
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_read_image",
+        ),
+    )
     specs.append(
         ToolSpec(
             metadata=_metadata(
                 name=READ_MEDIA_TOOL,
-                    description=(
-                        "Read a media file and return the appropriate content block. "
-                        "Supports images, PDFs, audio, video, and visually meaningful documents. "
-                        "Required param: path (string, relative or absolute path). "
-                        "Optional param: format ('inline'|'metadata', default 'inline'). "
-                        "``format='inline'`` returns the same block the legacy tool "
-                        "returns: image content block for supported inline images; "
-                        "resource_reference block for PDFs, audio, video, documents, "
-                        "or oversized images. ``format='metadata'`` returns a bounded "
-                        "JSON envelope (mime_type, size_bytes, sha256, modality, "
-                        "resource_handle) and does NOT echo inline media bytes; the "
-                        "artifact is retrievable via ``resources/read`` on the returned "
-                        "handle. "
-                        'Example: {"path": "docs/report.pdf"} returns a resource_reference '
-                        "block; ``format='metadata'`` returns bounded metadata only."
-                    ),
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "path": {
-                                "type": "string",
-                                "description": (
-                                    "File path as a string, relative or absolute inside "
-                                    "the workspace (example values: 'docs/report.pdf', "
-                                    "'audio/clip.mp3', 'screenshot.png')."
-                                ),
-                            },
-                            "format": {
-                                "type": "string",
-                                "enum": ["inline", "metadata"],
-                                "description": (
-                                    "Output shape. ``inline`` returns the "
-                                    "same block the legacy tool returns; "
-                                    "``metadata`` returns a bounded JSON "
-                                    "envelope with size, sha256, modality, "
-                                    "and a replayable resource handle."
-                                ),
-                                "default": "inline",
-                            },
-                        },
-                        "required": ["path"],
-                    },
-                    required_capability=Capability.MEDIA_READ.value,
+                description=(
+                    "Read a media file and return the appropriate content block. "
+                    "Supports images, PDFs, audio, video, and visually meaningful documents. "
+                    "Required param: path (string, relative or absolute path). "
+                    "Optional param: format ('inline'|'metadata', default 'inline'). "
+                    "``format='inline'`` returns the same block the legacy tool "
+                    "returns: image content block for supported inline images; "
+                    "resource_reference block for PDFs, audio, video, documents, "
+                    "or oversized images. ``format='metadata'`` returns a bounded "
+                    "JSON envelope (mime_type, size_bytes, sha256, modality, "
+                    "resource_handle) and does NOT echo inline media bytes; the "
+                    "artifact is retrievable via ``resources/read`` on the returned "
+                    "handle. "
+                    'Example: {"path": "docs/report.pdf"} returns a resource_reference '
+                    "block; ``format='metadata'`` returns bounded metadata only."
                 ),
-                module_name="ralph.mcp.tools.workspace",
-                handler_name="handle_read_media",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "File path as a string, relative or absolute inside "
+                                "the workspace (example values: 'docs/report.pdf', "
+                                "'audio/clip.mp3', 'screenshot.png')."
+                            ),
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["inline", "metadata"],
+                            "description": (
+                                "Output shape. ``inline`` returns the "
+                                "same block the legacy tool returns; "
+                                "``metadata`` returns a bounded JSON "
+                                "envelope with size, sha256, modality, "
+                                "and a replayable resource handle."
+                            ),
+                            "default": "inline",
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability=Capability.MEDIA_READ.value,
             ),
-        )
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_read_media",
+        ),
+    )
     specs.append(
         ToolSpec(
             metadata=_metadata(

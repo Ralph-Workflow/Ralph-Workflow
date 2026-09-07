@@ -87,7 +87,9 @@ def test_design_verdict_submission_accepts_only_active_run_ledger_captures(tmp_p
     assert result.is_error is False
 
 
-def test_design_verdict_submission_rejects_foreign_or_missing_ledger_captures(tmp_path: Path) -> None:
+def test_design_verdict_submission_rejects_foreign_or_missing_ledger_captures(
+    tmp_path: Path,
+) -> None:
     """S-4: unminted or another run's handles cannot back a verdict."""
     secret = "artifact-ledger-secret"
     append_wire_record(

@@ -148,14 +148,12 @@ def test_phases_dropped_by_the_cap_are_announced_in_both_sections() -> None:
 
 
 def test_dropping_every_timing_is_not_reported_as_recording_none() -> None:
-    """"None were recorded" and "all were dropped" are different facts."""
+    """ "None were recorded" and "all were dropped" are different facts."""
     state = PipelineState(
         phase="development",
         # Long phase names plus eight max-length findings crowd the phase
         # list out of the 1600-character budget entirely.
-        phase_timings=tuple(
-            _timed(f"phase_{index}_" + "n" * 70, 100) for index in range(6)
-        ),
+        phase_timings=tuple(_timed(f"phase_{index}_" + "n" * 70, 100) for index in range(6)),
     )
 
     report = render_run_time_report(

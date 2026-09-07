@@ -64,9 +64,7 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
     # takes effect for the lazy import.
     # Reference the name so the import isn't flagged as unused.
     _ = install_project_baseline_skills
-    monkeypatch.setattr(
-        "ralph.skills._installer._project_skills_need_install", lambda _root: False
-    )
+    monkeypatch.setattr("ralph.skills._installer._project_skills_need_install", lambda _root: False)
     monkeypatch.setattr(
         "ralph.skills._installer.install_project_baseline_skills",
         lambda _root: ({}, []),
@@ -110,9 +108,13 @@ def test_init_ownership_warning_uses_configured_target(
     monkeypatch.setattr(
         init_module,
         "_load_config_loader",
-        lambda: lambda *_args, **_kwargs: type(
-            "Config", (), {"general": type("General", (), {"auto_integrate_target": "release"})()}
-        )(),
+        lambda: (
+            lambda *_args, **_kwargs: type(
+                "Config",
+                (),
+                {"general": type("General", (), {"auto_integrate_target": "release"})()},
+            )()
+        ),
     )
     monkeypatch.setattr(
         init_module,

@@ -190,9 +190,7 @@ def _collect_read_provenance(
                     target.id for target in node.targets if isinstance(target, ast.Name)
                 )
             for target in node.targets:
-                _assign_target_names(
-                    node.value, target, path_names, constructor_names, scope=scope
-                )
+                _assign_target_names(node.value, target, path_names, constructor_names, scope=scope)
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             if (
                 isinstance(node.value, ast.Name)
@@ -295,7 +293,9 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
     marker_lines = _marker_line_indices(source)
     nodes = list(ast.walk(tree))
     parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
-    path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(tree, parents)
+    path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(
+        tree, parents
+    )
 
     violations: list[FilesystemReadViolation] = []
     for node in nodes:

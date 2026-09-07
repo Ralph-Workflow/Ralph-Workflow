@@ -41,7 +41,6 @@ _EXPECTED_WARNING_TO_DEADLINE = 1440.0
 _CLOCK_TOLERANCE_SECONDS = 30.0
 
 
-
 @lru_cache(maxsize=1)
 def _bundle() -> object:
     """Load the bundled policy once; these tests share a hard time budget."""
@@ -98,9 +97,7 @@ def test_guarded_invocation_publishes_warning_and_deadline_epochs(
 
     warn_epoch = float(os.environ[CYCLE_WARN_EPOCH_ENV])
     deadline_epoch = float(os.environ[CYCLE_DEADLINE_EPOCH_ENV])
-    assert (
-        abs((warn_epoch - before) - _EXPECTED_SECONDS_TO_WARNING) < _CLOCK_TOLERANCE_SECONDS
-    )
+    assert abs((warn_epoch - before) - _EXPECTED_SECONDS_TO_WARNING) < _CLOCK_TOLERANCE_SECONDS
     assert (
         abs((deadline_epoch - warn_epoch) - _EXPECTED_WARNING_TO_DEADLINE)
         < _CLOCK_TOLERANCE_SECONDS
@@ -133,9 +130,7 @@ def test_deadline_is_withdrawn_once_the_cycle_concludes(
         cycle_timebox_consumed_seconds=7200.0,
     )
 
-    _materialize(
-        "development_final_commit_cleanup", state, tmp_path, cycle_total_elapsed=7200.0
-    )
+    _materialize("development_final_commit_cleanup", state, tmp_path, cycle_total_elapsed=7200.0)
 
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
 
@@ -234,9 +229,7 @@ def test_fan_out_publishes_the_deadline_for_its_workers(
         cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
     )
 
-    runner_module.publish_cycle_deadline_env(
-        state, "development", _bundle(), _ELAPSED_SECONDS
-    )
+    runner_module.publish_cycle_deadline_env(state, "development", _bundle(), _ELAPSED_SECONDS)
 
     assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
     assert os.environ[CYCLE_FINALIZATION_TARGET_ENV] == "development_final_commit_cleanup"
@@ -255,7 +248,6 @@ def test_fan_out_withdraws_a_stale_deadline_when_no_cycle_runs(
     )
 
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
-
 
 
 def test_finalizing_an_agent_invocation_keeps_the_deadline_readable(
@@ -492,8 +484,7 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
         runner_module,
         "_integrate_after_fan_out",
         lambda **kwargs: (
-            integration_saw.append(os.environ.get(CYCLE_DEADLINE_EPOCH_ENV))
-            or kwargs["state"]
+            integration_saw.append(os.environ.get(CYCLE_DEADLINE_EPOCH_ENV)) or kwargs["state"]
         ),
     )
 
@@ -515,9 +506,7 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
         pipeline_deps=None,
         registry=MagicMock(),
         display_context=None,
-        routing_timing=runner_module.RoutingTiming(
-            total_elapsed_seconds=_ELAPSED_SECONDS
-        ),
+        routing_timing=runner_module.RoutingTiming(total_elapsed_seconds=_ELAPSED_SECONDS),
     )
 
     assert len(published) == 1

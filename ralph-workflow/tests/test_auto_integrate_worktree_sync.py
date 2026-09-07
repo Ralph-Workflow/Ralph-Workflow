@@ -178,7 +178,10 @@ def test_reclaim_regression_prunes_expired_and_excess_snapshot_refs(
         "HEAD",
         "-m",
         "old snapshot",
-        env={"GIT_AUTHOR_DATE": "2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2000-01-01T00:00:00Z"},
+        env={
+            "GIT_AUTHOR_DATE": "2000-01-01T00:00:00Z",
+            "GIT_COMMITTER_DATE": "2000-01-01T00:00:00Z",
+        },
     ).stdout.strip()
     assert _run(tmp_git_repo, "update-ref", old_ref, old_commit).returncode == 0
     assert _run(tmp_git_repo, "update-ref", other_ref, "HEAD").returncode == 0
@@ -199,9 +202,12 @@ def test_reclaim_regression_prunes_expired_and_excess_snapshot_refs(
     assert reclamation.snapshot_ref in refs
     assert old_ref not in refs
     assert len(refs) <= reclaim_module._RECLAIM_REF_MAX_COUNT
-    assert other_ref in _run(
-        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim/other-target/"
-    ).stdout.splitlines()
+    assert (
+        other_ref
+        in _run(
+            tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim/other-target/"
+        ).stdout.splitlines()
+    )
 
 
 def test_dirty_checked_out_target_snapshots_then_lands(
@@ -228,7 +234,9 @@ def test_dirty_checked_out_target_snapshots_then_lands(
     assert dirty_file.read_text(encoding="utf-8") == "feature\n"
     assert (tmp_git_repo / "feature.txt").exists()
     assert _run(tmp_git_repo, "status", "--porcelain").stdout == ""
-    snapshots = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim").stdout
+    snapshots = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-reclaim"
+    ).stdout
     assert f"refs/ralph-reclaim/{main}/" in snapshots
 
 

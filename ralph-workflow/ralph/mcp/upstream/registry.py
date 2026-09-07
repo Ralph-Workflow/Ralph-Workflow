@@ -167,7 +167,9 @@ class UpstreamRegistry:
         them, which is precisely when a guard has to hold.
         """
         if isinstance(raw_result, (list, tuple)):
-            blocks: list[object] = list(cast("Sequence[object]", raw_result))  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            blocks: list[object] = list(
+                cast("Sequence[object]", raw_result)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(
                 wrapper, proxied.server_name, proxied.tool.name, session, workspace

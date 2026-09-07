@@ -262,7 +262,6 @@ def reset_raw_overflow_path_state() -> None:
         _CAP_WARNED.clear()
 
 
-
 # Executables whose FIRST POSITIONAL argument selects the agent runtime
 # rather than a subcommand of one. ``ccs`` is a multiplexer: the registry
 # synthesizes ``cmd="ccs <alias>"`` for every ``ccs/<alias>`` name (see
@@ -320,7 +319,9 @@ def _invocation_signature(config: AgentConfig, model: str | None) -> str:
     string. The ``\x00`` separator is belt-and-braces on top of that.
     """
     fields = sorted(type(config).model_fields)
-    parts = [f"{name}={_signature_token(cast('object', getattr(config, name, None)))}" for name in fields]
+    parts = [
+        f"{name}={_signature_token(cast('object', getattr(config, name, None)))}" for name in fields
+    ]
     parts.append(f"resolved_model={model or ''}")
     return "\x00".join(parts)
 
@@ -749,9 +750,7 @@ class RawOverflowLog:
                     return False
                 if self._fh is None:
                     if self._needs_live_claim:
-                        self._first_write = not _is_live_foreign_capture(
-                            self.path, self._path_key
-                        )
+                        self._first_write = not _is_live_foreign_capture(self.path, self._path_key)
                         self._needs_live_claim = False
                     # filesystem-write-ok: bounded binary overflow stream directory creation
                     self.path.parent.mkdir(parents=True, exist_ok=True)

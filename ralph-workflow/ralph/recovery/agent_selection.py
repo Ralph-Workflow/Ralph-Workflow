@@ -40,9 +40,7 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
         if index == selected_index:
             continue
         if cooldown_ms_remaining > 0:
-            skipped_reasons.append(
-                (agent, f"cooldown ({cooldown_ms_remaining}ms remaining)")
-            )
+            skipped_reasons.append((agent, f"cooldown ({cooldown_ms_remaining}ms remaining)"))
         elif not available:
             skipped_reasons.append((agent, "unavailable"))
         elif spent:
@@ -55,11 +53,13 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
 
 def format_selection_evidence(phase: str, selection: AgentSelection) -> str:
     """Format a selection decision as one operator-readable transcript line."""
-    skipped = "; ".join(
-        f"{agent}: {reason}" for agent, reason in selection.skipped_reasons
-    )
+    skipped = "; ".join(f"{agent}: {reason}" for agent, reason in selection.skipped_reasons)
     if selection.agent is None:
-        return f"Phase {phase}: No selectable agent (skipped {skipped})" if skipped else f"Phase {phase}: No selectable agent"
+        return (
+            f"Phase {phase}: No selectable agent (skipped {skipped})"
+            if skipped
+            else f"Phase {phase}: No selectable agent"
+        )
     return (
         f"Phase {phase}: Selected agent {selection.agent} (skipped {skipped})"
         if skipped

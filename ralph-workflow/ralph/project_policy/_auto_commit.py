@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.git.commit_result import CommitCreationResult
 from ralph.git.operations import stage_files
 from ralph.git.scoped_auto_commit import (
     commit_scoped_updates,
@@ -26,6 +27,15 @@ from ralph.project_policy import markers
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
+
+    from ralph.git.commit_result import CommitCreationResult
+
+    class _CreateCommitFn(Protocol):
+        def __call__(
+            self, repo_root: Path | str, message: str, *, expected_head: str
+        ) -> CommitCreationResult: ...
+
 
 # The deterministic conventional-commit subject line.
 POLICY_AUTO_COMMIT_SUBJECT: str = "chore(policy): sync project-policy readiness"
@@ -86,7 +96,7 @@ def _build_body(dirty_paths: list[str]) -> str:
 
 def commit_policy_updates(
     repo_root: Path | str,
-    create_commit_fn: Callable[[Path | str, str], str],
+    create_commit_fn: _CreateCommitFn,
     *,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
     pre_run_dirty: frozenset[str] | None = None,

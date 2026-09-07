@@ -159,9 +159,7 @@ def test_phase_verdict_names_the_terminal_transport_failure(
     assert "agent turn failed at the transport" in message, message
 
 
-def test_phase_verdict_quotes_the_api_rejection(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_phase_verdict_quotes_the_api_rejection(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The operator needs the actual cause, not just a category."""
     _write_turn_failed_raw_log(tmp_path)
 

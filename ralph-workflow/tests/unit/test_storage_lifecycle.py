@@ -60,9 +60,7 @@ def test_cleanup_plan_only_selects_recreatable_inactive_storage(tmp_path: Path) 
     _write(tmp_path / ".agent" / "tmp" / "old-run" / "scratch.txt")
     _write(tmp_path / ".agent" / "tmp" / "active-run" / "scratch.txt")
 
-    candidates = plan_cleanup(
-        inventory_storage(tmp_path), keep_run_ids=frozenset({"active-run"})
-    )
+    candidates = plan_cleanup(inventory_storage(tmp_path), keep_run_ids=frozenset({"active-run"}))
 
     assert {(candidate["category"], candidate["path"].name) for candidate in candidates} == {
         ("workspace_intelligence", "ralph-explore"),
@@ -263,13 +261,10 @@ def test_ast_discovery_finds_the_canonical_writer_literals() -> None:
 def test_every_accumulating_literal_maps_to_an_inventory_entry(tmp_path: Path) -> None:
     """W7: every discovered writer-path literal resolves under an inventory path."""
     inventory = inventory_storage(tmp_path)
-    inventory_paths = tuple(
-        path for entry in inventory for path in entry["paths"]
-    )
+    inventory_paths = tuple(path for entry in inventory for path in entry["paths"])
     for literal, source in _iter_accumulating_literals():
         assert _inventory_covers(literal, inventory_paths), (
-            f"accumulating literal {literal!r} from {source} is not covered by "
-            "inventory_storage"
+            f"accumulating literal {literal!r} from {source} is not covered by inventory_storage"
         )
 
 

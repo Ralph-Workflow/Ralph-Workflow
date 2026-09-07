@@ -48,4 +48,6 @@ def test_visual_lifecycle_regression_runner_retains_before_and_recaptures_after(
     assert agent_result == "agent result"
     assert retained_before is before
     assert fresh_after is after
-    assert lifecycle.require_before_set(target=target, matrix_key="a" * 64).cell_ids == before.cell_ids
+    assert (
+        lifecycle.require_before_set(target=target, matrix_key="a" * 64).cell_ids == before.cell_ids
+    )

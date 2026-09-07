@@ -31,11 +31,14 @@ def test_request_changes_requires_a_step_or_plan_level_target() -> None:
 
 
 def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> None:
-    document = _decision("The implementation omits a required negative test.").replace(
-        "planning_analysis_decision", "development_analysis_decision"
-    ).replace("PA-001", "DA-001").replace(
-        "Location: plan step.\n## Criterion",
-        "Location: src/example.py:1. Remaining work: add the missing negative test.\n## Criterion",
+    document = (
+        _decision("The implementation omits a required negative test.")
+        .replace("planning_analysis_decision", "development_analysis_decision")
+        .replace("PA-001", "DA-001")
+        .replace(
+            "Location: plan step.\n## Criterion",
+            "Location: src/example.py:1. Remaining work: add the missing negative test.\n## Criterion",
+        )
     )
 
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
@@ -68,6 +71,7 @@ def test_verification_decision_rejects_a_finding_without_evidence_fields() -> No
         ("ANALYSIS005", "error"),
         ("ANALYSIS005", "error"),
     ]
+
 
 def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None:
     document = _decision("The rollout risk is unaddressed.").replace(
@@ -162,7 +166,9 @@ status: completed
 - [PR-002] Criterion: the fact is current. Expected observation: the location matches. Verdict: met. Location: policy.md:11.
 """
 
-    content, diagnostics = parse_and_validate(document, get_spec("policy_remediation_analysis_decision"))
+    content, diagnostics = parse_and_validate(
+        document, get_spec("policy_remediation_analysis_decision")
+    )
 
     assert content == {}
     assert [item.rule_id for item in diagnostics] == ["ANALYSIS008", "ANALYSIS005"]
@@ -204,7 +210,10 @@ status: request_changes
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS007", "error"), ("ANALYSIS018", "error")]
+    assert [(item.rule_id, item.severity) for item in diagnostics] == [
+        ("ANALYSIS007", "error"),
+        ("ANALYSIS018", "error"),
+    ]
 
 
 def test_not_evaluable_verdict_requires_failed_status() -> None:

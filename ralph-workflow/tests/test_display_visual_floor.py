@@ -107,7 +107,9 @@ def _assert_complete_token_classes(style_type: type[object]) -> None:
     # tokens resolved to a colour-less style that Rich then hardcodes to a
     # fixed, non-adaptive black).
     colourless = [
-        token for token in _REQUIRED_TOKENS if style_type.style_for_token(token).get("color") is None
+        token
+        for token in _REQUIRED_TOKENS
+        if style_type.style_for_token(token).get("color") is None
     ]
     if colourless:
         raise AssertionError(f"syntax token classes resolve to no colour: {colourless}")
@@ -137,9 +139,9 @@ def test_visual_floor_named_colour_categories_have_distinct_fixed_foregrounds() 
     dark = theme.theme_for_background(False)
     assert str(dark.styles["theme.diff.added"]) != str(dark.styles["theme.status.success"])
     assert str(dark.styles["theme.diff.removed"]) != str(dark.styles["theme.status.error"])
+
+
 @pytest.mark.criteria("C-6")
-
-
 def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
     """S-3: semantic chrome retains an identifiable hue, not dim-only styling."""
     semantic_roles = (
@@ -175,9 +177,9 @@ def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface()
         assert theme.contrast_ratio(dark_hex, "#000000") >= CONTRAST_FLOOR, role
         assert theme.contrast_ratio(light_hex, "#FFFFFF") >= CONTRAST_FLOOR, role
         assert dark_hex != light_hex, role
+
+
 @pytest.mark.criteria("C-2")
-
-
 def test_visual_floor_unknown_background_theme_roles_clear_both_possible_terminal_surfaces() -> (
     None
 ):
@@ -241,7 +243,6 @@ def test_visual_floor_regression_measured_dark_background_emits_vivid_activity_c
     assert expected_escape in stream.getvalue()
 
 
-
 def test_visual_floor_error_event_resolves_identity_against_light_background() -> None:
     """S-3 regression: error-line identities use the resolved light palette."""
     context = make_display_context(env={"RALPH_TERMINAL_BG": "light"})
@@ -299,9 +300,9 @@ def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
     # than coupling to Rich's specific escape-format choice.
     assert "\x1b[38;" in rendered
     assert "\x1b[48;" not in rendered  # S-3 floor: never paint a background band by accident
+
+
 @pytest.mark.criteria("C-4")
-
-
 def test_visual_floor_cli_status_and_warning_keep_semantic_colour_and_plain_labels() -> None:
     """S-3: CLI status surfaces never fall back to terminal-default foreground."""
     colour_stream = StringIO()
@@ -378,15 +379,15 @@ def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
     bad["waiting"] = ("dim", "?", "WAIT")
     with pytest.raises(AssertionError, match="no fixed foreground"):
         _assert_palette_contrast(bad, ("#000000",))
+
+
 @pytest.mark.criteria("D-3")
-
-
 def test_visual_floor_syntax_theme_preserves_complete_token_range() -> None:
     for style_type in (SyntaxThemes.dark(), SyntaxThemes.light(), SyntaxThemes.unknown()):
         _assert_complete_token_classes(style_type)
+
+
 @pytest.mark.criteria("C-1")
-
-
 def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surface() -> None:
     """S-4: every fixed syntax foreground clears 4.5:1 on its actual fill."""
     for background, style_type in ((False, SyntaxThemes.dark()), (True, SyntaxThemes.light())):
@@ -432,7 +433,9 @@ def test_visual_floor_syntax_tokens_on_undetermined_background_clear_contrast_du
         assert theme.contrast_ratio(fg, "#FFFFFF") >= CONTRAST_FLOOR
 
 
-def test_visual_floor_markdown_palette_on_undetermined_background_clears_contrast_dual_safe() -> None:
+def test_visual_floor_markdown_palette_on_undetermined_background_clears_contrast_dual_safe() -> (
+    None
+):
     """S-5: every entry of _markdown_theme._PALETTES[None] clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
     from importlib import import_module
 
@@ -443,9 +446,9 @@ def test_visual_floor_markdown_palette_on_undetermined_background_clears_contras
     for hex_code in palette:
         assert theme.contrast_ratio(hex_code, "#000000") >= CONTRAST_FLOOR
         assert theme.contrast_ratio(hex_code, "#FFFFFF") >= CONTRAST_FLOOR
+
+
 @pytest.mark.criteria("D-4")
-
-
 def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> None:
     """D-4: "Markdown rendering draws from the same roles as syntax and
     chrome. One palette, three consumers."
@@ -511,7 +514,6 @@ def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> No
             assert md_hex == role_hex, (
                 f"D-4: markdown[{entry}]={md_hex} != palette[{role}]={role_hex} on {preview_surface}"
             )
-
 
 
 def test_visual_floor_bad_syntax_foreground_fixture_is_rejected() -> None:
@@ -633,7 +635,6 @@ def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
     production_count = rendered.count(preview_fill)
     assert production_count >= 2
 
-
     # Mutation: drop the fill from one source row. The fill count must fall
     # below the production baseline; if it doesn't, the partial-fill check
     # is not actually catching partial fills.
@@ -712,9 +713,7 @@ def test_visual_floor_reduced_colour_named_category_passes() -> None:
     # The elision body is one named semantic category; it must keep a
     # non-default foreground even when the scene is reduced to 256 colours.
     assert "38;5;" in rendered
-    elision_match = _re.search(
-        r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered
-    )
+    elision_match = _re.search(r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered)
     assert elision_match is not None, "elision body lost its foreground in reduced mode"
     assert elision_match.group(1).startswith("38;5;"), elision_match.group(1)
 
@@ -732,9 +731,7 @@ def test_visual_floor_reduced_colour_default_foreground_fixture_is_rejected() ->
     )
 
     # Production: every named category emits a 256-colour foreground.
-    elision_match = _re.search(
-        r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered
-    )
+    elision_match = _re.search(r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered)
     assert elision_match is not None
     production_escape = elision_match.group(1)
     assert production_escape.startswith("38;5;")
@@ -785,9 +782,7 @@ def _cvd_separability_check(
     for index, simulated in enumerate(simulated_sets):
         if len(simulated) < 2:
             matrix_name = ("deuteranopia", "protanopia", "tritanopia")[index]
-            raise AssertionError(
-                f"pigments {pigments!r} collapse under {matrix_name} simulation"
-            )
+            raise AssertionError(f"pigments {pigments!r} collapse under {matrix_name} simulation")
 
 
 def _check_surface_contrast_failures(
@@ -818,7 +813,9 @@ def _check_surface_contrast_failures(
             continue
         ratio = theme.contrast_ratio(foreground, surface_hex)
         if ratio < CONTRAST_FLOOR:
-            failures.append(f"theme_for_background[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
+            failures.append(
+                f"theme_for_background[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}"
+            )
 
     display_styles = theme.display_styles_for_background(is_light, surface_hex=resolver_surface_hex)
     for role_name, style_str in display_styles.items():
@@ -827,7 +824,9 @@ def _check_surface_contrast_failures(
             continue
         ratio = theme.contrast_ratio(foreground, surface_hex)
         if ratio < CONTRAST_FLOOR:
-            failures.append(f"display_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
+            failures.append(
+                f"display_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}"
+            )
 
     status_styles = theme.pick_status_styles(is_light, surface_hex=resolver_surface_hex)
     for role_name, (style_str, _glyph, _label) in status_styles.items():
@@ -836,12 +835,14 @@ def _check_surface_contrast_failures(
             continue
         ratio = theme.contrast_ratio(foreground, surface_hex)
         if ratio < CONTRAST_FLOOR:
-            failures.append(f"pick_status_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}")
+            failures.append(
+                f"pick_status_styles[{surface_hex}] {role_name} ({foreground}): {ratio:.2f}"
+            )
 
     return failures
+
+
 @pytest.mark.criteria("D-2")
-
-
 def test_visual_floor_preview_and_diff_foregrounds_clear_contrast_on_their_own_fills() -> None:
     """DA-001: preview and diff foregrounds must clear CONTRAST_FLOOR against
     the fill they are actually painted on, not merely against the raw
@@ -885,7 +886,9 @@ def test_visual_floor_all_resolvers_clear_contrast_on_realistic_surfaces() -> No
         failures.extend(_check_surface_contrast_failures(surface_hex))
 
     if failures:
-        raise AssertionError(f"{len(failures)} contrast failures on realistic surfaces:\n" + "\n".join(failures))
+        raise AssertionError(
+            f"{len(failures)} contrast failures on realistic surfaces:\n" + "\n".join(failures)
+        )
 
 
 def test_visual_floor_boolean_resolvers_clear_contrast_on_realistic_surfaces() -> None:
@@ -903,9 +906,7 @@ def test_visual_floor_boolean_resolvers_clear_contrast_on_realistic_surfaces() -
     failures: list[str] = []
 
     for surface_hex in realistic_surfaces:
-        failures.extend(
-            _check_surface_contrast_failures(surface_hex, use_resolver_surface=False)
-        )
+        failures.extend(_check_surface_contrast_failures(surface_hex, use_resolver_surface=False))
 
     if failures:
         raise AssertionError(

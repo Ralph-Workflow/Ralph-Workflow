@@ -83,7 +83,9 @@ def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
         psutil=FakePsutil(),
     )
     monkeypatch.setattr("ralph.agents.invoke._process_reader.get_process_manager", lambda: manager)
-    monkeypatch.setattr("ralph.agents.invoke._run_shared_interactive_pty", _fake_shared_interactive_pty)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._run_shared_interactive_pty", _fake_shared_interactive_pty
+    )
 
 
 def _fake_shared_interactive_pty(*args: object, **kwargs: object) -> Iterator[str]:

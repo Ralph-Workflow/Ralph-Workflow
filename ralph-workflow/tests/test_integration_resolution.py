@@ -38,9 +38,7 @@ from ralph.workspace.scope import WorkspaceScope
         " M other.py\nUU src/a.py\n?? scratch.txt\n",
     ),
 )
-def test_unmerged_paths_block_non_resolution_dispatch(
-    tmp_path: Path, porcelain: str
-) -> None:
+def test_unmerged_paths_block_non_resolution_dispatch(tmp_path: Path, porcelain: str) -> None:
     """Every unmerged porcelain code is blocking integration evidence."""
     verdict = inspect_integration_resolution(
         tmp_path,
@@ -69,9 +67,7 @@ def test_unmerged_paths_block_non_resolution_dispatch(
         " M src/a.py\nM  src/b.py\n?? scratch.txt\nA  src/c.py\n",
     ),
 )
-def test_ordinary_uncommitted_work_never_blocks_dispatch(
-    tmp_path: Path, porcelain: str
-) -> None:
+def test_ordinary_uncommitted_work_never_blocks_dispatch(tmp_path: Path, porcelain: str) -> None:
     """Uncommitted work is the normal development state, not integration evidence.
 
     Regression guard: classifying any non-empty porcelain as unresolved
@@ -139,9 +135,7 @@ def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_p
         prompt_file="PROMPT.md",
         drain="development",
     )
-    state = PipelineState(phase="development").copy_with(
-        rebase=RebaseState(last_action="conflict")
-    )
+    state = PipelineState(phase="development").copy_with(rebase=RebaseState(last_action="conflict"))
 
     with pytest.raises(RuntimeError, match="cannot dispatch 'development'"):
         execute_agent_effect(
@@ -165,7 +159,11 @@ def test_final_fence_checks_live_verdict_without_pipeline_state(
 
     def _blocked(_root: Path, rebase: RebaseState) -> IntegrationResolutionVerdict:
         observed_states.append(rebase)
-        return IntegrationResolutionVerdict(RECOVERABLE, ("unmerged paths remain from an unfinished rebase or merge: a.py",), "rebase_conflict_resolution")
+        return IntegrationResolutionVerdict(
+            RECOVERABLE,
+            ("unmerged paths remain from an unfinished rebase or merge: a.py",),
+            "rebase_conflict_resolution",
+        )
 
     monkeypatch.setattr(effect_executor, "inspect_integration_resolution", _blocked)
 
@@ -186,7 +184,9 @@ def test_runner_dispatch_funnel_ignores_auto_integration_toggle(
 ) -> None:
     """The earlier runner funnel cannot bypass the invariant when disabled."""
     blocked = IntegrationResolutionVerdict(
-        RECOVERABLE, ("unmerged paths remain from an unfinished rebase or merge: a.py",), "rebase_conflict_resolution"
+        RECOVERABLE,
+        ("unmerged paths remain from an unfinished rebase or merge: a.py",),
+        "rebase_conflict_resolution",
     )
     monkeypatch.setattr(runner, "inspect_integration_resolution", lambda *_args: blocked)
     config = MagicMock()
@@ -300,7 +300,9 @@ def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:
 def test_exhaustion_is_terminal_while_the_conflict_is_still_there(tmp_path: Path) -> None:
     verdict = inspect_integration_resolution(
         tmp_path,
-        RebaseState(resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"),
+        RebaseState(
+            resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"
+        ),
         porcelain=lambda _: (True, "UU src/a.py\n"),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
@@ -323,7 +325,9 @@ def test_exhaustion_does_not_outlive_the_conflict_it_describes(tmp_path: Path) -
     """
     verdict = inspect_integration_resolution(
         tmp_path,
-        RebaseState(resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"),
+        RebaseState(
+            resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"
+        ),
         porcelain=lambda _: (True, ""),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
@@ -337,7 +341,9 @@ def test_a_stale_record_still_blocks_when_the_tree_cannot_be_read(tmp_path: Path
     """Fail closed: only a VERIFIABLY clean tree may overrule the record."""
     verdict = inspect_integration_resolution(
         tmp_path,
-        RebaseState(resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"),
+        RebaseState(
+            resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"
+        ),
         porcelain=lambda _: (False, ""),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,

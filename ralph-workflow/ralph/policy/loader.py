@@ -326,9 +326,7 @@ def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
     return False
 
 
-def _edge_declared_in_normalized(
-    normalized: dict[str, object], source: str, target: str
-) -> bool:
+def _edge_declared_in_normalized(normalized: dict[str, object], source: str, target: str) -> bool:
     """Return whether ``source`` declares a direct route to ``target``.
 
     Operates on the normalized (block-compiled) pipeline data before Pydantic
@@ -337,9 +335,7 @@ def _edge_declared_in_normalized(
     """
     phases = normalized.get("phases")
     if isinstance(phases, Mapping):
-        typed_phases: Mapping[str, PhaseDefinition] = cast(
-            "Mapping[str, PhaseDefinition]", phases
-        )
+        typed_phases: Mapping[str, PhaseDefinition] = cast("Mapping[str, PhaseDefinition]", phases)
         phase_def = typed_phases.get(source)
         if phase_def is not None and _phase_def_declares_edge(phase_def, target):
             return True
@@ -347,18 +343,11 @@ def _edge_declared_in_normalized(
     if isinstance(routes, list):
         for route in routes:
             if isinstance(route, Mapping):
-                typed_route: Mapping[str, object] = cast(
-                    "Mapping[str, object]", route
-                )
+                typed_route: Mapping[str, object] = cast("Mapping[str, object]", route)
                 when_val = typed_route.get("when")
                 if isinstance(when_val, Mapping):
-                    typed_when: Mapping[str, object] = cast(
-                        "Mapping[str, object]", when_val
-                    )
-                    if (
-                        typed_when.get("phase") == source
-                        and typed_route.get("target") == target
-                    ):
+                    typed_when: Mapping[str, object] = cast("Mapping[str, object]", when_val)
+                    if typed_when.get("phase") == source and typed_route.get("target") == target:
                         return True
     return False
 
@@ -380,9 +369,7 @@ def _disable_incompatible_inherited_cycle_timebox(
     phases = normalized.get("phases")
     if not isinstance(phases, Mapping):
         return normalized
-    typed_phases: Mapping[str, PhaseDefinition] = cast(
-        "Mapping[str, PhaseDefinition]", phases
-    )
+    typed_phases: Mapping[str, PhaseDefinition] = cast("Mapping[str, PhaseDefinition]", phases)
     phase_names: set[str] = set(typed_phases.keys())
     for key in (
         "start_source",
@@ -551,11 +538,11 @@ def _merge_declared_entries(
     return merged_entries
 
 
-
 #: Public alias: overlay merge semantics decide whether a workspace file can
 #: rename or delete parts of the bundled graph, so they are worth pinning
 #: directly rather than only through a full policy load.
 merge_pipeline_defaults = _merge_pipeline_defaults
+
 
 def _is_phase_authored_pipeline_data(data: Mapping[str, object]) -> bool:
     """Return whether a pipeline TOML uses the legacy phase-authored schema."""
@@ -606,9 +593,8 @@ def _resolve_pipeline_data(
     pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
     if local_pipeline_data:
         pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
-    explicit = (
-        (bool(global_pipeline_data) and "cycle_timebox" in global_pipeline_data)
-        or (bool(local_pipeline_data) and "cycle_timebox" in local_pipeline_data)
+    explicit = (bool(global_pipeline_data) and "cycle_timebox" in global_pipeline_data) or (
+        bool(local_pipeline_data) and "cycle_timebox" in local_pipeline_data
     )
     return pipeline_data, explicit
 

@@ -50,7 +50,9 @@ class ActivityRelaySender:
             "tool_name": tool_name,
         }
         try:
-            with socket.create_connection((self._host, self._port), timeout=_RELAY_IO_TIMEOUT_SECONDS) as connection:
+            with socket.create_connection(
+                (self._host, self._port), timeout=_RELAY_IO_TIMEOUT_SECONDS
+            ) as connection:
                 connection.settimeout(_RELAY_IO_TIMEOUT_SECONDS)
                 connection.sendall(json.dumps(event, separators=(",", ":")).encode("utf-8") + b"\n")
                 ack = _parse_ack(receive_bounded_line(connection))

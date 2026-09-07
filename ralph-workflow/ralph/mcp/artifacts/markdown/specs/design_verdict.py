@@ -425,16 +425,16 @@ def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
     findings_section = document.section("Findings")
     if findings_section is not None:
         for item in findings_section.items:
-            finding_diagnostics, severity = _validate_finding(
-                item.text, item.line, cell_ids
-            )
+            finding_diagnostics, severity = _validate_finding(item.text, item.line, cell_ids)
             diagnostics.extend(finding_diagnostics)
             if severity:
                 severities.append(severity)
     verdict_section = document.section("Verdict")
     if verdict_section is not None and len(verdict_section.items) == 1:
         diagnostics.extend(
-            _validate_verdict(verdict_section.items[0].text, verdict_section.items[0].line, severities)
+            _validate_verdict(
+                verdict_section.items[0].text, verdict_section.items[0].line, severities
+            )
         )
     intent_section = document.section("Design Intent")
     if intent_section is not None and intent_section.items:
@@ -458,9 +458,7 @@ DESIGN_VERDICT_SPEC = MdArtifactSpec(
     },
     sections={
         "Capture Provenance": SectionRule(required=True, allow_body=True),
-        "Design Intent": SectionRule(
-            require_items=True, max_items=1, allow_body=True
-        ),
+        "Design Intent": SectionRule(require_items=True, max_items=1, allow_body=True),
         "Verdict": SectionRule(require_items=True, max_items=1, allow_body=True),
         "Findings": SectionRule(required=True, allow_body=True),
     },

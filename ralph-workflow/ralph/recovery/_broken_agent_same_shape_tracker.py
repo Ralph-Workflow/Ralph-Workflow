@@ -17,10 +17,7 @@ class BrokenAgentSameShapeTracker:
 
     def __post_init__(self) -> None:
         if self.limit < 1:
-            raise ValueError(
-                "BrokenAgentSameShapeTracker.limit must be >= 1; "
-                f"got {self.limit}"
-            )
+            raise ValueError(f"BrokenAgentSameShapeTracker.limit must be >= 1; got {self.limit}")
 
     def record_failure(
         self,

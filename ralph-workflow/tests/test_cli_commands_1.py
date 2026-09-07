@@ -6,6 +6,7 @@ import sys
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -24,6 +25,9 @@ from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.git.commit_result import CommitCreationResult
 
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
@@ -162,6 +166,23 @@ def test_commit_plumbing_prints_no_staged_changes(monkeypatch: pytest.MonkeyPatc
     assert "No staged changes to commit" in stream.getvalue()
 
 
+def test_commit_plumbing_show_returns_zero_without_staged_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: Path("/tmp"))
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
+    monkeypatch.setattr(commit_module, "has_staged_changes", lambda _root: False)
+    monkeypatch.setattr(commit_module, "read_commit_message_artifact", lambda _root: "fix: show")
+
+    result = commit_module.commit_plumbing(
+        options=commit_module.CommitPlumbingOptions(show_commit_msg=True)
+    )
+
+    assert result == 0
+    assert "No staged changes to commit" not in stream.getvalue()
+
+
 def test_commit_plumbing_injects_workspace_scope_for_implicit_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,11 +252,15 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     def fake_create_commit(
         _repo_root: Path,
         _message: str,
+        *,
         author_name: str | None,
         author_email: str | None,
-    ) -> str:
+        expected_head: str,
+    ) -> CommitCreationResult:
+        from ralph.git.commit_result import CommitCreationResult
+
         commit_calls.append(f"{author_name}:{author_email}")
-        return "cafebabe1234"
+        return CommitCreationResult.created("cafebabe1234")
 
     monkeypatch.setattr(commit_module, "create_commit", fake_create_commit)
 
@@ -1037,7 +1062,9 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
     monkeypatch.setattr(
         commit_module,
         "create_commit",
-        lambda _root, message, **_kwargs: committed_messages.append(message) or "abc12345",
+        lambda _root, message, **_kwargs: __import__(
+            "ralph.git.operations", fromlist=["CommitCreationResult"]
+        ).CommitCreationResult.created(committed_messages.append(message) or "abc12345"),
     )
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
@@ -1087,7 +1114,9 @@ def test_generate_commit_applies_message_from_persisted_artifact(
     monkeypatch.setattr(
         commit_module,
         "create_commit",
-        lambda _root, message, **_kwargs: committed_messages.append(message) or "abc12345",
+        lambda _root, message, **_kwargs: __import__(
+            "ralph.git.operations", fromlist=["CommitCreationResult"]
+        ).CommitCreationResult.created(committed_messages.append(message) or "abc12345"),
     )
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))

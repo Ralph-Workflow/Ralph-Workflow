@@ -214,9 +214,7 @@ def test_a_markerless_conflict_is_a_decision_however_it_became_markerless() -> N
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     two_sided = {1: ("100644", "base"), 2: ("100644", "ours"), 3: ("100644", "theirs")}
-    assert (
-        classify_stage_map(two_sided, binary=False, has_markers=True) is ConflictSight.AGENT
-    )
+    assert classify_stage_map(two_sided, binary=False, has_markers=True) is ConflictSight.AGENT
     assert (
         classify_stage_map(two_sided, binary=False, has_markers=False)
         is ConflictSight.AGENT_DECISION
@@ -245,9 +243,7 @@ def test_a_narrow_conflict_marker_is_still_a_conflict_marker(
         root / "quote.md": "> a quoted line\n>> nested\n",
     }
 
-    def _fake_run_vcs(
-        args: tuple[str, ...], *, cwd: Path, label: str
-    ) -> GitRunResult:
+    def _fake_run_vcs(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
         assert args == ("check-attr", "-z", "conflict-marker-size", "--", *paths)
         assert cwd == root
         assert label == "git-conflict-marker-size"
@@ -263,6 +259,7 @@ def test_a_narrow_conflict_marker_is_still_a_conflict_marker(
 
     reported = merge_module.paths_with_conflict_markers(root, paths)
     assert sorted(reported) == ["narrow.txt", "wide.txt"]
+
 
 def test_a_non_ascii_path_is_not_reported_as_marker_free(
     monkeypatch: pytest.MonkeyPatch,
@@ -280,9 +277,7 @@ def test_a_non_ascii_path_is_not_reported_as_marker_free(
     root = Path("/repo")
     git_calls: list[tuple[str, ...]] = []
 
-    def _fake_run_git(
-        args: tuple[str, ...], *, cwd: Path, label: str
-    ) -> GitRunResult:
+    def _fake_run_git(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
         assert cwd == root
         assert label == "git-unmerged-paths"
         git_calls.append(args)
@@ -330,9 +325,7 @@ def test_a_file_git_wrote_in_utf16_is_not_reported_as_marker_free(
     monkeypatch.setattr(merge_module, "conflict_marker_sizes", lambda _root, _paths: {})
     monkeypatch.setattr(merge_module, "_readable_text", contents.get)
 
-    assert merge_module.paths_with_conflict_markers(
-        root, ["u16.txt", "clean16.txt"]
-    ) == ["u16.txt"]
+    assert merge_module.paths_with_conflict_markers(root, ["u16.txt", "clean16.txt"]) == ["u16.txt"]
 
 
 def test_a_present_but_unreadable_path_is_not_evidence_of_a_clean_one(
@@ -365,9 +358,7 @@ def test_git_itself_corroborates_the_marker_scan(
 
     root = Path("/repo")
 
-    def _fake_run_git(
-        args: tuple[str, ...], *, cwd: Path, label: str
-    ) -> GitRunResult:
+    def _fake_run_git(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
         assert args == ("diff", "--cached", "--check")
         assert cwd == root
         assert label == "git-staged-marker-check"

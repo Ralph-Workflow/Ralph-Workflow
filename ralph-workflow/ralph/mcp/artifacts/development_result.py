@@ -53,7 +53,9 @@ class DevelopmentResult(RalphBaseModel):
             raise ValueError("completed development_result artifacts require summary")
         if not self.files_changed.strip():
             raise ValueError("completed development_result artifacts require files_changed")
-        blocked = [proof.plan_item for proof in self.plan_items_proven if proof.disposition == "blocked"]
+        blocked = [
+            proof.plan_item for proof in self.plan_items_proven if proof.disposition == "blocked"
+        ]
         if blocked:
             raise ValueError(
                 "completed development_result artifacts cannot contain blocked plan items; "

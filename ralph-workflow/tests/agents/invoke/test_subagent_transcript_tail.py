@@ -145,24 +145,42 @@ def test_subagent_events_feed_record_subagent_work_channel(
         session_id="sess_1",
     )
     sub_path = project_dir / "sess_1" / "subagents" / "agent-ae8172f08ddb4f463.jsonl"
-    _write_jsonl_line(sub_path, {
-        "type": "assistant",
-        "isSidechain": True,
-        "agentId": "ae8172f08ddb4f463",
-        "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_1"}]},
-    })
-    _write_jsonl_line(sub_path, {
-        "type": "assistant",
-        "isSidechain": True,
-        "agentId": "ae8172f08ddb4f463",
-        "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Grep", "id": "tu_2"}]},
-    })
-    _write_jsonl_line(sub_path, {
-        "type": "assistant",
-        "isSidechain": True,
-        "agentId": "ae8172f08ddb4f463",
-        "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "id": "tu_3"}]},
-    })
+    _write_jsonl_line(
+        sub_path,
+        {
+            "type": "assistant",
+            "isSidechain": True,
+            "agentId": "ae8172f08ddb4f463",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Read", "id": "tu_1"}],
+            },
+        },
+    )
+    _write_jsonl_line(
+        sub_path,
+        {
+            "type": "assistant",
+            "isSidechain": True,
+            "agentId": "ae8172f08ddb4f463",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Grep", "id": "tu_2"}],
+            },
+        },
+    )
+    _write_jsonl_line(
+        sub_path,
+        {
+            "type": "assistant",
+            "isSidechain": True,
+            "agentId": "ae8172f08ddb4f463",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Edit", "id": "tu_3"}],
+            },
+        },
+    )
 
     sink_calls: list[str] = []
     stop = threading.Event()
@@ -223,12 +241,15 @@ def test_silent_parent_and_silent_children_still_record_no_progress(
         session_id="sess_silent",
     )
     sub_path = project_dir / "sess_silent" / "subagents" / "agent-aa4510ad576b74f67.jsonl"
-    _write_jsonl_line(sub_path, {
-        "type": "user",
-        "isSidechain": True,
-        "agentId": "aa4510ad576b74f67",
-        "message": {"role": "user", "content": [{"type": "text", "text": "initial prompt"}]},
-    })
+    _write_jsonl_line(
+        sub_path,
+        {
+            "type": "user",
+            "isSidechain": True,
+            "agentId": "aa4510ad576b74f67",
+            "message": {"role": "user", "content": [{"type": "text", "text": "initial prompt"}]},
+        },
+    )
 
     sink_calls: list[str] = []
     stop = threading.Event()
@@ -471,12 +492,15 @@ def test_tail_survives_quiet_then_active_child_and_drops_on_tool_result(
     )
     sub_path = project_dir / "sess_lifecycle" / "subagents" / "agent-aa4510ad576b74f67.jsonl"
     meta_path = sub_path.with_suffix(".meta.json")
-    _write_meta_file(meta_path, {
-        "agentType": "general-purpose",
-        "description": "test child",
-        "toolUseId": "tu_dispatch_1",
-        "spawnDepth": 1,
-    })
+    _write_meta_file(
+        meta_path,
+        {
+            "agentType": "general-purpose",
+            "description": "test child",
+            "toolUseId": "tu_dispatch_1",
+            "spawnDepth": 1,
+        },
+    )
 
     sink_calls: list[str] = []
     stop = threading.Event()
@@ -500,12 +524,18 @@ def test_tail_survives_quiet_then_active_child_and_drops_on_tool_result(
         tails.note_dispatch(tool_use_id="tu_dispatch_1", tool_name="Agent")
         tails.start()
         # First event lands at T0.
-        _write_jsonl_line(sub_path, {
-            "type": "assistant",
-            "isSidechain": True,
-            "agentId": "aa4510ad576b74f67",
-            "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_1"}]},
-        })
+        _write_jsonl_line(
+            sub_path,
+            {
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "aa4510ad576b74f67",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Read", "id": "tu_1"}],
+                },
+            },
+        )
         # Wait for the first event to surface. Bounded by iteration
         # count rather than wall-clock measurement so the test never
         # blocks the suite budget on a slow CI runner.
@@ -521,12 +551,18 @@ def test_tail_survives_quiet_then_active_child_and_drops_on_tool_result(
         # Code child would have stale mtime yet still be alive.
         clock_value[0] = 200.0
         # Now write the second event at the advanced clock.
-        _write_jsonl_line(sub_path, {
-            "type": "assistant",
-            "isSidechain": True,
-            "agentId": "aa4510ad576b74f67",
-            "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "id": "tu_2"}]},
-        })
+        _write_jsonl_line(
+            sub_path,
+            {
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "aa4510ad576b74f67",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Edit", "id": "tu_2"}],
+                },
+            },
+        )
         # Wait for the second event to surface. The tailer must
         # still be alive on the same file (it was NOT dropped
         # during the silent window -- mtime is not a stop condition).
@@ -709,22 +745,30 @@ def test_note_completion_drops_child_matching_parent_tool_use_id(
     )
     sub_path = project_dir / "sess_completion" / "subagents" / "agent-completed.jsonl"
     sub_path.write_text(
-        json.dumps({
-            "type": "assistant",
-            "isSidechain": True,
-            "agentId": "completed",
-            "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_c1"}]},
-        }) + "\n",
+        json.dumps(
+            {
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "completed",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Read", "id": "tu_c1"}],
+                },
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     meta_path = sub_path.with_suffix(".meta.json")
     meta_path.write_text(
-        json.dumps({
-            "agentType": "general-purpose",
-            "description": "test child for completion",
-            "toolUseId": "tu_dispatch_completed",
-            "spawnDepth": 1,
-        }),
+        json.dumps(
+            {
+                "agentType": "general-purpose",
+                "description": "test child for completion",
+                "toolUseId": "tu_dispatch_completed",
+                "spawnDepth": 1,
+            }
+        ),
         encoding="utf-8",
     )
     stop = threading.Event()
@@ -749,25 +793,31 @@ def test_note_completion_drops_child_matching_parent_tool_use_id(
         # NOT drop anything. We use a fresh child file with a
         # DIFFERENT toolUseId so the completed-id registry does
         # not affect the discovery.
-        other_sub_path = (
-            project_dir / "sess_completion" / "subagents" / "agent-other.jsonl"
-        )
+        other_sub_path = project_dir / "sess_completion" / "subagents" / "agent-other.jsonl"
         other_sub_path.write_text(
-            json.dumps({
-                "type": "assistant",
-                "isSidechain": True,
-                "agentId": "other",
-                "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "id": "tu_o1"}]},
-            }) + "\n",
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "isSidechain": True,
+                    "agentId": "other",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "name": "Bash", "id": "tu_o1"}],
+                    },
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
         (other_sub_path.with_suffix(".meta.json")).write_text(
-            json.dumps({
-                "agentType": "general-purpose",
-                "description": "other child",
-                "toolUseId": "tu_other_dispatch",
-                "spawnDepth": 1,
-            }),
+            json.dumps(
+                {
+                    "agentType": "general-purpose",
+                    "description": "other child",
+                    "toolUseId": "tu_other_dispatch",
+                    "spawnDepth": 1,
+                }
+            ),
             encoding="utf-8",
         )
         tails._discover_new_files()
@@ -778,25 +828,31 @@ def test_note_completion_drops_child_matching_parent_tool_use_id(
         # An empty tool_use_id is a no-op (returns False) and
         # does not mark anything completed. Add a fresh child
         # to verify.
-        third_sub_path = (
-            project_dir / "sess_completion" / "subagents" / "agent-third.jsonl"
-        )
+        third_sub_path = project_dir / "sess_completion" / "subagents" / "agent-third.jsonl"
         third_sub_path.write_text(
-            json.dumps({
-                "type": "assistant",
-                "isSidechain": True,
-                "agentId": "third",
-                "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_t1"}]},
-            }) + "\n",
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "isSidechain": True,
+                    "agentId": "third",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "name": "Read", "id": "tu_t1"}],
+                    },
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
         (third_sub_path.with_suffix(".meta.json")).write_text(
-            json.dumps({
-                "agentType": "general-purpose",
-                "description": "third child",
-                "toolUseId": "tu_third_dispatch",
-                "spawnDepth": 1,
-            }),
+            json.dumps(
+                {
+                    "agentType": "general-purpose",
+                    "description": "third child",
+                    "toolUseId": "tu_third_dispatch",
+                    "spawnDepth": 1,
+                }
+            ),
             encoding="utf-8",
         )
         tails._discover_new_files()

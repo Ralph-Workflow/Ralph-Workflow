@@ -16,6 +16,7 @@ from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.cli._capability_summary import DOCS_MCP_NOT_INSTALLED_MESSAGE
+from ralph.cli.commands._diagnose_mcp import check_mcp_servers as _check_mcp_servers_extracted
 from ralph.config.loader import (
     _global_config_path,
     collect_unknown_config_fields,
@@ -59,7 +60,6 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from ralph.display.context import DisplayContext
-    from ralph.mcp.upstream.config import UpstreamMcpServer
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -101,7 +101,16 @@ def diagnose_command(
     config_ok &= _check_configuration(config_path, cli_overrides, display=display)
     agent_missing = _check_agents_impl(cli_overrides, display=display)
     config_ok &= not agent_missing
-    config_ok &= _check_mcp_servers(workspace_scope, display=display)
+    config_ok &= _check_mcp_servers_extracted(
+        workspace_scope,
+        display=display,
+        mcp_loader=mcp_toml_as_upstreams,
+        validator=validate_upstream_mcp_servers,
+        prober=probe_agent_transports,
+        plan_resolver=resolve_effective_session_mcp_plan,
+        claude_loader=load_existing_claude_upstream_servers,
+        agy_loader=load_existing_agy_upstream_servers,
+    )
     config_ok &= _check_workspace_files(workspace_scope, display=display)
     _check_capability_state(display=display)
     _check_filesystem_health(workspace_scope.root, display=display)
@@ -695,161 +704,6 @@ def _check_agents_impl(
     return any_missing
 
 
-def _check_mcp_servers(
-    workspace_scope: WorkspaceScope,
-    *,
-    display: object,
-) -> bool:
-    """Render custom MCP server health and per-agent transport compatibility."""
-    from ralph.display.parallel_display import ParallelDisplay
-
-    assert isinstance(display, ParallelDisplay)
-
-    _print_effective_session_mcp_inventory(display, workspace_scope.root)
-
-    ok, healthy_servers = _render_custom_mcp_server_table(display, workspace_scope.root)
-    if not ok or not healthy_servers:
-        return ok
-
-    _print_agent_transport_compatibility(display, healthy_servers, workspace_scope.root)
-    return True
-
-
-def _render_custom_mcp_server_table(
-    display: object, workspace_root: Path
-) -> tuple[bool, tuple[UpstreamMcpServer, ...]]:
-    """Print custom MCP health table and return whether it succeeded."""
-    from ralph.display.parallel_display import ParallelDisplay
-
-    assert isinstance(display, ParallelDisplay)
-    upstreams = mcp_toml_as_upstreams(workspace_root)
-    rows: list[tuple[object, ...]] = []
-    if not upstreams:
-        rows.append(
-            (
-                "(none)",
-                "-",
-                Text("No custom MCP servers configured", style="theme.status.warning"),
-                "-",
-                "-",
-            )
-        )
-        display.emit_diagnose_servers_table(rows)
-        return True, ()
-
-    try:
-        report = validate_upstream_mcp_servers(upstreams, strict=False)
-    except Exception as exc:
-        rows.append(
-            (
-                "(validator)",
-                "-",
-                _status_text("Error", str(exc), "theme.status.error"),
-                "-",
-                "-",
-            )
-        )
-        display.emit_diagnose_servers_table(rows)
-        return False, ()
-
-    for entry in report.servers:
-        status = (
-            Text("ok", style="theme.status.success")
-            if entry.ok
-            else Text("failed", style="theme.status.error")
-        )
-        detail = entry.error or ""
-        if entry.secret_keys:
-            keys = ",".join(entry.secret_keys)
-            detail = f"{detail} (env: {keys})" if detail else f"env: {keys}"
-        rows.append(
-            (
-                entry.name,
-                entry.transport,
-                status,
-                str(entry.tool_count),
-                detail or "-",
-            )
-        )
-
-    display.emit_diagnose_servers_table(rows)
-
-    healthy_names = {r.name for r in report.servers if r.ok}
-    healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
-    return True, healthy_servers
-
-
-def _print_agent_transport_compatibility(
-    display: object,
-    healthy_servers: tuple[UpstreamMcpServer, ...],
-    workspace_root: Path,
-) -> None:
-    """Render per-agent transport compatibility for healthy custom servers."""
-    from ralph.display.parallel_display import ParallelDisplay
-
-    assert isinstance(display, ParallelDisplay)
-    rows: list[tuple[object, ...]] = []
-
-    probes = probe_agent_transports(healthy_servers, workspace_path=workspace_root)
-    by_server: dict[str, dict[str, Text]] = {}
-    for probe in probes:
-        if probe.note and probe.ok:
-            cell = Text("-", style="theme.status.warning")
-        elif probe.ok:
-            cell = Text("\u2713", style="theme.status.success")
-        else:
-            cell = Text("\u2717", style="theme.status.error")
-        by_server.setdefault(probe.server_name, {})[probe.transport.value] = cell
-
-    for server in healthy_servers:
-        cells = by_server.get(server.name, {})
-        rows.append(
-            (
-                server.name,
-                cells.get("claude", Text("-")),
-                cells.get("codex", Text("-")),
-                cells.get("opencode", Text("-")),
-                cells.get("agy", Text("-")),
-            )
-        )
-
-    display.emit_diagnose_probe_table(rows)
-
-
-def _print_effective_session_mcp_inventory(display: object, workspace_root: Path) -> None:
-    """Render the effective session MCP inventory."""
-    from ralph.display.parallel_display import ParallelDisplay
-
-    assert isinstance(display, ParallelDisplay)
-    effective_mcp = resolve_effective_session_mcp_plan(
-        workspace_root,
-        agent_upstream_servers=(
-            *load_existing_claude_upstream_servers(workspace_root),
-            *load_existing_agy_upstream_servers(workspace_root),
-        ),
-    )
-    rows: list[tuple[object, ...]] = []
-    if effective_mcp.effective_servers:
-        rows.extend(
-            (
-                server.name,
-                server.origin,
-                server.transport,
-                _inventory_exposure(server.origin),
-            )
-            for server in effective_mcp.effective_servers
-        )
-    else:
-        rows.append(("(none)", "-", "-", "No effective session MCP servers"))
-    display.emit_diagnose_inventory_table(rows)
-
-
-def _inventory_exposure(origin: str) -> str:
-    if origin == "custom":
-        return "proxied via ralph_custom__*"
-    return "proxied via ralph_upstream__*"
-
-
 def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) -> bool:
     """Check workspace files and each resolved configuration layer."""
     from ralph.display.parallel_display import ParallelDisplay
@@ -859,27 +713,39 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
 
     workspace_files: list[tuple[str, str, Path]] = [
         ("PROMPT.md", "Implementation prompt", workspace_scope.root / "PROMPT.md"),
-        ("Project config", "Workspace-owned .agent/ralph-workflow.toml", workspace_scope.project_config_path),
+        (
+            "Project config",
+            "Workspace-owned .agent/ralph-workflow.toml",
+            workspace_scope.project_config_path,
+        ),
         (".agent/checkpoint.json", "Checkpoint", workspace_scope.root / ".agent/checkpoint.json"),
     ]
     if workspace_scope.is_linked_worktree:
         workspace_files.insert(
             1,
-            ("Worktree config", "Workspace-owned .agent/ralph-workflow.toml", workspace_scope.worktree_config_path),
+            (
+                "Worktree config",
+                "Workspace-owned .agent/ralph-workflow.toml",
+                workspace_scope.worktree_config_path,
+            ),
         )
         workspace_files[2] = (
             "Project config",
             "Inherited main-checkout .agent/ralph-workflow.toml",
             workspace_scope.project_config_path,
         )
-    workspace_files.append(("User-global config", "User-global ralph-workflow.toml", _global_config_path()))
+    workspace_files.append(
+        ("User-global config", "User-global ralph-workflow.toml", _global_config_path())
+    )
 
     for file_path, description, path in workspace_files:
         file_label = Text()
         file_label.append(f"{file_path} ({description})\n{path}")
         # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
         if path.exists():
-            size = path.stat().st_size  # filesystem-read-ok: explicit diagnose command reports file size
+            size = (
+                path.stat().st_size
+            )  # filesystem-read-ok: explicit diagnose command reports file size
             rows.append(
                 (
                     file_label,
@@ -986,7 +852,10 @@ def check_mcp_servers(
     """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
-    return _check_mcp_servers(workspace_scope, display=display)
+    return _check_mcp_servers_extracted(workspace_scope, display=display)
+
+
+_check_mcp_servers = _check_mcp_servers_extracted
 
 
 def check_workspace_files(*, display_context: DisplayContext | None = None) -> bool:

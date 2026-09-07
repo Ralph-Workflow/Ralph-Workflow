@@ -319,9 +319,7 @@ def test_inline_eligible_image_with_known_openai_identity_emits_image_content(
             assert image_blocks, "expected an ImageContent block for the inline-eligible PNG"
             # NO warning block on the inline path.
             for block in result.content:
-                assert not (
-                    isinstance(block, ToolContent) and "WARNING" in block.text
-                )
+                assert not (isinstance(block, ToolContent) and "WARNING" in block.text)
         finally:
             Path(f.name).unlink(missing_ok=True)
 
@@ -376,9 +374,7 @@ def test_inline_eligible_image_with_unknown_identity_emits_image_content(
             # for the resource_reference path; the inline path returns
             # the image alone, with NO warning block.
             for block in result.content:
-                assert not (
-                    isinstance(block, ToolContent) and "WARNING" in block.text
-                )
+                assert not (isinstance(block, ToolContent) and "WARNING" in block.text)
         finally:
             Path(f.name).unlink(missing_ok=True)
 
@@ -423,10 +419,7 @@ def test_known_claude_identity_for_image_emits_no_warning_block(
             # NO warning block is prepended -- every content block is an
             # image block.
             for block in result.content:
-                assert not (
-                    isinstance(block, ToolContent)
-                    and "WARNING" in block.text
-                )
+                assert not (isinstance(block, ToolContent) and "WARNING" in block.text)
             # The actual delivery is an image content block.
             image_blocks = [b for b in result.content if isinstance(b, ImageContent)]
             assert image_blocks

@@ -196,37 +196,45 @@ def _measure_dimensions(
     rows: list[_Row] = []
 
     # 1. watch use — observer.schedule registrations
-    rows.append((
-        "watch use",
-        len(observer.registrations),
-        "<= 1",
-        "WorkspaceMonitor.start -> observer.schedule",
-    ))
+    rows.append(
+        (
+            "watch use",
+            len(observer.registrations),
+            "<= 1",
+            "WorkspaceMonitor.start -> observer.schedule",
+        )
+    )
 
     # 2. filesystem activity — workload bytes written
-    rows.append((
-        "filesystem activity",
-        tracker.bytes_written,
-        "<= 512_000",
-        "_WriteTracker.write (Path.write_text)",
-    ))
+    rows.append(
+        (
+            "filesystem activity",
+            tracker.bytes_written,
+            "<= 512_000",
+            "_WriteTracker.write (Path.write_text)",
+        )
+    )
 
     # 3. retained storage — inventory_storage
-    rows.append((
-        "retained storage",
-        _total_inventory_bytes(ws_root),
-        "<= 5_242_880",
-        "inventory_storage(workspace_root)",
-    ))
+    rows.append(
+        (
+            "retained storage",
+            _total_inventory_bytes(ws_root),
+            "<= 5_242_880",
+            "inventory_storage(workspace_root)",
+        )
+    )
 
     # 4. freshness — awareness snapshot
     snap = awareness_for_workspace(ws_root).snapshot()
-    rows.append((
-        "freshness",
-        snap["freshness"],
-        "valid freshness state",
-        "awareness.snapshot()['freshness']",
-    ))
+    rows.append(
+        (
+            "freshness",
+            snap["freshness"],
+            "valid freshness state",
+            "awareness.snapshot()['freshness']",
+        )
+    )
 
     # 5 + 6. relevance + responsiveness — timed reindex then search
     start = time.perf_counter()
@@ -243,18 +251,22 @@ def _measure_dimensions(
     payload = json.loads(result.content[0].text)
     match_count = len(payload.get("matches", []))
 
-    rows.append((
-        "relevance",
-        match_count,
-        ">= 0",
-        "reindex + handle_search_files",
-    ))
-    rows.append((
-        "responsiveness",
-        elapsed,
-        "<= 10.0 s",
-        "time.perf_counter() around reindex",
-    ))
+    rows.append(
+        (
+            "relevance",
+            match_count,
+            ">= 0",
+            "reindex + handle_search_files",
+        )
+    )
+    rows.append(
+        (
+            "responsiveness",
+            elapsed,
+            "<= 10.0 s",
+            "time.perf_counter() around reindex",
+        )
+    )
 
     return rows
 
@@ -452,9 +464,7 @@ def _scenario_concurrent(
                 register_active_run(ws_root, run_id)
                 locked = prune_lock_run_ids(ws_root)
                 if run_id not in locked:
-                    errors.append(
-                        f"{run_id} not in prune_lock_run_ids result: {locked}"
-                    )
+                    errors.append(f"{run_id} not in prune_lock_run_ids result: {locked}")
                 stop_barrier.wait(timeout=5.0)
             except Exception as exc:
                 errors.append(repr(exc))
@@ -509,9 +519,7 @@ def _render_matrix(path: Path, rows: Sequence[tuple[str, str, object, str, str]]
         "|---|---|---|---|---|",
     ]
     for scenario, dimension, observed, threshold, source in rows:
-        lines.append(
-            f"| {scenario} | {dimension} | {observed!r} | {threshold} | {source} |"
-        )
+        lines.append(f"| {scenario} | {dimension} | {observed!r} | {threshold} | {source} |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -540,9 +548,7 @@ def _validate_dimension(dimension: str, observed: object) -> bool:
 # Main test
 # ---------------------------------------------------------------------------
 
-_SCENARIOS: list[
-    tuple[str, Callable[[Path, _ActivityObserver, _WriteTracker], list[_Row]]]
-] = [
+_SCENARIOS: list[tuple[str, Callable[[Path, _ActivityObserver, _WriteTracker], list[_Row]]]] = [
     ("unchanged", _scenario_unchanged),
     ("localized-change", _scenario_localized_change),
     ("large-workspace", _scenario_large_workspace),
@@ -578,8 +584,7 @@ def test_filesystem_scenario_baseline(tmp_path: Path, monkeypatch: pytest.Monkey
         rows: list[_Row] = scenario_fn(ws_root, observer, tracker)
         assert len(rows) == 6, f"{scenario_name}: expected 6 dimensions, got {len(rows)}"
         assert {r[0] for r in rows} == set(_DIMENSIONS), (
-            f"{scenario_name}: expected dimensions {_DIMENSIONS}, "
-            f"got {tuple(r[0] for r in rows)}"
+            f"{scenario_name}: expected dimensions {_DIMENSIONS}, got {tuple(r[0] for r in rows)}"
         )
         all_rows.extend(
             (scenario_name, dim, observed, threshold, source)
@@ -597,9 +602,7 @@ def test_filesystem_scenario_baseline(tmp_path: Path, monkeypatch: pytest.Monkey
     failures: list[str] = []
     for scenario, dim, observed, threshold, _source in all_rows:
         if not _validate_dimension(dim, observed):
-            failures.append(
-                f"{scenario}/{dim}: observed={observed!r}, threshold={threshold}"
-            )
+            failures.append(f"{scenario}/{dim}: observed={observed!r}, threshold={threshold}")
     assert not failures, "threshold violations:\n  " + "\n  ".join(failures)
 
     # Assert the matrix file was written with the expected structure.
@@ -614,6 +617,4 @@ def test_filesystem_scenario_baseline(tmp_path: Path, monkeypatch: pytest.Monkey
         and "---" not in line
         and "Generated" not in line
     ]
-    assert len(data_lines) == 36, (
-        f"expected 36 data lines in matrix, got {len(data_lines)}"
-    )
+    assert len(data_lines) == 36, f"expected 36 data lines in matrix, got {len(data_lines)}"

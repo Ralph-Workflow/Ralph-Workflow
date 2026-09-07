@@ -96,8 +96,6 @@ from tests._support.typed_accessors import (
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
-
-
 # === Helper for test_agents_invoke_1.py ===
 @pytest.fixture(autouse=True)
 def _agents_invoke_1_disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3050,7 +3048,9 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
     )
 
     assert seen_env
-    assert _agents_invoke_3_json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"]) == {"model": "anthropic/test"}
+    assert _agents_invoke_3_json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"]) == {
+        "model": "anthropic/test"
+    }
 
 
 # === consolidated from test_agents_invoke_3.py ===

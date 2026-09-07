@@ -875,11 +875,7 @@ class PtyLineReader:
             return active_tails
         if event.kind == "tool_result":
             tool_use_id_obj = event.metadata.get("tool_use_id")
-            if (
-                isinstance(tool_use_id_obj, str)
-                and tool_use_id_obj
-                and active_tails is not None
-            ):
+            if isinstance(tool_use_id_obj, str) and tool_use_id_obj and active_tails is not None:
                 # R1 (lifecycle ownership): drop the child
                 # file when the parent ``tool_result`` lands;
                 # the tailer correlates via the
@@ -913,9 +909,7 @@ class PtyLineReader:
         if self._workspace_path is None:
             return None
         try:
-            project_key = (
-                str(self._workspace_path.resolve()).replace("/", "-").replace(" ", "-")
-            )
+            project_key = str(self._workspace_path.resolve()).replace("/", "-").replace(" ", "-")
         except OSError:
             return None
         # The watchdog's subagent sink was bound earlier in
@@ -929,12 +923,16 @@ class PtyLineReader:
             if callable(existing_sink):
                 sink = cast("Callable[[str], None]", existing_sink)
             else:
+
                 def _noop_sink(_summary: str) -> None:
                     return None
+
                 sink = _noop_sink
         else:
+
             def _noop_sink(_summary: str) -> None:
                 return None
+
             sink = _noop_sink
 
         def _r7_sink(diag: R7AbsentLayoutDiagnostic) -> None:
@@ -1478,7 +1476,10 @@ class PtyLineReader:
             activity_signal = with_prompt_echo_flag(
                 activity_signal, queued_line, self._input_prompt
             )
-            if activity_signal.kind != AgentActivityKind.LIFECYCLE and not activity_signal.is_harness_echo:
+            if (
+                activity_signal.kind != AgentActivityKind.LIFECYCLE
+                and not activity_signal.is_harness_echo
+            ):
                 watchdog.record_any_output(byte_size=len(queued_line.encode("utf-8")))
             self._last_activity_kind = activity_signal.kind
             self._last_meaningful[0] = (
@@ -1770,6 +1771,7 @@ class PtyLineReader:
         # callback can never fire after the run ends.
         if self._monitor is None:
             return
+
         # Forward (kind, weight) so the watchdog's per-kind
         # counter receives the real classification; the
         # 0-arg bound method form would always yield
@@ -1782,7 +1784,11 @@ class PtyLineReader:
     def _register_active_sinks(
         self,
         watchdog: IdleWatchdog,
-    ) -> tuple[Token[Callable[[str], None] | None], Token[Callable[[str], None] | None], Callable[[str], None]]:
+    ) -> tuple[
+        Token[Callable[[str], None] | None],
+        Token[Callable[[str], None] | None],
+        Callable[[str], None],
+    ]:
         # Register the watchdog's MCP activity recorder as the active sink
         # for the in-process Ralph MCP server so each tools/call invocation
         # defers a NO_OUTPUT_DEADLINE fire while the agent is actively

@@ -82,7 +82,9 @@ def audit_regression_test_elimination(repo_root: Path) -> list[RegressionTestEli
             source = source_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             violations.append(
-                _violation("unreadable_module", rel_path, 0, rel_path, f"module could not be read ({exc})")
+                _violation(
+                    "unreadable_module", rel_path, 0, rel_path, f"module could not be read ({exc})"
+                )
             )
             continue
         for line, token in _marker_tokens(source):

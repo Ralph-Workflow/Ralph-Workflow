@@ -343,9 +343,7 @@ def _terminal_transport_failure_message(obj: dict[str, object]) -> str | None:
     return ""
 
 
-def _transport_failure_detail(
-    workspace_root: Path, agent_config: AgentConfig | None
-) -> str | None:
+def _transport_failure_detail(workspace_root: Path, agent_config: AgentConfig | None) -> str | None:
     """Return a bounded description of a turn killed at the transport.
 
     A work unit whose turn is rejected by the provider API never writes
@@ -647,9 +645,7 @@ def _render_phase_failure_report(
             return
         workspace_root = Path(workspace.absolute_path("."))
         agent_config = (
-            AgentRegistry.from_config(config).get(effect.agent_name)
-            if config is not None
-            else None
+            AgentRegistry.from_config(config).get(effect.agent_name) if config is not None else None
         )
         label, weakest, detail = _compute_graded_phase_verdict(
             workspace_root,

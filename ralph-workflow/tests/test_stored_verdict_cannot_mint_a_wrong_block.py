@@ -48,7 +48,9 @@ def test_a_stored_block_type_that_disagrees_is_corrected() -> None:
     """A PDF must not be delivered as a video block."""
     profile = ResolvedCapabilityProfile(
         identity=_CLAUDE,
-        verdicts={MODALITY_PDF: _stored(MODALITY_PDF, DeliveryMode.TYPED_BLOCK, block_type="video")},
+        verdicts={
+            MODALITY_PDF: _stored(MODALITY_PDF, DeliveryMode.TYPED_BLOCK, block_type="video")
+        },
     )
 
     corrected = profile.verdict_for(MODALITY_PDF)
@@ -67,7 +69,9 @@ def test_a_corrected_block_type_does_not_survive_re_serialisation() -> None:
     """
     profile = ResolvedCapabilityProfile(
         identity=_CLAUDE,
-        verdicts={MODALITY_PDF: _stored(MODALITY_PDF, DeliveryMode.TYPED_BLOCK, block_type="video")},
+        verdicts={
+            MODALITY_PDF: _stored(MODALITY_PDF, DeliveryMode.TYPED_BLOCK, block_type="video")
+        },
     )
 
     payload = profile.to_payload()
@@ -110,9 +114,7 @@ def test_a_conservative_stored_verdict_is_still_kept() -> None:
         verdicts={MODALITY_IMAGE: _stored(MODALITY_IMAGE, DeliveryMode.RESOURCE_REFERENCE_REPLAY)},
     )
 
-    assert profile.verdict_for(MODALITY_IMAGE).delivery is (
-        DeliveryMode.RESOURCE_REFERENCE_REPLAY
-    )
+    assert profile.verdict_for(MODALITY_IMAGE).delivery is (DeliveryMode.RESOURCE_REFERENCE_REPLAY)
 
 
 def test_a_matching_stored_block_type_is_left_alone() -> None:
@@ -171,9 +173,7 @@ def test_a_model_flag_cannot_outrun_the_cli_it_travels_through() -> None:
     on_codex = MultimodalModelIdentity(
         provider="anthropic", model_id="claude-opus-5", transport="codex"
     )
-    assert get_delivery_mode(on_codex, "pdf").delivery is (
-        DeliveryMode.RESOURCE_REFERENCE_REPLAY
-    )
+    assert get_delivery_mode(on_codex, "pdf").delivery is (DeliveryMode.RESOURCE_REFERENCE_REPLAY)
 
     # Where the two agree, nothing changes.
     native_pair = MultimodalModelIdentity(provider="claude", model_id="opus", transport="claude")

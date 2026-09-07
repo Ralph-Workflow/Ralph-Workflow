@@ -298,8 +298,6 @@ def test_codex_receives_a_warning_explaining_the_withheld_image(
     assert "metadata" in text
 
 
-
-
 # ---------------------------------------------------------------------------
 # Runtime plumbing — the guard is worthless if the transport never arrives
 # ---------------------------------------------------------------------------
@@ -422,9 +420,7 @@ def test_a_stored_typed_block_verdict_cannot_outrank_the_transport() -> None:
         },
     )
 
-    assert profile.verdict_for(MODALITY_PDF).delivery is (
-        DeliveryMode.RESOURCE_REFERENCE_REPLAY
-    )
+    assert profile.verdict_for(MODALITY_PDF).delivery is (DeliveryMode.RESOURCE_REFERENCE_REPLAY)
     # ...and the correction survives re-serialisation.
     verdicts = profile.to_payload()["verdicts"]
     assert isinstance(verdicts, dict)
@@ -466,6 +462,4 @@ def test_a_more_conservative_stored_verdict_is_respected() -> None:
         },
     )
 
-    assert profile.verdict_for(MODALITY_IMAGE).delivery is (
-        DeliveryMode.RESOURCE_REFERENCE_REPLAY
-    )
+    assert profile.verdict_for(MODALITY_IMAGE).delivery is (DeliveryMode.RESOURCE_REFERENCE_REPLAY)

@@ -224,9 +224,7 @@ def _png_dimensions(raw_bytes: bytes) -> tuple[int | None, int | None]:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_command(
-    *, design_capture_command: str, target: str
-) -> tuple[str, tuple[str, ...]]:
+def _resolve_command(*, design_capture_command: str, target: str) -> tuple[str, tuple[str, ...]]:
     """Resolve ``design_capture_command`` into a (command, args) pair.
 
     If the command string contains ``{target}``, the placeholder is
@@ -238,12 +236,14 @@ def _resolve_command(
     """
     if not isinstance(design_capture_command, str) or not design_capture_command.strip():
         raise MediaCaptureError(
-            target=target, cell_id="<command>",
+            target=target,
+            cell_id="<command>",
             reason="design_capture_command must be a non-empty string",
         )
     if not isinstance(target, str) or not target.strip():
         raise MediaCaptureError(
-            target="<unresolved>", cell_id="<command>",
+            target="<unresolved>",
+            cell_id="<command>",
             reason="capture target must be a non-empty string",
         )
     if _TARGET_PLACEHOLDER in design_capture_command:
@@ -252,12 +252,14 @@ def _resolve_command(
             tokens = shlex.split(resolved)
         except ValueError as exc:
             raise MediaCaptureError(
-                target=target, cell_id="<command>",
+                target=target,
+                cell_id="<command>",
                 reason=f"design_capture_command is not shell-parseable: {exc}",
             ) from exc
         if not tokens:
             raise MediaCaptureError(
-                target=target, cell_id="<command>",
+                target=target,
+                cell_id="<command>",
                 reason="design_capture_command resolved to zero tokens",
             )
         if len(tokens) > MAX_CAPTURE_COMMAND_TOKENS:
@@ -271,12 +273,14 @@ def _resolve_command(
         tokens = shlex.split(design_capture_command)
     except ValueError as exc:
         raise MediaCaptureError(
-            target=target, cell_id="<command>",
+            target=target,
+            cell_id="<command>",
             reason=f"design_capture_command is not shell-parseable: {exc}",
         ) from exc
     if not tokens:
         raise MediaCaptureError(
-            target=target, cell_id="<command>",
+            target=target,
+            cell_id="<command>",
             reason="design_capture_command resolved to zero tokens",
         )
     if len(tokens) + 1 > MAX_CAPTURE_COMMAND_TOKENS:
@@ -393,8 +397,7 @@ def handle_media_capture(
         # handler write outside the workspace root, even if the
         # supplied relpath is a traversal sequence.
         raise ValueError(
-            f"output_dir_relpath={output_dir_relpath!r} resolves outside "
-            f"the workspace root"
+            f"output_dir_relpath={output_dir_relpath!r} resolves outside the workspace root"
         )
     output_dir_abs.mkdir(parents=True, exist_ok=True)
 
@@ -608,10 +611,9 @@ def _capture_one_cell(
     # after the renderer returns.
     if not cell_output_abs.is_relative_to(workspace_root):
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
-            reason=(
-                f"cell output path {cell_output_abs} escapes the workspace root"
-            ),
+            target=target,
+            cell_id=cell.cell_id,
+            reason=(f"cell output path {cell_output_abs} escapes the workspace root"),
         )
 
     env = _build_cell_env(
@@ -620,7 +622,8 @@ def _capture_one_cell(
         cell_output_abs=cell_output_abs,
     )
     command, args = _resolve_command(
-        design_capture_command=design_capture_command, target=target,
+        design_capture_command=design_capture_command,
+        target=target,
     )
     options = ProcessRunOptions(
         cwd=str(workspace_root),
@@ -634,20 +637,21 @@ def _capture_one_cell(
         result = executor(command, args, options=options)
     except Exception as exc:
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
+            target=target,
+            cell_id=cell.cell_id,
             reason=f"renderer invocation raised: {exc}",
         ) from exc
 
     if not isinstance(result, ProcessResult):
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
-            reason=(
-                f"executor returned {type(result).__name__}; expected ProcessResult"
-            ),
+            target=target,
+            cell_id=cell.cell_id,
+            reason=(f"executor returned {type(result).__name__}; expected ProcessResult"),
         )
     if not result.succeeded:
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
+            target=target,
+            cell_id=cell.cell_id,
             reason=(
                 f"renderer exited with returncode={result.returncode}: "
                 f"{result.stderr.strip() or result.stdout.strip() or '<no output>'}"
@@ -703,10 +707,9 @@ def _finalize_cell(
     """
     if not cell_output_abs.exists():
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
-            reason=(
-                f"renderer succeeded but did not write {cell_output_abs}"
-            ),
+            target=target,
+            cell_id=cell.cell_id,
+            reason=(f"renderer succeeded but did not write {cell_output_abs}"),
         )
     # Defense in depth: resolve symlinks and re-check the boundary.
     # A malicious renderer could write to a real path, then symlink
@@ -716,38 +719,37 @@ def _finalize_cell(
         real_output = cell_output_abs.resolve(strict=True)
     except OSError as exc:
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
+            target=target,
+            cell_id=cell.cell_id,
             reason=f"failed to resolve {cell_output_abs}: {exc}",
         ) from exc
     if not real_output.is_relative_to(workspace_root):
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
-            reason=(
-                f"resolved cell output {real_output} is outside workspace root"
-            ),
+            target=target,
+            cell_id=cell.cell_id,
+            reason=(f"resolved cell output {real_output} is outside workspace root"),
         )
 
     raw_bytes = real_output.read_bytes()
     if not raw_bytes:
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
+            target=target,
+            cell_id=cell.cell_id,
             reason=f"renderer wrote an empty file at {real_output}",
         )
     if raw_bytes[:8] != _PNG_SIGNATURE:
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
-            reason=(
-                f"cell output {real_output} is not a PNG (missing signature)"
-            ),
+            target=target,
+            cell_id=cell.cell_id,
+            reason=(f"cell output {real_output} is not a PNG (missing signature)"),
         )
 
     width, height = _png_dimensions(raw_bytes)
     if width is None or height is None:
         raise MediaCaptureError(
-            target=target, cell_id=cell.cell_id,
-            reason=(
-                f"cell output {real_output} PNG IHDR is malformed or missing"
-            ),
+            target=target,
+            cell_id=cell.cell_id,
+            reason=(f"cell output {real_output} PNG IHDR is malformed or missing"),
         )
 
     sha256 = hashlib.sha256(raw_bytes).hexdigest()

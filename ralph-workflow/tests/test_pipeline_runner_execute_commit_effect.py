@@ -16,6 +16,7 @@ from rich.console import Console
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.git.commit_result import CommitCreationResult
 from ralph.git.operations import GitOperationError
 from ralph.pipeline import commit_executor as commit_executor_module
 from ralph.pipeline import runner as runner_module
@@ -23,7 +24,7 @@ from ralph.pipeline.commit_executor import execute_commit_effect
 from ralph.pipeline.effects import (
     CommitEffect,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import CommitResidualEvent, PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -168,6 +169,33 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 
 
 class TestExecuteCommitEffect:
+    @pytest.fixture(autouse=True)
+    def _stub_head_sha(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(commit_executor_module, "get_head_sha", lambda _root: "head")
+
+    def test_commit_residual_has_typed_changed_paths(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        message_file = tmp_path / "message.md"
+        message_file.write_text(_commit_document(), encoding="utf-8")
+        changed_paths = iter((["done.py"], ["left.py"]))
+        monkeypatch.setattr(
+            commit_executor_module, "_changed_commit_paths", lambda _root: next(changed_paths)
+        )
+
+        result = commit_executor_module.execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            tmp_path,
+            create_commit_fn=MagicMock(return_value=CommitCreationResult.created("sha")),
+            stage_all_fn=MagicMock(),
+            has_commit_work_fn=MagicMock(return_value=True),
+            has_residual_work_fn=MagicMock(return_value=True),
+        )
+
+        assert result == CommitResidualEvent(
+            committed_paths=("done.py",), remaining_paths=("left.py",), sha="sha"
+        )
+
     # Real-git test: two commits plus `git diff --cached` / `git ls-files`
     # and the production staging path all fork real `git` processes. Process
     # spawn latency under a fully parallel `make test` intermittently pushed
@@ -199,11 +227,17 @@ class TestExecuteCommitEffect:
             )
             staged_at_commit: list[str] = []
 
-            def capture_commit(_root: Path | str, _message: str) -> str:
+            def capture_commit(
+                _root: Path | str,
+                _message: str,
+                *,
+                expected_head: str,
+            ) -> CommitCreationResult:
                 staged_at_commit.extend(
                     path for path in repo.git.diff("--cached", "--name-only").splitlines() if path
                 )
-                return "sha"
+                assert expected_head == "head"
+                return CommitCreationResult.created("sha")
 
             result = commit_executor_module.execute_commit_effect(
                 CommitEffect(message_file=str(message_file)),
@@ -219,6 +253,29 @@ class TestExecuteCommitEffect:
             assert (tmp_git_repo / "credentials.json").exists()
         finally:
             repo.close()
+
+    def test_head_advance_after_staging_retains_artifact_and_fails(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        message_file = tmp_path / "message.md"
+        message_file.write_text(_commit_document(), encoding="utf-8")
+        monkeypatch.setattr(commit_executor_module, "get_head_sha", lambda _root: "before")
+        stage_all = MagicMock()
+        create_commit = MagicMock(return_value=CommitCreationResult.already_advanced("after"))
+
+        result = commit_executor_module.execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            tmp_path,
+            create_commit_fn=create_commit,
+            stage_all_fn=stage_all,
+            has_commit_work_fn=MagicMock(return_value=True),
+        )
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+        create_commit.assert_called_once_with(
+            str(tmp_path), "fix: pipeline artifact message", expected_head="before"
+        )
+        assert message_file.exists()
 
     def test_scoped_pipeline_staging_filters_recognized_secret_paths(
         self,
@@ -254,7 +311,7 @@ class TestExecuteCommitEffect:
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
         stage_all = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
@@ -273,7 +330,9 @@ class TestExecuteCommitEffect:
 
         assert result == PipelineEvent.COMMIT_SUCCESS
         stage_all.assert_called_once_with(str(tmp_path))
-        create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+        create_commit.assert_called_once_with(
+            str(tmp_path), "fix: pipeline artifact message", expected_head="head"
+        )
         assert not message_file.exists()
 
     def test_returns_residual_event_when_scoped_commit_leaves_worktree_dirty(
@@ -284,19 +343,24 @@ class TestExecuteCommitEffect:
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text(_commit_document(files=("src/feature.py",)), encoding="utf-8")
         has_commit_work = MagicMock(side_effect=[True, True])
-        monkeypatch.setattr(commit_executor_module, "_changed_commit_paths", lambda _root: ["src/feature.py"])
+        paths = iter((["src/feature.py"], ["src/feature.py"], ["src/feature.py"], ["src/other.py"]))
+        monkeypatch.setattr(
+            commit_executor_module, "_changed_commit_paths", lambda _root: next(paths)
+        )
         monkeypatch.setattr(commit_executor_module, "_stage_files", MagicMock())
 
         result = execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             tmp_path,
-            create_commit_fn=MagicMock(return_value="sha"),
+            create_commit_fn=MagicMock(return_value=CommitCreationResult.created("sha")),
             has_commit_work_fn=has_commit_work,
             has_residual_work_fn=has_commit_work,
             stage_all_fn=MagicMock(),
         )
 
-        assert result == PipelineEvent.COMMIT_RESIDUAL
+        assert result == CommitResidualEvent(
+            committed_paths=("src/feature.py",), remaining_paths=("src/other.py",), sha="sha"
+        )
         assert has_commit_work.call_count == 2
         assert not message_file.exists()
 
@@ -309,17 +373,22 @@ class TestExecuteCommitEffect:
         message_file.write_text(_commit_document(files=("src/first.py",)), encoding="utf-8")
         has_commit_work = MagicMock(side_effect=[True, True])
         monkeypatch.setattr(runner_module, "repo_has_commit_work", has_commit_work)
-        monkeypatch.setattr(commit_executor_module, "_changed_commit_paths", lambda _root: ["src/first.py"])
+        paths = iter((["src/first.py"], ["src/first.py"], ["src/first.py"], ["src/second.py"]))
+        monkeypatch.setattr(
+            commit_executor_module, "_changed_commit_paths", lambda _root: next(paths)
+        )
         monkeypatch.setattr(commit_executor_module, "_stage_files", MagicMock())
 
         result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
-            MagicMock(return_value="sha"),
+            MagicMock(return_value=CommitCreationResult.created("sha")),
             MagicMock(),
             tmp_path,
         )
 
-        assert result == PipelineEvent.COMMIT_RESIDUAL
+        assert result == CommitResidualEvent(
+            committed_paths=("src/first.py",), remaining_paths=("src/second.py",), sha="sha"
+        )
         assert has_commit_work.call_count == 2
 
     def test_production_deps_seam_executes_commit_without_duplicate_kwargs(
@@ -338,7 +407,7 @@ class TestExecuteCommitEffect:
         and therefore never crossed this seam.
         """
         stage_all = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text(
@@ -359,7 +428,9 @@ class TestExecuteCommitEffect:
         )
 
         assert result == PipelineEvent.COMMIT_SUCCESS
-        create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+        create_commit.assert_called_once_with(
+            str(tmp_path), "fix: pipeline artifact message", expected_head="head"
+        )
 
     def test_caller_supplied_work_probes_override_runner_defaults(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -376,14 +447,14 @@ class TestExecuteCommitEffect:
 
         result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
-            MagicMock(return_value="sha"),
+            MagicMock(return_value=CommitCreationResult.created("sha")),
             MagicMock(),
             tmp_path,
             has_commit_work_fn=injected,
             has_residual_work_fn=injected,
         )
 
-        assert result == PipelineEvent.COMMIT_RESIDUAL
+        assert result == PipelineEvent.COMMIT_SUCCESS
         assert injected.call_count == 2
         module_default.assert_not_called()
 
@@ -392,7 +463,7 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         stage_files = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
@@ -422,14 +493,16 @@ class TestExecuteCommitEffect:
             str(tmp_path),
             ["src/feature.py", "tests/test_feature.py"],
         )
-        create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+        create_commit.assert_called_once_with(
+            str(tmp_path), "fix: pipeline artifact message", expected_head="head"
+        )
 
     def test_rejects_commit_artifact_files_with_parent_traversal(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
         stage_all = MagicMock()
         stage_files = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
@@ -463,7 +536,7 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         stage_files = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
@@ -497,7 +570,7 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         stage_files = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
@@ -527,7 +600,9 @@ class TestExecuteCommitEffect:
             str(tmp_path),
             ["src/feature.py", "tests/test_feature.py"],
         )
-        create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+        create_commit.assert_called_once_with(
+            str(tmp_path), "fix: pipeline artifact message", expected_head="head"
+        )
 
     @pytest.mark.parametrize(
         ("payload", "changed_paths", "expected"),
@@ -811,7 +886,7 @@ class TestExecuteCommitEffect:
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
         stage_all = MagicMock()
-        create_commit = MagicMock(return_value="sha")
+        create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(

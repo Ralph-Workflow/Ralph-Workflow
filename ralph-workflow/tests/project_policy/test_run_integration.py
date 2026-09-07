@@ -769,4 +769,3 @@ def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness()
     assert runners.calls == ["run_parallel_worker_from_manifest"]
     assert "run_project_policy_readiness" not in runners.calls
     assert "load_configuration" not in runners.calls
-

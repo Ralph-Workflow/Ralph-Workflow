@@ -167,7 +167,6 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     )
 
 
-
 # ---------------------------------------------------------------------------
 # fast_forward_target defensive skip reasons (auto_integrate_ff.py)
 # ---------------------------------------------------------------------------
@@ -475,9 +474,7 @@ def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
         assert "conflict.txt" in wt_status, (
             f"preflight: linked worktree must report the tracked dirty file, got {wt_status!r}"
         )
-        config = _build_config(
-            tmp_git_repo, target=wt_branch, reclaim_target_worktree=False
-        )
+        config = _build_config(tmp_git_repo, target=wt_branch, reclaim_target_worktree=False)
         scope = WorkspaceScope(tmp_git_repo)
         outcome = auto_integrate_after_commit(
             config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF

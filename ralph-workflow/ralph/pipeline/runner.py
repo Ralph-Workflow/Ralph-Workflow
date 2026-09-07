@@ -117,7 +117,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import CommitResidualEvent, Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
@@ -183,6 +183,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.commit_executor import _CreateCommitFn
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import (
@@ -325,12 +326,9 @@ def _execute_commit_effect_from_deps(
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | None,
     verbosity: Verbosity,
-) -> PipelineEvent:
+) -> Event:
     if pipeline_deps.commit_effect_executor is not None:
-        return cast(
-            "PipelineEvent",
-            pipeline_deps.commit_effect_executor(effect, workspace_scope.root),
-        )
+        return cast("Event", pipeline_deps.commit_effect_executor(effect, workspace_scope.root))
     return execute_commit_effect(
         effect,
         create_commit,
@@ -354,7 +352,7 @@ def _execute_effect(
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
-) -> PipelineEvent:
+) -> Event:
     resolved_display_context = display_context or (
         display._ctx if display is not None and hasattr(display, "_ctx") else make_display_context()
     )
@@ -783,6 +781,8 @@ def _coarse_outcome_for_event(event: Event) -> str:
     """
     if event == PipelineEvent.COMMIT_SKIPPED:
         return "skipped"
+    if isinstance(event, CommitResidualEvent):
+        return "success"
     if isinstance(event, PipelineEvent) and event in _PHASE_SUCCESS_EVENTS:
         return "success"
     return "failure"
@@ -952,9 +952,7 @@ def _integrate_inline_effect(
     return inline_result
 
 
-def _integration_conflict_failure(
-    state: PipelineState, outcome: RebaseState
-) -> PhaseFailureEvent:
+def _integration_conflict_failure(state: PipelineState, outcome: RebaseState) -> PhaseFailureEvent:
     """Build the recovery-routable failure for an unresolved integration."""
     reason = outcome.last_reason or "the conflict resolver did not produce a resolution"
     return PhaseFailureEvent(
@@ -1125,6 +1123,13 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
 )
 
 
+def _is_phase_transition_integration_event(event: object) -> bool:
+    """Return whether a typed or enum event reaches integration."""
+    return isinstance(event, CommitResidualEvent) or (
+        isinstance(event, PipelineEvent) and event in _PHASE_TRANSITION_INTEGRATION_EVENTS
+    )
+
+
 def _build_seam_conflict_resolver(
     *,
     policy_bundle: PolicyBundle | None,
@@ -1203,7 +1208,7 @@ def _integrate_on_phase_transition(
     display_context: DisplayContext | None = None,
 ) -> RebaseState | None:
     """Run the boundary integration hook for successful phase events."""
-    if event not in _PHASE_TRANSITION_INTEGRATION_EVENTS:
+    if not _is_phase_transition_integration_event(event):
         # R2/AC8: ladder rung 3 -- this helper is called only for pipeline
         # transitions; non-seam events are retried at their next real seam.
         return None
@@ -1385,10 +1390,6 @@ def _sample_cycle_timing(
         total_elapsed_seconds=state.cycle_timebox_consumed_seconds + cycle_delta,
     )
     return routing_timing, cycle_now, cycle_delta, ct_policy
-
-
-
-
 
 
 def _fold_cycle_elapsed(
@@ -1680,7 +1681,7 @@ def _run_pipeline_step(
             # scoped under (S-2 run_id threading).
             run_id = str(uuid.uuid4())
             event = invoke_execute_effect_with_optional_display(
-                    effect,
+                effect,
                 config,
                 workspace_scope,
                 display=display,
@@ -1957,8 +1958,7 @@ def _handle_inline_effect(
         requested_drain = effect.drain if target_phase == effect.phase else None
         prepare_updates: dict[str, object] = {
             "phase": target_phase,
-            "current_drain": requested_drain
-            or resolve_phase_drain(target_phase, pipeline_policy),
+            "current_drain": requested_drain or resolve_phase_drain(target_phase, pipeline_policy),
         }
         # A change of phase here (skip-invocation success route, failed-route
         # re-entry) must clear the next-attempt session action exactly like
@@ -2121,12 +2121,12 @@ def available_width(prefix_len: int) -> int:
 
 def execute_commit_effect(
     effect: CommitEffect,
-    create_commit_fn: Callable[[Path | str, str], str],
+    create_commit_fn: _CreateCommitFn,
     stage_all_fn: Callable[[Path | str], None],
     repo_root: Path,
     display: ParallelDisplay | None = None,
     **opts: object,
-) -> PipelineEvent:
+) -> Event:
     """Execute a commit effect while preserving runner-level dependency injection hooks.
 
     The work probes are defaults, not overrides: a caller that names

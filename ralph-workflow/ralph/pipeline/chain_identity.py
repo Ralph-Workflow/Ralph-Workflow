@@ -154,8 +154,6 @@ def resolve_phase_session_transport(
     return by_value.get(selected), ambiguous
 
 
-
-
 __all__ = [
     "chain_disagrees_on_model",
     "phase_session_identity",

@@ -26,7 +26,11 @@ def _decision(verdict: str, evidence: str, location: str) -> dict[str, object]:
 
 
 def _markdown(artifact_type: str, verdict: str, evidence: str, location: str) -> str:
-    prefix = {"planning_analysis_decision": "PA", "development_analysis_decision": "DA", "policy_remediation_analysis_decision": "PR"}[artifact_type]
+    prefix = {
+        "planning_analysis_decision": "PA",
+        "development_analysis_decision": "DA",
+        "policy_remediation_analysis_decision": "PR",
+    }[artifact_type]
     status = "completed" if verdict == "met" else "request_changes"
     target = "Step: [S-1] " if artifact_type == "planning_analysis_decision" else ""
     verdict_item = (
@@ -99,7 +103,9 @@ def test_load_evaluation_cases_loads_complete_frozen_fixture(tmp_path: Path) -> 
         {"workspace_files": {"../outside.py": "x"}},
     ),
 )
-def test_load_evaluation_cases_rejects_malformed_case(tmp_path: Path, override: dict[str, object]) -> None:
+def test_load_evaluation_cases_rejects_malformed_case(
+    tmp_path: Path, override: dict[str, object]
+) -> None:
     with pytest.raises(ValueError):
         load_evaluation_cases(_write_cases(tmp_path, [_case_payload(**override)]))
 
@@ -155,7 +161,9 @@ def test_runner_uses_distinct_fixture_workspace_per_agent_run(tmp_path: Path) ->
         observed.append(workspace)
         assert (workspace / "src/example.py").read_text(encoding="utf-8") == "value = 1\n"
         assert not (workspace / "undeclared.txt").exists()
-        return _markdown("development_analysis_decision", "not met", "failure output.", "src/example.py:10")
+        return _markdown(
+            "development_analysis_decision", "not met", "failure output.", "src/example.py:10"
+        )
 
     run_evaluation((case,), (("strongest", "provider/strong"),), invoke, runs_per_agent=2)
 

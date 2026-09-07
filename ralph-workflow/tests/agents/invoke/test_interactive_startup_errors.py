@@ -102,7 +102,9 @@ def test_claude_interactive_settings_envelope_pins_required_hooks(tmp_path: Path
         field="hooks.Stop[0].hooks[0]",
     )
     assert stop_hook["type"] == "command"
-    stop_match = re.search(r"Path\((.*)\)\.touch", _hook_command_source(must_str(stop_hook["command"])))
+    stop_match = re.search(
+        r"Path\((.*)\)\.touch", _hook_command_source(must_str(stop_hook["command"]))
+    )
     assert stop_match is not None
     assert ast.literal_eval(stop_match.group(1)) == str(sentinel)
 

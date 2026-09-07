@@ -124,7 +124,9 @@ def resolve_color_depth(console: Console) -> ColorDepth:
     return "truecolor"
 
 
-def demote_hex(resolved_hex: str, *, budget: float = TIER_2_CHROMA_BUDGET, surface_hex: str | None = None) -> str:
+def demote_hex(
+    resolved_hex: str, *, budget: float = TIER_2_CHROMA_BUDGET, surface_hex: str | None = None
+) -> str:
     """G-2: move ``resolved_hex`` toward ``budget`` chroma at unchanged
     lightness and hue -- a chroma ladder, never a contrast or meaning
     change. If capping chroma would drop under the C-1 4.5:1 floor against
@@ -168,13 +170,17 @@ class SalienceAllocator:
         #: bounded-accumulator-ok: keyed only by role names, a fixed small
         #: set (ROLE_FREQUENCY_TIER's declared roles); never grows with the
         #: number of frames allocated.
-        self._steady_frames: dict[str, int] = {}  # bounded-accumulator-ok: keyed only by ROLE_FREQUENCY_TIER's fixed small role-name set
+        self._steady_frames: dict[
+            str, int
+        ] = {}  # bounded-accumulator-ok: keyed only by ROLE_FREQUENCY_TIER's fixed small role-name set
         #: role -> whether it was lit in the immediately preceding frame
         #: (G-7's hysteresis memory). Absent means never seen yet.
         #: bounded-accumulator-ok: keyed only by role names, a fixed small
         #: set (ROLE_FREQUENCY_TIER's declared roles); never grows with the
         #: number of frames allocated.
-        self._was_lit: dict[str, bool] = {}  # bounded-accumulator-ok: keyed only by ROLE_FREQUENCY_TIER's fixed small role-name set
+        self._was_lit: dict[
+            str, bool
+        ] = {}  # bounded-accumulator-ok: keyed only by ROLE_FREQUENCY_TIER's fixed small role-name set
 
     @property
     def frame_index(self) -> int:
@@ -263,7 +269,11 @@ class SalienceAllocator:
 
         for bid in carryover_demoted:
             steady = self._steady_frames.get(bid.role, 0)
-            reason = "decayed" if steady > STEADY_STATE_DECAY_FRAMES else "demoted: one-way until state change"
+            reason = (
+                "decayed"
+                if steady > STEADY_STATE_DECAY_FRAMES
+                else "demoted: one-way until state change"
+            )
             decisions[bid.role] = AllocationDecision(
                 bid.role, FrequencyTier.EVENT, False, reason, self._frame_index
             )

@@ -204,8 +204,7 @@ def _assert_invariants() -> None:
     )
     if missing:
         raise RuntimeError(
-            "_AUDIT_PRE_FILTER_NEEDLES is missing forbidden-pattern needles: "
-            + ", ".join(missing)
+            "_AUDIT_PRE_FILTER_NEEDLES is missing forbidden-pattern needles: " + ", ".join(missing)
         )
 
 

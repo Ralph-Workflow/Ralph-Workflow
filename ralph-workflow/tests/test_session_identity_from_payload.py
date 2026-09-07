@@ -52,17 +52,23 @@ def test_a_stale_payload_provider_does_not_ride_onto_another_cli(tmp_path: Path)
     assert rebased.provider == "unknown", "a provider for another CLI must not travel"
 
     # A restricted side still wins outright, and drops the provider too.
-    restricted = identity_for("codex", {"provider": "claude", "model_id": "c", "transport": "claude"})
+    restricted = identity_for(
+        "codex", {"provider": "claude", "model_id": "c", "transport": "claude"}
+    )
     assert restricted.transport == "codex"
     assert restricted.provider == "unknown"
 
     # Agreement keeps everything: nothing is stale here.
-    agreeing = identity_for("claude", {"provider": "claude", "model_id": "c", "transport": "claude"})
+    agreeing = identity_for(
+        "claude", {"provider": "claude", "model_id": "c", "transport": "claude"}
+    )
     assert agreeing.provider == "claude"
     assert agreeing.model_id == "c"
 
     # With no declaration the payload stands -- it is all there is.
-    payload_only = identity_for(None, {"provider": "claude", "model_id": "c", "transport": "claude"})
+    payload_only = identity_for(
+        None, {"provider": "claude", "model_id": "c", "transport": "claude"}
+    )
     assert payload_only.provider == "claude"
 
 

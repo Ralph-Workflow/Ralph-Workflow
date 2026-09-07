@@ -183,7 +183,9 @@ def test_audit_blocks_regression_when_pty_runner_paint_returns(
         return content + "\ntqdm(..., file=sys.stdout)\n"
 
     monkeypatch.setattr(audit_module, "_read", _read_with_paint)
-    _narrow_invariants(monkeypatch, rel_path="agents/invoke/_pty_runner.py", invariant_cls=Invariant)
+    _narrow_invariants(
+        monkeypatch, rel_path="agents/invoke/_pty_runner.py", invariant_cls=Invariant
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -893,7 +895,9 @@ def test_terminal_restore_audit_regression_rejects_destructive_parent_cleanup(
     if forbidden_literal == "tcflush":
         qualname = "restore_terminal"
         old_literal = "target_fd = _fd_of(target_stream)"
-        new_literal = "termios.tcflush(0, termios.TCIFLUSH)\n        target_fd = _fd_of(target_stream)"
+        new_literal = (
+            "termios.tcflush(0, termios.TCIFLUSH)\n        target_fd = _fd_of(target_stream)"
+        )
     else:
         qualname = "terminal_restore_sequence"
         old_literal = 'return "\\x1b[?25h\\x1b[0m"'

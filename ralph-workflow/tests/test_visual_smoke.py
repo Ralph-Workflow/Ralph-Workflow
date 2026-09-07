@@ -97,6 +97,5 @@ def test_improved_verdict_on_unchanged_captures_fails() -> None:
     assert verdict["visual_verdict"] == "improved"
     assert "design_verdict_id" not in verdict or verdict["design_verdict_id"] == "unchanged"
     assert any(
-        "byte-identical" in error
-        for error in _validate_fixture_verdict(before, before, verdict)
+        "byte-identical" in error for error in _validate_fixture_verdict(before, before, verdict)
     )

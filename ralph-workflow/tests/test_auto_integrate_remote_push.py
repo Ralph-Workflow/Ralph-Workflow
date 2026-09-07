@@ -45,7 +45,9 @@ def test_enabled_remote_sync_delegates_landing_to_push_hook(
         "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", push_hook
     )
 
-    result = auto_integrate_ff.maybe_push_target(_config(enabled=True), Path("/repo"), "release", record)
+    result = auto_integrate_ff.maybe_push_target(
+        _config(enabled=True), Path("/repo"), "release", record
+    )
 
     assert result.last_push == "pushed release to origin"
     assert calls == [(_config(enabled=True), Path("/repo"), "release", record)]
@@ -64,7 +66,12 @@ def test_disabled_remote_sync_preserves_landing_without_calling_hook(
         "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", unexpected_hook
     )
 
-    assert auto_integrate_ff.maybe_push_target(_config(enabled=False), Path("/repo"), "release", record) is record
+    assert (
+        auto_integrate_ff.maybe_push_target(
+            _config(enabled=False), Path("/repo"), "release", record
+        )
+        is record
+    )
 
 
 def test_push_hook_exception_preserves_local_landing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,4 +85,7 @@ def test_push_hook_exception_preserves_local_landing(monkeypatch: pytest.MonkeyP
         "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", failing_hook
     )
 
-    assert auto_integrate_ff.maybe_push_target(_config(enabled=True), Path("/repo"), "release", record) is record
+    assert (
+        auto_integrate_ff.maybe_push_target(_config(enabled=True), Path("/repo"), "release", record)
+        is record
+    )

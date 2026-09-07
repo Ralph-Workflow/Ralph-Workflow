@@ -27,16 +27,23 @@ from ralph.display._palette import (
 )
 from ralph.syntax_theme import SyntaxThemes
 
-_DA_002_SURFACES: tuple[str, ...] = ("#7A7A7A", "#808080", "#8A8A8A", "#909090", "#2D2A2E", "#FAF8F5")
+_DA_002_SURFACES: tuple[str, ...] = (
+    "#7A7A7A",
+    "#808080",
+    "#8A8A8A",
+    "#909090",
+    "#2D2A2E",
+    "#FAF8F5",
+)
 
 
 def _hex_to_oklch(hex_str: str) -> tuple[float, float, float]:
     r, g, b = hex_to_rgb(hex_str)
     lab_l, a, b_lab = rgb_to_oklab(r, g, b)
     return oklab_to_oklch(lab_l, a, b_lab)
+
+
 @pytest.mark.criteria("F-1")
-
-
 def test_palette_determinism_and_cache() -> None:
     """Assert palette generation is deterministic and cached."""
     p1 = resolve_palette("#2D2A2E")
@@ -47,9 +54,9 @@ def test_palette_determinism_and_cache() -> None:
     p_null1 = resolve_palette(None)
     p_null2 = resolve_palette(None)
     assert p_null1 is p_null2
+
+
 @pytest.mark.criteria("A-4")
-
-
 def test_palette_hue_preservation() -> None:
     """Assert hue is preserved within 15 degrees tolerance after solving."""
     for surface_hex in ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF"):
@@ -102,9 +109,9 @@ _DOCUMENTED_256_COLOUR_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("#FFFFFF", "muted"),
     }
 )
+
+
 @pytest.mark.criteria("C-5")
-
-
 def test_palette_256_colour_depth_clears_contrast_floor() -> None:
     """C-5: every resolved role clears 4.5:1 after Rich's own 256-colour
     quantisation (reusing Rich's downgrade path, not a hand-rolled cube
@@ -222,7 +229,13 @@ _ALL_PAIRS_DELIBERATE_TWINS: frozenset[frozenset[str]] = frozenset(
 #: compress to the same or a barely-different dual-safe pixel. This mirrors
 #: `test_palette_quantised_separability`'s existing surface set, which
 #: excludes `None` for the same reason.
-_ALL_PAIRS_CANONICAL_SURFACES: tuple[str, ...] = ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF")
+_ALL_PAIRS_CANONICAL_SURFACES: tuple[str, ...] = (
+    "#2D2A2E",
+    "#1E1E1E",
+    "#FAF8F5",
+    "#000000",
+    "#FFFFFF",
+)
 
 
 def test_palette_all_role_pairs_stay_hex_and_cvd_separable() -> None:
@@ -325,16 +338,23 @@ _MONOKAI_ACCENT_HEX: dict[str, str] = {
 # resolved -- light-mode mirrors offsets about the light surface rather than
 # reproducing Monokai's dark-mode L order directly, so this is the order that
 # survives mirroring (see PLAN.md "Assumptions").
-_ACCENT_OFFSET_ORDER: tuple[str, ...] = ("error", "pending", "warning", "success", "info", "skipped")
+_ACCENT_OFFSET_ORDER: tuple[str, ...] = (
+    "error",
+    "pending",
+    "warning",
+    "success",
+    "info",
+    "skipped",
+)
 
 
 def _oklab_l(hex_str: str) -> float:
     r, g, b = hex_to_rgb(hex_str)
     lab_l, _a, _b = rgb_to_oklab(r, g, b)
     return lab_l
+
+
 @pytest.mark.criteria("A-1")
-
-
 def test_role_anchors_hue_chroma_are_measured_not_literal() -> None:
     """A-1: every role anchor with a Monokai Pro twin must have hue AND
     chroma measured from the same hex call that seeds l_ref -- not a
@@ -375,9 +395,9 @@ def test_muted_anchor_is_derived_from_measured_anchors_not_hand_typed() -> None:
     assert 0.0 < muted.chroma < info_anchor.chroma
     assert muted.chroma > comment_anchor.chroma
     assert muted.l_ref == (REFERENCE_BACKGROUND_L + comment_anchor.l_ref) / 2.0
+
+
 @pytest.mark.criteria("E-2")
-
-
 def test_tier_chroma_budgets_separate_structural_chrome_from_event_accents() -> None:
     """E-1/E-2: chrome (tier 2, structural) must resolve to a chroma at or
     below the tier-2 budget, while success/warning/error/info (tier 3/4,
@@ -457,9 +477,9 @@ def _oklab_delta_e(hex_a: str, hex_b: str) -> float:
     la, aa, ba = rgb_to_oklab(*hex_to_rgb(hex_a))
     lb, ab, bb = rgb_to_oklab(*hex_to_rgb(hex_b))
     return math.dist((la, aa, ba), (lb, ab, bb))
+
+
 @pytest.mark.criteria("C-3")
-
-
 def test_palette_c3_role_collision_pairs_stay_separable() -> None:
     """C-3: `running`/`info` and `pending`/`analysis`/`elision` used to
     resolve to byte-identical hex on every surface (ΔE = 0) because
@@ -472,23 +492,30 @@ def test_palette_c3_role_collision_pairs_stay_separable() -> None:
     from ralph.display._color_depth import quantise_hex
 
     matrices = (_DEUTERANOPIA_MATRIX, _PROTANOPIA_MATRIX, _TRITANOPIA_MATRIX)
-    pairs = (("running", "info"), ("analysis", "pending"), ("elision", "pending"), ("analysis", "elision"))
+    pairs = (
+        ("running", "info"),
+        ("analysis", "pending"),
+        ("elision", "pending"),
+        ("analysis", "elision"),
+    )
     for surface_hex in _C3_CANONICAL_SURFACES:
         palette = resolve_palette(surface_hex)
         for r1, r2 in pairs:
             h1, h2 = palette[r1], palette[r2]
             assert h1 != h2, f"{r1} vs {r2} collide on {surface_hex}"
             de = _oklab_delta_e(h1, h2)
-            assert de >= _C3_MIN_DELTA_E, f"{r1} vs {r2} on {surface_hex}: ΔE {de:.4f} < {_C3_MIN_DELTA_E}"
+            assert de >= _C3_MIN_DELTA_E, (
+                f"{r1} vs {r2} on {surface_hex}: ΔE {de:.4f} < {_C3_MIN_DELTA_E}"
+            )
             q1, q2 = quantise_hex(h1, "256"), quantise_hex(h2, "256")
             assert q1 != q2, f"{r1} vs {r2} on {surface_hex}: quantised collision {q1}"
             for matrix in matrices:
                 sim1 = simulate_cvd(h1, matrix)
                 sim2 = simulate_cvd(h2, matrix)
                 assert sim1 != sim2, f"{r1} vs {r2} on {surface_hex}: CVD collision under {matrix}"
+
+
 @pytest.mark.criteria("A-2")
-
-
 def test_palette_monokai_fidelity_on_reference_surface() -> None:
     """Solving each accent role against #2D2A2E must reproduce the Monokai
     Pro reference hex bit-for-bit -- the reference surface IS the anchor's
@@ -496,9 +523,9 @@ def test_palette_monokai_fidelity_on_reference_surface() -> None:
     palette = resolve_palette("#2D2A2E")
     for role, expected_hex in _MONOKAI_ACCENT_HEX.items():
         assert palette[role] == expected_hex, f"{role}: {palette[role]} != {expected_hex}"
+
+
 @pytest.mark.criteria("A-3")
-
-
 def test_palette_lightness_structure_preserves_monokai_spacing() -> None:
     """Accent lightnesses must span a meaningful range and keep the fixed
     distance-from-surface order, not collapse onto one plane (Characterize
@@ -512,9 +539,9 @@ def test_palette_lightness_structure_preserves_monokai_spacing() -> None:
         lightnesses = [_oklab_l(palette[role]) for role in _ACCENT_OFFSET_ORDER]
         spread = max(lightnesses) - min(lightnesses)
         assert spread > 0.05, f"{surface_hex}: spread {spread:.4f} too small"
+
+
 @pytest.mark.criteria("A-6")
-
-
 def test_palette_light_surface_chroma_stays_above_floor_fraction_of_anchor() -> None:
     """A-6: on a light surface, an accent role's resolved chroma must stay
     above a documented floor fraction of anchor.chroma, not collapse toward
@@ -551,7 +578,13 @@ def test_palette_five_structural_roles_stay_mutually_distinct() -> None:
     for surface_hex in ("#2D2A2E", "#FAF8F5", None):
         palette = resolve_palette(surface_hex)
         disp = theme._build_display_styles(palette)
-        values = [disp["chrome"], disp["agent_text"], disp["elision"], disp["diff_added"], disp["diff_removed"]]
+        values = [
+            disp["chrome"],
+            disp["agent_text"],
+            disp["elision"],
+            disp["diff_added"],
+            disp["diff_removed"],
+        ]
         assert len(set(values)) == len(values), (surface_hex, disp)
 
 
@@ -573,9 +606,9 @@ def test_palette_five_structural_roles_stay_mutually_distinct() -> None:
 #: near-zero collisions (worst case was 0.00179 before the
 #: ``_SQUEEZE_HEADROOM_THRESHOLD`` fix landed), without being a tautology.
 _NARROW_BAND_MIN_DELTA_E: float = 0.0025
+
+
 @pytest.mark.criteria("B-4")
-
-
 def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
     """DA-001/B-4: on mid-grey surfaces where headroom is too narrow to
     carry every role's full reference offset, solve_for_surface must
@@ -588,7 +621,17 @@ def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
     of near-identical near-white values" B-4 bans, so every pair must also
     clear a minimum OKLab ΔE -- not merely differ in the least-significant
     hex digit."""
-    roles = ("success", "error", "warning", "skipped", "info", "pending", "foreground", "muted", "comment")
+    roles = (
+        "success",
+        "error",
+        "warning",
+        "skipped",
+        "info",
+        "pending",
+        "foreground",
+        "muted",
+        "comment",
+    )
     for surface_hex in ("#484848", "#5F5F5F", "#6C6C6C", "#747474", "#808080", "#8C8C8C"):
         palette = resolve_palette(surface_hex)
         values = [palette[role] for role in roles]
@@ -598,9 +641,9 @@ def test_palette_semantic_roles_stay_distinct_on_narrow_band_surfaces() -> None:
             assert de >= _NARROW_BAND_MIN_DELTA_E, (
                 f"{r1} vs {r2} on {surface_hex}: ΔE {de:.5f} < {_NARROW_BAND_MIN_DELTA_E}"
             )
+
+
 @pytest.mark.criteria("E-4")
-
-
 def test_palette_lightness_hierarchy_ranks_field_over_structure_over_recessive() -> None:
     """E-4/DA-003: lightness carries hierarchy -- primary content must resolve
     brighter (more contrast off the surface) than structural chrome, which
@@ -667,9 +710,9 @@ def test_owned_fills_stay_a_bounded_delta_l_from_the_surface(r: int, g: int, b: 
         assert abs(diff_l - surface_l) <= _MAX_OWNED_FILL_DELTA_L, (
             f"{surface_hex}: diff {label} fill ΔL {abs(diff_l - surface_l):.4f} exceeds bound"
         )
+
+
 @pytest.mark.criteria("E-6")
-
-
 def test_diff_fills_are_hue_tinted_not_lightness_shifted() -> None:
     """E-6/DA-005: `_derive_diff_fills` must hold the preview fill's own
     OKLab L constant and shift only a/b -- otherwise contrast for text
@@ -696,9 +739,9 @@ def test_diff_fills_are_hue_tinted_not_lightness_shifted() -> None:
             assert abs(diff_l - preview_l) < 1e-3, (
                 f"{surface_hex}: diff {label} fill L {diff_l:.6f} != preview fill L {preview_l:.6f}"
             )
+
+
 @pytest.mark.criteria("E-8")
-
-
 def test_dual_safe_band_preserves_reference_offset_ordering() -> None:
     """E-8/DA-006: the undetermined-background (`resolve_palette(None)`)
     fallback must keep roles ordered and tiered by the same reference-offset
@@ -761,10 +804,12 @@ def test_preview_foreground_boolean_path_matches_measured_canonical_surface() ->
     the same canonical-surface derivation as the measured path."""
     assert theme.preview_foreground_for_background(
         False
-    ) == theme.preview_foreground_for_background(False, surface_hex=theme._CANONICAL_DARK_SURFACE_HEX)
-    assert theme.preview_foreground_for_background(
-        True
-    ) == theme.preview_foreground_for_background(True, surface_hex=theme._CANONICAL_LIGHT_SURFACE_HEX)
+    ) == theme.preview_foreground_for_background(
+        False, surface_hex=theme._CANONICAL_DARK_SURFACE_HEX
+    )
+    assert theme.preview_foreground_for_background(True) == theme.preview_foreground_for_background(
+        True, surface_hex=theme._CANONICAL_LIGHT_SURFACE_HEX
+    )
 
 
 def test_diff_fill_boolean_path_matches_measured_canonical_surface() -> None:

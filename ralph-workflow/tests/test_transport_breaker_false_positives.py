@@ -225,11 +225,7 @@ def test_failure_signature_still_strips_volatile_argument_tokens() -> None:
 
 def test_failure_signature_separates_distinct_tools() -> None:
     """Two different tools failing the same way are not one repetition."""
-    read = failure_signature(
-        "tools/call", {"name": "read_file", "arguments": {}}, CALLER_ERROR
-    )
-    write = failure_signature(
-        "tools/call", {"name": "write_file", "arguments": {}}, CALLER_ERROR
-    )
+    read = failure_signature("tools/call", {"name": "read_file", "arguments": {}}, CALLER_ERROR)
+    write = failure_signature("tools/call", {"name": "write_file", "arguments": {}}, CALLER_ERROR)
 
     assert read != write

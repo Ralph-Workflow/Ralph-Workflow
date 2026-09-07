@@ -81,7 +81,9 @@ def _policy_paths_in_scopes(paths: frozenset[str]) -> frozenset[str]:
     return frozenset(paths) & frozenset(_POLICY_SCOPE_SEEDS)
 
 
-def _load_git_run_result(tmp_git_repo: Path) -> tuple[FsWorkspace, WorkspaceScope, run_module._LoadResult]:
+def _load_git_run_result(
+    tmp_git_repo: Path,
+) -> tuple[FsWorkspace, WorkspaceScope, run_module._LoadResult]:
     """Build the workspace + workspace_scope + load result on the same git root."""
     workspace = FsWorkspace(tmp_git_repo, allowed_roots=[tmp_git_repo])
     workspace_scope = WorkspaceScope(
@@ -204,6 +206,7 @@ def test_blocked_handback_leaves_no_policy_scope_path_dirty(
         from ralph.pipeline._runner_session import (
             set_last_captured_session_id as _clear_session,
         )
+
         _clear_session(None)
         from ralph.pipeline.events import PipelineEvent
 
@@ -299,7 +302,8 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
                     _complete_policy_body(
                         filename=filename,
                         lang=None
-                        if filename not in {
+                        if filename
+                        not in {
                             "typechecking-policy.md",
                             "linting-policy.md",
                         }
@@ -316,9 +320,7 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
         elif effect.phase == "policy_remediation_analysis":
             from ralph.project_policy import analysis as policy_analysis
 
-            workspace.mkdirs(
-                f"{pp_markers.CACHE_REL_PATH.rsplit('/', 1)[0]}/artifacts"
-            )
+            workspace.mkdirs(f"{pp_markers.CACHE_REL_PATH.rsplit('/', 1)[0]}/artifacts")
             workspace.write(
                 policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,
                 json.dumps(
@@ -379,8 +381,7 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
 
     assert rc == 0, "NORMAL-mode run must continue into the development pipeline"
     assert "execute_pipeline" in preflight_order, (
-        f"phase 4 was not reached after the post-remediation preflight: "
-        f"{preflight_order!r}"
+        f"phase 4 was not reached after the post-remediation preflight: {preflight_order!r}"
     )
 
     after_dirty = list_dirty_paths(tmp_git_repo)

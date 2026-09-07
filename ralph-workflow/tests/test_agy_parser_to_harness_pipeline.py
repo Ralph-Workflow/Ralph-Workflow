@@ -27,9 +27,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _meaningful_output_lines,
 )
 
-_FIXTURE = (
-    Path(__file__).parent / "display" / "_fixtures" / "agy_wire_v1_1_13.jsonl"
-)
+_FIXTURE = Path(__file__).parent / "display" / "_fixtures" / "agy_wire_v1_1_13.jsonl"
 _WHITELIST = {"text", "thinking", "tool_use", "tool_result", "error"}
 
 pytestmark = pytest.mark.smoke

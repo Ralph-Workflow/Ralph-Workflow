@@ -188,7 +188,11 @@ def _reconciliation_preconditions(
         if not is_repo_clean(owner) and (
             not reclaim_target_worktree or reclaim_dirty_target_worktree(owner, target) is None
         ):
-            return None, None, f"target worktree is dirty; skipped reconciliation of {remote}/{target}"
+            return (
+                None,
+                None,
+                f"target worktree is dirty; skipped reconciliation of {remote}/{target}",
+            )
         pre_target_sha = branch_sha(owner, target)
     except Exception:
         return None, None, f"target '{target}' is unavailable for reconciliation"

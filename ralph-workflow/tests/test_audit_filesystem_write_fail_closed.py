@@ -21,9 +21,7 @@ def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> No
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import os\n"
-        "def install(tmp: str, final: str) -> None:\n"
-        "    os.replace(tmp, final)\n",
+        "import os\ndef install(tmp: str, final: str) -> None:\n    os.replace(tmp, final)\n",
     )
 
     violations = audit.audit_filesystem_write_consolidation(
@@ -41,9 +39,7 @@ def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import pathlib\n"
-        "def drop(path: str) -> None:\n"
-        "    pathlib.Path(path).unlink()\n",
+        "import pathlib\ndef drop(path: str) -> None:\n    pathlib.Path(path).unlink()\n",
     )
 
     violations = audit.audit_filesystem_write_consolidation(

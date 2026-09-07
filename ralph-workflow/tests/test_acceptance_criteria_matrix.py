@@ -37,9 +37,7 @@ _STATUS_VOCABULARY = frozenset({"COVERED", "GAP", "DELIVERED"})
 #: maintains coverage. ``verification_method`` names the test or
 #: ``make verify`` target. A ``GAP`` row carries an empty reference
 #: tuple by definition.
-_ACCEPTANCE_ROWS: tuple[
-    tuple[str, str, str, str, str, tuple[str, ...]], ...
-] = (
+_ACCEPTANCE_ROWS: tuple[tuple[str, str, str, str, str, tuple[str, ...]], ...] = (
     (
         "AC-1",
         "watch use stays bounded: one shared recursive root watch per workspace",
@@ -105,8 +103,7 @@ _ACCEPTANCE_ROWS: tuple[
     ),
     (
         "AC-6",
-        "changed code becomes searchable promptly or the result visibly uses "
-        "the correct fallback",
+        "changed code becomes searchable promptly or the result visibly uses the correct fallback",
         "COVERED",
         "S-5",
         "tests/test_explore_dirty_paths.py",
@@ -245,14 +242,10 @@ def test_acceptance_matrix_renders_inside_tmp_path(tmp_path: Path) -> None:
     assert set(status_tokens) <= _STATUS_VOCABULARY
 
     delivery_tokens = re.findall(r"^Delivery: (S-\d+)$", rendered, flags=re.MULTILINE)
-    assert len(delivery_tokens) == 12, (
-        f"expected 12 Delivery lines, found {len(delivery_tokens)}"
-    )
+    assert len(delivery_tokens) == 12, f"expected 12 Delivery lines, found {len(delivery_tokens)}"
 
     verify_tokens = re.findall(r"^Verify: (.+)$", rendered, flags=re.MULTILINE)
-    assert len(verify_tokens) == 12, (
-        f"expected 12 Verify lines, found {len(verify_tokens)}"
-    )
+    assert len(verify_tokens) == 12, f"expected 12 Verify lines, found {len(verify_tokens)}"
 
     references = re.findall(r"^Test: (tests/\S+)$", rendered, flags=re.MULTILINE)
     assert references, "the matrix must name at least one test reference"

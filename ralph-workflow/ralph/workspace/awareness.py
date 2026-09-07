@@ -116,8 +116,11 @@ class WorkspaceAwareness:
                 "safe_next_action": (
                     "Ralph will reconcile at the next knowledge boundary."
                     if live_fallback
-                    else ("Run a bounded refresh before relying on indexed knowledge."
-                          if freshness != "current" else "None required.")
+                    else (
+                        "Run a bounded refresh before relying on indexed knowledge."
+                        if freshness != "current"
+                        else "None required."
+                    )
                 ),
             }
 

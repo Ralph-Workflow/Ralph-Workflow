@@ -45,24 +45,87 @@ def test_conflict_resolution_liveness_path_matrix() -> None:
         reset_active_sink(token)
 
     observations = (
-        _LivenessPathObservation("stdout", "agent process reader", "reader callback", "record_activity", "observed"),
-        _LivenessPathObservation("mcp_tool", "standalone MCP server", "process-local ContextVar", "no parent recorder", "missing across process boundary"),
-        _LivenessPathObservation("subagent", "agent output strategy", "reader ContextVar", "record_subagent_work", "observed"),
-        _LivenessPathObservation("workspace", "WorkspaceMonitor", "reader callback", "record_workspace_event", "observed"),
-        _LivenessPathObservation("child-wait", "ordinary watchdog", "elapsed wait counter", "CHILDREN_PERSIST_TOO_LONG", "unsafe before activity-only profile"),
-        _LivenessPathObservation("session-ceiling", "ordinary watchdog", "elapsed session timer", "SESSION_CEILING_EXCEEDED", "unsafe before activity-only profile"),
-        _LivenessPathObservation("driver-deadline", "legacy driver", "deadline slice", "declined attempt", "removed by S-5"),
-        _LivenessPathObservation("hard-stop", "legacy driver", "wall-clock wait", "ResolutionAbandonedError", "removed by S-5"),
-        _LivenessPathObservation("post-exit-process-wait", "PostExitWatchdog", "elapsed exit wait", "PROCESS_EXIT_HANG", "must be disabled for activity-only"),
-        _LivenessPathObservation("descendant-wait", "PostExitWatchdog", "elapsed descendant wait", "DESCENDANT_HANG", "must be disabled for activity-only"),
+        _LivenessPathObservation(
+            "stdout", "agent process reader", "reader callback", "record_activity", "observed"
+        ),
+        _LivenessPathObservation(
+            "mcp_tool",
+            "standalone MCP server",
+            "process-local ContextVar",
+            "no parent recorder",
+            "missing across process boundary",
+        ),
+        _LivenessPathObservation(
+            "subagent",
+            "agent output strategy",
+            "reader ContextVar",
+            "record_subagent_work",
+            "observed",
+        ),
+        _LivenessPathObservation(
+            "workspace", "WorkspaceMonitor", "reader callback", "record_workspace_event", "observed"
+        ),
+        _LivenessPathObservation(
+            "child-wait",
+            "ordinary watchdog",
+            "elapsed wait counter",
+            "CHILDREN_PERSIST_TOO_LONG",
+            "unsafe before activity-only profile",
+        ),
+        _LivenessPathObservation(
+            "session-ceiling",
+            "ordinary watchdog",
+            "elapsed session timer",
+            "SESSION_CEILING_EXCEEDED",
+            "unsafe before activity-only profile",
+        ),
+        _LivenessPathObservation(
+            "driver-deadline",
+            "legacy driver",
+            "deadline slice",
+            "declined attempt",
+            "removed by S-5",
+        ),
+        _LivenessPathObservation(
+            "hard-stop",
+            "legacy driver",
+            "wall-clock wait",
+            "ResolutionAbandonedError",
+            "removed by S-5",
+        ),
+        _LivenessPathObservation(
+            "post-exit-process-wait",
+            "PostExitWatchdog",
+            "elapsed exit wait",
+            "PROCESS_EXIT_HANG",
+            "must be disabled for activity-only",
+        ),
+        _LivenessPathObservation(
+            "descendant-wait",
+            "PostExitWatchdog",
+            "elapsed descendant wait",
+            "DESCENDANT_HANG",
+            "must be disabled for activity-only",
+        ),
     )
 
     assert parent_hits == []
     assert {row.source for row in observations} == {
-        "stdout", "mcp_tool", "subagent", "workspace", "child-wait", "session-ceiling",
-        "driver-deadline", "hard-stop", "post-exit-process-wait", "descendant-wait",
+        "stdout",
+        "mcp_tool",
+        "subagent",
+        "workspace",
+        "child-wait",
+        "session-ceiling",
+        "driver-deadline",
+        "hard-stop",
+        "post-exit-process-wait",
+        "descendant-wait",
     }
-    assert next(row for row in observations if row.source == "mcp_tool").observed_verdict == "missing across process boundary"
+    assert (
+        next(row for row in observations if row.source == "mcp_tool").observed_verdict
+        == "missing across process boundary"
+    )
 
 
 class _LiveSubagentMonitor:
@@ -109,7 +172,9 @@ def test_conflict_resolution_liveness_inventory_proves_standard_categories_and_c
     standard_clock.advance(9.0)
     _produce(source, standard)
     standard_clock.advance(1.0)
-    assert standard.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE, recorder
+    assert standard.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE, (
+        recorder
+    )
 
     conflict_clock = FakeClock()
     conflict = IdleWatchdog(
@@ -126,7 +191,9 @@ def test_conflict_resolution_liveness_inventory_proves_standard_categories_and_c
     for _ in range(3):
         conflict_clock.advance(899.0)
         _produce(source, conflict)
-        assert conflict.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE, source
+        assert conflict.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.CONTINUE, (
+            source
+        )
 
 
 def _produce(source: str, watchdog: IdleWatchdog) -> None:

@@ -380,7 +380,9 @@ def _activity_only_operator_cap_reached(self: IdleWatchdog, now: float) -> bool:
     return cap is not None and started_at is not None and now - started_at >= cap
 
 
-def _emit_activity_only_status(self: IdleWatchdog, now: float, kind: str | None, last_at: float) -> None:
+def _emit_activity_only_status(
+    self: IdleWatchdog, now: float, kind: str | None, last_at: float
+) -> None:
     last_status_at: float | None = self._last_activity_only_status_at
     interval = self._config.activity_only_status_interval_seconds
     if last_status_at is not None and now - last_status_at < interval:

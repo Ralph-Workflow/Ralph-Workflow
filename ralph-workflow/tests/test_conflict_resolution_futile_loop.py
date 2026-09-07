@@ -150,10 +150,16 @@ def test_status_does_not_report_health_from_ralph_fault_text() -> None:
         agent_name="primary",
     )
 
-    event = type("_Event", (), {"diagnostic": {
-        "last_activity_kind": "transport_loop_detected",
-        "last_activity_age_seconds": 0.56,
-    }})()
+    event = type(
+        "_Event",
+        (),
+        {
+            "diagnostic": {
+                "last_activity_kind": "transport_loop_detected",
+                "last_activity_age_seconds": 0.56,
+            }
+        },
+    )()
     reporter.observe(event)
     assert reporter._last_emitted_at is None
 
@@ -204,7 +210,7 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     for echoed in (
         'read attempt_fault.py: _TRANSPORT_LOOP = "transport_loop_detected"',
         "grep: transport_loop_detected (3 matches)",
-        'edit: SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: {exc}',
+        "edit: SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: {exc}",
     ):
         listener(
             WaitingStatusEvent(
@@ -286,9 +292,7 @@ def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
     assert outcome.succeeded is False
     assert outcome.reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
     assert session.exhaustion_reason is not None
-    assert session.exhaustion_reason.startswith(
-        ResolutionTerminationReason.TOOL_SURFACE_DEAD.value
-    )
+    assert session.exhaustion_reason.startswith(ResolutionTerminationReason.TOOL_SURFACE_DEAD.value)
 
 
 def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
@@ -404,9 +408,7 @@ def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
         asked.append("resolver")
         return True
 
-    resolved = rebase_loop._resolve_one_stop(
-        tmp_path, "main", _resolver, 1, 10, frozenset(), set()
-    )
+    resolved = rebase_loop._resolve_one_stop(tmp_path, "main", _resolver, 1, 10, frozenset(), set())
     assert asked == ["resolver"], "the resolver must still be offered the stop"
     assert resolved is False, "and Ralph's own proof still gates the landing"
 
@@ -566,7 +568,7 @@ def test_every_reason_less_exit_now_names_itself(
 
 
 def test_the_operator_headline_names_what_the_resolver_reported() -> None:
-    """"Conflict resolution failed" was recorded for never-attempted work."""
+    """ "Conflict resolution failed" was recorded for never-attempted work."""
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline.auto_integrate_outcome import classify_rebase_outcome
@@ -599,9 +601,7 @@ def test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it(
         driver_module,
         "classify_unmerged_conflicts",
         lambda _root, given: {
-            path: (
-                ConflictSight.AGENT_DECISION if path.endswith(".png") else ConflictSight.AGENT
-            )
+            path: (ConflictSight.AGENT_DECISION if path.endswith(".png") else ConflictSight.AGENT)
             for path in given
         },
     )
@@ -637,9 +637,7 @@ def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
         driver_module,
         "classify_unmerged_conflicts",
         lambda _root, given: {
-            path: (
-                ConflictSight.OUT_OF_REACH if path == "vendor/sub" else ConflictSight.AGENT
-            )
+            path: (ConflictSight.OUT_OF_REACH if path == "vendor/sub" else ConflictSight.AGENT)
             for path in given
         },
     )
@@ -669,7 +667,7 @@ def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
 def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """"Conflict markers survive in X" was asserted for every reason.
+    """ "Conflict markers survive in X" was asserted for every reason.
 
     Including exits that never opened a file, and paths that cannot
     carry markers at all -- a binary, a modify/delete. The sentence has

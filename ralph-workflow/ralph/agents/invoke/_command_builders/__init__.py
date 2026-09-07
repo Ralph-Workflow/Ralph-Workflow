@@ -541,10 +541,7 @@ class ConfigurableCommandBuilder:
 
         cmd.extend(self._build_yolo_session_flags(config, options))
 
-        if (
-            options.workspace_path is not None
-            and self.spec.workspace_dir_flag is not None
-        ):
+        if options.workspace_path is not None and self.spec.workspace_dir_flag is not None:
             cmd.extend([*self.spec.workspace_dir_flag, str(options.workspace_path)])
 
         if options.verbose and config.verbose_flag:
@@ -877,11 +874,7 @@ class DefaultCommandBuilder:
 
         cmd.extend(_split_optional_flag(config.yolo_flag))
 
-        if (
-            options.verbose
-            and config.verbose_flag
-            and config.verbose_flag not in cmd
-        ):
+        if options.verbose and config.verbose_flag and config.verbose_flag not in cmd:
             cmd.append(config.verbose_flag)
 
         _extend_claude_transport_flags(cmd, transport, options)

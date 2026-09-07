@@ -19,8 +19,10 @@ from ralph.git.commit_cleanup import (
     add_to_git_exclude,
     is_recognized_secret_path,
 )
+from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.operations import (
     create_commit,
+    get_head_sha,
     has_uncommitted_changes,
     list_changed_paths,
     stage_all,
@@ -39,7 +41,7 @@ from ralph.phases.required_artifacts import (
     resolve_phase_required_artifact,
 )
 from ralph.pipeline.effects import CommitEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
@@ -89,7 +91,13 @@ class _CommitScopeResolution:
 if TYPE_CHECKING:
 
     class _CreateCommitFn(Protocol):
-        def __call__(self, repo_root: Path | str, message: str, **kwargs: object) -> str: ...
+        def __call__(
+            self,
+            repo_root: Path | str,
+            message: str,
+            *,
+            expected_head: str,
+        ) -> CommitCreationResult: ...
 
     class _StageAllFn(Protocol):
         def __call__(self, repo_root: Path | str) -> None: ...
@@ -106,7 +114,7 @@ def execute_commit_effect(
     repo_root: Path,
     display: ParallelDisplay | None = None,
     **opts: object,
-) -> PipelineEvent:
+) -> Event:
     """Execute a commit effect, creating or skipping a git commit."""
     verbosity = cast(
         "Verbosity", opts.get("verbosity", Verbosity.VERBOSE)
@@ -140,7 +148,7 @@ def execute_commit_effect(
                 "empty" if not _has_content(effect.message_file) else "invalid",
                 effect.message_file,
             )
-            return PipelineEvent.COMMIT_FAILURE
+            raise ValueError("commit message artifact is invalid")
         if payload.get("type") == "skip" or message.strip().lower().startswith("skip:"):
             logger.info("Commit agent requested skip — skipping commit execution")
             cleanup_commit_message_artifacts(repo_root)
@@ -149,28 +157,58 @@ def execute_commit_effect(
             logger.info("Skipping commit because the worktree is empty")
             cleanup_commit_message_artifacts(repo_root)
             return PipelineEvent.COMMIT_SKIPPED
+        try:
+            before_paths = tuple(_changed_commit_paths(repo_root))
+        except Exception:
+            before_paths = ()
+        include_paths = _commit_include_paths(repo_root, payload)
+        expected_head = get_head_sha(repo_root)
         _stage_commit_scope(repo_root, payload, _stage_all_fn)
-        sha = _create_commit_fn(str(repo_root), message)
+        result = _create_commit_fn(str(repo_root), message, expected_head=expected_head)
+        if result.status is not CommitCreationStatus.CREATED or result.sha is None:
+            logger.warning("Commit was not created: {}", result.status.value)
+            raise RuntimeError(f"commit creation returned {result.status.value}")
+        sha = result.sha
         logger.info("Created commit: {}", sha[:8])
-        _raw_render = opts.get("render_commit_message_fn")
-        _render_commit_fn = cast(
-            "_RenderCommitMessageFn",
-            _raw_render if callable(_raw_render) else _render_commit_message_via_display,
-        )
-        with suppress(Exception):
-            _render_commit_fn(repo_root, get_display_context(display))
-        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
-            with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(
-                    f"sha={sha[:8]}"
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        cleanup_commit_message_artifacts(repo_root)
-        if _has_residual_work_fn is not None and _has_residual_work_fn(repo_root):
-            logger.info("Commit left uncommitted changes; preparing another commit pass")
-            return PipelineEvent.COMMIT_RESIDUAL
     except Exception as exc:
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         return PipelineEvent.COMMIT_FAILURE
+
+    with suppress(Exception):
+        _render_commit_fn = cast(
+            "_RenderCommitMessageFn",
+            opts.get("render_commit_message_fn")
+            if callable(opts.get("render_commit_message_fn"))
+            else _render_commit_message_via_display,
+        )
+        _render_commit_fn(repo_root, get_display_context(display))
+    if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
+        with suppress(Exception):
+            cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
+    with suppress(Exception):
+        cleanup_commit_message_artifacts(repo_root)
+    if _has_residual_work_fn is not None:
+        try:
+            if _has_residual_work_fn(repo_root):
+                remaining_paths = tuple(_changed_commit_paths(repo_root))
+                committed_paths = tuple(
+                    path for path in (include_paths or list(before_paths)) if path in before_paths
+                )
+                if remaining_paths and set(committed_paths).isdisjoint(remaining_paths):
+                    logger.info("Commit left uncommitted changes; preparing another commit pass")
+                    return CommitResidualEvent(
+                        committed_paths=committed_paths,
+                        remaining_paths=remaining_paths,
+                        sha=sha,
+                    )
+                if remaining_paths:
+                    logger.warning("Residual commit paths overlap committed paths; no re-entry")
+        except Exception as exc:
+            logger.warning("Unable to inspect residual commit work: {}", exc)
+    return _commit_success_event()
+
+
+def _commit_success_event() -> Event:
     return PipelineEvent.COMMIT_SUCCESS
 
 

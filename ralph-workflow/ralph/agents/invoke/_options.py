@@ -48,7 +48,9 @@ class InvokeRuntimeOptions:
     activity_only_supervision: bool = False
     activity_only_operator_cap_seconds: float | None = None
     activity_only_status_interval_seconds: float | None = None
-    relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = None
+    relay_activity_sink_register: Callable[[Callable[[str], None]], Callable[[], None]] | None = (
+        None
+    )
     relay_health_error: Callable[[], str | None] | None = None
 
 
@@ -165,13 +167,18 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         _os_descendant_suspect = None
     return TimeoutPolicy(
         idle_timeout_seconds=opts.idle_timeout_seconds,
-        profile=(TimeoutProfile.ACTIVITY_ONLY if opts.activity_only_supervision else TimeoutProfile.STANDARD),
+        profile=(
+            TimeoutProfile.ACTIVITY_ONLY
+            if opts.activity_only_supervision
+            else TimeoutProfile.STANDARD
+        ),
         activity_only_operator_cap_seconds=(
             opts.activity_only_operator_cap_seconds if opts.activity_only_supervision else None
         ),
         activity_only_status_interval_seconds=(
             opts.activity_only_status_interval_seconds
-            if opts.activity_only_supervision and opts.activity_only_status_interval_seconds is not None
+            if opts.activity_only_supervision
+            and opts.activity_only_status_interval_seconds is not None
             else _base.activity_only_status_interval_seconds
         ),
         drain_window_seconds=(

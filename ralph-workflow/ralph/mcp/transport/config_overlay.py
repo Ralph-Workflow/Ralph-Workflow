@@ -195,7 +195,7 @@ def mcp_config_overlay_lock(
                     f"than {budget:.1f}s; refusing to race the concurrent overlay "
                     "write/restore."
                 )
-            time.sleep(_LOCK_POLL_SECONDS)  # filesystem-poll-ok: cross-process file-lock retry; no event source for another process's flock release
+            time.sleep(_LOCK_POLL_SECONDS)  # filesystem-poll-ok: cross-process file-lock retry
         yield
     finally:
         if acquired:
@@ -221,7 +221,9 @@ def stage_config_overlay(config_path: Path, payload: bytes) -> bytes | None:
     if original_bytes != payload:
         # A byte-identical destination is not an overlay: there is nothing
         # to put back and nothing to recover, so no record is written.
-        _publish(mcp_config_backup_path(config_path), _encode_backup_record(original_bytes, payload))
+        _publish(
+            mcp_config_backup_path(config_path), _encode_backup_record(original_bytes, payload)
+        )
     atomic_write_bytes_if_changed(
         DEFAULT_FILE_BACKEND,
         config_path,

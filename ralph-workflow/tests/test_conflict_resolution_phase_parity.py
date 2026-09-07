@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-
 def test_four_agent_chain_tries_every_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -65,13 +64,11 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A transient first-agent failure retries that agent before failover."""
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(
-        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
+        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None
     )
-    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None)
-    _install_seams(
-        monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED]
-    )
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -106,15 +103,9 @@ def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
 ) -> None:
     """Retry backoff is the chain's retry_delay_ms decided by RecoveryController.handle."""
     sleeps: list[float] = []
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", sleeps.append
-    )
-    monkeypatch.setattr(
-        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
-    )
-    _install_seams(
-        monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED]
-    )
+    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", sleeps.append)
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         if agent_name == "one":
@@ -160,9 +151,7 @@ def test_conflict_failures_call_recovery_controller_handle(
         return original(self, state, raw_failure, context)
 
     monkeypatch.setattr(RecoveryController, "handle", _spy)
-    monkeypatch.setattr(
-        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
-    )
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -313,7 +302,9 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
     )
-    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None)
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None
+    )
     _install_seams(
         monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, _CONFLICTED]
     )
@@ -505,9 +496,7 @@ def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
     )
 
 
-def test_a_dead_chain_stops_burning_rounds(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """No live candidate means no later round can spend one, so stop asking."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])

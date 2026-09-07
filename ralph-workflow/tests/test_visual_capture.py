@@ -77,13 +77,9 @@ _PNG_SIGNATURE: bytes = b"\x89PNG\r\n\x1a\n"
 
 def test_visual_capture_regression_has_one_public_top_level_class() -> None:
     """The repo-structure audit accepts the media capture module's public API."""
-    media_capture_module = importlib.import_module(
-        "ralph.mcp.tools.workspace._media_capture"
-    )
+    media_capture_module = importlib.import_module("ralph.mcp.tools.workspace._media_capture")
     source = inspect.getsource(media_capture_module)
-    public_classes, _, _ = audit_repo_structure._scan_structure(
-        source, tuple(source.splitlines())
-    )
+    public_classes, _, _ = audit_repo_structure._scan_structure(source, tuple(source.splitlines()))
 
     assert public_classes == ("MediaCaptureError",)
 
@@ -93,9 +89,7 @@ def test_policy_facts_has_one_public_top_level_class() -> None:
     from ralph.visual import policy_facts
 
     source = inspect.getsource(policy_facts)
-    public_classes, _, _ = audit_repo_structure._scan_structure(
-        source, tuple(source.splitlines())
-    )
+    public_classes, _, _ = audit_repo_structure._scan_structure(source, tuple(source.splitlines()))
 
     assert public_classes == ("Viewport",)
 
@@ -151,21 +145,24 @@ class _FakeExecutor:
         self.calls.append((command, tuple(args), options))
         if options is None or options.env is None:
             return ProcessResult(
-                (command, *args), 1, "",
+                (command, *args),
+                1,
+                "",
                 "fake executor: no env provided",
             )
         cell_id = options.env.get("RALPH_CAPTURE_CELL_ID", "")
         output_path = options.env.get("RALPH_CAPTURE_OUTPUT", "")
         if self._fail_on_cell_id is not None and cell_id == self._fail_on_cell_id:
             return ProcessResult(
-                (command, *args), 1, "", self._fail_message,
+                (command, *args),
+                1,
+                "",
+                self._fail_message,
             )
         if not self._omit_writes and output_path:
             output = Path(output_path)
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(
-                _build_minimal_png(self._png_width, self._png_height)
-            )
+            output.write_bytes(_build_minimal_png(self._png_width, self._png_height))
         return ProcessResult((command, *args), 0, "", "")
 
 
@@ -202,7 +199,10 @@ def _build_request(*, target: str) -> CaptureRequest:
     themes: tuple[str, ...] = (DEFAULT_THEMES[0],)
     states: tuple[str, ...] = REQUIRED_STATES
     return CaptureRequest.build(
-        target=target, viewports=viewports, themes=themes, states=states,
+        target=target,
+        viewports=viewports,
+        themes=themes,
+        states=states,
     )
 
 
@@ -268,9 +268,7 @@ def test_handle_media_capture_registers_every_minted_handle_for_replay(tmp_path:
 
     entries = manifest.list_entries()
     assert [entry.uri for entry in entries] == [cell.uri for cell in result.cells]
-    assert [entry.source_path for entry in entries] == [
-        cell.output_path for cell in result.cells
-    ]
+    assert [entry.source_path for entry in entries] == [cell.output_path for cell in result.cells]
     assert [entry.load_bytes() for entry in entries] == [
         (tmp_path / cell.output_path).read_bytes() for cell in result.cells
     ]

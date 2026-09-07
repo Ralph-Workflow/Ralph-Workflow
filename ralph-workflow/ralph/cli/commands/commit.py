@@ -26,9 +26,11 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
 from ralph.display.status_bar import StatusBarModel
 from ralph.git.commit_cleanup import stage_commit_changes_safely
+from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
+    get_head_sha,
     has_staged_changes,
 )
 from ralph.mcp.artifacts.commit_message import (
@@ -81,13 +83,14 @@ _MAX_DISPLAY_FILES = 5
 _DEFAULT_COMMIT_AGENT = "claude"
 _VERBOSE_THRESHOLD = 2
 
+
 def commit_plumbing(
     *,
     options: CommitPlumbingOptions | None = None,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
-) -> None:
+) -> int:
     """Handle commit plumbing operations.
 
     Args:
@@ -103,7 +106,7 @@ def commit_plumbing(
         repo_root = find_repo_root()
     except Exception as e:
         display.emit_warning(f"Error: Not in a git repository: {e}")
-        return
+        return 1
 
     try:
         workspace_scope = (
@@ -112,11 +115,11 @@ def commit_plumbing(
         config = load_config(opts.config_path, opts.cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
         display.emit_warning(f"Error loading config: {e}")
-        return
+        return 1
 
     if opts.show_commit_msg:
         _show_commit_message(repo_root, display_context=ctx)
-        return
+        return 0
 
     if opts.generate_commit_msg or opts.generate_commit:
         display.update_status_bar(
@@ -127,7 +130,7 @@ def commit_plumbing(
             )
         )
         with display:
-            _handle_agent_commit_generation(
+            return _handle_agent_commit_generation(
                 repo_root=repo_root,
                 config=config,
                 options=opts,
@@ -135,11 +138,10 @@ def commit_plumbing(
                 pro_hooks=pro_hooks,
                 model_identity=model_identity,
             )
-        return
-
     if not has_staged_changes(repo_root):
         display.emit_warning("No staged changes to commit")
-        return
+        return 1
+    return 0
 
 
 def _handle_agent_commit_generation(
@@ -150,7 +152,8 @@ def _handle_agent_commit_generation(
     display_context: DisplayContext,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
-) -> None:
+) -> int:
+    # ruff: noqa: PLR0911
     display = resolve_active_display(None, display_context)
     generate = options.generate_commit_msg or options.generate_commit
     apply = options.generate_commit
@@ -158,19 +161,19 @@ def _handle_agent_commit_generation(
     git_user_email = config.general.git_user_email
 
     if not generate:
-        return
+        return 0
 
     delete_commit_message_artifacts(repo_root)
     diff = working_tree_diff(repo_root)
     if not diff.strip():
         display.emit_warning("No changes to commit")
-        return
+        return 1
 
     registry = AgentRegistry.from_config(config)
     agents = _resolve_commit_message_agents(config, registry)
     if not agents:
         display.emit_warning("No commit-capable agents available in commit/review drains")
-        return
+        return 1
 
     workspace_scope = resolve_workspace_scope(repo_root)
     result = _generate_commit_message_with_chain(
@@ -191,17 +194,17 @@ def _handle_agent_commit_generation(
     if result.skipped:
         delete_commit_message_artifacts(repo_root)
         display.emit_warning("Skipping commit: agent requested skip")
-        return
+        return 0
 
     if not result.message:
         display.emit_warning("Failed to generate commit message from commit drain agents")
         _print_commit_failure_details(result.failure_details, display_context=display_context)
-        return
+        return 1
 
     persisted_message = read_commit_message_artifact(repo_root)
     if persisted_message is None:
         display.emit_warning("Failed to persist generated commit message")
-        return
+        return 1
 
     display.emit_status("\nGenerated commit message:")
     display.emit_commit_message(repo_root)
@@ -211,17 +214,32 @@ def _handle_agent_commit_generation(
 
     if apply:
         try:
+            head_before_stage = get_head_sha(repo_root) if (repo_root / ".git").exists() else ""
             stage_commit_changes_safely(repo_root)
-            sha = create_commit(
+            commit_result: CommitCreationResult
+            commit_result = create_commit(
                 repo_root,
                 persisted_message,
                 author_name=git_user_name,
                 author_email=git_user_email,
+                expected_head=head_before_stage,
             )
+            if commit_result.status is CommitCreationStatus.ALREADY_ADVANCED:
+                display.emit_warning("HEAD changed before commit; retaining commit artifact")
+                return 1
+            if (
+                commit_result.status is not CommitCreationStatus.CREATED
+                or commit_result.sha is None
+            ):
+                display.emit_warning("Commit failed: commit creation did not complete")
+                return 1
             delete_commit_message_artifacts(repo_root)
-            display.emit_status(f"Created commit: {sha[:8]}")
+            created_sha = commit_result.sha
+            display.emit_status(f"Created commit: {created_sha[:8]}")
         except Exception as e:
             display.emit_warning(f"Commit failed: {e}")
+            return 1
+    return 0
 
 
 def _show_commit_message(repo_root: Path, *, display_context: DisplayContext) -> None:

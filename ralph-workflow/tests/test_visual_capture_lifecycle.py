@@ -84,13 +84,20 @@ def _build_capture_set(
     themes = DEFAULT_THEMES
     states: tuple[str, ...] = REQUIRED_STATES
     request = CaptureRequest.build(
-        target=target, viewports=viewports, themes=themes, states=states,
+        target=target,
+        viewports=viewports,
+        themes=themes,
+        states=states,
     )
     capture_set = CaptureSet(
-        target=target, cells=request.matrix, run_id=capture_run_id or run_id,
+        target=target,
+        cells=request.matrix,
+        run_id=capture_run_id or run_id,
     )
     matrix_key = compute_matrix_key(
-        viewports=viewports, themes=themes, states=states,
+        viewports=viewports,
+        themes=themes,
+        states=states,
     )
     return (capture_set, matrix_key)
 
@@ -105,9 +112,7 @@ def test_capture_lifecycle_has_one_public_top_level_class() -> None:
     from ralph.visual import capture_lifecycle
 
     source = inspect.getsource(capture_lifecycle)
-    public_classes, _, _ = audit_repo_structure._scan_structure(
-        source, tuple(source.splitlines())
-    )
+    public_classes, _, _ = audit_repo_structure._scan_structure(source, tuple(source.splitlines()))
 
     assert public_classes == ("CaptureLifecycle",)
 
@@ -118,10 +123,16 @@ def test_lifecycle_is_run_scoped(tmp_path: Path) -> None:
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-A")
 
     lifecycle_a = CaptureLifecycle(
-        tmp_path, run_id="run-A", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-A",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     lifecycle_b = CaptureLifecycle(
-        tmp_path, run_id="run-B", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-B",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
 
     lifecycle_a.capture_before_set(
@@ -132,12 +143,20 @@ def test_lifecycle_is_run_scoped(tmp_path: Path) -> None:
     )
 
     # Run-A sees its own baseline; run-B does not.
-    assert lifecycle_a.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
-    ) is not None
-    assert lifecycle_b.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
-    ) is None
+    assert (
+        lifecycle_a.get_retained_before_set(
+            target=target,
+            matrix_key=matrix_key,
+        )
+        is not None
+    )
+    assert (
+        lifecycle_b.get_retained_before_set(
+            target=target,
+            matrix_key=matrix_key,
+        )
+        is None
+    )
     # The manifest files are kept distinct on disk.
     assert (tmp_path / MANIFEST_DIR_RELPATH / "run-A.json").exists()
     assert not (tmp_path / MANIFEST_DIR_RELPATH / "run-B.json").exists()
@@ -149,10 +168,16 @@ def test_lifecycle_is_cycle_scoped(tmp_path: Path) -> None:
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
 
     cycle_one = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     cycle_two = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-2", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-2",
+        clock=_fake_clock,
     )
 
     cycle_one.capture_before_set(
@@ -162,12 +187,20 @@ def test_lifecycle_is_cycle_scoped(tmp_path: Path) -> None:
         design_capture_command="bin/capture --target={target}",
     )
 
-    assert cycle_one.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
-    ) is not None
-    assert cycle_two.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
-    ) is None
+    assert (
+        cycle_one.get_retained_before_set(
+            target=target,
+            matrix_key=matrix_key,
+        )
+        is not None
+    )
+    assert (
+        cycle_two.get_retained_before_set(
+            target=target,
+            matrix_key=matrix_key,
+        )
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +214,18 @@ def test_lifecycle_retains_across_calls_in_same_instance(tmp_path: Path) -> None
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
 
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
-    assert lifecycle.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
-    ) is None
+    assert (
+        lifecycle.get_retained_before_set(
+            target=target,
+            matrix_key=matrix_key,
+        )
+        is None
+    )
 
     lifecycle.capture_before_set(
         target=target,
@@ -195,7 +235,8 @@ def test_lifecycle_retains_across_calls_in_same_instance(tmp_path: Path) -> None
     )
 
     retained = lifecycle.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
+        target=target,
+        matrix_key=matrix_key,
     )
     assert retained is not None
     assert retained.target == target
@@ -212,7 +253,10 @@ def test_lifecycle_retains_across_retries(tmp_path: Path) -> None:
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
 
     first = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     first.capture_before_set(
         target=target,
@@ -224,10 +268,14 @@ def test_lifecycle_retains_across_retries(tmp_path: Path) -> None:
     # A retry builds a new lifecycle instance from scratch.  It must
     # observe the baseline the first instance wrote to disk.
     retry = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     retained = retry.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
+        target=target,
+        matrix_key=matrix_key,
     )
     assert retained is not None
     assert retained.target == target
@@ -240,7 +288,10 @@ def test_lifecycle_persists_to_expected_path(tmp_path: Path) -> None:
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-persist")
 
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-persist", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-persist",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     lifecycle.capture_before_set(
         target=target,
@@ -254,7 +305,7 @@ def test_lifecycle_persists_to_expected_path(tmp_path: Path) -> None:
     contents = manifest_path.read_text(encoding="utf-8")
     # Schema marker is on disk so a future reader can refuse an
     # unknown schema before mistaking it for the current shape.
-    assert "\"schema_version\": \"1\"" in contents
+    assert '"schema_version": "1"' in contents
     assert "run-persist" in contents
 
 
@@ -266,10 +317,14 @@ def test_lifecycle_persists_to_expected_path(tmp_path: Path) -> None:
 def test_get_retained_before_set_returns_none_when_absent(tmp_path: Path) -> None:
     """``get_retained_before_set`` returns ``None`` for an un-captured (target, matrix)."""
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     result = lifecycle.get_retained_before_set(
-        target="never-captured", matrix_key="0" * 64,
+        target="never-captured",
+        matrix_key="0" * 64,
     )
     assert result is None
 
@@ -283,11 +338,15 @@ def test_require_before_set_raises_when_absent(tmp_path: Path) -> None:
     caller route the failure without parsing the message.
     """
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     with pytest.raises(MissingBaselineError) as excinfo:
         lifecycle.require_before_set(
-            target="never-captured", matrix_key="0" * 64,
+            target="never-captured",
+            matrix_key="0" * 64,
         )
     assert excinfo.value.target == "never-captured"
     assert excinfo.value.matrix_key == "0" * 64
@@ -298,7 +357,10 @@ def test_require_before_set_returns_baseline_when_present(tmp_path: Path) -> Non
     target = "checkout"
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     lifecycle.capture_before_set(
         target=target,
@@ -307,7 +369,8 @@ def test_require_before_set_returns_baseline_when_present(tmp_path: Path) -> Non
         design_capture_command="bin/capture --target={target}",
     )
     retained = lifecycle.require_before_set(
-        target=target, matrix_key=matrix_key,
+        target=target,
+        matrix_key=matrix_key,
     )
     assert retained.cell_ids == capture_set.cell_ids
 
@@ -317,7 +380,10 @@ def test_require_before_set_fails_for_mismatched_matrix_key(tmp_path: Path) -> N
     target = "checkout"
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     lifecycle.capture_before_set(
         target=target,
@@ -342,7 +408,10 @@ def test_capture_before_set_rejects_duplicate(tmp_path: Path) -> None:
     target = "profile"
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     lifecycle.capture_before_set(
         target=target,
@@ -370,7 +439,10 @@ def test_capture_before_set_rejects_target_mismatch(tmp_path: Path) -> None:
     """A CaptureSet whose target differs from the requested target is rejected."""
     capture_set, matrix_key = _build_capture_set(target="real-target", run_id="run-1")
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     with pytest.raises(BaselineStorageError):
         lifecycle.capture_before_set(
@@ -384,7 +456,10 @@ def test_capture_before_set_rejects_target_mismatch(tmp_path: Path) -> None:
 def test_capture_before_set_rejects_non_capture_set(tmp_path: Path) -> None:
     """A non-CaptureSet input is rejected at the runtime boundary."""
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     with pytest.raises(BaselineStorageError):
         lifecycle.capture_before_set(
@@ -450,7 +525,10 @@ def test_retained_capture_set_round_trips_cells(tmp_path: Path) -> None:
     target = "cart"
     capture_set, matrix_key = _build_capture_set(target=target, run_id="run-1")
     lifecycle = CaptureLifecycle(
-        tmp_path, run_id="run-1", cycle_id="cycle-1", clock=_fake_clock,
+        tmp_path,
+        run_id="run-1",
+        cycle_id="cycle-1",
+        clock=_fake_clock,
     )
     lifecycle.capture_before_set(
         target=target,
@@ -460,7 +538,8 @@ def test_retained_capture_set_round_trips_cells(tmp_path: Path) -> None:
     )
 
     retained = lifecycle.get_retained_before_set(
-        target=target, matrix_key=matrix_key,
+        target=target,
+        matrix_key=matrix_key,
     )
     assert retained is not None
     assert retained.target == capture_set.target

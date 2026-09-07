@@ -169,9 +169,7 @@ def request_fingerprint(method: str, params: object) -> str:
     return f"{method}#{digest.hexdigest()}"
 
 
-def failure_signature(
-    method: str, params: object, failure: BaseException | str
-) -> str | None:
+def failure_signature(method: str, params: object, failure: BaseException | str) -> str | None:
     """Return the repetition key for a failed request, or None to skip it.
 
     ``None`` means "do not observe this failure": it is a Ralph-side

@@ -388,9 +388,7 @@ def _build_handback_pipeline_stubs(
     """
     from ralph.pipeline._runner_session import apply_session_capture
 
-    def stub_load_configuration(
-        *args: object, **kwargs: object
-    ) -> run_module._LoadResult:
+    def stub_load_configuration(*args: object, **kwargs: object) -> run_module._LoadResult:
         del args, kwargs
         preflight_order.append("load_configuration")
         return load_result
@@ -554,7 +552,9 @@ def _assert_handback_state_clean(
         )
 
 
-@pytest.mark.parametrize("phase", _PERSISTED_NON_TERMINAL_PHASES, ids=_PERSISTED_NON_TERMINAL_PHASES)
+@pytest.mark.parametrize(
+    "phase", _PERSISTED_NON_TERMINAL_PHASES, ids=_PERSISTED_NON_TERMINAL_PHASES
+)
 def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
     phase: str,
 ) -> None:
@@ -705,4 +705,3 @@ def _stub_load_result_for_handback(workspace_root: str, *, phase: str) -> run_mo
         policy_bundle=None,
         run_id="test-run-id",
     )
-

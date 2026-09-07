@@ -188,7 +188,9 @@ def _install_worker_stubs(
     monkeypatch.setattr(
         module,
         "inspect_integration_resolution",
-        lambda *_args, **_kwargs: IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED),
+        lambda *_args, **_kwargs: IntegrationResolutionVerdict(
+            IntegrationResolutionStatus.RESOLVED
+        ),
         raising=False,
     )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
@@ -309,9 +311,16 @@ def test_persisted_legacy_conflict_blocks_prompt_and_agent_invocation(
     execute = MagicMock()
     monkeypatch.setattr(module, "legacy_rebase_startup_block", MagicMock(return_value=conflict))
     monkeypatch.setattr(module, "execute_agent_effect", execute)
-    deps = dataclasses.replace(_worker_pipeline_deps(_display_context()), phase_prompt_materializer=materialize)
+    deps = dataclasses.replace(
+        _worker_pipeline_deps(_display_context()), phase_prompt_materializer=materialize
+    )
 
-    assert module.run_parallel_worker_from_manifest(manifest_path=manifest_path, display_context=_display_context(), pipeline_deps=deps) == 1
+    assert (
+        module.run_parallel_worker_from_manifest(
+            manifest_path=manifest_path, display_context=_display_context(), pipeline_deps=deps
+        )
+        == 1
+    )
     materialize.assert_not_called()
     execute.assert_not_called()
 
@@ -328,7 +337,9 @@ def test_worker_startup_conflict_blocks_prompt_and_agent_invocation(
         module,
         "inspect_integration_resolution",
         lambda *_args, **_kwargs: IntegrationResolutionVerdict(
-            IntegrationResolutionStatus.RECOVERABLE, ("persisted integration state is unresolved",), "rebase_conflict_resolution"
+            IntegrationResolutionStatus.RECOVERABLE,
+            ("persisted integration state is unresolved",),
+            "rebase_conflict_resolution",
         ),
     )
     integration = MagicMock(return_value=conflict)
@@ -512,7 +523,9 @@ def test_worker_startup_retained_recovery_blocks_prompt_and_agent_invocation(
         module,
         "inspect_integration_resolution",
         lambda *_args, **_kwargs: IntegrationResolutionVerdict(
-            IntegrationResolutionStatus.RECOVERABLE, ("persisted integration state is unresolved",), "rebase_conflict_resolution"
+            IntegrationResolutionStatus.RECOVERABLE,
+            ("persisted integration state is unresolved",),
+            "rebase_conflict_resolution",
         ),
     )
     integration = MagicMock(return_value=retained)
@@ -548,13 +561,15 @@ def test_worker_boundary_retained_recovery_blocks_success_exit(
     monkeypatch.setattr(
         module,
         "inspect_integration_resolution",
-        lambda _root, rebase: IntegrationResolutionVerdict(
-            IntegrationResolutionStatus.RECOVERABLE,
-            ("persisted integration state is unresolved",),
-            "rebase_conflict_resolution",
-        )
-        if rebase.recovery_record_retained
-        else IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED),
+        lambda _root, rebase: (
+            IntegrationResolutionVerdict(
+                IntegrationResolutionStatus.RECOVERABLE,
+                ("persisted integration state is unresolved",),
+                "rebase_conflict_resolution",
+            )
+            if rebase.recovery_record_retained
+            else IntegrationResolutionVerdict(IntegrationResolutionStatus.RESOLVED)
+        ),
     )
 
     exit_code = module.run_parallel_worker_from_manifest(

@@ -306,15 +306,11 @@ def test_a_decode_error_is_reported_as_truncation_not_teardown() -> None:
     reset_raw_overflow_path_state()
     handle = _FakeManagedProcess()
     handle.stdout = _UndecodableStdout()
-    reader = ProcessLineReader(
-        handle, _make_subprocess_ctx(workspace_path=Path.cwd()), FakeClock()
-    )
+    reader = ProcessLineReader(handle, _make_subprocess_ctx(workspace_path=Path.cwd()), FakeClock())
 
     records: list[tuple[str, str]] = []
     sink_id = logger.add(
-        lambda message: records.append(
-            (message.record["level"].name, message.record["message"])
-        ),
+        lambda message: records.append((message.record["level"].name, message.record["message"])),
         level="DEBUG",
     )
     try:
@@ -508,9 +504,12 @@ def test_two_roots_for_one_file_get_one_writer(tmp_path: Path) -> None:
     written = (real_root / ".agent" / "raw" / "shared-unit.log").read_text(encoding="utf-8")
 
     assert written.splitlines() == frames
-    assert detect_raw_log_breaks(
-        real_root / ".agent" / "raw" / "shared-unit.log", transport=AgentTransport.CODEX
-    ) == []
+    assert (
+        detect_raw_log_breaks(
+            real_root / ".agent" / "raw" / "shared-unit.log", transport=AgentTransport.CODEX
+        )
+        == []
+    )
 
 
 def test_a_nul_hole_is_skipped_in_windows_not_byte_by_byte() -> None:

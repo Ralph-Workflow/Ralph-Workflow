@@ -140,9 +140,7 @@ class TestOpenCodeCapturedWire:
         # The diff preview captures the polarity rows.
         assert len(payload.hunks) == 1
         assert payload.hunks[0].old_text == "function TodoList() {}\n"
-        assert payload.hunks[0].new_text == (
-            "function TodoList() { this.items = []; }\n"
-        )
+        assert payload.hunks[0].new_text == ("function TodoList() { this.items = []; }\n")
 
     def test_captured_real_fixture_routes_every_tool_use(self) -> None:
         """Replay the real 1.18.14 fixture from the file system.
@@ -180,16 +178,13 @@ class TestOpenCodeCapturedWire:
         # errored read emits an ``error`` line instead), and 1 error
         # (from the failed read attempt).
         assert len(tool_uses) == 4, (
-            f"Expected 4 tool_use lines (read/write/edit/read), got "
-            f"{len(tool_uses)}"
+            f"Expected 4 tool_use lines (read/write/edit/read), got {len(tool_uses)}"
         )
         assert len(tool_results) == 3, (
-            f"Expected 3 tool_result lines (write/edit/read), got "
-            f"{len(tool_results)}"
+            f"Expected 3 tool_result lines (write/edit/read), got {len(tool_results)}"
         )
         assert len(errors) >= 1, (
-            f"Expected at least 1 error line (the failed read attempt), "
-            f"got {len(errors)}"
+            f"Expected at least 1 error line (the failed read attempt), got {len(errors)}"
         )
         seen_tools: set[str] = set()
         for line in tool_uses:

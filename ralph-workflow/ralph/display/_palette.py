@@ -553,7 +553,9 @@ def _surface_adaptive_chroma(anchor: RoleAnchor, target_l: float) -> float:
     return fraction * target_max_chroma
 
 
-def _floor_lightness(h: float, target_chroma: float, y_surf: float, min_ratio: float, *, lighter: bool) -> float:
+def _floor_lightness(
+    h: float, target_chroma: float, y_surf: float, min_ratio: float, *, lighter: bool
+) -> float:
     """Binary-search the minimal (lighter) or maximal (darker) OKLab L that
     clears ``min_ratio`` contrast against a surface of luminance ``y_surf``.
 
@@ -634,7 +636,15 @@ def _offset_rank(offset: float) -> float:
     return rank / denom if denom > 0 else 0.0
 
 
-def _nudge_to_floor(l_val: float, h: float, target_chroma: float, surface_hex: str, min_ratio: float, *, lighter: bool) -> str:
+def _nudge_to_floor(
+    l_val: float,
+    h: float,
+    target_chroma: float,
+    surface_hex: str,
+    min_ratio: float,
+    *,
+    lighter: bool,
+) -> str:
     """Step ``l_val`` further from the surface until contrast clears
     ``min_ratio``, as a last-resort safety net after gamut clamping."""
     r, g, b = _oklch_to_rgb_clamped(l_val, target_chroma, h)
@@ -775,7 +785,10 @@ def solve_dual_safe(anchor: RoleAnchor) -> str:
 
     r, g, b = _oklch_to_rgb_clamped(best_l, target_chroma, h)
     res_hex = rgb_to_hex(r, g, b)
-    if contrast_ratio(res_hex, _PURE_BLACK_HEX) >= _CONTRAST_FLOOR and contrast_ratio(res_hex, _PURE_WHITE_HEX) >= _CONTRAST_FLOOR:
+    if (
+        contrast_ratio(res_hex, _PURE_BLACK_HEX) >= _CONTRAST_FLOOR
+        and contrast_ratio(res_hex, _PURE_WHITE_HEX) >= _CONTRAST_FLOOR
+    ):
         return res_hex
 
     # Safety net: the ordered target left the dual-safe band (should not
@@ -812,8 +825,12 @@ def solve_dual_safe(anchor: RoleAnchor) -> str:
 #: 1.05 / (Y + 0.05) == 4.5 (high).
 _DUAL_SAFE_Y_LOW: Final[float] = 0.175
 _DUAL_SAFE_Y_HIGH: Final[float] = 1.05 / _CONTRAST_FLOOR - 0.05
-_DUAL_SAFE_OFFSET_MIN: Final[float] = min(a.l_ref - REFERENCE_BACKGROUND_L for a in ROLE_ANCHORS.values())
-_DUAL_SAFE_OFFSET_MAX: Final[float] = max(a.l_ref - REFERENCE_BACKGROUND_L for a in ROLE_ANCHORS.values())
+_DUAL_SAFE_OFFSET_MIN: Final[float] = min(
+    a.l_ref - REFERENCE_BACKGROUND_L for a in ROLE_ANCHORS.values()
+)
+_DUAL_SAFE_OFFSET_MAX: Final[float] = max(
+    a.l_ref - REFERENCE_BACKGROUND_L for a in ROLE_ANCHORS.values()
+)
 _DUAL_SAFE_OFFSET_SPAN: Final[float] = max(_DUAL_SAFE_OFFSET_MAX - _DUAL_SAFE_OFFSET_MIN, 1e-9)
 
 

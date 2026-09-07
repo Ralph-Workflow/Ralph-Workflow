@@ -145,10 +145,7 @@ def _discover_default_tool_names(
         session_id=session_id,
     )
     tools_result = must_mapping(tools_response["result"])
-    return {
-        must_str(tool["name"])
-        for tool in must_dict_list(tools_result["tools"])
-    }
+    return {must_str(tool["name"]) for tool in must_dict_list(tools_result["tools"])}
 
 
 def _exercise_media_round_trip(
@@ -187,8 +184,7 @@ def _exercise_media_round_trip(
 
     resources_result = _rpc_result(server, state_box, "resources/list", {}, 5)
     listed_uris = {
-        must_str(resource["uri"])
-        for resource in must_dict_list(resources_result["resources"])
+        must_str(resource["uri"]) for resource in must_dict_list(resources_result["resources"])
     }
     assert pdf_uri in listed_uris
 
@@ -235,9 +231,7 @@ def _materialize_linked_prompt(
                 phase="development",
                 workspace=workspace,
                 pipeline_policy=_pipeline_policy(),
-                session_caps=SessionCapabilities.defaults_for_drain(
-                    SessionDrain.DEVELOPMENT
-                ),
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
                 workspace_root=workspace.root,
             ),
             PromptPhaseOptions(multimodal_entries=media_entries),
@@ -247,10 +241,7 @@ def _materialize_linked_prompt(
     assert workspace.exists(prompt_path)
     assert workspace.exists(sidecar_path)
     sidecar = must_mapping(json.loads(workspace.read(sidecar_path)))
-    sidecar_uris = {
-        must_str(artifact["uri"])
-        for artifact in must_dict_list(sidecar["artifacts"])
-    }
+    sidecar_uris = {must_str(artifact["uri"]) for artifact in must_dict_list(sidecar["artifacts"])}
     assert pdf_uri in sidecar_uris
     return prompt_path
 

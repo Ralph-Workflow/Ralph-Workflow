@@ -158,9 +158,7 @@ def test_the_commit_chain_uses_the_same_ambiguity_rule() -> None:
         def get(self, name: str) -> object:
             if name not in self._mapping:
                 return None
-            return SimpleNamespace(
-                transport=AgentTransport.CLAUDE, model_flag=self._mapping[name]
-            )
+            return SimpleNamespace(transport=AgentTransport.CLAUDE, model_flag=self._mapping[name])
 
     def model_chain(mapping: dict[str, str | None]) -> object:
         return SimpleNamespace(agents=list(mapping), registry=_ModelRegistry(mapping))

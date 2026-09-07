@@ -6,7 +6,3 @@ preserved so external references (test::TestX) still resolve.
 
 Source files:
 """
-
-
-
-

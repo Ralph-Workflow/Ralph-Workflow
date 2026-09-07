@@ -166,6 +166,7 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "mark with a reason or route through the canonical primitive",
 }
 
+
 @dataclass(frozen=True)
 class FilesystemWriteViolation:
     """A single filesystem-write consolidation audit violation."""
@@ -269,11 +270,7 @@ def _raw_write_text_call(node: ast.Call) -> str | None:
         return None
     dynamic_attr = node.func.args[_GETATTR_NAME_POSITION]
     if isinstance(dynamic_attr, ast.Constant) and isinstance(dynamic_attr.value, str):
-        return (
-            dynamic_attr.value
-            if dynamic_attr.value in {"write_text", "write_bytes"}
-            else None
-        )
+        return dynamic_attr.value if dynamic_attr.value in {"write_text", "write_bytes"} else None
     return None
 
 
@@ -405,7 +402,10 @@ def _import_aliases(
                     "WindowsPath",
                 }:
                     module_aliases[local_name] = "Path"
-                elif node.module in {"os", "shutil", "pathlib"} and imported.name in _RAW_MUTATION_ATTRS:
+                elif (
+                    node.module in {"os", "shutil", "pathlib"}
+                    and imported.name in _RAW_MUTATION_ATTRS
+                ):
                     direct_mutations[local_name] = imported.name
     return (
         module_aliases,
@@ -460,7 +460,9 @@ def _path_variable_names(
         if not isinstance(node.value, ast.Call):
             continue
         root = _call_root_name(node.value.func)
-        is_path_constructor = root is not None and module_aliases.get(root, root) in pathlib_constructors
+        is_path_constructor = (
+            root is not None and module_aliases.get(root, root) in pathlib_constructors
+        )
         is_workspace_resolver = (
             isinstance(node.value.func, ast.Attribute)
             and node.value.func.attr in workspace_path_resolvers
@@ -540,9 +542,12 @@ def _raw_qualified_mutation_call(
     if workspace_resolver_call or (
         receiver_key is not None and (_scope_key(node, parents), receiver_key) in path_variables
     ):
-        return attr if attr in {
-            "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate", "chmod"
-        } else None
+        return (
+            attr
+            if attr
+            in {"replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate", "chmod"}
+            else None
+        )
     root = _call_root_name(receiver)
     if root is None:
         return None
@@ -667,9 +672,7 @@ def _parse_candidate_module(
         )
 
 
-def _read_candidate_source(
-    module_path: Path, rel_path: str
-) -> str | FilesystemWriteViolation:
+def _read_candidate_source(module_path: Path, rel_path: str) -> str | FilesystemWriteViolation:
     """Read one module or return its fail-closed unreadable-source violation."""
     try:
         return module_path.read_text(encoding="utf-8")
@@ -679,8 +682,7 @@ def _read_candidate_source(
             file_path=rel_path,
             line=0,
             message=(
-                "module could not be read; restore readable source and ensure "
-                "the audit can walk it"
+                "module could not be read; restore readable source and ensure the audit can walk it"
             ),
         )
 

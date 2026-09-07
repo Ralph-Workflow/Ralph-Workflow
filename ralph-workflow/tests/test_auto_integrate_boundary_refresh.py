@@ -529,7 +529,7 @@ def _install_recovery_seams(
     monkeypatch.setattr(
         recovery,
         "fast_forward_target",
-        lambda _root, _target, _sha, **_kwargs: (events.append("fast_forward") or (True, "")),
+        lambda _root, _target, _sha, **_kwargs: events.append("fast_forward") or (True, ""),
     )
     monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)

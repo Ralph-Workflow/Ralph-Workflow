@@ -61,7 +61,11 @@ def test_agy_smoke_prompt_uses_canonical_markdown_submission() -> None:
     )
 
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert "Call `ralph_submit_md_artifact`" in prompt or f"naming MCP server `{RALPH_MCP_SERVER_NAME}` and target tool `ralph_submit_md_artifact`" in prompt
+    assert (
+        "Call `ralph_submit_md_artifact`" in prompt
+        or f"naming MCP server `{RALPH_MCP_SERVER_NAME}` and target tool `ralph_submit_md_artifact`"
+        in prompt
+    )
     assert ".agent/artifacts/" not in prompt
     assert "JSON artifact" not in prompt
 

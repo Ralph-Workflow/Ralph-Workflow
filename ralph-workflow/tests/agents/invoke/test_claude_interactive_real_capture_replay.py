@@ -204,20 +204,17 @@ def _drive_parent_timeline_through_parser(
                     msg = obj.get("message", {})
                     if isinstance(msg, dict) and msg.get("model") == "<synthetic>":
                         assert event.kind != "text", (
-                            f"synthetic envelope leaked into text:"
-                            f" {event.text!r}"
+                            f"synthetic envelope leaked into text: {event.text!r}"
                         )
                         assert event.kind != "output", (
-                            f"synthetic envelope leaked into output:"
-                            f" {event.text!r}"
+                            f"synthetic envelope leaked into output: {event.text!r}"
                         )
 
     # The fixture has 5 <synthetic> envelopes and several tool_use
     # entries. Pin the totals so a future fixture refresh that
     # silently breaks the envelope classification surfaces here.
     assert lifecycle_events >= 5, (
-        f"expected >=5 synthetic lifecycle events from the fixture,"
-        f" got {lifecycle_events}"
+        f"expected >=5 synthetic lifecycle events from the fixture, got {lifecycle_events}"
     )
     return tool_use_events
 
@@ -342,9 +339,7 @@ def test_real_capture_replay_subagent_tail_advances_record_subagent_work(
     # cycles plus the initial state-of-the-world dispatch), and
     # zero ``isSidechain:true`` sidechain events -- all subagent
     # turns live in the sibling ``subagents/agent-*.jsonl`` files.
-    parent_tool_use = _drive_parent_timeline_through_parser(
-        parent_path, watchdog, subagent_calls
-    )
+    parent_tool_use = _drive_parent_timeline_through_parser(parent_path, watchdog, subagent_calls)
     assert parent_tool_use >= 1, (
         "the parent transcript must emit at least one Agent dispatch"
         " tool_use event; this is the RC1 evidence that the parent"
@@ -387,8 +382,7 @@ def test_real_capture_replay_subagent_tail_advances_record_subagent_work(
     )
     progress_count = getattr(watchdog, "_subagent_progress_count", 0)
     assert progress_count > 0, (
-        f"_subagent_progress_count should be > 0 after replay,"
-        f" got {progress_count}"
+        f"_subagent_progress_count should be > 0 after replay, got {progress_count}"
     )
 
 
@@ -441,9 +435,7 @@ def test_real_capture_replay_subagents_dir_contains_issidechain_entries(
     regression.
     """
     _setup_shadow_home(monkeypatch, tmp_path)
-    found = find_claude_subagent_transcripts(
-        "a4731909-31bc-4ad5-bac9-cd59ee7e0615"
-    )
+    found = find_claude_subagent_transcripts("a4731909-31bc-4ad5-bac9-cd59ee7e0615")
     assert len(found) == 5, f"expected 5 subagent files, got {len(found)}"
     sidechain_total = 0
     for transcript_path, _meta in found:

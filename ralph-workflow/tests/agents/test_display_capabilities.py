@@ -142,9 +142,7 @@ def test_stance_rejects_unknown_capability() -> None:
 
 def test_stance_rejects_unknown_kind() -> None:
     with pytest.raises(ValueError, match="must be one of"):
-        DisplayCapabilityStance(
-            capability=DisplayCapability.SYNTAX_HIGHLIGHTING, kind="maybe"
-        )
+        DisplayCapabilityStance(capability=DisplayCapability.SYNTAX_HIGHLIGHTING, kind="maybe")
 
 
 def test_stance_label_inlines_reason_for_unsupported_kinds() -> None:
@@ -248,9 +246,7 @@ def test_custom_support_with_empty_declaration_is_accepted() -> None:
 
 def test_custom_support_with_partial_declaration_is_accepted() -> None:
     """Custom agents may declare a subset of capabilities."""
-    partial = (
-        DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING),
-    )
+    partial = (DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING),)
     support = _support_with_stances(partial, is_builtin=False)
     assert len(support.display_capabilities) == 1
 
@@ -432,7 +428,10 @@ def test_builtin_agent_spec_to_support_forwards_capabilities_unchanged() -> None
     )
     support = spec.to_support("opencode-test")
     assert support.is_builtin
-    assert tuple(stance.capability for stance in support.display_capabilities) == all_display_capabilities()
+    assert (
+        tuple(stance.capability for stance in support.display_capabilities)
+        == all_display_capabilities()
+    )
     for stance in support.display_capabilities:
         assert isinstance(stance, DisplayCapabilityStance)
 
@@ -452,9 +451,7 @@ def test_builtin_agent_spec_without_capabilities_fails_at_to_support() -> None:
 
 def test_builtin_agent_spec_with_incomplete_capabilities_fails_at_to_support() -> None:
     """Built-in with missing capability fails closed."""
-    incomplete = (
-        DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING),
-    )
+    incomplete = (DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING),)
     spec = BuiltinAgentSpec(
         transport=AgentTransport.CLAUDE_INTERACTIVE,
         parser_factory=ClaudeInteractiveParser,

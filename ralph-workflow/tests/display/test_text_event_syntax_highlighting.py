@@ -49,20 +49,14 @@ def _agy_text_event(content: str) -> AgentActivityEvent:
     lines: list[AgentOutputLine] = list(AgyParser().parse(iter([json.dumps(frame)])))
     text_lines = [line for line in lines if line.type == "text"]
     assert len(text_lines) == 1, f"expected one text line, got {lines}"
-    return normalize_event_from_agent_output_line(
-        text_lines[0], provider=ActivityProvider.AGY
-    )
+    return normalize_event_from_agent_output_line(text_lines[0], provider=ActivityProvider.AGY)
 
 
 def _body_spans(text: Text, body_prefix: str) -> list[object]:
     """Return the styled spans that overlap the rendered body segment."""
     start = text.plain.find(body_prefix)
     assert start >= 0, f"body {body_prefix!r} missing from {text.plain!r}"
-    return [
-        span
-        for span in text.spans
-        if span.end > start and span.style not in (None, "")
-    ]
+    return [span for span in text.spans if span.end > start and span.style not in (None, "")]
 
 
 def test_fenced_python_event_renders_lexer_derived_spans() -> None:
@@ -83,9 +77,7 @@ def test_fenced_python_event_renders_lexer_derived_spans() -> None:
     # from the string literal, so the body must carry at least two styles.
     body_spans = _body_spans(rendered, "print")
     distinct_styles = {str(span.style) for span in body_spans}
-    assert len(distinct_styles) >= 2, (
-        f"expected lexer-derived span variety, got {distinct_styles}"
-    )
+    assert len(distinct_styles) >= 2, f"expected lexer-derived span variety, got {distinct_styles}"
 
 
 def test_fenced_typescript_event_renders_distinct_token_styles() -> None:
@@ -99,9 +91,7 @@ def test_fenced_typescript_event_renders_distinct_token_styles() -> None:
     assert "const value: number = 1;" in rendered.plain
     body_spans = _body_spans(rendered, "const")
     distinct_styles = {str(span.style) for span in body_spans}
-    assert len(distinct_styles) >= 2, (
-        f"expected lexer-derived span variety, got {distinct_styles}"
-    )
+    assert len(distinct_styles) >= 2, f"expected lexer-derived span variety, got {distinct_styles}"
 
 
 def test_unknown_language_fence_falls_back_to_single_body_style() -> None:
@@ -155,4 +145,3 @@ def test_equivalent_annotation_from_any_provider_highlights_identically() -> Non
     assert [str(s.style) for s in agy_rendered.spans] == [
         str(s.style) for s in other_rendered.spans
     ]
-

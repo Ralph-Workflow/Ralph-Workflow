@@ -37,7 +37,9 @@ def test_default_conflict_resolution_configuration_has_fixed_documented_values()
         ("max_fallback_agents", 0),
     ],
 )
-def test_conflict_resolution_configuration_rejects_invalid_fields(field: str, value: object) -> None:
+def test_conflict_resolution_configuration_rejects_invalid_fields(
+    field: str, value: object
+) -> None:
     """S-3: invalid supervision bounds fail during configuration validation."""
     with pytest.raises(ValidationError, match=field):
         UnifiedConfig.model_validate({"conflict_resolution": {field: value}})

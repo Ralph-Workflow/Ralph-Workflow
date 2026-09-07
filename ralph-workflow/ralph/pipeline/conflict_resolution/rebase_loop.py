@@ -191,7 +191,6 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
     )
 
 
-
 @contextmanager
 def bind_active_rebase_resolution_session(session: ResolutionSession) -> Iterator[None]:
     """Expose one complete-rebase session to unchanged three-argument resolvers."""
@@ -475,9 +474,7 @@ def _rebase_base_sha(root: Path) -> str | None:
 
 def _rebase_orig_head_sha(root: Path) -> str | None:
     """Feature tip the paused rebase is replaying, or ``None`` if unreadable."""
-    return _read_rebase_state_sha(
-        root, _REBASE_ORIG_HEAD_FILES, label="git-rebase-orig-head-path"
-    )
+    return _read_rebase_state_sha(root, _REBASE_ORIG_HEAD_FILES, label="git-rebase-orig-head-path")
 
 
 def current_rebase_identity(root: Path) -> tuple[str | None, str | None]:

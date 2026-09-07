@@ -67,9 +67,7 @@ def remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
                 candidate
                 for candidate in candidate_parent.glob(f"{Path(path).name}~*")
                 if is_ort_residue_name(Path(path).name, candidate.name)
-                and label_names_a_git_ref(
-                    root, candidate.name[len(Path(path).name) + 1 :]
-                )
+                and label_names_a_git_ref(root, candidate.name[len(Path(path).name) + 1 :])
             )
         except OSError:
             return False

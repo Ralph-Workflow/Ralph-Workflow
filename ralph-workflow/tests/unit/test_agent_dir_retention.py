@@ -338,6 +338,7 @@ def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
     results: list[int] = []
     results_lock = threading.Lock()
     try:
+
         def _sweep(keep_run_id: str) -> None:
             removed = sweep_agent_dir(
                 tmp_path,

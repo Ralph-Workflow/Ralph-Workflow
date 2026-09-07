@@ -50,9 +50,7 @@ def test_a_stated_transport_can_only_restrict_delivery() -> None:
     raised: list[str] = []
     for provider in _PROVIDERS:
         for modality in SUPPORTED_MODALITIES:
-            without = get_delivery_mode(
-                MultimodalModelIdentity(provider=provider), modality
-            )
+            without = get_delivery_mode(MultimodalModelIdentity(provider=provider), modality)
             for transport in _TRANSPORTS:
                 on_cli = get_delivery_mode(
                     MultimodalModelIdentity(provider=provider, transport=transport),
@@ -81,21 +79,16 @@ def test_only_a_vendor_routing_cli_escapes_the_bound() -> None:
     unvouched = [
         transport
         for transport in _TRANSPORTS
-        if transport not in TRANSPORT_FIXED_PROVIDER
-        and transport not in VENDOR_ROUTING_TRANSPORTS
+        if transport not in TRANSPORT_FIXED_PROVIDER and transport not in VENDOR_ROUTING_TRANSPORTS
     ]
     assert set(unvouched) == {"nanocoder", "generic", "pi", "cursor", "kimi"}
     for transport in unvouched:
         for modality in SUPPORTED_MODALITIES:
-            claimed = MultimodalModelIdentity(
-                provider="gemini", model_id="g", transport=transport
-            )
+            claimed = MultimodalModelIdentity(provider="gemini", model_id="g", transport=transport)
             delivery = get_delivery_mode(claimed, modality).delivery
             assert delivery is not DeliveryMode.TYPED_BLOCK, f"{transport}/{modality}"
     unknown_cli = MultimodalModelIdentity(provider="gemini", transport="a-cli-added-later")
-    assert (
-        get_delivery_mode(unknown_cli, "audio").delivery is not DeliveryMode.TYPED_BLOCK
-    )
+    assert get_delivery_mode(unknown_cli, "audio").delivery is not DeliveryMode.TYPED_BLOCK
 
 
 def test_the_bound_costs_nothing_ralph_resolves_for_itself() -> None:
@@ -113,9 +106,7 @@ def test_the_bound_costs_nothing_ralph_resolves_for_itself() -> None:
         for modality in SUPPORTED_MODALITIES:
             bounded = get_delivery_mode(resolved, modality)
             unbounded = get_delivery_mode(
-                MultimodalModelIdentity(
-                    provider=resolved.provider, model_id=resolved.model_id
-                ),
+                MultimodalModelIdentity(provider=resolved.provider, model_id=resolved.model_id),
                 modality,
             )
             if transport_inline_image_roundtrip_unsafe(transport.value):

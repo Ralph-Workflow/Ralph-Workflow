@@ -145,9 +145,7 @@ class TestKimiCommandBuilder:
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
             prompt_file,
-            options=BuildCommandOptions(
-                model_flag="kimi/kimi-for-coding", workspace_path=tmp_path
-            ),
+            options=BuildCommandOptions(model_flag="kimi/kimi-for-coding", workspace_path=tmp_path),
         )
 
         assert cmd == [
@@ -268,9 +266,7 @@ class TestKimiRuntimeResolverMcpWiring:
         # folder, so it is a write target (see _kimi_write_target_paths).
         preexisting_workspace_config = tmp_path / ".kimi-code" / "mcp.json"
         preexisting_workspace_config.parent.mkdir()
-        preexisting_workspace_config.write_text(
-            json.dumps({"mcpServers": {}}), encoding="utf-8"
-        )
+        preexisting_workspace_config.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
 
         runtime = KimiRuntimeResolver().resolve(
             _kimi_config(),
@@ -288,9 +284,7 @@ class TestKimiRuntimeResolverMcpWiring:
             workspace_config = preexisting_workspace_config
             global_config = kimi_home / "mcp.json"
             captured = {
-                config_path: (
-                    config_path.read_bytes() if config_path.is_file() else None
-                )
+                config_path: (config_path.read_bytes() if config_path.is_file() else None)
                 for config_path in (workspace_config, global_config)
             }
         finally:
@@ -304,9 +298,7 @@ class TestKimiRuntimeResolverMcpWiring:
         # Cleanup restores both paths to their pre-run state (the
         # workspace file returns to its original empty-servers bytes;
         # the global file did not exist before and is removed).
-        assert json.loads(workspace_config.read_text(encoding="utf-8")) == {
-            "mcpServers": {}
-        }
+        assert json.loads(workspace_config.read_text(encoding="utf-8")) == {"mcpServers": {}}
         assert not global_config.exists()
 
     def test_resolve_skips_untrusted_workspace_config_write(
@@ -334,12 +326,8 @@ class TestKimiRuntimeResolverMcpWiring:
         try:
             assert runtime.mcp_endpoint == self.ENDPOINT
             assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
-            global_payload = json.loads(
-                (kimi_home / "mcp.json").read_text(encoding="utf-8")
-            )
-            assert global_payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {
-                "url": self.ENDPOINT
-            }
+            global_payload = json.loads((kimi_home / "mcp.json").read_text(encoding="utf-8"))
+            assert global_payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {"url": self.ENDPOINT}
         finally:
             runtime.cleanup()
 
@@ -386,9 +374,7 @@ class TestKimiRuntimeResolverMcpWiring:
         monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
         kimi_home.mkdir()
         (kimi_home / "mcp.json").write_text(
-            json.dumps(
-                {"mcpServers": {"operator-managed": {"url": "http://example.invalid/sse"}}}
-            ),
+            json.dumps({"mcpServers": {"operator-managed": {"url": "http://example.invalid/sse"}}}),
             encoding="utf-8",
         )
 
@@ -543,9 +529,7 @@ class TestKimiCompletionEnforcement:
         classify = getattr(strategy, "classify_activity_line", None)
         assert callable(classify), "kimi strategy must expose classify_activity_line"
 
-        tool_result = json.dumps(
-            {"role": "tool", "tool_call_id": "call_1", "content": "out"}
-        )
+        tool_result = json.dumps({"role": "tool", "tool_call_id": "call_1", "content": "out"})
         tool_use = json.dumps(
             {
                 "role": "assistant",
@@ -592,4 +576,4 @@ def test_session_flag_formatting_matrix(
         prompt_file,
         options=BuildCommandOptions(session_id=session_id, workspace_path=tmp_path),
     )
-    assert cmd[2:2 + len(expected_argv_tail)] == expected_argv_tail
+    assert cmd[2 : 2 + len(expected_argv_tail)] == expected_argv_tail

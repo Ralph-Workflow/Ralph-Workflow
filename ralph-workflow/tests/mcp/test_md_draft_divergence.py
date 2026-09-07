@@ -60,9 +60,12 @@ def test_md_draft_save_regression_identical_seeded_replay_preserves_provenance()
     save_md_draft(artifact_dir, "plan", "canonical content", backend=backend)
 
     assert is_md_draft_seeded(artifact_dir, "plan", backend=backend)
-    assert unsubmitted_draft_divergence(
-        artifact_dir, "plan", artifact_dir / "plan.md", backend=backend
-    ) is None
+    assert (
+        unsubmitted_draft_divergence(
+            artifact_dir, "plan", artifact_dir / "plan.md", backend=backend
+        )
+        is None
+    )
 
 
 def test_md_draft_divergence_regression_worker_artifact_uses_its_own_directory(

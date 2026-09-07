@@ -130,13 +130,10 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
     # each retaining the grep carrier ([call][main]) on the row that actually
     # carries the path= payload — this is the fix from commit 5c69d13b4
     # ("preserve tool event markers on wrapped paths").
-    tool_starts = [
-        line for line in out.splitlines() if "[call][main]" in line and "RUN" in line
-    ]
+    tool_starts = [line for line in out.splitlines() if "[call][main]" in line and "RUN" in line]
     assert len(tool_starts) == 1, f"Expected exactly 1 [call] start, got {len(tool_starts)}:\n{out}"
     assert any(
-        "[call][main]" in line and "path=ralph-workflow" in line
-        for line in out.splitlines()
+        "[call][main]" in line and "path=ralph-workflow" in line for line in out.splitlines()
     ), (
         f"Expected at least one [call][main] row to carry the path= payload "
         f"(grep carrier must survive wrapping):\n{out}"

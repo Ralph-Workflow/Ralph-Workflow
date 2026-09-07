@@ -77,7 +77,9 @@ class VisionVerdictDispatch:
 
     def __post_init__(self) -> None:
         if not all((self.target.strip(), self.intent.strip(), self.delegated_agent_id.strip())):
-            raise ValueError("vision dispatch requires target, intent, and delegated agent identity")
+            raise ValueError(
+                "vision dispatch requires target, intent, and delegated agent identity"
+            )
         if not self.before_handles or not self.after_handles:
             raise ValueError("vision dispatch requires before and after capture evidence")
         if self.timeout_seconds <= 0:
@@ -108,14 +110,14 @@ def dispatch_vision_verdict(
         raise ValueError("vision verdict dispatch returned no submitted verdict identifier")
     return verdict_id
 
+
 #: Citation string for the design-system policy. The provisioning
 #: predicate consults :func:`ralph.project_policy.evidence.design_system_required`
 #: which is the canonical S-17 plan-item reference; the citation is
 #: repeated here so the agent's documentation in this module stays
 #: greppable without a round-trip into ``project_policy.evidence``.
 _DESIGN_SYSTEM_POLICY_CITATION: str = (
-    "ralph-workflow/ralph/project_policy/evidence.py:132 "
-    "(design_system_required)"
+    "ralph-workflow/ralph/project_policy/evidence.py:132 (design_system_required)"
 )
 
 

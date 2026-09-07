@@ -236,6 +236,7 @@ class TestHandleGitStatus:
         payload must NOT emit any ``changed_symbols`` hints
         because freshness is unknown.
         """
+
         class _FailingDirtyPathsStore:
             def get_setting(self, _key: str) -> str:
                 return "1"

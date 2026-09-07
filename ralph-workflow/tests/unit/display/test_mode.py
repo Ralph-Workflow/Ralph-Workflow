@@ -9,5 +9,3 @@ def test_non_terminal_preserves_width() -> None:
     console = Console(force_terminal=False, width=120)
     ctx = make_display_context(console=console, env={})
     assert ctx.width == 120
-
-

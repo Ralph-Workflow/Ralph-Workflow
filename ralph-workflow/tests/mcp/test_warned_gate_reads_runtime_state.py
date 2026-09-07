@@ -228,8 +228,14 @@ status: completed
 @pytest.mark.parametrize(
     "fields",
     [
-        pytest.param("  - Reason: Tests not updated.\n  - Evidence: tests/test_api.py:42\n", id="nested-bullets"),
-        pytest.param("  **Reason:** Tests not updated.\n  **Evidence:** tests/test_api.py:42\n", id="bold-labels"),
+        pytest.param(
+            "  - Reason: Tests not updated.\n  - Evidence: tests/test_api.py:42\n",
+            id="nested-bullets",
+        ),
+        pytest.param(
+            "  **Reason:** Tests not updated.\n  **Evidence:** tests/test_api.py:42\n",
+            id="bold-labels",
+        ),
         pytest.param("  Reason: Tests not updated.\n  Evidence: tests/test_api.py:42\n", id="bare"),
     ],
 )
@@ -527,8 +533,12 @@ status: partial
 @pytest.mark.parametrize(
     "stray",
     [
-        pytest.param("  - Step 4: rewrite the tokenizer was never started\n", id="nested-with-colon"),
-        pytest.param("  -\tStep 4 rewrite the tokenizer was never started\n", id="tab-after-marker"),
+        pytest.param(
+            "  - Step 4: rewrite the tokenizer was never started\n", id="nested-with-colon"
+        ),
+        pytest.param(
+            "  -\tStep 4 rewrite the tokenizer was never started\n", id="tab-after-marker"
+        ),
         pytest.param("  Owner: someone else\n", id="unrecognized-field"),
         pytest.param("Remaining scope, for reference:\n", id="section-prose"),
     ],

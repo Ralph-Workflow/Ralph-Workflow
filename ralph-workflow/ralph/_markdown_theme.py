@@ -71,9 +71,7 @@ def _markdown_palette_for_surface_uncached(
 # Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
 # disallow_any_decorated settings clean without a type: ignore suppression --
 # the same first-party idiom used by ralph.display.language_inference._cached_infer.
-_markdown_palette_for_surface_cached = lru_cache(maxsize=8)(
-    _markdown_palette_for_surface_uncached
-)
+_markdown_palette_for_surface_cached = lru_cache(maxsize=8)(_markdown_palette_for_surface_uncached)
 
 
 def _styles(terminal_bg_is_light: bool | None, surface_hex: str | None = None) -> dict[str, str]:

@@ -430,5 +430,3 @@ def test_provider_for_transport_round_trips_supported_transports() -> None:
     # their own parser; ``None`` and unknown values also fall back to GENERIC.
     assert provider_for_transport("generic") is ActivityProvider.GENERIC
     assert provider_for_transport(None) is ActivityProvider.GENERIC
-
-

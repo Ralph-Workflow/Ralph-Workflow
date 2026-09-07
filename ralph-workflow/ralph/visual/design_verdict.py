@@ -150,8 +150,12 @@ def validate_deterministic_capture_evidence(
 
 
 def _validate_inputs_typed(
-    *, before: object, after: object, intent: object,
-    status: object, findings: object,
+    *,
+    before: object,
+    after: object,
+    intent: object,
+    status: object,
+    findings: object,
 ) -> str:
     """Type-check the three-input contract. Returns the validated status."""
     if not isinstance(before, CaptureSet):
@@ -162,27 +166,21 @@ def _validate_inputs_typed(
         raise ValueError("DesignVerdict.intent must be a non-empty string")
     if len(intent) > _INTENT_MAX_LEN:
         raise ValueError(
-            f"DesignVerdict.intent length {len(intent)} exceeds "
-            f"_INTENT_MAX_LEN={_INTENT_MAX_LEN}"
+            f"DesignVerdict.intent length {len(intent)} exceeds _INTENT_MAX_LEN={_INTENT_MAX_LEN}"
         )
     if not isinstance(status, str) or status not in VERDICT_VALUES:
         raise ValueError(
-            f"DesignVerdict.status must be one of {list(VERDICT_VALUES)}; "
-            f"got {status!r}"
+            f"DesignVerdict.status must be one of {list(VERDICT_VALUES)}; got {status!r}"
         )
     if not isinstance(findings, tuple):
-        raise ValueError(
-            "DesignVerdict.findings must be a tuple of VisualFinding instances"
-        )
+        raise ValueError("DesignVerdict.findings must be a tuple of VisualFinding instances")
     return status
 
 
 def _validate_intent_no_smuggle(intent: str) -> None:
     """Reject intent narratives that smuggle in non-capture artifacts."""
     lowered = intent.lower()
-    smuggled = [
-        fragment for fragment in _INPUT_SMUGGLE_FRAGMENTS if fragment in lowered
-    ]
+    smuggled = [fragment for fragment in _INPUT_SMUGGLE_FRAGMENTS if fragment in lowered]
     if smuggled:
         raise ValueError(
             "DesignVerdict.intent must not smuggle non-capture artifacts "
@@ -200,7 +198,9 @@ def _validate_targets_match(before: CaptureSet, after: CaptureSet) -> None:
 
 
 def _validate_matrix_parity(
-    *, before_ids: frozenset[str], after_ids: frozenset[str],
+    *,
+    before_ids: frozenset[str],
+    after_ids: frozenset[str],
 ) -> None:
     """Reject before/after capture matrices that are not cell-id-equal."""
     if before_ids == after_ids:
@@ -226,7 +226,9 @@ def _validate_matrix_parity(
 
 
 def _validate_states_covered(
-    *, before: CaptureSet, after: CaptureSet,
+    *,
+    before: CaptureSet,
+    after: CaptureSet,
 ) -> None:
     """Reject baselines or after-captures that miss canonical states."""
     before_states = before.states_covered()
@@ -255,9 +257,7 @@ def _validate_findings(
     by_capture: dict[str, list[VisualFinding]] = {}
     for finding in findings:
         if not isinstance(finding, VisualFinding):
-            raise ValueError(
-                "DesignVerdict.findings must contain only VisualFinding instances"
-            )
+            raise ValueError("DesignVerdict.findings must contain only VisualFinding instances")
         if finding.capture_id not in valid_capture_ids:
             raise ValueError(
                 f"VisualFinding cites capture_id={finding.capture_id!r} which "
@@ -280,9 +280,7 @@ def _validate_finding_grounding(finding: VisualFinding) -> None:
             f"expected one of {list(VISUAL_SEVERITIES)}"
         )
     narrative_lower = finding.narrative.lower()
-    has_absolute_claim = any(
-        fragment in narrative_lower for fragment in _ABSOLUTE_CLAIM_FRAGMENTS
-    )
+    has_absolute_claim = any(fragment in narrative_lower for fragment in _ABSOLUTE_CLAIM_FRAGMENTS)
     if not has_absolute_claim:
         return
     has_grounding = any(hint in narrative_lower for hint in _BEFORE_GROUNDING_HINTS)
@@ -296,9 +294,7 @@ def _validate_finding_grounding(finding: VisualFinding) -> None:
         )
 
 
-def _validate_status_consistency(
-    status: str, findings: tuple[VisualFinding, ...]
-) -> None:
+def _validate_status_consistency(status: str, findings: tuple[VisualFinding, ...]) -> None:
     """Reject inconsistent status/findings pairings.
 
     * ``pass`` must have no blocker/major findings.
@@ -311,9 +307,7 @@ def _validate_status_consistency(
     blocker_count = sum(1 for f in findings if f.severity == "blocker")
     major_count = sum(1 for f in findings if f.severity == "major")
     if status == VERDICT_PASS and (blocker_count or major_count):
-        offenders = [
-            f.severity for f in findings if f.severity in {"blocker", "major"}
-        ]
+        offenders = [f.severity for f in findings if f.severity in {"blocker", "major"}]
         raise ValueError(
             f"DesignVerdict.status='pass' is inconsistent with "
             f"{len(offenders)} blocker/major findings ({offenders}); "

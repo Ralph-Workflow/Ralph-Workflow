@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .analysis_decision_event import AnalysisDecisionEvent
+from .commit_residual_event import CommitResidualEvent
 from .execution_result_event import ExecutionResultEvent
 from .phase_failure_event import PhaseFailureEvent
 from .pipeline_event import PipelineEvent
@@ -13,6 +14,7 @@ from .worker_started_event import WorkerStartedEvent
 
 Event = (
     PipelineEvent
+    | CommitResidualEvent
     | PhaseFailureEvent
     | ExecutionResultEvent
     | WorkerStartedEvent
@@ -24,6 +26,7 @@ Event = (
 
 __all__ = [
     "AnalysisDecisionEvent",
+    "CommitResidualEvent",
     "Event",
     "ExecutionResultEvent",
     "PhaseFailureEvent",

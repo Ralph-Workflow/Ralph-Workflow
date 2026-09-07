@@ -4,6 +4,7 @@ Provides AgentExecutionState (active/waiting/resumable/terminal),
 the execution strategies, and OpenCode registry routing helpers.
 """
 
+
 from ._base import BaseExecutionStrategy, with_prompt_echo_flag
 from ._completion_mixin import CompletionEnforcingStrategy
 from ._factory import strategy_for_command, strategy_for_transport

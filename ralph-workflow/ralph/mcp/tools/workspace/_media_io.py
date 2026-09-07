@@ -34,6 +34,7 @@ if TYPE_CHECKING:
             keep_paths: Iterable[Path] = (),
         ) -> CachePruneResult: ...
 
+
 _MEDIA_SESSION_SCHEMA_VERSION = "2"
 MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 

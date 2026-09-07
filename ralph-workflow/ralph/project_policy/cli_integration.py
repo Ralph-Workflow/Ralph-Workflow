@@ -687,9 +687,14 @@ def _dispatch_preflight_result(
     # before each remediation iteration so the footer shows
     # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
     display_scope = nullcontext(active_display) if display is not None else active_display
-    resumed_phase = load_result.initial_state.phase if load_result.initial_state is not None else None
-    with display_scope, remediation_status_bar_session(
-        active_display, workspace_scope, resumed_phase=resumed_phase
+    resumed_phase = (
+        load_result.initial_state.phase if load_result.initial_state is not None else None
+    )
+    with (
+        display_scope,
+        remediation_status_bar_session(
+            active_display, workspace_scope, resumed_phase=resumed_phase
+        ),
     ):
         anchor_value: object = getattr(active_display, "run_started_monotonic", None)
         run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
@@ -727,9 +732,7 @@ def _dispatch_preflight_result(
                 on_remediation_attempt=_on_remediation_attempt,
             )
     if final.is_ready():
-        _finalize_ready_state(
-            workspace, workspace_scope, stack, pre_run_dirty, frozenset(authored)
-        )
+        _finalize_ready_state(workspace, workspace_scope, stack, pre_run_dirty, frozenset(authored))
         return _EXIT_SUCCESS
     # The NOT-READY route must run the same deterministic scoped commit the
     # READY route runs, with the same ``pre_run_dirty`` and the same tracked

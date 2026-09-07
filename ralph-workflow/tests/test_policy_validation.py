@@ -106,8 +106,6 @@ DEFAULT_MAX_WORK_UNITS = 50
 ValidationError = importlib.import_module("pydantic").ValidationError
 
 
-
-
 # === Helper for test_policy_validation_strict_cli_counter_overrides.py ===
 def _strict_cli_counter_overrides_minimal_agents(drains: list[str]) -> AgentsPolicy:
     chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
@@ -116,7 +114,9 @@ def _strict_cli_counter_overrides_minimal_agents(drains: list[str]) -> AgentsPol
 
 
 # === Helper for test_policy_validation_strict_cli_counter_overrides.py ===
-def _strict_cli_counter_overrides_terminal_phase(drain: str = "complete", outcome: str = "success") -> PhaseDefinition:
+def _strict_cli_counter_overrides_terminal_phase(
+    drain: str = "complete", outcome: str = "success"
+) -> PhaseDefinition:
     return PhaseDefinition(
         drain=drain,
         role="terminal",
@@ -126,7 +126,9 @@ def _strict_cli_counter_overrides_terminal_phase(drain: str = "complete", outcom
 
 
 # === Helper for test_policy_validation_strict_cli_counter_overrides.py ===
-def _strict_cli_counter_overrides_minimal_bundle_with_phases(phases: dict[str, PhaseDefinition]) -> PolicyBundle:
+def _strict_cli_counter_overrides_minimal_bundle_with_phases(
+    phases: dict[str, PhaseDefinition],
+) -> PolicyBundle:
     drains = list(phases.keys())
     agents = _strict_cli_counter_overrides_minimal_agents(drains)
     pipeline = PipelinePolicy(
@@ -146,7 +148,9 @@ def _strict_legacy_fields_rejected_minimal_agents(drains: list[str]) -> AgentsPo
 
 
 # === Helper for test_policy_validation_strict_legacy_fields_rejected.py ===
-def _strict_legacy_fields_rejected_terminal_phase(drain: str = "complete", outcome: str = "success") -> PhaseDefinition:
+def _strict_legacy_fields_rejected_terminal_phase(
+    drain: str = "complete", outcome: str = "success"
+) -> PhaseDefinition:
     return PhaseDefinition(
         drain=drain,
         role="terminal",
@@ -156,7 +160,9 @@ def _strict_legacy_fields_rejected_terminal_phase(drain: str = "complete", outco
 
 
 # === Helper for test_policy_validation_strict_legacy_fields_rejected.py ===
-def _strict_legacy_fields_rejected_minimal_bundle_with_phases(phases: dict[str, PhaseDefinition]) -> PolicyBundle:
+def _strict_legacy_fields_rejected_minimal_bundle_with_phases(
+    phases: dict[str, PhaseDefinition],
+) -> PolicyBundle:
     drains = list(phases.keys())
     agents = _strict_legacy_fields_rejected_minimal_agents(drains)
     pipeline = PipelinePolicy(
@@ -176,7 +182,9 @@ def _strict_parallelization_consist_minimal_agents(drains: list[str]) -> AgentsP
 
 
 # === Helper for test_policy_validation_strict_parallelization_consistency.py ===
-def _strict_parallelization_consist_terminal_phase(drain: str = "complete", outcome: str = "success") -> PhaseDefinition:
+def _strict_parallelization_consist_terminal_phase(
+    drain: str = "complete", outcome: str = "success"
+) -> PhaseDefinition:
     return PhaseDefinition(
         drain=drain,
         role="terminal",
@@ -186,7 +194,9 @@ def _strict_parallelization_consist_terminal_phase(drain: str = "complete", outc
 
 
 # === Helper for test_policy_validation_strict_parallelization_consistency.py ===
-def _strict_parallelization_consist_minimal_bundle_with_phases(phases: dict[str, PhaseDefinition]) -> PolicyBundle:
+def _strict_parallelization_consist_minimal_bundle_with_phases(
+    phases: dict[str, PhaseDefinition],
+) -> PolicyBundle:
     drains = list(phases.keys())
     agents = _strict_parallelization_consist_minimal_agents(drains)
     pipeline = PipelinePolicy(
@@ -206,7 +216,9 @@ def _strict_skip_invocation_has_on__minimal_agents(drains: list[str]) -> AgentsP
 
 
 # === Helper for test_policy_validation_strict_skip_invocation_has_on_success.py ===
-def _strict_skip_invocation_has_on__terminal_phase(drain: str = "complete", outcome: str = "success") -> PhaseDefinition:
+def _strict_skip_invocation_has_on__terminal_phase(
+    drain: str = "complete", outcome: str = "success"
+) -> PhaseDefinition:
     return PhaseDefinition(
         drain=drain,
         role="terminal",
@@ -216,7 +228,9 @@ def _strict_skip_invocation_has_on__terminal_phase(drain: str = "complete", outc
 
 
 # === Helper for test_policy_validation_strict_skip_invocation_has_on_success.py ===
-def _strict_skip_invocation_has_on__minimal_bundle_with_phases(phases: dict[str, PhaseDefinition]) -> PolicyBundle:
+def _strict_skip_invocation_has_on__minimal_bundle_with_phases(
+    phases: dict[str, PhaseDefinition],
+) -> PolicyBundle:
     drains = list(phases.keys())
     agents = _strict_skip_invocation_has_on__minimal_agents(drains)
     pipeline = PipelinePolicy(
@@ -1300,7 +1314,10 @@ class TestSkipInvocationHasOnSuccess:
             parallelization=None,
         )
         policy = PipelinePolicy.model_construct(
-            phases={"work": work_phase, "complete": _strict_skip_invocation_has_on__terminal_phase()},
+            phases={
+                "work": work_phase,
+                "complete": _strict_skip_invocation_has_on__terminal_phase(),
+            },
             entry_phase="work",
             terminal_phase="complete",
             recovery=RecoveryPolicy(failed_route="complete"),
@@ -3436,12 +3453,8 @@ class TestInvocationGateSuccessPath:
                 "inspector": PhaseDefinition(
                     drain="drain",
                     role="analysis",
-                    transitions=PhaseTransition(
-                        on_success="done", on_loopback="builder"
-                    ),
-                    loop_policy=PhaseLoopPolicy(
-                        iteration_state_field="inspector_iteration"
-                    ),
+                    transitions=PhaseTransition(on_success="done", on_loopback="builder"),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="inspector_iteration"),
                     decisions={
                         "completed": PhaseDecisionRoute(target="done"),
                         "request_changes": PhaseDecisionRoute(target="builder"),
@@ -3488,9 +3501,7 @@ class TestInvocationGateSuccessPath:
     def test_gate_rejects_upstream_not_on_success_path(self) -> None:
         """Builder's on_success goes to done, not inspector — gate must reject."""
         bundle = self._bundle(builder_on_success="done")
-        with pytest.raises(
-            PolicyValidationError, match="must reach .* via on_success"
-        ):
+        with pytest.raises(PolicyValidationError, match="must reach .* via on_success"):
             validate_policy_completeness(bundle)
 
     def test_gate_accepts_upstream_on_success_path(self) -> None:
@@ -3512,8 +3523,5 @@ class TestInvocationGateSuccessPath:
             builder_on_success="inspector",
             always_invoke_statuses=["partial", "bogus"],
         )
-        with pytest.raises(
-            PolicyValidationError, match="always_invoke_statuses.*not valid"
-        ):
+        with pytest.raises(PolicyValidationError, match="always_invoke_statuses.*not valid"):
             validate_policy_completeness(bundle)
-

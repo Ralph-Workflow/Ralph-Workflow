@@ -193,8 +193,9 @@ def test_conflict_resolution_regression_normal_rebase_binds_one_session_to_all_t
     monkeypatch.setattr(
         merge_module,
         "resolve_rebase_in_progress",
-        lambda _root, _target, resolver, *, session: sessions.append(session)
-        or resolver(_root, _target, object()),
+        lambda _root, _target, resolver, *, session: (
+            sessions.append(session) or resolver(_root, _target, object())
+        ),
     )
 
     def resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:
@@ -266,7 +267,10 @@ def test_resolver_chain_exhaustion_is_returned_as_terminal_rebase_state(
     assert result.merge_attempted is False
     assert result.short_circuit is not None
     assert result.short_circuit.resolution_exhausted is True
-    assert result.short_circuit.resolution_exhaustion_reason == "RESOLUTION_CHAIN_EXHAUSTED: src/alpha.py"
+    assert (
+        result.short_circuit.resolution_exhaustion_reason
+        == "RESOLUTION_CHAIN_EXHAUSTED: src/alpha.py"
+    )
 
 
 def test_an_unparseable_record_is_discarded_not_left_to_block_every_run(

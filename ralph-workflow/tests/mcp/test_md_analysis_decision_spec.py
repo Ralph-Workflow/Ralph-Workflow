@@ -162,9 +162,7 @@ def test_request_changes_per_finding_criterion_required() -> None:
         f"- [DA-002] Criterion: lint is clean. Expected observation: lint is clean. "
         "Verdict: not met. Evidence: `ruff check` fails. Location: src/bar.py.\n"
     )
-    _content, diagnostics = parse_and_validate(
-        doc, get_spec("development_analysis_decision")
-    )
+    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
     rule_ids = {d.rule_id for d in diagnostics}
     assert "ANALYSIS017" in rule_ids
 
@@ -192,9 +190,7 @@ def test_request_changes_missing_location_rejected() -> None:
         "## Criterion Verdicts\n"
         f"- [DA-001] {finding_with_loc}\n"
     )
-    _content, diagnostics = parse_and_validate(
-        doc, get_spec("development_analysis_decision")
-    )
+    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
     rule_ids = {d.rule_id for d in diagnostics}
     assert "ANALYSIS016" in rule_ids
 
@@ -225,9 +221,7 @@ def test_request_changes_all_findings_complete_accepted() -> None:
         f"- [DA-001] {finding_a}\n"
         f"- [DA-002] {finding_b}\n"
     )
-    _content, diagnostics = parse_and_validate(
-        doc, get_spec("development_analysis_decision")
-    )
+    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
     assert diagnostics == []
 
 
@@ -255,8 +249,6 @@ def test_request_changes_mismatched_mirrored_verdict_rejected() -> None:
         "## Criterion Verdicts\n"
         f"- [DA-001] {criterion}\n"
     )
-    _content, diagnostics = parse_and_validate(
-        doc, get_spec("development_analysis_decision")
-    )
+    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
     rule_ids = {d.rule_id for d in diagnostics}
     assert "ANALYSIS018" in rule_ids

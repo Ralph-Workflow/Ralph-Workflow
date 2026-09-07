@@ -35,7 +35,9 @@ def test_on_demand_tier_must_be_selected_explicitly() -> None:
     assert resolve_judgement_tier("on-demand") is JudgementTier.ON_DEMAND
 
 
-def test_visual_judgement_cli_dispatches_fixture_capture_sets_to_vision_agent_and_submits_on_demand_verdict() -> None:
+def test_visual_judgement_cli_dispatches_fixture_capture_sets_to_vision_agent_and_submits_on_demand_verdict() -> (
+    None
+):
     """S-5: retained/fresh evidence is delegated then checked after submission."""
     dispatched: list[object] = []
     validated: list[tuple[str, tuple[str, ...], tuple[str, ...], str]] = []
@@ -48,10 +50,12 @@ def test_visual_judgement_cli_dispatches_fixture_capture_sets_to_vision_agent_an
         ),
         delegated_agent_id=lambda: "vision-verdict-1",
         invoke_vision=lambda request: dispatched.append(request) or "verdict-1",
-        validate_submission=lambda verdict_id, evidence, agent_id: validated.append(
-            (verdict_id, evidence.before_handles, evidence.after_handles, agent_id)
-        )
-        or True,
+        validate_submission=lambda verdict_id, evidence, agent_id: (
+            validated.append(
+                (verdict_id, evidence.before_handles, evidence.after_handles, agent_id)
+            )
+            or True
+        ),
     )
 
     result = run_on_demand_judgement("fixture-ui", "Improve hierarchy", deps=deps)

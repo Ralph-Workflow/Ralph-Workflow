@@ -27,11 +27,7 @@ import re
 from pathlib import Path
 
 _SMOKE_PLUMBING_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "ralph"
-    / "pipeline"
-    / "plumbing"
-    / "smoke_plumbing.py"
+    Path(__file__).resolve().parent.parent / "ralph" / "pipeline" / "plumbing" / "smoke_plumbing.py"
 )
 
 #: Each entry is (line-content regex, rationale). Matched against the
@@ -80,7 +76,9 @@ def _read_smoke_plumbing() -> str:
 def test_every_transport_reference_is_identification_or_additive_diagnostic() -> None:
     """Every ``AgentTransport.<X>`` reference in smoke_plumbing.py matches the allowlist."""
     source = _read_smoke_plumbing()
-    compiled = [(re.compile(pattern), reason) for pattern, reason in _ALLOWED_TRANSPORT_REFERENCE_PATTERNS]
+    compiled = [
+        (re.compile(pattern), reason) for pattern, reason in _ALLOWED_TRANSPORT_REFERENCE_PATTERNS
+    ]
 
     offenders: list[str] = []
     for line_no, raw_line in enumerate(source.splitlines(), start=1):

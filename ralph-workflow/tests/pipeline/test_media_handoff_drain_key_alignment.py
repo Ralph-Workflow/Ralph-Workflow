@@ -112,9 +112,7 @@ def test_materialize_prompt_carries_drain_keyed_entries_for_divergent_phases(
                     phase=phase,
                     workspace=workspace,
                     pipeline_policy=policy.pipeline,
-                    session_caps=SessionCapabilities.defaults_for_drain(
-                        SessionDrain.DEVELOPMENT
-                    ),
+                    session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
                     workspace_root=tmp_path,
                 ),
                 PromptPhaseOptions(multimodal_entries=entries),
@@ -123,8 +121,7 @@ def test_materialize_prompt_carries_drain_keyed_entries_for_divergent_phases(
         sidecar = json.loads(workspace.read(multimodal_sidecar_path(phase)))
         assert sidecar["phase"] == phase
         assert any(
-            artifact["artifact_id"] == f"{phase}-entry"
-            for artifact in sidecar["artifacts"]
+            artifact["artifact_id"] == f"{phase}-entry" for artifact in sidecar["artifacts"]
         ), f"phase {phase!r} sidecar must list the drain-keyed entry"
         # The reader must have surfaced the drain-keyed entry to the spy.
         assert spy_entries and any(
@@ -167,9 +164,7 @@ def test_materialize_prompt_merges_phase_and_drain_entries(tmp_path: Path) -> No
                 phase=phase,
                 workspace=workspace,
                 pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(
-                    SessionDrain.DEVELOPMENT
-                ),
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
                 workspace_root=tmp_path,
             ),
             PromptPhaseOptions(multimodal_entries=entries),
@@ -208,9 +203,7 @@ def test_materialize_prompt_dedupes_duplicate_phase_and_drain_entries(tmp_path: 
                 phase=phase,
                 workspace=workspace,
                 pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(
-                    SessionDrain.DEVELOPMENT
-                ),
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
                 workspace_root=tmp_path,
             ),
             PromptPhaseOptions(multimodal_entries=entries),
@@ -223,8 +216,7 @@ def test_default_policy_lists_divergent_phases() -> None:
     """Pin the canonical divergent phases the reader must close."""
     policy = load_policy(Path("ralph/policy/defaults"))
     resolved = {
-        phase: resolve_phase_drain(phase, policy.pipeline) or phase
-        for phase, _ in DIVERGENT_PHASES
+        phase: resolve_phase_drain(phase, policy.pipeline) or phase for phase, _ in DIVERGENT_PHASES
     }
     assert resolved == {
         "development_commit_cleanup": "commit",

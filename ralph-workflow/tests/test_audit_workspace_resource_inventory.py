@@ -86,7 +86,9 @@ def test_missing_inventory_fails_closed(tmp_path: Path) -> None:
     package_root = tmp_path / "ralph"
     package_root.mkdir()
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert len(violations) == 1
     assert violations[0].kind == "missing_inventory"
@@ -100,7 +102,9 @@ def test_invalid_json_fails_closed(tmp_path: Path) -> None:
     inventory_path.parent.mkdir(parents=True, exist_ok=True)
     inventory_path.write_text("{not valid json", encoding="utf-8")
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert len(violations) == 1
     assert violations[0].kind == "invalid_json"
@@ -113,7 +117,9 @@ def test_non_object_root_fails_closed(tmp_path: Path) -> None:
     empty_inventory: dict[str, object] = {}
     _write_inventory(package_root, empty_inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert "missing_top_level_array" in {v.kind for v in violations}
 
@@ -127,7 +133,9 @@ def test_missing_required_field_fails_closed(tmp_path: Path) -> None:
     owners.append({"site": "feature/owner.py:real", "summary": "no responsibilities"})
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(v.kind == "missing_field" for v in violations)
 
@@ -147,7 +155,9 @@ def test_invalid_responsibility_enum_fails_closed(tmp_path: Path) -> None:
     )
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(v.kind == "invalid_enum" for v in violations)
 
@@ -171,7 +181,9 @@ def test_invalid_storage_category_enum_fails_closed(tmp_path: Path) -> None:
     ]
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(v.kind == "invalid_enum" for v in violations)
 
@@ -191,7 +203,9 @@ def test_duplicate_site_within_array_fails_closed(tmp_path: Path) -> None:
     )
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(v.kind == "duplicate_site" for v in violations)
 
@@ -214,7 +228,9 @@ def test_missing_watch_field_fails_closed(tmp_path: Path) -> None:
     ]
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(
         v.kind == "missing_field" and "capacity_failure_behavior" in v.message for v in violations
@@ -228,13 +244,13 @@ def test_missing_canonical_owner_fails_closed(tmp_path: Path) -> None:
     owners = inventory["workspace_owners"]
     assert isinstance(owners, list)
     owners[:] = [
-        entry
-        for entry in owners
-        if entry["site"] != "mcp/artifacts/file_backend.py:FileBackend"
+        entry for entry in owners if entry["site"] != "mcp/artifacts/file_backend.py:FileBackend"
     ]
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(
         v.kind == "missing_canonical_owner" and "file_backend.py" in v.site for v in violations
@@ -259,7 +275,9 @@ def test_stale_inventory_site_fails_closed(tmp_path: Path) -> None:
     )
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(v.kind == "stale_inventory_site" for v in violations)
 
@@ -281,7 +299,9 @@ def test_invalid_site_key_fails_closed(tmp_path: Path) -> None:
     )
     _write_inventory(package_root, inventory)
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert any(v.kind == "invalid_site_key" for v in violations)
 
@@ -291,7 +311,9 @@ def test_complete_synthetic_inventory_is_clean(tmp_path: Path) -> None:
     package_root = _write_fake_package(tmp_path)
     _write_inventory(package_root, _complete_synthetic_inventory())
 
-    violations = audit.audit_workspace_resource_inventory(package_root, site_discovery=_no_op_discovery)
+    violations = audit.audit_workspace_resource_inventory(
+        package_root, site_discovery=_no_op_discovery
+    )
 
     assert violations == [], "; ".join(str(v) for v in violations)
 

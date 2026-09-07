@@ -38,9 +38,7 @@ class _RecordingHandle:
     def __init__(self) -> None:
         self.mark_dirty_calls: list[tuple[list[str], str, str]] = []
 
-    def mark_dirty(
-        self, paths: list[str], *, source_tool: str, reason: str = "mutated"
-    ) -> None:
+    def mark_dirty(self, paths: list[str], *, source_tool: str, reason: str = "mutated") -> None:
         self.mark_dirty_calls.append((list(paths), source_tool, reason))
 
     @property

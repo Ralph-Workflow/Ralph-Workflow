@@ -219,9 +219,7 @@ def kimi_workspace_mcp_endpoint(
     lock_path = mcp_config_lock_path(_kimi_global_config_path())
     _kimi_mcp_lock.acquire()
     try:
-        with mcp_config_overlay_lock(
-            lock_path, timeout_seconds=_KIMI_CONFIG_LOCK_TIMEOUT_SECONDS
-        ):
+        with mcp_config_overlay_lock(lock_path, timeout_seconds=_KIMI_CONFIG_LOCK_TIMEOUT_SECONDS):
             # Reclaim before resolving the write targets: an abandoned
             # overlay is undone first so the target set and the snapshot
             # both reflect the operator's own config, not the corpse a

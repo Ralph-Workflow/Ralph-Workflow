@@ -270,7 +270,9 @@ def render_completion_summary_group(
 
     if _has_iteration_context(snapshot):
         renderables.append(Rule("Iteration Context", style=style))
-        renderables.extend(Text(f"  {line}", style=style) for line in _iteration_context_lines(snapshot))
+        renderables.extend(
+            Text(f"  {line}", style=style) for line in _iteration_context_lines(snapshot)
+        )
 
     renderables.extend(_activity_section(snapshot, options, style))
     renderables.extend(

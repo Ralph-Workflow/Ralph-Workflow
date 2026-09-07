@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 
 class _FakeProcess:
     """Minimal test double for ``subprocess.Popen`` used by the subprocess reader."""
+
     # OpenCode's prompt is delivered on stdin, so a process fake must
     # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None

@@ -31,6 +31,7 @@ from ralph.cli.commands.commit import (
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.git.commit_result import CommitCreationResult
 from ralph.git.operations import GitOperationError
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
@@ -735,15 +736,17 @@ def test_generate_commit_excludes_untracked_secret_while_staging_safe_work(
         *,
         author_name: str | None = None,
         author_email: str | None = None,
-    ) -> str:
+        expected_head: str,
+    ) -> CommitCreationResult:
         del author_name, author_email
+        del expected_head
         with Repo(repo_root) as repo:
             staged_at_commit.extend(
                 path
                 for path in must_str(repo.git.diff("--cached", "--name-only")).splitlines()
                 if path
             )
-        return "a" * 40
+        return CommitCreationResult.created("a" * 40)
 
     with (
         patch("ralph.cli.commands.commit.AgentRegistry.from_config", return_value=object()),
@@ -797,15 +800,17 @@ def test_generate_commit_untracks_recognized_tracked_secret_without_deleting_it(
         *,
         author_name: str | None = None,
         author_email: str | None = None,
-    ) -> str:
+        expected_head: str,
+    ) -> CommitCreationResult:
         del author_name, author_email
+        del expected_head
         with Repo(repo_root) as repo:
             staged_status.extend(
                 line
                 for line in must_str(repo.git.diff("--cached", "--name-status")).splitlines()
                 if line
             )
-        return "b" * 40
+        return CommitCreationResult.created("b" * 40)
 
     with (
         patch("ralph.cli.commands.commit.AgentRegistry.from_config", return_value=object()),

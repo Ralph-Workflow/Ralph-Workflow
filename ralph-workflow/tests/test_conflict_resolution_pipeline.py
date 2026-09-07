@@ -695,9 +695,7 @@ def test_an_earlier_candidates_finished_work_survives_a_later_one_not_starting(
     scored a failure -- after which the merge seam threw the repaired
     tree away.
     """
-    monkeypatch.setattr(
-        driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
-    )
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     session = ResolutionSession()

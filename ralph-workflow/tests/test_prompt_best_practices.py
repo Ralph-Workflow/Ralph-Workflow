@@ -73,4 +73,7 @@ def test_developer_iteration_guidance_defaults_to_completion() -> None:
     assert "`status:\ncompleted`" in guidance
     assert "last resort" in guidance
     assert "genuinely exhausted" in guidance
-    assert "never\nbecause progress feels slow" in guidance or "never because progress feels slow" in guidance
+    assert (
+        "never\nbecause progress feels slow" in guidance
+        or "never because progress feels slow" in guidance
+    )

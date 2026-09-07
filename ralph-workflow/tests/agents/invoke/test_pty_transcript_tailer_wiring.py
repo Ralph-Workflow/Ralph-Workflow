@@ -150,48 +150,79 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
     # the test focuses on the tailer wiring).
     sub_path = project_dir / session_id / "subagents" / "agent-completed.jsonl"
     sub_path.write_text(
-        json.dumps({
-            "type": "assistant",
-            "isSidechain": True,
-            "agentId": "completed",
-            "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "id": "tu_c1"}]},
-        }) + "\n",
+        json.dumps(
+            {
+                "type": "assistant",
+                "isSidechain": True,
+                "agentId": "completed",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Read", "id": "tu_c1"}],
+                },
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     (sub_path.with_suffix(".meta.json")).write_text(
-        json.dumps({
-            "agentType": "general-purpose",
-            "description": "completed child",
-            "toolUseId": "tu_dispatch_completed",
-            "spawnDepth": 1,
-        }),
+        json.dumps(
+            {
+                "agentType": "general-purpose",
+                "description": "completed child",
+                "toolUseId": "tu_dispatch_completed",
+                "spawnDepth": 1,
+            }
+        ),
         encoding="utf-8",
     )
 
     parent_lines = [
-        json.dumps({"type": "user", "sessionId": session_id, "version": "2.1.223", "message": {"role": "user", "content": "hi"}}) + "\n",
-        json.dumps({
-            "type": "assistant",
-            "sessionId": session_id,
-            "version": "2.1.223",
-            "message": {
-                "role": "assistant",
-                "content": [
-                    {"type": "tool_use", "id": "tu_dispatch_completed", "name": "Agent", "input": {"prompt": "x"}}
-                ],
-            },
-        }) + "\n",
-        json.dumps({
-            "type": "user",
-            "sessionId": session_id,
-            "version": "2.1.223",
-            "message": {
-                "role": "user",
-                "content": [
-                    {"type": "tool_result", "tool_use_id": "tu_dispatch_completed", "content": "ok"}
-                ],
-            },
-        }) + "\n",
+        json.dumps(
+            {
+                "type": "user",
+                "sessionId": session_id,
+                "version": "2.1.223",
+                "message": {"role": "user", "content": "hi"},
+            }
+        )
+        + "\n",
+        json.dumps(
+            {
+                "type": "assistant",
+                "sessionId": session_id,
+                "version": "2.1.223",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tu_dispatch_completed",
+                            "name": "Agent",
+                            "input": {"prompt": "x"},
+                        }
+                    ],
+                },
+            }
+        )
+        + "\n",
+        json.dumps(
+            {
+                "type": "user",
+                "sessionId": session_id,
+                "version": "2.1.223",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tu_dispatch_completed",
+                            "content": "ok",
+                        }
+                    ],
+                },
+            }
+        )
+        + "\n",
     ]
 
     fake_file = _RecordingReadlineFile(tuple(parent_lines))

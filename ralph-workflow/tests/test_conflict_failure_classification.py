@@ -17,9 +17,7 @@ _PHASE = "rebase_conflict_resolution"
 
 
 def test_a_failed_conflict_attempt_is_an_agent_fault_not_an_unknown_one() -> None:
-    classified = FailureClassifier().classify(
-        "conflict attempt failed", phase=_PHASE, agent="pi"
-    )
+    classified = FailureClassifier().classify("conflict attempt failed", phase=_PHASE, agent="pi")
     assert classified.category is FailureCategory.AGENT
     # Not counted: an attempt that failed is answered by the next
     # candidate, which is exactly what the conflict chain does.

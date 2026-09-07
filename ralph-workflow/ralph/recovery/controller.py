@@ -549,9 +549,9 @@ class RecoveryController:
         self._broken_agent_same_shape_state: dict[
             str, tuple[BrokenAgentFingerprint, int]
         ] = {}  # bounded-accumulator-ok: bounded by phase; lives only for the controller instance
-        self._spent_agents: dict[str, set[str]] = (
-            {}
-        )  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
+        self._spent_agents: dict[
+            str, set[str]
+        ] = {}  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -1065,9 +1065,7 @@ class RecoveryController:
         """Classify a failed conflict-resolution invoke without pipeline state."""
         return self._classifier.classify(raw_failure, phase=phase, agent=agent)
 
-    def next_conflict_candidate(
-        self, candidates: Sequence[str], *, failed_index: int
-    ) -> int:
+    def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
         """Advance past a failed candidate; never restart at the head of the chain."""
         if not candidates:
             return 0
@@ -1100,10 +1098,7 @@ class RecoveryController:
                 cooldown_ms = max(0, timeout_ms - now_ms)
 
             avail = self._is_agent_available(phase, agent)
-            is_spent = (
-                agent in spent_set
-                or (idx == current_index and current_allowance_spent)
-            )
+            is_spent = agent in spent_set or (idx == current_index and current_allowance_spent)
 
             rows.append(
                 agent_availability(
@@ -1193,9 +1188,8 @@ class RecoveryController:
             if use_budget and current_agent is not None
             else None
         )
-        current_allowance_spent = (
-            (budget_state is not None and budget_state.exhausted)
-            or (budget_state is None and chain.retries >= max_retries)
+        current_allowance_spent = (budget_state is not None and budget_state.exhausted) or (
+            budget_state is None and chain.retries >= max_retries
         )
         if current_allowance_spent and current_agent is not None:
             self.note_retry_exhaustion(phase, current_agent)

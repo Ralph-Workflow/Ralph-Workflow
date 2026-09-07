@@ -1289,7 +1289,9 @@ def test_recovery_honors_target_reclaim_opt_out(
         record,
         "c" * 40,
         None,
-        UnifiedConfig.model_validate({"general": {"auto_integrate_reclaim_target_worktree": False}}),
+        UnifiedConfig.model_validate(
+            {"general": {"auto_integrate_reclaim_target_worktree": False}}
+        ),
     )
 
     assert outcome.recovery_record_retained is True

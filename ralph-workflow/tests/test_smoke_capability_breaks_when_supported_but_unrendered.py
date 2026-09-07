@@ -66,9 +66,7 @@ if TYPE_CHECKING:
     from ralph.agents.support import AgentSupport
 
 
-_FIXTURE_PATH: Path = (
-    Path(__file__).parent / "display" / "_fixtures" / "opencode_wire.jsonl"
-)
+_FIXTURE_PATH: Path = Path(__file__).parent / "display" / "_fixtures" / "opencode_wire.jsonl"
 
 
 def _read_captured_fixture_lines() -> list[str]:
@@ -187,16 +185,12 @@ class TestSmokeCapabilityBreaksWhenSupportedButUnrendered:
             "_execute_smoke_turns",
             _fake_execute_smoke_turns,
         ):
-            result = smoke_plumbing_module._run_smoke_agent(
-                params, run_id="regression-render"
-            )
-        assert not any(
-            err.startswith("declared capability") for err in result.errors
-        ), result.errors
+            result = smoke_plumbing_module._run_smoke_agent(params, run_id="regression-render")
+        assert not any(err.startswith("declared capability") for err in result.errors), (
+            result.errors
+        )
 
-    def test_fires_when_supported_capability_never_renders(
-        self, tmp_path: Path
-    ) -> None:
+    def test_fires_when_supported_capability_never_renders(self, tmp_path: Path) -> None:
         """Empty recorder + transcript -> break per declared SUPPORTED capability."""
         recorder = CapabilityObservationRecorder()
         display = ParallelDisplay(
@@ -214,26 +208,19 @@ class TestSmokeCapabilityBreaksWhenSupportedButUnrendered:
             "_execute_smoke_turns",
             _fake_execute_smoke_turns,
         ):
-            result = smoke_plumbing_module._run_smoke_agent(
-                params, run_id="regression-no-render"
-            )
+            result = smoke_plumbing_module._run_smoke_agent(params, run_id="regression-no-render")
         errors_lower = [err.lower() for err in result.errors]
         assert any(
-            "syntax_highlighting" in err and "never rendered" in err
-            for err in errors_lower
+            "syntax_highlighting" in err and "never rendered" in err for err in errors_lower
         ), result.errors
-        assert any(
-            "file_preview" in err and "never rendered" in err
-            for err in errors_lower
-        ), result.errors
-        assert any(
-            "edit_diff" in err and "never rendered" in err
-            for err in errors_lower
-        ), result.errors
+        assert any("file_preview" in err and "never rendered" in err for err in errors_lower), (
+            result.errors
+        )
+        assert any("edit_diff" in err and "never rendered" in err for err in errors_lower), (
+            result.errors
+        )
 
-    def test_production_default_resolver_resolves_dynamic_alias(
-        self, tmp_path: Path
-    ) -> None:
+    def test_production_default_resolver_resolves_dynamic_alias(self, tmp_path: Path) -> None:
         """DA-002: with ``support_resolver=None`` (the production
         default), ``_run_smoke_agent`` MUST resolve
         ``opencode/minimax/MiniMax-M3`` through
@@ -276,21 +263,16 @@ class TestSmokeCapabilityBreaksWhenSupportedButUnrendered:
             )
         errors_lower = [err.lower() for err in result.errors]
         assert any(
-            "syntax_highlighting" in err and "never rendered" in err
-            for err in errors_lower
+            "syntax_highlighting" in err and "never rendered" in err for err in errors_lower
         ), result.errors
-        assert any(
-            "file_preview" in err and "never rendered" in err
-            for err in errors_lower
-        ), result.errors
-        assert any(
-            "edit_diff" in err and "never rendered" in err
-            for err in errors_lower
-        ), result.errors
+        assert any("file_preview" in err and "never rendered" in err for err in errors_lower), (
+            result.errors
+        )
+        assert any("edit_diff" in err and "never rendered" in err for err in errors_lower), (
+            result.errors
+        )
 
-    def test_branch_a_suppression_when_no_support_declared(
-        self, tmp_path: Path
-    ) -> None:
+    def test_branch_a_suppression_when_no_support_declared(self, tmp_path: Path) -> None:
         """``support is None`` -> Branch A silences the detector."""
         recorder = CapabilityObservationRecorder()
         display = ParallelDisplay(
@@ -308,9 +290,7 @@ class TestSmokeCapabilityBreaksWhenSupportedButUnrendered:
             "_execute_smoke_turns",
             _fake_execute_smoke_turns,
         ):
-            result = smoke_plumbing_module._run_smoke_agent(
-                params, run_id="regression-branch-a"
-            )
-        assert not any(
-            err.startswith("declared capability") for err in result.errors
-        ), result.errors
+            result = smoke_plumbing_module._run_smoke_agent(params, run_id="regression-branch-a")
+        assert not any(err.startswith("declared capability") for err in result.errors), (
+            result.errors
+        )

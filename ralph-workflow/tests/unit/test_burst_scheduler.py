@@ -36,9 +36,7 @@ def _make_scheduler() -> tuple[BurstDebounceScheduler, _FakeClock, list[int]]:
     def on_fire() -> None:
         fire_log.append(1)
 
-    scheduler = BurstDebounceScheduler(
-        clock=clock, on_fire=on_fire, debounce_window=1.0
-    )
+    scheduler = BurstDebounceScheduler(clock=clock, on_fire=on_fire, debounce_window=1.0)
     return scheduler, clock, fire_log
 
 

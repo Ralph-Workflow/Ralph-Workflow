@@ -27,7 +27,12 @@ def _targets(step: dict[str, object]) -> list[str]:
     raw_targets = step.get("targets")
     if not isinstance(raw_targets, list):
         return []
-    return [path for target in raw_targets if isinstance(target, dict) if isinstance(path := target.get("path"), str)]
+    return [
+        path
+        for target in raw_targets
+        if isinstance(target, dict)
+        if isinstance(path := target.get("path"), str)
+    ]
 
 
 def _report(label: str, model: str, plan: str) -> str:
@@ -45,7 +50,9 @@ def _report(label: str, model: str, plan: str) -> str:
         if not isinstance(number, int):
             continue
         files = ", ".join(_targets(step)) or "none"
-        dependencies = ", ".join(f"S-{item}" for item in _number_list(step.get("depends_on"))) or "none"
+        dependencies = (
+            ", ".join(f"S-{item}" for item in _number_list(step.get("depends_on"))) or "none"
+        )
         lines.append(
             f"- S-{number}: files={files}; dependencies={dependencies}; "
             f"verify={bool(step.get('verify_command'))}; expect={bool(step.get('expected_outcome'))}"
@@ -62,7 +69,9 @@ def test_cross_model_plan_measurement_requires_operator_inputs() -> None:
     strong_plan = os.environ.get("RALPH_STRONG_MODEL_PLAN")
     small_plan = os.environ.get("RALPH_SMALL_MODEL_PLAN")
     if strong_plan is None or small_plan is None:
-        pytest.skip("set RALPH_STRONG_MODEL_PLAN and RALPH_SMALL_MODEL_PLAN to run the manual measurement")
+        pytest.skip(
+            "set RALPH_STRONG_MODEL_PLAN and RALPH_SMALL_MODEL_PLAN to run the manual measurement"
+        )
 
     strong_model = os.environ.get("RALPH_STRONG_MODEL", "operator-supplied")
     small_model = os.environ.get("RALPH_SMALL_MODEL", "operator-supplied")

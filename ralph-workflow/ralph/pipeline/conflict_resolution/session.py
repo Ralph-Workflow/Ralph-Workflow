@@ -247,7 +247,6 @@ def classify_failed_resolution_attempt(
     )
 
 
-
 def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
     """Return the bound conflict chain's max_retries, or 2 when unbound."""
     if policy_bundle is None:

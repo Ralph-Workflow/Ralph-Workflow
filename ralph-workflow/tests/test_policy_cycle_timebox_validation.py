@@ -82,9 +82,7 @@ def test_commit_phase_with_no_declared_routes_is_not_checked() -> None:
     """
     pipeline = load_policy(_DEFAULTS_DIR).pipeline
 
-    revalidated = type(pipeline).model_validate(
-        {**pipeline.model_dump(), "post_commit_routes": []}
-    )
+    revalidated = type(pipeline).model_validate({**pipeline.model_dump(), "post_commit_routes": []})
 
     assert revalidated.post_commit_routes == []
 
@@ -392,11 +390,7 @@ def test_disabling_an_inherited_timebox_is_announced() -> None:
     normalized: dict[str, object] = {
         "cycle_timebox": pipeline.cycle_timebox.model_dump(),
         # The graph renames the guarded phase, as a custom workflow would.
-        "phases": {
-            name: phase
-            for name, phase in pipeline.phases.items()
-            if name != "development"
-        },
+        "phases": {name: phase for name, phase in pipeline.phases.items() if name != "development"},
     }
 
     records: list[str] = []

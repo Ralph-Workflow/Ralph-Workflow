@@ -506,7 +506,9 @@ def _handle_workspace_media(
     ):
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         if not inline_image_requires_text_handle(profile.identity):
-            return ToolResult(content=[ImageContent(data=encoded, mime_type=mime_type)], is_error=False)
+            return ToolResult(
+                content=[ImageContent(data=encoded, mime_type=mime_type)], is_error=False
+            )
 
         # Unknown clients such as CCS accept the standard MCP image union but
         # still need a Ralph-minted handle for the mandatory replay hop. Keep

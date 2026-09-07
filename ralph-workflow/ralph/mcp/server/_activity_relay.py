@@ -81,13 +81,17 @@ class ActivityRelay:
         self._sink: Callable[[str], None] | None = None
         self._active = False
         self._registered_once = False
-        self._pending_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)  # bounded-accumulator-ok: FIFO cap
+        self._pending_tools: deque[str] = deque(
+            maxlen=_RELAY_PENDING_EVENTS
+        )  # bounded-accumulator-ok: FIFO cap
         self._receiver_error: str | None = None
         self._sender_error: str | None = None
         self._next_sequence = 1
         self._delivered_events = 0
         self._ignored_events = 0
-        self._recent_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)  # bounded-accumulator-ok: FIFO cap
+        self._recent_tools: deque[str] = deque(
+            maxlen=_RELAY_PENDING_EVENTS
+        )  # bounded-accumulator-ok: FIFO cap
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
 
@@ -251,11 +255,17 @@ class ActivityRelay:
         credential = event.get("credential")
         sequence = event.get("sequence")
         tool_name = event.get("tool_name")
-        if not isinstance(credential, str) or not secrets.compare_digest(credential, self._credential):
+        if not isinstance(credential, str) or not secrets.compare_digest(
+            credential, self._credential
+        ):
             raise ActivityRelayError("foreign or invalid relay credential")
         if not isinstance(sequence, int):
             raise ActivityRelayError("malformed relay sequence")
-        if not isinstance(tool_name, str) or not tool_name or len(tool_name) > _MAX_TOOL_NAME_LENGTH:
+        if (
+            not isinstance(tool_name, str)
+            or not tool_name
+            or len(tool_name) > _MAX_TOOL_NAME_LENGTH
+        ):
             raise ActivityRelayError("malformed relay tool event")
         return sequence
 

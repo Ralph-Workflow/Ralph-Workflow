@@ -68,6 +68,7 @@ def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
     """Project legacy injected boolean fakes onto the typed resolver contract."""
     return result.succeeded if isinstance(result, ResolutionOutcome) else result
 
+
 #: MergeResult outcome recorded when a resolver was given the conflict
 #: and could not (or did not) fully resolve it. Distinct from plain
 #: ``'conflict'`` so the operator-facing reason names the failed

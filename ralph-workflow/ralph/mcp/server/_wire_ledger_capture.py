@@ -92,9 +92,7 @@ class WireLedgerCapture:
             run_id=run_id,
             timestamp=float(timestamp),
             hmac=hmac_value,
-            delivery_mode=(
-                delivery_mode_raw if isinstance(delivery_mode_raw, str) else None
-            ),
+            delivery_mode=(delivery_mode_raw if isinstance(delivery_mode_raw, str) else None),
             provider=provider_raw if isinstance(provider_raw, str) else None,
             model_id=model_id_raw if isinstance(model_id_raw, str) else None,
             agent_id=agent_id_raw if isinstance(agent_id_raw, str) else None,

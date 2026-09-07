@@ -341,9 +341,7 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
     assert session.exhaustion_reason is not None
-    assert session.exhaustion_reason.startswith(
-        ResolutionTerminationReason.ATTEMPT_FAILED.value
-    )
+    assert session.exhaustion_reason.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value)
 
 
 def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously(

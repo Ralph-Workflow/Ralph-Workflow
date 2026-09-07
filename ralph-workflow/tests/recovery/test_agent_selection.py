@@ -28,7 +28,9 @@ def test_lowest_index_wins_among_selectable_agents() -> None:
 
 def test_agent_in_cooldown_never_picked_even_if_index_zero() -> None:
     rows = [
-        agent_availability(agent="claude", available=False, cooldown_ms_remaining=5000, spent=False),
+        agent_availability(
+            agent="claude", available=False, cooldown_ms_remaining=5000, spent=False
+        ),
         agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
         agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
     ]
@@ -68,7 +70,9 @@ def test_current_agent_returned_when_highest_priority_selectable() -> None:
 
 def test_returns_none_when_nothing_selectable() -> None:
     rows = [
-        agent_availability(agent="claude", available=False, cooldown_ms_remaining=2000, spent=False),
+        agent_availability(
+            agent="claude", available=False, cooldown_ms_remaining=2000, spent=False
+        ),
         agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=True),
     ]
     selection = select_preferred_agent(rows)
@@ -82,7 +86,9 @@ def test_returns_none_when_nothing_selectable() -> None:
 
 def test_skipped_reasons_formatting_and_evidence() -> None:
     rows = [
-        agent_availability(agent="claude", available=False, cooldown_ms_remaining=1500, spent=False),
+        agent_availability(
+            agent="claude", available=False, cooldown_ms_remaining=1500, spent=False
+        ),
         agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=True),
         agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
     ]
@@ -140,4 +146,3 @@ def test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_
     assert selection.agent == "opencode"
     assert selection.skipped_reasons == (("claude", "unavailable"),)
     assert "0ms remaining" not in selection.skipped_reasons[0][1]
-

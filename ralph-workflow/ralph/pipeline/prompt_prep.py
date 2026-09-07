@@ -276,7 +276,9 @@ def _materialize_prepared_prompt(
         )
         if agent_names:
             agent = registry.get(agent_names[0])
-    media_entries = collect_media_entries_for_phase(workspace, effect.phase, drain=phase_drain) or None
+    media_entries = (
+        collect_media_entries_for_phase(workspace, effect.phase, drain=phase_drain) or None
+    )
     _mat = materialize_fn or materialize_prompt_for_phase
     _mat(
         phase=effect.phase,
@@ -305,9 +307,7 @@ def _materialize_prepared_prompt(
             )
         ),
         multimodal_entries=media_entries,
-        cycle_timebox_warning=_worker_cycle_timebox_warning(
-            state, effect.phase, pipeline_policy
-        ),
+        cycle_timebox_warning=_worker_cycle_timebox_warning(state, effect.phase, pipeline_policy),
     )
 
 
@@ -336,7 +336,6 @@ def _worker_cycle_timebox_warning(
             total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
         ),
     )
-
 
 
 #: Every name a cycle deadline publication occupies. Withdrawal and suspension
@@ -421,7 +420,6 @@ def _publish_cycle_deadline_env(
         os.environ[CYCLE_DURATION_SECONDS_ENV] = repr(duration.duration_seconds)
 
 
-
 def _env_seconds(env: Mapping[str, str], name: str) -> float | None:
     raw = env.get(name)
     if raw is None or not raw.strip():
@@ -479,8 +477,12 @@ def _materialize_agent_prompt_if_needed(
     _publish_cycle_deadline_env(state, effect.phase, policy_bundle, cycle_total_elapsed)
 
     agent = registry.get(effect.agent_name)
-    agent_drain = effect.drain or resolve_phase_drain(effect.phase, policy_bundle.pipeline) or effect.phase
-    media_entries = collect_media_entries_for_phase(workspace, effect.phase, drain=agent_drain) or None
+    agent_drain = (
+        effect.drain or resolve_phase_drain(effect.phase, policy_bundle.pipeline) or effect.phase
+    )
+    media_entries = (
+        collect_media_entries_for_phase(workspace, effect.phase, drain=agent_drain) or None
+    )
     # Build the optional cycle-timebox warning payload for the guarded
     # development entry when elapsed >= 80% of the configured duration.
     _warning_data = None

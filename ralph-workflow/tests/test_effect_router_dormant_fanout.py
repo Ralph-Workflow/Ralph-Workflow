@@ -184,12 +184,11 @@ def test_agy_agents_probe_seam_is_gone_from_the_pipeline() -> None:
 
     assert not hasattr(effect_router_module, "_make_default_agy_agents_probe")
     assert not hasattr(effect_router_module, "_agy_available_agents")
-    assert "agy_agents_probe" not in inspect.signature(
-        effect_router_module.determine_effect_from_policy
-    ).parameters
-    assert "agy_agents_probe" not in {
-        field.name for field in dataclasses.fields(_PipelineDeps)
-    }
+    assert (
+        "agy_agents_probe"
+        not in inspect.signature(effect_router_module.determine_effect_from_policy).parameters
+    )
+    assert "agy_agents_probe" not in {field.name for field in dataclasses.fields(_PipelineDeps)}
 
 
 def test_runner_forwards_only_config_and_commit_seams_to_effect_router(

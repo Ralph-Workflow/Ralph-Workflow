@@ -86,7 +86,9 @@ def push_resumed_pipeline_status_bar(
             phase_style=phase_style_for_phase(phase),
             run_started_monotonic=run_started_monotonic,
         )
-        update = cast("Callable[[object], None] | None", getattr(display, "update_status_bar", None))
+        update = cast(
+            "Callable[[object], None] | None", getattr(display, "update_status_bar", None)
+        )
         if update is not None:
             update(model)
     except Exception as exc:
@@ -202,9 +204,7 @@ def remediation_status_bar_session(
             clear_remediation_status_bar(
                 display,
                 workspace_scope,
-                run_started_monotonic=(
-                    run_started if isinstance(run_started, float) else None
-                ),
+                run_started_monotonic=(run_started if isinstance(run_started, float) else None),
             )
         else:
             restore_status_bar(display, previous)

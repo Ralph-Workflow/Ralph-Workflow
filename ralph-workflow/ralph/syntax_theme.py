@@ -100,7 +100,9 @@ _SYNTAX_ROLES: Final[tuple[str, ...]] = (
 
 def _generate_syntax_colors(preview_surface: str | None) -> dict[str, str]:
     if preview_surface is not None:
-        return {role: solve_for_surface(ROLE_ANCHORS[role], preview_surface) for role in _SYNTAX_ROLES}
+        return {
+            role: solve_for_surface(ROLE_ANCHORS[role], preview_surface) for role in _SYNTAX_ROLES
+        }
     return {role: solve_dual_safe(ROLE_ANCHORS[role]) for role in _SYNTAX_ROLES}
 
 
@@ -109,11 +111,15 @@ class SyntaxThemes:
 
     @staticmethod
     def dark() -> type[PygmentsStyle]:
-        return _style(_generate_syntax_colors(derive_preview_background(_CANONICAL_DARK_SURFACE_HEX)))
+        return _style(
+            _generate_syntax_colors(derive_preview_background(_CANONICAL_DARK_SURFACE_HEX))
+        )
 
     @staticmethod
     def light() -> type[PygmentsStyle]:
-        return _style(_generate_syntax_colors(derive_preview_background(_CANONICAL_LIGHT_SURFACE_HEX)))
+        return _style(
+            _generate_syntax_colors(derive_preview_background(_CANONICAL_LIGHT_SURFACE_HEX))
+        )
 
     @staticmethod
     def unknown() -> type[PygmentsStyle]:

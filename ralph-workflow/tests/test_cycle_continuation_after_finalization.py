@@ -356,9 +356,7 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
         elapsed_seconds=7200.0,
         cycle_timebox=policy.cycle_timebox,
     )
-    report = (tmp_path / ".agent" / "artifacts" / "run_time_report.md").read_text(
-        encoding="utf-8"
-    )
+    report = (tmp_path / ".agent" / "artifacts" / "run_time_report.md").read_text(encoding="utf-8")
 
     assert "[CT-2] Redirected cycles: 1;" in report
     assert "cycle timebox reached" in report
