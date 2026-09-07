@@ -316,6 +316,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="canonical session text audit: OK\n",
         ),
+        ("make", ("test-install-make-smoke",)): _result(
+            command="make",
+            args=("test-install-make-smoke",),
+            returncode=0,
+            stdout="install make smoke ok\n",
+        ),
         ("make", ("test-multimodal-smoke",)): _result(
             command="make",
             args=("test-multimodal-smoke",),
@@ -384,6 +390,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
+        ("make", ("test-install-make-smoke",)),
         ("make", ("test-multimodal-smoke",)),
         ("make", ("test-visual-smoke",)),
     ]
@@ -423,10 +430,15 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[34][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    # ``make test-multimodal-smoke`` is the second-to-last step, which is how
-    # ``_BUDGET_TRACKED_STEPS`` addresses it (``len(_VERIFY_STEPS) - 2``).
+    # ``make test-install-make-smoke`` is the third-to-last step, followed by
+    # the two existing smoke steps. All three are budget-tracked.
     # Indexing from the end keeps this assertion pinned to that step when a
     # non-budget-tracked audit is inserted ahead of the two trailing smokes.
+    install_smoke_timeout = runner.calls[-3][3]
+    assert install_smoke_timeout is not None
+    assert install_smoke_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
+        abs(install_smoke_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001
+    )
     multimodal_timeout = runner.calls[-2][3]
     assert multimodal_timeout is not None
     assert multimodal_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (

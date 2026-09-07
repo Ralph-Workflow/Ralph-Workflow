@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev rdev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev rdev uv-preflight test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-install-make-smoke test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -77,7 +77,7 @@ COVERAGE_SUITE_TIMEOUT_SECONDS ?= 120
 LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
 # Always select the project-managed interpreter. Setting VIRTUAL_ENV alone does
 # not alter PATH, so a bare `python` can bypass .venv and miss dependencies.
-RUN_PYTHON = uv run python
+RUN_PYTHON = uv run --locked --project . python
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""
@@ -90,6 +90,7 @@ help:
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
+	@echo "  test-install-make-smoke  Offline real-process make install transaction proof (wired into 'make verify')"
 	@echo "  test-live-agy    Run live AGY subprocess tests (excluded from test-subprocess-e2e; longer timeout)"
 	@echo "  test-multimodal-smoke  Drive the multimodal smoke stub across the six harness identities (smoke-marked, in \`make verify\`)"
 	@echo "  test-visual-capture   Capture, lifecycle, and MCP-visibility visual contracts"
@@ -127,13 +128,16 @@ help:
 	@echo "  check          Run all checks (lint, typecheck, test)"
 
 # Installation delegates to the tested installer; `rdev` runs copied snapshots.
-install:
+uv-preflight:
+	@uv_path=$$(command -v uv) || { echo "uv >= 0.7.0 is required; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }; uv_version=$$($$uv_path --version 2>/dev/null) || { echo "uv >= 0.7.0 is required; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }; printf '%s\n' "$$uv_version" | awk '$$1 == "uv" && $$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$$/ { split($$2, v, /[.+-]/); if (v[1] > 0 || (v[1] == 0 && (v[2] > 7 || (v[2] == 7 && v[3] >= 0)))) exit 0 } { exit 1 }' || { echo "uv >= 0.7.0 is required; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }
+
+install: uv-preflight
 	$(RUN_PYTHON) -m ralph.install --build
 
-dev:
+dev: uv-preflight
 	$(RUN_PYTHON) -m ralph.install
 
-stable:
+stable: uv-preflight
 	$(RUN_PYTHON) -m ralph.install --stable
 
 install-dev: dev
@@ -168,6 +172,12 @@ test-subprocess-e2e:
 # so any drift fails CI.
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
+
+# Offline installer smoke. The checked-in fake ``uv`` accepts only the locked
+# installer argv forms and exits before any network path; this target drives
+# ``make install`` in an isolated HOME/PATH and is budget-tracked in verify.py.
+test-install-make-smoke:
+	$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py -q -m "smoke and subprocess_e2e"
 
 # Multimodal smoke suite (criterion 5). Drives all nine non-GENERIC harness
 # identities (claude / claude-headless / agy / nanocoder / cursor / opencode /

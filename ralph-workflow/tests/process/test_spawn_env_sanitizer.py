@@ -8,7 +8,9 @@ from importlib import import_module
 import pytest
 
 from ralph.process._spawn_env import (
+    INSTALLER_PYTHON_INJECTION_VARS,
     MALLOC_DEBUG_NOISE_VARS,
+    installer_env_for_spawn,
     sanitize_process_environment,
     strip_malloc_debug_noise,
 )
@@ -108,3 +110,13 @@ def test_downstream_env_builders_inherit_the_sanitized_base(monkeypatch: object)
     assert "MallocStackLogging" not in _subprocess_env(None)
     assert _build_env(None)["KEEP"] == "1"
     assert _subprocess_env(None)["KEEP"] == "1"
+
+
+def test_installer_environment_removes_python_injection_controls(monkeypatch: object) -> None:
+    injected = dict.fromkeys(INSTALLER_PYTHON_INJECTION_VARS, "hostile")
+    monkeypatch.setattr(os, "environ", {**injected, "UV_INDEX_URL": "https://index.example"})
+
+    environment = installer_env_for_spawn()
+
+    assert not INSTALLER_PYTHON_INJECTION_VARS.intersection(environment)
+    assert environment["UV_INDEX_URL"] == "https://index.example"

@@ -12,24 +12,6 @@ if TYPE_CHECKING:
 
 _IGNORED_NAMES = frozenset({".git", ".venv", "__pycache__", "build", "dist", "tmp"})
 
-#: Snapshot entries a reinstall must leave standing.
-#:
-#: ``.venv`` is the snapshot's own virtualenv.  It is never copied from the
-#: source checkout -- ``uv sync`` builds it in place afterwards -- so the
-#: installer cannot restore what it deletes, and ``rdev`` runs *from* it:
-#: ``<snapshot>/.venv/bin/python`` is the live ``sys.executable``, the same
-#: binary Ralph re-spawns for the MCP server subprocess.  Wiping the snapshot
-#: wholesale therefore killed any run that was in flight with
-#: ``FileNotFoundError: .../.venv/bin/python`` and forced a from-scratch
-#: environment rebuild for nothing.  ``uv sync`` reconciles a surviving
-#: virtualenv in place, and recreates it itself when the interpreter no longer
-#: matches, so keeping it is both safe and strictly faster.
-#:
-#: Every preserved name MUST also be ignored by the copy: preserving something
-#: ``copytree`` would overwrite anyway buys nothing and hides the intent.
-#: ``test_copy_install_tree_never_overwrites_the_preserved_virtualenv``
-#: pins that for ``.venv``.
-_PRESERVED_NAMES = frozenset({".venv"})
 
 
 @dataclass(frozen=True)
@@ -74,36 +56,7 @@ def read_snapshot_identity(snapshot_dir: Path) -> SnapshotIdentity | None:
     )
 
 
-def _clear_stale_snapshot_entries(destination: Path) -> None:
-    """Empty ``destination`` of everything except :data:`_PRESERVED_NAMES`.
-
-    Clearing entry by entry -- rather than removing ``destination`` itself --
-    is what keeps the snapshot's live virtualenv, and therefore the running
-    interpreter, in place across a reinstall.  Files the new snapshot no
-    longer contains still go, so this is a replace and not a merge.
-    """
-    # Materialized before deleting: iterating a directory while removing from
-    # it leaves entries skipped on any implementation that streams the listing.
-    for entry in list(destination.iterdir()):
-        if entry.name in _PRESERVED_NAMES:
-            continue
-        if entry.is_dir() and not entry.is_symlink():
-            # filesystem-write-ok: clear the disposable dev-install snapshot before copying it anew
-            shutil.rmtree(entry)
-        else:
-            # filesystem-write-ok: clear the disposable dev-install snapshot before copying it anew
-            entry.unlink()
-
-
 def copy_install_tree(source: Path, destination: Path) -> Path:
-    """Replace ``destination`` with a complete installable checkout snapshot.
-
-    Everything the previous snapshot held is discarded except the entries in
-    :data:`_PRESERVED_NAMES`, which the installer does not own and cannot
-    rebuild from ``source``.
-    """
-    if destination.exists():
-        _clear_stale_snapshot_entries(destination)
 
     def ignore(_directory: str, names: list[str]) -> set[str]:
         return set(names) & _IGNORED_NAMES

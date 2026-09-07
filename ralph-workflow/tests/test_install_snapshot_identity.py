@@ -7,6 +7,7 @@ installed last. These tests pin the reporting that makes the handover visible.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -138,6 +139,15 @@ def test_install_dev_checkout_reports_what_it_installed_and_what_it_replaced() -
         resolve_commit=lambda _source: "483cd5cc9d3977dc8d2a499414a76c5a814384ed",
         installed_at=lambda: "2026-08-02T12:00:00+00:00",
         write_launcher=lambda _path, _content: None,
+        preflight=lambda _uv: None,
+        run_version=lambda _uv, _snapshot: "0.9.27-dev",
+        lock=lambda _path: nullcontext(),
+        candidate_factory=lambda staging: staging / "candidate",
+        publish=lambda candidate, _generations, *, publish_launcher: (
+            publish_launcher(candidate),
+            candidate,
+        )[1],
+        update_current=lambda _current, _generation: None,
         read_identity=lambda _snapshot: previous,
         emit=emitted.append,
     )
@@ -172,6 +182,15 @@ def test_install_dev_checkout_reads_the_previous_identity_before_overwriting_it(
         resolve_commit=lambda _source: "",
         installed_at=lambda: "",
         write_launcher=lambda _path, _content: None,
+        preflight=lambda _uv: None,
+        run_version=lambda _uv, _snapshot: "0.9.27-dev",
+        lock=lambda _path: nullcontext(),
+        candidate_factory=lambda staging: staging / "candidate",
+        publish=lambda candidate, _generations, *, publish_launcher: (
+            publish_launcher(candidate),
+            candidate,
+        )[1],
+        update_current=lambda _current, _generation: None,
         read_identity=fake_read_identity,
         emit=lambda _line: None,
     )
@@ -205,6 +224,15 @@ def test_install_dev_checkout_stamps_the_source_checkout_path() -> None:
         resolve_commit=lambda _source: "",
         installed_at=lambda: "",
         write_launcher=lambda _path, _content: None,
+        preflight=lambda _uv: None,
+        run_version=lambda _uv, _snapshot: "0.9.27-dev",
+        lock=lambda _path: nullcontext(),
+        candidate_factory=lambda staging: staging / "candidate",
+        publish=lambda candidate, _generations, *, publish_launcher: (
+            publish_launcher(candidate),
+            candidate,
+        )[1],
+        update_current=lambda _current, _generation: None,
         read_identity=lambda _snapshot: None,
         emit=lambda _line: None,
     )

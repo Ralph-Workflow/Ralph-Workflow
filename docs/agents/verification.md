@@ -64,7 +64,7 @@ Every circumvention above is detected by `make verify`. Any bypass requires a do
 
 ## Smoke-check subsections
 
-Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate; the one exception is the multimodal smoke target at the bottom of this section, which IS wired into `make verify` as a budget-tracked step (it dials no paid backend -- the `tests/_support/mock_*` stubs do all the work -- so the suite stays inside the combined-budget headroom rather than inflating the gate).
+Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate. The deterministic install, multimodal, and visual smoke targets are the exceptions: each is wired into `make verify` and charged to the same immutable budget.
 
 ```bash
 # Policy loader smoke check (after changing policy defaults)
@@ -81,6 +81,15 @@ uv run pytest -q tests/test_process_manager_pty.py tests/test_claude_interactive
 
 # Recovery tests
 uv run pytest -x tests/recovery/ tests/test_recovery_first_invariant.py tests/test_reducer.py tests/test_pipeline_runner.py
+
+# Offline real-process install smoke: drives the public `make install`
+# transaction with isolated HOME/PATH and a fail-closed fake `uv`.
+make test-install-make-smoke
+
+# This smoke verifies the missing-uv diagnostic, immutable-generation `rdev`
+# installation, source-checkout independence, lock contention, and failed
+# candidate preservation. It does not contact a network and is budget-tracked by
+# `make verify`.
 
 # Multimodal smoke (criterion 5): drives the deterministic multimodal
 # stub agent across every harness identity. Runs under ``make verify``
@@ -163,3 +172,20 @@ Documentation review note:
 - [Documentation Rubric](../code-style/documentation-rubric.md) — for any docs/README/manual change
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read [Documentation Rubric](../code-style/documentation-rubric.md) first and check the edited surface against it before calling the docs work done.
+
+## Documentation Review Note
+
+- *What changed.* Checkout-install docs now name the `uv` >= 0.7.0 preflight,
+  POSIX/WSL boundary, serialized locked transaction, and authoritative offline
+  installer smoke.
+- *Why these surfaces own it.* `CONTRIBUTING.md` is the detailed installer
+  contract; the READMEs and operator manual route readers there, while this
+  verification guide records the focused smoke.
+- *What was left alone.* No CI, Make, test, or Windows-gate claim changed;
+  native Windows is documented only as a packaged-install path.
+- *How duplication was contained.* Rollback mechanics appear once in
+  `CONTRIBUTING.md`; public and operator pages keep concise prerequisites,
+  failure recovery, and links.
+- *Why the route is clearer.* A checkout user can now identify the supported
+  environment, fix a precise failing stage, and find the smoke that locks the
+  behavior without reading the implementation.

@@ -530,6 +530,19 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Offline real-process proof for the public ``make install`` contract.
+        # It uses an isolated HOME/PATH and a fail-closed fake ``uv`` that
+        # accepts only the locked command forms, so no network is reachable.
+        # The fixture verifies the missing-uv diagnostic, successful rdev
+        # launch, stale-entry replacement with .venv preservation, and failed
+        # reinstall rollback. It is a subprocess_e2e test by necessity but is
+        # intentionally charged against the one immutable combined budget.
+        "make test-install-make-smoke",
+        "make",
+        ("test-install-make-smoke",),
+        _TOTAL_TEST_BUDGET_SECONDS,
+    ),
+    (
         # Criterion 5 multimodal proof: drive the deterministic multimodal
         # stub agent across all six harness identities (claude /
         # claude-headless / agy / nanocoder / cursor / opencode) and
@@ -570,20 +583,21 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
 )
 
-#: Indices 2, the second-to-last, and the LAST entries are the test
+#: Indices 2 and the final three entries are the test steps charged against
 #: steps charged against ``_TOTAL_TEST_BUDGET_SECONDS`` together with
 #: every other test step whose label is in ``_KNOWN_TEST_STEP_LABELS``.
 #: ``make test`` is the primary test step (index 2);
+#: ``make test-install-make-smoke`` proves the real offline installer;
 #: ``make test-multimodal-smoke`` (criterion 5 multimodal proof) and
-#: ``make test-visual-smoke`` (criterion 12 deterministic visual-smoke
-#: tier) are appended LAST so the index-based timeout assertions in
+#: ``make test-visual-smoke`` (criterion 12 deterministic visual-smoke tier)
+#: follow it so the index-based timeout assertions in
 #: ``tests/test_verify.py`` keep ``make test`` at index 2. Adding a
 #: new test step without also adding its label to
 #: ``_KNOWN_TEST_STEP_LABELS`` (and its index here) lets it run without
 #: contributing to the combined budget, which the immutable 60 s ceiling
 #: prohibits.
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset(
-    {2, len(_VERIFY_STEPS) - 2, len(_VERIFY_STEPS) - 1}
+    {2, len(_VERIFY_STEPS) - 3, len(_VERIFY_STEPS) - 2, len(_VERIFY_STEPS) - 1}
 )
 
 # --- Module-level invariants ---
@@ -639,7 +653,12 @@ if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
 # INVARIANT: The canonical test step label 'make test' must be present.
 # Both invariants are enforced by import-time RuntimeError checks below.
 _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
-    {"make test", "make test-multimodal-smoke", "make test-visual-smoke"}
+    {
+        "make test",
+        "make test-install-make-smoke",
+        "make test-multimodal-smoke",
+        "make test-visual-smoke",
+    }
 )
 
 # --- Module-level invariants for label/budget integrity ---

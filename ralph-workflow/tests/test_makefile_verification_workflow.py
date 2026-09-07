@@ -55,7 +55,7 @@ def test_run_python_uses_uv_managed_interpreter() -> None:
     """Regression: test targets must not resolve bare Python outside .venv."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
-    assert "RUN_PYTHON = uv run python" in makefile_text
+    assert "RUN_PYTHON = uv run --locked --project . python" in makefile_text
 
 
 def test_makefile_unconditionally_selects_the_project_virtual_environment() -> None:
@@ -92,6 +92,31 @@ def test_install_targets_delegate_to_the_installer() -> None:
     assert _target_body("stable") == ["$(RUN_PYTHON) -m ralph.install --stable"]
     assert _target_body("dev") == ["$(RUN_PYTHON) -m ralph.install"]
     assert re.search(r"^install-dev: dev$", makefile_text, re.MULTILINE)
+
+
+def test_install_targets_use_a_locked_uv_project_environment() -> None:
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
+
+    assert "RUN_PYTHON = uv run --locked --project . python" in makefile_text
+
+
+def test_install_targets_preflight_missing_uv_without_invoking_uv() -> None:
+    for target in ("install", "dev", "stable"):
+        assert re.search(
+            rf"^{target}: uv-preflight$", MAKEFILE_PATH.read_text(encoding="utf-8"), re.MULTILINE
+        )
+
+    preflight_body = _target_body("uv-preflight")
+    assert "command -v uv" in preflight_body[0]
+    assert "docs.astral.sh/uv/getting-started/installation/" in preflight_body[0]
+
+
+def test_install_targets_preflight_uv_version_before_outer_uv_run() -> None:
+    preflight = _target_body("uv-preflight")[0]
+
+    assert "--version" in preflight
+    assert "awk" in preflight
+    assert "0.7.0" in preflight
 
 
 def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:
@@ -177,6 +202,19 @@ def test_test_subprocess_e2e_uses_maintained_explicit_file_selector() -> None:
     ]
 
 
+def test_install_make_smoke_is_an_explicit_authoritative_target() -> None:
+    assert _target_body("test-install-make-smoke") == [
+        '$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py -q -m "smoke and subprocess_e2e"'
+    ]
+    assert any(
+        label == "make test-install-make-smoke"
+        and command == "make"
+        and args == ("test-install-make-smoke",)
+        and timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS
+        for label, command, args, timeout in verify_module._VERIFY_STEPS
+    )
+
+
 @pytest.mark.timeout_seconds(5)
 def test_make_verify_excludes_paid_agy_markers() -> None:
     """The immutable default profile cannot collect manual paid AGY runs.
@@ -195,7 +233,11 @@ def test_make_verify_excludes_paid_agy_markers() -> None:
 
     assert "not subprocess_e2e" in expression
     assert "not smoke" in expression
-    smoke_bearing_steps = {"make test-multimodal-smoke", "make test-visual-smoke"}
+    smoke_bearing_steps = {
+        "make test-install-make-smoke",
+        "make test-multimodal-smoke",
+        "make test-visual-smoke",
+    }
     for label, _command, args, _timeout in verify_module._VERIFY_STEPS:
         is_smoke_step = label in smoke_bearing_steps
         for field in (label, *args):

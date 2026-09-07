@@ -12,7 +12,8 @@ without tests or other guardrails.
 
 ## Install
 
-From a checkout, choose the build you need:
+From a checkout on Linux, macOS, or WSL, with `uv` 0.7.0 or newer, choose
+the build you need:
 
 ```bash
 cd ralph-workflow
@@ -29,8 +30,10 @@ and `rdev` is used instead. Any `rdev` from an earlier dev build is replaced.
 a terminal to continue, remove a pipx/uv-tool install, or abort; non-interactive
 conflicts abort safely.
 
-Use `pipx install ralph-workflow` or `pip install ralph-workflow` only when the
-Makefile workflow is unavailable.
+On native Windows, use the published package: `pipx install ralph-workflow` or
+`pip install ralph-workflow`. The checkout installer is a POSIX/WSL workflow.
+For its locked, serialized, rollback-capable refresh contract and failure modes,
+see [CONTRIBUTING.md](CONTRIBUTING.md#dev-build-vs-stable-build).
 
 ## First run
 
@@ -95,6 +98,7 @@ it. Selection and trust-boundary details are in
 ## Requirements
 
 - Python ≥ 3.12
+- `uv` ≥ 0.7.0 for checkout and stable Makefile installs
 - Local execution; no daemon, no cloud dependency
 - One supported agent CLI installed and authenticated
 

@@ -25,7 +25,8 @@ The full operator manual lives under
 
 ## Install from a checkout
 
-For a self-contained manual snapshot, run this from `ralph-workflow/`:
+For a self-contained manual snapshot, run this from `ralph-workflow/` on
+Linux, macOS, or WSL with `uv` 0.7.0 or newer:
 
 ```bash
 make install  # `rdev --version` ends in -build
@@ -35,10 +36,12 @@ make install  # `rdev --version` ends in -build
 Both commands install the `rdev` launcher only, so they never shadow a
 published `ralph`: an existing global `ralph` is reported and left in place,
 and `rdev` is used instead of it. An `rdev` from an earlier dev build is
-replaced. `make stable` owns the global `ralph` and still asks — continue,
-remove a pipx or `uv tool` installation, or abort. See the
+replaced. Native Windows users should install the published package instead,
+for example with `pipx install ralph-workflow` or `pip install ralph-workflow`.
+`make stable` owns the global `ralph` and still asks: continue, remove a pipx
+or `uv tool` installation, or abort. See the
 [contributor setup guide](ralph-workflow/CONTRIBUTING.md#dev-build-vs-stable-build)
-for stable installs and switching builds.
+for the checkout transaction, failures, stable installs, and switching builds.
 
 ## Supported agents
 

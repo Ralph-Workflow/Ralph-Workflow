@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -112,6 +111,26 @@ class _MonotonicClock:
 
     def wait_for_event(self, _event: object, _timeout: float) -> bool:
         return False
+
+
+def _wait_for_tailer_start(event: threading.Event, reader: PtyLineReader) -> None:
+    assert event.wait(timeout=1.0), "the lazy tailer did not start on Agent dispatch"
+    tails = reader._subagent_tails
+    assert tails is not None
+    assert tails.is_started
+
+
+def _install_tailer_start_signal(monkeypatch: pytest.MonkeyPatch, module: Any) -> threading.Event:
+    event = threading.Event()
+    original_start = module.ClaudeSubagentTranscriptTails.start
+
+    def start_and_signal(tails: Any) -> threading.Thread:
+        thread = original_start(tails)
+        event.set()
+        return thread
+
+    monkeypatch.setattr(module.ClaudeSubagentTranscriptTails, "start", start_and_signal)
+    return event
 
 
 def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion(
@@ -246,6 +265,7 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
     reader._captured_session_id = None
     reader._subagent_tails = None
     reader._clock = _MonotonicClock()
+    tailer_started = _install_tailer_start_signal(monkeypatch, _pty_module)
 
     captured: dict[str, BaseException | None] = {"exc": None}
 
@@ -257,22 +277,7 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
 
     thread = threading.Thread(target=_runner, daemon=True)
     thread.start()
-    # Wait for the thread to drain the file. The fake
-    # ``readline()`` returns ``""`` once all lines are consumed;
-    # the thread then enters the ``_monitor_stop.wait(0.1)``
-    # poll loop. Polling for ``_lines_event`` or a small sleep
-    # gives the thread a chance to process all 3 lines.
-    time.sleep(0.5)
-    # AC #5 (timing-sensitive): the lazy tailer started polling
-    # the ``subagents/`` directory the first time a dispatch was
-    # observed. Assert this BEFORE the stop event fires so the
-    # tailer thread is still alive.
-    lazy_tails_during_run = reader._subagent_tails
-    if lazy_tails_during_run is not None:
-        assert lazy_tails_during_run.is_started, (
-            "the lazy tailer was not started by ``note_dispatch``;"
-            " the subagent thread never began polling"
-        )
+    _wait_for_tailer_start(tailer_started, reader)
     # Set the stop event AFTER the thread has consumed the
     # fixture's lines so the loop reads every line before
     # exiting. Setting it earlier would terminate the loop

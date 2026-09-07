@@ -55,6 +55,8 @@ TESTS_ALLOWLIST: set[str] = {
     "test_asyncio_bridge.py",  # patches os.killpg; no real call
     "test_cli.py",  # exercises actual console-script entrypoint via subprocess
     "test_install.py",  # wheel build/install smoke coverage in a throwaway venv
+    "test_install_wheel.py",  # wheel build/install smoke coverage split from test_install.py
+    "test_install_make_smoke.py",  # offline real-process make install transaction proof
     "test_interrupt_signal_realtime.py",  # live SIGINT black-box coverage needs a subprocess
     "test_claude_interactive_interrupt_realtime.py",  # PTY-backed live SIGINT black-box coverage
     "test_terminal_state_restored_on_exit.py",  # PTY-backed terminal state restoration E2E coverage

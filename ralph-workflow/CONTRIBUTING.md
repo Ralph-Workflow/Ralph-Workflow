@@ -71,6 +71,7 @@ offering.
 ```bash
 git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
+uv --version          # must report uv 0.7.0 or newer
 make dev
 ```
 
@@ -85,8 +86,9 @@ side. They never collide because the dev build registers no global `ralph` comma
 | **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make dev` | a self-contained snapshot (`-dev`); rerun after edits |
 | **Stable build** | `ralph …` (anywhere) | `make stable` | a published release, isolated via `uv tool` |
 
-- **Manual build** — `make install` copies this checkout to
-  `~/.local/share/ralph-workflow-dev/current`, syncs that copy, and writes an
+- **Manual build** — `make install` copies this checkout into a new immutable
+  generation below `~/.local/share/ralph-workflow-dev/generations/`, syncs it,
+  and writes an
   `rdev` launcher to `~/.local/bin/rdev`. Its `--version` ends in `-build`.
   If all output is uncoloured (often white on black), run `rdev diagnose`:
   compare `Loaded package` and `Built from`, then rerun `make install` when the
@@ -94,10 +96,40 @@ side. They never collide because the dev build registers no global `ralph` comma
   that snapshot makes it win over the editable install, even from inside the
   repository.
 - **Dev build** — `make dev` (also spelled `make install-dev` or `make rdev`)
-  refreshes the same self-contained snapshot and `rdev` launcher, but its
+  creates a new self-contained immutable generation and publishes the `rdev`
+  launcher to it, but its
   `--version` ends in `-dev`. From inside the repo you can still use
   `uv run ralph`. Neither source-checkout build writes a global `ralph`; the
   distinct `rdev` name keeps it from shadowing the stable one.
+- **Checkout installer contract** — `make install` and `make dev` support
+  Linux, macOS, and WSL. They require `uv` 0.7.0 or newer and fail before
+  changing the shared install when it is missing, too old, or reports an
+  unparseable version. Native Windows is not a checkout-installer target; use
+  the packaged `pipx install ralph-workflow` or `pip install ralph-workflow`
+  path instead.
+- **Locked transaction** — one installer holds a non-waiting advisory lock for
+  the full refresh. A second installer fails immediately and leaves the current
+  snapshot and `rdev` unchanged. Inside that transaction, the installer copies
+  a candidate, runs `uv lock --check`, runs `uv sync --locked --extra dev`,
+  then confirms it with `uv sync --locked --check` and a locked `ralph
+  --version` run before publishing it.
+- **Publication and recovery** — the installer validates a candidate including
+  its own `.venv`, atomically renames it into `generations/`, then writes
+  `rdev` last so the launcher directly pins that exact generation. Existing
+  processes keep their original generation and interpreter. A failed candidate
+  is discarded before publication; a launcher-write failure discards its new
+  generation and leaves the old launcher untouched. Abandoned staging
+  directories are disposable, never rollback input. `current` remains a stable
+  compatibility symlink to the latest generation; it is not the launch target.
+  Generations are retained rather than guessing whether an older interpreter is
+  still active. Remove old generation directories manually only after their
+  processes have exited.
+- **Actionable failures** — install `uv` 0.7.0 or newer when the preflight
+  names `uv`; run `uv lock` and commit the resulting lockfile when `uv lock
+  --check` reports drift; repair the dependency or interpreter problem named by
+  the locked sync; and wait for the active install to finish before retrying a
+  lock-contention failure. A failed candidate never becomes the live `rdev`
+  target.
 - **One `rdev` per machine** — the snapshot directory and the `rdev` launcher
   are machine-wide, so every checkout and every worktree installs over the
   same pair. Installing from a worktree takes `rdev` over from whatever
@@ -110,7 +142,7 @@ side. They never collide because the dev build registers no global `ralph` comma
     source:   /checkouts/main/ralph-workflow
     commit:   483cd5cc
     version:  0.9.20-dev
-    snapshot: ~/.local/share/ralph-workflow-dev/current
+  snapshot: ~/.local/share/ralph-workflow-dev/generations/<generation>
     launcher: ~/.local/bin/rdev
     replaced: 0.9.19 from /checkouts/wt-063/ralph-workflow @ 205114bf  <- taken over from a different checkout
   ```
@@ -146,8 +178,9 @@ side. They never collide because the dev build registers no global `ralph` comma
   dist/ralph_workflow-<version>-py3-none-any.whl`; its `ralph --version` ends
   in `-build`.
 
-> `uv` is required for the dev and stable builds, and `~/.local/bin` must be on
-> your `PATH`. Do not install the dev build as a global `ralph` (via pipx or
+> `uv` 0.7.0 or newer is required for the dev and stable builds, and
+> `~/.local/bin` must be on your `PATH`. Do not install the dev build as a
+> global `ralph` (via pipx or
 > `uv tool`) — it would shadow the stable one, which is exactly the collision the
 > separate `rdev` name avoids.
 

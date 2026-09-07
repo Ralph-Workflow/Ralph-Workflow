@@ -21,6 +21,10 @@ Have these ready before you start:
 - One real git repo you care about
 - One backlog task with a clear finish line (see [Pick the right first task](#pick-the-right-first-task))
 
+If you are installing from this source checkout rather than from a published
+package, also have `uv` 0.7.0 or newer and use Linux, macOS, or WSL. Native
+Windows uses the published-package path below.
+
 ## Exact steps
 
 The install → init → diagnose → spec → run sequence is inlined below so
@@ -38,6 +42,12 @@ pipx install ralph-workflow
 Ralph Workflow needs Python 3.12 or newer. If you do not have `pipx`,
 install it with `pip install --user pipx && pipx ensurepath` and restart
 your shell.
+
+This packaged install is the supported path on native Windows. Checkout users
+on Linux, macOS, or WSL can instead run `make install` or `make dev` from
+`ralph-workflow/`; see [CONTRIBUTING](../../CONTRIBUTING.md#dev-build-vs-stable-build)
+for the locked transaction and [Troubleshooting](troubleshooting.md#checkout-install-fails-or-rdev-did-not-refresh)
+if it fails.
 
 ### 2. Install and authenticate at least one agent CLI
 

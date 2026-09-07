@@ -38,6 +38,28 @@ ralph --diagnose
 
 The PATH column in the Agents table should show `on PATH` in green.
 
+## Checkout install fails or `rdev` did not refresh
+
+**Symptom:** `make install` or `make dev` stops before installing `rdev`, says
+that `uv` is required, reports lock drift, names a locked sync failure, or says
+another install is updating `rdev`.
+
+**Fix:** Run checkout installs only on Linux, macOS, or WSL. On native Windows,
+install the published package with `pipx install ralph-workflow` or `pip install
+ralph-workflow`. On a supported checkout platform:
+
+1. Install or upgrade `uv` until `uv --version` reports 0.7.0 or newer.
+2. If `uv lock --check` reports drift, run `uv lock` from the checkout and
+   commit the resulting `uv.lock` change.
+3. Fix the dependency or interpreter error named by `uv sync --locked --extra
+   dev`, then retry.
+4. If another installer holds the shared lock, wait for it to finish and retry.
+
+The failed candidate is not published. The prior immutable generation and
+`rdev` launcher stay available; abandoned staging is discarded safely on the
+next install. See [CONTRIBUTING](../../CONTRIBUTING.md#dev-build-vs-stable-build)
+for the full checkout transaction contract.
+
 ## Cursor agent not detected
 
 **Symptom:** `ralph --diagnose` reports the Cursor agent (`agent` binary) is

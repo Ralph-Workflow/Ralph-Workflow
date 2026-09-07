@@ -18,10 +18,10 @@ Two install paths exist for Ralph Workflow, and they live on
 different tracks. This page documents how a release maps onto each
 track:
 
-- **Manual build** — a self-contained snapshot, run with `rdev`.
-  `make install` refreshes it and its displayed version ends in `-build`.
-- **Dev build** — the self-contained iteration snapshot, run with `rdev`
-  (or `uv run ralph` from inside the repo). `make dev` refreshes it;
+- **Manual build** — a self-contained immutable generation, run with `rdev`.
+  `make install` publishes a new generation and its displayed version ends in `-build`.
+- **Dev build** — the self-contained iteration generation, run with `rdev`
+  (or `uv run ralph` from inside the repo). `make dev` publishes a new generation;
   its displayed version ends in `-dev` and it is the build you use to
   verify a release candidate before publishing. Neither source-checkout
   build writes a global `ralph` command.
@@ -32,6 +32,14 @@ track:
   --upgrade ralph-workflow` and adopts the latest published
   release. A locally built wheel installed with `python -m ralph.install
   --from <wheel>` displays a `-build` suffix.
+
+The checkout tracks require Linux, macOS, or WSL and `uv` 0.7.0 or newer.
+The installer verifies the lock, syncs and validates a staged generation, then
+publishes `rdev` directly to that immutable generation last; its full failure
+and recovery contract is in
+[`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#dev-build-vs-stable-build).
+Native Windows uses the published-package track (`pipx install ralph-workflow`
+or `pip install ralph-workflow`), not the checkout installer.
 
 The full contributor workflow for both builds lives in
 [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) (see § Development setup).

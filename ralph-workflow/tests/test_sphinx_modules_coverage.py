@@ -51,6 +51,7 @@ _EXCLUDED: dict[str, str] = {
     "git.rebase.rebase_operation_error": "internal git type, not public API",
     "git.rebase.rebase_success": "internal git type, not public API",
     "git.rebase.subprocess_executor": "internal git type, not public API",
+    "install_transaction": "internal installer transaction helper, not public API",
     "mcp.artifacts.analysis_item_proof": "internal artifact type, not public API",
     "mcp.artifacts.development_result_continuation": "internal artifact type, not public API",
     "mcp.artifacts.development_result_validation_error": "internal artifact type, not public API",

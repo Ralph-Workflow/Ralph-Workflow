@@ -10,6 +10,16 @@ MALLOC_DEBUG_NOISE_VARS: tuple[str, ...] = (
     "MallocStackLoggingNoCompact",
 )
 
+INSTALLER_PYTHON_INJECTION_VARS: frozenset[str] = frozenset(
+    {
+        "PYTHONHOME",
+        "PYTHONINSPECT",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+    }
+)
+
 # Parent-owned conflict-resolution relay controls. These must never reach an
 # agent-controlled child. The standalone MCP server receives them only during
 # bootstrap and immediately removes them after constructing its sender.
@@ -80,3 +90,10 @@ def sanitize_process_environment() -> tuple[str, ...]:
     must read its one-time relay controls before it can remove them.
     """
     return strip_malloc_debug_noise(os.environ)
+
+
+def installer_env_for_spawn() -> dict[str, str]:
+    environment = dict(os.environ)
+    for name in INSTALLER_PYTHON_INJECTION_VARS:
+        environment.pop(name, None)
+    return environment

@@ -20,6 +20,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
     "ralph/mcp/server/__main__.py": "delegates to ralph.mcp.server.runtime.main",
     "ralph/contrib/cla.py": "urllib-only contributor helper",
     "ralph/git/hardening.py": "pragma-no-cover smoke runner",
+    "ralph/install.py": "installer main sanitizes before dispatching to the runtime seam",
     "ralph/mcp/explore/reindex_bench.py": (
         "in-process benchmark CLI; reindex runs inside the current "
         "process (no subprocess spawn), so the guard is safe to keep."
@@ -112,7 +113,7 @@ def _imports_spawn_seam(tree: ast.Module) -> bool:
         isinstance(node, ast.ImportFrom)
         and node.module is not None
         and (
-            node.module == "ralph.executor.process"
+            node.module in {"ralph.executor.process", "ralph._install_runtime"}
             or node.module.startswith("ralph.process.manager")
         )
         for node in ast.walk(tree)
