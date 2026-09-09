@@ -88,7 +88,6 @@ def test_commit_retry_uses_valid_markdown_as_submit_content(
         "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
-    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
 
     class FakeBridge:
         @property

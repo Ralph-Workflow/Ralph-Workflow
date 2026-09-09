@@ -33,7 +33,6 @@ from ralph.pipeline.chain_identity import (
     phase_session_identity,
     resolve_phase_session_transport,
 )
-from ralph.pipeline.effect_router import config_agents_for_phase as _config_agents_for_phase
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     PhaseFailureEvent,
@@ -53,8 +52,6 @@ from ralph.pipeline.work_units import (
     validate_for_same_workspace,
 )
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.policy.loader import load_agents_policy_for_workspace_scope
-from ralph.policy.validation import PolicyValidationError
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
@@ -347,19 +344,11 @@ def build_session_mcp_plan_for_phase(
 
     candidate_agents: list[str] = []
     if phase_def is not None:
-        candidate_agents = list(
-            _config_agents_for_phase(
-                config,
-                phase=effect.phase,
-                policy_drain=drain,
-            )
-        )
-        if not candidate_agents:
-            drain_binding = policy_bundle.agents.agent_drains.get(drain)
-            if drain_binding is not None:
-                chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
-                if chain_config is not None and chain_config.agents:
-                    candidate_agents = list(chain_config.agents)
+        drain_binding = policy_bundle.agents.agent_drains.get(drain)
+        if drain_binding is not None:
+            chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
+            if chain_config is not None and chain_config.agents:
+                candidate_agents = list(chain_config.agents)
     agent_name: str | None = candidate_agents[0] if candidate_agents else None
 
     agent_config = None
@@ -388,31 +377,13 @@ def build_session_mcp_plan_for_phase(
         transport, model_flag, chain_transport, chain_is_ambiguous=chain_is_ambiguous
     )
 
-    effective_agents_policy = (
-        policy_bundle.agents
-        if policy_bundle is not None
-        else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    )
-
-    try:
-        return build_session_mcp_plan(
-            transport=transport,
-            drain=drain,
-            workspace_path=workspace_scope.root,
-            agents_policy=effective_agents_policy,
-            model_opts=SessionModelOpts(model_flag=model_flag),
-        ), drain
-    except PolicyValidationError:
-        fallback_agents_policy = load_agents_policy_for_workspace_scope(
-            workspace_scope, config=config
-        )
-        return build_session_mcp_plan(
-            transport=transport,
-            drain=drain,
-            workspace_path=workspace_scope.root,
-            agents_policy=fallback_agents_policy,
-            model_opts=SessionModelOpts(model_flag=model_flag),
-        ), drain
+    return build_session_mcp_plan(
+        transport=transport,
+        drain=drain,
+        workspace_path=workspace_scope.root,
+        agents_policy=policy_bundle.agents,
+        model_opts=SessionModelOpts(model_flag=model_flag),
+    ), drain
 
 
 def _fan_out_worker_context(

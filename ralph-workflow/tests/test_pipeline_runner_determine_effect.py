@@ -226,11 +226,11 @@ class TestDetermineEffect:
         assert isinstance(effect, ExitFailureEffect)
         assert "Unknown phase" in effect.reason
 
-    def test_default_planning_phase_uses_config_drain_agent(self) -> None:
+    def test_effect_router_regression_policy_chain_wins_over_divergent_config_chain(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="planning")
         config = _config_with_agents(
-            agent_chains={"plan_chain": ["claude"]},
+            agent_chains={"plan_chain": ["codex"]},
             agent_drains={"planning": "plan_chain"},
         )
 
@@ -432,7 +432,7 @@ class TestDetermineEffect:
         )
         assert isinstance(effect, ExitFailureEffect)
 
-    def test_policy_driven_custom_phase_uses_config_drain_agent(self) -> None:
+    def test_custom_phase_policy_chain_wins_over_divergent_config_drain(self) -> None:
         state = PipelineState(phase="custom_phase")
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -467,10 +467,10 @@ class TestDetermineEffect:
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.agent_name == "codex"
+        assert effect.agent_name == "claude"
         assert effect.drain == "development"
 
-    def test_commit_phase_prefers_config_commit_drain_over_policy_commit_chain(self) -> None:
+    def test_commit_phase_policy_chain_wins_over_divergent_config_drain(self) -> None:
         state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -507,7 +507,7 @@ class TestDetermineEffect:
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.agent_name == "ccs/mm"
+        assert effect.agent_name == "claude"
         assert effect.drain == "development_commit"
 
     def test_handle_inline_prepare_prompt_updates_current_drain_from_policy(

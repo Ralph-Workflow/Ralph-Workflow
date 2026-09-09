@@ -113,7 +113,6 @@ def _validate_and_materialize_support(
     output_flag: str | None,
     yolo_flag: str | None,
     verbose_flag: str | None,
-    can_commit: bool,
     model_flag: str | None,
     print_flag: str | None,
     streaming_flag: str | None,
@@ -147,7 +146,6 @@ def _validate_and_materialize_support(
         output_flag=output_flag,
         yolo_flag=yolo_flag,
         verbose_flag=verbose_flag,
-        can_commit=can_commit,
         model_flag=model_flag,
         print_flag=print_flag,
         streaming_flag=streaming_flag,
@@ -187,7 +185,6 @@ def register_agent_support(
     output_flag: str | None = None,
     yolo_flag: str | None = None,
     verbose_flag: str | None = None,
-    can_commit: bool = False,
     model_flag: str | None = None,
     print_flag: str | None = None,
     streaming_flag: str | None = None,
@@ -229,7 +226,6 @@ def register_agent_support(
         output_flag: Optional output format flag for streaming JSON.
         yolo_flag: Optional autonomous/non-interactive flag string.
         verbose_flag: Optional verbose flag string.
-        can_commit: Whether the agent can run git commit.
         model_flag: Optional model/provider flag.
         print_flag: Optional print flag for non-interactive output mode.
         streaming_flag: Optional streaming flag for partial JSON messages.
@@ -268,7 +264,6 @@ def register_agent_support(
         output_flag,
         yolo_flag,
         verbose_flag,
-        can_commit,
         model_flag,
         print_flag,
         streaming_flag,

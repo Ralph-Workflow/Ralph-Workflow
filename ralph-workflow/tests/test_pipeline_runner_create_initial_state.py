@@ -194,7 +194,7 @@ class TestCreateInitialState:
         assert dev_chain is None or dev_chain.agents == []
         assert rev_chain is None or rev_chain.agents == []
 
-    def test_initial_state_prefers_config_drain_bindings_over_policy_chains(self) -> None:
+    def test_initial_state_policy_chain_wins_over_config_drain_bindings(self) -> None:
         config = MagicMock()
         config.agent_chains = {"plan_chain": ["codex"]}
         config.agent_drains = {"planning": "plan_chain"}
@@ -223,7 +223,7 @@ class TestCreateInitialState:
             pipeline_policy=pipeline_policy,
         )
 
-        assert state.chain_for_phase("planning").agents == ["codex"]
+        assert state.chain_for_phase("planning").agents == ["claude"]
 
     def test_initial_state_tracks_custom_phase_chain_from_policy(self) -> None:
         config = MagicMock()
@@ -258,9 +258,9 @@ class TestCreateInitialState:
 
         chain = state.chain_for_phase("feature_build")
         assert chain is not None
-        assert chain.agents == ["codex"]
+        assert chain.agents == ["claude"]
 
-    def test_initial_state_maps_analysis_phases_to_config_drain_by_full_name(self) -> None:
+    def test_initial_state_leaves_unbound_analysis_phase_without_config_fallback(self) -> None:
         config = MagicMock()
         config.agent_chains = {"analysis_chain": ["config-analysis-agent"]}
         config.agent_drains = {"development_analysis": "analysis_chain"}
@@ -294,7 +294,7 @@ class TestCreateInitialState:
             pipeline_policy=pipeline_policy,
         )
 
-        assert state.chain_for_phase("development_analysis").agents == ["config-analysis-agent"]
+        assert state.chain_for_phase("development_analysis").agents == []
 
     def test_creates_state_with_correct_development_budget(self) -> None:
         config = MagicMock()

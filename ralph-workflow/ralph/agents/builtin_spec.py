@@ -53,7 +53,6 @@ class BuiltinAgentSpec:
         output_flag: Optional output format flag.
         yolo_flag: Optional autonomous flag string.
         verbose_flag: Optional verbose flag string.
-        can_commit: Whether the agent can run git commit.
         model_flag: Optional model/provider flag.
         print_flag: Optional print flag.
         streaming_flag: Optional streaming flag.
@@ -94,7 +93,6 @@ class BuiltinAgentSpec:
     output_flag: str | None = None
     yolo_flag: str | None = None
     verbose_flag: str | None = None
-    can_commit: bool = False
     model_flag: str | None = None
     print_flag: str | None = None
     streaming_flag: str | None = None
@@ -222,7 +220,6 @@ def vision_verdict_agent_spec() -> BuiltinAgentSpec:
         strategy_factory=GenericExecutionStrategy,
         json_parser=JsonParserType.GENERIC,
         cmd="vision-verdict",
-        can_commit=False,
         display_name="Vision Verdict",
         display_capabilities=display_capabilities,
     )

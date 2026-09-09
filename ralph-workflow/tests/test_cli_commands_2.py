@@ -185,7 +185,6 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -277,7 +276,6 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -321,7 +319,6 @@ def test_generate_commit_msg_surfaces_parsed_agent_output_when_artifact_missing(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -372,7 +369,6 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
             return AgentConfig(
                 cmd="opencode",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.OPENCODE,
             )
 
@@ -440,7 +436,6 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -490,7 +485,6 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -593,7 +587,7 @@ def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> 
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
     ctx = make_display_context(console=console, env={})
-    agent = AgentConfig(cmd="agent", can_commit=True)
+    agent = AgentConfig(cmd="agent")
     fake_registry = SimpleNamespace(
         list_agents=lambda: ["alpha"],
         get=lambda name: agent,
@@ -955,14 +949,13 @@ def test_display_tables_render() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None, theme=RALPH_THEME)
     ctx = make_display_context(console=console, env={})
-    agent = AgentConfig(cmd="agent", can_commit=False)
+    agent = AgentConfig(cmd="agent")
     pd = ParallelDisplay(ctx)
     pd.emit_agents_table({"alpha": agent})
     rendered = buffer.getvalue()
     assert "Configured" in rendered
     assert "Agents" in rendered
     assert "alpha" in rendered
-    assert "no" in rendered
 
     buffer.truncate(0)
     buffer.seek(0)

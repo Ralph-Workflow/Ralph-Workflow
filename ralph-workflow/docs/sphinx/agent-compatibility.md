@@ -111,7 +111,6 @@ availability remains the CLI provider's responsibility.
 cmd = "agy"
 print_flag = "--print"
 yolo_flag = "--dangerously-skip-permissions"
-can_commit = true
 json_parser = "generic"
 
 ```
@@ -214,7 +213,6 @@ These examples are validated against the current agent configuration schema.
 cmd = "claude"
 yolo_flag = "--dangerously-skip-permissions"
 verbose_flag = "--verbose"
-can_commit = true
 session_flag = "--resume {}"
 json_parser = "claude"
 
@@ -225,7 +223,6 @@ output_flag = "--output-format=stream-json"
 streaming_flag = "--include-partial-messages"
 yolo_flag = "--permission-mode auto"
 verbose_flag = "--verbose"
-can_commit = true
 session_flag = "--resume {}"
 json_parser = "claude"
 
@@ -233,13 +230,11 @@ json_parser = "claude"
 cmd = "codex exec"
 output_flag = "--json"
 yolo_flag = "--dangerously-bypass-approvals-and-sandbox"
-can_commit = true
 json_parser = "codex"
 
 [agents.opencode]
 cmd = "opencode"
 session_flag = "--session {}"
-can_commit = false
 json_parser = "opencode"
 
 [agents.pi]
@@ -247,13 +242,11 @@ cmd = "pi"
 output_flag = "--mode json"
 yolo_flag = "--approve"
 session_flag = "--session {}"
-can_commit = true
 display_name = "Pi"
 json_parser = "pi"
 
 [agents.nanocoder]
 cmd = "nanocoder"
-can_commit = false
 json_parser = "generic"
 
 [agents.cursor]
@@ -263,7 +256,6 @@ print_flag = "--print"
 output_flag = "--output-format stream-json"
 streaming_flag = "--stream-partial-output"
 session_flag = "--resume {}"
-can_commit = true
 display_name = "Cursor"
 json_parser = "generic"
 ```
@@ -277,7 +269,6 @@ yolo_flag = "--permission-mode bypassPermissions"
 verbose_flag = "--verbose"
 session_flag = "--resume {}"
 json_parser = "claude"
-can_commit = true
 
 [ccs_aliases]
 glm = "ccs glm"

@@ -16,11 +16,9 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
-from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.cli.commands._commit_chain_config import CommitChainConfig
 from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
-from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
@@ -49,7 +47,6 @@ from ralph.pipeline.plumbing.commit_plumbing import (
     run_commit_plumbing,
 )
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.prompts._commit_diff import commit_generation_diff
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
@@ -58,8 +55,9 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.policy.models import AgentsPolicy
     from ralph.pro_support.hooks import ProPipelineHooks
 
 # Re-exports for the test-patch surface.
@@ -80,7 +78,6 @@ __all__ = [
 
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
-_DEFAULT_COMMIT_AGENT = "claude"
 _VERBOSE_THRESHOLD = 2
 
 
@@ -170,12 +167,13 @@ def _handle_agent_commit_generation(
         return 1
 
     registry = AgentRegistry.from_config(config)
-    agents = _resolve_commit_message_agents(config, registry)
+    workspace_scope = resolve_workspace_scope(repo_root)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agents = _resolve_commit_message_agents(agents_policy)
     if not agents:
-        display.emit_warning("No commit-capable agents available in commit/review drains")
+        display.emit_warning("No agents configured in the commit policy drain")
         return 1
 
-    workspace_scope = resolve_workspace_scope(repo_root)
     result = _generate_commit_message_with_chain(
         diff=diff,
         repo_root=repo_root,
@@ -183,7 +181,7 @@ def _handle_agent_commit_generation(
             registry=registry,
             agents=agents,
             verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
-            agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
+            agents_policy=agents_policy,
             general_config=config,
         ),
         display_context=display_context,
@@ -262,75 +260,17 @@ def _print_commit_failure_details(
         display.emit_warning(detail)
 
 
-def _resolve_chain_agent_names(config: object, drain_name: str) -> list[str]:
-    raw_agent_drains_obj: object = getattr(config, "agent_drains", {})
-    raw_agent_drains = (
-        cast("dict[str, object]", raw_agent_drains_obj)
-        if isinstance(raw_agent_drains_obj, dict)
-        else {}
-    )
-    raw_agent_chains_obj: object = getattr(config, "agent_chains", {})
-    raw_agent_chains = (
-        cast("dict[str, object]", raw_agent_chains_obj)
-        if isinstance(raw_agent_chains_obj, dict)
-        else {}
-    )
-    drain_binding = raw_agent_drains.get(drain_name)
-    if isinstance(drain_binding, AgentDrainConfig):
-        chain_name = drain_binding.chain
-    elif isinstance(drain_binding, str):
-        chain_name = drain_binding
-    else:
+def _resolve_commit_message_agents(agents_policy: AgentsPolicy) -> list[str]:
+    commit_binding = agents_policy.agent_drains.get("commit")
+    if commit_binding is None:
         return []
 
-    chain_value = raw_agent_chains.get(chain_name)
-    if isinstance(chain_value, AgentChainConfig):
-        return list(chain_value.agents)
-    if isinstance(chain_value, list):
-        return list(chain_value)
-    return []
-
-
-def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
-    commit_chain = _resolve_chain_agent_names(config, "commit")
-    review_chain = _resolve_chain_agent_names(config, "review")
-
-    commit_candidates = [
-        name for name in commit_chain if _commit_drain_agent_supported(registry, name)
-    ]
-    review_candidates = [
-        name for name in review_chain if _commit_drain_agent_supported(registry, name)
-    ]
-    default_candidates = [_DEFAULT_COMMIT_AGENT]
-    default_supported = [
-        name for name in default_candidates if _commit_drain_agent_supported(registry, name)
-    ]
-
+    commit_chain = agents_policy.agent_chains[commit_binding.chain].agents
     ordered_candidates: list[str] = []
-    for name in (*commit_candidates, *review_candidates, *default_supported):
+    for name in commit_chain:
         if name not in ordered_candidates:
             ordered_candidates.append(name)
     return ordered_candidates
-
-
-def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> bool:
-    cfg = registry.get(agent_name)
-    return cfg is not None and bool(cfg.can_commit) and _commit_agent_is_locally_supported(cfg)
-
-
-def _commit_agent_is_locally_supported(agent: AgentConfig) -> bool:
-    if agent.transport != AgentTransport.OPENCODE:
-        return True
-    # Third copy of this extractor deleted: it stripped an ``opencode/``
-    # prefix, which destroys the PROVIDER half of a legitimate id --
-    # opencode publishes a provider literally named ``opencode``
-    # (``opencode models`` lists ``opencode/big-pickle``). The Ralph alias
-    # prefix is stripped exactly once, at alias resolution.
-    model_id = opencode_model_id_from_flag(agent.model_flag)
-    if model_id is None:
-        return True
-    command_name = agent.cmd.split()[0]
-    return validate_local_model_support(model_id, command=command_name) is None
 
 
 def working_tree_diff(repo_root: Path) -> str:

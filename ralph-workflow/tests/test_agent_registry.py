@@ -31,7 +31,7 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
     config = UnifiedConfig(
         agents={
             "claude": AgentConfig(cmd="claude"),
-            "opencode": AgentConfig(cmd="opencode", can_commit=True),
+            "opencode": AgentConfig(cmd="opencode"),
         }
     )
 
@@ -45,7 +45,7 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
         "agy",
         "nanocoder",
     }
-    assert registry.get("opencode") == AgentConfig(cmd="opencode", can_commit=True)
+    assert registry.get("opencode") == AgentConfig(cmd="opencode")
 
 
 def test_builtin_claude_agent_is_claude_interactive_transport() -> None:
@@ -131,7 +131,6 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert nanocoder is not None
     assert nanocoder.cmd == "nanocoder"
     assert nanocoder.transport == AgentTransport.NANOCODER
-    assert nanocoder.can_commit is False
     assert nanocoder.session_flag is None
 
 
@@ -173,7 +172,6 @@ def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:
                 output_flag="--json-stream",
                 verbose_flag="--vv",
                 model_flag="--model custom",
-                can_commit=False,
             )
         }
     )
@@ -186,7 +184,6 @@ def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:
     assert ccs_agent.output_flag == "--json-stream"
     assert ccs_agent.verbose_flag == "--vv"
     assert ccs_agent.model_flag == "--model custom"
-    assert ccs_agent.can_commit is False
     assert ccs_agent.transport == AgentTransport.CLAUDE
 
 
@@ -208,7 +205,6 @@ def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
     assert agent.output_flag is None
     assert agent.json_parser == "opencode"
     assert agent.model_flag == "-m minimax/MiniMax-M2.7-highspeed"
-    assert agent.can_commit is True
 
 
 def test_claude_model_reference_resolves_to_claude_interactive() -> None:
@@ -222,7 +218,6 @@ def test_claude_model_reference_resolves_to_claude_interactive() -> None:
     assert agent.json_parser == "claude"
     assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
     assert agent.model_flag == "--model opus"
-    assert agent.can_commit is True
 
 
 def test_agent_registry_resolves_direct_claude_model_reference() -> None:
@@ -236,7 +231,6 @@ def test_agent_registry_resolves_direct_claude_model_reference() -> None:
     assert agent.json_parser == "claude"
     assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
     assert agent.model_flag == "--model opus"
-    assert agent.can_commit is True
 
 
 def test_claude_haiku_alias_builds_interactive_argv_end_to_end() -> None:
@@ -481,7 +475,6 @@ def test_agent_registry_resolves_direct_ccs_model_reference() -> None:
     assert agent.print_flag == "--print"
     assert agent.streaming_flag == "--include-partial-messages"
     assert agent.session_flag == "--resume {}"
-    assert agent.can_commit is True
 
 
 def test_agent_registry_resolves_two_segment_opencode_model_reference() -> None:
@@ -493,7 +486,6 @@ def test_agent_registry_resolves_two_segment_opencode_model_reference() -> None:
     assert agent.cmd == "opencode"
     assert agent.transport == AgentTransport.OPENCODE
     assert agent.model_flag == "-m MiniMax-M2.7-highspeed"
-    assert agent.can_commit is True
 
 
 def test_agent_registry_resolves_direct_nanocoder_provider_model_reference() -> None:
@@ -505,7 +497,6 @@ def test_agent_registry_resolves_direct_nanocoder_provider_model_reference() -> 
     assert agent.cmd == "nanocoder"
     assert agent.transport == AgentTransport.NANOCODER
     assert agent.model_flag == "--provider ollama --model llama3.1"
-    assert agent.can_commit is True
 
 
 def test_agent_registry_resolves_direct_nanocoder_provider_reference() -> None:
@@ -517,7 +508,6 @@ def test_agent_registry_resolves_direct_nanocoder_provider_reference() -> None:
     assert agent.cmd == "nanocoder"
     assert agent.transport == AgentTransport.NANOCODER
     assert agent.model_flag == "--provider minimax"
-    assert agent.can_commit is True
 
 
 def test_agent_registry_resolves_pi_provider_model_path_reference() -> None:
@@ -529,7 +519,6 @@ def test_agent_registry_resolves_pi_provider_model_path_reference() -> None:
     assert agent.cmd == "pi"
     assert agent.transport == AgentTransport.PI
     assert agent.model_flag == "--model anthropic/claude-sonnet-4-20250514/latest:high"
-    assert agent.can_commit is True
 
 
 @pytest.mark.parametrize(

@@ -114,8 +114,6 @@ class TestCursorCatalogSeeding:
         assert cursor_support.config.cmd == "agent"
         # The session flag is the documented ``--resume {}`` template.
         assert cursor_support.config.session_flag == "--resume {}"
-        # can_commit is True (the headless transport has write + shell access).
-        assert cursor_support.config.can_commit is True
 
 
 class TestCursorParserInstantiable:

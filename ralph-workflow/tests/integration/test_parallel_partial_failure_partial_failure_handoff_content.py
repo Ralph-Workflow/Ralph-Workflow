@@ -26,6 +26,7 @@ from ralph.pipeline.events import (
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.scope import WorkspaceScope
 from tests.integration._fake_display_partial_failure import _FakeDisplay
 from tests.plan_fixtures import development_result_markdown
@@ -46,6 +47,12 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     dev_phase.drain = "development"
     bundle.pipeline.phases = {"development": dev_phase}
     bundle.pipeline.recovery.failed_route = "failed_terminal"
+    bundle.agents = AgentsPolicy(
+        agent_chains={"developer": AgentChainConfig(agents=["developer"])},
+        agent_drains={
+            "development": AgentDrainConfig(chain="developer", drain_class="development")
+        },
+    )
     return bundle
 
 

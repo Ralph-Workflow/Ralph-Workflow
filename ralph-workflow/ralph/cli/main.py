@@ -1663,9 +1663,9 @@ app.command(name="smoke-interactive-pi")(smoke_interactive_pi)
 
 
 def smoke_interactive_ccs(
-    agent: str = typer.Option(
-        "ccs/glm",
-        help="CCS alias to smoke (e.g. ccs/glm).",
+    agent: str | None = typer.Option(
+        None,
+        help="CCS alias to smoke; defaults to the effective policy development chain.",
     ),
     subagents: bool = typer.Option(
         False,

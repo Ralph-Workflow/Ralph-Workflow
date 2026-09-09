@@ -25,7 +25,12 @@ from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFai
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
-from ralph.policy.models import PhaseParallelization
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    PhaseParallelization,
+)
 from ralph.workspace.scope import WorkspaceScope
 from tests.plan_fixtures import development_result_markdown
 
@@ -70,6 +75,12 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     dev_phase = MagicMock(requires_commit=False, drain="development")
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
+    bundle.agents = AgentsPolicy(
+        agent_chains={"developer": AgentChainConfig(agents=["developer"])},
+        agent_drains={
+            "development": AgentDrainConfig(chain="developer", drain_class="development")
+        },
+    )
     # Raise AttributeError if old parallel_execution path is accessed
     type(bundle.pipeline).parallel_execution = property(
         lambda self: (_ for _ in ()).throw(

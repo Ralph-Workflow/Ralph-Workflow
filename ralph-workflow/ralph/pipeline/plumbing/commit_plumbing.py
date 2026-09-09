@@ -1,7 +1,7 @@
 """Commit plumbing: chain iteration + classifier routing for ``commit`` CLI.
 
 The ``commit`` / ``--generate-commit`` CLI command needs pipeline
-functionality (chain iteration across commit-capable agents, retry
+functionality (iteration across the effective ``commit`` drain, retry
 decisioning, session resume). Previously the CLI command reimplemented
 this orchestration inline — which kept failure-classification and
 ``extract_transport_session_id(...)`` calls duplicated against the

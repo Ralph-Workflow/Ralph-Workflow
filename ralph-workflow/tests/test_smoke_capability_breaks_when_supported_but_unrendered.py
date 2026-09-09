@@ -127,7 +127,6 @@ def _synthetic_opencode_support() -> AgentSupport:
         json_parser=JsonParserType.OPENCODE,
         cmd="opencode",
         output_flag="--json-stream",
-        can_commit=False,
         session_flag="--session {}",
         display_capabilities=(
             DisplayCapabilityStance.supported(

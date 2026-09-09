@@ -170,7 +170,6 @@ class AgentSupport:
         output_flag: str | None = None,
         yolo_flag: str | None = None,
         verbose_flag: str | None = None,
-        can_commit: bool = False,
         model_flag: str | None = None,
         print_flag: str | None = None,
         streaming_flag: str | None = None,
@@ -205,7 +204,6 @@ class AgentSupport:
             output_flag: Optional output format flag.
             yolo_flag: Optional autonomous flag string.
             verbose_flag: Optional verbose flag string.
-            can_commit: Whether the agent can run git commit.
             model_flag: Optional model/provider flag.
             print_flag: Optional print flag.
             streaming_flag: Optional streaming flag.
@@ -253,7 +251,6 @@ class AgentSupport:
             output_flag=output_flag,
             yolo_flag=yolo_flag,
             verbose_flag=verbose_flag,
-            can_commit=can_commit,
             json_parser=json_parser,
             model_flag=model_flag,
             print_flag=print_flag,

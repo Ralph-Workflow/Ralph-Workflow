@@ -661,7 +661,6 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
             output_flag=defaults.output_flag,
             yolo_flag=defaults.yolo_flag,
             verbose_flag=defaults.verbose_flag,
-            can_commit=defaults.can_commit,
             json_parser=JsonParserType(defaults.json_parser),
             print_flag=defaults.print_flag,
             streaming_flag=defaults.streaming_flag,
@@ -686,9 +685,6 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
             if alias_value.verbose_flag is not None
             else defaults.verbose_flag
         ),
-        can_commit=alias_value.can_commit
-        if alias_value.can_commit is not None
-        else defaults.can_commit,
         json_parser=parser,
         model_flag=alias_value.model_flag,
         print_flag=alias_value.print_flag
@@ -769,7 +765,6 @@ def _resolve_dynamic_agent(
         # supports provider/id and optional :<thinking>".
         pi_overrides: dict[str, object] = {
             "model_flag": f"--model {shlex.quote(model_id)}",
-            "can_commit": True,
         }
         resolved = base_config.model_copy(update=pi_overrides)
     elif name.startswith("cursor/"):
@@ -798,7 +793,6 @@ def _resolve_dynamic_agent(
         # two argv tokens (--model, <value>).
         cursor_overrides: dict[str, object] = {
             "model_flag": f"--model {shlex.quote(model_id)}",
-            "can_commit": True,
         }
         resolved = base_config.model_copy(update=cursor_overrides)
     elif name.startswith("kimi/"):
@@ -835,7 +829,6 @@ def _resolve_dynamic_kimi_agent(
     # argv token through the KimiCommandBuilder template split.
     kimi_overrides: dict[str, object] = {
         "model_flag": f"-m {shlex.quote(model_id)}",
-        "can_commit": True,
     }
     return base_config.model_copy(update=kimi_overrides)
 
@@ -863,7 +856,6 @@ def _resolve_dynamic_simple_prefixed_agent(
                 return base_config.model_copy(
                     update={
                         "model_flag": f"-m {shlex.quote(model_id)}",
-                        "can_commit": True,
                     }
                 )
     elif name.startswith("nanocoder/"):
@@ -874,7 +866,7 @@ def _resolve_dynamic_simple_prefixed_agent(
                 model_flag = f"--provider {shlex.quote(provider)}"
                 if model is not None:
                     model_flag += f" --model {shlex.quote(model)}"
-                return base_config.model_copy(update={"model_flag": model_flag, "can_commit": True})
+                return base_config.model_copy(update={"model_flag": model_flag})
     elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS:
         alias = _parse_agy_alias(
             name.removeprefix("agy/"), models=frozenset(agy_published_models())
@@ -886,7 +878,7 @@ def _resolve_dynamic_simple_prefixed_agent(
             if effort is not None:
                 model_flag += f" --effort {effort}"
             return base_config.model_copy(
-                update={"model": model_id, "model_flag": model_flag, "can_commit": True}
+                update={"model": model_id, "model_flag": model_flag}
             )
     return None
 
@@ -973,7 +965,7 @@ def _resolve_dynamic_codex_agent(name: str, base_config: AgentConfig | None) -> 
         effort_override = f'model_reasoning_effort = "{effort}"'
         model_flag += f" -c {shlex.quote(effort_override)}"
     return base_config.model_copy(
-        update={"model": model_id, "model_flag": model_flag, "can_commit": True}
+        update={"model": model_id, "model_flag": model_flag}
     )
 
 

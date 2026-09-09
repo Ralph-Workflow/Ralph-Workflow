@@ -31,6 +31,7 @@ from ralph.agents import registry as _registry_module
 from ralph.config import loader as _loader_module
 from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.policy import loader as _policy_loader_module
 from ralph.workspace import scope as _scope_module
 
 if TYPE_CHECKING:
@@ -43,7 +44,7 @@ __all__ = ["smoke_interactive_ccs_command"]
 
 
 def smoke_interactive_ccs_command(
-    agent_name: str = "ccs/glm",
+    agent_name: str | None = None,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -54,12 +55,12 @@ def smoke_interactive_ccs_command(
 ) -> int:
     """Run the manual smoke harness for a CCS (Claude Code Switch) alias.
 
-    The alias follows the dynamic ``ccs/<alias>`` pattern (e.g.
-    ``ccs/glm``); the command builder strips the leading ``ccs/`` and
+    The alias follows the dynamic ``ccs/<alias>`` pattern; the command builder strips the leading ``ccs/`` and
     passes ``<alias>`` to the configured ``ccs`` wrapper as
     ``ccs <alias> --print --output-format=stream-json ...`` (headless
     Claude flags -- see :class:`ralph.config.ccs_config.CcsConfig`).
-    ``ccs/<alias>`` resolves even without a ``[ccs_aliases]`` config
+    Without ``--agent``, the effective agents policy's ``development`` drain
+    selects the first CCS alias. ``ccs/<alias>`` resolves even without a ``[ccs_aliases]`` config
     entry (the registry synthesizes ``cmd="ccs <alias>"`` dynamically),
     so this command only rejects aliases that resolve to a non-CCS
     command, not aliases missing from config.
@@ -77,11 +78,29 @@ def smoke_interactive_ccs_command(
     workspace_scope = _scope_module.resolve_workspace_scope()
     config = _loader_module.load_config(None, {}, workspace_scope=workspace_scope)
     registry = _registry_module.AgentRegistry.from_config(config)
+    agents_policy = _policy_loader_module.load_agents_policy_for_workspace_scope(
+        workspace_scope, config=config
+    )
+    if agent_name is None:
+        from ralph.cli.commands.smoke_agent_defaults import resolve_default_smoke_agent
+
+        agent_name = resolve_default_smoke_agent(
+            AgentTransport.CLAUDE,
+            agents_policy,
+            registry.get,
+            drain="development",
+            command_prefix="ccs",
+        )
+        if agent_name is None:
+            logger.error(
+                "The effective agents policy development drain has no CCS agent. "
+                "Use --agent to select a ccs/<alias> agent."
+            )
+            return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
-            "Agent '{}' is not available. Use --agent with a ccs/<alias> alias, "
-            "e.g. --agent 'ccs/glm'.",
+            "Agent '{}' is not available. Use --agent with a ccs/<alias> alias.",
             agent_name,
         )
         return 2

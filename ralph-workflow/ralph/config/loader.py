@@ -30,11 +30,14 @@ from loguru import logger
 from pydantic import ValidationError
 
 from ralph.config._general_workflow_flags import GeneralWorkflowFlags
+from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
 from ralph.config.agent_config import AgentConfig
 from ralph.config.config_error_messages import format_config_validation_error
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.pydantic_validation_errors import suggest_canonical_field
 
 if TYPE_CHECKING:
@@ -105,8 +108,8 @@ def load_toml(path: Path) -> dict[str, object]:
         logger.debug("Config file not found, skipping: {}", path)
         return {}
     try:
-        with path.open("rb") as fh:
-            data: dict[str, object] = tomllib.load(fh)
+        source = path.read_text(encoding="utf-8")
+        data: dict[str, object] = tomllib.loads(source)
     except cast(
         "type[ValueError]", tomllib.TOMLDecodeError
     ) as exc:  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -116,6 +119,17 @@ def load_toml(path: Path) -> dict[str, object]:
             f"Fix: correct the TOML syntax in {path}, then run `ralph --check-config`."
         ) from exc
     logger.debug("Loaded config from {}", path)
+    migrated_source = remove_retired_agent_can_commit_assignments(source)
+    if migrated_source != source:
+        atomic_write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            path,
+            migrated_source,
+            tmp_path=path.with_name(f".{path.name}.migration"),
+            encoding="utf-8",
+            sync_directory=True,
+        )
+        data = tomllib.loads(migrated_source)
     return data
 
 

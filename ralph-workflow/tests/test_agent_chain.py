@@ -9,9 +9,7 @@ from ralph.agents.chain import (
     AgentChain,
     ChainManager,
     DrainNotBoundError,
-    create_chain_from_config,
 )
-from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 _config_models.Path = _RuntimePath
@@ -91,27 +89,6 @@ def test_chain_manager_validate_reports_unknown_chain_and_empty_agents() -> None
     ]
 
 
-def test_create_chain_from_config_builds_chain() -> None:
-    general = GeneralConfig(
-        max_retries=7,
-        retry_delay_ms=333,
-        backoff_multiplier=1.5,
-        max_backoff_ms=7777,
-    )
-    config = UnifiedConfig(general=general, agent_chains={"dev": ["alpha"]})
-
-    chain = create_chain_from_config(config, "dev")
-    assert chain is not None
-    assert chain.max_retries == general.max_retries
-    assert chain.retry_delay_ms == general.retry_delay_ms
-    assert chain.current_agent == "alpha"
-
-
-def test_create_chain_from_config_returns_none_when_missing() -> None:
-    config = UnifiedConfig()
-    assert create_chain_from_config(config, "ghost") is None
-
-
 def test_agent_chain_is_exhausted_when_empty() -> None:
     chain = AgentChain(agents=[])
 
@@ -152,18 +129,3 @@ def test_chain_manager_chain_for_drain_missing_chain_raises_value_error() -> Non
         manager.chain_for_drain("planning")
 
     assert "Drain 'planning' references chain 'missing'" in str(excinfo.value)
-
-
-def test_chain_manager_from_config_converts_legacy_policy() -> None:
-    general = GeneralConfig(max_retries=2, retry_delay_ms=99)
-    config = UnifiedConfig(
-        general=general,
-        agent_chains={"planner": ["claude"]},
-        agent_drains={"planning": "planner"},
-    )
-
-    manager = ChainManager.from_config(config)
-
-    chain = manager.chain_for_drain("planning")
-    assert chain.agents == ["claude"]
-    assert manager.validate() == []

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.testing import audit_workspace_resource_inventory as audit
 from ralph.testing.audit_workspace_resource_inventory import (
     WorkspaceResourceInventoryViolation,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _no_op_discovery(_package_root: Path) -> list[tuple[str, str]]:
@@ -316,6 +321,32 @@ def test_complete_synthetic_inventory_is_clean(tmp_path: Path) -> None:
     )
 
     assert violations == [], "; ".join(str(v) for v in violations)
+
+
+def test_inventory_regression_polling_scans_each_module_with_one_ast_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "ralph"
+    module = package_root / "agents" / "sample.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("import time\ntime.sleep(1)\n", encoding="utf-8")
+    monkeypatch.setattr(audit._polling, "_DEFAULT_PACKAGE_ROOTS", ("ralph/agents",))
+
+    walks = 0
+    original_walk = ast.walk
+
+    def count_walk(tree: ast.AST) -> object:
+        nonlocal walks
+        walks += 1
+        return original_walk(tree)
+
+    monkeypatch.setattr(audit._polling.ast, "walk", count_walk)
+
+    violations = audit._polling.audit_filesystem_polling_invocation(tmp_path)
+
+    assert [violation.kind for violation in violations] == ["raw_sleep_poll"]
+    assert walks == 1
 
 
 def test_violation_str_format_is_stable() -> None:

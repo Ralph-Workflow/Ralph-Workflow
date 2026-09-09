@@ -207,7 +207,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         cmd="claude",
         yolo_flag="--dangerously-skip-permissions",
         verbose_flag="--verbose",
-        can_commit=True,
         session_flag="--resume {}",
         interactive=True,
         display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
@@ -221,7 +220,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         output_flag="--output-format=stream-json",
         yolo_flag="--permission-mode auto",
         verbose_flag="--verbose",
-        can_commit=True,
         print_flag="--print",
         streaming_flag="--include-partial-messages",
         session_flag="--resume {}",
@@ -235,7 +233,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         cmd="codex exec",
         output_flag="--json",
         yolo_flag="--dangerously-bypass-approvals-and-sandbox",
-        can_commit=True,
         display_capabilities=_CODEX_CAPABILITIES,
     ).to_support("codex"),
     BuiltinAgentSpec(
@@ -254,7 +251,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         # OpenCode auto-REJECTS anything it cannot match. ``--auto`` approves
         # what is not explicitly denied, so operator denies still win.
         yolo_flag="--auto",
-        can_commit=False,
         session_flag="--session {}",
         display_capabilities=_OPENCODE_CAPABILITIES,
     ).to_support("opencode"),
@@ -264,7 +260,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         strategy_factory=GenericExecutionStrategy,
         json_parser=JsonParserType.GENERIC,
         cmd="nanocoder",
-        can_commit=False,
         interactive=True,
         no_default_session_flag=True,
         # S-6 (Evidence Provenance G6 / DoD 20): the one documented False
@@ -289,7 +284,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         cmd="agy",
         yolo_flag="--dangerously-skip-permissions",
         print_flag="--print",
-        can_commit=True,
         interactive=True,
         no_default_session_flag=True,
         # Generic data-driven seams (no name-typed control flow downstream):
@@ -312,7 +306,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         output_flag="--mode json",
         yolo_flag="--approve",
         session_flag="--session {}",
-        can_commit=True,
         display_name="Pi",
         display_capabilities=_PI_CAPABILITIES,
     ).to_support("pi"),
@@ -327,7 +320,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         print_flag="--print",
         streaming_flag="--stream-partial-output",
         session_flag="--resume {}",
-        can_commit=True,
         display_name="Cursor",
         display_capabilities=_CLAUDE_LEVEL_CAPABILITIES,
     ).to_support("cursor"),
@@ -341,7 +333,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         yolo_flag=None,
         print_flag="-p",
         session_flag="-S {}",
-        can_commit=True,
         display_name="Kimi",
         display_capabilities=_KIMI_CAPABILITIES,
     ).to_support("kimi"),

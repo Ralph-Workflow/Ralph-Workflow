@@ -22,7 +22,7 @@ _LEGACY_GLOBAL_CONFIG = (
     '[ccs]\noutput_flag = "--output-format=stream-json"\nverbose_flag = "--verbose"\n'
     'print_flag = "--print"\nsession_flag = "--resume {}"\n'
     'yolo_flag = "--dangerously-skip-permissions"\njson_parser = "claude"\n'
-    'can_commit = true\n\n[agent_chains]\ndeveloper = ["claude", "codex", "opencode"]\n'
+    '[agent_chains]\ndeveloper = ["claude", "codex", "opencode"]\n'
     'reviewer = ["codex", "claude"]\n\n[agent_drains]\nplanning = "developer"\n'
     'development = "developer"\nanalysis = "developer"\nreview = "reviewer"\n'
     'fix = "reviewer"\ncommit = "reviewer"\n\n[agent_chain]\nmax_retries = 3\n'

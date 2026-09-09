@@ -19,7 +19,12 @@ from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerCompletedEvent, WorkerFailedEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
-from ralph.policy.models import PhaseParallelization
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    PhaseParallelization,
+)
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -49,11 +54,12 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
     bundle.pipeline.recovery.failed_route = "failed_terminal"
-    bundle.agents.agent_drains = {
-        "development": MagicMock(
-            chain="developer", drain_class="development", capability_class=None
-        ),
-    }
+    bundle.agents = AgentsPolicy(
+        agent_chains={"developer": AgentChainConfig(agents=["developer"])},
+        agent_drains={
+            "development": AgentDrainConfig(chain="developer", drain_class="development")
+        },
+    )
     return bundle
 
 

@@ -58,6 +58,7 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunResult
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -122,32 +123,69 @@ def test_command_seam_default_matches_the_cli_default() -> None:
 
 
 @pytest.mark.timeout_seconds(3)
-def test_default_resolves_to_the_first_configured_chain_alias() -> None:
-    """The default is the operator's own chain entry for that transport."""
+def test_default_resolves_to_the_development_policy_chain_alias() -> None:
     config = UnifiedConfig(
         agent_chains={
-            "planning": ["cursor/auto", "pi/omnirouter/kmc/k3"],
-            "development": ["codex/gpt-5.6-terra", "pi/omnirouter/cx/gpt-5.6-terra-medium"],
+            "development": ["claude/sonnet"],
         }
+    )
+    agents_policy = AgentsPolicy(
+        agent_chains={
+            "smoke-development": AgentChainConfig(
+                agents=["pi/omnirouter/kmc/k3", "codex/gpt-5.6-terra"]
+            )
+        },
+        agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
     )
     lookup = AgentRegistry.from_config(config).get
 
-    assert resolve_default_smoke_agent(AgentTransport.PI, config, lookup) == (
+    assert resolve_default_smoke_agent(AgentTransport.PI, agents_policy, lookup, drain="development") == (
         "pi/omnirouter/kmc/k3"
     )
-    assert resolve_default_smoke_agent(AgentTransport.CODEX, config, lookup) == (
+    assert resolve_default_smoke_agent(
+        AgentTransport.CODEX, agents_policy, lookup, drain="development"
+    ) == (
         "codex/gpt-5.6-terra"
     )
 
 
 @pytest.mark.timeout_seconds(3)
-def test_default_falls_back_to_the_bare_transport_alias() -> None:
-    """A transport the operator's chains never name uses the bare alias."""
-    config = UnifiedConfig(agent_chains={"development": ["claude/sonnet"]})
+def test_default_fails_when_the_development_policy_chain_has_no_transport_match() -> None:
+    config = UnifiedConfig()
+    agents_policy = AgentsPolicy(
+        agent_chains={"smoke-development": AgentChainConfig(agents=["claude/sonnet"])},
+        agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
+    )
     lookup = AgentRegistry.from_config(config).get
 
-    assert resolve_default_smoke_agent(AgentTransport.OPENCODE, config, lookup) == "opencode"
-    assert resolve_default_smoke_agent(AgentTransport.KIMI, config, lookup) == "kimi"
+    assert (
+        resolve_default_smoke_agent(
+            AgentTransport.OPENCODE, agents_policy, lookup, drain="development"
+        )
+        is None
+    )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_opencode_smoke_regression_returns_actionable_failure_when_policy_lacks_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = UnifiedConfig()
+    agents_policy = AgentsPolicy(
+        agent_chains={"smoke-development": AgentChainConfig(agents=["claude/sonnet"])},
+        agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
+    )
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/opencode")
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(
+        smoke_module,
+        "load_agents_policy_for_workspace_scope",
+        lambda *_args, **_kwargs: agents_policy,
+    )
+
+    exit_code = smoke_module.smoke_interactive_opencode_command(display_context=None)
+
+    assert exit_code == 2
 
 
 @pytest.mark.timeout_seconds(3)
@@ -156,10 +194,19 @@ def test_command_without_agent_flag_runs_the_configured_chain_alias(
 ) -> None:
     """``smoke-interactive-cursor`` with no ``--agent`` runs the operator's alias."""
     config = UnifiedConfig(
-        agent_chains={"development": ["cursor/gpt-5.3-codex-high", "claude/sonnet"]}
+        agent_chains={"development": ["claude/sonnet"]}
+    )
+    agents_policy = AgentsPolicy(
+        agent_chains={"smoke-development": AgentChainConfig(agents=["cursor/gpt-5.3-codex-high"])},
+        agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
     )
     monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/agent")
     monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: config)
+    monkeypatch.setattr(
+        smoke_module,
+        "load_agents_policy_for_workspace_scope",
+        lambda *_a, **_k: agents_policy,
+    )
     captured: dict[str, object] = {}
 
     def fake_harness(agent_name: str, **_kwargs: object) -> int:

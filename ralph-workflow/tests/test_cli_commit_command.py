@@ -185,10 +185,61 @@ def _claude_commit_agent() -> AgentConfig:
         cmd="claude -p",
         output_flag="--output-format=stream-json",
         yolo_flag="--permission-mode auto",
-        can_commit=True,
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
+
+
+def test_commit_candidate_selection_regression_uses_only_effective_commit_drain(
+    tmp_path: Path,
+) -> None:
+    policy = AgentsPolicy.model_validate(
+        {
+            "agent_chains": {
+                "custom": {"agents": ["custom"]},
+                "review": {"agents": ["claude"]},
+            },
+            "agent_drains": {
+                "commit": {"chain": "custom"},
+                "review": {"chain": "review"},
+            },
+        }
+    )
+    attempted_chains: list[list[str]] = []
+
+    def record_attempts(**kwargs: object) -> CommitAgentResult:
+        chain_config = kwargs["chain_config"]
+        assert isinstance(chain_config, CommitChainConfig)
+        attempted_chains.append(chain_config.agents)
+        return CommitAgentResult(message="test: custom commit drain")
+
+    with (
+        patch("ralph.cli.commands.commit.working_tree_diff", return_value="diff --git a/x b/x"),
+        patch("ralph.cli.commands.commit.AgentRegistry.from_config", return_value=object()),
+        patch("ralph.cli.commands.commit.resolve_workspace_scope", return_value=object()),
+        patch(
+            "ralph.cli.commands.commit.load_agents_policy_for_workspace_scope",
+            return_value=policy,
+        ),
+        patch(
+            "ralph.cli.commands.commit._generate_commit_message_with_chain",
+            side_effect=record_attempts,
+        ),
+        patch(
+            "ralph.cli.commands.commit.read_commit_message_artifact",
+            return_value="test: custom commit drain",
+        ),
+        patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
+    ):
+        result = commit_module._handle_agent_commit_generation(
+            repo_root=tmp_path,
+            config=UnifiedConfig(),
+            options=commit_module.CommitPlumbingOptions(generate_commit_msg=True),
+            display_context=make_display_context(),
+        )
+
+    assert result == 0
+    assert attempted_chains == [["custom"]]
 
 
 def test_commit_invocation_passes_default_product_criteria_to_materialize_master_prompt(
@@ -431,7 +482,7 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         bridge=bridge,
     )
 
-    agent = AgentConfig(cmd="nanocoder", can_commit=True, json_parser=JsonParserType.GENERIC)
+    agent = AgentConfig(cmd="nanocoder", json_parser=JsonParserType.GENERIC)
     failure = AgentInvocationError(
         "nanocoder",
         1,
@@ -496,7 +547,7 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         bridge=bridge,
     )
 
-    agent = AgentConfig(cmd="claude", can_commit=True, json_parser=JsonParserType.GENERIC)
+    agent = AgentConfig(cmd="claude", json_parser=JsonParserType.GENERIC)
     failure = AgentInvocationError(
         "claude",
         1,
@@ -562,7 +613,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
         bridge=bridge,
     )
 
-    agent = AgentConfig(cmd="claude", can_commit=True, json_parser=JsonParserType.GENERIC)
+    agent = AgentConfig(cmd="claude", json_parser=JsonParserType.GENERIC)
     calls: list[object | None] = []
 
     def fake_invoke_agent(

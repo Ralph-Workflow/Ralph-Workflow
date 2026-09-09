@@ -5205,17 +5205,14 @@ class ParallelDisplay:
             table.add_column("Name", style="theme.cat.meta")
             table.add_column("Command")
             table.add_column("Parser", style="theme.cat.cont")
-            table.add_column("Can Commit", justify="center")
             if not agents:
-                table.add_row(Text("No agents configured", style="theme.text.muted"), "", "", "")
+                table.add_row(Text("No agents configured", style="theme.text.muted"), "", "")
             else:
                 for name, agent in agents.items():
                     cmd = getattr(agent, "cmd", "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     parser = getattr(agent, "json_parser", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                    can_commit = getattr(agent, "can_commit", False)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                    can_commit_str = "yes" if can_commit else "no"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     parser_str = str(parser.value if parser is not None else "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                    table.add_row(name, cmd, parser_str, can_commit_str)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    table.add_row(name, cmd, parser_str)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             self._console.print(table)
 
     def emit_providers_table(self, providers: list[str]) -> None:

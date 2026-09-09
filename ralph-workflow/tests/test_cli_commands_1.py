@@ -238,7 +238,6 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -422,7 +421,6 @@ def test_generate_commit_uses_commit_drain_agent_chain(
             return AgentConfig(
                 cmd=cmd,
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -469,7 +467,6 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
-    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
 
     invoked_model_flags: list[str | None] = []
 
@@ -521,7 +518,6 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
                 print_flag="--print",
                 streaming_flag="--include-partial-messages",
                 session_flag="--resume {}",
-                can_commit=True,
                 json_parser=JsonParserType.CLAUDE,
                 transport=AgentTransport.CLAUDE,
             )
@@ -570,7 +566,6 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     _stub_commit_bridge(monkeypatch)
-    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
 
     prompt_bodies: list[str] = []
 
@@ -617,7 +612,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     assert "fix: fallback agent message" in output
 
 
-def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
+def test_generate_commit_retains_policy_selected_opencode_commit_agents(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -646,14 +641,6 @@ def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
     )
     _stub_commit_bridge(monkeypatch)
 
-    monkeypatch.setattr(
-        commit_module,
-        "validate_local_model_support",
-        lambda model_id, **kwargs: (
-            "provider unsupported" if model_id == "minimax/MiniMax-M2.7-highspeed" else None
-        ),
-    )
-
     invoked_model_flags: list[str | None] = []
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
@@ -667,7 +654,7 @@ def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    assert invoked_model_flags == ["-m kimi-for-coding/k2p6"]
+    assert invoked_model_flags == ["-m minimax/MiniMax-M2.7-highspeed"]
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: commit drain message" in output
@@ -698,7 +685,6 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
             return AgentConfig(
                 cmd="opencode",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.OPENCODE,
             )
 
@@ -762,7 +748,6 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
             return AgentConfig(
                 cmd="opencode",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.OPENCODE,
             )
 
@@ -808,7 +793,6 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
             return AgentConfig(
                 cmd="claude -p",
                 output_flag="--output-format=stream-json",
-                can_commit=True,
                 json_parser=JsonParserType.CLAUDE,
                 transport=AgentTransport.CLAUDE,
             )
@@ -829,7 +813,7 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     assert ".agent/tmp/commit_message.md" in captured_prompt[0]
 
 
-def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
+def test_generate_commit_falls_back_within_the_commit_policy_chain_when_primary_is_unusable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -840,10 +824,9 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
         "load_config",
         lambda *args, **kwargs: UnifiedConfig(
             agent_chains={
-                "commit_chain": ["ghost-agent"],
-                "review_chain": ["codex"],
+                "commit_chain": ["ghost-agent", "codex"],
             },
-            agent_drains={"commit": "commit_chain", "review": "review_chain"},
+            agent_drains={"commit": "commit_chain"},
         ),
     )
     monkeypatch.setattr(
@@ -875,10 +858,11 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
     assert "fix: review fallback message" in output
 
 
-def test_generate_commit_appends_default_fallback_after_configured_chain(
+def test_generate_commit_regression_configured_chain_does_not_fallback_to_claude(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """User-reported how_to_fix regression: configured chains are exclusive."""
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -898,29 +882,25 @@ def test_generate_commit_appends_default_fallback_after_configured_chain(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
-    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
 
     invoked_commands: list[str] = []
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_commands.append(agent_config.cmd)
-        if agent_config.cmd == "claude":
-            _write_commit_message_doc(tmp_path, "fix: default fallback message")
-            return iter([])
-        if len(invoked_commands) <= 2:
-            return iter([])
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
 
-    commit_module.commit_plumbing(
+    result = commit_module.commit_plumbing(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    assert invoked_commands == ["opencode", "opencode", "claude"]
+    assert invoked_commands == ["opencode", "opencode"]
+    assert result != 0
     output = stream.getvalue()
-    assert "Generated commit message" in output
-    assert "fix: default fallback message" in output
+    assert "Failed to generate commit message" in output
+    assert "claude" not in output
+    assert "default fallback message" not in output
 
 
 def test_generate_commit_msg_writes_commit_message_artifact(
@@ -948,7 +928,6 @@ def test_generate_commit_msg_writes_commit_message_artifact(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -997,7 +976,6 @@ def test_generate_commit_msg_reads_subject_from_markdown_artifact(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -1049,7 +1027,6 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 
@@ -1099,7 +1076,6 @@ def test_generate_commit_applies_message_from_persisted_artifact(
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
-                can_commit=True,
                 json_parser=JsonParserType.CODEX,
             )
 

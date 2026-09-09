@@ -100,11 +100,9 @@ class TestAgentSupport:
             strategy_factory=_FakeStrategy,
             interactive=False,
             cmd="legacy",
-            can_commit=True,
             json_parser=JsonParserType.CLAUDE,
             display_name="Legacy Agent",
         )
-        assert support.config.can_commit is True
         assert support.config.json_parser == JsonParserType.CLAUDE
         assert support.config.display_name == "Legacy Agent"
         assert support.spec.interactive is False

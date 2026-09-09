@@ -14,6 +14,7 @@ from ralph.pipeline.parallel.coordinator import WorkerContext
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 
@@ -85,6 +86,12 @@ def _setup_patches(
 def _make_mock_policy_bundle() -> MagicMock:
     bundle = MagicMock()
     bundle.pipeline.recovery.failed_route = "failed_terminal"
+    bundle.agents = AgentsPolicy(
+        agent_chains={"developer": AgentChainConfig(agents=["developer"])},
+        agent_drains={
+            "development": AgentDrainConfig(chain="developer", drain_class="development")
+        },
+    )
     return bundle
 
 

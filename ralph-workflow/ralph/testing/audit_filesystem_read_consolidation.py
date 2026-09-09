@@ -172,7 +172,7 @@ def _assign_target_names(
 
 
 def _collect_read_provenance(
-    tree: ast.Module, parents: dict[ast.AST, ast.AST]
+    tree: ast.Module, nodes: Sequence[ast.AST], parents: dict[ast.AST, ast.AST]
 ) -> tuple[set[tuple[int | None, str]], set[str], set[str], dict[str, str]]:
     """Return scoped path values plus filesystem module and function aliases."""
     imported_path_names: set[str] = set()
@@ -182,7 +182,7 @@ def _collect_read_provenance(
     _import_alias_names(tree, imported_path_names, os_names, glob_names, direct_read_names)
     constructor_names = set(imported_path_names)
     path_names: set[tuple[int | None, str]] = {(None, name) for name in imported_path_names}
-    for node in ast.walk(tree):
+    for node in nodes:
         scope = _scope_key(node, parents)
         if isinstance(node, ast.Assign):
             if isinstance(node.value, ast.Name) and node.value.id in constructor_names:
@@ -294,7 +294,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
     nodes = list(ast.walk(tree))
     parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
     path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(
-        tree, parents
+        tree, nodes, parents
     )
 
     violations: list[FilesystemReadViolation] = []

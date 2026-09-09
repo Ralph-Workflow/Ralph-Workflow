@@ -58,7 +58,6 @@ if TYPE_CHECKING:
 def _agy_config() -> AgentConfig:
     return AgentConfig(
         cmd="agy",
-        can_commit=False,
         json_parser="generic",
         transport=AgentTransport.AGY,
     )

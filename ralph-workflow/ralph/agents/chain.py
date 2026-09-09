@@ -13,21 +13,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.policy.models import AgentChainConfig, AgentsPolicy, DrainName
-
 from .agent_chain import AgentChain
 from .drain_not_bound_error import DrainNotBoundError
 from .unknown_agent_error import UnknownAgentError
 
 if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
+    from ralph.policy.models import AgentChainConfig, AgentsPolicy, DrainName
 
 __all__ = [
     "AgentChain",
     "ChainManager",
     "DrainNotBoundError",
     "UnknownAgentError",
-    "create_chain_from_config",
 ]
 
 
@@ -50,29 +47,6 @@ class ChainManager:
             agents_policy: Validated agents policy with chain and drain definitions.
         """
         self._policy = agents_policy
-
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> ChainManager:
-        """Create ChainManager from a legacy UnifiedConfig.
-
-        This is a compatibility shim that converts the old UnifiedConfig
-        format to the new AgentsPolicy format.
-
-        Args:
-            config: Legacy unified configuration.
-
-        Returns:
-            ChainManager instance.
-        """
-        agent_chains = dict(config.agent_chains)
-
-        agent_drains = dict(config.agent_drains)
-
-        policy = AgentsPolicy(
-            agent_chains=agent_chains,
-            agent_drains=agent_drains,
-        )
-        return cls(policy)
 
     def chain_for_drain(self, drain: DrainName) -> AgentChainConfig:
         """Get the chain configuration for a drain.
@@ -128,29 +102,3 @@ class ChainManager:
                 errors.append(f"Chain '{name}' has no agents")
 
         return errors
-
-
-def create_chain_from_config(
-    config: UnifiedConfig,
-    chain_name: str,
-) -> AgentChain | None:
-    """Create an AgentChain from UnifiedConfig.
-
-    Args:
-        config: Unified configuration.
-        chain_name: Name of the chain in agent_chains.
-
-    Returns:
-        AgentChain instance or None if chain not found.
-    """
-    chain_config = config.agent_chains.get(chain_name)
-    if chain_config is None:
-        return None
-
-    return AgentChain(
-        agents=chain_config.agents,
-        max_retries=config.general.max_retries,
-        retry_delay_ms=config.general.retry_delay_ms,
-        backoff_multiplier=config.general.backoff_multiplier,
-        max_backoff_ms=config.general.max_backoff_ms,
-    )

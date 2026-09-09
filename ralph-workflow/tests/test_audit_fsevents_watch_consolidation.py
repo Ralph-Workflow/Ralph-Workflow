@@ -101,6 +101,41 @@ def test_audit_skips_schedule_walk_for_modules_without_a_schedule_marker(
     assert violations == []
 
 
+def test_audit_regression_canonical_schedule_check_uses_one_ast_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    workspace_path = package_root / "agents" / "invoke" / "_workspace.py"
+    source = workspace_path.read_text(encoding="utf-8")
+
+    walks = 0
+    original_walk = _ast.walk
+
+    def count_walk(tree: _ast.AST) -> object:
+        nonlocal walks
+        walks += 1
+        return original_walk(tree)
+
+    monkeypatch.setattr(audit.ast, "walk", count_walk)
+
+    violations = audit._check_module(
+        workspace_path,
+        "agents/invoke/_workspace.py",
+        source,
+    )
+
+    assert violations == []
+    assert walks == 1
+
+
 def test_audit_fails_closed_for_invalid_workspace_source_without_schedule_marker(
     tmp_path: Path,
 ) -> None:

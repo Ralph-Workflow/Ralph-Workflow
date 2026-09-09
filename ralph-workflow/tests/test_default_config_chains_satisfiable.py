@@ -65,7 +65,6 @@ def _claude_only_registry() -> AgentRegistry:
         verbose_flag="--verbose",
         json_parser=JsonParserType.CLAUDE,
         session_flag="--resume {}",
-        can_commit=True,
         display_name="Claude",
     )
     registry = AgentRegistry(catalog=AgentCatalog())

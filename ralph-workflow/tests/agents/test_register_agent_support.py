@@ -391,13 +391,11 @@ class TestRegisterAgentSupport:
             cmd="my-agent-cli",
             session_flag="--continue {}",
             output_flag="--json",
-            can_commit=True,
         )
 
         assert config.cmd == "my-agent-cli"
         assert config.session_flag == "--continue {}"
         assert config.output_flag == "--json"
-        assert config.can_commit is True
 
     def test_interactive_default_session_flag_when_session_flag_omitted(self) -> None:
         registry = AgentRegistry()

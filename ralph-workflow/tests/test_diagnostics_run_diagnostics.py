@@ -81,7 +81,6 @@ class TestRunDiagnostics:
         agent_config = AgentConfig(
             cmd="claude",
             output_flag="--json-stream",
-            can_commit=True,
             json_parser=JsonParserType.CLAUDE,
         )
         mock_registry.get.return_value = agent_config

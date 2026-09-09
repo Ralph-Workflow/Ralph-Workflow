@@ -152,7 +152,6 @@ def build_agent_config_payload(agents: Mapping[str, AgentConfig]) -> dict[str, o
             "binary": _binary_name(agent.cmd),
             "model": _safe_model(agent.model),
             "json_parser": agent.json_parser.value,
-            "can_commit": agent.can_commit,
             "subagent_capability": agent.subagent_capability,
             "flags": _flags_present(agent),
         }

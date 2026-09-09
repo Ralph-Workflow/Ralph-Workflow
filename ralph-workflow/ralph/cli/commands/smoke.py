@@ -53,9 +53,8 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
-
-# ``SmokeRunParams`` is re-exported so existing tests can still reach it here.
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
+from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -64,6 +63,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.policy.models import AgentsPolicy
     from ralph.pro_support.hooks import ProPipelineHooks
 
 
@@ -339,22 +339,32 @@ def _ensure_smoke_broker_secret() -> None:
 def _resolve_smoke_agent_name(
     agent_name: str | None,
     transport: AgentTransport,
-    config: UnifiedConfig,
+    agents_policy: AgentsPolicy,
     registry: AgentRegistry,
-    *,
-    bare_alias: str | None = None,
-) -> str:
+) -> str | None:
     """Return the explicit ``--agent`` value, or the operator's configured default.
 
     An explicit ``--agent`` always wins. When the operator passed none, the
-    default comes from their OWN ``[agent_chains]`` -- the same aliases the
-    live pipeline runs -- rather than a hardcoded provider/model literal that
-    the pipeline never runs and that goes stale when the provider retires it.
+    default comes from the effective policy's ``development`` drain rather
+    than a hardcoded provider/model literal or legacy config chain.
     See :mod:`ralph.cli.commands.smoke_agent_defaults`.
     """
     if agent_name is not None:
         return agent_name
-    return resolve_default_smoke_agent(transport, config, registry.get, bare_alias=bare_alias)
+    resolved_agent = resolve_default_smoke_agent(
+        transport,
+        agents_policy,
+        registry.get,
+        drain="development",
+    )
+    if resolved_agent is None:
+        logger.error(
+            "The effective agents policy development drain has no agent for transport '{}'. "
+            "Use --agent to select a compatible agent.",
+            transport.value,
+        )
+        return None
+    return resolved_agent
 
 
 def smoke_harness_agent_command(
@@ -486,8 +496,7 @@ def _resolve_claude_smoke_agent(
     agent_name: str | None,
     *,
     transport: AgentTransport,
-    bare_alias: str,
-) -> str:
+) -> str | None:
     """Return the Claude alias to smoke, defaulting to the operator's own chain entry.
 
     Both Claude smokes used to hardcode ``claude/haiku`` / ``claude-headless/haiku``.
@@ -501,7 +510,8 @@ def _resolve_claude_smoke_agent(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    return _resolve_smoke_agent_name(None, transport, config, registry, bare_alias=bare_alias)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    return _resolve_smoke_agent_name(None, transport, agents_policy, registry)
 
 
 def smoke_interactive_claude_command(
@@ -520,12 +530,14 @@ def smoke_interactive_claude_command(
     (criterion 5). See
     :func:`smoke_harness_agent_command` for the wider contract.
     """
+    resolved_agent = _resolve_claude_smoke_agent(
+        agent_name,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    if resolved_agent is None:
+        return 2
     return smoke_harness_agent_command(
-        _resolve_claude_smoke_agent(
-            agent_name,
-            transport=AgentTransport.CLAUDE_INTERACTIVE,
-            bare_alias="claude",
-        ),
+        resolved_agent,
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
@@ -547,8 +559,8 @@ def smoke_headless_claude_command(
 ) -> int:
     """Run a token-consuming manual parity smoke test for headless Claude.
 
-    Thin pass-through to ``smoke_harness_agent_command`` with the
-    default headless-Claude alias ``claude-headless/haiku``. The
+    With no ``--agent``, the effective policy development drain selects the
+    headless-Claude alias. The
     command exposes the same ``--subagents`` / ``--subagent-prompt-file``
     options as ``smoke_interactive_claude`` so the two transports
     share one scenario surface. The headless transport does NOT
@@ -560,12 +572,14 @@ def smoke_headless_claude_command(
     exclusion (the harness only runs when an operator explicitly
     invokes it).
     """
+    resolved_agent = _resolve_claude_smoke_agent(
+        agent_name,
+        transport=AgentTransport.CLAUDE,
+    )
+    if resolved_agent is None:
+        return 2
     return smoke_harness_agent_command(
-        _resolve_claude_smoke_agent(
-            agent_name,
-            transport=AgentTransport.CLAUDE,
-            bare_alias="claude-headless",
-        ),
+        resolved_agent,
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
@@ -589,9 +603,7 @@ def smoke_interactive_agy_command(
 
     This drives the live ``agy`` binary (or the ``RALPH_AGY_BINARY`` override
     when set). With no ``--agent``, the alias comes from the operator's own
-    ``[agent_chains]`` (the first AGY entry the pipeline would run), falling
-    back to bare ``agy`` -- which passes no ``--model``, so AGY uses the model
-    the operator configured. Use ``--agent`` to pin a published
+    effective agents policy development drain. Use ``--agent`` to pin a published
     ``agy/<model>`` alias.
     """
     agy_binary = smoke_transport_binary(AgentTransport.AGY, "agy")
@@ -610,7 +622,10 @@ def smoke_interactive_agy_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.AGY, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.AGY, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -673,7 +688,10 @@ def smoke_interactive_codex_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CODEX, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CODEX, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -730,7 +748,10 @@ def smoke_interactive_pi_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.PI, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.PI, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -778,7 +799,10 @@ def smoke_interactive_nanocoder_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.NANOCODER, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.NANOCODER, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -820,9 +844,7 @@ def smoke_interactive_cursor_command(
 
     This drives the live ``agent`` binary (or the ``RALPH_CURSOR_BINARY``
     override when set).  With no ``--agent``, the alias comes from the
-    operator's own ``[agent_chains]`` (the first Cursor entry the
-    pipeline would run), falling back to bare ``cursor`` -- which passes
-    no ``--model``, so Cursor uses its documented Auto routing.  The
+    effective agents policy development drain. The
     command is OUTSIDE ``make verify`` per the cursor non-goal of no
     live-token-consuming smoke tests in verify (the harness only runs
     when an operator explicitly invokes it).
@@ -843,7 +865,10 @@ def smoke_interactive_cursor_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CURSOR, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CURSOR, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -886,10 +911,7 @@ def smoke_interactive_kimi_command(
 
     This drives the live ``kimi`` binary (or the ``RALPH_KIMI_BINARY``
     override when set).  With no ``--agent``, the alias comes from the
-    operator's own ``[agent_chains]`` (the first Kimi entry the pipeline
-    would run), falling back to bare ``kimi`` -- which passes no ``-m``,
-    so Kimi Code uses the model configured in
-    ``~/.kimi-code/config.toml``.  To pin one, pass the full configured
+    effective agents policy development drain. To pin one, pass the full configured
     id (the CLI rejects a bare ``-m kimi-for-coding`` with "Model ... is
     not configured in config.toml"), e.g.
     ``--agent kimi/kimi-code/kimi-for-coding``.  The command is OUTSIDE
@@ -912,7 +934,10 @@ def smoke_interactive_kimi_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.KIMI, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.KIMI, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
@@ -953,10 +978,8 @@ def smoke_interactive_opencode_command(
 ) -> int:
     """Run the manual smoke harness against a live ``opencode`` provider/model.
 
-    With no ``--agent``, the alias comes from the operator's own
-    ``[agent_chains]`` (the first OpenCode entry the pipeline would run),
-    falling back to bare ``opencode`` -- which passes no ``--model``, so
-    OpenCode uses the operator's configured default. To pin one, the alias
+    With no ``--agent``, the alias comes from the effective agents policy
+    development drain. To pin one, the alias
     carries BOTH the provider and the model (``opencode/<provider>/<model>``),
     so a single ``--agent`` value selects the full routing target -- e.g.
     ``--agent 'opencode/minimax/MiniMax-M3'`` or
@@ -990,7 +1013,10 @@ def smoke_interactive_opencode_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.OPENCODE, config, registry)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.OPENCODE, agents_policy, registry)
+    if agent_name is None:
+        return 2
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(

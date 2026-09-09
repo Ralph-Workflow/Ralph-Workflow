@@ -42,7 +42,6 @@ class TestAgentDiagnostics:
         agent_config = AgentConfig(
             cmd="claude",
             output_flag="--json-stream",
-            can_commit=True,
             json_parser=JsonParserType.CLAUDE,
             display_name="Claude Code",
         )
@@ -65,7 +64,6 @@ class TestAgentDiagnostics:
         agent_config = AgentConfig(
             cmd="nonexistent-agent",
             output_flag="--json-stream",
-            can_commit=False,
             json_parser=JsonParserType.GENERIC,
         )
         mock_registry.get.return_value = agent_config
@@ -85,14 +83,12 @@ class TestAgentDiagnostics:
         claude_config = AgentConfig(
             cmd="claude",
             output_flag="--json-stream",
-            can_commit=True,
             json_parser=JsonParserType.CLAUDE,
             display_name="Claude",
         )
         opencode_config = AgentConfig(
             cmd="opencode",
             output_flag="--json-stream",
-            can_commit=False,
             json_parser=JsonParserType.OPENCODE,
             display_name="OpenCode",
         )

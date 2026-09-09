@@ -33,7 +33,6 @@ def test_agy_model_alias_sets_published_model_flag_with_commit_permission(name: 
 
     assert config is not None
     assert config.model_flag == f"--model {shlex.quote(name.removeprefix('agy/'))}"
-    assert config.can_commit is True
 
 
 @pytest.mark.parametrize("name", ["agy", "agy/", "agy/not-published"])

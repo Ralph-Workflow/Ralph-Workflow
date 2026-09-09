@@ -143,6 +143,15 @@ def _wire_form_literals_in_source(source: str) -> set[str]:
     return {lit for lit in _all_string_literals(source) if _WIRE_FORM_RE.match(lit)}
 
 
+def _is_transport_adaptation_name(name: str) -> bool:
+    lowered_name = name.lower()
+    return (
+        "transport" in lowered_name
+        or "build_command" in lowered_name
+        or lowered_name.startswith("extract_")
+    )
+
+
 # ---------------------------------------------------------------------------
 # Surface (a) — display rendering: ParallelDisplay is the only display type
 # ---------------------------------------------------------------------------
@@ -1267,10 +1276,38 @@ class TestTransportAdaptationIsNarrow:
 
     NARROW_BODY_LINES_THRESHOLD = 30
 
+    def test_transport_adaptation_regression_parses_only_candidate_modules(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _parse.cache_clear()
+        parsed_paths: list[pathlib.Path] = []
+        cached_parse = _parse
+
+        def record_parse(path: pathlib.Path) -> ast.AST:
+            parsed_paths.append(path)
+            return cached_parse(path)
+
+        monkeypatch.setattr(importlib.import_module(__name__), "_parse", record_parse)
+
+        self.test_transport_adaptation_is_narrow()
+
+        scanned_paths = tuple(
+            path
+            for path in _walk_python_files(RALPH_ROOT / "agents" / "invoke")
+            if path.name != "__init__.py"
+            and any(_is_transport_adaptation_name(name) for name in _DEF_NAME_RE.findall(_read(path)))
+        )
+        assert parsed_paths == list(scanned_paths)
+
     def test_transport_adaptation_is_narrow(self) -> None:
         offenders: list[str] = []
         for path in _walk_python_files(RALPH_ROOT / "agents" / "invoke"):
             if path.name == "__init__.py":
+                continue
+            if not any(
+                _is_transport_adaptation_name(name) for name in _DEF_NAME_RE.findall(_read(path))
+            ):
                 continue
             try:
                 tree = _parse(path)
@@ -1279,11 +1316,8 @@ class TestTransportAdaptationIsNarrow:
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
-                lname = node.name.lower()
                 # Only flag actual transport-adaptation functions.
-                if not (
-                    "transport" in lname or "build_command" in lname or lname.startswith("extract_")
-                ):
+                if not _is_transport_adaptation_name(node.name):
                     continue
                 # Known exceptions documented in
                 # tmp/drift-audit.md Grep 12 (transport-adapter body line count):

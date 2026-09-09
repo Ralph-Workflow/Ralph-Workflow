@@ -110,7 +110,6 @@ Implement a built-in `nanocoder` agent with:
 ```python
 AgentConfig(
     cmd="nanocoder",
-    can_commit=False,
     json_parser=JsonParserType.GENERIC,
     transport=AgentTransport.NANOCODER,
 )

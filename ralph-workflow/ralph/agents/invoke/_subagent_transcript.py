@@ -181,6 +181,7 @@ class ClaudeSubagentTranscriptTails:
                 int,
             ],
         ] = {}  # bounded-accumulator-ok: drained in stop(); bounded by dispatch fan-out
+        self._tails_lock = threading.RLock()
         # Per-dispatch probe registry so R7 fires once per
         # ``tool_use_id``. The key is ``dispatch_tool_use_id``.
         self._probed_dispatch_ids: set[str] = (
@@ -257,8 +258,9 @@ class ClaudeSubagentTranscriptTails:
         """
         if not tool_use_id:
             return False
-        self._completed_dispatch_ids.add(tool_use_id)
-        return self._drop_child_for_tool_use_id(tool_use_id)
+        with self._tails_lock:
+            self._completed_dispatch_ids.add(tool_use_id)
+            return self._drop_child_for_tool_use_id(tool_use_id)
 
     def _drop_child_for_tool_use_id(self, tool_use_id: str) -> bool:
         """Internal helper: scan ``_tails`` for a child whose ``toolUseId`` matches.
@@ -371,19 +373,21 @@ class ClaudeSubagentTranscriptTails:
         bounded timeout so a stuck read cannot wedge the PTY line
         reader's ``_cleanup``.
         """
-        if self._stopped:
-            return
-        self._stopped = True
+        with self._tails_lock:
+            if self._stopped:
+                return
+            self._stopped = True
         self._monitor_stop.set()
         if self._thread is not None:
             self._thread.join(timeout=join_timeout_seconds)
-        for _key, (transcript_path, _meta, _meta_dict, file_obj, _parser, _offset) in list(
-            self._tails.items()
-        ):
-            with contextlib.suppress(Exception):
-                file_obj.close()
-            del transcript_path
-        self._tails.clear()
+        with self._tails_lock:
+            for _key, (transcript_path, _meta, _meta_dict, file_obj, _parser, _offset) in list(
+                self._tails.items()
+            ):
+                with contextlib.suppress(Exception):
+                    file_obj.close()
+                del transcript_path
+            self._tails.clear()
 
     def wait(self, *, timeout_seconds: float | None = None) -> None:
         """Block until the tail thread exits or the timeout elapses."""
@@ -420,52 +424,64 @@ class ClaudeSubagentTranscriptTails:
         fast-returning-child pattern and the test surface asserts
         it explicitly.
         """
-        for transcript_path, meta_path in find_claude_subagent_transcripts(self._session_id):
-            key = str(transcript_path)
-            if key in self._tails:
-                continue
-            meta_dict = read_meta_file(meta_path) if meta_path is not None else None
-            if isinstance(meta_dict, dict):
-                child_use_id: object = meta_dict.get("toolUseId")
-                if isinstance(child_use_id, str) and child_use_id in self._completed_dispatch_ids:
-                    # The parent's ``tool_result`` already landed
-                    # for this child. Drop on first observation;
-                    # do not register a tail entry, do not open a
-                    # file handle, do not start a parser.
+        with self._tails_lock:
+            for transcript_path, meta_path in find_claude_subagent_transcripts(self._session_id):
+                key = str(transcript_path)
+                if key in self._tails:
                     continue
-            parser = ClaudeInteractiveTranscriptParser()
-            try:
-                file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            self._tails[key] = (transcript_path, meta_path, meta_dict, file_obj, parser, 0)
+                meta_dict = read_meta_file(meta_path) if meta_path is not None else None
+                if isinstance(meta_dict, dict):
+                    child_use_id: object = meta_dict.get("toolUseId")
+                    if (
+                        isinstance(child_use_id, str)
+                        and child_use_id in self._completed_dispatch_ids
+                    ):
+                        # The parent's ``tool_result`` already landed
+                        # for this child. Drop on first observation;
+                        # do not register a tail entry, do not open a
+                        # file handle, do not start a parser.
+                        continue
+                parser = ClaudeInteractiveTranscriptParser()
+                try:
+                    file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                self._tails[key] = (transcript_path, meta_path, meta_dict, file_obj, parser, 0)
 
     def _advance_all_tails(self) -> None:
         """Read any new bytes from each tailed file and forward events."""
-        for key in list(self._tails.keys()):
-            entry = self._tails[key]
-            transcript_path, _meta_path, meta_dict, file_obj, parser, offset = entry
-            try:
-                # Stat the file to detect truncation/rotation. The
-                # tailer does not abort on truncation (it simply
-                # rewinds to byte 0 the next tick) but it does NOT
-                # use mtime as a stop condition -- a quiet in-process
-                # child can have a stale mtime and still emit a fresh
-                # line on the next tick.
-                file_obj.seek(0, 2)  # seek to end to learn the new size
-                end = file_obj.tell()
-                if end < offset:
-                    # File was truncated/rotated; rewind to byte 0.
-                    file_obj.seek(0)
-                    offset = 0
-                if end > offset:
-                    file_obj.seek(offset)
-                    chunk = file_obj.read(end - offset)
-                    offset = end
-                    self._forward_chunk(parser, chunk, transcript_path, meta_dict)
-            except OSError:
-                continue
-            self._tails[key] = (transcript_path, _meta_path, meta_dict, file_obj, parser, offset)
+        with self._tails_lock:
+            for key in list(self._tails.keys()):
+                entry = self._tails[key]
+                transcript_path, _meta_path, meta_dict, file_obj, parser, offset = entry
+                try:
+                    # Stat the file to detect truncation/rotation. The
+                    # tailer does not abort on truncation (it simply
+                    # rewinds to byte 0 the next tick) but it does NOT
+                    # use mtime as a stop condition -- a quiet in-process
+                    # child can have a stale mtime and still emit a fresh
+                    # line on the next tick.
+                    file_obj.seek(0, 2)  # seek to end to learn the new size
+                    end = file_obj.tell()
+                    if end < offset:
+                        # File was truncated/rotated; rewind to byte 0.
+                        file_obj.seek(0)
+                        offset = 0
+                    if end > offset:
+                        file_obj.seek(offset)
+                        chunk = file_obj.read(end - offset)
+                        offset = end
+                        self._forward_chunk(parser, chunk, transcript_path, meta_dict)
+                except OSError:
+                    continue
+                self._tails[key] = (
+                    transcript_path,
+                    _meta_path,
+                    meta_dict,
+                    file_obj,
+                    parser,
+                    offset,
+                )
 
     def _forward_chunk(
         self,

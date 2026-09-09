@@ -2,7 +2,7 @@
 
 The kimi dynamic alias synthesizes an :class:`AgentConfig` from the
 built-in kimi entry with a ``-m <model>`` model flag (the documented
-Kimi Code short model flag) and ``can_commit=True``.  Model ids are
+Kimi Code short model flag. Model ids are
 slash-delimited alias paths (e.g. ``kimi-code/k3-256k``) that MUST be
 preserved verbatim, and argv-unsafe shapes fail closed (``None``) so a
 malformed alias never reaches the command builder.
@@ -32,7 +32,6 @@ def test_kimi_dynamic_alias_resolves_slash_model_path() -> None:
     # ``shlex.quote`` is a no-op for this id (no shell-special chars),
     # so the flag is the plain two-token form.
     assert config.model_flag == "-m kimi-code/k3-256k"
-    assert config.can_commit is True
 
 
 def test_kimi_dynamic_alias_model_flag_tokenizes_to_two_argv_tokens() -> None:
@@ -54,7 +53,6 @@ def test_kimi_dynamic_alias_accepts_plain_model_id() -> None:
 
     assert config is not None
     assert config.model_flag == "-m kimi-for-coding"
-    assert config.can_commit is True
 
 
 def test_kimi_dynamic_alias_is_visible_in_catalog() -> None:

@@ -54,8 +54,6 @@ def test_provider_model_aliases_preserve_nested_model_paths(
     assert catalog_support is not None
     assert registry_config.model_flag == expected_model_flag
     assert catalog_support.config.model_flag == expected_model_flag
-    assert registry_config.can_commit is True
-    assert catalog_support.config.can_commit is True
 
 
 @pytest.mark.parametrize(
@@ -114,8 +112,6 @@ class TestCursorAlias:
         assert catalog_support.config.model_flag == (
             "--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'"
         )
-        assert config.can_commit is True
-        assert catalog_support.config.can_commit is True
 
     def test_cursor_auto_resolves_to_model_auto(self) -> None:
         """``cursor/auto`` is the explicit Auto alias.
@@ -135,7 +131,6 @@ class TestCursorAlias:
         assert catalog_support is not None
         assert config.model_flag == "--model auto"
         assert catalog_support.config.model_flag == "--model auto"
-        assert config.can_commit is True
 
     @pytest.mark.parametrize(
         "alias",
@@ -187,4 +182,3 @@ class TestCursorAlias:
         assert config.yolo_flag == "--yolo"
         assert config.output_flag == "--output-format stream-json"
         assert config.print_flag == "--print"
-        assert config.can_commit is True

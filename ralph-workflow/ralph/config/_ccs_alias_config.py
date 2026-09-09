@@ -10,7 +10,7 @@ from ralph.pydantic_compat import RalphBaseModel
 class CcsAliasConfig(RalphBaseModel):
     """Per-alias CCS configuration (table form)."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     cmd: str
     output_flag: str | None = None
@@ -19,7 +19,6 @@ class CcsAliasConfig(RalphBaseModel):
     print_flag: str | None = None
     streaming_flag: str | None = None
     json_parser: str | None = None
-    can_commit: bool | None = None
     model_flag: str | None = None
     session_flag: str | None = None
 

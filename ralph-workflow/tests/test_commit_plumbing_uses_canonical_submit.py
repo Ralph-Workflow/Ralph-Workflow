@@ -208,7 +208,6 @@ def _make_agent() -> AgentConfig:
     return AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
-        can_commit=False,
         json_parser="claude",
         transport=AgentTransport.CLAUDE,
     )

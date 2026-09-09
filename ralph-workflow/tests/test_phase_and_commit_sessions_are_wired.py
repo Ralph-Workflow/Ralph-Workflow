@@ -14,11 +14,26 @@ That is the same criticism the fix itself made of the code it replaced
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from ralph.pipeline.effects import FanOutEffect
+from ralph.pipeline.fan_out import build_session_mcp_plan_for_phase
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PolicyBundle,
+)
+from ralph.policy.validation import PolicyValidationError
+from ralph.workspace.scope import WorkspaceScope
 
 
 class _RecordingBridgeFactory:
@@ -129,6 +144,101 @@ def test_the_phase_plan_passes_the_RESOLVED_chain_transport(
 
     assert recorded["chain_transport"] is AgentTransport.CODEX
     assert recorded["chain_is_ambiguous"] is True
+
+
+def test_fan_out_regression_policy_chain_wins_over_divergent_config_chain(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline import fan_out
+
+    policy_agents = ["policy-primary", "policy-fallback"]
+    bundle = PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={"policy-chain": AgentChainConfig(agents=policy_agents)},
+            agent_drains={"parallel": AgentDrainConfig(chain="policy-chain")},
+        ),
+        pipeline=PipelinePolicy(
+            phases={
+                "parallel-build": PhaseDefinition(
+                    drain="parallel",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="parallel-build",
+            terminal_phase="complete",
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+    )
+    config = UnifiedConfig(
+        agent_chains={"config-chain": ["config-only"]},
+        agent_drains={"parallel": "config-chain"},
+    )
+    captured: list[str] = []
+
+    def _resolve(candidates: list[str], _config: UnifiedConfig) -> tuple[None, bool]:
+        captured.extend(candidates)
+        return None, False
+
+    monkeypatch.setattr(fan_out, "resolve_phase_session_transport", _resolve)
+    monkeypatch.setattr(fan_out, "build_session_mcp_plan", lambda **_kwargs: SimpleNamespace())
+
+    session_plan, drain = build_session_mcp_plan_for_phase(
+        FanOutEffect(work_units=(), max_workers=1, phase="parallel-build"),
+        bundle,
+        WorkspaceScope(tmp_path),
+        config,
+    )
+
+    assert isinstance(session_plan, SimpleNamespace)
+    assert drain == "parallel"
+    assert captured == policy_agents
+
+
+def test_fan_out_propagates_policy_validation_without_reloading_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline import fan_out
+
+    bundle = PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={"policy-chain": AgentChainConfig(agents=["policy-primary"])},
+            agent_drains={"parallel": AgentDrainConfig(chain="policy-chain")},
+        ),
+        pipeline=PipelinePolicy(
+            phases={
+                "parallel-build": PhaseDefinition(
+                    drain="parallel",
+                    transitions=PhaseTransition(on_success="parallel-build"),
+                )
+            },
+            entry_phase="parallel-build",
+            terminal_phase="parallel-build",
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+    )
+    monkeypatch.setattr(fan_out, "resolve_phase_session_transport", lambda _agents, _config: (None, False))
+    monkeypatch.setattr(
+        fan_out,
+        "build_session_mcp_plan",
+        lambda **_kwargs: (_ for _ in ()).throw(PolicyValidationError("invalid supplied policy")),
+    )
+
+    with pytest.raises(PolicyValidationError, match="invalid supplied policy"):
+        build_session_mcp_plan_for_phase(
+            FanOutEffect(work_units=(), max_workers=1, phase="parallel-build"),
+            bundle,
+            WorkspaceScope(tmp_path),
+            None,
+        )
 
 
 def test_the_commit_call_site_asks_whether_the_chain_is_ambiguous(

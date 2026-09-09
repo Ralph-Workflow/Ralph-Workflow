@@ -69,7 +69,6 @@ def _claude_config() -> AgentConfig:
     return AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
-        can_commit=False,
         json_parser="claude",
         transport=AgentTransport.CLAUDE,
     )
@@ -78,7 +77,6 @@ def _claude_config() -> AgentConfig:
 def _agy_config() -> AgentConfig:
     return AgentConfig(
         cmd="agy",
-        can_commit=False,
         json_parser="generic",
         transport=AgentTransport.AGY,
     )

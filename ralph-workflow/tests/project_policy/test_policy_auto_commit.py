@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.git.commit_result import CommitCreationResult
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.project_policy._auto_commit import (
     POLICY_AUTO_COMMIT_SUBJECT,
@@ -36,7 +37,7 @@ pytestmark = pytest.mark.subprocess_e2e
 
 @pytest.fixture
 def fake_create_commit() -> MagicMock:
-    return MagicMock(return_value="f" * 40)
+    return MagicMock(return_value=CommitCreationResult.created("f" * 40))
 
 
 @pytest.mark.timeout_seconds(5)

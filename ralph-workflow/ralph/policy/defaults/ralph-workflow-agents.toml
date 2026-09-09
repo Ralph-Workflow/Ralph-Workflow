@@ -31,7 +31,6 @@ yolo_flag = "--dangerously-skip-permissions"
 verbose_flag = "--verbose"
 json_parser = "claude"
 session_flag = "--resume {}"
-can_commit = true
 display_name = "Claude"
 # Claude Code's native sub-agent / task tooling is enabled by default in
 # this build. Plans that declare work_units / parallel_plan are
@@ -49,7 +48,6 @@ subagent_capability = true
 # verbose_flag = "--verbose"
 # json_parser = "claude"
 # session_flag = "--resume {}"
-# can_commit = true
 # display_name = "Claude"
 # @AGENT-BLOCK-END
 
@@ -64,7 +62,6 @@ subagent_capability = true
 # streaming_flag = "--include-partial-messages"
 # json_parser = "claude"
 # session_flag = "--resume {}"
-# can_commit = true
 # display_name = "Claude Code (headless)"
 # @AGENT-BLOCK-END
 
@@ -75,7 +72,6 @@ subagent_capability = true
 # output_flag = "--json"
 # yolo_flag = "--dangerously-bypass-approvals-and-sandbox"
 # json_parser = "codex"
-# can_commit = true
 # display_name = "Codex"
 # @AGENT-BLOCK-END
 
@@ -88,7 +84,6 @@ subagent_capability = true
 # transport = "opencode"
 # json_parser = "opencode"
 # session_flag = "--session {}"
-# can_commit = false
 # display_name = "OpenCode"
 # @AGENT-BLOCK-END
 
@@ -97,7 +92,6 @@ subagent_capability = true
 # cmd = "nanocoder"
 # transport = "nanocoder"
 # json_parser = "generic"
-# can_commit = false
 # display_name = "Nanocoder"
 # @AGENT-BLOCK-END
 
@@ -108,7 +102,6 @@ subagent_capability = true
 # yolo_flag = "--dangerously-skip-permissions"
 # print_flag = "--print"
 # json_parser = "generic"
-# can_commit = false
 # display_name = "Google Anti Gravity"
 # @AGENT-BLOCK-END
 
@@ -120,7 +113,6 @@ subagent_capability = true
 # yolo_flag = "--approve"
 # json_parser = "pi"
 # session_flag = "--session {}"
-# can_commit = true
 # display_name = "Pi"
 # @AGENT-BLOCK-END
 
@@ -134,7 +126,6 @@ subagent_capability = true
 # streaming_flag = "--stream-partial-output"
 # json_parser = "generic"
 # session_flag = "--resume {}"
-# can_commit = true
 # display_name = "Cursor"
 # @AGENT-BLOCK-END
 
@@ -146,7 +137,5 @@ subagent_capability = true
 # print_flag = "-p"
 # json_parser = "generic"
 # session_flag = "-S {}"
-# can_commit = true
 # display_name = "Kimi"
 # @AGENT-BLOCK-END
-

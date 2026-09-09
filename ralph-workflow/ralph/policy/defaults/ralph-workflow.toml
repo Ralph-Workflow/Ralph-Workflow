@@ -209,7 +209,6 @@ commit = "commit"
 # streaming_flag = "--include-partial-messages"
 # json_parser = "claude"
 # session_flag = "--resume {}"
-# can_commit = true
 
 # Edit this only if you need a named CCS model alias.
 # -----------------------------------------------------------------------------
@@ -222,9 +221,7 @@ commit = "commit"
 # [ccs_aliases.claude]
 # cmd = "claude"
 # model_flag = "--model claude-sonnet-4"
-# can_commit = true
 #
 # [ccs_aliases.opencode]
 # cmd = "opencode"
 # model_flag = "--model opencode-o3"
-# can_commit = false

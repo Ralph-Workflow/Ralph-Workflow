@@ -99,15 +99,15 @@ _SUBPROCESS_CALLS: frozenset[str] = frozenset(
 )
 
 
-def _module_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str], dict[str, str]]:
-    time_names = _imported_names(tree, module="time", accepted={"time", "sleep"})
-    asyncio_names = _imported_names(tree, module="asyncio", accepted={"asyncio", "sleep"})
-    observer_names = _observer_aliases(tree)
-    subprocess_names = _subprocess_aliases(tree)
+def _module_aliases(nodes: Sequence[ast.AST]) -> tuple[set[str], set[str], set[str], dict[str, str]]:
+    time_names = _imported_names(nodes, module="time", accepted={"time", "sleep"})
+    asyncio_names = _imported_names(nodes, module="asyncio", accepted={"asyncio", "sleep"})
+    observer_names = _observer_aliases(nodes)
+    subprocess_names = _subprocess_aliases(nodes)
     return time_names, asyncio_names, observer_names, subprocess_names
 
 
-def _observer_aliases(tree: ast.Module) -> set[str]:
+def _observer_aliases(nodes: Sequence[ast.AST]) -> set[str]:
     """Return local roots that can construct watchdog observers.
 
     ``import watchdog`` exposes the same observer constructor as a direct
@@ -115,9 +115,9 @@ def _observer_aliases(tree: ast.Module) -> set[str]:
     watch owner from evading P1/P4 enforcement through attribute chaining.
     """
     aliases = _imported_names(
-        tree, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
+        nodes, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
     )
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Import):
             aliases.update(
                 imported.asname or imported.name
@@ -133,7 +133,7 @@ def _observer_aliases(tree: ast.Module) -> set[str]:
     return aliases
 
 
-def _subprocess_aliases(tree: ast.Module) -> dict[str, str]:
+def _subprocess_aliases(nodes: Sequence[ast.AST]) -> dict[str, str]:
     """Map local subprocess import names to their canonical API names.
 
     Direct imports retain their canonical member so an alias such as
@@ -141,7 +141,7 @@ def _subprocess_aliases(tree: ast.Module) -> dict[str, str]:
     ownership audit.
     """
     aliases: dict[str, str] = {}
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Import):
             for imported in node.names:
                 if imported.name == "subprocess":
@@ -153,9 +153,11 @@ def _subprocess_aliases(tree: ast.Module) -> dict[str, str]:
     return aliases
 
 
-def _imported_names(tree: ast.Module, *, module: str, accepted: set[str]) -> set[str]:
+def _imported_names(
+    nodes: Sequence[ast.AST], *, module: str, accepted: set[str]
+) -> set[str]:
     names: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Import):
             names.update(
                 imported.asname or imported.name
@@ -290,10 +292,11 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
                 "module could not be parsed; audit fails closed",
             )
         ]
+    nodes = list(ast.walk(tree))
     markers = _marker_lines(source)
-    time_names, asyncio_names, observer_names, subprocess_names = _module_aliases(tree)
+    time_names, asyncio_names, observer_names, subprocess_names = _module_aliases(nodes)
     violations: list[FilesystemPollingInvocationViolation] = []
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call) or _has_local_marker(node.lineno, markers):
             continue
         details = _violation_for_call(

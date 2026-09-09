@@ -83,6 +83,10 @@ _EXIT_PREFLIGHT: int = 2
 
 
 EmitFn = Callable[[str], None]
+WorkingTreeSnapshot = Callable[["WorkspaceScope"], frozenset[str]]
+PolicyCommit = Callable[
+    ["WorkspaceScope", frozenset[str] | None, frozenset[str] | None], None
+]
 
 #: Estimated wall-clock cost of the one-time policy setup. Stated in one
 #: place because it appears in several strings; it is an estimate, not a
@@ -515,6 +519,7 @@ def _track_authored_paths(
     invoke_agent: InvokePolicyAgent,
     workspace_scope: WorkspaceScope,
     authored: set[str],
+    working_tree_snapshot: WorkingTreeSnapshot,
 ) -> InvokePolicyAgent:
     """Wrap ``invoke_agent`` so it records what the REMEDIATION agent authored.
 
@@ -533,14 +538,22 @@ def _track_authored_paths(
     def tracked(*, phase: str, prompt_path: str) -> bool:
         if phase != PHASE_REMEDIATION:
             return invoke_agent(phase=phase, prompt_path=prompt_path)
-        before = _snapshot_working_tree(workspace_scope)
+        before = working_tree_snapshot(workspace_scope)
         try:
             return invoke_agent(phase=phase, prompt_path=prompt_path)
         finally:
-            authored.update(_snapshot_working_tree(workspace_scope) - before)
+            authored.update(working_tree_snapshot(workspace_scope) - before)
 
     typed: InvokePolicyAgent = tracked
     return typed
+
+
+def _commit_policy_changes(
+    workspace_scope: WorkspaceScope,
+    pre_run_dirty: frozenset[str] | None,
+    authored_paths: frozenset[str] | None,
+) -> None:
+    _auto_commit_policy_changes(workspace_scope, pre_run_dirty, authored_paths)
 
 
 def _finalize_ready_state(
@@ -549,6 +562,8 @@ def _finalize_ready_state(
     stack: ProjectStack,
     pre_run_dirty: frozenset[str] | None = None,
     authored_paths: frozenset[str] | None = None,
+    *,
+    commit_policy_updates: PolicyCommit = _commit_policy_changes,
 ) -> None:
     """Post-READY housekeeping: condense the temporary AGENTS.md placeholder
     block to its concise form, commit the policy surfaces, then write the
@@ -567,7 +582,7 @@ def _finalize_ready_state(
         policy_agents_md.condense_placeholder_block(workspace)
     except Exception as exc:
         logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
-    _auto_commit_policy_changes(workspace_scope, pre_run_dirty, authored_paths)
+    commit_policy_updates(workspace_scope, pre_run_dirty, authored_paths)
     try:
         policy_cache.write_cache(workspace, stack, policy_models.ReadinessStatus.READY)
     except Exception as exc:
@@ -635,6 +650,8 @@ def _dispatch_preflight_result(
     emit: Callable[[str], None],
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
     pre_run_dirty: frozenset[str],
+    working_tree_snapshot: WorkingTreeSnapshot,
+    commit_policy_updates: PolicyCommit,
 ) -> int:
     """Run the policy pipeline and map its result to an exit code.
 
@@ -660,7 +677,7 @@ def _dispatch_preflight_result(
             "project-policy-readiness: the policy_remediation chain has no "
             "configured agent; continuing without a ready policy."
         )
-        _auto_commit_policy_changes(workspace_scope, pre_run_dirty, frozenset())
+        commit_policy_updates(workspace_scope, pre_run_dirty, frozenset())
         return _exit_code_for_not_ready(mode)
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
@@ -679,7 +696,12 @@ def _dispatch_preflight_result(
     # Record what the REMEDIATION agent writes outside the canonical directory
     # (its gate scripts), so the deterministic auto-commit can pick them up.
     authored: set[str] = set()
-    invoke_agent = _track_authored_paths(invoke_agent, workspace_scope, authored)
+    invoke_agent = _track_authored_paths(
+        invoke_agent,
+        workspace_scope,
+        authored,
+        working_tree_snapshot,
+    )
 
     # Drive the SAME display lifecycle the pipeline run loop uses: a started
     # display (live status bar) for the duration of the agent work. The
@@ -732,7 +754,14 @@ def _dispatch_preflight_result(
                 on_remediation_attempt=_on_remediation_attempt,
             )
     if final.is_ready():
-        _finalize_ready_state(workspace, workspace_scope, stack, pre_run_dirty, frozenset(authored))
+        _finalize_ready_state(
+            workspace,
+            workspace_scope,
+            stack,
+            pre_run_dirty,
+            frozenset(authored),
+            commit_policy_updates=commit_policy_updates,
+        )
         return _EXIT_SUCCESS
     # The NOT-READY route must run the same deterministic scoped commit the
     # READY route runs, with the same ``pre_run_dirty`` and the same tracked
@@ -740,7 +769,7 @@ def _dispatch_preflight_result(
     # committed instead of left for the next phase. The placeholder
     # AGENTS.md block is NOT condensed here: only ``_finalize_ready_state``
     # owns that mutation, and the project is not ready.
-    _auto_commit_policy_changes(workspace_scope, pre_run_dirty, frozenset(authored))
+    commit_policy_updates(workspace_scope, pre_run_dirty, frozenset(authored))
     emit("\n".join(final.report_lines))
     return _exit_code_for_not_ready(mode)
 
@@ -773,6 +802,8 @@ def run_project_policy_readiness(
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None = None,
     select_factory: _prompt_ui.SelectFn | None = None,
     is_tty: Callable[[], bool] | None = None,
+    working_tree_snapshot: WorkingTreeSnapshot = _snapshot_working_tree,
+    commit_policy_updates: PolicyCommit = _commit_policy_changes,
 ) -> int:
     """Run the project-policy preflight at run_pipeline startup. NEVER blocks.
 
@@ -808,6 +839,8 @@ def run_project_policy_readiness(
             invoke_remediation_agent_factory=invoke_remediation_agent_factory,
             select_factory=select_factory,
             is_tty=is_tty,
+            working_tree_snapshot=working_tree_snapshot,
+            commit_policy_updates=commit_policy_updates,
         )
     except Exception as exc:
         logger.opt(exception=True).warning(
@@ -851,6 +884,8 @@ def _run_policy_readiness(
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
     select_factory: _prompt_ui.SelectFn | None,
     is_tty: Callable[[], bool] | None,
+    working_tree_snapshot: WorkingTreeSnapshot,
+    commit_policy_updates: PolicyCommit,
 ) -> int:
     """The preflight body. Every exit path here is wrapped by the fault boundary.
 
@@ -874,7 +909,7 @@ def _run_policy_readiness(
     # outside the dispatch helper so the deterministic chore commit's
     # exclusion set does NOT swallow the policy surfaces the bootstrap
     # seeded (the surfaces the commit exists to pick up).
-    pre_run_dirty = _snapshot_working_tree(workspace_scope)
+    pre_run_dirty = working_tree_snapshot(workspace_scope)
 
     emit = _build_emit(display_context, emit_factory)
     workspace = _build_workspace(load_result, workspace_factory)
@@ -906,7 +941,14 @@ def _run_policy_readiness(
     # LOOKS ready is the entire point of the flag.
     if result.is_ready() and not mode.is_explicit():
         emit(f"project-policy-readiness: ready ({len(result.changed_files)} files updated)")
-        _finalize_ready_state(workspace, workspace_scope, stack, pre_run_dirty, frozenset())
+        _finalize_ready_state(
+            workspace,
+            workspace_scope,
+            stack,
+            pre_run_dirty,
+            frozenset(),
+            commit_policy_updates=commit_policy_updates,
+        )
         return _EXIT_SUCCESS
 
     return _dispatch_preflight_result(
@@ -921,6 +963,8 @@ def _run_policy_readiness(
         emit=emit,
         invoke_remediation_agent_factory=invoke_remediation_agent_factory,
         pre_run_dirty=pre_run_dirty,
+        working_tree_snapshot=working_tree_snapshot,
+        commit_policy_updates=commit_policy_updates,
     )
 
 

@@ -2253,7 +2253,6 @@ def test_agent_config_context_keeps_model_and_reduces_flags_to_booleans(
                 model="zai-coding-plan/glm-5.2",
                 yolo_flag="--dangerously-skip-permissions",
                 model_flag="--model",
-                can_commit=True,
             ),
         }
     )
@@ -2263,7 +2262,6 @@ def test_agent_config_context_keeps_model_and_reduces_flags_to_booleans(
     entry = must_mapping(agents["claude"])
     assert entry["model"] == "zai-coding-plan/glm-5.2"
     assert entry["binary"] == "claude"
-    assert entry["can_commit"] is True
     flags = must_mapping(entry["flags"])
     assert flags["yolo_flag"] is True
     assert flags["model_flag"] is True

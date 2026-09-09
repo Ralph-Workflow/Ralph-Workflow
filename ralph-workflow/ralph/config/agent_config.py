@@ -16,7 +16,6 @@ class AgentConfig(RalphBaseModel):
         output_flag: Optional output format flag for streaming JSON.
         yolo_flag: Optional autonomous/non-interactive flag string.
         verbose_flag: Flag for verbose output.
-        can_commit: Whether the agent can run git commit.
         json_parser: Which JSON parser to use for agent output.
         model_flag: Optional model/provider flag.
         print_flag: Optional print flag for non-interactive output mode.
@@ -35,13 +34,12 @@ class AgentConfig(RalphBaseModel):
             overrides both inherit the sub-agent-enabled default.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     cmd: str
     output_flag: str | None = None
     yolo_flag: str | None = None
     verbose_flag: str | None = None
-    can_commit: bool = False
     json_parser: JsonParserType = JsonParserType.GENERIC
     model_flag: str | None = None
     print_flag: str | None = None

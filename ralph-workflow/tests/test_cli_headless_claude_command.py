@@ -36,12 +36,20 @@ import typer.testing
 
 from ralph.cli.commands.smoke import smoke_headless_claude_command
 from ralph.cli.main import smoke_headless_claude, smoke_interactive_claude
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 _RUNNER = typer.testing.CliRunner()
 _HEADLESS_HELP_APP = typer.Typer()
 _HEADLESS_HELP_APP.command()(smoke_headless_claude)
 _INTERACTIVE_HELP_APP = typer.Typer()
 _INTERACTIVE_HELP_APP.command()(smoke_interactive_claude)
+
+
+def _headless_smoke_policy() -> AgentsPolicy:
+    return AgentsPolicy(
+        agent_chains={"smoke-development": AgentChainConfig(agents=["claude-headless"])},
+        agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
+    )
 
 
 def _resolved_default_agent() -> str:
@@ -54,6 +62,10 @@ def _resolved_default_agent() -> str:
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr("ralph.cli.commands.smoke.smoke_harness_agent_command", _stub)
+        patch.setattr(
+            "ralph.cli.commands.smoke.load_agents_policy_for_workspace_scope",
+            lambda *_args, **_kwargs: _headless_smoke_policy(),
+        )
         smoke_headless_claude_command()
     return str(captured["agent_name"])
 
@@ -104,6 +116,10 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
         "ralph.cli.commands.smoke.smoke_harness_agent_command",
         _stub_harness,
     )
+    monkeypatch.setattr(
+        "ralph.cli.commands.smoke.load_agents_policy_for_workspace_scope",
+        lambda *_args, **_kwargs: _headless_smoke_policy(),
+    )
     rc = smoke_headless_claude_command(
         subagents=True,
         subagent_prompt_file=None,
@@ -144,6 +160,10 @@ def test_smoke_headless_claude_command_default_no_subagents(
     monkeypatch.setattr(
         "ralph.cli.commands.smoke.smoke_harness_agent_command",
         _stub_harness,
+    )
+    monkeypatch.setattr(
+        "ralph.cli.commands.smoke.load_agents_policy_for_workspace_scope",
+        lambda *_args, **_kwargs: _headless_smoke_policy(),
     )
     rc = smoke_headless_claude_command()
     assert rc == 0

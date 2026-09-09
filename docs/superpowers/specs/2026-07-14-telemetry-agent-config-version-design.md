@@ -28,7 +28,7 @@ Per agent, reduced by `ralph/telemetry/_agent_config_payload.py`:
 | `transport` | closed vocabulary, else `generic` |
 | `model` | **verbatim** (e.g. `zai-coding-plan/glm-5.2`) |
 | `cmd` | reduced to `argv[0]` basename, and only if a known agent binary; else `custom` |
-| `json_parser`, `can_commit`, `subagent_capability` | verbatim (enum / bool) |
+| `json_parser`, `subagent_capability` | verbatim (enum / bool) |
 | the seven `*_flag` fields | reduced to presence booleans; flag **values** never leave |
 
 Entries capped at 32; the true size is still reported via `agent_count`.

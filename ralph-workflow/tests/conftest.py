@@ -411,13 +411,11 @@ def sample_config_dict() -> dict[str, object]:
                 "cmd": "claude",
                 "output_flag": "--output-format=stream-json",
                 "yolo_flag": "--permission-mode auto",
-                "can_commit": True,
                 "json_parser": "claude",
             },
             "opencode": {
                 "cmd": "opencode",
                 "output_flag": "--json-stream",
-                "can_commit": False,
                 "json_parser": "opencode",
             },
         },

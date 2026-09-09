@@ -343,9 +343,10 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
 
 
 def test_main_runs_all_verify_steps_when_successful(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = StubRunner(_all_steps_success_responses())
+    monkeypatch.setattr(verify_module.time, "monotonic", lambda: 0.0)
 
     exit_code = main([], runner=runner, cwd=tmp_path)
 

@@ -138,7 +138,7 @@ def _parallel_or_agent_effect(
             )
         else:
             return _fan_out_effect(state, phase_def, work_units)
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
     return InvokeAgentEffect(
@@ -278,7 +278,7 @@ def _commit_phase_effect(
     ):
         delete_commit_message_artifacts(workspace_scope.root)
         return EarlySkipCommitEffect()
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
     return InvokeAgentEffect(
@@ -303,8 +303,6 @@ def _should_early_skip_commit(
 def _agent_name_for_phase_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
-    *,
-    config: UnifiedConfig | None = None,
 ) -> str | None:
     current_agent = state.current_agent()
     if current_agent is not None:
@@ -313,14 +311,6 @@ def _agent_name_for_phase_from_policy(
     phase_def = policy_bundle.pipeline.phases.get(state.phase)
     if phase_def is None:
         return None
-
-    config_agents = _config_agents_for_phase(
-        config,
-        phase=state.phase,
-        policy_drain=phase_def.drain,
-    )
-    if config_agents:
-        return config_agents[0]
 
     drain_binding = policy_bundle.agents.agent_drains.get(phase_def.drain)
     if drain_binding is None:
@@ -334,22 +324,12 @@ def _agent_name_for_phase_from_policy(
 
 
 def _agents_for_phase(
-    config: UnifiedConfig,
+    _config: UnifiedConfig,
     phase: str,
     *,
     agents_policy: AgentsPolicy | None = None,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> list[str]:
-    policy_drain: str | None = None
-    if pipeline_policy is not None:
-        phase_def = pipeline_policy.phases.get(phase)
-        if phase_def is not None:
-            policy_drain = phase_def.drain
-
-    config_agents = _config_agents_for_phase(config, phase=phase, policy_drain=policy_drain)
-    if config_agents:
-        return config_agents
-
     if agents_policy is None or pipeline_policy is None:
         return []
 
@@ -368,39 +348,4 @@ def _agents_for_phase(
     return list(chain_config.agents)
 
 
-def _config_drain_candidates(*, phase: str, policy_drain: str | None) -> tuple[str, ...]:
-    deduped: list[str] = []
-    for candidate in (policy_drain, phase):
-        if candidate and candidate not in deduped:
-            deduped.append(candidate)
-    return tuple(deduped)
-
-
-def _config_agents_for_phase(
-    config: UnifiedConfig | None,
-    *,
-    phase: str,
-    policy_drain: str | None,
-) -> list[str]:
-    if config is None:
-        return []
-
-    for drain_name in _config_drain_candidates(phase=phase, policy_drain=policy_drain):
-        drain_cfg = config.agent_drains.get(drain_name)
-        if drain_cfg is not None:
-            chain_name = drain_cfg if isinstance(drain_cfg, str) else drain_cfg.chain
-            chain_cfg = config.agent_chains.get(chain_name)
-            if chain_cfg is not None:
-                agents = chain_cfg if isinstance(chain_cfg, list) else chain_cfg.agents
-                return list(agents)
-        direct_chain_cfg = config.agent_chains.get(drain_name)
-        if direct_chain_cfg is not None:
-            agents = (
-                direct_chain_cfg if isinstance(direct_chain_cfg, list) else direct_chain_cfg.agents
-            )
-            return list(agents)
-    return []
-
-
 agents_for_phase = _agents_for_phase
-config_agents_for_phase = _config_agents_for_phase

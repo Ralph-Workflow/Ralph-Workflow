@@ -1,63 +1,27 @@
-"""Resolve smoke-harness agent defaults from the operator's own configuration.
-
-A smoke run is only evidence about the live pipeline when it runs what the
-pipeline runs. Each ``smoke-interactive-*`` command used to pin a hardcoded
-``<transport>/<provider>/<model>`` alias -- duplicated as a string literal in
-``ralph/cli/main.py`` (the value the CLI actually used) and again in the
-command function's own signature (shadowed, so the two could silently
-disagree). The operator's pipeline is driven by ``[agent_chains]`` in
-``~/.config/ralph-workflow.toml``, so a pinned smoke alias exercised a model
-the pipeline never ran, and went stale the moment the provider retired that
-model id.
-
-This module is the SINGLE source of truth for those defaults. When the
-operator passes no ``--agent``, the smoke command resolves the default from
-the operator's own chains.
-
-Resolution order (deterministic, and documented here because the choice is
-observable):
-
-1. Walk ``config.agent_chains`` in **operator-config declaration order** --
-   the order the chains appear in the operator's TOML, preserved by
-   ``tomllib`` and pydantic.
-2. Within each chain, walk ``chain.agents`` in **fallback order**; entry
-   zero is the agent the pipeline actually runs for that chain, the rest
-   are its fallbacks.
-3. Return the first alias that resolves to the requested transport.
-4. When the operator's chains name no alias for that transport, fall back to
-   the **bare transport alias** (e.g. ``"opencode"``). A bare alias passes no
-   ``--model``, so the agent CLI uses the model the operator configured for
-   it -- a default that cannot go stale.
-
-An explicit ``--agent`` always wins; this resolver is consulted only when the
-operator supplied none.
-"""
+"""Resolve smoke-harness agent defaults from the effective agents policy."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.builtin import builtin_supports
+from ralph.agents.chain import ChainManager
+from ralph.agents.drain_not_bound_error import DrainNotBoundError
 from ralph.config.enums import AgentTransport
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import AgentConfig
+    from ralph.policy.models import AgentsPolicy, DrainName
 
 __all__ = [
     "CONFIG_ALIAS_DEFAULT_SMOKE_COMMANDS",
-    "SMOKE_COMMAND_BARE_ALIASES",
+    "SMOKE_COMMAND_DRAINS",
     "SMOKE_COMMAND_TRANSPORTS",
-    "bare_transport_alias",
     "resolve_default_smoke_agent",
 ]
 
 
-#: Every ``smoke-interactive-*`` CLI command whose ``--agent`` default is
-#: resolved from the operator's ``[agent_chains]``, keyed by CLI command name.
-#: A new transport that grows a smoke command MUST be added here; the parity
-#: test fails on any ``--agent``-taking smoke command missing from this table.
 SMOKE_COMMAND_TRANSPORTS: Mapping[str, AgentTransport] = {
     "smoke-interactive-agy": AgentTransport.AGY,
     "smoke-interactive-codex": AgentTransport.CODEX,
@@ -66,101 +30,41 @@ SMOKE_COMMAND_TRANSPORTS: Mapping[str, AgentTransport] = {
     "smoke-interactive-nanocoder": AgentTransport.NANOCODER,
     "smoke-interactive-opencode": AgentTransport.OPENCODE,
     "smoke-interactive-pi": AgentTransport.PI,
+    "smoke-interactive-ccs": AgentTransport.CLAUDE,
     "smoke-interactive-claude": AgentTransport.CLAUDE_INTERACTIVE,
     "smoke-headless-claude": AgentTransport.CLAUDE,
 }
 
-#: The bare built-in alias a smoke command falls back to, where it is not the
-#: first built-in claiming the transport.
-#:
-#: The two Claude built-ins do carry distinct transports at runtime
-#: (``claude`` resolves to :data:`AgentTransport.CLAUDE_INTERACTIVE`,
-#: ``claude-headless`` to :data:`AgentTransport.CLAUDE`), but they are declared
-#: against a single transport in ``ralph.agents.builtin``, so
-#: :func:`bare_transport_alias` cannot tell them apart and would answer
-#: ``claude`` for both. Naming the fallback here keeps the headless smoke from
-#: falling back to the interactive built-in, which would drive a PTY the
-#: headless harness cannot read. Every other transport has exactly one
-#: built-in, so it needs no entry.
-SMOKE_COMMAND_BARE_ALIASES: Mapping[str, str] = {
-    "smoke-interactive-claude": "claude",
-    "smoke-headless-claude": "claude-headless",
-}
+SMOKE_COMMAND_DRAINS: Mapping[str, DrainName] = dict.fromkeys(
+    SMOKE_COMMAND_TRANSPORTS, "development"
+)
 
-#: Smoke commands whose ``--agent`` default names an operator-defined alias
-#: namespace rather than a transport. ``ccs/<alias>`` entries come from the
-#: operator's ``[ccs_aliases]`` table and every one of them resolves to the
-#: Claude transport, so a transport-keyed chain lookup cannot pick the right
-#: one. Their defaults name no provider or model, so they cannot go stale the
-#: way a pinned ``<transport>/<provider>/<model>`` literal does.
-CONFIG_ALIAS_DEFAULT_SMOKE_COMMANDS: tuple[str, ...] = ("smoke-interactive-ccs",)
-
-
-def bare_transport_alias(transport: AgentTransport) -> str:
-    """Return the bare built-in agent alias for ``transport``.
-
-    Single-sourced from the built-in agent registry rather than re-spelling
-    the transport's alias, so a renamed built-in cannot drift from the smoke
-    default. Falls back to the transport's own enum value when no built-in
-    claims the transport.
-
-    Args:
-        transport: The agent transport whose bare alias is wanted.
-
-    Returns:
-        The bare alias (e.g. ``"opencode"``) that passes no ``--model``.
-    """
-    for support in builtin_supports():
-        if support.transport is transport:
-            return support.name
-    return transport.value
+CONFIG_ALIAS_DEFAULT_SMOKE_COMMANDS: tuple[str, ...] = ()
 
 
 def resolve_default_smoke_agent(
     transport: AgentTransport,
-    config: UnifiedConfig,
+    agents_policy: AgentsPolicy,
     lookup: Callable[[str], AgentConfig | None],
     *,
-    bare_alias: str | None = None,
-) -> str:
-    """Return the alias the operator's own configuration would run for ``transport``.
+    drain: DrainName,
+    command_prefix: str | None = None,
+) -> str | None:
+    """Select a compatible policy-chain alias or return ``None`` for an actionable CLI failure.
 
-    See the module docstring for the (deliberate, observable) resolution
-    order.
-
-    Args:
-        transport: The transport the smoke command drives.
-        config: The operator's loaded configuration.
-        bare_alias: The built-in alias this command drives, when the transport
-            alone is ambiguous (see :data:`SMOKE_COMMAND_BARE_ALIASES`).
-        lookup: Alias resolver -- normally ``AgentRegistry.from_config(config).get``
-            -- so a dynamic ``<transport>/<model>`` alias resolves exactly the
-            way the pipeline resolves it.
-
-    Returns:
-        The first configured chain alias that resolves to ``transport``, or
-        the bare transport alias when the operator's chains name none.
+    The caller owns presenting the failure because only it knows which smoke
+    command's explicit ``--agent`` override is applicable.
     """
-    fallback = bare_alias if bare_alias is not None else bare_transport_alias(transport)
-    for chain in config.agent_chains.values():
-        for alias in chain.agents:
-            agent_config = lookup(alias)
-            if agent_config is None or agent_config.transport is not transport:
-                continue
-            # Two built-ins can share one transport -- ``claude`` (interactive)
-            # and ``claude-headless`` -- and ``AgentConfig`` carries no flag
-            # telling them apart. When the caller names which one it drives,
-            # narrow to that alias family so the headless smoke cannot default
-            # to an interactive chain entry (which would drive a PTY the
-            # headless harness cannot read), and vice versa. Every other
-            # transport has a single built-in and keeps the plain
-            # transport match, so an operator's custom agent name still counts.
-            if bare_alias is not None and not _in_alias_family(alias, bare_alias):
-                continue
+    try:
+        chain = ChainManager(agents_policy).chain_for_drain(drain)
+    except DrainNotBoundError:
+        return None
+    for alias in chain.agents:
+        agent_config = lookup(alias)
+        if (
+            agent_config is not None
+            and agent_config.transport is transport
+            and (command_prefix is None or agent_config.cmd.startswith(command_prefix))
+        ):
             return alias
-    return fallback
-
-
-def _in_alias_family(alias: str, bare_alias: str) -> bool:
-    """Return True when ``alias`` is ``bare_alias`` itself or one of its models."""
-    return alias == bare_alias or alias.startswith(f"{bare_alias}/")
+    return None

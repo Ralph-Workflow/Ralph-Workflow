@@ -103,10 +103,10 @@ class FseventsWatchViolation:
         return f"{self.file_path}:{self.line}: [{self.kind}] {self.message}"
 
 
-def _build_parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
-    """Return a child->parent AST map for every node under ``tree``.
+def _build_parent_map(nodes: Sequence[ast.AST]) -> dict[ast.AST, ast.AST]:
+    """Return a child->parent AST map for the supplied nodes.
 
-    Built by iterating ``ast.walk(tree)`` and, for each node,
+    Built by iterating the caller's materialized ``ast.walk`` result and, for each node,
     assigning ``parents[child] = node`` for every child yielded by
     ``ast.iter_child_nodes(node)``.  This explicit ancestor map
     is the seam that lets INV-3 distinguish a schedule call
@@ -115,7 +115,7 @@ def _build_parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
     line-range containment cannot perform.
     """
     parents: dict[ast.AST, ast.AST] = {}
-    for node in ast.walk(tree):
+    for node in nodes:
         for child in ast.iter_child_nodes(node):
             parents[child] = node
     return parents
@@ -181,7 +181,7 @@ def _nonliteral_observer_getattr_invocation_line(node: ast.AST) -> int | None:
     return node.lineno
 
 
-def _observer_constructor_aliases(tree: ast.Module) -> frozenset[str]:
+def _observer_constructor_aliases(nodes: Sequence[ast.AST]) -> frozenset[str]:
     """Return local names that construct watchdog observers in one module.
 
     The audit recognizes direct ``from watchdog.observers import Observer``
@@ -190,7 +190,7 @@ def _observer_constructor_aliases(tree: ast.Module) -> frozenset[str]:
     rejected at construction rather than only at ``schedule``.
     """
     aliases: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.ImportFrom) or node.module != "watchdog.observers":
             continue
         aliases.update(
@@ -201,19 +201,19 @@ def _observer_constructor_aliases(tree: ast.Module) -> frozenset[str]:
     return frozenset(aliases)
 
 
-def _observer_constructor_lines(tree: ast.Module) -> list[int]:
+def _observer_constructor_lines(nodes: Sequence[ast.AST]) -> list[int]:
     """Return lines that construct a directly imported watchdog ``Observer``."""
-    aliases = _observer_constructor_aliases(tree)
+    aliases = _observer_constructor_aliases(nodes)
     return [
         node.lineno
-        for node in ast.walk(tree)
+        for node in nodes
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id in aliases
     ]
 
 
-def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
+def _find_schedule_calls(nodes: Sequence[ast.AST]) -> list[ast.Call]:
     """Return every ``Call`` whose function attribute is ``schedule``.
 
     Matches only ``ast.Call`` nodes whose ``func`` is an
@@ -226,7 +226,7 @@ def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
     ``ast.Attribute`` requirement.
     """
     calls: list[ast.Call] = []
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         func = node.func
@@ -237,7 +237,7 @@ def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
     return calls
 
 
-def _find_schedule_aliases(tree: ast.Module) -> list[ast.expr]:
+def _find_schedule_aliases(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     """Return every ``.schedule`` attribute bound for later invocation.
 
     The canonical owner must call ``self._observer.schedule(...)`` directly.
@@ -246,7 +246,7 @@ def _find_schedule_aliases(tree: ast.Module) -> list[ast.expr]:
     evade the package-wide single-watch rule.
     """
     aliases: list[ast.expr] = []
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
             continue
         value = node.value
@@ -334,20 +334,21 @@ def _check_module(
             )
         ]
 
-    schedule_aliases: list[ast.expr] = _find_schedule_aliases(tree)
+    nodes = list(ast.walk(tree))
+    schedule_aliases: list[ast.expr] = _find_schedule_aliases(nodes)
     if schedule_aliases:
         return [
             _aliased_watch_schedule_violation(rel_path, alias.lineno) for alias in schedule_aliases
         ]
 
-    schedule_calls: list[ast.Call] = _find_schedule_calls(tree)
+    schedule_calls: list[ast.Call] = _find_schedule_calls(nodes)
     invariants_violations: list[FseventsWatchViolation] = _check_schedule_call_invariants(
         rel_path, schedule_calls
     )
     if invariants_violations or not schedule_calls:
         return invariants_violations
 
-    return _check_schedule_call_location(rel_path, tree, schedule_calls[0])
+    return _check_schedule_call_location(rel_path, nodes, schedule_calls[0])
 
 
 def _check_schedule_call_invariants(
@@ -417,12 +418,12 @@ def _invalid_watch_schedule_receiver_violation(
 
 def _check_schedule_call_location(
     rel_path: str,
-    tree: ast.Module,
+    nodes: Sequence[ast.AST],
     schedule_call: ast.Call,
 ) -> list[FseventsWatchViolation]:
     """Run INV-3 (static location) against the single schedule call.
 
-    Builds the AST ancestor map for ``schedule_call`` and emits a
+    Builds the AST ancestor map from the already-materialized ``nodes`` and emits a
     ``dynamic_watch_schedule`` violation if any ancestor is a loop
     construct OR the nearest enclosing function is not ``start``.
     Returns an empty list when the call sits directly inside
@@ -431,7 +432,7 @@ def _check_schedule_call_location(
     if not _is_canonical_schedule_receiver(schedule_call):
         return [_invalid_watch_schedule_receiver_violation(rel_path, schedule_call.lineno)]
 
-    parents: dict[ast.AST, ast.AST] = _build_parent_map(tree)
+    parents: dict[ast.AST, ast.AST] = _build_parent_map(nodes)
     ancestors: list[ast.AST] = _ancestors(schedule_call, parents)
 
     if _has_loop_ancestor(ancestors):
@@ -605,13 +606,14 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
                 )
             )
             continue
+        nodes = list(ast.walk(tree))
         # Most production modules cannot own a watch. Parse every module first
         # so malformed source still fails closed. Observer construction is also
         # ownership: a helper that creates an observer before scheduling it
         # elsewhere would otherwise evade the schedule-only check.
         violations.extend(
             _unowned_watch_observer_violation(rel_path, line)
-            for line in _observer_constructor_lines(tree)
+            for line in _observer_constructor_lines(nodes)
         )
         # Direct and literal schedule forms are cheap to skip when their marker
         # is absent, but every module still checks nonliteral ``getattr`` because
@@ -619,13 +621,13 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
         if "schedule" in source:
             violations.extend(
                 _unowned_watch_schedule_violation(rel_path, call.lineno)
-                for call in _find_schedule_calls(tree)
+                for call in _find_schedule_calls(nodes)
             )
             violations.extend(
                 _unowned_watch_schedule_violation(rel_path, alias.lineno)
-                for alias in _find_schedule_aliases(tree)
+                for alias in _find_schedule_aliases(nodes)
             )
-        for node in ast.walk(tree):
+        for node in nodes:
             line = _nonliteral_observer_getattr_invocation_line(node)
             if line is not None:
                 violations.append(

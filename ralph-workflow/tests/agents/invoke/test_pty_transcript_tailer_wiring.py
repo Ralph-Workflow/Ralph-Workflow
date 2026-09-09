@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
+from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 
 if TYPE_CHECKING:
     import pytest
@@ -316,3 +317,85 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
     )
     # AC #5 is asserted above (``is_started`` during the run
     # before the stop event fires).
+
+
+def test_transcript_tailer_regression_completion_does_not_resurrect_prepopulated_child(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    session_id = "sess_completed"
+    shadow_home = tmp_path / "shadow-home"
+    workspace_path = shadow_home / "home" / "test-workspace"
+    workspace_path.mkdir(parents=True)
+    project_key = str(workspace_path.resolve()).replace("/", "-")
+    project_dir = shadow_home / ".claude" / "projects" / project_key
+    subagents_dir = project_dir / session_id / "subagents"
+    subagents_dir.mkdir(parents=True)
+    (project_dir / f"{session_id}.jsonl").touch()
+    child_path = subagents_dir / "agent-completed.jsonl"
+    child_path.write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "isSidechain": True,
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Read", "id": "child-read"}],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    child_path.with_suffix(".meta.json").write_text(
+        json.dumps({"toolUseId": "parent-dispatch"}), encoding="utf-8"
+    )
+    monkeypatch.setattr(Path, "home", lambda: shadow_home)
+
+    monitor_stop = threading.Event()
+    advance_started = threading.Event()
+    allow_advance_to_finish = threading.Event()
+    tailer = ClaudeSubagentTranscriptTails(
+        session_id=session_id,
+        project_key=project_key,
+        monitor_stop=monitor_stop,
+        subagent_sink=lambda _summary: None,
+        r7_sink=lambda _diagnostic: None,
+    )
+    tailer._discover_new_files()
+    assert str(child_path) in tailer._tails
+
+    def block_forward(
+        _parser: Any,
+        _chunk: str,
+        _transcript_path: Path,
+        _meta_dict: dict[str, object] | None,
+    ) -> None:
+        advance_started.set()
+        assert allow_advance_to_finish.wait(timeout=1.0)
+
+    monkeypatch.setattr(tailer, "_forward_chunk", block_forward)
+    advance_thread = threading.Thread(target=tailer._advance_all_tails)
+    advance_thread.start()
+    assert advance_started.wait(timeout=1.0)
+
+    completion_result: list[bool] = []
+    completion_started = threading.Event()
+    completion_finished = threading.Event()
+
+    def complete_child() -> None:
+        completion_started.set()
+        completion_result.append(tailer.note_completion(tool_use_id="parent-dispatch"))
+        completion_finished.set()
+
+    completion_thread = threading.Thread(target=complete_child)
+    completion_thread.start()
+    assert completion_started.wait(timeout=1.0)
+    assert not completion_finished.is_set()
+    allow_advance_to_finish.set()
+    advance_thread.join(timeout=1.0)
+    completion_thread.join(timeout=1.0)
+
+    assert not advance_thread.is_alive()
+    assert not completion_thread.is_alive()
+    assert completion_result == [True]
+    assert str(child_path) not in tailer._tails

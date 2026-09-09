@@ -27,7 +27,7 @@ class CcsConfig(RalphBaseModel):
     and the underlying ``claude`` CLI, so it is the correct default here.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     output_flag: str = "--output-format=stream-json"
     yolo_flag: str = "--permission-mode bypassPermissions"
@@ -36,7 +36,6 @@ class CcsConfig(RalphBaseModel):
     streaming_flag: str = "--include-partial-messages"
     json_parser: str = "claude"
     session_flag: str = "--resume {}"
-    can_commit: bool = True
 
 
 __all__ = ["CcsAliasConfig", "CcsConfig"]

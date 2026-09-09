@@ -165,7 +165,6 @@ def test_diagnose_alias_with_different_display_name_shows_correct_path_status(
     custom_agent = AgentConfig(
         cmd="python",
         output_flag="--json",
-        can_commit=False,
         json_parser=JsonParserType.GENERIC,
         display_name="My Python Agent",
     )
@@ -203,7 +202,6 @@ def test_diagnose_alias_path_status_rendered_in_cli(
     custom_agent = AgentConfig(
         cmd="python",
         output_flag="--json",
-        can_commit=False,
         json_parser=JsonParserType.GENERIC,
         display_name="My Python Agent",
     )

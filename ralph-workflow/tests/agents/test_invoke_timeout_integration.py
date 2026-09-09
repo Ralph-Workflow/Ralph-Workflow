@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 from ralph.agents.execution_state import (
     GenericExecutionStrategy,
@@ -55,6 +55,7 @@ class _FakeManagedHandle:
         *,
         descendant_count: int = 0,
         descendant_oldest_seconds: float = 0.0,
+        on_terminate: Callable[[], None] | None = None,
     ) -> None:
         self._stdout = stdout_lines
         self._stderr = None
@@ -62,6 +63,7 @@ class _FakeManagedHandle:
         self._terminated = False
         self._descendant_count = descendant_count
         self._descendant_oldest_seconds = descendant_oldest_seconds
+        self._on_terminate = on_terminate
         self._pid = 999_999
 
     @property
@@ -86,6 +88,8 @@ class _FakeManagedHandle:
     def terminate(self, grace_period_s: float | None = None) -> None:
         del grace_period_s
         self._terminated = True
+        if self._on_terminate is not None:
+            self._on_terminate()
 
     def has_live_descendants(self) -> bool:
         return self._descendant_count > 0
@@ -864,6 +868,7 @@ def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> No
         _stdout_gen(),
         descendant_count=1,
         descendant_oldest_seconds=5.0,
+        on_terminate=_reader_release.set,
     )
 
     registry = ChildLivenessRegistry(

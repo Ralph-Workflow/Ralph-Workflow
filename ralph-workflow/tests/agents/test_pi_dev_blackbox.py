@@ -12,7 +12,7 @@ The test pins:
   (1) ``AgentRegistry.from_config`` -> ``catalog.get('pi')`` returns the
       built-in support with the documented BuiltinAgentSpec row
       (cmd='pi', output_flag='--mode json', yolo_flag='--approve',
-      session_flag='--session {}', can_commit=True, display_name='Pi',
+      session_flag='--session {}', display_name='Pi',
       transport=AgentTransport.PI, json_parser=JsonParserType.PI,
       parser_factory=PiParser, strategy_factory=_make_pi_strategy).
   (2) ``catalog.get_parser('pi')`` returns a ``PiParser`` instance.
@@ -149,7 +149,6 @@ class TestPiDevBlackboxPublicSurface:
         assert config.session_flag == "--session {}", (
             f"pi session_flag must be '--session {{}}', got {config.session_flag!r}"
         )
-        assert config.can_commit is True, f"pi can_commit must be True, got {config.can_commit!r}"
         assert config.display_name == "Pi", (
             f"pi config.display_name must be 'Pi', got {config.display_name!r}"
         )

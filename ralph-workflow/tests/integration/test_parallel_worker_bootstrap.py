@@ -21,7 +21,12 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy
-from ralph.policy.models import PhaseParallelization
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    PhaseParallelization,
+)
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.prompts import materialize as materialize_module
@@ -60,12 +65,12 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
     bundle.pipeline.recovery.failed_route = "failed_terminal"
-    bundle.agents.agent_drains = {
-        "development": MagicMock(
-            chain="developer", drain_class="development", capability_class=None
-        ),
-    }
-    bundle.agents.agent_chains = {"developer": MagicMock(agents=["developer"])}
+    bundle.agents = AgentsPolicy(
+        agent_drains={
+            "development": AgentDrainConfig(chain="developer", drain_class="development")
+        },
+        agent_chains={"developer": AgentChainConfig(agents=["developer"])},
+    )
     return bundle
 
 

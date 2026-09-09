@@ -370,6 +370,8 @@ def _build_handback_pipeline_stubs(
     preflight_order: list[str],
     captured_pipeline_state: list[PipelineState],
     captured_first_effects: list[object] | None = None,
+    working_tree_snapshots: list[str] | None = None,
+    policy_commit_requests: list[frozenset[str] | None] | None = None,
 ) -> dict[str, object]:
     """Build the run_module stubs and the Phase 4 capture collector.
 
@@ -421,6 +423,19 @@ def _build_handback_pipeline_stubs(
         # Always inject a ``workspace_factory`` returning the
         # in-memory ``MemoryWorkspace`` so no real filesystem access
         # happens under ``/test/...``.
+        def snapshot_working_tree(scope: WorkspaceScope) -> frozenset[str]:
+            if working_tree_snapshots is not None:
+                working_tree_snapshots.append(scope.root)
+            return frozenset()
+
+        def commit_policy_changes(
+            _scope: WorkspaceScope,
+            _pre_run_dirty: frozenset[str] | None,
+            authored_paths: frozenset[str] | None,
+        ) -> None:
+            if policy_commit_requests is not None:
+                policy_commit_requests.append(authored_paths)
+
         return cli_integration.run_project_policy_readiness(
             load_result=load_result,
             display_context=display_context,
@@ -428,6 +443,8 @@ def _build_handback_pipeline_stubs(
             workspace_factory=lambda: ws,
             emit_factory=emit_factory,
             is_tty=lambda: False,
+            working_tree_snapshot=snapshot_working_tree,
+            commit_policy_updates=commit_policy_changes,
         )
 
     def stub_execute_pipeline(
@@ -628,6 +645,8 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
     captured_pipeline_state: list[PipelineState] = []
     preflight_order: list[str] = []
     captured_first_effects: list[object] = []
+    working_tree_snapshots: list[str] = []
+    policy_commit_requests: list[frozenset[str] | None] = []
 
     stubs = _build_handback_pipeline_stubs(
         load_result=load_result,
@@ -635,6 +654,8 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
         preflight_order=preflight_order,
         captured_pipeline_state=captured_pipeline_state,
         captured_first_effects=captured_first_effects,
+        working_tree_snapshots=working_tree_snapshots,
+        policy_commit_requests=policy_commit_requests,
     )
 
     original_readiness = run_module._run_project_policy_readiness
@@ -672,6 +693,8 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
         run_module._execute_pipeline = original_execute
 
     assert rc == 0, "NORMAL-mode run must continue into the development pipeline"
+    assert working_tree_snapshots, "policy readiness must use the injected working-tree seam"
+    assert policy_commit_requests, "policy readiness must use the injected policy-commit seam"
     _assert_handback_state_clean(
         phase=phase,
         preflight_order=preflight_order,

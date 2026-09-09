@@ -54,14 +54,13 @@ def _make_mixed_commit_chain_config() -> CommitChainConfig:
         AgentConfig(
             cmd="claude -p",
             output_flag="--output-format=stream-json",
-            can_commit=True,
             json_parser=JsonParserType.CLAUDE,
             transport=AgentTransport.CLAUDE,
         ),
     )
     registry.register(
         "codex",
-        AgentConfig(cmd="codex", can_commit=True, transport=AgentTransport.CODEX),
+        AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
     )
     return CommitChainConfig(
         registry=registry,
@@ -79,7 +78,6 @@ def _make_commit_chain_config() -> CommitChainConfig:
             cmd="claude -p",
             output_flag="--output-format=stream-json",
             yolo_flag="--permission-mode auto",
-            can_commit=True,
             json_parser=JsonParserType.CLAUDE,
             transport=AgentTransport.CLAUDE,
         ),

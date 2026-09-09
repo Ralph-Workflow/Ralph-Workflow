@@ -39,7 +39,12 @@ from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig, PhaseParallelization
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    PhaseParallelization,
+)
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.scope import WorkspaceScope
 
@@ -74,12 +79,12 @@ def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
     dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
-    bundle.agents.agent_drains = {
-        "development": AgentDrainConfig(chain="default", drain_class="development"),
-    }
-    bundle.agents.agent_chains = {
-        "default": AgentChainConfig(agents=["default"]),
-    }
+    bundle.agents = AgentsPolicy(
+        agent_drains={
+            "development": AgentDrainConfig(chain="default", drain_class="development")
+        },
+        agent_chains={"default": AgentChainConfig(agents=["default"])},
+    )
     return bundle
 
 

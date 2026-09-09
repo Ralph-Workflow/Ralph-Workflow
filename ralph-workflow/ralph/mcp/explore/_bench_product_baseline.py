@@ -89,11 +89,8 @@ def measure_representative_flows(
     of the ``warmup`` + ``repetitions`` iterations runs one
     representative call per flow; only post-warmup samples are recorded.
 
-    Each measured call runs ``clock.sleep(0.001)`` immediately after the
-    executor returns so deterministic fake clocks (which hold time
-    constant between explicit advances) still charge each call a
-    measurable 1 ms; a real ``SystemClock`` pays one bounded millisecond
-    per sample and records true elapsed time.
+    The executor owns elapsed work. Production runs therefore record only
+    actual handler time rather than adding a synthetic delay to every sample.
     """
     clk = clock or SystemClock()
     samples: dict[str, list[float]] = {flow_id: [] for flow_id in flows}
@@ -102,7 +99,6 @@ def measure_representative_flows(
         for flow_id in ordered:
             start = clk.monotonic()
             executor(flows[flow_id])
-            clk.sleep(0.001)
             elapsed = clk.monotonic() - start
             if iteration >= warmup:
                 samples[flow_id].append(elapsed)

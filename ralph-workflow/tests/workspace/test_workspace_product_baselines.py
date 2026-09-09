@@ -121,22 +121,44 @@ def test_measure_representative_flows_records_every_sample() -> None:
         assert timing.p95_seconds == nearest_rank_p95(timing.samples_seconds)
 
 
+def test_measure_representative_flows_regression_does_not_add_synthetic_production_delay() -> None:
+    class RecordingClock(FakeClock):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sleep_calls = 0
+
+        def sleep(self, seconds: float) -> None:
+            self.sleep_calls += 1
+
+    clock = RecordingClock()
+
+    def executor(_call: ScriptedCall) -> Mapping[str, object]:
+        return {"text": "ok"}
+
+    measure_representative_flows(executor, _scripted_flows(), clock=clock)
+
+    assert clock.sleep_calls == 0
+
+
 def test_delayed_executor_fails_p95_gate() -> None:
     """A deliberately delayed executor must fail the checked-in limits.
 
-    FakeClock advances 1 ms per monotonic() call, so every sample is
-    1 ms and the nearest-rank p95 is 1 ms; shrinking the file/content
-    limit below that forces a deterministic rejection, proving the gate
+    The executor advances FakeClock by 1 ms, so every sample is 1 ms and
+    the nearest-rank p95 is 1 ms; shrinking the file/content limit below
+    that forces a deterministic rejection, proving the gate
     rejects slower handler execution rather than rubber-stamping it.
     The three measured flows all belong to the file_content_search
     group, so no unmeasured-flow failures mask the limit rejection.
     """
 
+    clock = FakeClock()
+
     def executor(_call: ScriptedCall) -> Mapping[str, object]:
+        clock.advance(0.001)
         return {"text": "ok"}
 
     timings = measure_representative_flows(
-        executor, _scripted_flows(), repetitions=20, warmup=1, clock=FakeClock()
+        executor, _scripted_flows(), repetitions=20, warmup=1, clock=clock
     )
     shrunken_limits = {
         "response_limits_ms": {
