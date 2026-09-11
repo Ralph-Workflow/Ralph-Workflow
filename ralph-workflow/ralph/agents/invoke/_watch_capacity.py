@@ -19,6 +19,7 @@ import os
 import platform
 import threading
 from pathlib import Path
+from queue import Empty, Queue
 from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
@@ -115,6 +116,10 @@ _PROBE_THREAD_NAME = "ralph-watch-capacity-probe"
 _TIMEOUT_REPORT_THREAD_NAME = "ralph-watch-step-timed-out"
 
 
+class _ProbeFailed:
+    """Signals a probe exception through the bounded publication channel."""
+
+
 def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
     """Run ``probe``, returning ``fallback`` if it does not answer in time.
 
@@ -131,21 +136,26 @@ def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: f
     * a sidecar read or write that lands late holds the sidecar's own
       lock for as long as it runs.
     """
-    answer: list[T] = []
+    publication: Queue[T | _ProbeFailed] = Queue(maxsize=1)
 
     def _run_probe() -> None:
         try:
-            answer.append(probe())
+            publication.put(probe())
         except Exception:
             logger.opt(exception=True).debug("workspace watch capacity probe failed")
+            publication.put(_ProbeFailed())
 
     worker = threading.Thread(target=_run_probe, name=_PROBE_THREAD_NAME, daemon=True)
     worker.start()
-    worker.join(budget_seconds)
-    if answer:
-        return answer[0]
-    _say_it_timed_out(budget_seconds)
-    return fallback
+    try:
+        answer = publication.get(timeout=budget_seconds)
+    except Empty:
+        _say_it_timed_out(budget_seconds)
+        return fallback
+    if isinstance(answer, _ProbeFailed):
+        _say_it_timed_out(budget_seconds)
+        return fallback
+    return answer
 
 
 def _say_it_timed_out(budget_seconds: float) -> None:

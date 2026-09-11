@@ -20,10 +20,11 @@ proceeds.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke._watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS
+from ralph.agents.invoke._watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS, call_within_budget
 from ralph.agents.invoke._workspace import STOP_OBSERVER_BUDGET_SECONDS, WorkspaceMonitor
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
@@ -76,23 +77,37 @@ def test_a_capacity_probe_that_never_answers_does_not_park_the_start(
     assert status["mode"] == "live_fallback"
 
 
-def test_a_probe_that_answers_is_still_believed(tmp_path: Path) -> None:
-    """The time bound must not cost the monitor its real answer."""
-    monitor = WorkspaceMonitor(
-        tmp_path,
-        host_budget=8192,
-        directory_counter=lambda workspace, cap: 1,
-        live_watch_total=0,
-        probe_budget_seconds=_PROBE_BUDGET_SECONDS,
-    )
-    try:
-        monitor.start()
-        status = awareness_for_workspace(tmp_path).snapshot()
-    finally:
-        monitor.stop()
-        release_workspace_awareness(tmp_path)
+class _CompletedProbeThread:
+    """Publishes a completed probe without supporting join-based observation."""
 
-    assert status["mode"] != "live_fallback"
+    def __init__(self, *, target: Callable[[], None], name: str, daemon: bool) -> None:
+        del name, daemon
+        self._target = target
+
+    def start(self) -> None:
+        self._target()
+
+    def join(self, timeout: float | None = None) -> None:
+        del timeout
+        msg = "completed probe results must use explicit publication, not Thread.join"
+        raise AssertionError(msg)
+
+
+def test_capacity_probe_regression_completed_answer_is_published_without_join_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: a completed answer remains visible when scheduling hides join observation."""
+    monkeypatch.setattr(
+        "ralph.agents.invoke._watch_capacity.threading.Thread", _CompletedProbeThread
+    )
+
+    result = call_within_budget(
+        lambda: False,
+        fallback=True,
+        budget_seconds=_PROBE_BUDGET_SECONDS,
+    )
+
+    assert result is False
 
 
 class _SlowObserver:
