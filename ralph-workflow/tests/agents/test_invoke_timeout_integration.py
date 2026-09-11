@@ -350,19 +350,19 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
         _reader_release.wait(timeout=5.0)
         yield from ()
 
-    handle = _FakeManagedHandle(_blocking_stdout())
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        on_terminate=_reader_release.set,
+    )
 
-    try:
-        with pytest.raises(IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines(
-                handle,
-                policy=policy,
-                execution_strategy=_RaisingStrategy(),
-                _clock=clock,
-            ):
-                pass
-    finally:
-        _reader_release.set()
+    with pytest.raises(IdleStreamTimeoutError) as exc_info:
+        for _ in _read_lines(
+            handle,
+            policy=policy,
+            execution_strategy=_RaisingStrategy(),
+            _clock=clock,
+        ):
+            pass
 
     # Must be CHILDREN_PERSIST_TOO_LONG, NOT NO_OUTPUT_DEADLINE.
     assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG

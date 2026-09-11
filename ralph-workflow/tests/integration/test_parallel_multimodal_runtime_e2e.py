@@ -32,6 +32,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
+from ralph.mcp.server.factory import McpServerHandle
 from ralph.mcp.session_plan import SessionMcpPlan
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect
@@ -73,6 +74,14 @@ def _make_work_unit(uid: str) -> WorkUnit:
     )
 
 
+class _FakeMcpServerFactory:
+    def __init__(self, handle: McpServerHandle) -> None:
+        self._handle = handle
+
+    def build(self, _session: object) -> McpServerHandle:
+        return self._handle
+
+
 def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
     para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=False)
@@ -106,9 +115,16 @@ def _setup_patches(
         "ralph.pipeline.checkpoint.save",
         lambda _state, *_args, **_kwargs: None,
     )
+    mcp_factory = _FakeMcpServerFactory(
+        McpServerHandle(
+            endpoint="http://127.0.0.1:9999/mcp",
+            pid=99_999,
+            shutdown=lambda: None,
+        )
+    )
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
-        lambda *args, **kwargs: MagicMock(),
+        lambda *args, **kwargs: mcp_factory,
     )
 
 
