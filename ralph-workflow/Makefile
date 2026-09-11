@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev rdev uv-preflight test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-install-make-smoke test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev rdev uv-preflight test test-fast test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-install-make-smoke test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -87,6 +87,7 @@ help:
 	@echo "  install-dev     Alias for dev"
 	@echo "  rdev            Alias for dev, named after the launcher it installs"
 	@echo "  test           Run the full pytest suite without coverage (excludes subprocess_e2e)"
+	@echo "  test-fast      Run the static suite-routing contract profile (not full verification)"
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
@@ -149,11 +150,14 @@ rdev: dev
 test:
 	$(RUN_PYTHON) -m ralph.test_suites
 
+test-fast:
+	uv run --locked --project . python -m ralph.test_suites --profile fast
+
 test-unit:
-	$(RUN_PYTHON) -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e and not smoke"
+	uv run --locked --project . python -m ralph.test_suites --profile unit
 
 test-integration:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
+	uv run --locked --project . python -m ralph.test_suites --profile integration
 
 # Uses the maintained static file selector, avoiding full-suite collection
 # merely to deselect non-E2E tests. The selector preserves the canonical

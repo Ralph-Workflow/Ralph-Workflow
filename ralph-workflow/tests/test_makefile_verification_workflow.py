@@ -152,23 +152,27 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")
 
-    assert len(integration_body) == 1
+    assert unit_body == [
+        "uv run --locked --project . python -m ralph.test_suites --profile unit"
+    ]
+    assert integration_body == [
+        "uv run --locked --project . python -m ralph.test_suites --profile integration"
+    ]
 
-    _assert_all_lines_contain(
-        unit_body,
-        ["ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
-    )
-    assert "ralph.verify_timeout" in unit_body[0]
-    assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in unit_body[0]
-    assert "python -m pytest tests/ -q" in unit_body[0]
-    assert "--ignore=tests/integration" in unit_body[0]
-    assert "-n $(PYTEST_WORKERS)" in unit_body[0]
-    assert "--dist worksteal" in unit_body[0]
-    assert '"not subprocess_e2e and not smoke"' in unit_body[0]
 
-    assert "uv run python -m ralph.verify_timeout" in integration_body[0]
-    assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
-    assert "python -m pytest tests/integration/ -q" in integration_body[0]
+def test_makefile_exposes_static_test_fast_target() -> None:
+    assert _target_body("test-fast") == [
+        "uv run --locked --project . python -m ralph.test_suites --profile fast"
+    ]
+
+
+def test_focused_make_targets_do_not_duplicate_pytest_orchestration() -> None:
+    for target in ("test-unit", "test-integration", "test-fast"):
+        body = _target_body(target)
+        assert len(body) == 1
+        assert "ralph.test_suites" in body[0]
+        assert "python -m pytest" not in body[0]
+        assert "ralph.verify_timeout" not in body[0]
 
 
 def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:

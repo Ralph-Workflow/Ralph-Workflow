@@ -121,6 +121,17 @@ _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_
 _SUBPROCESS_E2E_MARK_EXPRESSION = (
     "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
 )
+_FOCUSED_PROFILE_MARK_EXPRESSION = "not subprocess_e2e and not smoke"
+_UNIT_PROFILE = "unit"
+_INTEGRATION_PROFILE = "integration"
+_FAST_PROFILE = "fast"
+FAST_PROFILE_TEST_FILES: tuple[str, ...] = (
+    "tests/test_makefile_verification_workflow.py",
+    "tests/test_test_suites.py",
+    "tests/test_test_suites_orchestration.py",
+)
+_FOCUSED_PROFILES = frozenset((_UNIT_PROFILE, _INTEGRATION_PROFILE, _FAST_PROFILE))
+_PROFILE_OPTION_ARGUMENT_COUNT = 2
 _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # DA-003 (wt-028-display P1 / AC-08 / S-13): when the 60s parent
 # deadline fires, the runner has already given us its 60s budget;
@@ -449,6 +460,38 @@ def _discover_all_test_files(cwd: Path) -> tuple[str, ...]:
     if not selected_files:
         raise RuntimeError(f"static pytest discovery selected no files under {tests_root}")
     return tuple(sorted(selected_files))
+
+
+def _discover_profile_test_files(cwd: Path, *, integration_only: bool) -> tuple[str, ...]:
+    """Return a focused profile's static file selection without pytest collection."""
+    integration_prefix = "tests/integration/"
+    selected = tuple(
+        path
+        for path in _discover_all_test_files(cwd)
+        if path.startswith(integration_prefix) is integration_only
+    )
+    if not selected:
+        profile_name = _INTEGRATION_PROFILE if integration_only else _UNIT_PROFILE
+        raise RuntimeError(f"static {profile_name} pytest discovery selected no files")
+    return selected
+
+
+def discover_unit_test_files(cwd: Path) -> tuple[str, ...]:
+    """Return unit files, excluding the integration subtree exactly."""
+    return _discover_profile_test_files(cwd, integration_only=False)
+
+
+def discover_integration_test_files(cwd: Path) -> tuple[str, ...]:
+    """Return integration files from the integration subtree exactly."""
+    return _discover_profile_test_files(cwd, integration_only=True)
+
+
+def discover_fast_test_files(cwd: Path) -> tuple[str, ...]:
+    """Return the fail-closed static test-fast routing-contract selection."""
+    missing_files = tuple(path for path in FAST_PROFILE_TEST_FILES if not (cwd / path).is_file())
+    if missing_files:
+        raise RuntimeError(f"static fast pytest discovery missing files: {missing_files}")
+    return FAST_PROFILE_TEST_FILES
 
 
 def discover_test_files(cwd: Path) -> tuple[str, ...]:
@@ -788,6 +831,19 @@ def _print_timeout_diagnostics(
             )
 
 
+def _finalize_shard_returncode(
+    processes: Sequence[ShardProcess],
+    *,
+    empty_selection_returncode: int | None,
+) -> int:
+    if empty_selection_returncode is None:
+        return 0
+    returncodes = tuple(process.poll() for process in processes)
+    if returncodes and all(returncode == empty_selection_returncode for returncode in returncodes):
+        return empty_selection_returncode
+    return 0
+
+
 def _run_shards(
     shards: Sequence[Sequence[str]],
     *,
@@ -802,6 +858,8 @@ def _run_shards(
     marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
     xdist_workers: str = "0",
     required_e2e_shard_xdist_workers: str | None = None,
+    successful_returncodes: frozenset[int] = frozenset((0,)),
+    empty_selection_returncode: int | None = None,
 ) -> int:
     processes: list[ShardProcess] = []
     try:
@@ -876,7 +934,7 @@ def _run_shards(
                     process,
                     timeout_seconds=_remaining_seconds(deadline, monotonic),
                 )
-            if returncode != 0:
+            if returncode not in successful_returncodes:
                 siblings = [
                     sibling
                     for sibling_index, sibling in enumerate(processes)
@@ -906,7 +964,68 @@ def _run_shards(
             wait(min(_SHARD_POLL_INTERVAL_SECONDS, _remaining_seconds(deadline, monotonic)))
 
     _print_shard_outputs([completed[index] for index in range(len(processes))])
-    return 0
+    return _finalize_shard_returncode(
+        processes,
+        empty_selection_returncode=empty_selection_returncode,
+    )
+
+
+def _select_test_files(
+    *,
+    cwd: Path,
+    file_discoverer: Callable[[Path], tuple[str, ...]],
+    profile: str | None,
+    auto_integrate_e2e_only: bool,
+    subprocess_e2e_only: bool,
+) -> tuple[tuple[str, ...], str, tuple[str, ...], str | None]:
+    """Resolve one fail-closed profile into static files and shard settings."""
+    if profile is not None and profile not in _FOCUSED_PROFILES:
+        raise ValueError(f"unknown test-suite profile: {profile}")
+    active_selector_count = sum(
+        (auto_integrate_e2e_only, subprocess_e2e_only, profile is not None)
+    )
+    if active_selector_count > 1:
+        raise ValueError("test-suite profiles are mutually exclusive")
+    if profile == _UNIT_PROFILE:
+        return (
+            discover_unit_test_files(cwd),
+            _FOCUSED_PROFILE_MARK_EXPRESSION,
+            (),
+            None,
+        )
+    if profile == _INTEGRATION_PROFILE:
+        return (
+            discover_integration_test_files(cwd),
+            _FOCUSED_PROFILE_MARK_EXPRESSION,
+            (),
+            None,
+        )
+    if profile == _FAST_PROFILE:
+        return (
+            discover_fast_test_files(cwd),
+            _FOCUSED_PROFILE_MARK_EXPRESSION,
+            (),
+            None,
+        )
+    if auto_integrate_e2e_only:
+        return (REQUIRED_AUTO_INTEGRATE_E2E_FILES, _VERIFICATION_MARK_EXPRESSION, (), None)
+    if subprocess_e2e_only:
+        return (
+            discover_subprocess_e2e_files(cwd),
+            _SUBPROCESS_E2E_MARK_EXPRESSION,
+            (),
+            None,
+        )
+    discovered_files = file_discoverer(cwd)
+    validate_required_auto_integrate_selection(discovered_files)
+    required_files = tuple(
+        path for path in discovered_files if path in set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+    )
+    selected_files = tuple(
+        path for path in discovered_files if path not in set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+    )
+    required_workers = _REQUIRED_E2E_SHARD_XDIST_WORKERS if required_files else None
+    return (selected_files, _VERIFICATION_MARK_EXPRESSION, required_files, required_workers)
 
 
 def run_test_suites(
@@ -920,6 +1039,7 @@ def run_test_suites(
     wait: Callable[[float], None] = time.sleep,
     auto_integrate_e2e_only: bool = False,
     subprocess_e2e_only: bool = False,
+    profile: str | None = None,
 ) -> int:
     """Run the maintained pytest verification suite and return its exit code.
 
@@ -966,26 +1086,18 @@ def run_test_suites(
         ),
         suite_timeout_seconds=suite_timeout_seconds,
     )
-    if auto_integrate_e2e_only and subprocess_e2e_only:
-        raise ValueError("test-suite profiles are mutually exclusive")
-    marker_expression = _VERIFICATION_MARK_EXPRESSION
-    required_e2e_shard: tuple[str, ...] = ()
-    required_e2e_shard_xdist_workers: str | None = None
-    if auto_integrate_e2e_only:
-        selected_files = REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    elif subprocess_e2e_only:
-        selected_files = discover_subprocess_e2e_files(cwd)
-        marker_expression = _SUBPROCESS_E2E_MARK_EXPRESSION
-    else:
-        selected_files = file_discoverer(cwd)
-        validate_required_auto_integrate_selection(selected_files)
-        # Required auto-integrate E2E files are subprocess-I/O-bound, so
-        # they run on one dedicated shard with bounded in-shard xdist.
-        selected_set = set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-        required_e2e_shard = tuple(path for path in selected_files if path in selected_set)
-        if required_e2e_shard:
-            required_e2e_shard_xdist_workers = _REQUIRED_E2E_SHARD_XDIST_WORKERS
-        selected_files = tuple(path for path in selected_files if path not in selected_set)
+    (
+        selected_files,
+        marker_expression,
+        required_e2e_shard,
+        required_e2e_shard_xdist_workers,
+    ) = _select_test_files(
+        cwd=cwd,
+        file_discoverer=file_discoverer,
+        profile=profile,
+        auto_integrate_e2e_only=auto_integrate_e2e_only,
+        subprocess_e2e_only=subprocess_e2e_only,
+    )
 
     shards = partition_selected_files(
         selected_files,
@@ -997,16 +1109,19 @@ def run_test_suites(
         validate_exact_file_assignment((*selected_files, *required_e2e_shard), shards)
     else:
         validate_exact_file_assignment(selected_files, shards)
-    if auto_integrate_e2e_only:
-        profile = "auto-integrate-e2e"
+    temp_directory_prefix: str
+    if profile is not None:
+        temp_directory_prefix = profile
+    elif auto_integrate_e2e_only:
+        temp_directory_prefix = "auto-integrate-e2e"
     elif subprocess_e2e_only:
-        profile = "subprocess-e2e"
+        temp_directory_prefix = "subprocess-e2e"
     else:
-        profile = "verification"
+        temp_directory_prefix = "verification"
     basetemp_parent = Path(tempfile.gettempdir()) / "ralph-pytest-shards"
     basetemp_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix=f"{profile}-",
+        prefix=f"{temp_directory_prefix}-",
         dir=basetemp_parent,
     ) as basetemp_root:
         return _run_shards(
@@ -1022,6 +1137,10 @@ def run_test_suites(
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
             required_e2e_shard_xdist_workers=required_e2e_shard_xdist_workers,
+            successful_returncodes=(
+                frozenset((0, 5)) if profile is not None else frozenset((0,))
+            ),
+            empty_selection_returncode=5 if profile is not None else None,
         )
 
 
@@ -1039,8 +1158,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)
     if arguments == ("--subprocess-e2e",):
         return run_test_suites(cwd=Path.cwd(), subprocess_e2e_only=True)
+    if (
+        len(arguments) == _PROFILE_OPTION_ARGUMENT_COUNT
+        and arguments[0] == "--profile"
+        and arguments[1] in _FOCUSED_PROFILES
+    ):
+        return run_test_suites(cwd=Path.cwd(), profile=arguments[1])
     if arguments:
-        raise SystemExit("ralph.test_suites accepts only --auto-integrate-e2e or --subprocess-e2e")
+        raise SystemExit(
+            "ralph.test_suites accepts --profile unit, --profile integration, or --profile fast, "
+            "--auto-integrate-e2e, or --subprocess-e2e"
+        )
     return run_test_suites(cwd=Path.cwd())
 
 

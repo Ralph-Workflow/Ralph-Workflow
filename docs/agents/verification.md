@@ -62,6 +62,16 @@ The following do **NOT** circumvent the 60-second combined budget or the lint/ty
 
 Every circumvention above is detected by `make verify`. Any bypass requires a documented justification and an entry in the audit allowlist — there is no other path. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the full policy text.
 
+## Focused suite-routing feedback
+
+For a change confined to `ralph-workflow/Makefile`, `ralph-workflow/ralph/test_suites.py`, or the suite-routing contract files `tests/test_makefile_verification_workflow.py`, `tests/test_test_suites.py`, and `tests/test_test_suites_orchestration.py`, run:
+
+```bash
+make -C ralph-workflow test-fast
+```
+
+This is a fail-closed static three-file profile with `not subprocess_e2e and not smoke`; it is not full verification and never replaces the required `make -C ralph-workflow verify` completion gate.
+
 ## Smoke-check subsections
 
 Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate. The deterministic install, multimodal, and visual smoke targets are the exceptions: each is wired into `make verify` and charged to the same immutable budget.

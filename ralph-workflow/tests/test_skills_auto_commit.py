@@ -27,6 +27,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from git import Actor, Repo
 
+from ralph.git.commit_result import CommitCreationResult
 from ralph.git.operations import create_commit, stage_files
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 from ralph.skills._auto_commit import (
@@ -44,9 +45,8 @@ pytestmark = pytest.mark.subprocess_e2e
 
 @pytest.fixture
 def fake_create_commit() -> MagicMock:
-    """A stub create_commit that records its arguments and returns a fake SHA."""
-    fake_sha = "f" * 40
-    return MagicMock(return_value=fake_sha)
+    """Stub the typed commit-creation contract with a deterministic SHA."""
+    return MagicMock(return_value=CommitCreationResult.created("f" * 40))
 
 
 def _track_initial_commit(repo_root: Path) -> None:
@@ -85,6 +85,11 @@ def test_auto_commit_subject_is_deterministic(
 
     fake_create_commit.assert_called_once()
     message = fake_create_commit.call_args.args[1]
+    assert fake_create_commit.call_args.kwargs == {
+        "expected_head": Repo(tmp_path).head.commit.hexsha
+    }
+    assert fake_create_commit.return_value.status is CommitCreationResult.created("f" * 40).status
+    assert fake_create_commit.return_value.sha == "f" * 40
     subject = message.splitlines()[0]
     assert subject == SKILL_AUTO_COMMIT_SUBJECT, (
         f"Subject must be exactly {SKILL_AUTO_COMMIT_SUBJECT!r}; got: {subject!r}"
@@ -298,7 +303,10 @@ def test_auto_commit_fails_closed_on_oserror(
     Repo.init(tmp_path)
     _track_initial_commit(tmp_path)
 
-    def _raising_create_commit(_repo_root: Path, _message: str) -> str:
+    def _raising_create_commit(
+        _repo_root: Path, _message: str, *, expected_head: str
+    ) -> CommitCreationResult:
+        del expected_head
         raise OSError("simulated filesystem failure")
 
     # No dirty skill-tree mutations; the helper returns None BEFORE
@@ -419,6 +427,11 @@ def test_auto_commit_body_is_deterministic_across_shuffled_input_orderings(
             f"Expected exactly one commit per run; got: {fake_create_commit.call_count}"
         )
         message = fake_create_commit.call_args.args[1]
+        assert fake_create_commit.call_args.kwargs == {
+            "expected_head": Repo(tmp_path).head.commit.hexsha
+        }
+        assert fake_create_commit.return_value.status is CommitCreationResult.created("f" * 40).status
+        assert fake_create_commit.return_value.sha == "f" * 40
         captured_messages.append(message)
 
         # Record the paths passed to stage_fn for this run -- they MUST be

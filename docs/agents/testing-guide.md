@@ -70,10 +70,13 @@ If changing the implementation (without changing behavior) would break a test, *
 
 | Family | Location | Real I/O? | Run |
 |--------|----------|-----------|-----|
+| Suite-routing fast path | Static `tests/test_makefile_verification_workflow.py`, `tests/test_test_suites.py`, `tests/test_test_suites_orchestration.py` | No | `make -C ralph-workflow test-fast` |
 | Unit | `tests/` root, `tests/unit/` | No | `make test-unit` |
 | Integration | `tests/integration/` | No | `make test-integration` |
 | Full suite | all tests | Mixed | `make test` |
 | Verification | lint + typecheck + `make test` (60 s combined budget) | Mixed | `make verify` |
+
+Use `make -C ralph-workflow test-fast` only for a change confined to the listed suite-routing surfaces. Its static three-file selection and `not subprocess_e2e and not smoke` marker make it deterministic and fail closed, but it is developer feedback, not completion proof. `make -C ralph-workflow verify` remains the only completion gate.
 
 Unit and integration tests must be parallel-safe (`pytest-xdist`). Use `monkeypatch.setenv()` for env mutation — never assign to `os.environ` directly. Use injectable clocks, seed injection, `MemoryWorkspace`, and `asyncio.sleep(0)` for cooperative yields. Never `asyncio.sleep(N)` with N > 0 in tests.
 

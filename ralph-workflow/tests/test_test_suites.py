@@ -23,6 +23,18 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_commit_cleanup_verify_gate.py",
     "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py",
 )
+EXPECTED_FAST_TEST_FILES = (
+    "tests/test_makefile_verification_workflow.py",
+    "tests/test_test_suites.py",
+    "tests/test_test_suites_orchestration.py",
+)
+
+
+def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
+    """S-5: test-fast covers the statically named suite-routing boundary only."""
+    assert test_suites_module.FAST_PROFILE_TEST_FILES == EXPECTED_FAST_TEST_FILES
+    assert all(not path.startswith("tests/integration/") for path in EXPECTED_FAST_TEST_FILES)
+    assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
 def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_two() -> None:
@@ -132,6 +144,30 @@ def test_partition_selected_files_minimizes_heavy_e2e_shard_load() -> None:
         ),
     )
     test_suites_module.validate_exact_file_assignment(selected, shards)
+
+
+def test_static_profile_discovery_regression_partitions_unit_and_integration_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-2: focused profiles statically partition test files before pytest starts."""
+    tests_root = tmp_path / "tests"
+    integration_root = tests_root / "integration"
+    integration_root.mkdir(parents=True)
+    (tests_root / "test_unit.py").write_text("def test_unit() -> None: pass\n", encoding="utf-8")
+    (integration_root / "test_integration.py").write_text(
+        "def test_integration() -> None: pass\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+
+    unit_files = test_suites_module.discover_unit_test_files(tmp_path)
+    integration_files = test_suites_module.discover_integration_test_files(tmp_path)
+
+    assert unit_files == ("tests/test_unit.py",)
+    assert integration_files == ("tests/integration/test_integration.py",)
+    test_suites_module.validate_exact_file_assignment(
+        test_suites_module._discover_all_test_files(tmp_path),
+        (unit_files, integration_files),
+    )
 
 
 def test_static_subprocess_e2e_discovery_selects_only_marked_files(

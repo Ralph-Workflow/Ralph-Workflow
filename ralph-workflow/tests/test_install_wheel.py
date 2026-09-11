@@ -63,9 +63,7 @@ def _build_wheel(repo_root: Path) -> Path:
     wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
     if wheels:
         return wheels[-1]
-    build = _run_subprocess(
-        ("uv", "run", "--with", "hatchling", "hatch", "build", "-t", "wheel"), cwd=repo_root
-    )
+    build = _run_subprocess(("uv", "build", "--wheel"), cwd=repo_root)
     assert build.returncode == 0, build.stderr or build.stdout
     wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
     assert wheels

@@ -406,6 +406,142 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
 
 
+@pytest.mark.parametrize(
+    ("profile", "expected_files", "expected_marker"),
+    (
+        (
+            "unit",
+            ("tests/test_alpha.py",),
+            "not subprocess_e2e and not smoke",
+        ),
+        (
+            "integration",
+            ("tests/integration/test_bravo.py",),
+            "not subprocess_e2e and not smoke",
+        ),
+        (
+            "fast",
+            (
+                "tests/test_makefile_verification_workflow.py",
+                "tests/test_test_suites.py",
+                "tests/test_test_suites_orchestration.py",
+            ),
+            "not subprocess_e2e and not smoke",
+        ),
+    ),
+)
+def test_run_test_suites_regression_profile_uses_exact_static_files_and_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    profile: str,
+    expected_files: tuple[str, ...],
+    expected_marker: str,
+) -> None:
+    """S-2: named focused profiles retain exclusive paths and canonical markers."""
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    spawner = _StubSpawner([_FakeShardProcess([0])])
+    if profile == "unit":
+        discoverer = test_suites_module.discover_unit_test_files
+        monkeypatch.setattr(test_suites_module, discoverer.__name__, lambda _cwd: expected_files)
+    elif profile == "integration":
+        discoverer = test_suites_module.discover_integration_test_files
+        monkeypatch.setattr(test_suites_module, discoverer.__name__, lambda _cwd: expected_files)
+    else:
+        monkeypatch.setattr(
+            test_suites_module,
+            "discover_fast_test_files",
+            lambda _cwd: expected_files,
+        )
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            profile=profile,
+            spawner=spawner,
+            file_weigher=lambda _cwd, _path: 1,
+            wait=lambda _seconds: None,
+        )
+        == 0
+    )
+    assert spawner.manifest_files == [expected_files]
+    command = spawner.calls[0][0]
+    marker_flag = command.index("-m", command.index("pytest") + 1)
+    assert command[marker_flag + 1] == expected_marker
+
+
+def test_run_test_suites_regression_accepts_marker_empty_profile_shard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-2: a statically assigned file with no matching marker is not a profile failure."""
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(test_suites_module, "discover_unit_test_files", lambda _cwd: (
+        "tests/test_empty.py",
+        "tests/test_selected.py",
+    ))
+    processes = [_FakeShardProcess([5]), _FakeShardProcess([0])]
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            profile="unit",
+            spawner=_StubSpawner(processes),
+            file_weigher=lambda _cwd, _path: 1,
+            wait=lambda _seconds: None,
+        )
+        == 0
+    )
+    assert all(process.reaped and not process.terminated for process in processes)
+
+
+@pytest.mark.parametrize("shard_count", (1, 2))
+def test_run_test_suites_regression_returns_no_tests_code_when_every_profile_shard_is_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shard_count: int,
+) -> None:
+    """S-2: all marker-empty focused shards preserve pytest's no-tests exit code."""
+    monkeypatch.setenv("PYTEST_WORKERS", str(shard_count))
+    selected_files = tuple(f"tests/test_empty_{index}.py" for index in range(shard_count))
+    monkeypatch.setattr(test_suites_module, "discover_unit_test_files", lambda _cwd: selected_files)
+    processes = [_FakeShardProcess([5]) for _index in range(shard_count)]
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            profile="unit",
+            spawner=_StubSpawner(processes),
+            file_weigher=lambda _cwd, _path: 1,
+            wait=lambda _seconds: None,
+        )
+        == 5
+    )
+    assert all(process.reaped and not process.terminated for process in processes)
+
+
+def test_run_test_suites_regression_rejects_conflicting_profile_selectors(tmp_path: Path) -> None:
+    """S-2: callers cannot silently combine focused profile selection modes."""
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            profile="unit",
+            auto_integrate_e2e_only=True,
+        )
+
+
+def test_main_regression_rejects_unknown_profile_before_spawning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: unsupported CLI profiles fail closed instead of falling back to verification."""
+    monkeypatch.setattr(
+        test_suites_module,
+        "run_test_suites",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("runner started")),
+    )
+
+    with pytest.raises(SystemExit, match="--profile unit, --profile integration, or --profile fast"):
+        test_suites_module.main(("--profile", "unknown"))
+
+
 def test_default_profile_dedicated_required_e2e_shard_uses_two_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
