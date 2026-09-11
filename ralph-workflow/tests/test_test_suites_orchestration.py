@@ -376,11 +376,14 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("PYTEST_WORKERS", "1")
-    spawner = _StubSpawner([_FakeShardProcess([0])])
+    spawner = _StubSpawner([_FakeShardProcess([0]), _FakeShardProcess([0])])
     monkeypatch.setattr(
         test_suites_module,
         "discover_subprocess_e2e_files",
-        lambda _cwd: ("tests/test_e2e.py",),
+        lambda _cwd: (
+            "tests/test_e2e.py",
+            "tests/agents/test_terminal_state_restored_on_exit.py",
+        ),
     )
     weighed_paths: list[str] = []
 
@@ -399,11 +402,20 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
         == 0
     )
     assert weighed_paths == ["tests/test_e2e.py"]
-    command = spawner.calls[0][0]
-    assert command[3] == "tests"
-    assert spawner.manifest_files == [("tests/test_e2e.py",)]
-    marker_flag = command.index("-m", command.index("pytest") + 1)
-    assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
+    general_command = spawner.calls[0][0]
+    exclusive_command = spawner.calls[1][0]
+    assert general_command[3] == "tests"
+    assert exclusive_command[3] == "tests"
+    assert spawner.manifest_files == [
+        ("tests/test_e2e.py",),
+        ("tests/agents/test_terminal_state_restored_on_exit.py",),
+    ]
+    marker_flag = general_command.index("-m", general_command.index("pytest") + 1)
+    assert (
+        general_command[marker_flag + 1]
+        == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
+    )
+    assert "-n" not in exclusive_command
 
 
 @pytest.mark.parametrize(
@@ -570,6 +582,82 @@ def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
     xdist_index = dedicated_command.index("-n")
     assert dedicated_command[xdist_index + 1] == "4"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
+
+
+def test_subprocess_e2e_regression_general_failure_prevents_exclusive_pty_spawn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """S-1: the exclusive lane preserves first-failure output and cleanup semantics."""
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+    failed = _FakeShardProcess([1], stderr=b"general failure output\\n")
+    exclusive = _FakeShardProcess([0])
+    spawner = _StubSpawner([failed, exclusive])
+    monkeypatch.setattr(
+        test_suites_module,
+        "discover_subprocess_e2e_files",
+        lambda _cwd: (
+            "tests/test_general.py",
+            "tests/agents/test_terminal_state_restored_on_exit.py",
+        ),
+    )
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            spawner=spawner,
+            file_weigher=lambda _cwd, _path: 1,
+            wait=lambda _seconds: None,
+            subprocess_e2e_only=True,
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert spawner.manifest_files == [("tests/test_general.py",)]
+    assert failed.reaped and failed.orphans_cleaned
+    assert not exclusive.reaped
+    assert "general failure output" in captured.err
+
+
+def test_subprocess_e2e_regression_exclusive_pty_uses_remaining_parent_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1: the PTY lane cannot reset the deadline consumed by general shards."""
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+    clock = _FakeClock()
+    general = _FakeShardProcess([0], on_communicate=lambda: clock.advance(5.0))
+    exclusive = _FakeShardProcess([None])
+    spawner = _StubSpawner([general, exclusive])
+    monkeypatch.setattr(
+        test_suites_module,
+        "discover_subprocess_e2e_files",
+        lambda _cwd: (
+            "tests/test_general.py",
+            "tests/agents/test_terminal_state_restored_on_exit.py",
+        ),
+    )
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            suite_timeout_seconds=5.0,
+            spawner=spawner,
+            file_weigher=lambda _cwd, _path: 1,
+            monotonic=clock,
+            wait=clock.advance,
+            subprocess_e2e_only=True,
+        )
+        == 124
+    )
+
+    assert spawner.manifest_files == [("tests/test_general.py",)]
+    assert general.reaped and general.orphans_cleaned
+    assert not exclusive.reaped
 
 
 def test_run_test_suites_terminates_and_reaps_siblings_on_first_failure(

@@ -103,6 +103,10 @@ _MAX_XDIST_WORKERS_PER_SHARD = 4
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
 #: selections cannot drift.
+EXCLUSIVE_SUBPROCESS_E2E_FILES: tuple[str, ...] = (
+    "tests/agents/test_terminal_state_restored_on_exit.py",
+)
+
 REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # One real-git landing journey retains the external Git boundary proof;
     # decision and recovery variants run in the opt-in subprocess profile.
@@ -158,6 +162,10 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = "4"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
+if not EXCLUSIVE_SUBPROCESS_E2E_FILES:
+    raise RuntimeError("EXCLUSIVE_SUBPROCESS_E2E_FILES must not be empty")
+if len(EXCLUSIVE_SUBPROCESS_E2E_FILES) != len(set(EXCLUSIVE_SUBPROCESS_E2E_FILES)):
+    raise RuntimeError("EXCLUSIVE_SUBPROCESS_E2E_FILES must not contain duplicates")
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
     raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not be empty")
 if len(REQUIRED_AUTO_INTEGRATE_E2E_FILES) != len(set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)):
@@ -166,6 +174,20 @@ if _MAX_PYTEST_WORKERS <= 0:
     raise RuntimeError("_MAX_PYTEST_WORKERS must be positive")
 if _MAX_XDIST_WORKERS_PER_SHARD < 0:
     raise RuntimeError("_MAX_XDIST_WORKERS_PER_SHARD must be non-negative")
+
+
+def validate_exclusive_subprocess_e2e_selection(selected_files: Iterable[str]) -> None:
+    """Fail unless each exclusive subprocess-E2E file is selected exactly once."""
+    counts = Counter(selected_files)
+    missing = tuple(path for path in EXCLUSIVE_SUBPROCESS_E2E_FILES if counts[path] == 0)
+    duplicate = tuple(path for path in EXCLUSIVE_SUBPROCESS_E2E_FILES if counts[path] > 1)
+    if missing or duplicate:
+        details = []
+        if missing:
+            details.append("missing files: " + ", ".join(missing))
+        if duplicate:
+            details.append("duplicate files: " + ", ".join(duplicate))
+        raise RuntimeError("invalid exclusive subprocess-E2E selection: " + "; ".join(details))
 
 
 def validate_required_auto_integrate_selection(selected_files: Iterable[str]) -> None:
@@ -1010,11 +1032,19 @@ def _select_test_files(
     if auto_integrate_e2e_only:
         return (REQUIRED_AUTO_INTEGRATE_E2E_FILES, _VERIFICATION_MARK_EXPRESSION, (), None)
     if subprocess_e2e_only:
+        selected_files = discover_subprocess_e2e_files(cwd)
+        validate_exclusive_subprocess_e2e_selection(selected_files)
+        exclusive_files = tuple(
+            path for path in selected_files if path in set(EXCLUSIVE_SUBPROCESS_E2E_FILES)
+        )
+        general_files = tuple(
+            path for path in selected_files if path not in set(EXCLUSIVE_SUBPROCESS_E2E_FILES)
+        )
         return (
-            discover_subprocess_e2e_files(cwd),
+            general_files,
             _SUBPROCESS_E2E_MARK_EXPRESSION,
-            (),
-            None,
+            exclusive_files,
+            "0",
         )
     discovered_files = file_discoverer(cwd)
     validate_required_auto_integrate_selection(discovered_files)
@@ -1105,8 +1135,7 @@ def run_test_suites(
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     if required_e2e_shard:
-        shards = (*shards, required_e2e_shard)
-        validate_exact_file_assignment((*selected_files, *required_e2e_shard), shards)
+        validate_exact_file_assignment((*selected_files, *required_e2e_shard), (*shards, required_e2e_shard))
     else:
         validate_exact_file_assignment(selected_files, shards)
     temp_directory_prefix: str
@@ -1124,11 +1153,14 @@ def run_test_suites(
         prefix=f"{temp_directory_prefix}-",
         dir=basetemp_parent,
     ) as basetemp_root:
-        return _run_shards(
+        basetemp_path = Path(basetemp_root)
+        successful_returncodes = frozenset((0, 5)) if profile is not None else frozenset((0,))
+        empty_selection_returncode = 5 if profile is not None else None
+        general_result = _run_shards(
             shards,
             cwd=cwd,
             env=env,
-            basetemp_root=Path(basetemp_root),
+            basetemp_root=basetemp_path,
             deadline=deadline,
             started_at=started_at,
             spawner=spawner,
@@ -1136,11 +1168,27 @@ def run_test_suites(
             wait=wait,
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
-            required_e2e_shard_xdist_workers=required_e2e_shard_xdist_workers,
-            successful_returncodes=(
-                frozenset((0, 5)) if profile is not None else frozenset((0,))
-            ),
-            empty_selection_returncode=5 if profile is not None else None,
+            successful_returncodes=successful_returncodes,
+            empty_selection_returncode=empty_selection_returncode,
+        )
+        if general_result not in successful_returncodes:
+            return general_result
+        if not required_e2e_shard:
+            return general_result
+        return _run_shards(
+            (required_e2e_shard,),
+            cwd=cwd,
+            env=env,
+            basetemp_root=basetemp_path,
+            deadline=deadline,
+            started_at=started_at,
+            spawner=spawner,
+            monotonic=monotonic,
+            wait=wait,
+            marker_expression=marker_expression,
+            xdist_workers=required_e2e_shard_xdist_workers or _xdist_workers_per_shard(),
+            successful_returncodes=successful_returncodes,
+            empty_selection_returncode=empty_selection_returncode,
         )
 
 

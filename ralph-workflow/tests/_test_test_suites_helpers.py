@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 
 class _FakeShardProcess:
@@ -30,12 +30,14 @@ class _FakeShardProcess:
         stdout: bytes = b"",
         stderr: bytes = b"",
         communicate_times_out: bool = False,
+        on_communicate: Callable[[], None] | None = None,
     ) -> None:
         self._returncodes = list(returncodes)
         self._last_returncode: int | None = None
         self._stdout = stdout
         self._stderr = stderr
         self._communicate_times_out = communicate_times_out
+        self._on_communicate = on_communicate
         self.terminated = False
         self.reaped = False
         self.orphans_cleaned = False
@@ -51,6 +53,8 @@ class _FakeShardProcess:
         timeout: float | None = None,
     ) -> tuple[bytes, bytes]:
         del input, timeout
+        if self._on_communicate is not None:
+            self._on_communicate()
         if self._communicate_times_out:
             raise subprocess.TimeoutExpired(("pytest",), 1.0)
         self.reaped = True
