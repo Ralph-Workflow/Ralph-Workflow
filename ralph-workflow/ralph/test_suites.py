@@ -152,10 +152,10 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
-# Required real-git files use a dedicated shard with two xdist workers.
-# Each test owns a ``tmp_path``; the retained registry remains small and
-# deterministic under the default test profile.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "2"
+# Required real-git files use a dedicated shard with four xdist workers.
+# Each test owns a ``tmp_path``; four workers cut the measured 40-core host
+# runtime from 9.25s to 4.46s without changing the retained selection.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "4"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:

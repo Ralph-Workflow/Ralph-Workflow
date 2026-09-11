@@ -201,15 +201,10 @@ test-install-make-smoke:
 # `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
 # file the regular profile deliberately skips.
 #
-# wt-056: the smoke tests are I/O-bound (each spawns a stub
-# subprocess), so fewer xdist workers reduce startup overhead and CPU
-# contention without sacrificing throughput. Benchmarked on the
-# maintained 12-core host: -n 4 completes in ~13 s wall vs ~19 s for
-# -n 8, saving ~4 s of combined-budget headroom for the trailing
-# visual-smoke step. Re-measured wt-063 after adding the kimi row:
-# 15 tests complete in ~5 s wall at -n 4. Re-measured wt-015: -n 4
-# reliably causes the pi harness to retry-loop and fail on this host,
-# while -n 2 keeps the suite inside the budget and exits clean.
+# The smoke tests are I/O-bound (each spawns a stub subprocess).
+# Four xdist workers complete the 15 independent offline harness rows in
+# 7.62 s on the maintained 40-core host versus 10.34 s with two workers,
+# preserving combined-budget headroom without changing test selection.
 #
 # wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
 # here -- its ~1 s of Python import / arg-parse startup is pure overhead
@@ -218,7 +213,7 @@ test-install-make-smoke:
 # the suite-level cap is provided by the verify runner's cumulative
 # tracker.
 test-multimodal-smoke:
-	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 2 --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 4 --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,

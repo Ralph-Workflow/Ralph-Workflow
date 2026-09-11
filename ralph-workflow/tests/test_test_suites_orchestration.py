@@ -542,11 +542,11 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_two_xdist_workers(
+def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses two workers for isolated AGY lifecycles."""
+    """The dedicated E2E shard uses four workers for isolated real-git tests."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     processes = [_FakeShardProcess([0]), _FakeShardProcess([0]), _FakeShardProcess([0])]
     spawner = _StubSpawner(processes)
@@ -568,7 +568,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_two_xdist_workers(
     assert dedicated_command[3] == "tests"
     assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "2"
+    assert dedicated_command[xdist_index + 1] == "4"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 
