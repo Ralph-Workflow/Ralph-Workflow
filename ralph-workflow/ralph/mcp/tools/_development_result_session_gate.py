@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
@@ -15,6 +15,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.tools.coordination import CoordinationSessionLike, WorkspaceLike
+
+
+@runtime_checkable
+class _WorkerSession(Protocol):
+    worker_namespace: Path | None
 
 
 def pre_warning_development_result_diagnostics(
@@ -39,8 +44,10 @@ def pre_warning_development_result_diagnostics(
     raw_proofs = content.get("plan_items_proven")
     if isinstance(raw_proofs, list):
         for proof in raw_proofs:
-            if isinstance(proof, dict) and isinstance(proof.get("plan_item"), str):
-                submitted_refs.add(cast("str", proof["plan_item"]))
+            if isinstance(proof, dict):
+                plan_item = proof.get("plan_item")
+                if isinstance(plan_item, str):
+                    submitted_refs.add(plan_item)
     if required_refs == submitted_refs:
         return []
     return [
@@ -79,7 +86,7 @@ def _required_plan_refs(session: CoordinationSessionLike, workspace: WorkspaceLi
     parsed_units = parse_work_units_from_artifact(plan_content)
     if parsed_units is None or not parsed_units.work_units:
         return step_refs
-    worker_namespace = cast("Path | None", getattr(session, "worker_namespace", None))
+    worker_namespace = session.worker_namespace if isinstance(session, _WorkerSession) else None
     if worker_namespace is not None:
         return {worker_namespace.name}
     unit_refs = {unit.unit_id for unit in parsed_units.work_units}
