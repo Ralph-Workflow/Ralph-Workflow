@@ -187,6 +187,122 @@ def test_development_result_rejects_incomplete_status_before_wrapup_warning(
     assert "50-minute warning" in str(result.content[0])
 
 
+def _write_multi_step_plan(tmp_path: pathlib.Path) -> None:
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "plan.md").write_text(
+        """---
+type: plan
+---
+
+## Summary
+Test context for exact proof validation.
+
+Intent: Add regression coverage.
+Coverage: test
+
+## Scope
+- [SC-1] Add exact proof validation coverage
+  Category: test
+
+## Steps
+
+### [S-1] Implement the behavior
+Change the submission gate.
+
+Type: file_change
+Files:
+- modify ralph/mcp/tools/_development_result_session_gate.py
+Verify: pytest tests/test_session_wrapup.py -q
+Expect: the focused suite passes
+
+### [S-2] Verify the behavior
+Run the focused regression suite.
+
+Type: verify
+Depends on: S-1
+Verify: pytest tests/test_session_wrapup.py -q
+Expect: the focused suite passes
+""",
+        encoding="utf-8",
+    )
+
+
+def _completed_development_result(*proof_ids: str) -> str:
+    proofs = "\n".join(
+        f"- [{proof_id}] Proven.\n  Disposition: completed" for proof_id in proof_ids
+    )
+    return f"""---
+type: development_result
+status: completed
+---
+
+## Summary
+- [SUM-1] Completed.
+
+## Files Changed
+- [F-1] tests/test_session_wrapup.py
+
+## Plan Items Proven
+{proofs}
+"""
+
+
+@pytest.mark.parametrize(
+    ("proof_ids", "expected_detail"),
+    [
+        (("S-1",), "missing=['S-2']"),
+        (("S-1", "S-2", "S-3"), "unexpected=['S-3']"),
+    ],
+)
+def test_session_gate_regression_rejects_inexact_plan_proofs_before_warning(
+    tmp_path: pathlib.Path,
+    proof_ids: tuple[str, ...],
+    expected_detail: str,
+) -> None:
+    """S-2: pre-warning completion requires the canonical plan's exact proof set."""
+    _write_multi_step_plan(tmp_path)
+    budget = SessionWrapupBudget(FakeClock(), soft_seconds=3000.0, hard_seconds=3300.0)
+    with session_warning_scope(budget.before_soft_warning()):
+        result = handle_submit_md_artifact(
+            planning_session(drain="development"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": _completed_development_result(*proof_ids),
+            },
+        )
+
+    assert result.is_error is True
+    payload: object = json.loads(result.content[0].text)
+    assert isinstance(payload, dict)
+    diagnostics = payload.get("diagnostics")
+    assert isinstance(diagnostics, list)
+    diagnostic = next(
+        item for item in diagnostics if isinstance(item, dict) and item.get("rule_id") == "DEV015"
+    )
+    assert expected_detail in str(diagnostic.get("message"))
+
+
+def test_session_gate_regression_accepts_exact_plan_proofs_before_warning(
+    tmp_path: pathlib.Path,
+) -> None:
+    """S-2: exact one-to-one plan proof coverage is accepted before the warning."""
+    _write_multi_step_plan(tmp_path)
+    budget = SessionWrapupBudget(FakeClock(), soft_seconds=3000.0, hard_seconds=3300.0)
+    with session_warning_scope(budget.before_soft_warning()):
+        result = handle_submit_md_artifact(
+            planning_session(drain="development"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": _completed_development_result("S-1", "S-2"),
+            },
+        )
+
+    assert result.is_error is False
+
+
 def test_development_result_accepts_incomplete_status_at_wrapup_warning(
     tmp_path: pathlib.Path,
 ) -> None:
