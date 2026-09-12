@@ -36,7 +36,7 @@ Choose the outcome from fresh evidence, not the developer's status:
 - `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
-`failed` records stronger or not-evaluable evidence and returns it for explicit resolution under bundled policy. The receiving prompt must ask whether and how the failure can be resolved; the label itself never fails the pipeline.
+`failed` records stronger or not-evaluable evidence and returns for explicit resolution. The receiver must ask how to resolve it; label itself never fails the pipeline.
 
 {% set development_decision_example %}
 ---
