@@ -22,6 +22,8 @@ import threading
 import urllib.request
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.timeout_clock import FakeClock
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
@@ -31,17 +33,22 @@ from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServ
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
-from ralph.mcp.server._session_wrapup import SessionWrapupBudget, wrapup_notice
+from ralph.mcp.server._session_wrapup import (
+    SessionWrapupBudget,
+    session_warning_scope,
+    wrapup_notice,
+)
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.tools.bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.workspace.fs import FsWorkspace
+from tests._artifact_format_docs_mock_session import planning_session
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     import pathlib
-
-    import pytest
 
 
 def test_no_notice_before_soft_threshold() -> None:
@@ -86,8 +93,12 @@ def test_disabled_soft_threshold_never_notices() -> None:
 def test_budget_uses_injected_clock_and_start() -> None:
     clock = FakeClock()
     budget = SessionWrapupBudget(clock, soft_seconds=3000.0, hard_seconds=3300.0)
+    assert budget.before_soft_warning() is True
     assert budget.notice() is None
-    clock.advance(3000.0)
+    clock.advance(2999.999)
+    assert budget.before_soft_warning() is True
+    clock.advance(0.001)
+    assert budget.before_soft_warning() is False
     notice = budget.notice()
     assert notice is not None
     assert "declare_complete" in notice
@@ -130,6 +141,7 @@ def _server_with_budget(budget: SessionWrapupBudget, *, tmp_path: pathlib.Path) 
         workspace=_build_test_workspace(tmp_path),
         registry=bridge,
         wrapup_provider=budget.notice,
+        before_wrapup_warning_provider=budget.before_soft_warning,
     )
 
 
@@ -152,6 +164,47 @@ def _call_read_file(server: McpServer) -> list[dict[str, object]]:
         assert isinstance(block, dict)
         blocks.append(block)
     return blocks
+
+
+@pytest.mark.parametrize("status", ("partial", "failed"))
+def test_development_result_rejects_incomplete_status_before_wrapup_warning(
+    tmp_path: pathlib.Path, status: str
+) -> None:
+    clock = FakeClock()
+    budget = SessionWrapupBudget(clock, soft_seconds=3000.0, hard_seconds=3300.0)
+    session = planning_session(drain="development")
+    with session_warning_scope(budget.before_soft_warning()):
+        result = handle_submit_md_artifact(
+            session,
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": f"---\ntype: development_result\nstatus: {status}\n---\n## Summary\n- [SUM-1] Incomplete.\n",
+            },
+        )
+
+    assert result.is_error is True
+    assert "50-minute warning" in str(result.content[0])
+
+
+def test_development_result_accepts_incomplete_status_at_wrapup_warning(
+    tmp_path: pathlib.Path,
+) -> None:
+    clock = FakeClock()
+    budget = SessionWrapupBudget(clock, soft_seconds=3000.0, hard_seconds=3300.0)
+    clock.advance(3000.0)
+    session = planning_session(drain="development")
+    with session_warning_scope(budget.before_soft_warning()):
+        result = handle_submit_md_artifact(
+            session,
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": "---\ntype: development_result\nstatus: partial\n---\n## Summary\n- [SUM-1] Incomplete.\n",
+            },
+        )
+
+    assert result.is_error is False
 
 
 def test_tool_result_carries_wrapup_banner_only_after_soft_threshold(

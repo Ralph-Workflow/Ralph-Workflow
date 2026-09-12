@@ -41,9 +41,38 @@ stays explicit.
 
 from __future__ import annotations
 
-from typing import Protocol
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import TYPE_CHECKING, Protocol
 
-__all__ = ["SessionWrapupBudget", "wrapup_notice"]
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+__all__ = [
+    "SessionWrapupBudget",
+    "session_before_warning",
+    "session_warning_scope",
+    "wrapup_notice",
+]
+
+_SESSION_BEFORE_WARNING: ContextVar[bool] = ContextVar(
+    "ralph_session_before_warning", default=False
+)
+
+
+def session_before_warning() -> bool:
+    """Return the broker-owned warning state for the current tool dispatch."""
+    return _SESSION_BEFORE_WARNING.get()
+
+
+@contextmanager
+def session_warning_scope(before_warning: bool) -> Iterator[None]:
+    """Publish one invocation's warning state only for its tool dispatch."""
+    token = _SESSION_BEFORE_WARNING.set(before_warning)
+    try:
+        yield
+    finally:
+        _SESSION_BEFORE_WARNING.reset(token)
 
 
 class _Clock(Protocol):
@@ -93,6 +122,12 @@ class SessionWrapupBudget:
         self._soft_seconds = soft_seconds
         self._hard_seconds = hard_seconds
         self._started_at = clock.monotonic()
+
+    def before_soft_warning(self) -> bool:
+        """Return whether this invocation is strictly before its soft warning."""
+        return self._soft_seconds is not None and (
+            self._clock.monotonic() - self._started_at < self._soft_seconds
+        )
 
     def notice(self) -> str | None:
         """Return the current wrap-up banner, or None if not yet past the soft threshold."""

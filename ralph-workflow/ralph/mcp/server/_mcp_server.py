@@ -25,7 +25,7 @@ from ralph.mcp.server._schema_flavor import (
     schema_flavor_for_client_name,
 )
 from ralph.mcp.server._server_state import ServerState
-from ralph.mcp.server._session_wrapup import SessionWrapupBudget
+from ralph.mcp.server._session_wrapup import SessionWrapupBudget, session_warning_scope
 from ralph.mcp.server._wire_ledger import append_wire_record
 from ralph.mcp.tools._exec_resource_uri import parse_exec_uri
 from ralph.mcp.tools.coordination import (
@@ -191,6 +191,7 @@ class McpServer:
         *,
         expose_mcp_aliases: bool = True,
         wrapup_provider: Callable[[], str | None] | None = None,
+        before_wrapup_warning_provider: Callable[[], bool] | None = None,
         cycle_deadline_provider: Callable[[], str | None] | None = None,
         metrics: McpMetrics | None = None,
         mcp_activity_sink: Callable[[str], None] | None = None,
@@ -212,6 +213,7 @@ class McpServer:
         # invocation passes the soft threshold, else None. Appended to every
         # tool result so the agent winds down before the hard force-cut.
         self._wrapup_provider = wrapup_provider
+        self._before_wrapup_warning_provider = before_wrapup_warning_provider
         # Optional cycle-deadline nag: returns the plan-to-final-commit
         # timebox banner once the cycle passes its warning point, else None.
         # Rides on tool results because the prompt appendix that starts an
@@ -265,6 +267,7 @@ class McpServer:
             hard_seconds=MAX_SESSION_SECONDS,
         )
         self._wrapup_provider = budget.notice
+        self._before_wrapup_warning_provider = budget.before_soft_warning
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -797,9 +800,14 @@ class McpServer:
             )
 
         try:
-            raw_result = self._registry.dispatch(
-                tool_name, dict(arguments_value), host_session=self._session
+            before_warning = (
+                self._before_wrapup_warning_provider is not None
+                and self._before_wrapup_warning_provider()
             )
+            with session_warning_scope(before_warning):
+                raw_result = self._registry.dispatch(
+                    tool_name, dict(arguments_value), host_session=self._session
+                )
         except (InvalidParamsError, CapabilityDeniedError) as exc:
             raw_result = ToolResult(
                 content=[ToolContent.text_content(str(exc))],

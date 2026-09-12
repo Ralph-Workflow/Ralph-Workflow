@@ -86,7 +86,7 @@ from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECO
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
 
     from ralph.config.mcp_models import McpConfig
 
@@ -250,11 +250,15 @@ def build_standalone_http_server(
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
     activity_only = cast("bool", getattr(effective_session, "activity_only_supervision", False))
+    wrapup_budget = None if activity_only else _session_wrapup_budget(env_map)
     server = McpServer(
         effective_session,
         workspace,
         registry,
-        wrapup_provider=None if activity_only else _session_wrapup_provider(env_map),
+        wrapup_provider=None if wrapup_budget is None else wrapup_budget.notice,
+        before_wrapup_warning_provider=(
+            None if wrapup_budget is None else wrapup_budget.before_soft_warning
+        ),
         cycle_deadline_provider=None if activity_only else CycleDeadlineNotifier().notice,
         mcp_activity_sink=(
             activity_relay_sender.emit if activity_relay_sender is not None else None
@@ -273,8 +277,8 @@ def _env_float(name: str, default: float | None, env: Mapping[str, str]) -> floa
         return default
 
 
-def _session_wrapup_provider(env: Mapping[str, str]) -> Callable[[], str | None]:
-    """Build the graduated-session wrap-up nag provider from env (or defaults).
+def _session_wrapup_budget(env: Mapping[str, str]) -> SessionWrapupBudget:
+    """Build the graduated-session wrap-up budget from env (or defaults).
 
     The standalone MCP server starts per agent invocation, so process-start is a
     sound proxy for invocation-start. ``RALPH_SESSION_SOFT_WRAPUP_SECONDS`` and
@@ -285,7 +289,7 @@ def _session_wrapup_provider(env: Mapping[str, str]) -> Callable[[], str | None]
         soft_seconds=_env_float(SESSION_SOFT_WRAPUP_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS, env),
         hard_seconds=_env_float(MAX_SESSION_SECONDS_ENV, MAX_SESSION_SECONDS, env),
     )
-    return budget.notice
+    return budget
 
 
 def _all_capability_values() -> set[str]:

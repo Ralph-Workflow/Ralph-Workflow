@@ -24,6 +24,9 @@ from ralph.mcp.artifacts.md_draft_io import (
 from ralph.mcp.artifacts.plan_item_proof import is_ui_plan_item
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._wire_ledger import params_digest, wire_evidence_for
+from ralph.mcp.tools._development_result_session_gate import (
+    pre_warning_development_result_diagnostics,
+)
 from ralph.mcp.tools.artifact import (
     DEFAULT_ARTIFACT_HANDLER_DEPS,
     ArtifactHandlerDeps,
@@ -695,6 +698,11 @@ def _development_result_context_diagnostics(
     session_run_id: str | None,
     deps: ArtifactHandlerDeps | None,
 ) -> list[Diagnostic]:
+    pre_warning_diagnostics = pre_warning_development_result_diagnostics(
+        session, workspace, content
+    )
+    if pre_warning_diagnostics:
+        return pre_warning_diagnostics
     if content.get("status") != "completed":
         return []
     diagnostics: list[Diagnostic] = []

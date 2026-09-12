@@ -99,9 +99,10 @@ focused verification result. Do not submit another plan-step or work-unit ID.
 Do not invent files or verification results.
 Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
 
-A `status: partial` or `status: failed` result is free-form below the frontmatter — no section or
-proof is required, so submit one as soon as you cannot finish rather than
-forcing an unprovable completion claim. Use `partial` for a safe worker-local
+Before the per-invocation 50-minute soft wrap-up warning, only a fully proved
+`status: completed` result is accepted; keep working on ready unit work instead
+of submitting `partial` or `failed`. At or after the warning, those incomplete
+statuses remain available under the following handoff contract. A `status: partial` or `status: failed` result is free-form below the frontmatter. Use `partial` for a safe worker-local
 continuation and include `## Next Steps` plus `## Continuation`. Use `failed`
 when no safe worker-local continuation exists; report the blocker and evidence
 without promising another iteration. Neither status decides the run outcome.

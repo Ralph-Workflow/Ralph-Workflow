@@ -73,6 +73,15 @@ that a step is unnecessary are invalid rationales for `not_applicable`.
   including `done` or `wrong`, is a hard error. The diagnostic names all
   accepted values; correct the frontmatter and resubmit.
 
+## Session warning boundary
+
+Before the current invocation reaches its 50-minute soft wrap-up warning, only
+`status: completed` is accepted, and its Plan Items Proven entries must exactly
+cover every required plan reference. The gate and warning use the same
+broker-owned resettable monotonic clock; frontmatter cannot alter the boundary.
+At or after the warning, `partial` and `failed` remain available under the
+existing incomplete-work rules below.
+
 ## Sections
 
 Most section rules below apply to `status: completed` only — a
