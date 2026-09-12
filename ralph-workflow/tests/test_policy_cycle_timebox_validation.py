@@ -11,10 +11,23 @@ avoid. Both rules below reject that configuration at load time.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from ralph.policy.loader import load_policy
 
+if TYPE_CHECKING:
+    from ralph.policy.models import PipelinePolicy
+
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+
+def _phases_recording_failed(pipeline: PipelinePolicy) -> dict[str, Any]:
+    phases = {name: phase.model_dump() for name, phase in pipeline.phases.items()}
+    failed_route = phases["development_analysis"]["decisions"]["failed"]
+    failed_route["target"] = "development_final_commit_cleanup"
+    failed_route["reset_loop"] = True
+    failed_route["cycle_outcome"] = "failed"
+    return phases
 
 
 def test_cycle_timebox_rejects_an_outcome_outside_the_vocabulary() -> None:
@@ -98,7 +111,7 @@ def test_incomplete_routes_are_rejected_even_when_the_fallthrough_loops() -> Non
     import pytest as _pytest
 
     pipeline = load_policy(_DEFAULTS_DIR).pipeline
-    phases = {name: phase.model_dump() for name, phase in pipeline.phases.items()}
+    phases = _phases_recording_failed(pipeline)
     phases["development_final_commit"]["transitions"]["on_success"] = "planning"
     completed_routes = [
         route.model_dump()
@@ -139,7 +152,11 @@ def test_route_table_must_cover_every_outcome_a_decision_can_record() -> None:
 
     with _pytest.raises(pydantic.ValidationError, match="failed"):
         type(pipeline).model_validate(
-            {**pipeline.model_dump(), "post_commit_routes": completed_only}
+            {
+                **pipeline.model_dump(),
+                "phases": _phases_recording_failed(pipeline),
+                "post_commit_routes": completed_only,
+            }
         )
 
 
@@ -164,6 +181,7 @@ def test_decision_outcomes_are_checked_without_a_cycle_timebox() -> None:
         type(pipeline).model_validate(
             {
                 **pipeline.model_dump(),
+                "phases": _phases_recording_failed(pipeline),
                 "cycle_timebox": None,
                 "post_commit_routes": completed_routes,
             }
@@ -214,7 +232,13 @@ def test_a_single_uncovered_pair_is_rejected() -> None:
     ]
 
     with _pytest.raises(pydantic.ValidationError, match="budget_state='remaining'"):
-        type(pipeline).model_validate({**pipeline.model_dump(), "post_commit_routes": kept})
+        type(pipeline).model_validate(
+            {
+                **pipeline.model_dump(),
+                "phases": _phases_recording_failed(pipeline),
+                "post_commit_routes": kept,
+            }
+        )
 
 
 def test_a_wildcard_route_covers_every_outcome_for_its_budget_state() -> None:

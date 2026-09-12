@@ -31,6 +31,9 @@ PREVIOUS ATTEMPT ERROR:
   ANALYSIS_FEEDBACK_PATH
 ) }}
 {% endif %}
+{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+{% endif %}
 {% if PRIOR_RESULT_STATUS %}
 PRIOR {% if IS_WORKER %}WORKER{% else %}DEVELOPMENT{% endif %} RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior

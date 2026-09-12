@@ -7,4 +7,7 @@ ANALYSIS CONTEXT
 {% if ANALYSIS_FEEDBACK|default('') or ANALYSIS_FEEDBACK_PATH|default('') %}
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH|default('')) }}
 {% endif %}
+{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+{% endif %}
 {% endif %}

@@ -14,6 +14,7 @@ class DeveloperPromptInputs:
     analysis_feedback_content: str | None = None
     plan_path: str = ""
     analysis_feedback_path: str = ""
+    analysis_feedback_status: str = ""
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
     product_criteria_path: str = ""

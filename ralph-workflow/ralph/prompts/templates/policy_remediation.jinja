@@ -12,6 +12,9 @@ You are a documentation agent. Make the policy corpus under {{ canonical_dir }} 
 Summary: {{ analysis_feedback_summary }}
 Resolve this feedback with repository evidence:
 {{ analysis_feedback_block }}
+{% if analysis_feedback_status == 'failed' %}
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+{% endif %}
 {% endif %}
 
 Resolve every finding with repository evidence. Preserve established stricter rules and policy intent. Record applicable unfinished work as a dated deferral with a concrete review trigger.

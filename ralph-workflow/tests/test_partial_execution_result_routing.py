@@ -244,8 +244,8 @@ def test_default_policy_routes_every_development_result_to_analysis_after_commit
         assert commit_state.phase == "development_commit"
 
 
-def test_failed_development_analysis_closes_cycle_through_final_commit() -> None:
-    """A terminal analyzer decision ends this cycle at the commit boundary."""
+def test_failed_development_analysis_loops_back_to_development() -> None:
+    """A failed analyzer decision returns for explicit resolution."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
 
@@ -255,19 +255,15 @@ def test_failed_development_analysis_closes_cycle_through_final_commit() -> None
         policy,
     )
 
-    assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.pending_cycle_outcome == "failed"
+    assert next_state.phase == "development"
+    assert next_state.pending_cycle_outcome is None
 
 
-@pytest.mark.parametrize(
-    ("completed_cycles", "expected_phase"),
-    [(0, "planning"), (1, "failed_terminal")],
-)
-def test_failed_cycle_commits_then_replans_only_while_budget_remains(
+@pytest.mark.parametrize("completed_cycles", [0, 1])
+def test_failed_analysis_preserves_outer_budget_on_loopback(
     completed_cycles: int,
-    expected_phase: str,
 ) -> None:
-    """Failed cycles are durable before the global budget chooses replan or exit."""
+    """Failure-resolution loopback does not consume the outer cycle budget."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
     state = PipelineState(
@@ -281,25 +277,16 @@ def test_failed_cycle_commits_then_replans_only_while_budget_remains(
         AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
         policy,
     )
-    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
-    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
-
-    assert cleanup_state.phase == "development_final_commit_cleanup"
-    assert commit_state.phase == "development_final_commit"
-    assert next_state.phase == expected_phase
-    assert next_state.pending_cycle_outcome is None
-    assert next_state.get_outer_progress("iteration") == completed_cycles + 1
+    assert cleanup_state.phase == "development"
+    assert cleanup_state.pending_cycle_outcome is None
+    assert cleanup_state.get_outer_progress("iteration") == completed_cycles
 
 
-@pytest.mark.parametrize(
-    ("completed_cycles", "expected_phase"),
-    [(0, "planning"), (1, "failed_terminal")],
-)
-def test_failed_cycle_skipped_commit_replans_only_while_budget_remains(
+@pytest.mark.parametrize("completed_cycles", [0, 1])
+def test_failed_analysis_does_not_enter_commit_path(
     completed_cycles: int,
-    expected_phase: str,
 ) -> None:
-    """S-3: a durable no-diff failed cycle still consumes budget and respects the gate."""
+    """A failed analysis follows the same direct rework route as request changes."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
     state = PipelineState(
@@ -313,14 +300,9 @@ def test_failed_cycle_skipped_commit_replans_only_while_budget_remains(
         AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
         policy,
     )
-    commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
-    next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SKIPPED, policy)
-
-    assert cleanup_state.phase == "development_final_commit_cleanup"
-    assert commit_state.phase == "development_final_commit"
-    assert next_state.phase == expected_phase
-    assert next_state.pending_cycle_outcome is None
-    assert next_state.get_outer_progress("iteration") == completed_cycles + 1
+    assert cleanup_state.phase == "development"
+    assert cleanup_state.pending_cycle_outcome is None
+    assert cleanup_state.get_outer_progress("iteration") == completed_cycles
 
 
 @pytest.mark.parametrize("status", ["completed", "partial", "failed"])
@@ -448,12 +430,12 @@ def test_session_ceiling_partial_result_enters_analysis_regardless_of_time() -> 
     assert next_state.get_loop_iteration("development_analysis_iteration") == 1
 
 
-def test_failed_analysis_replans_while_budget_remains() -> None:
-    """S-1: failed analyzer decision replans to planning only when outer budget remains."""
+def test_failed_analysis_returns_to_development_for_every_outer_budget_state() -> None:
+    """Failed analysis is rework, independent of outer budget progress."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     policy = load_policy(defaults_dir).pipeline
 
-    for completed_cycles, expected_phase in [(0, "planning"), (1, "failed_terminal")]:
+    for completed_cycles in (0, 1):
         state = PipelineState(
             phase="development_analysis",
             budget_caps={"iteration": 2},
@@ -464,11 +446,8 @@ def test_failed_analysis_replans_while_budget_remains() -> None:
             AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
             policy,
         )
-        commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
-        next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
-
-        assert next_state.phase == expected_phase
-        assert next_state.get_outer_progress("iteration") == completed_cycles + 1
+        assert cleanup_state.phase == "development"
+        assert cleanup_state.get_outer_progress("iteration") == completed_cycles
 
 
 def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:

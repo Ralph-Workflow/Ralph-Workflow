@@ -204,8 +204,10 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
     assert str(plan_history_file) not in rendered
 
 
+@pytest.mark.parametrize("decision_status", ["request_changes", "failed"])
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
     tmp_path: Path,
+    decision_status: str,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -213,7 +215,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     workspace.write(".agent/artifacts/plan.md", "# Execution Plan\n\nExisting plan to revise.\n")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\nExisting plan to revise.\n")
     feedback_doc = (
-        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        f"---\ntype: planning_analysis_decision\nstatus: {decision_status}\n---\n"
         "## Summary\n- [S1] Feedback for the planner\n"
         "## What Came Up Short\n- [PA-1] Verification is underspecified.\n"
         "## How To Fix\n- [PA-1] Add exact verification evidence.\n"
@@ -246,6 +248,8 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert "stable `### [S-n] Title` steps" in rendered
     assert "ralph_edit_md_artifact" in rendered
     assert "Feedback for the planner" not in rendered
+    mandate = "`failed` decision label as a pipeline failure"
+    assert (mandate in rendered) is (decision_status == "failed")
     assert workspace.exists(".agent/artifacts/plan.md") is True
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.md") is True
 
@@ -472,15 +476,17 @@ def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     assert "Add regression tests" not in rendered
 
 
+@pytest.mark.parametrize("decision_status", ["request_changes", "failed"])
 def test_materialize_development_prompt_uses_analysis_feedback_handoff(
     tmp_path: Path,
+    decision_status: str,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
     _write_plan_handoff(workspace)
     feedback_doc = (
-        "---\ntype: development_analysis_decision\nstatus: request_changes\n---\n"
+        f"---\ntype: development_analysis_decision\nstatus: {decision_status}\n---\n"
         "## Summary\n- [S1] Need another iteration.\n"
         "## What Came Up Short\n- [DA-1] Focused verification is missing.\n"
         "## How To Fix\n- [DA-1] Add and run the focused verification.\n"
@@ -506,6 +512,8 @@ def test_materialize_development_prompt_uses_analysis_feedback_handoff(
     assert "Read the complete analysis feedback from file at" in rendered
     assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
     assert "Need another iteration." not in rendered
+    mandate = "`failed` decision label as a pipeline failure"
+    assert (mandate in rendered) is (decision_status == "failed")
 
 
 @pytest.mark.parametrize("analysis_iteration", [2, 3, 4])

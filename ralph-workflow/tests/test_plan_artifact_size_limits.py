@@ -223,6 +223,7 @@ def test_check_plan_size_rejects_constraint_list_overflow() -> None:
     assert err.cap == 500
 
 
+@pytest.mark.timeout_seconds(5)
 def test_normalize_plan_artifact_content_runs_size_guard_first() -> None:
     """An oversize payload is rejected with the size-violation message."""
     big = "x" * 4_200_000

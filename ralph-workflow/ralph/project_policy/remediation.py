@@ -114,6 +114,9 @@ def _render_prompt(
     variables = {
         "findings_block": _serialize_findings(findings),
         "analysis_feedback_block": "\n".join(feedback_lines),
+        "analysis_feedback_status": (
+            analysis_feedback.status if analysis_feedback is not None else ""
+        ),
         "analysis_feedback_summary": (
             analysis_feedback.summary if analysis_feedback is not None else ""
         ),

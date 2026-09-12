@@ -234,9 +234,8 @@ cycle_outcome = "completed"
 target = "development"
 reset_loop = false
 [blocks.development_analysis.phase.decisions.failed]
-target = "development_final_commit_cleanup"
-reset_loop = true
-cycle_outcome = "failed"
+target = "development"
+reset_loop = false
 
 [blocks.development_final_commit_cleanup]
 kind = "individual"

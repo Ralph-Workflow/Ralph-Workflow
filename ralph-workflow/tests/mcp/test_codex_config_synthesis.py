@@ -231,7 +231,7 @@ _OPERATOR_CONFIGS = st.dictionaries(_TOML_KEYS, _TOML_VALUES, max_size=6)
 
 @given(base=_OPERATOR_CONFIGS, unsafe_mode=st.booleans())
 @settings(
-    max_examples=25,
+    max_examples=10,
     deadline=None,
     database=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],

@@ -257,6 +257,34 @@ def test_analysis_feedback_reaches_the_prompt() -> None:
     assert "the declared gate does not exist" in seen[0]
 
 
+def test_failed_analysis_feedback_adds_resolution_mandate() -> None:
+    prompt = remediation._render_prompt(
+        [_stub_finding()],
+        AnalysisDecision(
+            status="failed",
+            summary="evidence conflict",
+            what_came_up_short=["The evidence cannot currently be reconciled."],
+        ),
+    )
+
+    assert "determine whether and how it can be resolved" in prompt
+    assert "never skip it" in prompt.lower()
+    assert "`failed` decision label as a pipeline failure" in prompt
+
+
+def test_request_changes_feedback_omits_failed_resolution_mandate() -> None:
+    prompt = remediation._render_prompt(
+        [_stub_finding()],
+        AnalysisDecision(
+            status="request_changes",
+            summary="ordinary correction",
+            what_came_up_short=["One declaration needs correction."],
+        ),
+    )
+
+    assert "do not treat the `failed` decision label as a pipeline failure" not in prompt
+
+
 def test_prompt_carries_the_original_findings() -> None:
     ws = MemoryWorkspace()
     seen: list[str] = []

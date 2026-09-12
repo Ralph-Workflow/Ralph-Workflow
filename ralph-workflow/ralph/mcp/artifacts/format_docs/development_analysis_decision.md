@@ -65,10 +65,12 @@ counterexample was found. `not evaluable` requires `failed` rather than
 completion.
 
 `request_changes` means localized unmet work is actionable inside the current
-development cycle. `failed` means the decision cannot be completed or the
-criteria/evidence conflict has no safe actionable developer remediation. A
-failed decision closes the current cycle; policy owns cleanup, commit, replan,
-and run-exit routing.
+development cycle. `failed` records stronger or not-evaluable evidence, such as
+an impossible or contradictory criterion. Bundled policy routes both statuses
+back to development; a failed decision adds an explicit mandate to determine
+whether and how the failure can be resolved, without treating the label itself
+as a pipeline failure. Terminal failure remains reserved for real pipeline or
+recovery exhaustion.
 
 See `.agent/artifact-formats/examples/development_analysis_decision.md` for the
 validator-backed complete example.

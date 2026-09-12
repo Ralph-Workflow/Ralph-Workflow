@@ -209,8 +209,8 @@ def test_build_agents_policy_includes_custom_drains() -> None:
     assert policy.agent_drains["my_custom_drain"].chain == "custom_chain"
 
 
-def test_default_policy_only_routes_actionable_analysis_back_to_rework() -> None:
-    """Development failure closes its cycle through the commit boundary; request changes remains actionable rework."""
+def test_default_policy_routes_all_noncompleted_analysis_back_to_rework() -> None:
+    """Both non-completed analysis decisions remain actionable rework."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
     bundle = load_policy(defaults_dir)
@@ -221,8 +221,8 @@ def test_default_policy_only_routes_actionable_analysis_back_to_rework() -> None
     assert planning_decisions is not None
     assert planning_decisions["failed"].target == planning_decisions["request_changes"].target
     assert development_decisions["request_changes"].target == "development"
-    assert development_decisions["failed"].target == "development_final_commit_cleanup"
-    assert development_decisions["failed"].cycle_outcome == "failed"
+    assert development_decisions["failed"] == development_decisions["request_changes"]
+    assert development_decisions["failed"].cycle_outcome is None
     assert planning_decisions["failed"].target == "planning"
 
 

@@ -264,11 +264,9 @@ class TestRenderExplanationAscii:
     def test_failed_decision_branches_render_configured_target(self) -> None:
         """Render only failed branches that differ from on_success.
 
-        The planning-analysis failed branch targets planning and renders. The
-        development-analysis failed branch targets its on_success route and is
-        intentionally suppressed; the loaded policy preserves that target.
-        Failed analysis cycles still route through the commit boundary rather
-        than directly to the global ``failed_terminal`` node.
+        Planning-analysis failed targets planning, while development-analysis
+        failed targets development. Both explicit rework branches render and
+        neither short-circuits to the global ``failed_terminal`` node.
         """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
@@ -279,7 +277,7 @@ class TestRenderExplanationAscii:
         assert any("[failed]" in line and "-->" in line and "planning" in line for line in lines)
         assert (
             bundle.pipeline.phases["development_analysis"].decisions["failed"].target
-            == "development_final_commit_cleanup"
+            == "development"
         )
         # failed_terminal is still rendered as the global failure terminal.
         assert "failed_terminal" in output
@@ -287,7 +285,7 @@ class TestRenderExplanationAscii:
         assert not any(
             "[failed]" in line and "-->" in line and "failed_terminal" in line for line in lines
         ), (
-            "Analysis [failed] branches must route through the commit boundary, "
+            "Analysis [failed] branches must route to explicit rework, "
             "not directly to failed_terminal"
         )
 

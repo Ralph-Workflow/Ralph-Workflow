@@ -19,7 +19,7 @@ from ralph.mcp.artifacts.history import (
     clear_artifact_history,
     history_index_path,
 )
-from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown import parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.artifacts.plan import (
@@ -482,6 +482,7 @@ def _render_planning_prompt(
         plan_path,
         analysis_feedback_content,
         analysis_feedback_path,
+        analysis_feedback_status,
         template_name,
     ) = _prepare_planning_prompt_context(context, options)
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
@@ -496,6 +497,7 @@ def _render_planning_prompt(
             analysis_feedback_content=analysis_feedback_content,
             plan_path=plan_path,
             analysis_feedback_path=analysis_feedback_path,
+            analysis_feedback_status=analysis_feedback_status,
             artifact_history_path=artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
             product_criteria_path=str(
@@ -564,9 +566,11 @@ def _render_developer_prompt(
         is_loopback=is_continuation,
         worker_namespace=options.worker_namespace,
     )
-    analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
-        workspace, phase, pipeline_policy, artifacts_policy
-    )
+    (
+        analysis_feedback_content,
+        analysis_feedback_path,
+        analysis_feedback_status,
+    ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
     last_retry_error = read_and_clear_retry_hint(
         workspace,
         phase,
@@ -582,6 +586,7 @@ def _render_developer_prompt(
             analysis_feedback_content=analysis_feedback_content,
             plan_path=plan_path,
             analysis_feedback_path=analysis_feedback_path,
+            analysis_feedback_status=analysis_feedback_status,
             product_criteria_path=str(
                 options.worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
                 if options.worker_namespace is not None
@@ -643,9 +648,11 @@ def _render_template_based_prompt(
     )
     issues_content, issues_path = _resolve_issues_content(workspace)
     fix_result_content, fix_result_path = resolve_fix_result_content(workspace)
-    analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
-        workspace, phase, pipeline_policy, artifacts_policy
-    )
+    (
+        analysis_feedback_content,
+        analysis_feedback_path,
+        analysis_feedback_status,
+    ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
@@ -670,6 +677,7 @@ def _render_template_based_prompt(
         "ANALYSIS_FEEDBACK_PATH": analysis_feedback_path,
     }
     variables.update({k: v for k, v in path_vars.items() if v})
+    variables["ANALYSIS_FEEDBACK_STATUS"] = analysis_feedback_status
     if phase_def is not None and phase_def.skip_invocation:
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
     variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))
@@ -793,7 +801,7 @@ def _should_preserve_planning_context(
 def _prepare_planning_prompt_context(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
-) -> tuple[str | None, str, str, str, str]:
+) -> tuple[str | None, str, str, str, str, str]:
     phase = context.phase
     workspace = context.workspace
     pipeline_policy = context.pipeline_policy
@@ -826,9 +834,11 @@ def _prepare_planning_prompt_context(
         _clear_fresh_planning_context(workspace, pipeline_policy, artifacts_policy)
     elif phase_def is not None and phase_def.loopback_prompt_template:
         template_name = phase_def.loopback_prompt_template
-    analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
-        workspace, phase, pipeline_policy, artifacts_policy
-    )
+    (
+        analysis_feedback_content,
+        analysis_feedback_path,
+        analysis_feedback_status,
+    ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
     if _template_allows_missing_plan_handoff(template_name):
         plan_content, plan_path = _resolve_plan_handoff(workspace)
     else:
@@ -842,6 +852,7 @@ def _prepare_planning_prompt_context(
         plan_path,
         analysis_feedback_content,
         analysis_feedback_path,
+        analysis_feedback_status,
         template_name,
     )
 
@@ -1066,10 +1077,10 @@ def _resolve_loopback_analysis_feedback(
     phase: str,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
-) -> tuple[str, str]:
-    """Return the analysis decision feedback that loopbacks into this phase."""
+) -> tuple[str, str, str]:
+    """Return loopback analysis feedback content, path, and decision status."""
     if artifacts_policy is None:
-        return "", ""
+        return "", "", ""
     for pdef in pipeline_policy.phases.values():
         if pdef.role == "analysis" and pdef.transitions.on_loopback == phase:
             ra = resolve_required_artifact(artifacts_policy, drain=pdef.drain)
@@ -1079,8 +1090,9 @@ def _resolve_loopback_analysis_feedback(
                     artifact_type=ra.artifact_type,
                     artifact_path=ra.artifact_path,
                 )
-                return content or "", path
-    return "", ""
+                document, _diagnostics = parse_markdown_document(content or "")
+                return content or "", path, document.frontmatter.get("status", "")
+    return "", "", ""
 
 
 def _resolve_partial_development_result(

@@ -117,6 +117,7 @@ _ENGINE_GLOBAL_NAMES: frozenset[str] = frozenset({"raise_error"})
 _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "ANALYSIS_FEEDBACK": ("Analysis feedback F-1 requires a focused repair.",),
     "ANALYSIS_FEEDBACK_PATH": (".agent/tmp/analysis_feedback.md",),
+    "ANALYSIS_FEEDBACK_STATUS": ("failed",),
     "ARTIFACT_HISTORY_PATH": (".agent/artifacts/history/index.md",),
     "DOCS_LOOKUP_ACTION": ("revising the plan",),
     "DOCS_LOOKUP_INTENT": ("When researching library APIs:",),
@@ -133,6 +134,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "PRIOR_RESULT_STATUS": ("partial",),
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
     "analysis_feedback_block": ("Analysis feedback block F-1.",),
+    "analysis_feedback_status": ("failed",),
     "replaying_commit_sha": ("0123456789abcdef",),
     "shipped_skills_mode": ("planning", "development"),
     "show_plan_edit_guidance": ("true",),

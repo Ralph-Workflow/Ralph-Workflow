@@ -21,6 +21,10 @@ Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
+{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+{% endif %}
+
 Verify feedback against the request and repository. Repair every referenced `PA-###` finding in
 the target step or plan-level text, and preserve only material that still
 satisfies the plan contract. Treat feedback as evidence, not a document-shape

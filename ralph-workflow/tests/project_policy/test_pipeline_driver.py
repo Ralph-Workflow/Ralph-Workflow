@@ -185,6 +185,20 @@ def test_request_changes_loops_back_and_carries_feedback_forward() -> None:
     )
 
 
+@pytest.mark.parametrize("status", ["request_changes", "failed"])
+def test_noncompleted_analysis_routes_to_remediation(status: str) -> None:
+    ws = MemoryWorkspace()
+    seed_complete_corpus(ws)
+    agent = _Recorder(ws, decisions=[status, "completed"])
+
+    result = pipeline_driver.run_policy_pipeline(
+        ws, stack(), [], invoke_agent=agent, entry_phase=PHASE_ANALYSIS
+    )
+
+    assert agent.trace == "A R A"
+    assert result.status is ReadinessStatus.READY
+
+
 def test_run_agents_entry_reviews_a_clean_policy_without_remediating() -> None:
     """--run-policy-agents enters at ANALYSIS. A policy that is already good is
     approved without a single remediation agent touching it."""

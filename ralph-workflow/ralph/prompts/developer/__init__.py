@@ -38,6 +38,7 @@ class PlanningPromptInputs:
     analysis_feedback_content: str | None = None
     plan_path: str = ""
     analysis_feedback_path: str = ""
+    analysis_feedback_status: str = ""
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
     product_criteria_path: str = ""
@@ -79,6 +80,7 @@ def prompt_developer_iteration_xml_with_context(
         "PRIOR_RESULT_NEXT_STEPS": inputs.prior_result_next_steps,
         "PRIOR_RESULT_CONTINUATION": inputs.prior_result_continuation,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
+        "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
         "unit_id": inputs.work_unit_id,
@@ -155,6 +157,7 @@ def prompt_planning_xml_with_context(
     base_vars: dict[str, str] = {
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
+        "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
     }
@@ -209,6 +212,7 @@ def prompt_planning_xml_with_context(
             "PRODUCT_CRITERIA": inputs.prompt_content or "No requirements provided",
             "PLAN": inputs.plan_content or "(no plan available)",
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
+            "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
             "LAST_RETRY_ERROR": inputs.last_retry_error,
             "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
             "PRODUCT_CRITERIA_PATH": product_criteria_path,

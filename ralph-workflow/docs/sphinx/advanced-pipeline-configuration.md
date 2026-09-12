@@ -222,12 +222,12 @@ through the phase's `decisions` table:
   identify either `Criterion:` or `Plan reference: [S-n]`. Placeholder
   locations such as `unknown` or `n/a` are rejected. The result loops back to
   development.
-- **`failed`** — the analyzer found an impossible, contradictory, or unsafe
-  condition (including `not evaluable` verdicts); the result follows the
-  failure route. A failed decision closes the current cycle through the final
-  commit; policy then starts a fresh planning and development cycle when outer
-  cycle budget remains, or routes to the terminal failure phase when it does
-  not.
+- **`failed`** — the analyzer found stronger or not-evaluable evidence, such
+  as an impossible, contradictory, or unsafe condition. Under bundled defaults
+  it loops back like `request_changes`, with an explicit mandate to determine
+  whether and how the failure can be resolved and to perform actionable work.
+  The label itself never fails the pipeline; terminal failure is reserved for
+  real pipeline or recovery exhaustion.
 
 ### `[phases.<name>.commit_policy]`
 

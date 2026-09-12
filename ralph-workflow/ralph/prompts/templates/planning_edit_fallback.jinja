@@ -23,6 +23,10 @@ REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 ANALYSIS FEEDBACK (`{{ANALYSIS_FEEDBACK_PATH}}`):
 {{ANALYSIS_FEEDBACK}}
 
+{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+{% endif %}
+
 Verify each finding against repository evidence. Repair every referenced `PA-###` finding
 in its target step or plan-level text and preserve only
 material that still satisfies the current contract. Use a subagent only for

@@ -19,9 +19,9 @@
 #
 # decision_vocabulary defines the allowed analysis decision strings for each artifact.
 # Their routing is policy-owned in pipeline.toml via phases.<name>.decisions, not implied
-# by the vocabulary text itself. For development analysis, "request_changes" is
-# actionable remediation inside the current cycle, "failed" closes that cycle,
-# and "completed" advances forward. Pipeline policy owns the post-cycle route.
+# by the vocabulary text itself. For development analysis, both "request_changes"
+# and "failed" return for remediation under bundled policy; "failed" carries a
+# stricter resolution mandate. Only "completed" advances forward.
 
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing planning or development artifacts.

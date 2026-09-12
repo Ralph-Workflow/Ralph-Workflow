@@ -157,4 +157,5 @@ def test_development_analyzer_separates_request_criteria_from_plan_routes() -> N
     assert "every required plan reference" in prompt
     assert "Choose the outcome from fresh evidence" in prompt
     assert "localized unmet work is actionable" in prompt
-    assert "`failed` closes this cycle" in prompt
+    assert "`failed` records stronger or not-evaluable evidence" in prompt
+    assert "label itself never fails the pipeline" in prompt
