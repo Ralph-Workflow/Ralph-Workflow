@@ -155,7 +155,7 @@ def split_prompt_for_stdin_delivery(
     command: Sequence[str],
     config: AgentConfig,
 ) -> tuple[list[str], str | None]:
-    """Split OpenCode's positional prompt off argv so it can go on stdin.
+    """Split stdin-delivered prompts from their command argv.
 
     ``opencode run`` RE-QUOTES its positional message: every argv token holding
     a space is wrapped in literal double quotes and every ``"`` inside it is
@@ -166,9 +166,12 @@ def split_prompt_for_stdin_delivery(
     tool-call examples, so every OpenCode run was reading a corrupted prompt.
 
     The CLI falls back to reading the whole message from stdin when no
-    positional message is given, which delivers it byte-for-byte.
+    positional message is given, which delivers it byte-for-byte. Codex also
+    documents stdin prompt delivery when its positional prompt is replaced by
+    an explicit ``-`` marker. This keeps large fresh and resumed prompts out of
+    argv, avoiding the operating system's argument-size limit.
 
-    Taking the LAST token is correct because the OpenCode command builder
+    Taking the LAST token is correct because the command builder
     appends the composed prompt last (``positional_prompt``); that coupling is
     pinned by ``test_opencode_regression_the_builder_really_puts_the_prompt_last``
     so this cannot start shipping a flag value as the prompt.
@@ -179,11 +182,16 @@ def split_prompt_for_stdin_delivery(
 
     Returns:
         The argv to spawn, and the prompt to write to stdin (``None`` for every
-        transport that does not need this treatment).
+        transport that does not need this treatment). OpenCode omits the final
+        positional prompt; Codex replaces it with ``-``.
     """
-    if config.transport is not AgentTransport.OPENCODE or not command:
-        return list(command), None
-    return list(command[:-1]), command[-1]
+    if not command:
+        return [], None
+    if config.transport is AgentTransport.OPENCODE:
+        return list(command[:-1]), command[-1]
+    if config.transport is AgentTransport.CODEX:
+        return [*command[:-1], "-"], command[-1]
+    return list(command), None
 
 
 def _effective_broken_agent_grace_seconds(watchdog: IdleWatchdog) -> float:

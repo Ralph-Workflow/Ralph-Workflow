@@ -43,10 +43,26 @@ def test_opencode_regression_prompt_moves_off_argv_onto_stdin() -> None:
     assert stdin_text == _PROMPT
 
 
-def test_opencode_regression_other_transports_keep_their_positional_prompt() -> None:
-    """Only OpenCode re-quotes its argv, so only OpenCode changes delivery."""
-    argv = ["codex", "exec", "--json", _PROMPT]
+def test_codex_regression_oversized_prompt_moves_off_argv_onto_stdin() -> None:
+    """Plan S-2: fresh and resumed Codex prompts avoid the OS argv size limit."""
+    prompt = _PROMPT * 16_384
     config = AgentConfig(cmd="codex exec", transport=AgentTransport.CODEX)
+
+    for argv in (
+        ["codex", "exec", "--json", prompt],
+        ["codex", "exec", "resume", "session-1", prompt],
+    ):
+        command, stdin_text = split_prompt_for_stdin_delivery(argv, config)
+
+        assert command == [*argv[:-1], "-"]
+        assert prompt not in command
+        assert stdin_text == prompt
+
+
+def test_opencode_regression_other_transports_keep_their_positional_prompt() -> None:
+    """Plan S-2: transports without stdin delivery keep their positional prompt."""
+    argv = ["claude", "--print", _PROMPT]
+    config = AgentConfig(cmd="claude --print", transport=AgentTransport.CLAUDE)
 
     command, stdin_text = split_prompt_for_stdin_delivery(argv, config)
 
