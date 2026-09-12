@@ -56,10 +56,11 @@ class TestIterationCounterFlags:
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
-        runner.invoke(
+        result = runner.invoke(
             app,
             ["--counter", "iteration=2", "--counter", "reviewer_pass=1", "--dry-run"],
             catch_exceptions=False,
         )
 
+        assert result.exit_code == 0
         assert captured.get("request").counter_overrides == {"iteration": 2, "reviewer_pass": 1}
