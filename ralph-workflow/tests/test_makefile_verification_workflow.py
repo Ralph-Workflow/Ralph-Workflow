@@ -179,9 +179,9 @@ def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
     """The budget-tracked smoke suite must not serialize independent harnesses."""
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    # Four workers complete the independent offline harness rows faster on
-    # the maintained many-core verification host while remaining deterministic.
-    assert "-n 4 --dist worksteal" in body[0]
+    # One worker per independent case prevents process-heavy harness rows from
+    # serializing behind a small worker pool under verification-host contention.
+    assert "-n 15 --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

@@ -213,7 +213,7 @@ test-install-make-smoke:
 # the suite-level cap is provided by the verify runner's cumulative
 # tracker.
 test-multimodal-smoke:
-	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 4 --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 15 --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,
