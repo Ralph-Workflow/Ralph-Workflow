@@ -152,3 +152,40 @@ for its AC. A NEW failure under `tests/project_policy/` is a real
 regression and should be recorded as a `GAP-AC<nn>` here with its
 owning module and a remediation plan before this traceability doc is
 amended to mark an AC `GAP-AC<nn>`.
+
+
+## Portfolio baseline and control-family dispositions
+
+This v3 inventory is the mechanical input to the v4 portfolio migration. Each
+installed control family has exactly one disposition. `KEEP` is reserved for
+an independently valuable durable defense; `MERGE` consolidates duplicate
+obligations under one owner; `REPLACE` moves a broad prose contract into the
+typed portfolio; and `REMOVE` deletes ceremony that has no independent
+oracle.
+
+| Control family | v3 marker, fact, command, finding, or test evidence | Decision | v4 owner and durable-protection rationale |
+|---|---|---|---|
+| Policy identity, schema, and opt-out | `POLICY_SCHEMA_MARKER`, `POLICY_ID_PREFIX`, `OPT_OUT_MARKER`; `test_skip_inline_policy_prompt.py` | KEEP | Kernel; preserves explicit consent and upgrade-or-freeze behavior. |
+| Required core-file presence and headings | `CORE_POLICY_FILES`, `REQUIRED_HEADINGS`, `RWP-CORE`, `RWP-HEADING`; `test_validator.py` | REPLACE | Portfolio kernel and selected profiles express effective controls without requiring eleven prose files as independent gates. |
+| Conditional-domain applicability | `CONDITIONAL_POLICY_FILES`, signal sets, `applicability.toml`, `RWP-DOMAIN`; `test_evidence.py` | MERGE | Profile selection owns deterministic signals; explicit overrides retain a reason and review trigger. |
+| Project facts and runnable commands | `RALPH-FACT`, `RALPH-COMMAND`, `RALPH-INAPPLICABLE`, `RALPH-PENDING`, `RWP-CMD`, `RWP-PENDING` | MERGE | Controls and lanes own facts, triggers, costs, commands, and review conditions once. |
+| Language coverage | `RALPH-LANG`, `RWP-LANG`; `test_validator.py` | MERGE | Stack profiles own language-specific lint and typecheck controls. |
+| Starter placeholders and banners | `PLACEHOLDER_TOKENS`, `STARTER_TEMPLATE_TOKEN`, `RWP-PLACEHOLDER`; `test_starters.py` | KEEP | Kernel readiness continues to fail closed on unresolved starter content. |
+| Research citations | `CITATION_REQUIRED_FIELDS`, `RWP-CITATION`; `test_validator.py` | REPLACE | Each portfolio control declares an inspectable evidence/oracle contract; duplicated prose citations are not correctness proof. |
+| Existing-policy migration | `MIGRATION_CANDIDATE_PATHS`, `MIGRATED_MARKER_TEMPLATE`, `RWP-MIGRATE-UNRECONCILED`; migration tests | KEEP | Kernel preserves data and single-source-of-truth integrity during migration. |
+| Testing and verification admission prose | testing `Suite admission`, verification `Gate lanes`, their required facts and commands | REPLACE | Typed controls enforce nearest-coverage search, cheapest sufficient layer, ownership, marginal cost, evidence, and lifecycle. |
+| Lint, typecheck, dependency, clean-code, documentation, architecture, and agent prose | Corresponding core starters and commands; starter/validator tests | MERGE | Kernel plus stack profiles remove repeated default-gate wording and retain one domain owner per obligation. |
+| Security, safety, data-integrity, and public-contract defenses | security plus applicable privacy, data-storage, API-compatibility, reliability, and release starters | KEEP | Risk profiles retain independent controls when fault sensitivity differs; age alone never retires them. |
+| UI, UX, accessibility, performance, and memory prose | Conditional starters and deterministic stack/path/dependency signals | REPLACE | Conditional profiles select only applicable controls and deliberately route perceptual, expensive, platform, or human checks. |
+| READY evidence and cache signature | `readiness_evidence`, `CACHE_REL_PATH`; `test_evidence.py`, `test_cache.py` | KEEP | Cache must include every effective composition input so policy changes cannot reuse stale readiness. |
+| Generated `AGENTS.md` managed block | `AGENTS_BLOCK_BEGIN`, `AGENTS_BLOCK_END`; `test_agents_md.py` | REPLACE | A bounded effective-composition summary replaces the prose-heavy installed corpus while preserving idempotent markers. |
+| Schema upgrade or freeze | `SCHEMA_VERSION == "v3"`, `_maybe_resolve_schema_upgrade`; `test_skip_inline_policy_prompt.py` | KEEP | Existing projects receive one explicit all-or-nothing v4 consent decision and may remain frozen. |
+| Default verification commands | `ralph.verify._VERIFY_STEPS` and `_BUDGET_TRACKED_STEPS`; `make verify` | KEEP | The immutable aggregate 60-second completion ceiling remains independent of project profile budgets. |
+| Duplicate policy narration and telemetry/provenance claims | Repeated starter instructions without a distinct executable oracle | REMOVE | Correctness evidence must be a predeclared public observation tied to immutable subject/run IDs, preserved artifacts, a validated oracle, and an independent verdict. |
+
+The current default verification surface is the ordered `_VERIFY_STEPS`
+portfolio in `ralph/verify.py`; every test-labelled entry is charged through
+`_BUDGET_TRACKED_STEPS` to the immutable 60-second aggregate ceiling.
+Triggered project commands remain declared by `RALPH-COMMAND`; the v4
+portfolio will assign each one to a named lane rather than letting a new
+command silently enter the default gate.
