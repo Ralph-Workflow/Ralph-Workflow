@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v3 -->
+<!-- ralph-policy-schema: v4 -->
 <!-- ralph-policy-id: architecture-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -97,14 +97,23 @@ external boundaries, or durable contracts change.
   http: https://www.sei.cmu.edu/software-architecture/
   review date: 2026-07-12
 
+## Portfolio ownership
+
+Shared admission, composition, aggregate-budget, evidence, exception, and
+lifecycle rules are owned by `policy-portfolio.toml`; they are not repeated
+here. This file owns only its domain-specific observable outcomes, verified
+facts, commands, and review triggers. Amendments update the effective portfolio
+while its mandatory outcomes remain protected.
+
 ## Living document contract
 
-This is a living document. Verified project facts determine implementation
-details; mandatory outcomes remain unless narrowed by a scoped, owner-approved,
-expiring exception. Stronger legal, contractual, security, or safety
-obligations win.
+This policy is a living document. Keep its domain-specific facts, commands,
+requirements, and review triggers aligned with verified project reality.
+Shared amendment admission and retention are governed once by
+`policy-portfolio.toml`; mandatory outcomes remain protected and MUST NOT be
+weakened to obtain a passing result.
 
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: architecture-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v3 -->`
+* Schema version: `<!-- ralph-policy-schema: v4 -->`

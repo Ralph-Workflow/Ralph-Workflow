@@ -438,6 +438,7 @@ def readiness_evidence(workspace: Workspace, stack: ProjectStack) -> list[Eviden
         markers.AGENTS_MD,
         markers.CLAUDE_MD,
         markers.APPLICABILITY_OVERRIDES_PATH,
+        markers.PORTFOLIO_PATH,
     ]
     paths.extend(f"{markers.CANONICAL_DIR}{filename}" for filename in markers.CORE_POLICY_FILES)
     paths.extend(

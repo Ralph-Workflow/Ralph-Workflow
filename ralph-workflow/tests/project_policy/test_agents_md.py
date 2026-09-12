@@ -62,6 +62,8 @@ def test_bootstrap_creates_agents_md_when_missing() -> None:
     assert markers.AGENTS_BLOCK_BEGIN in content
     assert markers.AGENTS_BLOCK_END in content
     assert markers.CANONICAL_DIR in content
+    assert "effective bounded policy" in content
+    assert "portfolio:" in content
     assert "Dead code is prohibited" in content
     assert "rewriting later is better" in content
 
@@ -201,7 +203,22 @@ def test_condense_replaces_untouched_placeholder_with_concise_block() -> None:
     begin = content.find(markers.AGENTS_BLOCK_BEGIN)
     end = content.find(markers.AGENTS_BLOCK_END)
     block_lines = content[begin:end].splitlines()
-    assert len(block_lines) <= 10, "condensed block must stay short"
+    assert len(block_lines) <= 17, "condensed block must stay bounded"
+
+
+def test_condense_ready_block_requires_portfolio_and_public_evidence() -> None:
+    """READY instructions load the bounded portfolio and reject weak proof."""
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+
+    assert agents_md.condense_placeholder_block(ws) == [markers.AGENTS_MD]
+
+    content = ws.read(markers.AGENTS_MD)
+    assert "effective bounded policy portfolio" in content
+    assert "default-gate budget" in content
+    assert "public-surface observation" in content
+    assert "Telemetry," in content
+    assert "provenance, private-state inspection, and agent narration are not correctness proof." in content
 
 
 def test_condense_preserves_rewritten_block() -> None:

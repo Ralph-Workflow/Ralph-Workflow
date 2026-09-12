@@ -1,17 +1,18 @@
 # Project Policy Readiness — Requirements Traceability
 
-* Status: Verified
-* Date: 2026-07-12
-* Source spec: `.agent/PRODUCT_CRITERIA.md` (## Acceptance criteria, 26 items)
+* Status: v4 portfolio implemented; reproduce status with the commands below
+* Date: 2026-09-11
+* Source spec: `.agent/PRODUCT_CRITERIA.md`
 * Source implementation: `ralph-workflow/ralph/project_policy/` and
   `ralph-workflow/ralph/cli/commands/run.py`
-* Source tests: `ralph-workflow/tests/project_policy/` (363 passing tests on 2026-07-12)
+* Source tests: `ralph-workflow/tests/project_policy/`; use the commands below for current results
 
 ## Purpose
 
 This document is the durable requirements-traceability record for the
-Project Policy Readiness capability. It binds each of the spec's 26
-acceptance criteria (AC-01 .. AC-26) to:
+Project Policy Readiness capability. The legacy matrix binds the original
+readiness acceptance criteria; the v4 matrix below binds the bounded-portfolio
+outcomes added by the current product criteria to:
 
 1. The implementing symbol(s) in `ralph-workflow/ralph/project_policy/`
    (or `ralph-workflow/ralph/cli/commands/run.py`).
@@ -128,6 +129,23 @@ Columns:
 | AC-25 | Relevant file changes invalidate any cached ready result. | `ralph/project_policy/cache.py::read_cached_ready` / `write_cache` keyed on `ralph/project_policy/evidence.py::evidence_signature` built from `ralph/project_policy/evidence.py::readiness_evidence` (including directory-signal signatures) | `tests/project_policy/test_cache.py::test_cache_invalidates_on_edit`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_deletion`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_stack_change`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_create`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_delete`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_contents_change`; `tests/project_policy/test_cache.py::test_cache_miss_when_no_file`; `tests/project_policy/test_cache.py::test_cache_returns_ready_only_for_matching_signature`; `tests/project_policy/test_cache.py::test_write_cache_skips_non_ready`; `tests/project_policy/test_evidence.py::test_readiness_evidence_records_deletion_signature`; `tests/project_policy/test_evidence.py::test_readiness_evidence_records_edit_signature`; `tests/project_policy/test_evidence.py::test_readiness_evidence_handles_directory_signal_paths`; `tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_with_contents`; `tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_on_delete` | `python -m pytest tests/project_policy/test_cache.py tests/project_policy/test_evidence.py::test_readiness_evidence_records_deletion_signature tests/project_policy/test_evidence.py::test_readiness_evidence_records_edit_signature tests/project_policy/test_evidence.py::test_readiness_evidence_handles_directory_signal_paths tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_with_contents tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_on_delete -q` | COVERED |
 | AC-26 | The capability operates during normal workflow startup and does not require or assume `ralph --init`. | `ralph/cli/commands/run.py:635` (`_run_project_policy_readiness`) called from `ralph/cli/commands/run.py:790` inside `run_pipeline` before dry-run / execute; orchestrator `ralph/project_policy/cli_integration.py::run_project_policy_readiness` | `tests/project_policy/test_run_integration.py::test_run_pipeline_invokes_readiness_before_execution`; `tests/project_policy/test_run_integration.py::test_run_pipeline_inline_prompt_short_circuits_before_readiness`; `tests/project_policy/test_run_integration.py::test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness`; `tests/project_policy/test_run_integration.py::test_readiness_emits_exactly_one_line_for_each_terminal_state`; `tests/project_policy/test_run_integration.py::test_opt_out_skips_readiness_without_writes`; `tests/project_policy/test_run_integration.py::test_remediation_invokes_configured_agent_not_hardcoded_claude`; `tests/project_policy/test_run_integration.py::test_helper_does_not_emit_blocked_panel_when_agent_uses_run_id`; `tests/project_policy/test_run_integration.py::test_run_pipeline_dry_run_invokes_printer_after_ready` | `python -m pytest tests/project_policy/test_run_integration.py -q` | COVERED |
 
+## v4 bounded-portfolio outcome traceability
+
+| Outcome | Implementation surface | Reproducible proof |
+|---|---|---|
+| Typed schema and deterministic composition | `portfolio.py::parse_portfolio_toml`; `markers.py::PORTFOLIO_PATH` and `PORTFOLIO_SCHEMA_VERSION` | `python -m pytest tests/project_policy/test_portfolio.py::test_composition_is_stable_independent_of_declaration_order -q` |
+| Risk/context selection without size or quota proxies | `portfolio.py::_parse_context`, `_profile_matches`, and `_selected_control_ids` | `python -m pytest tests/project_policy/test_portfolio.py::test_profiles_are_selected_from_risk_and_obligations_not_size_or_counts -q` |
+| Kernel, profiles, local tightening, then exceptions | `portfolio.py::_selected_control_ids` followed by `_apply_exceptions` | `python -m pytest tests/project_policy/test_portfolio.py::test_local_tightening_is_composed_after_selected_profiles tests/project_policy/test_portfolio.py::test_narrow_current_exception_removes_exact_control -q` |
+| Bounded inputs and actionable fail-closed diagnostics | `portfolio.py::MAX_PORTFOLIO_BYTES`, `MAX_CONTROLS`, `MAX_PROFILES`, `MAX_LANES`, `MAX_EXCEPTIONS`, and `MAX_CONTEXT_VALUES` | `python -m pytest tests/project_policy/test_portfolio.py::test_input_and_diagnostics_are_bounded tests/project_policy/test_portfolio.py::test_duplicates_and_incompatible_versions_fail_closed -q` |
+| Owner, lane, cost, protected outcome, and lifecycle admission | `portfolio.py::_parse_lanes` and `_parse_controls` | `python -m pytest tests/project_policy/test_portfolio.py::test_ambiguous_ownership_and_unknown_lane_fail_closed tests/project_policy/test_portfolio.py::test_relabeled_duplicate_cost_in_another_lane_fails_closed -q` |
+| Aggregate default-gate ceiling | `portfolio.py::parse_portfolio_toml` sums effective `default` controls and rejects overflow | `python -m pytest tests/project_policy/test_portfolio.py::test_default_budget_overflow_fails_closed -q` |
+| Narrow, owned, expiring exceptions | `portfolio.py::_apply_exceptions` | `python -m pytest tests/project_policy/test_portfolio.py::test_expired_and_broad_exceptions_fail_closed -q` |
+| Public-surface evidence rather than telemetry or narration | `portfolio.py::_FORBIDDEN_EVIDENCE`; remediation and analysis prompts | `python -m pytest tests/project_policy/test_portfolio.py::test_unknown_fields_and_invalid_evidence_fail_closed tests/project_policy/test_policy_portfolio_scenarios.py::test_high_risk_service_cli_reports_durable_controls_human_lane_and_evidence_contract -q` |
+| Readiness and cache cover all composition inputs | `evidence.py::readiness_evidence`; `cache.py`; `validators.py::_check_portfolio` | `python -m pytest tests/project_policy/test_evidence.py::test_readiness_evidence_and_signature_cover_portfolio_manifest tests/project_policy/test_cache.py::test_cache_invalidates_on_portfolio_composition_edit -q` |
+| Upgrade-or-freeze consent | `_schema_upgrade.py` and public preflight seeding | `python -m pytest tests/project_policy/test_skip_inline_policy_prompt.py::test_v3_freeze_does_not_install_v4_portfolio_defaults tests/project_policy/test_skip_inline_policy_prompt.py::test_v3_upgrade_installs_portfolio_through_public_preflight -q` |
+| Representative and adversarial public workflows | public readiness/preflight seam in `preflight.py` | `python -m pytest tests/project_policy/test_policy_portfolio_scenarios.py -q` |
+| Canonical docs and starter marker alignment | `docs/ralph-workflow-policy/`, starter corpus, and `markers.py::POLICY_SCHEMA_MARKER` | `python -m pytest tests/project_policy/test_policy_docs_schema_consistency.py tests/project_policy/test_starters.py -q` |
+
 ## Gaps
 
 None. All 26 spec acceptance criteria are bound to at least one passing
@@ -156,7 +174,7 @@ amended to mark an AC `GAP-AC<nn>`.
 
 ## Portfolio baseline and control-family dispositions
 
-This v3 inventory is the mechanical input to the v4 portfolio migration. Each
+This legacy v3 inventory records the decisions applied by the shipped v4 portfolio migration. Each
 installed control family has exactly one disposition. `KEEP` is reserved for
 an independently valuable durable defense; `MERGE` consolidates duplicate
 obligations under one owner; `REPLACE` moves a broad prose contract into the
@@ -187,5 +205,5 @@ The current default verification surface is the ordered `_VERIFY_STEPS`
 portfolio in `ralph/verify.py`; every test-labelled entry is charged through
 `_BUDGET_TRACKED_STEPS` to the immutable 60-second aggregate ceiling.
 Triggered project commands remain declared by `RALPH-COMMAND`; the v4
-portfolio will assign each one to a named lane rather than letting a new
-command silently enter the default gate.
+portfolio assigns each effective control to a named lane rather than letting a
+new command silently enter the default gate.

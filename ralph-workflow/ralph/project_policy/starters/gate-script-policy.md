@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v3 -->
+<!-- ralph-policy-schema: v4 -->
 <!-- ralph-policy-id: gate-script-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file ships COMPLETE. Unlike every other
 policy starter, its requirements are NORMATIVE STANDARD TEXT, not a template
@@ -239,26 +239,23 @@ This policy's FACTS MUST be reviewed in the same workflow as any of:
   http: https://www.shellcheck.net/wiki/
   review date: 2026-07-13
 
+## Portfolio ownership
+
+Shared admission, composition, aggregate-budget, evidence, exception, and
+lifecycle rules are owned by `policy-portfolio.toml`; they are not repeated
+here. This file owns only its domain-specific observable outcomes, verified
+facts, commands, and review triggers. Amendments update the effective portfolio
+while its mandatory outcomes remain protected.
+
 ## Living document contract
 
-This policy is a living document in its FACTS. The `RALPH-FACT:` lines and the
-`RALPH-COMMAND:` line track verified project reality and MUST be updated when
-that reality changes (new platform, new task runner, new script directory).
-Conflicts between this file's recorded facts and the project's established
-practice are resolved in favor of the existing project policy — adapt the
-facts to verified project reality, never the reverse.
-
-Its REQUIREMENT sections are not. They are the normative standard this project
-holds gate scripts to, and they are deliberately stricter than what a project
-may currently practice:
-
-* A looser existing project practice is NOT a conflict to resolve in the
-  project's favor. It is a gap to close.
-* An amendment MUST NOT subvert the INTENT of this policy. Weakening,
-  disabling, or deleting a requirement so that a failing change passes is
-  forbidden.
+This policy is a living document. Keep its domain-specific facts, commands,
+requirements, and review triggers aligned with verified project reality.
+Shared amendment admission and retention are governed once by
+`policy-portfolio.toml`; mandatory outcomes remain protected and MUST NOT be
+weakened to obtain a passing result.
 
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: gate-script-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v3 -->`
+* Schema version: `<!-- ralph-policy-schema: v4 -->`

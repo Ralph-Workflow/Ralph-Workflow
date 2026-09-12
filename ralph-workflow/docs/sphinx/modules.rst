@@ -4570,3 +4570,10 @@ ralph.mcp._model_flag_parser
 .. automodule:: ralph.mcp._model_flag_parser
    :members:
    :show-inheritance:
+
+ralph.project_policy.portfolio
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.portfolio
+   :members:
+   :show-inheritance:

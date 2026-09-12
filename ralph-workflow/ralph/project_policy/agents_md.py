@@ -52,7 +52,9 @@ This project participates in Ralph Workflow's project-policy-readiness
 preflight. Before ordinary planning or development begins, the canonical
 quality-policy files under {canonical_dir} must exist, be customized for
 this project's languages, frameworks, and commands, and pass the
-deterministic validator (see marker contract below).
+deterministic validator (see marker contract below). Use the effective bounded policy
+portfolio: load its invariant kernel, selected profiles, local tightening, and
+valid exceptions instead of applying every conditional domain.
 
 The remediation agent MUST, in order:
 
@@ -99,15 +101,12 @@ _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 # follow it (which also keeps the validator's canonical-dir-in-block gate
 # satisfied).
 _AGENTS_READY_TEMPLATE = """{begin}
-This project follows Ralph Workflow quality policies. Before any change, AI
-agents MUST read the canonical policy files under {canonical_dir} and run the
-declared RALPH-COMMAND gates. Touching the build, a gate, a gate script, or CI?
-Read {canonical_dir}gate-script-policy.md FIRST. These are living documents:
-keep facts current, never amending a policy against its intent. On every
-change, scan {canonical_dir} for EVERY RALPH-PENDING line and resolve each
-whose `review trigger:` is now met. Leaving a resolvable RALPH-PENDING is a
-violation; fix them in normal dev, never by re-running remediation.
-Dead code is prohibited; remove it — rewriting later is better than retaining it.
+This project follows Ralph Workflow quality policies. Before any change, read {canonical_dir} and load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
+Run declared RALPH-COMMAND gates; read {canonical_dir}gate-script-policy.md FIRST when touching a build, gate, gate script, or CI.
+Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP; use the cheapest sufficient layer and keep the default-gate budget neutral.
+Give non-default work an owner, trigger, lane, evidence, and review condition. Material claims need a predeclared public-surface observation tied to an immutable subject and run, preserved artifact, validated oracle, and independent verdict.
+Telemetry, provenance, private-state inspection, and agent narration are not correctness proof. These are living documents: keep facts current without amending policy intent.
+Resolve RALPH-PENDING lines whose review trigger is met; leaving a resolvable item is a violation. Dead code is prohibited; remove it — rewriting later is better than retaining it.
 {end}
 """
 

@@ -336,3 +336,15 @@ def test_readiness_evidence_directory_signal_signature_changes_on_delete() -> No
     ws.delete("benches", recursive=True)
     after = evidence.evidence_signature(ws, _stack())
     assert before != after
+
+
+def test_readiness_evidence_and_signature_cover_portfolio_manifest() -> None:
+    ws = MemoryWorkspace()
+    stack = _stack()
+    paths = {entry.rel_path for entry in evidence.readiness_evidence(ws, stack)}
+    assert markers.PORTFOLIO_PATH in paths
+
+    before = evidence.evidence_signature(ws, stack)
+    ws.write(markers.PORTFOLIO_PATH, 'schema_version = "v1"')
+    after = evidence.evidence_signature(ws, stack)
+    assert before != after

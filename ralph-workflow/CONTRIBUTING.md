@@ -218,6 +218,29 @@ Adding a new budget counter or loop iteration counter is a `pipeline.toml`-only 
 **Changing workflow behavior** (routing, retries, analysis bounds, commit semantics):
 Update the relevant `pipeline.toml` fields instead of adding code branches. If behavior is not expressible as policy, first extend the policy schema — do not add hardcoded phase-name logic to the reducer.
 
+### Project-policy schema v4
+
+Projects managed by the readiness preflight have one bounded portfolio at
+`docs/ralph-workflow-policy/policy-portfolio.toml`. Compose it in this fixed
+order: invariant kernel, matching versioned profiles, local tightening, then
+exact unexpired exceptions. Repository size and fixed test counts are not
+selection inputs. Each control must name its protected outcome, distinct fault
+sensitivity, cheapest sufficient layer, owner, trigger, lane, marginal cost,
+inspectable evidence, lifecycle condition, and
+`REMOVE`/`MERGE`/`REPLACE`/`KEEP` disposition.
+
+Before adding a policy, test, or gate, search for nearest existing coverage and
+record the disposition of the affected control family. Keep the default lane
+within its unchanged aggregate ceiling through subtraction or consolidation;
+do not launder cost into an unowned lane. Use owned triggered, human,
+operational, or one-off lanes when the proof cannot run deterministically in
+the default gate. The full schema and evidence contract live in
+[`docs/ralph-workflow-policy/verification-policy.md`](../docs/ralph-workflow-policy/verification-policy.md#bounded-policy-portfolio).
+
+Existing schema v3 installations change only through Ralph Workflow's single
+upgrade-or-freeze decision. Upgrade seeds the manifest and v4 policies
+together; freeze leaves the existing files unchanged.
+
 ## Required verification
 
 The canonical verification command is `make verify`; its full

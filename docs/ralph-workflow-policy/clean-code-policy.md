@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v3 -->
+<!-- ralph-policy-schema: v4 -->
 <!-- ralph-policy-id: clean-code-policy.md -->
 
 # Clean-Code Policy
@@ -167,4 +167,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v3 -->`
+* Schema version: `<!-- ralph-policy-schema: v4 -->`

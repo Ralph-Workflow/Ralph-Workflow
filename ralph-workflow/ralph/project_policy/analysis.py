@@ -132,6 +132,7 @@ def _render_prompt(workspace: Workspace) -> str:
     """
     variables = {
         "canonical_dir": markers.CANONICAL_DIR,
+        "portfolio_path": markers.PORTFOLIO_PATH,
         "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
         "artifact_type": ANALYSIS_ARTIFACT_TYPE,
         "policy_files": ", ".join(markers.CORE_POLICY_FILES),

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 #: Set of starter filenames bundled with the package. The hatch wheel and
 #: sdist include these files via the ``ralph/project_policy/starters/**/*.md``
 #: glob in ``pyproject.toml``.
+PORTFOLIO_STARTER_NAME: str = "policy-portfolio.toml"
 STARTER_NAMES: tuple[str, ...] = (
     "testing-policy.md",
     "typechecking-policy.md",
@@ -77,7 +78,7 @@ def read_starter(name: str) -> str:
         ValueError: When ``name`` is not a bundled starter.
         FileNotFoundError: When the bundled file is missing (packaging bug).
     """
-    if name not in STARTER_NAMES:
+    if name not in (*STARTER_NAMES, PORTFOLIO_STARTER_NAME):
         msg = f"Unknown starter policy name: {name!r}"
         raise ValueError(msg)
     package_files = files(__package__)
@@ -98,10 +99,14 @@ def seed_starter_into(workspace: Workspace, name: str) -> bool:
     Raises:
         ValueError: When ``name`` is not a bundled starter.
     """
-    if name not in STARTER_NAMES:
+    if name not in (*STARTER_NAMES, PORTFOLIO_STARTER_NAME):
         msg = f"Unknown starter policy name: {name!r}"
         raise ValueError(msg)
-    target_path = f"{markers.CANONICAL_DIR}{name}"
+    target_path = (
+        markers.PORTFOLIO_PATH
+        if name == PORTFOLIO_STARTER_NAME
+        else f"{markers.CANONICAL_DIR}{name}"
+    )
     if workspace.exists(target_path):
         return False
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
@@ -110,6 +115,7 @@ def seed_starter_into(workspace: Workspace, name: str) -> bool:
 
 
 __all__ = [
+    "PORTFOLIO_STARTER_NAME",
     "STARTER_NAMES",
     "iter_starter_names",
     "read_starter",

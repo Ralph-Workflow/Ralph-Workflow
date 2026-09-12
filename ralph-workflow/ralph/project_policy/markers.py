@@ -50,9 +50,9 @@ from typing import Final
 # remediation pass resolves the new keys and adds the two headings, or the
 # pack is frozen at v2. That is the point of the marker bump — it forces the
 # upgrade-or-freeze consent gate rather than changing files under the user.
-SCHEMA_VERSION: Final[str] = "v3"
-POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v3 -->"
-POLICY_CONTRACT_VERSION: Final[str] = "2026-08-08.1"
+SCHEMA_VERSION: Final[str] = "v4"
+POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v4 -->"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-09-11.1"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring of
 # AGENTS.md; near-miss prose, additional words, or any whitespace/case change
@@ -76,6 +76,8 @@ AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 # Canonical policy directory (relative to the workspace root).
 CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
 APPLICABILITY_OVERRIDES_PATH: Final[str] = "docs/ralph-workflow-policy/applicability.toml"
+PORTFOLIO_PATH: Final[str] = "docs/ralph-workflow-policy/policy-portfolio.toml"
+PORTFOLIO_SCHEMA_VERSION: Final[str] = "v1"
 
 # Required agent instruction files in the project.
 AGENTS_MD: Final[str] = "AGENTS.md"
@@ -757,6 +759,7 @@ ID_AGENTS_MD_MISSING: Final[str] = "RWP-AGENTS-MD"
 ID_CLAUDE_MD_MISSING: Final[str] = "RWP-CLAUDE-MD"
 ID_DOMAIN: Final[str] = "RWP-DOMAIN"
 ID_MIGRATE: Final[str] = "RWP-MIGRATE-UNRECONCILED"
+ID_PORTFOLIO: Final[str] = "RWP-PORTFOLIO"
 
 
 __all__ = [
@@ -787,6 +790,7 @@ __all__ = [
     "ID_MIGRATE",
     "ID_PENDING",
     "ID_PLACEHOLDER",
+    "ID_PORTFOLIO",
     "INAPPLICABLE_MARKER",
     "LANG_MARKER",
     "MEMORY_DEP_SIGNALS",
@@ -805,6 +809,8 @@ __all__ = [
     "POLICY_CONTRACT_VERSION",
     "POLICY_ID_PREFIX",
     "POLICY_SCHEMA_MARKER",
+    "PORTFOLIO_PATH",
+    "PORTFOLIO_SCHEMA_VERSION",
     "REQUIRED_HEADINGS",
     "REVIEW_MARKER",
     "SCHEMA_VERSION",

@@ -104,3 +104,13 @@ def test_cache_invalidates_on_directory_signal_contents_change() -> None:
     cache.write_cache(ws, _stack(), ReadinessStatus.READY)
     ws.write("benches/new_bench.txt", "data")
     assert cache.read_cached_ready(ws, _stack()) is False
+
+
+def test_cache_invalidates_on_portfolio_composition_edit() -> None:
+    ws = MemoryWorkspace()
+    ws.write(markers.PORTFOLIO_PATH, "first composition")
+    cache.write_cache(ws, _stack(), ReadinessStatus.READY)
+
+    ws.write(markers.PORTFOLIO_PATH, "second composition")
+
+    assert cache.read_cached_ready(ws, _stack()) is False

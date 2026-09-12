@@ -73,9 +73,13 @@ def complete_policy_body(filename: str) -> str:
     return "\n".join(lines)
 
 
-def seed_complete_corpus(workspace: Workspace) -> None:
+def seed_complete_corpus(workspace: Workspace, *, portfolio: str | None = None) -> None:
     """Write a full policy corpus that passes the real validator."""
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
+    workspace.write(
+        markers.PORTFOLIO_PATH,
+        portfolio or starters.read_starter(starters.PORTFOLIO_STARTER_NAME),
+    )
     for filename in markers.CORE_POLICY_FILES:
         workspace.write(f"{markers.CANONICAL_DIR}{filename}", complete_policy_body(filename))
     workspace.write(

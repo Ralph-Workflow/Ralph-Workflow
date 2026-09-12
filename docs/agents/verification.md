@@ -9,6 +9,27 @@ make verify
 
 The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make verify` with `-W --keep-going` so any Sphinx warning fails the gate; it runs before the Python verify step and stays outside the immutable 60-second combined test budget.
 
+## Project-policy portfolio
+
+Policy schema v4 requires
+`docs/ralph-workflow-policy/policy-portfolio.toml`. Its schema, composition
+order, limits, control fields, exception rules, and evidence contract are
+defined once in
+[Verification Policy: Bounded policy portfolio](../ralph-workflow-policy/verification-policy.md#bounded-policy-portfolio).
+Use that section rather than duplicating the contract here.
+
+For project-policy changes, the focused runnable proof is:
+
+```bash
+python -m pytest ralph-workflow/tests/project_policy/test_policy_docs_schema_consistency.py ralph-workflow/tests/project_policy/test_starters.py -q
+```
+
+Then run the canonical completion command above. The focused tests prove the
+v4 markers and seeded manifest; `make verify` proves repository-wide
+integration. A process exit by itself does not prove a material behavior claim:
+retain the public-surface artifact and its immutable subject/run IDs, validated
+oracle, and independent verdict.
+
 ## No unrelated-failure exemption — you find it, you fix it
 
 `make verify` must pass **in full**, and there is NO exemption for a failure your change did not cause. "It was already failing on `main`", "that gate is unrelated to what I touched", and "that check isn't run by `make test`" are not acceptable outcomes — a red gate is a red gate, and whoever next observes it owns fixing it.

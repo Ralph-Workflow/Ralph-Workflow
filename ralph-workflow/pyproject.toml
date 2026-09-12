@@ -120,6 +120,7 @@ include = [
   "ralph/mcp/artifacts/format_docs/examples/*.md",
   "ralph/skills/content/**/*.md",
   "ralph/project_policy/starters/**/*.md",
+  "ralph/project_policy/starters/*.toml",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -132,6 +133,7 @@ include = [
   "/ralph/mcp/artifacts/format_docs/examples/*.md",
   "/ralph/skills/content/**/*.md",
   "/ralph/project_policy/starters/**/*.md",
+  "/ralph/project_policy/starters/*.toml",
 ]
 
 [tool.hatch.envs.publish]

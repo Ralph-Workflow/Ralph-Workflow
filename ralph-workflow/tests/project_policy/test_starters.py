@@ -451,3 +451,25 @@ def test_starters_are_free_of_known_content_corruption() -> None:
             assert fragment not in content, (
                 f"starter {name} contains known corruption fragment {fragment!r}"
             )
+
+
+def test_portfolio_starter_is_bundled_and_parseable() -> None:
+    from ralph.project_policy import parse_portfolio_toml
+
+    content = starters.read_starter("policy-portfolio.toml")
+    portfolio = parse_portfolio_toml(content)
+
+    assert portfolio.schema_version == markers.PORTFOLIO_SCHEMA_VERSION
+    assert portfolio.default_cost_seconds <= portfolio.default_budget_seconds
+
+
+def test_seed_portfolio_into_writes_only_when_absent() -> None:
+    from ralph.workspace.memory import MemoryWorkspace
+
+    ws = MemoryWorkspace()
+    assert starters.seed_starter_into(ws, "policy-portfolio.toml") is True
+    original = ws.read(markers.PORTFOLIO_PATH)
+    ws.write(markers.PORTFOLIO_PATH, "customized")
+    assert starters.seed_starter_into(ws, "policy-portfolio.toml") is False
+    assert ws.read(markers.PORTFOLIO_PATH) == "customized"
+    assert original

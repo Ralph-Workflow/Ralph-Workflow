@@ -40,7 +40,8 @@ from ralph.project_policy._scanners import (
     _command_is_approved,
     _headings,
 )
-from ralph.project_policy.models import PolicyFinding
+from ralph.project_policy.models import PolicyFinding, PortfolioError
+from ralph.project_policy.portfolio import parse_portfolio_toml
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
@@ -521,6 +522,48 @@ def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
     return findings
 
 
+def _check_portfolio(workspace: Workspace) -> list[PolicyFinding]:
+    """Require a valid bounded portfolio manifest."""
+    path = markers.PORTFOLIO_PATH
+    frozen_paths = (
+        f"{markers.CANONICAL_DIR}{name}"
+        for name in (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
+    )
+    if any(
+        workspace.exists(policy_path)
+        and _frozen_schema_version(workspace.read(policy_path)) is not None
+        for policy_path in frozen_paths
+    ):
+        return []
+    if not workspace.exists(path):
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_PORTFOLIO}:missing",
+                path=path,
+                missing_evidence="canonical policy portfolio manifest is missing",
+                required_outcome=(
+                    "create the canonical bounded verification portfolio manifest "
+                    "and declare each control's protected outcome"
+                ),
+            )
+        ]
+    try:
+        parse_portfolio_toml(workspace.read(path))
+    except PortfolioError as exc:
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_PORTFOLIO}:invalid",
+                path=path,
+                missing_evidence=str(exc),
+                required_outcome=(
+                    "repair the deterministic composition while preserving named "
+                    "protected outcomes, lane ownership, evidence, lifecycle, and budget"
+                ),
+            )
+        ]
+    return []
+
+
 def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
     """Run every deterministic readiness check and return the findings list.
 
@@ -532,6 +575,7 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
     findings: list[PolicyFinding] = []
     findings.extend(_check_agents_md(workspace))
     findings.extend(_check_claude_md(workspace))
+    findings.extend(_check_portfolio(workspace))
     for filename in markers.CORE_POLICY_FILES:
         findings.extend(_check_core_policy_file(workspace, filename))
 

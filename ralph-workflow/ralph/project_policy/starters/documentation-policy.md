@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v3 -->
+<!-- ralph-policy-schema: v4 -->
 <!-- ralph-policy-id: documentation-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -147,24 +147,23 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://diataxis.fr/
   review date: 2026-07-11
 
+## Portfolio ownership
+
+Shared admission, composition, aggregate-budget, evidence, exception, and
+lifecycle rules are owned by `policy-portfolio.toml`; they are not repeated
+here. This file owns only its domain-specific observable outcomes, verified
+facts, commands, and review triggers. Amendments update the effective portfolio
+while its mandatory outcomes remain protected.
+
 ## Living document contract
 
-This policy is a living document. It MUST evolve as the project grows:
-update the resolved facts, commands, and requirements whenever verified
-project reality changes (new frameworks, new commands, new structure).
-Two guardrails bound every amendment:
-
-* Conflicts between this policy's generic defaults and the project's
-  established practice are resolved in
-  favor of the existing project policy — adapt this file to verified
-  project reality, never the reverse. A looser project practice is
-  NOT such a conflict: keep the stronger requirement unless a
-  documented exception narrows it.
-* An amendment MUST NOT subvert the INTENT of this policy. Weakening,
-  disabling, or deleting a requirement so that a failing change passes is
-  forbidden; evolution clarifies and extends, it does not water down.
+This policy is a living document. Keep its domain-specific facts, commands,
+requirements, and review triggers aligned with verified project reality.
+Shared amendment admission and retention are governed once by
+`policy-portfolio.toml`; mandatory outcomes remain protected and MUST NOT be
+weakened to obtain a passing result.
 
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v3 -->`
+* Schema version: `<!-- ralph-policy-schema: v4 -->`

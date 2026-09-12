@@ -44,13 +44,18 @@ Public API:
 from __future__ import annotations
 
 from ralph.project_policy import agents_md, evidence, models, remediation, validators
+from ralph.project_policy.models import PortfolioError
+from ralph.project_policy.portfolio import PolicyPortfolio, parse_portfolio_toml
 from ralph.project_policy.preflight import run_policy_readiness_preflight
 from ralph.project_policy.validators import validate_readiness
 
 __all__ = [
+    "PolicyPortfolio",
+    "PortfolioError",
     "agents_md",
     "evidence",
     "models",
+    "parse_portfolio_toml",
     "remediation",
     "run_policy_readiness_preflight",
     "validate_readiness",

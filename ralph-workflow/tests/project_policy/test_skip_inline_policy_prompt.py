@@ -382,3 +382,43 @@ def test_future_schema_freeze_fails_closed() -> None:
 
     assert resolved is False
     assert any("invalid freeze" in message for message in messages)
+
+
+def test_v3_freeze_does_not_install_v4_portfolio_defaults() -> None:
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import preflight
+
+    ws = MemoryWorkspace()
+    policy_path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    ws.write(policy_path, '<!-- ralph-policy-schema: v3 -->\n# Customized\n')
+    policy_schema_upgrade._maybe_resolve_schema_upgrade(
+        ws,
+        list[str]().append,
+        select=_Selector("freeze"),
+        is_tty=lambda: True,
+    )
+
+    preflight.run_policy_readiness_preflight(ws, ProjectStack(primary_language="Python"))
+
+    assert not ws.exists(markers.PORTFOLIO_PATH)
+    assert ws.read(policy_path).startswith("<!-- ralph-policy-schema: freeze v3 -->")
+
+
+def test_v3_upgrade_installs_portfolio_through_public_preflight() -> None:
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import parse_portfolio_toml, preflight
+
+    ws = MemoryWorkspace()
+    policy_path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    ws.write(policy_path, '<!-- ralph-policy-schema: v3 -->\n# Customized\n')
+    policy_schema_upgrade._maybe_resolve_schema_upgrade(
+        ws,
+        list[str]().append,
+        select=_Selector("upgrade"),
+        is_tty=lambda: True,
+    )
+
+    preflight.run_policy_readiness_preflight(ws, ProjectStack(primary_language="Python"))
+
+    portfolio = parse_portfolio_toml(ws.read(markers.PORTFOLIO_PATH))
+    assert portfolio.schema_version == markers.PORTFOLIO_SCHEMA_VERSION

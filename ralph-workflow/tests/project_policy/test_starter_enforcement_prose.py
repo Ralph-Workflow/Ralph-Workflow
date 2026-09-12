@@ -105,6 +105,7 @@ def test_validator_blocks_readiness_while_banner_remains() -> None:
     _seed_agents_md(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, stack)
+    starters.seed_starter_into(ws, "policy-portfolio.toml")
     assert validators.validate_readiness(ws, stack) == []
 
     # Same project with the banner re-inserted into one complete file.
@@ -176,6 +177,39 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
         f"filled-in starter {name} still fails validation: "
         f"{[(f.requirement_id, f.missing_evidence) for f in findings]}"
     )
+
+
+def test_v4_testing_and_verification_own_portfolio_maintenance() -> None:
+    """The two owning policies carry the complete portfolio workflow once."""
+    testing = starters.read_starter("testing-policy.md")
+    verification = starters.read_starter("verification-policy.md")
+
+    for phrase in (
+        "nearest existing coverage",
+        "`REMOVE`, `MERGE`, `REPLACE`, or `KEEP`",
+        "cheapest sufficient layer",
+        "budget-neutral",
+        "retention review",
+    ):
+        assert phrase in testing, phrase
+
+    for phrase in (
+        "default",
+        "triggered",
+        "human",
+        "operational",
+        "one-off",
+        "owner",
+    ):
+        assert phrase in verification.lower(), phrase
+
+
+def test_every_starter_delegates_shared_rules_to_the_portfolio() -> None:
+    for name in sorted(starters.iter_starter_names()):
+        content = starters.read_starter(name)
+        assert "## Portfolio ownership" in content, name
+        assert "policy-portfolio.toml" in content, name
+        assert "domain-specific" in content, name
 
 
 def test_remediation_prompt_owns_the_fill_in_instructions() -> None:

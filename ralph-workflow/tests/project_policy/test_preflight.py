@@ -31,6 +31,7 @@ def test_unprepared_returns_remediation_required() -> None:
     # Bootstrap seeded AGENTS.md and CLAUDE.md.
     assert markers.AGENTS_MD in result.changed_files
     assert markers.CLAUDE_MD in result.changed_files
+    assert markers.PORTFOLIO_PATH in result.changed_files
 
 
 def test_prepared_returns_ready() -> None:

@@ -186,6 +186,7 @@ def test_applicability_override_rejects_whitespace_reason_and_trigger() -> None:
 def _seed_all_core_complete(workspace: MemoryWorkspace, stack: ProjectStack) -> None:
     """Seed every core + required-conditional file as fully complete."""
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
+    starters.seed_starter_into(workspace, "policy-portfolio.toml")
     for filename in markers.CORE_POLICY_FILES:
         workspace.write(
             f"{markers.CANONICAL_DIR}{filename}",
@@ -802,3 +803,25 @@ def test_verification_bypass_unapproved_command_emits_finding() -> None:
     )
     # Project must NOT be ready.
     assert any(f.path == path for f in findings)
+
+
+def test_portfolio_manifest_is_required_by_public_validator() -> None:
+    ws = MemoryWorkspace()
+
+    findings = validators.validate_readiness(ws, _stack_with())
+
+    finding = next(item for item in findings if item.requirement_id == "RWP-PORTFOLIO:missing")
+    assert finding.path == markers.PORTFOLIO_PATH
+    assert "bounded verification portfolio" in finding.required_outcome
+
+
+def test_invalid_portfolio_blocks_readiness_with_protected_outcome() -> None:
+    ws = MemoryWorkspace()
+    ws.write(markers.PORTFOLIO_PATH, 'schema_version = "invalid"')
+
+    findings = validators.validate_readiness(ws, _stack_with())
+
+    finding = next(item for item in findings if item.requirement_id == "RWP-PORTFOLIO:invalid")
+    assert finding.path == markers.PORTFOLIO_PATH
+    assert "protected outcomes" in finding.required_outcome
+    assert "schema_version" in finding.missing_evidence

@@ -43,6 +43,26 @@ def test_large_artifact_round_trip() -> None: ...
 
 ---
 
+## Portfolio admission before adding a test
+
+Search the nearest existing policy, public scenario, and assertion before
+creating a test. For the affected control family, record one explicit
+`REMOVE`, `MERGE`, `REPLACE`, or `KEEP` decision. Admit new recurring
+coverage only when it has distinct fault sensitivity, uses the cheapest
+sufficient layer, has an owner and trigger, and declares marginal cost,
+inspectable evidence, and a lifecycle review condition.
+
+An addition to the default lane must be budget-neutral through removal,
+consolidation, or replacement. Do not raise the 60-second aggregate ceiling,
+move cost to an unowned lane, delete a unique defense merely to obtain green,
+or use repository size, coverage percentage, or a fixed test count as a
+portfolio-selection proxy. External/platform checks belong in an owned
+triggered profile; perceptual/editorial decisions belong to human review;
+non-repeatable migration or credential probes belong to preserved one-off
+evidence. See
+[Verification Policy: Bounded policy portfolio](../ralph-workflow-policy/verification-policy.md#bounded-policy-portfolio)
+for the canonical composition and evidence contract.
+
 ## Tests must test behavior, not implementation
 
 | Good | Avoid |

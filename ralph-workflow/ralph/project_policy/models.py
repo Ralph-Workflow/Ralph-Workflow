@@ -27,10 +27,16 @@ from ralph.project_policy._migration import MigrationCandidate
 from ralph.project_policy._result import ReadinessResult
 from ralph.project_policy._status import ReadinessStatus
 
+
+class PortfolioError(ValueError):
+    """A deterministic, bounded portfolio-contract validation failure."""
+
+
 __all__ = [
     "EvidenceEntry",
     "MigrationCandidate",
     "PolicyFinding",
+    "PortfolioError",
     "ReadinessResult",
     "ReadinessStatus",
 ]

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v3 -->
+<!-- ralph-policy-schema: v4 -->
 <!-- ralph-policy-id: testing-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -225,6 +225,14 @@ Suite admission, and fixing the production seam.
     retirement; the sole exemption is a quarantine expiry under rule 27.
 
 ## Suite admission
+
+Before adding a test or check, search for the nearest existing coverage and
+record exactly one `REMOVE`, `MERGE`, `REPLACE`, or `KEEP` disposition for the
+nearest control. Route distinct coverage to the cheapest sufficient layer.
+Every default-lane addition MUST be budget-neutral through a recorded removal,
+merge, or replacement; never raise the aggregate ceiling. Give every retained
+control an owner and retention review trigger so obsolete ceremony is removed
+without deleting a red test to obtain green.
 
 Route each acceptance criterion to one lane — or to a named destination
 recorded with an owner — and record the routing where the change is
@@ -544,27 +552,26 @@ Review this policy in the same workflow as any of:
   http: https://research.google/pubs/state-of-mutation-testing-at-google/
   review date: 2026-08-08
 
+## Portfolio ownership
+
+Shared admission, composition, aggregate-budget, evidence, exception, and
+lifecycle rules are owned by `policy-portfolio.toml`; they are not repeated
+here. This file owns only its domain-specific observable outcomes, verified
+facts, commands, and review triggers. Amendments update the effective portfolio
+while its mandatory outcomes remain protected.
+
 ## Living document contract
 
-This policy is a living document. It MUST evolve as the project grows:
-update the resolved facts, commands, and requirements whenever verified
-project reality changes (new frameworks, new commands, new structure).
-Two guardrails bound every amendment:
-
-* Conflicts between this policy's generic defaults and the project's
-  established practice are resolved in
-  favor of the existing project policy — adapt this file to verified
-  project reality, never the reverse. A looser project practice is
-  NOT such a conflict: keep the stronger requirement unless a
-  documented exception narrows it.
-* An amendment MUST NOT subvert the INTENT of this policy. Weakening,
-  disabling, or deleting a requirement so that a failing change passes is
-  forbidden; evolution clarifies and extends, it does not water down.
+This policy is a living document. Keep its domain-specific facts, commands,
+requirements, and review triggers aligned with verified project reality.
+Shared amendment admission and retention are governed once by
+`policy-portfolio.toml`; mandatory outcomes remain protected and MUST NOT be
+weakened to obtain a passing result.
 
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v3 -->`
+* Schema version: `<!-- ralph-policy-schema: v4 -->`
 
 ## Visual design evidence
 

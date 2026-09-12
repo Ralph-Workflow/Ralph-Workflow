@@ -8,6 +8,7 @@ from pathlib import Path
 from ralph.project_policy.markers import POLICY_SCHEMA_MARKER as CURRENT_POLICY_SCHEMA_MARKER
 
 POLICY_DIR = Path(__file__).resolve().parents[3] / "docs" / "ralph-workflow-policy"
+STARTER_DIR = Path(__file__).resolve().parents[2] / "ralph" / "project_policy" / "starters"
 POLICY_SCHEMA_MARKER = re.compile(r"<!-- ralph-policy-schema: (v\d+) -->")
 
 
@@ -35,5 +36,21 @@ def test_policy_schema_header_matches_ralph_markers_description() -> None:
                 f"{path.name}: header {header_match.group(1)} != "
                 f"description {described_match.group(1)}"
             )
+
+    assert not mismatches, "\n".join(mismatches)
+
+
+def test_starter_schema_headers_and_descriptions_match_current_marker() -> None:
+    mismatches: list[str] = []
+
+    for path in sorted(STARTER_DIR.glob("*.md")):
+        content = path.read_text(encoding="utf-8")
+        header_match = POLICY_SCHEMA_MARKER.match(content)
+        marker_section = content.partition("## Ralph markers")[2]
+        described_match = POLICY_SCHEMA_MARKER.search(marker_section)
+        if header_match is None or header_match.group(0) != CURRENT_POLICY_SCHEMA_MARKER:
+            mismatches.append(f"{path.name}: stale or missing schema header")
+        elif described_match is None or described_match.group(0) != CURRENT_POLICY_SCHEMA_MARKER:
+            mismatches.append(f"{path.name}: stale or missing schema description")
 
     assert not mismatches, "\n".join(mismatches)

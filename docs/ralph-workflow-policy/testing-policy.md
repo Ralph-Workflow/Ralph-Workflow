@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v3 -->
+<!-- ralph-policy-schema: v4 -->
 <!-- ralph-policy-id: testing-policy.md -->
 
 # Testing Policy
@@ -55,6 +55,21 @@ Not every acceptance criterion belongs in the default suite. Forcing one
 in is how a suite grows large and slow while proving less, and the 60 s
 combined budget leaves no room for tests that carry no distinct failure.
 Route each criterion to exactly one lane before writing a test.
+
+Before adding a test, search for the nearest policy, scenario, assertion, and
+gate that already protects the same observable outcome. Record exactly one
+`REMOVE`, `MERGE`, `REPLACE`, or `KEEP` disposition for the affected
+control family. An addition to the default lane is admissible only when it has
+distinct fault sensitivity, uses the cheapest sufficient layer, names its
+owner/trigger/marginal cost/evidence/lifecycle condition, and keeps aggregate
+default cost neutral through removal, consolidation, or replacement. Coverage
+percentages and fixed test counts may reveal a question; they are not admission
+targets.
+
+Retention uses the same review. Remove ceremony that has lost its risk, signal,
+owner, trigger, or cost justification. Do not retire an independent security,
+safety, data-integrity, or public-contract defense merely because it is old or
+has not failed recently.
 
 1. DEFAULT SUITE — the default lane, run by `make test` under the
    selection `(not subprocess_e2e and not smoke) or
@@ -307,7 +322,7 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v3 -->`
+* Schema version: `<!-- ralph-policy-schema: v4 -->`
 
 ## Visual design evidence
 
