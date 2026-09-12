@@ -1,4 +1,7 @@
-Decide whether the current implementation satisfies the unchanged request and plan, then submit one evidence-backed decision artifact.
+Decide whether every required item in the unchanged request and plan is done,
+then submit one evidence-backed decision artifact. The implementation is not
+complete unless every required plan item is complete or has a proven
+`adapted` or `not_applicable` disposition that preserves all request criteria.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -28,7 +31,8 @@ Do not reject a correct implementation only because an inaccurate plan step chan
 
 Choose the outcome from fresh evidence, not the developer's status:
 
-- `completed`: every unchanged request criterion is met and no necessary plan work remains.
+- `completed`: every unchanged request criterion is met, every required plan
+  item has been individually proven, and no necessary plan work remains.
 - `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
