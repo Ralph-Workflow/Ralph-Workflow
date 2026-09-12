@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.testing import audit_filesystem_polling_invocation as polling_audit
 from ralph.testing import audit_workspace_resource_inventory as audit
 from ralph.testing.audit_workspace_resource_inventory import (
     WorkspaceResourceInventoryViolation,
@@ -323,6 +324,18 @@ def test_complete_synthetic_inventory_is_clean(tmp_path: Path) -> None:
     assert violations == [], "; ".join(str(v) for v in violations)
 
 
+def test_default_inventory_audit_does_not_require_constituent_discovery(
+    tmp_path: Path,
+) -> None:
+    """The inventory lane validates a synthetic package without external scans."""
+    package_root = _write_fake_package(tmp_path)
+    _write_inventory(package_root, _complete_synthetic_inventory())
+
+    violations = audit.audit_workspace_resource_inventory(package_root)
+
+    assert violations == []
+
+
 def test_inventory_regression_polling_scans_each_module_with_one_ast_traversal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -331,7 +344,7 @@ def test_inventory_regression_polling_scans_each_module_with_one_ast_traversal(
     module = package_root / "agents" / "sample.py"
     module.parent.mkdir(parents=True)
     module.write_text("import time\ntime.sleep(1)\n", encoding="utf-8")
-    monkeypatch.setattr(audit._polling, "_DEFAULT_PACKAGE_ROOTS", ("ralph/agents",))
+    monkeypatch.setattr(polling_audit, "_DEFAULT_PACKAGE_ROOTS", ("ralph/agents",))
 
     walks = 0
     original_walk = ast.walk
@@ -341,9 +354,9 @@ def test_inventory_regression_polling_scans_each_module_with_one_ast_traversal(
         walks += 1
         return original_walk(tree)
 
-    monkeypatch.setattr(audit._polling.ast, "walk", count_walk)
+    monkeypatch.setattr(polling_audit.ast, "walk", count_walk)
 
-    violations = audit._polling.audit_filesystem_polling_invocation(tmp_path)
+    violations = polling_audit.audit_filesystem_polling_invocation(tmp_path)
 
     assert [violation.kind for violation in violations] == ["raw_sleep_poll"]
     assert walks == 1

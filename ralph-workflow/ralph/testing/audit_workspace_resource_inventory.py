@@ -10,19 +10,19 @@ existing fail-closed AST audits:
   * :func:`ralph.testing.audit_filesystem_write_consolidation.audit_filesystem_write_consolidation`
   * :func:`ralph.testing.audit_resource_lifecycle.audit_resource_lifecycle_directory`
 
-Each of those audits flags a *raw* site that has neither a reasoned local
-marker nor a canonical-primitive exemption. This audit layers a
-product-level *inventory* over the same discovered surface: it requires
-every discovered site (plus every canonical-primitive owner) to have a
+Each constituent audit independently flags a *raw* site that has neither a
+reasoned local marker nor a canonical-primitive exemption. This audit owns the
+complementary product inventory without rerunning those package-wide scans: it
+requires every canonical-primitive owner and any injected discovery to have a
 structured entry in ``workspace_resource_inventory.json`` that names its
 product role, storage category, watch contract, or cleanup outcome.
 
 Completeness is mechanically decidable:
 
-  * **Forward (uncovered)** -- every violation surfaced by the five
-    constituent audits, resolved to its ``ralph-relative-path:qualified-symbol``
-    site key, must have a matching inventory entry. The inventory therefore
-    cannot silently drop a site that loses its marker.
+  * **Forward (uncovered)** -- callers may inject discovered
+    ``ralph-relative-path:qualified-symbol`` site keys, each of which must have
+    a matching inventory entry. In the default gate the five independent
+    constituent lanes fail directly when a site loses its marker.
   * **Canonical owners** -- every canonical-primitive production module must
     appear as an inventory ``site`` so the product map always explains where
     the shared filesystem boundaries live.
@@ -34,9 +34,8 @@ Completeness is mechanically decidable:
     array are all checked.
 
 The audit is AST + ``Path.read_text`` only (no subprocess, no ``time.sleep``,
-no real filesystem mutation). It reuses the five constituent audits' public
-functions rather than restating their AST rules, so the discovery surface
-stays in lock-step with them.
+no real filesystem mutation). Its default lane avoids duplicating the five
+constituent audits' AST walks and validates only the distinct inventory oracle.
 
 Usage::
 
@@ -57,34 +56,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.testing import (
-    audit_filesystem_polling_invocation as _polling,
-)
-from ralph.testing import (
-    audit_filesystem_read_consolidation as _read,
-)
-from ralph.testing import (
-    audit_filesystem_write_consolidation as _write,
-)
-from ralph.testing.audit_fsevents_watch_consolidation import (
-    audit_fsevents_watch_consolidation as _fsevents,
-)
-from ralph.testing.audit_resource_lifecycle import (
-    _default_roots,
-)
-from ralph.testing.audit_resource_lifecycle import (
-    audit_resource_lifecycle_directory as _lifecycle,
-)
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    #: Injectable seam type alias for the constituent-audit discovery surface.
-    #: Production uses :func:`_constituent_violation_sites`; tests inject a
-    #: no-op or synthetic discovery so unit tests do not walk the real
-    #: ~1000-file package (the resource-lifecycle audit's ``_default_roots()``
-    #: is hardcoded to the real package and would exceed the per-test time
-    #: budget). Mirrors the DI seams enforced by ``audit_di_seam.py``.
+    #: Injectable seam type alias for synthetic forward discoveries. The
+    #: production default is empty because constituent audits own their own
+    #: fail-closed verification lanes. Mirrors the DI seams enforced by
+    #: ``audit_di_seam.py``.
     SiteDiscovery = Callable[[Path], list[tuple[str, str]]]
 
 
@@ -183,26 +161,6 @@ def _inventory_path(package_root: Path) -> Path:
     return package_root / "testing" / "workspace_resource_inventory.json"
 
 
-def _collect_python_files(root: Path) -> list[Path]:
-    """Return every non-testing production ``*.py`` file under ``root``.
-
-    Mirrors the constituent audits' walk: ``__pycache__`` is always skipped,
-    and any ``testing`` directory relative to the package root is excluded so
-    the audit covers production modules only.
-    """
-    if not root.is_dir():
-        return []
-    result: list[Path] = []
-    for path in sorted(root.rglob("*.py")):
-        relative_parts = path.relative_to(root).parts
-        if "__pycache__" in path.parts or "testing" in relative_parts:
-            continue
-        if not path.is_file():
-            continue
-        result.append(path)
-    return result
-
-
 @dataclass(frozen=True)
 class _SymbolSpan:
     """A top-level or member symbol with its enclosing source line range."""
@@ -242,34 +200,6 @@ def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
     return spans
 
 
-def _symbol_span_size(span: _SymbolSpan) -> int:
-    """Return the inclusive line-count of a symbol span for innermost selection."""
-    return span.end_line - span.start_line
-
-
-def _resolve_site(rel_path: str, line: int, package_root: Path) -> str:
-    """Return the ``rel_path:qualified-symbol`` site key for a violation line.
-
-    Parses the module, finds the innermost top-level or member symbol whose
-    line range covers ``line``, and returns ``rel_path:qualified_name``.
-    Falls back to ``rel_path:<module>`` when the line is at module top level
-    or the module cannot be resolved.
-    """
-    module_path = package_root / rel_path
-    try:
-        tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=rel_path)
-    except (OSError, SyntaxError, ValueError):
-        return f"{rel_path}:<module>"
-    candidates = [
-        span for span in _module_symbols(tree) if span.start_line <= line <= span.end_line
-    ]
-    if not candidates:
-        return f"{rel_path}:<module>"
-    # Innermost symbol = smallest enclosing range.
-    innermost = min(candidates, key=_symbol_span_size)
-    return f"{rel_path}:{innermost.qualified_name}"
-
-
 def _symbol_exists(rel_path: str, symbol: str, package_root: Path) -> bool:
     """Return whether ``rel_path`` defines a top-level or member ``symbol``.
 
@@ -300,54 +230,6 @@ def _split_site(site: str) -> tuple[str, str] | None:
     if not rel_path or not symbol:
         return None
     return rel_path, symbol
-
-
-def _normalize_rel_path(file_path: str, package_root: Path) -> str:
-    """Return a ``package_root``-relative posix path for a violation file_path.
-
-    Constituent audits report paths inconsistently: fsevents returns paths
-    relative to the ``ralph/`` package dir, polling/read/write return paths
-    relative to the repo root (prefixed with ``ralph/``), and resource_lifecycle
-    returns absolute paths. Normalize all three to a path relative to
-    ``package_root`` so :func:`_resolve_site` can locate the module.
-    """
-    if file_path.startswith("/"):
-        try:
-            return Path(file_path).relative_to(package_root).as_posix()
-        except ValueError:
-            return Path(file_path).name
-    return file_path.removeprefix("ralph/")
-
-
-def _constituent_violation_sites(package_root: Path) -> list[tuple[str, str]]:
-    """Return ``(audit_name, site_key)`` for every constituent-audit violation.
-
-    Reuses the five public audit functions with the same roots that
-    ``python -m ralph.testing.audit_*`` uses in ``make verify``: fsevents walks
-    the ``ralph/`` package dir directly; polling/read/write resolve their
-    ``ralph/`` default package root relative to the *repo* root
-    (``package_root.parent``); and resource_lifecycle walks its private
-    ``_default_roots()`` subdirectory list (which excludes ``testing/``).
-    Keeping the invocation identical to ``make verify`` means the forward
-    discovery surface stays in lock-step with the green gate.
-    """
-    repo_root = package_root.parent
-    sites: list[tuple[str, str]] = []
-    for audit_name, violations in (
-        ("fsevents", _fsevents(package_root)),
-        ("polling", _polling.audit_filesystem_polling_invocation(repo_root)),
-        ("read", _read.audit_filesystem_read_consolidation(repo_root)),
-        ("write", _write.audit_filesystem_write_consolidation(repo_root)),
-    ):
-        for violation in violations:
-            rel = _normalize_rel_path(violation.file_path, package_root)
-            sites.append((audit_name, _resolve_site(rel, violation.line, package_root)))
-    for root in _default_roots():
-        lifecycle_violations, _count = _lifecycle(root)
-        for lc_violation in lifecycle_violations:
-            rel = _normalize_rel_path(lc_violation.file_path, package_root)
-            sites.append(("lifecycle", _resolve_site(rel, lc_violation.line, package_root)))
-    return sites
 
 
 # ---------------------------------------------------------------------------
@@ -641,13 +523,18 @@ def _load_inventory(
     return parsed, []
 
 
+def _no_discovered_sites(_package_root: Path) -> list[tuple[str, str]]:
+    """Return no sites; constituent audits own their independent gate lanes."""
+    return []
+
+
 def audit_workspace_resource_inventory(
     package_root: Path,
     *,
     inventory_path: Path | None = None,
-    site_discovery: SiteDiscovery | None = None,
+    site_discovery: SiteDiscovery = _no_discovered_sites,
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Walk the inventory and constituent audits; return all violations.
+    """Validate the inventory and injected discoveries; return violations.
 
     Args:
         package_root: The ``ralph/`` package root whose production modules and
@@ -657,9 +544,10 @@ def audit_workspace_resource_inventory(
             ``package_root``.
         site_discovery: Optional injectable seam returning
             ``(audit_name, site_key)`` pairs for the forward (uncovered) check.
-            Defaults to :func:`_constituent_violation_sites` (the five
-            constituent audits). Tests inject a no-op so they do not walk the
-            real package.
+            Defaults to no additional sites because the five constituent
+            audits already run as independent, fail-closed ``make verify``
+            lanes. Tests may inject synthetic discoveries to prove forward
+            inventory coverage without repeating the full package scans.
 
     Returns:
         A list of :class:`WorkspaceResourceInventoryViolation` records. An
@@ -690,12 +578,12 @@ def audit_workspace_resource_inventory(
 
     inventory_sites = _all_inventory_sites(inventory)
 
-    # Forward check: every constituent-audit violation must have an inventory
-    # entry. When the constituent audits are clean (the normal green state),
-    # this is vacuously satisfied; the moment a marker is removed, the
-    # uncovered site must be documented here or re-marked.
-    discover = site_discovery if site_discovery is not None else _constituent_violation_sites
-    for audit_name, site in discover(package_root):
+    # Forward check consumes injected discoveries. Production does not repeat
+    # the five full-package constituent audits here: each is already an owned,
+    # fail-closed ``make verify`` lane, so any newly unmarked site fails there.
+    # Rewalking them here duplicates the same oracle and made this audit exceed
+    # its 30-second verification timeout without adding fault sensitivity.
+    for audit_name, site in site_discovery(package_root):
         if site not in inventory_sites:
             violations.append(
                 WorkspaceResourceInventoryViolation(

@@ -472,12 +472,11 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
     (
         # wt-057: product-level workspace resource inventory completeness
-        # audit. Layers a structured inventory (workspace_resource_inventory.json)
-        # over the five constituent filesystem audits (fsevents watch,
-        # polling/invocation, read consolidation, write consolidation, resource
-        # lifecycle): every discovered site plus every canonical-primitive
-        # owner must have an inventory entry, and every inventory site must
-        # resolve to a real source symbol. AST + Path.read_text only -- no
+        # audit. Validates the structured workspace_resource_inventory.json
+        # without repeating the five independently owned filesystem audit
+        # scans: every canonical-primitive owner must have an inventory entry,
+        # and every inventory site must resolve to a real source symbol.
+        # AST + Path.read_text only -- no
         # subprocess, no sleep, no real I/O. Appended BEFORE the two trailing
         # smoke steps so the index-based budget tracking (len-2, len-1) still
         # points at the smoke steps; NOT budget-tracked (does not count
@@ -738,10 +737,9 @@ for _filesystem_audit in (
         )
 
 # (h) The workspace resource inventory audit must remain wired. This guards
-# the product-level completeness contract over the workspace-awareness surface
-# (watches, reads, writes, polling, lifecycle): without it, a site that loses
-# its constituent-audit marker could go undocumented in the inventory, and a
-# refactor that deletes or renames an owner would not fail closed.
+# the product-level inventory contract over the workspace-awareness surface.
+# Constituent audits independently fail when a site loses its marker; this lane
+# fails when a canonical owner or documented symbol disappears.
 if not any("audit_workspace_resource_inventory" in label for label, *_rest in _VERIFY_STEPS):
     raise RuntimeError(
         "A verify step running 'audit_workspace_resource_inventory' must be present in "
