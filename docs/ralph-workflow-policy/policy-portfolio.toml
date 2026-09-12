@@ -1,0 +1,57 @@
+schema_version = "v1"
+default_budget_seconds = 60.0
+kernel_controls = ["policy-structure", "public-behavior"]
+
+[context]
+impact = "low"
+likelihood = "low"
+uncertainty = "low"
+recoverability = "high"
+architectures = ["library"]
+rate_of_change = "medium"
+expected_lifetime = "long"
+obligations = []
+
+[[lanes]]
+id = "default"
+owner = "project maintainers"
+trigger = "every change"
+
+[[lanes]]
+id = "triggered"
+owner = "domain owner"
+trigger = "declared risk or platform signal"
+
+[[lanes]]
+id = "human"
+owner = "reviewer"
+trigger = "judgment-dependent material change"
+
+[[controls]]
+id = "policy-structure"
+protected_outcome = "Project policy remains deterministic, bounded, and internally consistent"
+fault_sensitivity = "Detects malformed or contradictory policy composition before agent work"
+layer = "deterministic preflight"
+owner = "project maintainers"
+trigger = "every change"
+lane = "default"
+marginal_cost_seconds = 0.1
+evidence = "validator finding list and composed portfolio record"
+lifecycle = "review on every portfolio schema change; replace only with equivalent deterministic coverage"
+disposition = "KEEP"
+
+[[controls]]
+id = "public-behavior"
+protected_outcome = "Material behavior claims are proven through public surfaces"
+fault_sensitivity = "Detects claims supported only by narration or implementation-private observations"
+layer = "black-box scenario"
+owner = "project maintainers"
+trigger = "material behavior change"
+lane = "default"
+marginal_cost_seconds = 0.5
+evidence = "preserved public-surface artifact with immutable subject, run, validated oracle, and independent verdict"
+lifecycle = "review when the public contract or cheapest sufficient proof layer changes"
+disposition = "KEEP"
+
+[local_tightening]
+controls = []
