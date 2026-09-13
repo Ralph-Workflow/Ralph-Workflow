@@ -80,6 +80,7 @@ from ralph.mcp.multimodal.capabilities import (
     session_transport_is_ambiguous,
     transport_inline_image_roundtrip_unsafe,
 )
+from ralph.mcp.server._process_secrecy import mint_and_protect_broker_secret
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.chain_identity import chain_disagrees_on_model
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -1364,6 +1365,7 @@ def _start_commit_bridge(
     model_identity: MultimodalModelIdentity | None = None,
     transport: AgentTransport | None = None,
 ) -> SessionBridgeLike:
+    mint_and_protect_broker_secret()
     return build_session_bridge(
         workspace_root=repo_root,
         drain="commit",

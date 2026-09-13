@@ -21,6 +21,10 @@ from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.protocol.env import MCP_SESSION_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
+from ralph.mcp.server._process_secrecy import (
+    mint_and_protect_broker_secret,
+    protect_broker_secret,
+)
 from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.server.runtime import FileBackedSession
 from ralph.mcp.tools.names import upstream_proxy_tool_name
@@ -121,13 +125,111 @@ def test_session_from_env_mapping_supports_json_payload() -> None:
                     "drain": "planning",
                     "capabilities": ["WorkspaceRead", "ArtifactSubmit"],
                 }
-            )
+            ),
+            "RALPH_BROKER_SECRET": "json-session-secret",
         }
     )
 
     assert session is not None
     assert session.session_id == "json-session"
     assert session.capabilities == {"WorkspaceRead", "ArtifactSubmit"}
+    assert session.broker_secret == "json-session-secret"
+
+
+def test_broker_secret_process_protection_is_fail_closed() -> None:
+    calls: list[tuple[int, int]] = []
+
+    def successful_prctl(option: int, value: int) -> int:
+        calls.append((option, value))
+        return 0
+
+    protect_broker_secret(
+        env_getter=lambda _name: "secret",
+        platform="linux",
+        prctl=successful_prctl,
+    )
+    assert calls == [(4, 0)]
+
+    def failed_prctl(option: int, value: int) -> int:
+        del option, value
+        return -1
+
+    with pytest.raises(RuntimeError, match="broker secret"):
+        protect_broker_secret(
+            env_getter=lambda _name: "secret",
+            platform="linux",
+            prctl=failed_prctl,
+        )
+
+
+def test_broker_secret_process_protection_covers_supported_platforms() -> None:
+    protected: list[str] = []
+
+    protect_broker_secret(
+        env_getter=lambda _name: "secret",
+        platform="darwin",
+        darwin_protect=lambda: protected.append("darwin"),
+    )
+    protect_broker_secret(
+        env_getter=lambda _name: "secret",
+        platform="win32",
+        windows_protect=lambda: protected.append("win32"),
+    )
+
+    assert protected == ["darwin", "win32"]
+
+
+def test_mint_and_protect_replaces_inherited_secret_before_protection() -> None:
+    environment = {"RALPH_BROKER_SECRET": "ancestor-known"}
+    protected: list[str] = []
+
+    secret = mint_and_protect_broker_secret(
+        environment=environment,
+        token_factory=lambda _bytes: "fresh-run-secret",
+        protector=lambda: protected.append(environment["RALPH_BROKER_SECRET"]),
+    )
+
+    assert secret == "fresh-run-secret"
+    assert environment["RALPH_BROKER_SECRET"] == "fresh-run-secret"
+    assert protected == ["fresh-run-secret"]
+
+
+def test_direct_standalone_server_protects_secret_before_session_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        server_runtime,
+        "protect_broker_secret",
+        lambda: calls.append("protect"),
+    )
+    monkeypatch.setattr(server_runtime, "sanitize_process_environment", lambda: None)
+    monkeypatch.setattr(
+        server_runtime,
+        "erase_broker_secret_environment",
+        lambda: calls.append("erase"),
+    )
+    monkeypatch.setattr(
+        server_runtime,
+        "session_from_env",
+        lambda **_kwargs: calls.append("session") or None,
+    )
+
+    class _Server:
+        def run(self, *, transport: str) -> None:
+            del transport
+            calls.append("run")
+
+    monkeypatch.setattr(
+        server_runtime,
+        "build_standalone_http_server",
+        lambda *_args, **_kwargs: _Server(),
+    )
+
+    server_runtime.run_standalone_server(tmp_path)
+
+    assert calls[:3] == ["protect", "session", "erase"]
 
 
 def test_session_from_env_accepts_injected_id_factories() -> None:

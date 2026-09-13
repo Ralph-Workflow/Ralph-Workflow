@@ -318,6 +318,16 @@ alone. Optional-artifact and artifact-free phases relax only the receipt
 requirement. If a session exits with incomplete evidence, Ralph Workflow
 treats the work as incomplete rather than calling it done — the session can
 be resumed, retried, or routed through the next recovery path per policy.
+Every normal pipeline process ensures a parent-only broker secret is present so
+the sentinel and any required receipt are authenticated and cannot be forged by
+a workspace write. Processes holding that secret apply the native process
+secrecy boundary: Linux disables dumpability, macOS denies debugger
+attachment, and Windows replaces the process object's permissive access list.
+Once authenticated evidence exists,
+Ralph Workflow terminates the agent process and advances the pipeline even if
+the agent CLI keeps producing output or leaves its output stream open. This
+completion rule is transport-independent; resumable-session support is not a
+prerequisite for honoring a successful `declare_complete` call.
 
 Interactive transports (Claude Code in PTY, AGY in PTY) give Ralph Workflow
 better streaming **observability** into what the agent is doing during a

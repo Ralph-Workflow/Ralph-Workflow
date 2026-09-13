@@ -876,6 +876,7 @@ def test_run_pipeline_threads_canonical_run_id_to_sweep(
     Pins: wt-029 / ANALYSIS-001 / how_to_fix (run_id wiring).
     """
     canonical_run_id = "canonical-pipeline-run-id-deadbeef"
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
 
@@ -910,6 +911,7 @@ def test_run_pipeline_threads_canonical_run_id_to_sweep(
 
     result = run_module.run_pipeline(dry_run=True)
     assert result == 0
+    assert run_module.os.environ.get("RALPH_BROKER_SECRET")
 
     assert sync_mock.called, "production sweep call site must invoke the sweep"
     forwarded = sync_mock.call_args.kwargs.get("keep_run_id")

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -46,6 +47,12 @@ def _install_seams(
     surviving_per_round: Sequence[Sequence[str]] | None = None,
 ) -> None:
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
+    monkeypatch.setattr(
+        driver_module,
+        "classify_unmerged_conflicts",
+        lambda _root, paths: dict.fromkeys(paths, ConflictSight.AGENT),
+    )
+    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _root, _kinds: ())
     remaining = list(surviving_per_round) if surviving_per_round is not None else [list(unmerged)]
 
     def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:

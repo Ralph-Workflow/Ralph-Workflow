@@ -529,6 +529,7 @@ class ProcessManager:
                 env=child_env_for_spawn(
                     effective.env,
                     allow_activity_relay_controls=effective.allow_activity_relay_controls,
+                    allow_broker_secret=effective.allow_broker_secret,
                     cwd=effective.cwd,
                 ),
             )

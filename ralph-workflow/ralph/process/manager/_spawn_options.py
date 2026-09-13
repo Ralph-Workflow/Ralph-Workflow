@@ -47,3 +47,5 @@ class SpawnOptions:
     # agent-controlled child keeps the default False, which strips private
     # conflict-resolution activity-relay controls before spawn.
     allow_activity_relay_controls: bool = False
+    # Reserved for the parent-owned standalone MCP bootstrap only.
+    allow_broker_secret: bool = False

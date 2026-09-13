@@ -633,6 +633,7 @@ def session_from_env(
     production AttributeError.
     """
     env_map = os.environ if env is None else env
+    broker_secret_value: str | None = env_map.get("RALPH_BROKER_SECRET") or None
     session_file = env_map.get(SESSION_FILE_ENV)
     if session_file:
         # RFC-013 P3: the broker-owned secret is intentionally NOT read
@@ -642,7 +643,6 @@ def session_from_env(
         # ``BROKER_SENTINEL_SECRET`` env vars at MCP-server boot; both
         # are reduced to a single ``broker_secret`` value used by the
         # HMAC contract.
-        broker_secret_value: str | None = env_map.get("RALPH_BROKER_SECRET") or None
         # AC-11: the ``FileBackedSession`` discovers its exec resource
         # resolver from the on-disk payload's ``exec_spill_roots`` so
         # the subprocess MCP server can replay parent-side
@@ -727,4 +727,5 @@ def session_from_env(
         allowed_roots=allowed_roots,
         model_identity=model_identity,
         stored_capability_profile=stored_profile,
+        broker_secret=broker_secret_value,
     )

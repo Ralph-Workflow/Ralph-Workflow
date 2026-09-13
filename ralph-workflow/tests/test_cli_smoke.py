@@ -1477,11 +1477,11 @@ def test_smoke_harness_agent_command_mints_run_scoped_broker_secret_when_unset(
 
 
 @pytest.mark.timeout_seconds(10)
-def test_smoke_harness_agent_command_preserves_operator_broker_secret(
+def test_smoke_harness_agent_command_replaces_inherited_broker_secret(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """An operator-exported ``RALPH_BROKER_SECRET`` is never overwritten."""
+    """Each smoke run gets a fresh secret unknown to ancestor processes."""
     stream = _attach_console(monkeypatch)
     del stream
     scope = WorkspaceScope(tmp_path)
@@ -1503,7 +1503,9 @@ def test_smoke_harness_agent_command_preserves_operator_broker_secret(
 
     def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
         del kwargs
-        assert os.environ.get("RALPH_BROKER_SECRET") == "operator-secret"
+        secret = os.environ.get("RALPH_BROKER_SECRET")
+        assert secret
+        assert secret != "operator-secret"
         return smoke_module.SmokeRunResult(
             agent_name="kimi/kimi-code/kimi-for-coding",
             transport="kimi",

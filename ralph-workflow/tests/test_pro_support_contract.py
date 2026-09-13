@@ -597,6 +597,11 @@ def _run_pipeline_with_heartbeat(
         "_setup_active_display",
         lambda *_a, **_kw: (display, ctx, lambda: None),
     )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_setup_connectivity_monitor",
+        lambda _monitor: (MagicMock(), None),
+    )
 
     monkeypatch.setattr(
         run_loop_module,

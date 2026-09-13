@@ -68,18 +68,15 @@ class _StubBridge:
 def test_commit_bridge_runs_session_with_commit_run_id(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``_start_commit_bridge`` MUST pass the commit run_id to build_session_bridge.
-
-    Without it, the session is constructed with a random uuid, the receipt
-    is stamped under that uuid, and the gate (which looks up the value
-    ``bridge_env_for(bridge)`` puts in ``MCP_RUN_ID_ENV``) can never find
-    the receipt.
-    """
     # Import inside the test so module-load order is consistent with the
     # commit_plumbing module's own late-binding import of
     # ``ralph.cli.commands.commit``.
     plumbing_module = _plumbing_module()
-    run_id_seen: list[str | None] = []
+    calls: list[tuple[str, str | None]] = []
+
+    def _fake_mint_and_protect_broker_secret() -> str:
+        calls.append(("protect", None))
+        return "fresh-secret"
 
     def _fake_build_session_bridge(
         *,
@@ -90,9 +87,14 @@ def test_commit_bridge_runs_session_with_commit_run_id(
         run_id: str | None = None,
         **kwargs: object,
     ) -> _StubBridge:
-        run_id_seen.append(run_id)
+        calls.append(("build", run_id))
         return _StubBridge(endpoint="http://127.0.0.1:65535/mcp", run_id=run_id or "")
 
+    monkeypatch.setattr(
+        plumbing_module,
+        "mint_and_protect_broker_secret",
+        _fake_mint_and_protect_broker_secret,
+    )
     monkeypatch.setattr(
         plumbing_module,
         "build_session_bridge",
@@ -106,10 +108,7 @@ def test_commit_bridge_runs_session_with_commit_run_id(
     )
 
     expected_run_id = plumbing_module._COMMIT_RUN_ID
-    assert run_id_seen == [expected_run_id], (
-        f"_start_commit_bridge must call build_session_bridge with run_id="
-        f"{expected_run_id!r}; got {run_id_seen!r}"
-    )
+    assert calls == [("protect", None), ("build", expected_run_id)]
     assert bridge.run_id == expected_run_id
 
 

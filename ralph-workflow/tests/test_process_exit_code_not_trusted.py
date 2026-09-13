@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib
-import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -22,6 +21,7 @@ from ralph.process.manager import (
     reset_process_manager,
 )
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from ralph.testing.fake_process import FakePopen, ProcessState
 from tests._process_exit_code_not_trusted_helper__recordingmcpfactory import (
     _RecordingMcpFactory,
 )
@@ -54,7 +54,6 @@ _FAST_POLICY = ProcessManagerPolicy(
     enable_zombie_reaper=False,
 )
 
-PYTHON = sys.executable
 _EXPECTED_EXIT_CODE = 7
 
 
@@ -70,8 +69,14 @@ def _reset_pm() -> object:
 @pytest.mark.asyncio
 async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
     """ProcessManager records EXITED (not FAILED) even when returncode != 0."""
-    pm = ProcessManager(policy=_FAST_POLICY)
-    handle = pm.spawn([PYTHON, "-c", f"import sys; sys.exit({_EXPECTED_EXIT_CODE})"])
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=lambda _command, _opts: FakePopen(
+            pid=1,
+            state=ProcessState(returncode=_EXPECTED_EXIT_CODE),
+        ),
+    )
+    handle = pm.spawn(["test-process"])
     handle.wait(timeout=5.0)
 
     assert handle.record.status == ProcessStatus.EXITED

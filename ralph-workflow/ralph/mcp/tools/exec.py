@@ -642,6 +642,7 @@ def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
 
 def _child_env(cwd: Path) -> dict[str, str]:
     env = scrub_activity_relay_controls(dict(os.environ))
+    env.pop("RALPH_BROKER_SECRET", None)
     env["PWD"] = str(cwd)
     env.pop("OLDPWD", None)
     scrub_activity_relay_controls(env)

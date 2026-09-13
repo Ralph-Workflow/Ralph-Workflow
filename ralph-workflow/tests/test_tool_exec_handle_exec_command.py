@@ -34,6 +34,13 @@ EXPECTED_TIMEOUT_SECONDS = 2.5
 
 
 class TestHandleExecCommand:
+    def test_exec_child_never_inherits_broker_secret(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("RALPH_BROKER_SECRET", "parent-only-secret")
+
+        assert "RALPH_BROKER_SECRET" not in exec_tool._child_env(tmp_path)
+
     def test_exec_with_valid_command_succeeds(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

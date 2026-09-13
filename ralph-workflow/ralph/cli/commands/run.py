@@ -6,6 +6,7 @@ This module implements the main pipeline execution command.
 from __future__ import annotations
 
 import os
+import secrets
 import shutil
 import uuid
 from contextlib import ExitStack, suppress
@@ -32,6 +33,7 @@ from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
+from ralph.mcp.server._process_secrecy import protect_broker_secret
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.factory import DefaultPipelineFactory
@@ -131,6 +133,12 @@ _EXIT_CONFIG_ERROR = 1
 _EXIT_INTERRUPT = 130
 _EXIT_PREFLIGHT = 2
 load_policy = _dir_load_policy
+
+_BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
+
+
+def _ensure_broker_secret() -> None:
+    os.environ[_BROKER_SECRET_ENV] = secrets.token_hex(32)
 
 _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
     "artifacts",
@@ -781,6 +789,8 @@ def run_pipeline(
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
+    _ensure_broker_secret()
+    protect_broker_secret()
     ctx = display_context if display_context is not None else make_display_context()
     if request is None:
         manifest_from_kwargs = kwargs.get("parallel_worker_manifest")

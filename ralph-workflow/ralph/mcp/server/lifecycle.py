@@ -811,6 +811,7 @@ def _spawn_process(
                 start_new_session=True,
                 label=label,
                 allow_activity_relay_controls=True,
+                allow_broker_secret=True,
             ),
         )
     finally:

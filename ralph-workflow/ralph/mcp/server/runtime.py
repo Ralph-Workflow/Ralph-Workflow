@@ -60,6 +60,10 @@ from ralph.mcp.server._cycle_deadline import CycleDeadlineNotifier
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
+from ralph.mcp.server._process_secrecy import (
+    erase_broker_secret_environment,
+    protect_broker_secret,
+)
 from ralph.mcp.server._runtime_constants import (
     DEFAULT_HOST,
     DEFAULT_MOUNT_PATH,
@@ -333,14 +337,17 @@ def run_standalone_server(
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
+    protect_broker_secret()
     sanitize_process_environment()
     relay_sender = ActivityRelaySender.from_environment(dict(os.environ))
     scrub_activity_relay_environment(os.environ)
+    session = session_from_env(declared_agent_transport=agent_transport)
+    erase_broker_secret_environment()
     server = build_standalone_http_server(
         workspace_root,
         host=host,
         port=port,
-        extras=McpServerExtras(session=session_from_env(declared_agent_transport=agent_transport)),
+        extras=McpServerExtras(session=session),
         agent_transport=agent_transport,
         activity_relay_sender=relay_sender,
     )

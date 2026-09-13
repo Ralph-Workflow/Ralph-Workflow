@@ -29,6 +29,7 @@ ACTIVITY_RELAY_CONTROL_ENV_VARS: frozenset[str] = frozenset(
         "RALPH_MCP_ACTIVITY_RELAY_CREDENTIAL",
     }
 )
+BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
 
 
 def scrub_activity_relay_controls[T: MutableMapping[str, str]](env: T) -> T:
@@ -42,14 +43,14 @@ def child_env_for_spawn(
     env: Mapping[str, str] | None,
     *,
     allow_activity_relay_controls: bool = False,
+    allow_broker_secret: bool = False,
     cwd: str | None = None,
-) -> dict[str, str] | None:
+) -> dict[str, str]:
     """Return the environment map a spawned child actually receives.
 
-    ``None`` means "inherit the parent environment" and is passed through
-    unchanged. Otherwise the caller's map is copied and, unless the caller is
-    the parent-owned standalone MCP bootstrap, stripped of the private
-    activity-relay controls.
+    ``None`` means "inherit the parent environment", which is materialized so
+    private controls can still be stripped. Otherwise the caller's map is
+    copied and sanitized the same way.
 
     When the child is given a ``cwd``, ``PWD`` is realigned to name it and the
     now-meaningless ``OLDPWD`` is dropped. ``cwd=`` changes the child's working
@@ -66,15 +67,15 @@ def child_env_for_spawn(
     it, and rejecting a spawn over it would refuse a launch that would have
     succeeded.
     """
-    if env is None:
-        return None
-    child_env = dict(env)
+    child_env = dict(os.environ if env is None else env)
     if cwd is not None:
         child_env["PWD"] = cwd
         child_env.pop("OLDPWD", None)
-    if allow_activity_relay_controls:
-        return child_env
-    return scrub_activity_relay_controls(child_env)
+    if not allow_broker_secret:
+        child_env.pop(BROKER_SECRET_ENV, None)
+    if not allow_activity_relay_controls:
+        scrub_activity_relay_controls(child_env)
+    return child_env
 
 
 def strip_malloc_debug_noise(env: MutableMapping[str, str]) -> tuple[str, ...]:

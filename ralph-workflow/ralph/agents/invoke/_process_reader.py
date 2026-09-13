@@ -18,7 +18,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from ralph.agents.activity import AgentActivityKind
-from ralph.agents.completion_signals import evaluate_completion
+from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
@@ -824,6 +824,10 @@ class ProcessLineReader:
                 return True
         return False
 
+    def _poll_opencode_subagent_probe(self) -> None:
+        if self._opencode_subagent_probe is not None:
+            self._opencode_subagent_probe.poll()
+
     def _read_thread(self) -> None:
         stdout_pipe = cast(
             "IO[str] | None", self._handle.stdout
@@ -1397,8 +1401,7 @@ class ProcessLineReader:
         try:
             while True:
                 self._lines_event.clear()
-                if self._opencode_subagent_probe is not None:
-                    self._opencode_subagent_probe.poll()
+                self._poll_opencode_subagent_probe()
                 queued_line: str | None = None
                 is_done = False
                 with self._lines_lock:
@@ -1414,6 +1417,8 @@ class ProcessLineReader:
                     self._strategy.observe_line(queued_line)
                     self._raw_overflow.append(queued_line)
                     yield queued_line
+                    if self._finish_terminal_completion():
+                        break
                     result = self._check_fire(
                         watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
                     )
@@ -1539,25 +1544,23 @@ def _run_subprocess_and_read_lines(
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
+        broker_secret = _parent_broker_secret()
 
         def completion_is_terminal() -> bool:
             if (
                 not completion_evidence_gates_reader(ctx)
                 or ctx.workspace_path is None
-                or not strategy.supports_session_continuation()
+                or broker_secret is None
             ):
                 return False
-            evaluator = ctx.evaluate_completion_fn or evaluate_completion
-            signals = evaluator(
+            signals = (ctx.evaluate_completion_fn or evaluate_completion)(
                 ctx.workspace_path,
                 required_artifact=ctx.required_artifact,
                 run_id=completion_run_id,
-                sentinel_secret=_parent_broker_secret(),
-                receipt_secret=_parent_broker_secret(),
+                sentinel_secret=broker_secret,
+                receipt_secret=broker_secret,
             )
-            return strategy.classify_exit(handle, signals, liveness_probe=probe) == (
-                AgentExecutionState.TERMINAL_COMPLETE
-            )
+            return completion_signals_terminal(signals)
 
         reader_ctx = ProcessReaderCtx(
             config=ctx.config,
