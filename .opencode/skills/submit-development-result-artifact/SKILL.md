@@ -66,10 +66,13 @@ Copy the IDs from the source artifact — do not invent or renumber them.
 
 ## Core Flow
 
-1. Write the document. For `completed`, every section rule and every
-   plan/analysis proof above is enforced. For `partial`, `## Summary` is
-   required and — under a cycle-timebox warning — so is `## Incomplete Work`;
-   otherwise lead with what you did, what remains (`## Next Steps`) and your
+1. Write the document. Before the per-invocation 50-minute soft wrap-up
+   warning, only `completed` with every required plan proof is accepted. At or
+   after that warning, `partial` and `failed` are available again. For
+   `completed`, every section rule and every plan/analysis proof above is
+   enforced. For `partial`, `## Summary` is required and — under a
+   cycle-timebox warning — so is `## Incomplete Work`; otherwise lead with what
+   you did, what remains (`## Next Steps`) and your
    session ID (`## Continuation`) so the next iteration can resume.
 2. Optionally `ralph_verify_md_artifact`, then
    `ralph_submit_md_artifact({"artifact_type": "development_result", "content": ...})`.
