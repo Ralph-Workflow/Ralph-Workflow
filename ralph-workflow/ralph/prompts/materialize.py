@@ -485,7 +485,11 @@ def _render_planning_prompt(
         analysis_feedback_status,
         template_name,
     ) = _prepare_planning_prompt_context(context, options)
-    last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    last_retry_error = read_and_clear_retry_hint(
+        workspace,
+        phase,
+        worker_namespace=options.worker_namespace,
+    )
     artifact_history_path = resolve_planning_history_path(workspace_root)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
@@ -653,7 +657,11 @@ def _render_template_based_prompt(
         analysis_feedback_path,
         analysis_feedback_status,
     ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
-    last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    last_retry_error = read_and_clear_retry_hint(
+        workspace,
+        phase,
+        worker_namespace=worker_namespace,
+    )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
     variables = phase_payload_variables(

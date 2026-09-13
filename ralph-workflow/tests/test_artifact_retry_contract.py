@@ -496,6 +496,61 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     assert "PREVIOUS ATTEMPT FAILED" in rendered
     assert not workspace.exists(retry_hint_path("development_analysis"))
 
+def test_worker_generic_prompt_consumes_only_worker_validation_retry_hint(
+    tmp_path: Path,
+) -> None:
+    """Rejected worker analysis is recoverable from its next template-based prompt."""
+    policy = load_policy(tmp_path / ".agent")
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Repair the worker analysis")
+    _setup_phase_prerequisites(workspace, "development_analysis", full_plan=True)
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+    coordinator_hint = retry_hint_path("development_analysis")
+    workspace.write(coordinator_hint, "COORDINATOR RETRY CONTEXT")
+    worker_hint = str(
+        worker_namespace / "tmp" / "last_retry_error_development_analysis.txt"
+    )
+    worker_draft = str(
+        worker_namespace / "artifacts" / ".development_analysis_decision.draft.md"
+    )
+    diagnostic = {
+        "rule_id": "SPEC006",
+        "line": 6,
+        "section": "Criterion Verdicts",
+    }
+    workspace.write(
+        worker_hint,
+        "VALIDATION FAILED\n"
+        "SPEC006 at line 6 in section Criterion Verdicts\n"
+        "The invalid draft is retained. Repair it with ralph_edit_md_artifact.",
+    )
+    workspace.write(worker_draft, "invalid retained worker draft")
+    assert workspace.exists(worker_hint)
+    assert workspace.exists(worker_draft)
+
+    prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            worker_namespace=worker_namespace,
+        ),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert diagnostic["rule_id"] in rendered
+    assert f"line {diagnostic['line']}" in rendered
+    assert diagnostic["section"] in rendered
+    assert "ralph_edit_md_artifact" in rendered
+    assert not workspace.exists(worker_hint)
+    assert workspace.exists(worker_draft)
+    assert workspace.read(coordinator_hint) == "COORDINATOR RETRY CONTEXT"
+
 
 def test_development_proof_failure_uses_retry_hint_contract(
     tmp_path: Path,

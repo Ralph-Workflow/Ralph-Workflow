@@ -39,6 +39,8 @@ pytestmark = pytest.mark.timeout_seconds(5)
 class _ArtifactSubmitSession:
     session_id = "test-session"
     drain = "planning_analysis"
+    worker_namespace: Path | None = None
+    worker_artifact_dir: Path | None = None
 
     def check_capability(self, capability: str) -> object:
         return capability == "artifact.submit"
@@ -85,6 +87,56 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
     assert "ralph_edit_md_artifact" in rendered
     assert not workspace.exists(".agent/tmp/last_retry_error_planning.txt")
     assert workspace.exists(".agent/artifacts/.plan.draft.md")
+
+
+def test_worker_planning_validator_context_enters_only_worker_prompt(tmp_path: Path) -> None:
+    """A rejected worker plan is recoverable from the next worker planning prompt."""
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Repair the existing worker plan")
+    workspace.write(".agent/PLAN.md", "---\ntype: plan\n---\n## Outcome\nRetained prior plan.\n")
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+    coordinator_hint = ".agent/tmp/last_retry_error_planning.txt"
+    workspace.write(coordinator_hint, "COORDINATOR RETRY CONTEXT")
+    session = _ArtifactSubmitSession()
+    session.drain = "planning"
+    session.worker_namespace = worker_namespace
+    session.worker_artifact_dir = worker_namespace / "artifacts"
+    invalid = "---\ntype: plan\ntype: plan\n---\n## Steps\n"
+
+    rejected = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": invalid}
+    )
+    assert rejected.is_error is True
+    payload = json.loads(rejected.content[0].text)
+    diagnostic = next(item for item in payload["diagnostics"] if item["severity"] == "error")
+    worker_hint = str(worker_namespace / "tmp" / "last_retry_error_planning.txt")
+    worker_draft = str(worker_namespace / "artifacts" / ".plan.draft.md")
+    assert workspace.exists(worker_hint)
+    assert workspace.exists(worker_draft)
+
+    policy = load_policy(tmp_path / ".agent")
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            worker_namespace=worker_namespace,
+            previous_phase="planning",
+        ),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert diagnostic["rule_id"] in rendered
+    assert f"line {diagnostic['line']}" in rendered
+    assert "ralph_edit_md_artifact" in rendered
+    assert not workspace.exists(worker_hint)
+    assert workspace.exists(worker_draft)
+    assert workspace.read(coordinator_hint) == "COORDINATOR RETRY CONTEXT"
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
