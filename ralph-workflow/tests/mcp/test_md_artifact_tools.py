@@ -11,6 +11,9 @@ from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import tool_specs
 from ralph.mcp.tools.md_artifact import (
     REPAIR_HINT,
+    handle_edit_md_artifact,
+    handle_finalize_md_artifact,
+    handle_stage_md_artifact,
     handle_submit_md_artifact,
     handle_verify_md_artifact,
 )
@@ -95,6 +98,98 @@ def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -
     assert _payload(submitted) == _payload(verified)
     diagnostics = must_dict_list(_payload(verified)["diagnostics"])
     assert {diagnostic["rule_id"] for diagnostic in diagnostics} >= {"SPEC008"}
+
+
+@pytest.mark.parametrize("operation", ["submit", "finalize", "edit"])
+def test_md_artifact_regression_validation_failure_persists_retry_context(
+    tmp_path, operation: str
+) -> None:
+    """S-2: submission-capable validation failures retain exact retry context."""
+    session = MockSession(drain="development")
+    workspace = MockWorkspace(tmp_path)
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+    invalid = "---\ntype: product_spec\n---\n"
+
+    if operation == "submit":
+        result = handle_submit_md_artifact(
+            session, workspace, {"artifact_type": "product_spec", "content": invalid}, deps=deps
+        )
+    elif operation == "finalize":
+        handle_stage_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "product_spec", "content": invalid, "mode": "replace_all"},
+            deps=deps,
+        )
+        result = handle_finalize_md_artifact(
+            session, workspace, {"artifact_type": "product_spec"}, deps=deps
+        )
+    else:
+        handle_stage_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "product_spec", "content": invalid, "mode": "replace_all"},
+            deps=deps,
+        )
+        result = handle_edit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "product_spec", "edits": [{"oldText": "---", "newText": "---"}]},
+            deps=deps,
+        )
+
+    assert result.is_error is (operation != "edit")
+    hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
+    assert backend.exists(hint_path)
+    hint = backend.read_text(hint_path)
+    assert "SPEC008" in hint
+    assert "line 1" in hint
+    assert "section" in hint.lower()
+    assert "ralph_edit_md_artifact" in hint
+    assert "Do not restart" in hint
+
+
+def test_md_artifact_regression_worker_validation_hint_uses_worker_namespace(tmp_path) -> None:
+    """S-3: worker validation context is isolated in the worker retry namespace."""
+    session = MockSession(drain="development")
+    session.worker_namespace = tmp_path / ".agent" / "workers" / "unit-1"
+    workspace = MockWorkspace(tmp_path)
+    backend = MemoryBackend()
+
+    result = handle_submit_md_artifact(
+        session,
+        workspace,
+        {"artifact_type": "product_spec", "content": "---\ntype: product_spec\n---\n"},
+        deps=ArtifactHandlerDeps(backend=backend),
+    )
+
+    assert result.is_error is True
+    worker_hint = session.worker_namespace / "tmp" / "last_retry_error_development.txt"
+    assert backend.exists(worker_hint)
+    assert "SPEC008" in backend.read_text(worker_hint)
+    assert not backend.exists(tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt")
+
+
+def test_md_artifact_regression_success_clears_stale_validation_retry_context(tmp_path) -> None:
+    """S-2: a successful resubmission removes obsolete validator context."""
+    session = MockSession(drain="development")
+    workspace = MockWorkspace(tmp_path)
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+    handle_submit_md_artifact(
+        session,
+        workspace,
+        {"artifact_type": "product_spec", "content": "---\ntype: product_spec\n---\n"},
+        deps=deps,
+    )
+
+    result = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _product_spec()}, deps=deps
+    )
+
+    assert result.is_error is False
+    assert not backend.exists(tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt")
 
 
 def test_markdown_artifact_tools_are_registered() -> None:

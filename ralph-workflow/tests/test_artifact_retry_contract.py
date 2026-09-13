@@ -46,6 +46,7 @@ from ralph.prompts.materialize import (
     read_and_clear_retry_hint,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -286,6 +287,26 @@ def test_missing_artifact_writes_retry_hint(phase: str) -> None:
     )
     hint_content = workspace.read(hint_path)
     assert len(hint_content) > 0, "Retry hint must not be empty"
+
+
+def test_planning_regression_divergent_draft_preserves_validator_retry_context(
+    tmp_path: Path,
+) -> None:
+    """S-2: the phase gate appends divergence guidance without losing diagnostics."""
+    workspace = FsWorkspace(tmp_path)
+    workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
+    workspace.write(".agent/artifacts/.plan.draft.md", "invalid retained draft")
+    exact = "VALIDATOR MD002 at line 2, section frontmatter: duplicate type"
+    workspace.write(retry_hint_path("planning"), exact)
+    ctx = _make_ctx(workspace)
+
+    events = _execution_handler_for("planning")(_invoke_effect("planning"), ctx)
+
+    assert any(isinstance(event, PhaseFailureEvent) for event in events)
+    hint = workspace.read(retry_hint_path("planning"))
+    assert exact in hint
+    assert "staged draft contains content that was never submitted" in hint.lower()
+    assert "ralph_edit_md_artifact" in hint
 
 
 def test_planning_missing_plan_artifact_writes_retry_hint() -> None:

@@ -23,6 +23,7 @@ from ralph.recovery.retry_prompt import build_retry_error_block
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.mcp.artifacts.markdown import Diagnostic
     from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
 
 # Normalizers keyed by artifact_type — used by build_required_artifacts()
@@ -117,6 +118,32 @@ def resolve_phase_required_artifact(
 def retry_hint_path(phase: str) -> str:
     """Return the workspace-relative path for the retry hint file for a phase."""
     return f".agent/tmp/last_retry_error_{phase}.txt"
+
+
+def build_validation_retry_hint(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
+    """Build actionable retry context from canonical validator diagnostics."""
+    lines = [
+        "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft.",
+        f"Artifact type: {artifact_type}",
+        "Validator diagnostics:",
+    ]
+    for diagnostic in diagnostics:
+        if diagnostic.severity != "error":
+            continue
+        section = diagnostic.section or "frontmatter/document"
+        lines.append(
+            f"- {diagnostic.rule_id} at line {diagnostic.line}, section {section}: "
+            f"{diagnostic.message}"
+        )
+    lines.extend(
+        [
+            "",
+            "The submitted document remains staged as the retained draft. Repair it in place ",
+            "with ralph_edit_md_artifact, which resubmits automatically once valid. ",
+            "Do not restart the task from scratch or discard prior work.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def build_retry_hint(

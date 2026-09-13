@@ -208,7 +208,13 @@ def _validate_plan_output(
     )
     if divergence is not None:
         detail = "The staged plan draft contains content that was never submitted."
-        _write_retry_hint(ctx, phase, detail, unsubmitted_draft=True)
+        _write_retry_hint(
+            ctx,
+            phase,
+            detail,
+            unsubmitted_draft=True,
+            preserve_existing=True,
+        )
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
@@ -376,6 +382,7 @@ def _write_retry_hint(
     *,
     hint_path_override: str | None = None,
     unsubmitted_draft: bool = False,
+    preserve_existing: bool = False,
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase)
     try:
@@ -389,6 +396,10 @@ def _write_retry_hint(
         unsubmitted_draft=unsubmitted_draft,
     )
     with suppress(Exception):
+        if preserve_existing and ctx.workspace.exists(hint_path):
+            existing = ctx.workspace.read(hint_path).strip()
+            if existing:
+                hint = f"{existing}\n\n{hint}"
         ctx.workspace.write(hint_path, hint)
 
 

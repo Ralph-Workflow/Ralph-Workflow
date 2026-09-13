@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs._plan_steps import step_number_map
@@ -56,6 +57,7 @@ from ralph.mcp.tools.text_edits import (
     parse_text_edits,
     sha256_text,
 )
+from ralph.phases.required_artifacts import build_validation_retry_hint, retry_hint_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -114,8 +116,10 @@ def handle_submit_md_artifact(
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
+        _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
+    _clear_validation_retry_hint(session, workspace, deps)
     return _submitted_validation_result(artifact_type, content, diagnostics, overridden)
 
 
@@ -201,6 +205,9 @@ def handle_edit_md_artifact(
     submitted = not any(item.severity == "error" for item in diagnostics)
     if submitted:
         _submit_canonical(session, workspace, artifact_type, parsed_content, outcome.content, deps)
+        _clear_validation_retry_hint(session, workspace, deps)
+    else:
+        _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
     return _edit_result(
         artifact_type,
         outcome.content,
@@ -328,9 +335,59 @@ def handle_finalize_md_artifact(
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
+        _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
+    _clear_validation_retry_hint(session, workspace, deps)
     return _submitted_validation_result(artifact_type, content, diagnostics, overridden)
+
+
+def _validation_retry_hint_file(
+    session: CoordinationSessionLike, workspace: WorkspaceLike
+) -> Path | None:
+    """Resolve the phase retry-hint path for coordinator or worker scope."""
+    phase = _session_drain(session)
+    if phase is None:
+        return None
+    worker_namespace = cast("Path | None", getattr(session, "worker_namespace", None))
+    worker_artifact_dir = cast("Path | None", getattr(session, "worker_artifact_dir", None))
+    if worker_namespace is None and worker_artifact_dir is not None:
+        worker_namespace = worker_artifact_dir.parent
+    if worker_namespace is not None:
+        return worker_namespace / "tmp" / f"last_retry_error_{phase}.txt"
+    return _workspace_root(workspace) / retry_hint_path(phase)
+
+
+def _persist_validation_retry_hint(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    diagnostics: list[Diagnostic],
+    deps: ArtifactHandlerDeps | None,
+) -> None:
+    """Persist exact validator errors for one-shot injection into the next prompt."""
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    path = _validation_retry_hint_file(session, workspace)
+    if path is None:
+        return
+    backend.mkdir(path.parent, parents=True, exist_ok=True)
+    write_text_if_changed(
+        backend,
+        path,
+        build_validation_retry_hint(artifact_type, diagnostics),
+    )
+
+
+def _clear_validation_retry_hint(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    deps: ArtifactHandlerDeps | None,
+) -> None:
+    """Remove obsolete validator context after a successful submission."""
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    path = _validation_retry_hint_file(session, workspace)
+    if path is not None:
+        backend.unlink(path, missing_ok=True)
 
 
 def _submit_canonical(

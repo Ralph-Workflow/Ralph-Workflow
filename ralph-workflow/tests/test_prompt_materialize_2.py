@@ -10,6 +10,7 @@ import ralph.prompts.materialize as materialize_module
 from ralph.mcp.artifacts.history import (
     history_index_path,
 )
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.cycle_baseline import write_cycle_baseline
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
@@ -25,6 +26,7 @@ from ralph.prompts.materialize import (
     prompt_file_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
 # All tests in this module exercise real git operations against the
@@ -40,6 +42,49 @@ class _ArtifactSubmitSession:
 
     def check_capability(self, capability: str) -> object:
         return capability == "artifact.submit"
+
+
+def test_prompt_materialize_regression_real_validator_context_enters_planning_edit_prompt(
+    tmp_path,
+) -> None:
+    """S-3: real submit diagnostics and retained draft reach the next planning prompt."""
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Repair the existing plan")
+    workspace.write(".agent/PLAN.md", "---\ntype: plan\n---\n## Outcome\nRetained prior plan.\n")
+    session = _ArtifactSubmitSession()
+    session.drain = "planning"
+    invalid = "---\ntype: plan\ntype: plan\n---\n## Steps\n"
+
+    rejected = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": invalid}
+    )
+    assert rejected.is_error is True
+    payload = json.loads(rejected.content[0].text)
+    diagnostic = next(item for item in payload["diagnostics"] if item["severity"] == "error")
+    assert workspace.exists(".agent/tmp/last_retry_error_planning.txt")
+    hint = workspace.read(".agent/tmp/last_retry_error_planning.txt")
+    assert diagnostic["rule_id"] in hint
+    assert f"line {diagnostic['line']}" in hint
+
+    policy = load_policy(tmp_path / ".agent")
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=policy.artifacts, previous_phase="planning"),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert diagnostic["rule_id"] in rendered
+    assert f"line {diagnostic['line']}" in rendered
+    assert "ralph_edit_md_artifact" in rendered
+    assert not workspace.exists(".agent/tmp/last_retry_error_planning.txt")
+    assert workspace.exists(".agent/artifacts/.plan.draft.md")
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (

@@ -15,6 +15,11 @@ not edit workspace files, install dependencies, or run state-changing commands.
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+Previous attempt error: {{ LAST_RETRY_ERROR }}
+Repair the retained draft's submission or validation issue before completing this plan.
+{% endif %}
+
 Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
