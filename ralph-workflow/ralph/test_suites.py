@@ -1160,8 +1160,14 @@ def run_test_suites(
         basetemp_path = Path(basetemp_root)
         successful_returncodes = frozenset((0, 5)) if profile is not None else frozenset((0,))
         empty_selection_returncode = 5 if profile is not None else None
+        run_required_concurrently = bool(
+            required_e2e_shard and not subprocess_e2e_only
+        )
+        all_shards = (
+            (*shards, required_e2e_shard) if run_required_concurrently else shards
+        )
         general_result = _run_shards(
-            shards,
+            all_shards,
             cwd=cwd,
             env=env,
             basetemp_root=basetemp_path,
@@ -1172,12 +1178,15 @@ def run_test_suites(
             wait=wait,
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
+            required_e2e_shard_xdist_workers=(
+                required_e2e_shard_xdist_workers if run_required_concurrently else None
+            ),
             successful_returncodes=successful_returncodes,
             empty_selection_returncode=empty_selection_returncode,
         )
         if general_result not in successful_returncodes:
             return general_result
-        if not required_e2e_shard:
+        if not required_e2e_shard or run_required_concurrently:
             return general_result
         return _run_shards(
             (required_e2e_shard,),

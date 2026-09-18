@@ -565,8 +565,16 @@ def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
 ) -> None:
     """The dedicated E2E shard uses four workers for isolated real-git tests."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
-    processes = [_FakeShardProcess([0]), _FakeShardProcess([0]), _FakeShardProcess([0])]
-    spawner = _StubSpawner(processes)
+    reap_spawn_counts: list[int] = []
+    spawner = _StubSpawner([])
+    processes = [
+        _FakeShardProcess(
+            [0],
+            on_communicate=lambda: reap_spawn_counts.append(len(spawner.calls)),
+        )
+        for _index in range(3)
+    ]
+    spawner._processes.extend(processes)
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
@@ -581,6 +589,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
     )
 
     assert exit_code == 0
+    assert reap_spawn_counts == [3, 3, 3]
     dedicated_command = spawner.calls[-1][0]
     assert dedicated_command[3] == "tests"
     assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
