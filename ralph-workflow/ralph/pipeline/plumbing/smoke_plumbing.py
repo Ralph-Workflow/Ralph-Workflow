@@ -88,6 +88,8 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from ralph.agents.display_capabilities import DisplayCapability
     from ralph.agents.display_capability_stance import DisplayCapabilityStance
+    from ralph.agents.invoke._workspace import WorkspaceMonitor
+    from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.agents.support import AgentSupport
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -1517,6 +1519,7 @@ def _execute_smoke_turns(
                 raw_line_sink=_observe_raw_line,
                 set_session_id_cb=_capture_session_id,
                 invoke_agent=invoke_agent,
+                invocation_options=params.options,
                 raise_resumable_exit=True,
             )
             highest_latched_ceiling = _update_smoke_turn_state(
@@ -2421,6 +2424,14 @@ def _report_evidence_ceiling_once(config: AgentConfig, lines: list[str]) -> bool
     return True
 
 
+def _skip_multimodal_workspace_monitor(
+    _workspace_root: Path,
+    _classifier: WorkspaceChangeClassifier | None,
+) -> WorkspaceMonitor | None:
+    """Skip observer lifecycle when signed multimodal smoke evidence is authoritative."""
+    return None
+
+
 def _run_smoke_agent(
     params: SmokeRunParams,
     run_id: str = _SMOKE_RUN_ID,
@@ -2737,7 +2748,11 @@ def run_smoke_plumbing(
                     workspace_root=workspace_root,
                     prompt_file=prompt_file,
                     output_file=effective_output_file,
-                    options=InvokeOptions(),
+                    options=InvokeOptions(
+                        workspace_monitor_factory=(
+                            _skip_multimodal_workspace_monitor if multimodal else None
+                        )
+                    ),
                     display_context=display_context,
                     bridge=bridge,
                     pipeline_deps=effective_pipeline_deps,

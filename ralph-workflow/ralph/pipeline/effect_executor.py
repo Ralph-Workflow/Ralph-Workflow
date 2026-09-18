@@ -277,6 +277,7 @@ def execute_agent_effect(
         waiting_listener=waiting_listener,
         agent_config=agent_config,
         display=display,
+        invocation_options=cast("InvokeOptions | None", opts.get("invocation_options")),
         worker_namespace=cast(
             "Path | None", opts.get("worker_namespace")
         ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -902,6 +903,11 @@ def _build_attempt_invoke_options(
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
             requires_completion_evidence=ctx.effect.requires_completion_evidence,
+            workspace_monitor_factory=(
+                ctx.invocation_options.workspace_monitor_factory
+                if ctx.invocation_options is not None
+                else None
+            ),
             # NOTE: Ralph does NOT pass opencode's ``--pure``. That flag runs
             # opencode without external plugins, and a plugin is often what
             # supplies the operator's model provider -- disabling it makes the

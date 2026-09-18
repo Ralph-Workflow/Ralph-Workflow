@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.agents.invoke import InvokeOptions
     from ralph.config.enums import Verbosity
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -37,6 +38,7 @@ class _AgentInvocationCtx:
     waiting_listener: Callable[[object], None]
     agent_config: AgentConfig
     display: ParallelDisplay | None
+    invocation_options: InvokeOptions | None = None
     worker_namespace: Path | None = None
     worker_artifact_dir: Path | None = None
     parallel_worker: bool = False

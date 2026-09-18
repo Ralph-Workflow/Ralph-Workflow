@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents import invoke as invoke_module
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.smoke_binary_override import (
     apply_smoke_binary_override,
@@ -336,6 +337,7 @@ def _end_to_end_test_for_harness(
 def test_positive_multimodal_run_grades_wire(
     transport: str,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Positive contract: a multimodal smoke run on every harness grades WIRE (criterion 5).
 
@@ -345,7 +347,17 @@ def test_positive_multimodal_run_grades_wire(
     into the smoke output file, submits the artifact, and declares
     completion. The harness must grade the multimodal fact at WIRE.
     """
+    monitor_factories: list[object] = []
+    original_start_workspace_monitor = invoke_module._start_workspace_monitor
+
+    def record_start_workspace_monitor(*args: object, **kwargs: object) -> object:
+        monitor_factories.append(kwargs["factory"])
+        return original_start_workspace_monitor(*args, **kwargs)
+
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", record_start_workspace_monitor)
     result = _end_to_end_test_for_harness(tmp_path, transport, positive=True)
+    assert len(monitor_factories) == 1
+    assert callable(monitor_factories[0])
     assert result.multimodal_tool_used is not None
     assert result.multimodal_tool_used.provenance is result.multimodal_tool_used.provenance.WIRE, (
         f"transport {transport!r}: multimodal fact graded "

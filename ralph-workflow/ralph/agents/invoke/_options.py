@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.agents.invoke._workspace import WorkspaceMonitor
+    from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.config.models import GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
 
@@ -52,6 +53,9 @@ class InvokeRuntimeOptions:
         None
     )
     relay_health_error: Callable[[], str | None] | None = None
+    workspace_monitor_factory: (
+        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
+    ) = None
 
 
 def build_invoke_options_from_config(
@@ -79,6 +83,7 @@ def build_invoke_options_from_config(
         activity_only_status_interval_seconds=rt.activity_only_status_interval_seconds,
         relay_activity_sink_register=rt.relay_activity_sink_register,
         relay_health_error=rt.relay_health_error,
+        workspace_monitor_factory=rt.workspace_monitor_factory,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
         max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
         idle_poll_interval_seconds=general_config.agent_idle_poll_interval_seconds,

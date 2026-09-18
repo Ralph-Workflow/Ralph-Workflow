@@ -519,12 +519,17 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
 ) -> None:
     captured_run_ids: list[str] = []
     captured_bridge_run_ids: list[str | None] = []
+    captured_invocation_options: list[InvokeOptions | None] = []
     cleared_run_ids: list[str] = []
 
     def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
         run_id = kwargs.get("run_id")
         if isinstance(run_id, str):
             captured_run_ids.append(run_id)
+        invocation_options = kwargs.get("invocation_options")
+        captured_invocation_options.append(
+            invocation_options if isinstance(invocation_options, InvokeOptions) else None
+        )
         return PipelineEvent.AGENT_SUCCESS
 
     def fake_bridge_factory(**kwargs: object) -> object:
@@ -569,6 +574,53 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     assert cleared_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
     assert captured_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
     assert captured_bridge_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
+    assert captured_invocation_options == [InvokeOptions()]
+
+
+def test_run_smoke_plumbing_multimodal_forwards_workspace_monitor_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The deterministic multimodal path sends its observer bypass to execution."""
+    captured_invocation_options: list[InvokeOptions | None] = []
+
+    def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
+        invocation_options = kwargs.get("invocation_options")
+        captured_invocation_options.append(
+            invocation_options if isinstance(invocation_options, InvokeOptions) else None
+        )
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="agy/claude-sonnet-4-6"),
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+
+    output_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    result = smoke_plumbing_module.run_smoke_plumbing(
+        config=_fake_config(),
+        workspace_root=tmp_path,
+        agent_name="agy/claude-sonnet-4-6",
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=output_path,
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+        multimodal=True,
+    )
+
+    assert result.multimodal_requested is True
+    assert len(captured_invocation_options) == 1
+    assert captured_invocation_options[0] is not None
+    assert callable(captured_invocation_options[0].workspace_monitor_factory)
 
 
 def _fake_bridge_factory(**_kwargs: object) -> object:

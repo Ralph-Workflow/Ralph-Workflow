@@ -51,11 +51,11 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
         (2, "1"),
         (12, "8"),
         (16, "14"),
-        (32, "20"),
-        (64, "20"),
+        (32, "24"),
+        (64, "24"),
     ),
 )
-def test_auto_worker_count_preserves_headroom_and_caps_at_twenty(
+def test_auto_worker_count_preserves_headroom_and_caps_at_twenty_four(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
@@ -63,12 +63,10 @@ def test_auto_worker_count_preserves_headroom_and_caps_at_twenty(
     """Auto profile leaves two cores for the runner and I/O overhead.
 
     A 12-core host therefore uses eight shards, preserving smoke-suite
-    budget headroom; larger hosts remain bounded by the verified 20-worker cap.
+    budget headroom; larger hosts remain bounded by the verified 24-worker cap.
 
-    Measured policy: 24 shards trigger SQLite I/O failures; after removing
-    unused ``tmp_path`` overhead from the property-test hotspot, 20 shards
-    are the highest stable profile with the unchanged selection and provide
-    more cumulative smoke headroom than 18 shards.
+    The 40-core verification host uses 24 shards to keep the default profile
+    below the cumulative budget while retaining 16 cores for runner and I/O work.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

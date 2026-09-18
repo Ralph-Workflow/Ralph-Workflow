@@ -394,15 +394,20 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     monkeypatch.setenv("HOME", str(tmp_path))
-    config_path = tmp_path / ".gemini" / "antigravity-cli" / "mcp_config.json"
+    operator_config_path = tmp_path / ".gemini" / "antigravity-cli" / "mcp_config.json"
     endpoint = "http://127.0.0.1:9999/mcp"
     config_at_launch: list[dict[str, object]] = []
     env_at_launch: list[dict[str, str]] = []
 
     def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
         del cmd, extras
-        config_at_launch.append(must_mapping(json.loads(config_path.read_text(encoding="utf-8"))))
-        env_at_launch.append(must_str_dict(ctx.extra_env))
+        launch_env = must_str_dict(ctx.extra_env)
+        private_home = Path(launch_env["HOME"])
+        private_config_path = private_home / ".gemini" / "antigravity-cli" / "mcp_config.json"
+        config_at_launch.append(
+            must_mapping(json.loads(private_config_path.read_text(encoding="utf-8")))
+        )
+        env_at_launch.append(launch_env)
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(
@@ -437,7 +442,7 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
     assert UPSTREAM_MCP_CONFIG_ENV in env_at_launch[0]
     upstreams = load_upstream_mcp_servers(env_at_launch[0][UPSTREAM_MCP_CONFIG_ENV])
     assert any(s.name == "agy-upstream" for s in upstreams)
-    assert not config_path.exists()
+    assert not operator_config_path.exists()
 
 
 @pytest.mark.timeout_seconds(3)
