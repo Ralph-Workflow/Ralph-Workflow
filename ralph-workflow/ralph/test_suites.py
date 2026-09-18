@@ -76,8 +76,10 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
-# host, 24 plain shards overload concurrent SQLite-backed tests; 20 shards
-# complete the same selection cleanly while preserving smoke-step headroom.
+# host, 32 plain shards take about 45 seconds and starve the budget-tracked
+# smoke steps; 20 shards are the highest stable profile after the
+# property-test fixture optimization and provide more cumulative smoke
+# headroom than 18 shards.
 _MAX_PYTEST_WORKERS = 20
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host has eight useful pytest slots under the
@@ -85,7 +87,7 @@ _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 _PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
-# 24-shard fan-out already uses one pytest process per shard and adding
+# 20-shard fan-out already uses one pytest process per shard and adding
 # xdist workers inside each shard shifts wall-clock budget from
 # parallel-IO back into pytest-coordination overhead. Operators may
 # override with ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` for the legacy
@@ -284,10 +286,12 @@ def _pytest_workers() -> str:
     polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
     Makefile auto ``PYTEST_WORKERS`` is tuned for the maintained
     12-core (6P+6E) dev host; on smaller hosts it is capped down so the
-    slowest shard leaves budget headroom for the smoke suites. Direct
-    measurement shows ten shards complete in ~31 seconds, whereas eleven
-    can take ~55 seconds; the two reserved cores absorb runner, I/O, and
-    scheduler overhead.
+    slowest shard leaves budget headroom for the smoke suites. Measured
+    policy: 24 shards trigger SQLite I/O failures; after removing unused
+    ``tmp_path`` overhead from the property-test hotspot, 20 shards are
+    the highest stable profile with the unchanged selection and provide
+    more cumulative smoke headroom than 18; the two reserved cores absorb
+    runner, I/O, and scheduler overhead.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2

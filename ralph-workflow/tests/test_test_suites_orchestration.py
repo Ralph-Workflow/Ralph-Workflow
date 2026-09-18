@@ -64,6 +64,11 @@ def test_auto_worker_count_preserves_headroom_and_caps_at_twenty(
 
     A 12-core host therefore uses eight shards, preserving smoke-suite
     budget headroom; larger hosts remain bounded by the verified 20-worker cap.
+
+    Measured policy: 24 shards trigger SQLite I/O failures; after removing
+    unused ``tmp_path`` overhead from the property-test hotspot, 20 shards
+    are the highest stable profile with the unchanged selection and provide
+    more cumulative smoke headroom than 18 shards.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

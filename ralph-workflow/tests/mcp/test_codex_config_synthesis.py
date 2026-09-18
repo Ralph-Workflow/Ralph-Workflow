@@ -234,20 +234,18 @@ _OPERATOR_CONFIGS = st.dictionaries(_TOML_KEYS, _TOML_VALUES, max_size=6)
     max_examples=10,
     deadline=None,
     database=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_any_operator_config_merges_into_a_config_codex_can_load(
-    tmp_path: Path,
     base: dict[str, object],
     unsafe_mode: bool,
 ) -> None:
     """For *any* valid operator config: the result loads, Ralph wins, the operator survives."""
-    master_prompt = str(tmp_path / "MASTER_PROMPT.md")
+    master_prompt = "diagnostics/MASTER_PROMPT.md"
 
     config_text, _upstreams = _synthesize_codex_config(
         tomli_w.dumps(base),
-        source_config=tmp_path / "source-config.toml",
-        config_path=tmp_path / "generated-config.toml",
+        source_config=Path("diagnostics/source-config.toml"),
+        config_path=Path("diagnostics/generated-config.toml"),
         endpoint=_ENDPOINT,
         master_prompt_file=master_prompt,
         unsafe_mode=unsafe_mode,
