@@ -51,11 +51,11 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
         (2, "1"),
         (12, "8"),
         (16, "14"),
-        (32, "30"),
-        (64, "32"),
+        (32, "24"),
+        (64, "24"),
     ),
 )
-def test_auto_worker_count_preserves_one_core_and_caps_at_thirty_two(
+def test_auto_worker_count_preserves_headroom_and_caps_at_twenty_four(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
@@ -63,7 +63,7 @@ def test_auto_worker_count_preserves_one_core_and_caps_at_thirty_two(
     """Auto profile leaves two cores for the runner and I/O overhead.
 
     A 12-core host therefore uses eight shards, preserving smoke-suite
-    budget headroom; larger hosts remain bounded by the 32-worker cap.
+    budget headroom; larger hosts remain bounded by the verified 24-worker cap.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

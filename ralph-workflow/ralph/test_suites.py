@@ -75,10 +75,10 @@ _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
 _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
-# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. Lowering it widens each
-# shard's work (more files per shard) and is therefore a budget-pressure
-# change, not a budget-relief change.
-_MAX_PYTEST_WORKERS = 32
+# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
+# host, 32 plain shards take about 45 seconds and starve the budget-tracked
+# smoke steps; 24 shards complete the same selection in about 28 seconds.
+_MAX_PYTEST_WORKERS = 24
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host has eight useful pytest slots under the
 # standard deterministic profile.
@@ -279,7 +279,7 @@ def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
     The auto profile caps the shard count at ``available_cores - 2``,
-    bounded by ``_MAX_PYTEST_WORKERS = 32``. Explicit overrides are capped
+    bounded by ``_MAX_PYTEST_WORKERS = 24``. Explicit overrides are capped
     at ``available_cores - 2``: one core for the parent process (shard
     polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
     Makefile auto ``PYTEST_WORKERS`` is tuned for the maintained
