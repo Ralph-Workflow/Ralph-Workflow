@@ -13,6 +13,7 @@ import click
 from loguru import logger
 from rich.table import Table
 
+from ralph.agents.invoke import _parent_broker_secret
 from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.cli.commands._smoke_ccs import smoke_interactive_ccs_command
 from ralph.cli.commands.smoke_agent_defaults import resolve_default_smoke_agent
@@ -310,11 +311,11 @@ render_smoke_report = _render_smoke_report
 
 
 def _ensure_smoke_broker_secret() -> None:
-    """Mint a fresh run-scoped ``RALPH_BROKER_SECRET``.
+    """Ensure a protected run-scoped ``RALPH_BROKER_SECRET`` exists.
 
     The smoke CLI runs as a fresh ``python -m ralph smoke-interactive-*``
-    process. Without a fresh broker secret, ``build_session_bridge`` can read
-    ``None`` and every wire-ledger append is
+    process. When the operator's environment carries no broker secret,
+    ``build_session_bridge`` reads ``None`` and every wire-ledger append is
     a documented no-op -- so a live run that genuinely dialled Ralph's MCP
     tools (the measured 2026-08-17 Kimi smoke: file created, artifact
     submitted, completion declared) still graded every required fact below
@@ -322,16 +323,17 @@ def _ensure_smoke_broker_secret() -> None:
     run's receipts, sentinel, and ledger rows HMAC-bind to this run so the
     shared gate can grade them WIRE. The anti-forgery boundary is
     preserved: ``_subprocess_env`` strips the variable from the agent's
-    environment, so the secret never reaches the model. Replacing an inherited
-    value also prevents an unprotected ancestor process from disclosing the
-    current run's signing key.
+    environment, so the secret never reaches the model. An operator-exported
+    value is honored unchanged so external verifiers can authenticate the wire
+    ledger, while the owning process still applies the native secrecy boundary.
 
     Reads the secret through the sanctioned composition-root accessor
     ``_parent_broker_secret`` (the ``audit_di_seam`` allowlist entry for
     ``agents/invoke/_process_reader.py``) so the drift gate's
     ``RALPH_*`` env-var boundary keeps exactly one canonical reader.
     """
-    os.environ["RALPH_BROKER_SECRET"] = secrets.token_hex(32)
+    if not _parent_broker_secret():
+        os.environ["RALPH_BROKER_SECRET"] = secrets.token_hex(32)
     protect_broker_secret()
 
 
