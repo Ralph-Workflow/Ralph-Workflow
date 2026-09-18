@@ -132,26 +132,6 @@ def _kimi_paths_to_consider(
     )
 
 
-def _kimi_write_target_paths(workspace_path: Path | None) -> tuple[Path, ...]:
-    """Return the paths the run-scoped merged config is written to.
-
-    The user-global ``$KIMI_CODE_HOME/mcp.json`` is ALWAYS a write target:
-    it carries no workspace-trust gate, so a headless ``kimi -p`` session
-    registers its MCP tools in every workspace.  The workspace-local
-    ``.kimi-code/mcp.json`` is a write target ONLY when it already exists:
-    measured on v0.36.1, headless mode silently drops project-level MCP
-    servers from untrusted folders, so creating the file for a workspace
-    the operator has not trusted would write config the CLI then ignores
-    (and would fabricate a project-level surface the operator never made).
-    """
-    targets: list[Path] = [_kimi_global_config_path()]
-    if workspace_path is not None:
-        workspace_config = _kimi_workspace_config_path(workspace_path)
-        if workspace_config.is_file():
-            targets.append(workspace_config)
-    return tuple(targets)
-
-
 def _normalize_kimi_server_entry(name: str, entry: object) -> tuple[str, object] | None:
     """Normalize a Kimi Code server entry to Ralph's expected format.
 

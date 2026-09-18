@@ -96,7 +96,7 @@ availability remains the CLI provider's responsibility.
       `Print mode: timed out after N polls`. `ralph/agents/_agy_upstream_diagnostic.py`
       recognizes both patterns.
 - **Caveats**:
-    - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
+    - Ralph Workflow gives each AGY invocation a private `HOME` containing generated `.gemini/antigravity-cli/mcp_config.json` and `.gemini/config/mcp_config.json` files. Concurrent sessions therefore use independent MCP endpoints without writing, locking, or restoring the operator's global configuration.
     - With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions` (AGY reuses the Claude flag; the earlier docs incorrectly attributed Codex's `--dangerously-bypass-approvals-and-sandbox` to AGY).
     - Completion contract: the agent itself must call `declare_complete` to write the durable completion sentinel; the host writes no completion evidence for any transport. When AGY's observed `--print` fallback produces a valid required artifact but misses the MCP completion call, completion evidence is absent and the verdict is `DEGRADED (absent)`. Required-artifact phases still need the run-scoped receipt.
     - Multimodal delivery uses the Gemini provider profile.
