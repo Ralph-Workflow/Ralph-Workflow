@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from ralph.agents.invoke import (
@@ -72,6 +74,69 @@ def test_official_claude_cli_is_exempt_from_anthropic_key_preflight() -> None:
         for transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
             config = AgentConfig(cmd=cmd, transport=transport)
             _fail_for_missing_credentials(config, InvokeOptions(), env_getter=lambda _name: None)
+
+
+def test_cursor_missing_env_and_operator_credentials_raises() -> None:
+    """S-4: Cursor requires login material when no API key is injected."""
+    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
+    home = Path("/nonexistent-cursor-home")
+
+    with pytest.raises(MissingCredentialsError) as excinfo:
+        _fail_for_missing_credentials(
+            config,
+            InvokeOptions(),
+            env_getter={"HOME": str(home)}.get,
+        )
+
+    assert excinfo.value.agent_name == "agent"
+    assert excinfo.value.env_var == "CURSOR_API_KEY"
+    assert "agent login" in excinfo.value.stderr
+    assert "CURSOR_API_KEY" in excinfo.value.stderr
+
+
+def test_cursor_mcp_json_alone_is_not_credential_material(tmp_path: Path) -> None:
+    """S-4: Cursor MCP configuration does not count as login material."""
+    cursor_home = tmp_path / ".cursor"
+    cursor_home.mkdir()
+    (cursor_home / "mcp.json").write_text("{}", encoding="utf-8")
+    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
+
+    with pytest.raises(MissingCredentialsError):
+        _fail_for_missing_credentials(
+            config,
+            InvokeOptions(),
+            env_getter={"HOME": str(tmp_path)}.get,
+        )
+
+
+def test_cursor_operator_material_allows_launch(tmp_path: Path) -> None:
+    """S-4: any non-MCP file under ~/.cursor represents logged-in material."""
+    cursor_home = tmp_path / ".cursor"
+    cursor_home.mkdir()
+    (cursor_home / "auth.json").write_text("{}", encoding="utf-8")
+    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
+
+    _fail_for_missing_credentials(
+        config,
+        InvokeOptions(),
+        env_getter={"HOME": str(tmp_path)}.get,
+    )
+
+
+def test_cursor_env_key_and_extra_env_override_allow_launch(tmp_path: Path) -> None:
+    """S-4: injected env values allow Cursor with invocation precedence."""
+    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
+
+    _fail_for_missing_credentials(
+        config,
+        InvokeOptions(extra_env={"CURSOR_API_KEY": "per-invocation"}),
+        env_getter={"CURSOR_API_KEY": "ambient", "HOME": str(tmp_path)}.get,
+    )
+    _fail_for_missing_credentials(
+        config,
+        InvokeOptions(),
+        env_getter={"CURSOR_API_KEY": "ambient", "HOME": str(tmp_path)}.get,
+    )
 
 
 def test_ccs_alias_is_exempt_from_anthropic_key_preflight() -> None:

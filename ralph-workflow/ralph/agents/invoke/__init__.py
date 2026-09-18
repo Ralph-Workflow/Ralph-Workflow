@@ -600,6 +600,8 @@ def _fail_for_missing_credentials(
             "anthropic": "ANTHROPIC_API_KEY",
             "openai": "OPENAI_API_KEY",
         }.get(provider)
+    elif transport == AgentTransport.CURSOR:
+        required_env_var = "CURSOR_API_KEY"
     if required_env_var is None:
         return
     # Per-invocation overrides take precedence over ambient env.
@@ -609,7 +611,18 @@ def _fail_for_missing_credentials(
     getter = env_getter if env_getter is not None else os.environ.get
     if getter(required_env_var):
         return
-    raise MissingCredentialsError(config.cmd.split()[0], f"{required_env_var} not set")
+    if transport == AgentTransport.CURSOR:
+        home_value = getter("HOME")
+        operator_home = Path(home_value).expanduser() if home_value else Path.home()
+        cursor_home = operator_home / ".cursor"
+        if cursor_home.is_dir() and any(
+            entry.name != "mcp.json" for entry in cursor_home.iterdir()
+        ):
+            return
+        detail = "CURSOR_API_KEY not set; agent login required"
+    else:
+        detail = f"{required_env_var} not set"
+    raise MissingCredentialsError(config.cmd.split()[0], detail)
 
 
 def _fail_for_unsupported_local_opencode_model(

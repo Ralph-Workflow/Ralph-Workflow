@@ -143,6 +143,12 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
 # after a cooldown. These are matched case-insensitively via
 # ``contains_casefolded_marker`` and routed to USER_CONFIG so the pipeline
 # terminates through the normal failure path instead of waiting forever.
+_CURSOR_AUTH_SUBSTRINGS: tuple[str, ...] = (
+    "authentication required",
+    "please run 'agent login'",
+    "cursor_api_key",
+)
+
 _PERMANENT_ACCOUNT_SUBSTRINGS: tuple[str, ...] = (
     "organization has no valid billing information",
     "your account is not active",
@@ -470,6 +476,11 @@ def _is_unavailable_agent_message(msg: str) -> bool:
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
     """Return True if the message matches Claude Code documented limit/billing families."""
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
+
+
+def _is_cursor_auth_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
+    """Return True when Cursor requires user authentication configuration."""
+    return contains_casefolded_marker(detail_parts, _CURSOR_AUTH_SUBSTRINGS)
 
 
 def _is_permanent_account_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
@@ -922,6 +933,7 @@ class FailureClassifier:
                 (FailureCategory.ARTIFACT_VALIDATION, False, False),
             ),
             (_is_environmental_exc(exc), (FailureCategory.ENVIRONMENTAL, False, False)),
+            (_is_cursor_auth_failure(detail_parts), (FailureCategory.USER_CONFIG, False, False)),
         ):
             if predicate:
                 return result
@@ -1030,6 +1042,10 @@ class FailureClassifier:
         connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
         checks = (
+            (
+                _is_cursor_auth_failure(detail_parts),
+                (FailureCategory.USER_CONFIG, False, False),
+            ),
             (
                 contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS),
                 (FailureCategory.AGENT, True, True),

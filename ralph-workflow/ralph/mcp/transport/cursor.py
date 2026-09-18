@@ -34,9 +34,12 @@ never mutate the workspace or operator configuration.
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
+
+from loguru import logger
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths
@@ -121,6 +124,61 @@ def _normalize_cursor_server_entry(name: str, entry: object) -> tuple[str, objec
     return name, cast("dict[str, object]", entry)
 
 
+#: Largest ``~/.cursor`` entry Ralph will copy when it cannot symlink it.
+#:
+#: The normal symlink path keeps operator credentials and settings available
+#: without materializing per-invocation copies. The bounded fallback covers
+#: filesystems that reject symlinks without copying Cursor's potentially large
+#: session history into every isolated home.
+_MIRROR_COPY_BYTE_BUDGET: Final[int] = 64 * 1024 * 1024
+
+
+def _exceeds_copy_budget(entry: Path, budget: int) -> bool:
+    """Return whether an entry exceeds the bounded copy fallback budget."""
+    if entry.is_file():
+        return entry.stat().st_size > budget
+    total = 0
+    for child in entry.rglob("*"):
+        if not child.is_file() or child.is_symlink():
+            continue
+        total += child.stat().st_size
+        if total > budget:
+            return True
+    return False
+
+
+def _mirror_cursor_home(source_cursor_root: Path, private_cursor_root: Path) -> None:
+    """Mirror operator Cursor state without replacing Ralph's generated config."""
+    if not source_cursor_root.exists():
+        return
+    for entry in source_cursor_root.iterdir():
+        if entry.name == "mcp.json":
+            continue
+        destination = private_cursor_root / entry.name
+        try:
+            destination.symlink_to(entry, target_is_directory=entry.is_dir())
+        except OSError:
+            _copy_cursor_home_entry(entry, destination)
+
+
+def _copy_cursor_home_entry(entry: Path, destination: Path) -> None:
+    """Copy one un-symlinkable Cursor-home entry within the bounded budget."""
+    if _exceeds_copy_budget(entry, _MIRROR_COPY_BYTE_BUDGET):
+        logger.warning(
+            "Cursor home entry {} could not be symlinked and is larger than {} bytes; "
+            "leaving it out of this run's private HOME rather than copying it per invocation.",
+            entry,
+            _MIRROR_COPY_BYTE_BUDGET,
+        )
+        return
+    if entry.is_dir():
+        # filesystem-write-ok: fallback materialization of isolated temporary Cursor-home input
+        shutil.copytree(entry, destination, dirs_exist_ok=True)
+    else:
+        # filesystem-write-ok: fallback materialization of isolated temporary Cursor-home input
+        shutil.copy2(entry, destination)
+
+
 def load_existing_cursor_upstream_servers(
     workspace_path: Path | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
@@ -144,6 +202,7 @@ def load_existing_cursor_upstream_servers(
 
 
 __all__ = [
+    "_mirror_cursor_home",
     "cursor_mcp_config",
     "load_existing_cursor_upstream_servers",
 ]

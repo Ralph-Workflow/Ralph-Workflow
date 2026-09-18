@@ -32,6 +32,7 @@ from ralph.mcp.protocol.startup import (
 from ralph.mcp.tool_contract import canonicalize_tool_names
 from ralph.mcp.transport.codex import release_codex_home
 from ralph.mcp.transport.common import merge_existing_upstreams
+from ralph.mcp.transport.cursor import _mirror_cursor_home
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, write_pi_mcp_extension
 from ralph.mcp.transport.private_config_root import prepare_private_config_root
 
@@ -645,6 +646,7 @@ class CursorRuntimeResolver:
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -668,6 +670,7 @@ class CursorRuntimeResolver:
         private_home, cleanup = prepare_private_config_root(
             ((Path(".cursor/mcp.json"), payload),), prefix="ralph-cursor-home-"
         )
+        _mirror_cursor_home(source_home / ".cursor", private_home / ".cursor")
         runtime_env["HOME"] = str(private_home)
 
         return ResolvedInvocationRuntime(
