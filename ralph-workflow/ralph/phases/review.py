@@ -129,6 +129,10 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
     hint_path = retry_hint_path(phase)
     hint = build_retry_hint(phase, detail)
     with suppress(Exception):
+        if ctx.workspace.exists(hint_path):
+            existing = ctx.workspace.read(hint_path).strip()
+            if existing:
+                hint = f"{existing}\n\n{hint}"
         ctx.workspace.write(hint_path, hint)
 
 

@@ -382,7 +382,7 @@ def _write_retry_hint(
     *,
     hint_path_override: str | None = None,
     unsubmitted_draft: bool = False,
-    preserve_existing: bool = False,
+    preserve_existing: bool = True,
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase)
     try:

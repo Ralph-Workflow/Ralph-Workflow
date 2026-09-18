@@ -470,6 +470,71 @@ def test_retry_hint_is_error_first_and_artifact_centered() -> None:
     assert "internet outage" in hint.lower() or "external" in hint.lower()
 
 
+def test_planning_analysis_regression_materializes_exact_validator_retry_context(
+    tmp_path: Path,
+) -> None:
+    """S-1: planning analysis receives retained validator diagnostics on retry."""
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "verify the plan")
+    workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
+    diagnostic = "MD002 at line 7, section Steps: duplicate step identifier"
+    workspace.write(retry_hint_path("planning_analysis"), diagnostic)
+
+    prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=policy.artifacts),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert diagnostic in rendered
+    assert "PREVIOUS ATTEMPT ERROR" in rendered
+    assert not workspace.exists(retry_hint_path("planning_analysis"))
+
+
+def test_policy_remediation_regression_materializes_retry_context(tmp_path: Path) -> None:
+    """S-4: out-of-graph policy remediation consumes its phase retry hint."""
+    from ralph.project_policy import remediation
+    from ralph.project_policy.models import PolicyFinding
+
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    diagnostic = "SPEC008 at line 4, section Verification: missing evidence"
+    workspace.write(retry_hint_path("policy_remediation"), diagnostic)
+    finding = PolicyFinding(
+        requirement_id="R-1",
+        path="docs/ralph-workflow-policy/testing-policy.md",
+        missing_evidence="test fact",
+        required_outcome="record a command",
+    )
+
+    rendered = remediation._render_prompt([finding], workspace=workspace)
+
+    assert diagnostic in rendered
+    assert not workspace.exists(retry_hint_path("policy_remediation"))
+
+
+def test_policy_remediation_analysis_regression_materializes_retry_context(
+    tmp_path: Path,
+) -> None:
+    """S-4: out-of-graph policy analysis consumes its phase retry hint."""
+    from ralph.project_policy import analysis as policy_analysis
+
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    diagnostic = "SPEC006 at line 8, section Criterion Verdicts: missing verdict"
+    workspace.write(retry_hint_path("policy_remediation_analysis"), diagnostic)
+
+    rendered = policy_analysis._render_prompt(workspace)
+
+    assert diagnostic in rendered
+    assert not workspace.exists(retry_hint_path("policy_remediation_analysis"))
+
+
 def test_materialize_development_analysis_prompt_includes_last_retry_error(
     tmp_path: Path,
 ) -> None:

@@ -2,6 +2,14 @@ You are a documentation agent. Make the policy corpus under {{ canonical_dir }} 
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+## Previous Attempt Error
+
+{{ LAST_RETRY_ERROR }}
+
+Fix the underlying validation or submission issue before resubmitting; do not blindly resubmit identical content.
+{% endif %}
+
 ## Authoritative findings
 
 {{ findings_block }}

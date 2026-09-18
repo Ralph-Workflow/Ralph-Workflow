@@ -150,6 +150,43 @@ def test_md_artifact_regression_validation_failure_persists_retry_context(
     assert "Do not restart" in hint
 
 
+def test_md_artifact_regression_validation_retry_keeps_newest_three_complete_attempts(
+    tmp_path,
+) -> None:
+    """S-2: four failures retain complete attempts two through four in order."""
+    session = MockSession(drain="development")
+    workspace = MockWorkspace(tmp_path)
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+    contents = [
+        "---\ntype: product_spec\n---\n",
+        "---\ntype: product_spec\n---\n## Title\n",
+        "---\ntype: product_spec\n---\n## Scope\n",
+        "---\ntype: product_spec\n---\n## Goals\n",
+    ]
+
+    for content in contents:
+        result = handle_submit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "product_spec", "content": content},
+            deps=deps,
+        )
+        assert result.is_error is True
+
+    hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
+    hint = backend.read_text(hint_path)
+    assert hint.count("PREVIOUS ATTEMPT FAILED") == 3
+    attempt_blocks = hint.split("PREVIOUS ATTEMPT FAILED: ")[1:]
+    assert len(attempt_blocks) == 3
+    assert "section Title: section requires list items" in attempt_blocks[0]
+    assert "section Scope: section requires list items" in attempt_blocks[1]
+    assert "section Goals: section requires list items" in attempt_blocks[2]
+    normalized_hint = " ".join(hint.split())
+    assert "Do not blindly resubmit identical content" in normalized_hint
+    assert "Fix the underlying document issue" in normalized_hint
+
+
 def test_md_artifact_regression_worker_validation_hint_uses_worker_namespace(tmp_path) -> None:
     """S-3: worker validation context is isolated in the worker retry namespace."""
     session = MockSession(drain="development")

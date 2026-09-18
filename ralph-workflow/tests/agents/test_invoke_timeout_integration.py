@@ -304,7 +304,10 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
         _reader_release.wait(timeout=5.0)
         yield from ()
 
-    handle = _FakeManagedHandle(_blocking_stdout())
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        on_terminate=_reader_release.set,
+    )
 
     try:
         with pytest.raises(IdleStreamTimeoutError) as exc_info:
@@ -695,6 +698,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
         _blocking_stdout(),
         descendant_count=1,
         descendant_oldest_seconds=5.0,
+        on_terminate=_reader_release.set,
     )
     captured_events: list[WaitingStatusEvent] = []
 

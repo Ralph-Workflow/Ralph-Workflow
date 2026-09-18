@@ -34,6 +34,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.project_policy import markers, preflight, validators
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.prompts.template_engine import render_template
@@ -93,6 +94,8 @@ def _load_prompt_template() -> str:
 def _render_prompt(
     findings: list[PolicyFinding],
     analysis_feedback: AnalysisDecision | None = None,
+    *,
+    workspace: Workspace | None = None,
 ) -> str:
     """Build the remediation prompt text.
 
@@ -127,11 +130,27 @@ def _render_prompt(
         "migrated_marker": markers.MIGRATED_MARKER_TEMPLATE.format(target="<canonical-filename>"),
         "agents_block_begin": markers.AGENTS_BLOCK_BEGIN,
         "agents_block_end": markers.AGENTS_BLOCK_END,
+        "LAST_RETRY_ERROR": (
+            _read_and_clear_retry_hint(workspace, PHASE_REMEDIATION) if workspace is not None else ""
+        ),
     }
     # Load the packaged shared partials so `{% include 'shared/... %}` in the
     # template resolves, the same way the pipeline prompt templates do.
     partials = load_partial_templates((packaged_template_root(),))
     return render_template(_load_prompt_template(), variables, partials)
+
+
+def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+    """Consume one phase retry hint for the next policy-remediation prompt."""
+    path = retry_hint_path(phase)
+    if not workspace.exists(path):
+        return ""
+    try:
+        hint = workspace.read(path)
+        workspace.remove(path)
+        return hint
+    except Exception:
+        return ""
 
 
 def _write_prompt(workspace: Workspace, prompt_text: str) -> str:
@@ -180,7 +199,7 @@ def run_remediation_phase(
             Propagated to the driver, which stops looping but still lets the run
             continue.
     """
-    prompt_text = _render_prompt(findings, analysis_feedback)
+    prompt_text = _render_prompt(findings, analysis_feedback, workspace=workspace)
     prompt_path = _write_prompt(workspace, prompt_text)
     emit(f"project-policy-readiness: invoking remediation agent ({len(findings)} open findings)")
     success = bool(invoke_agent(phase=PHASE_REMEDIATION, prompt_path=prompt_path))

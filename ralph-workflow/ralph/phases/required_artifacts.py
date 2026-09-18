@@ -120,7 +120,12 @@ def retry_hint_path(phase: str) -> str:
     return f".agent/tmp/last_retry_error_{phase}.txt"
 
 
-def build_validation_retry_hint(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
+def build_validation_retry_hint(
+    artifact_type: str,
+    diagnostics: list[Diagnostic],
+    *,
+    prior_hint: str = "",
+) -> str:
     """Build actionable retry context from canonical validator diagnostics."""
     lines = [
         "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft.",
@@ -140,10 +145,19 @@ def build_validation_retry_hint(artifact_type: str, diagnostics: list[Diagnostic
             "",
             "The submitted document remains staged as the retained draft. Repair it in place ",
             "with ralph_edit_md_artifact, which resubmits automatically once valid. ",
-            "Do not restart the task from scratch or discard prior work.",
+            "Fix the underlying document issue before resubmitting. Do not blindly resubmit identical ",
+            "content. Do not restart the task from scratch or discard prior work.",
         ]
     )
-    return "\n".join(lines)
+    current_attempt = "\n".join(lines)
+    attempts = _validation_retry_attempts(prior_hint)
+    return "\n\n".join([*attempts[-2:], current_attempt])
+
+
+def _validation_retry_attempts(hint: str) -> list[str]:
+    """Extract complete validation attempts from a prior retry hint."""
+    marker = "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft."
+    return [f"{marker}{attempt.strip()}" for attempt in hint.split(marker)[1:] if attempt.strip()]
 
 
 def build_retry_hint(

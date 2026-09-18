@@ -11,6 +11,13 @@ PLANNING EDIT MODE
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+PREVIOUS ATTEMPT ERROR:
+{{ LAST_RETRY_ERROR }}
+
+Fix the underlying submission or validation issue before completing this plan revision.
+{% endif %}
+
 Read the current plan, request, and analysis feedback. Use only brokered tools;
 replanning is read-only.
 

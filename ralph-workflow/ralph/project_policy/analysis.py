@@ -52,6 +52,7 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.project_policy import markers
 from ralph.project_policy.analysis_decision import AnalysisDecision
 from ralph.project_policy.pipeline_graph import (
@@ -140,11 +141,24 @@ def _render_prompt(workspace: Workspace) -> str:
         "declare_complete_tool_names": _transport_tool_names(DECLARE_COMPLETE_TOOL),
         "submit_tool_names": _transport_tool_names(SUBMIT_MD_ARTIFACT_TOOL),
         "verify_tool_names": _transport_tool_names(VERIFY_MD_ARTIFACT_TOOL),
+        "LAST_RETRY_ERROR": _read_and_clear_retry_hint(workspace, PHASE_ANALYSIS),
     }
-    del workspace
     partials = load_partial_templates((packaged_template_root(),))
     template = (packaged_template_root() / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
     return render_template(template, variables, partials)
+
+
+def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+    """Consume one phase retry hint for the next policy-analysis prompt."""
+    path = retry_hint_path(phase)
+    if not workspace.exists(path):
+        return ""
+    try:
+        hint = workspace.read(path)
+        workspace.remove(path)
+        return hint
+    except Exception:
+        return ""
 
 
 def _write_prompt(workspace: Workspace, prompt_text: str) -> str:

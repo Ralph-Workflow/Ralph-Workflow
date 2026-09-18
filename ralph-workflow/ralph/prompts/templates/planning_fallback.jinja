@@ -11,6 +11,13 @@ PLANNING MODE
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+PREVIOUS ATTEMPT ERROR:
+{{ LAST_RETRY_ERROR }}
+
+Fix the underlying submission or validation issue before completing this plan.
+{% endif %}
+
 Use only tools the active runtime exposes. Ralph Workflow's brokered tools are
 the only workspace path; native write tools are prohibited.
 

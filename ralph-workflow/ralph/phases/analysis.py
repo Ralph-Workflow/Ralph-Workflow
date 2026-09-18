@@ -194,10 +194,13 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
                 artifact_path,
             )
             with suppress(Exception):
-                ctx.workspace.write(
-                    retry_hint_path(phase_name),
-                    build_retry_hint(phase_name, detail, registry=registry),
-                )
+                hint_path = retry_hint_path(phase_name)
+                hint = build_retry_hint(phase_name, detail, registry=registry)
+                if ctx.workspace.exists(hint_path):
+                    existing = ctx.workspace.read(hint_path).strip()
+                    if existing:
+                        hint = f"{existing}\n\n{hint}"
+                ctx.workspace.write(hint_path, hint)
             return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
         status = parse_analysis_decision_status(ctx, drain_name, phase_name=phase_name)

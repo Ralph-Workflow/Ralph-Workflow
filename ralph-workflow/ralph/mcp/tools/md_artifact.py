@@ -371,10 +371,11 @@ def _persist_validation_retry_hint(
     if path is None:
         return
     backend.mkdir(path.parent, parents=True, exist_ok=True)
+    prior_hint = backend.read_text(path) if backend.exists(path) else ""
     write_text_if_changed(
         backend,
         path,
-        build_validation_retry_hint(artifact_type, diagnostics),
+        build_validation_retry_hint(artifact_type, diagnostics, prior_hint=prior_hint),
     )
 
 
