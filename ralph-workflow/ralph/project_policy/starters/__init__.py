@@ -25,7 +25,8 @@ absence of unresolved markers — there is no completion marker to add.
 from __future__ import annotations
 
 from importlib.resources import files
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from ralph.project_policy import markers
 
@@ -37,8 +38,8 @@ if TYPE_CHECKING:
 #: Set of starter filenames bundled with the package. The hatch wheel and
 #: sdist include these files via the ``ralph/project_policy/starters/**/*.md``
 #: glob in ``pyproject.toml``.
-PORTFOLIO_STARTER_NAME: str = "policy-portfolio.toml"
-STARTER_NAMES: tuple[str, ...] = (
+PORTFOLIO_STARTER_NAME: Final[str] = "policy-portfolio.toml"
+STARTER_NAMES: Final[tuple[str, ...]] = (
     "testing-policy.md",
     "typechecking-policy.md",
     "linting-policy.md",
@@ -68,21 +69,28 @@ def iter_starter_names() -> Iterator[str]:
     yield from STARTER_NAMES
 
 
+_STARTER_CONTENT: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {
+        name: (files(__package__) / name).read_text(encoding="utf-8")
+        for name in (*STARTER_NAMES, PORTFOLIO_STARTER_NAME)
+    }
+)
+
+
 def read_starter(name: str) -> str:
-    """Return the content of one bundled starter.
+    """Return cached bundled content for one starter.
 
     Args:
         name: Filename of the starter (e.g. ``testing-policy.md``).
 
     Raises:
         ValueError: When ``name`` is not a bundled starter.
-        FileNotFoundError: When the bundled file is missing (packaging bug).
     """
-    if name not in (*STARTER_NAMES, PORTFOLIO_STARTER_NAME):
+    try:
+        return _STARTER_CONTENT[name]
+    except KeyError as exc:
         msg = f"Unknown starter policy name: {name!r}"
-        raise ValueError(msg)
-    package_files = files(__package__)
-    return (package_files / name).read_text(encoding="utf-8")
+        raise ValueError(msg) from exc
 
 
 def seed_starter_into(workspace: Workspace, name: str) -> bool:

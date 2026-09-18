@@ -27,6 +27,7 @@ path from the kimi-cli docs is deliberately never touched.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -50,7 +51,6 @@ from ralph.mcp.transport.kimi import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
     from pytest import MonkeyPatch
 
@@ -257,16 +257,15 @@ class TestKimiRuntimeResolverMcpWiring:
 
     ENDPOINT = "http://127.0.0.1:54321/mcp"
 
-    def test_resolve_writes_workspace_and_global_configs(
+    def test_resolve_writes_private_kimi_code_home(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        kimi_home = tmp_path / "kimi-home"
-        monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
-        # Pre-existing workspace config implies an operator-trusted
-        # folder, so it is a write target (see _kimi_write_target_paths).
-        preexisting_workspace_config = tmp_path / ".kimi-code" / "mcp.json"
-        preexisting_workspace_config.parent.mkdir()
-        preexisting_workspace_config.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+        operator_home = tmp_path / "kimi-home"
+        monkeypatch.setenv("KIMI_CODE_HOME", str(operator_home))
+        operator_home.mkdir()
+        operator_config = operator_home / "mcp.json"
+        operator_bytes = b'{"mcpServers":{"operator":{"url":"http://operator"}}}'
+        operator_config.write_bytes(operator_bytes)
 
         runtime = KimiRuntimeResolver().resolve(
             _kimi_config(),
@@ -274,32 +273,19 @@ class TestKimiRuntimeResolverMcpWiring:
             workspace_path=tmp_path,
             base_env={},
         )
-
         try:
-            assert runtime.mcp_endpoint == self.ENDPOINT
-
-            # Capture the on-disk state BEFORE cleanup (the restore only
-            # happens via runtime.cleanup(); the finally guarantees a
-            # failed assertion cannot strand the held kimi MCP lock).
-            workspace_config = preexisting_workspace_config
-            global_config = kimi_home / "mcp.json"
-            captured = {
-                config_path: (config_path.read_bytes() if config_path.is_file() else None)
-                for config_path in (workspace_config, global_config)
-            }
+            runtime_env = runtime.agent_env
+            assert runtime_env is not None
+            private_home = Path(runtime_env["KIMI_CODE_HOME"])
+            payload = json.loads((private_home / "mcp.json").read_text(encoding="utf-8"))
+            assert payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {"url": self.ENDPOINT}
+            assert operator_config.read_bytes() == operator_bytes
+            assert not (tmp_path / ".kimi-code").exists()
         finally:
             runtime.cleanup()
 
-        for config_path, payload_bytes in captured.items():
-            assert payload_bytes is not None, f"{config_path} was not written"
-            payload = json.loads(payload_bytes)
-            assert payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {"url": self.ENDPOINT}
-
-        # Cleanup restores both paths to their pre-run state (the
-        # workspace file returns to its original empty-servers bytes;
-        # the global file did not exist before and is removed).
-        assert json.loads(workspace_config.read_text(encoding="utf-8")) == {"mcpServers": {}}
-        assert not global_config.exists()
+        assert not private_home.exists()
+        assert operator_config.read_bytes() == operator_bytes
 
     def test_resolve_skips_untrusted_workspace_config_write(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -326,12 +312,16 @@ class TestKimiRuntimeResolverMcpWiring:
         try:
             assert runtime.mcp_endpoint == self.ENDPOINT
             assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
-            global_payload = json.loads((kimi_home / "mcp.json").read_text(encoding="utf-8"))
+            runtime_env = runtime.agent_env
+            assert runtime_env is not None
+            private_home = Path(runtime_env["KIMI_CODE_HOME"])
+            global_payload = json.loads((private_home / "mcp.json").read_text(encoding="utf-8"))
             assert global_payload["mcpServers"][RALPH_MCP_SERVER_NAME] == {"url": self.ENDPOINT}
         finally:
             runtime.cleanup()
 
         assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
+        assert not private_home.exists()
         assert not (kimi_home / "mcp.json").exists()
 
     def test_cleanup_restores_pre_existing_global_bytes(
@@ -355,9 +345,10 @@ class TestKimiRuntimeResolverMcpWiring:
         )
 
         try:
-            # Capture the during-run state inside try/finally so a failed
-            # assertion cannot strand the held kimi MCP lock.
-            during_bytes = global_config.read_bytes()
+            runtime_env = runtime.agent_env
+            assert runtime_env is not None
+            private_config = Path(runtime_env["KIMI_CODE_HOME"]) / "mcp.json"
+            during_bytes = private_config.read_bytes()
         finally:
             runtime.cleanup()
 
@@ -387,8 +378,9 @@ class TestKimiRuntimeResolverMcpWiring:
         )
 
         try:
-            # Capture during-run state inside try/finally (lock-safety).
-            during_bytes = (kimi_home / "mcp.json").read_bytes()
+            runtime_env = runtime.agent_env
+            assert runtime_env is not None
+            during_bytes = (Path(runtime_env["KIMI_CODE_HOME"]) / "mcp.json").read_bytes()
             server_env = runtime.server_env
         finally:
             runtime.cleanup()
@@ -439,8 +431,13 @@ class TestKimiRuntimeResolverMcpWiring:
         # workspace path out of the write targets; only the user-global
         # config carries the run-scoped entry.
         assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
-        assert (kimi_home / "mcp.json").is_file()
+        runtime_env = runtime.agent_env
+        assert runtime_env is not None
+        private_home = Path(runtime_env["KIMI_CODE_HOME"])
+        assert (private_home / "mcp.json").is_file()
+        assert not (kimi_home / "mcp.json").exists()
         runtime.cleanup()
+        assert not private_home.exists()
 
 
 class TestKimiTransportHelpers:

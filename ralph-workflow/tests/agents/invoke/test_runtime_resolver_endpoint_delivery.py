@@ -132,15 +132,10 @@ _DELIVERY_CHANNELS: tuple[
         ("RALPH_MCP_ENDPOINT",),
         lambda _ws: None,
     ),
-    # agy: agent_env is the only channel.
-    (AgentTransport.AGY, ("RALPH_MCP_ENDPOINT",), lambda _ws: None),
-    # cursor: env carries the endpoint AND the workspace-local
-    # ``.cursor/mcp.json`` is the channel the Cursor CLI reads.
-    (
-        AgentTransport.CURSOR,
-        ("RALPH_MCP_ENDPOINT",),
-        lambda ws: ws / ".cursor" / "mcp.json",
-    ),
+    # agy: a private HOME carries its own two native config files.
+    (AgentTransport.AGY, ("HOME",), lambda _ws: None),
+    # cursor: a private HOME carries ``.cursor/mcp.json``.
+    (AgentTransport.CURSOR, ("HOME",), lambda _ws: None),
     # codex: env carries the endpoint AND ``<CODEX_HOME>/config.toml``
     # is the channel the Codex CLI reads. The file_channel_locator is
     # resolved dynamically in ``test_codex_config_toml_carries_endpoint``
@@ -176,12 +171,25 @@ _DELIVERY_CHANNELS: tuple[
         ("RALPH_PI_MCP_EXTENSION",),
         lambda ws: ws / ".agent" / "tmp" / "ralph_pi_mcp_extension.ts",
     ),
-    # kimi: env deliberately does NOT carry the endpoint -- instead the
-    # resolver writes the merged Ralph entry to BOTH the workspace-local
-    # ``.kimi-code/mcp.json`` and the user-global
-    # ``$KIMI_CODE_HOME/mcp.json`` config files the Kimi CLI reads.
-    (AgentTransport.KIMI, (), lambda ws: ws / ".kimi-code" / "mcp.json"),
+    # kimi: a private KIMI_CODE_HOME carries its config without touching
+    # workspace-local or operator-global paths.
+    (AgentTransport.KIMI, ("KIMI_CODE_HOME",), lambda _ws: None),
 )
+
+
+def _private_config_path(transport: AgentTransport, runtime: ResolvedInvocationRuntime) -> Path:
+    """Return the private native config path selected for a resolver runtime."""
+    env = runtime.agent_env
+    assert env is not None
+    match transport:
+        case AgentTransport.CURSOR:
+            return Path(env["HOME"]) / ".cursor" / "mcp.json"
+        case AgentTransport.AGY:
+            return Path(env["HOME"]) / ".gemini" / "config" / "mcp_config.json"
+        case AgentTransport.KIMI:
+            return Path(env["KIMI_CODE_HOME"]) / "mcp.json"
+        case unexpected:
+            raise AssertionError(f"private config is not defined for {unexpected.name}")
 
 
 class TestRuntimeResolverEndpointDelivery:
@@ -252,6 +260,53 @@ class TestRuntimeResolverEndpointDelivery:
         )
 
     @pytest.mark.parametrize(
+        "transport",
+        (AgentTransport.CURSOR, AgentTransport.AGY, AgentTransport.KIMI),
+    )
+    def test_isolated_runtimes_overlap_with_distinct_endpoints_without_shared_mutation(
+        self, transport: AgentTransport, tmp_path: Path
+    ) -> None:
+        """Two live native runtimes retain distinct endpoints in private roots."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        operator_home = tmp_path / "operator-home"
+        operator_config = operator_home / ".cursor" / "mcp.json"
+        operator_config.parent.mkdir(parents=True)
+        operator_bytes = b'{"mcpServers":{"operator":{"url":"http://operator"}}}'
+        operator_config.write_bytes(operator_bytes)
+        second_endpoint = "http://127.0.0.1:10/mcp"
+        resolver_cls = RUNTIME_RESOLVERS[transport]
+        first_runtime = _resolve(transport, workspace)
+        second_runtime = resolver_cls().resolve(
+            config=_make_config(transport),
+            extra_env={"RALPH_MCP_ENDPOINT": second_endpoint, "RALPH_MCP_RUN_ID": "second"},
+            workspace_path=workspace,
+            base_env={},
+        )
+        try:
+            first_config = _private_config_path(transport, first_runtime)
+            second_config = _private_config_path(transport, second_runtime)
+            assert first_config != second_config
+            assert _ENDPOINT in first_config.read_text(encoding="utf-8")
+            assert second_endpoint in second_config.read_text(encoding="utf-8")
+            assert operator_config.read_bytes() == operator_bytes
+            assert not (workspace / ".cursor").exists()
+            assert not (workspace / ".kimi-code").exists()
+            assert not (workspace / ".agents").exists()
+        finally:
+            first_cleanup = first_runtime.cleanup
+            second_cleanup = second_runtime.cleanup
+            assert first_cleanup is not None
+            assert second_cleanup is not None
+            first_cleanup()
+            second_cleanup()
+
+        first_root = first_config.parent if transport is AgentTransport.KIMI else first_config.parent.parent
+        second_root = second_config.parent if transport is AgentTransport.KIMI else second_config.parent.parent
+        assert not first_root.exists()
+        assert not second_root.exists()
+
+    @pytest.mark.parametrize(
         ("transport", "env_keys", "_file_locator"),
         _DELIVERY_CHANNELS,
         ids=[entry[0].name for entry in _DELIVERY_CHANNELS],
@@ -279,8 +334,14 @@ class TestRuntimeResolverEndpointDelivery:
                 f"{key!r}; the table declared it as a delivery channel"
             )
             value = env[key]
-            if transport is AgentTransport.PI:
-                # Pi's env key is a path; the file contents carry the endpoint.
+            if transport in {
+                AgentTransport.PI,
+                AgentTransport.AGY,
+                AgentTransport.CURSOR,
+                AgentTransport.KIMI,
+            }:
+                # These keys select a private config root; its file payload
+                # is asserted by the isolated-runtime contract above.
                 continue
             assert isinstance(value, str), (
                 f"transport {transport.name!r}: agent_env[{key!r}] is "

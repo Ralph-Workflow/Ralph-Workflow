@@ -546,29 +546,11 @@ def invoke_agent(
                 run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
                 if opts.workspace_path is not None:
                     _clear_session_completion_sentinel(opts.workspace_path, run_id)
-                lock_runtime_ceiling_seconds = (
-                    policy.max_session_seconds
-                    if policy.max_session_seconds is not None
-                    else policy.activity_only_operator_cap_seconds
-                    if policy.activity_only_operator_cap_seconds is not None
-                    else 3600.0
+                yield from run_pty_and_read_lines(
+                    cmd,
+                    ctx,
+                    PtyExtras(expected_session_id=run_id),
                 )
-                mcp_ctx = (
-                    agy_workspace_mcp_endpoint(
-                        opts.workspace_path,
-                        runtime.mcp_endpoint,
-                        unsafe_mode=base_opts.unsafe_mode,
-                        lock_timeout_seconds=lock_runtime_ceiling_seconds + 10.0,
-                    )
-                    if runtime.mcp_endpoint and opts.workspace_path
-                    else contextlib.nullcontext()
-                )
-                with mcp_ctx:
-                    yield from run_pty_and_read_lines(
-                        cmd,
-                        ctx,
-                        PtyExtras(expected_session_id=run_id),
-                    )
             else:
                 yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
         else:

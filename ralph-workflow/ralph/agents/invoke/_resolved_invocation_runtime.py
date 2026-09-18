@@ -15,9 +15,8 @@ class ResolvedInvocationRuntime:
     ``finally`` block after the agent subprocess has finished (success,
     failure, or cancellation). It is the documented release path for
     transport-specific resources allocated during ``resolve()`` — the
-    primary example is the per-invocation Codex ``CODEX_HOME``
-    directory allocated by ``CodexRuntimeResolver`` (see
-    ``ralph.mcp.transport.codex.release_codex_home``).
+    primary examples are the per-invocation Codex ``CODEX_HOME`` and
+    native-agent config roots allocated by their runtime resolvers.
 
     Lifetime contract:
 
@@ -27,9 +26,8 @@ class ResolvedInvocationRuntime:
         without raising, so it is safe even if a caller races the
         finally block).
       - ``cleanup`` MAY be ``None`` for resolvers that allocate no
-        per-invocation resources (Claude, OpenCode, Nanocoder, Agy,
-        Generic, Pi). The ``invoke_agent`` finally block tolerates a
-        ``None`` hook.
+        per-invocation resources (Claude, OpenCode, Nanocoder, Generic,
+        Pi). The ``invoke_agent`` finally block tolerates a ``None`` hook.
       - ``cleanup`` is INVOKED EVEN IF THE SUBPROCESS RAISES. The
         hook is the mechanism that prevents a long-lived process from
         accumulating per-invocation temp directories (or other

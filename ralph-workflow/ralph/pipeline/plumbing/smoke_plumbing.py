@@ -1484,9 +1484,8 @@ def _execute_smoke_turns(
             observed_session_id = session_id
 
         def _observe_raw_line(line: str, *, _turn_raw_lines: deque[str] = raw_lines) -> None:
-            del line  # already appended to raw_lines by the time this fires
             nonlocal ceiling_reported, highest_latched_ceiling
-            cur_c = transport_evidence_ceiling(params.config, list(_turn_raw_lines))
+            cur_c = transport_evidence_ceiling(params.config, [line])
             highest_latched_ceiling = max(highest_latched_ceiling, cur_c)
             if ceiling_reported:
                 return

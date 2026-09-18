@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -19,8 +20,6 @@ from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
 
@@ -30,38 +29,27 @@ def _write_prompt(tmp_path: Path, text: str = "hello") -> Path:
     return prompt_file
 
 
-def test_agy_invoke_regression_overlay_lock_timeout_covers_session_lifetime(
+def test_agy_invoke_uses_private_home_without_session_overlay(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """[S-1] AGY lock waiting covers the resolved invocation lifetime."""
+    """AGY launches with an invocation-owned HOME rather than a shared overlay."""
     prompt_file = _write_prompt(tmp_path)
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
-    captured_timeouts: list[float] = []
-
-    def fake_agy_workspace_mcp_endpoint(
-        workspace_path: Path,
-        endpoint: str,
-        *,
-        unsafe_mode: bool = False,
-        lock_timeout_seconds: float,
-    ) -> object:
-        del workspace_path, endpoint, unsafe_mode
-        captured_timeouts.append(lock_timeout_seconds)
-        return contextlib.nullcontext()
+    seen_home: Path | None = None
 
     def fake_run_pty_and_read_lines(
         cmd: object,
         ctx: SimpleNamespace,
         extras: object = None,
     ) -> object:
-        del cmd, ctx, extras
+        del cmd, extras
+        nonlocal seen_home
+        seen_home = Path(ctx.extra_env["HOME"])
+        config_path = seen_home / ".gemini" / "config" / "mcp_config.json"
+        assert "http://127.0.0.1:9999/mcp" in config_path.read_text(encoding="utf-8")
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
-    monkeypatch.setattr(
-        "ralph.agents.invoke.agy_workspace_mcp_endpoint",
-        fake_agy_workspace_mcp_endpoint,
-    )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_pty_and_read_lines",
         fake_run_pty_and_read_lines,
@@ -69,28 +57,20 @@ def test_agy_invoke_regression_overlay_lock_timeout_covers_session_lifetime(
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
 
-    policy_cases = (
-        (3300.0, False, None, 3310.0),
-        (None, True, 900.0, 910.0),
-        (None, True, None, 3610.0),
-    )
-    for max_session_seconds, activity_only, operator_cap_seconds, expected in policy_cases:
-        list(
-            invoke_agent(
-                config,
-                str(prompt_file),
-                options=InvokeOptions(
-                    show_progress=False,
-                    workspace_path=tmp_path,
-                    extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
-                    idle_timeout_seconds=300.0,
-                    max_session_seconds=max_session_seconds,
-                    activity_only_supervision=activity_only,
-                    activity_only_operator_cap_seconds=operator_cap_seconds,
-                ),
-            )
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+            ),
         )
-        assert captured_timeouts[-1] == expected
+    )
+
+    assert seen_home is not None
+    assert not seen_home.exists()
 
 
 def test_agy_invoke_uses_pty_not_subprocess(
@@ -138,17 +118,11 @@ def test_agy_invoke_uses_pty_not_subprocess(
     assert pty_called
 
 
-def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
+def test_agy_invoke_writes_private_mcp_config_when_endpoint_present(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = _write_prompt(tmp_path)
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
-    config_path = tmp_path / "mcp_config.json"
-    monkeypatch.setattr("ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path)
-    secondary_config_path = tmp_path / "mcp_config_secondary.json"
-    monkeypatch.setattr(
-        "ralph.mcp.transport.agy._agy_secondary_config_path", lambda: secondary_config_path
-    )
     endpoint = "http://127.0.0.1:9999/mcp"
     seen_config_at_launch = False
 
@@ -159,6 +133,7 @@ def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
     ) -> object:
         del cmd, extras
         nonlocal seen_config_at_launch
+        config_path = Path(ctx.extra_env["HOME"]) / ".gemini" / "config" / "mcp_config.json"
         seen_config_at_launch = config_path.exists()
         assert ctx.workspace_path == tmp_path
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
@@ -180,7 +155,7 @@ def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
     )
 
     assert seen_config_at_launch
-    assert not config_path.exists()
+    assert not (tmp_path / ".agents").exists()
 
 
 def test_agy_invoke_completes_when_completion_signal_present(

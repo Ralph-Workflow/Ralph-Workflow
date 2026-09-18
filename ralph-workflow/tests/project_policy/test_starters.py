@@ -73,6 +73,14 @@ def test_read_starter_returns_non_empty_content() -> None:
         assert f"{markers.POLICY_ID_PREFIX} {name} -->" in content
 
 
+def test_read_starter_returns_cached_bundled_content_by_name() -> None:
+    """Repeated validation returns the same in-process bundled value."""
+    first = starters.read_starter("testing-policy.md")
+    second = starters.read_starter("testing-policy.md")
+
+    assert first is second
+
+
 def test_starter_has_required_sections() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)

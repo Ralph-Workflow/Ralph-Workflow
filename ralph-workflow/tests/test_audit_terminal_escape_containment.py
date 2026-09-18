@@ -553,6 +553,15 @@ def test_audit_blocks_regression_when_a_new_spawn_options_call_passes_stdin_none
         callee_name="SpawnOptions",
         invariant_cls=PackageWideCallSiteInvariant,
     )
+    # This case exercises the driver's violation rendering for an injected
+    # package member. The invariant's package-walk behavior is covered below
+    # with a synthetic path list; avoiding a full source-tree rescan here
+    # keeps this one-second adversarial test deterministic under xdist I/O.
+    monkeypatch.setattr(
+        audit_module.PackageWideCallSiteInvariant,
+        "_package_files",
+        classmethod(lambda cls: [path]),
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()

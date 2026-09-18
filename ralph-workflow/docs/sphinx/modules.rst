@@ -2636,6 +2636,13 @@ ralph.mcp.transport.pi
    :members:
    :show-inheritance:
 
+ralph.mcp.transport.private_config_root
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.private_config_root
+   :members:
+   :show-inheritance:
+
 ralph.mcp.transport.agy
 ~~~~~~~~~~~~~~~~~~~~~~~
 

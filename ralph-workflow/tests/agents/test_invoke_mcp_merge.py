@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
@@ -29,10 +30,6 @@ from tests._support.typed_accessors import (
     must_mapping,
     must_str_dict,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -529,25 +526,18 @@ def test_opencode_non_colliding_native_server_preserved(
 
 
 @pytest.mark.timeout_seconds(3)
-def test_cursor_runtime_resolver_writes_workspace_mcp_json_and_restores(
+def test_cursor_runtime_resolver_writes_private_mcp_json_and_cleans_up(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The cursor runtime resolver writes the merged Ralph MCP entry to ``.cursor/mcp.json``
-    and restores the original bytes on cleanup.
+    """The cursor runtime resolver writes a private config and cleans it up."""
+    operator_home = tmp_path / "fake-home"
+    operator_home.mkdir()
+    operator_config = operator_home / ".cursor" / "mcp.json"
+    operator_config.parent.mkdir()
+    operator_bytes = b'{"mcpServers":{"operator":{"url":"http://operator"}}}'
+    operator_config.write_bytes(operator_bytes)
 
-    The resolver writes BOTH the workspace-local ``.cursor/mcp.json``
-    AND the user-global ``~/.cursor/mcp.json`` so the agent picks up
-    the MCP endpoint regardless of cwd; on cleanup both paths are
-    restored to their original contents (or deleted if they did not
-    exist).  The Ralph entry uses the documented Cursor MCP server
-    shape with the ``url`` key.
-    """
-    cursor_workspace_config = tmp_path / ".cursor" / "mcp.json"
-    fake_home = tmp_path / "fake-home"
-    fake_home.mkdir()
-    fake_cursor_home_config = fake_home / ".cursor" / "mcp.json"
-
-    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("HOME", str(operator_home))
     endpoint = "http://127.0.0.1:9999/mcp"
     config = AgentConfig(
         cmd="agent",
@@ -560,37 +550,20 @@ def test_cursor_runtime_resolver_writes_workspace_mcp_json_and_restores(
         unsafe_mode=False,
     )
 
-    # Both files should have been written.
-    assert cursor_workspace_config.is_file(), (
-        "cursor workspace-local .cursor/mcp.json was not written"
-    )
-    assert fake_cursor_home_config.is_file(), (
-        "cursor user-global ~/.cursor/mcp.json was not written"
-    )
+    runtime_env = runtime.agent_env
+    assert runtime_env is not None
+    private_home = Path(runtime_env["HOME"])
+    private_config = private_home / ".cursor" / "mcp.json"
+    private_payload = json.loads(private_config.read_text(encoding="utf-8"))
+    private_servers = must_mapping(private_payload["mcpServers"])
+    assert must_mapping(private_servers["ralph"])["url"] == endpoint
+    assert operator_config.read_bytes() == operator_bytes
+    assert not (tmp_path / ".cursor").exists()
 
-    # The Ralph entry is present in both with the documented ``url`` key.
-    workspace_config = json.loads(cursor_workspace_config.read_text(encoding="utf-8"))
-    home_config = json.loads(fake_cursor_home_config.read_text(encoding="utf-8"))
-    workspace_servers = must_mapping(workspace_config["mcpServers"])
-    home_servers = must_mapping(home_config["mcpServers"])
-    assert "ralph" in workspace_servers
-    assert "ralph" in home_servers
-    workspace_ralph = must_mapping(workspace_servers["ralph"])
-    home_ralph = must_mapping(home_servers["ralph"])
-    assert workspace_ralph["url"] == endpoint
-    assert home_ralph["url"] == endpoint
-
-    # The runtime exposes a cleanup callable (per the ResolvedInvocationRuntime contract).
     assert runtime.cleanup is not None
-
-    # Run the cleanup and verify both files are restored (deleted, since neither existed before).
     runtime.cleanup()
-    assert not cursor_workspace_config.exists(), (
-        "cursor workspace-local .cursor/mcp.json was not cleaned up"
-    )
-    assert not fake_cursor_home_config.exists(), (
-        "cursor user-global ~/.cursor/mcp.json was not cleaned up"
-    )
+    assert not private_home.exists()
+    assert operator_config.read_bytes() == operator_bytes
 
 
 @pytest.mark.timeout_seconds(3)
@@ -630,7 +603,7 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         transport=AgentTransport.CURSOR,
     )
 
-    # unsafe_mode=True: the existing-svc is preserved alongside the ralph entry.
+    # unsafe_mode=True: the private config retains the operator upstream.
     runtime = CursorRuntimeResolver().resolve(
         config,
         extra_env={str(MCP_ENDPOINT_ENV): endpoint},
@@ -638,10 +611,14 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         unsafe_mode=True,
     )
     try:
-        merged = json.loads(cursor_workspace_config.read_text(encoding="utf-8"))
+        runtime_env = runtime.agent_env
+        assert runtime_env is not None
+        private_config = Path(runtime_env["HOME"]) / ".cursor" / "mcp.json"
+        merged = json.loads(private_config.read_text(encoding="utf-8"))
         merged_servers = must_mapping(merged["mcpServers"])
         assert "ralph" in merged_servers
         assert "existing-svc" in merged_servers
+        assert "ralph" not in must_mapping(json.loads(cursor_workspace_config.read_text(encoding="utf-8"))["mcpServers"])
     finally:
         if runtime.cleanup is not None:
             runtime.cleanup()
@@ -666,11 +643,15 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         unsafe_mode=False,
     )
     try:
-        # In safe mode the existing-svc is dropped in favor of the ralph entry.
-        merged = json.loads(cursor_workspace_config.read_text(encoding="utf-8"))
+        # In safe mode the private config contains only the Ralph entry.
+        runtime_env = runtime_safe.agent_env
+        assert runtime_env is not None
+        private_config = Path(runtime_env["HOME"]) / ".cursor" / "mcp.json"
+        merged = json.loads(private_config.read_text(encoding="utf-8"))
         merged_servers = must_mapping(merged["mcpServers"])
         assert "ralph" in merged_servers
         assert "existing-svc" not in merged_servers
+        assert "ralph" not in must_mapping(json.loads(cursor_workspace_config.read_text(encoding="utf-8"))["mcpServers"])
     finally:
         if runtime_safe.cleanup is not None:
             runtime_safe.cleanup()
