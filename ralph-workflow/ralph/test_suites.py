@@ -76,9 +76,9 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
-# host, 32 plain shards take about 45 seconds and starve the budget-tracked
-# smoke steps; 24 shards complete the same selection in about 28 seconds.
-_MAX_PYTEST_WORKERS = 24
+# host, 24 plain shards overload concurrent SQLite-backed tests; 20 shards
+# complete the same selection cleanly while preserving smoke-step headroom.
+_MAX_PYTEST_WORKERS = 20
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host has eight useful pytest slots under the
 # standard deterministic profile.
@@ -93,8 +93,8 @@ _PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 # in-shard fan-out.
 _DEFAULT_XDIST_WORKERS_PER_SHARD = "0"
 # Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
-# Combined with ``_MAX_PYTEST_WORKERS`` (32 shards) this gives a maximum
-# fan-out of 32 * 4 = 128 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
+# Combined with ``_MAX_PYTEST_WORKERS`` (20 shards) this gives a maximum
+# fan-out of 20 * 4 = 80 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
 # is overridden to ``"auto"`` or a positive integer. The default plain-
 # pytest path keeps the slowest shard under the 60s combined budget on
 # 32-core CI without coordination overhead.
@@ -279,7 +279,7 @@ def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
     The auto profile caps the shard count at ``available_cores - 2``,
-    bounded by ``_MAX_PYTEST_WORKERS = 24``. Explicit overrides are capped
+    bounded by ``_MAX_PYTEST_WORKERS = 20``. Explicit overrides are capped
     at ``available_cores - 2``: one core for the parent process (shard
     polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
     Makefile auto ``PYTEST_WORKERS`` is tuned for the maintained

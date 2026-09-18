@@ -202,9 +202,8 @@ test-install-make-smoke:
 # file the regular profile deliberately skips.
 #
 # The smoke tests are I/O-bound (each spawns a stub subprocess).
-# Four xdist workers complete the 15 independent offline harness rows in
-# 7.62 s on the maintained 40-core host versus 10.34 s with two workers,
-# preserving combined-budget headroom without changing test selection.
+# One xdist worker per independent offline harness row minimizes the
+# budget-critical smoke tail on the maintained 40-core verification host.
 #
 # wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
 # here -- its ~1 s of Python import / arg-parse startup is pure overhead
