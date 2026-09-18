@@ -71,17 +71,10 @@ def test_makefile_unconditionally_selects_the_project_virtual_environment() -> N
 
 
 def test_default_worker_count_preserves_verify_budget_headroom() -> None:
-    """The maintained worker baseline leaves room for both smoke gates.
-
-    Pinned to ``auto`` in wt-063: the suite grew past the point where the
-    fixed ``8`` shard count fits the 60s per-suite deadline on the 12-core
-    host, so ``auto`` (one shard per core minus the runner) is the
-    measured baseline — see the dated measurements in the Makefile
-    comment above ``PYTEST_WORKERS``.
-    """
+    """The maintained worker baseline avoids host oversubscription."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
-    assert "PYTEST_WORKERS ?= auto" in makefile_text
+    assert "PYTEST_WORKERS ?= 12" in makefile_text
 
 
 def test_install_targets_delegate_to_the_installer() -> None:
@@ -176,11 +169,10 @@ def test_focused_make_targets_do_not_duplicate_pytest_orchestration() -> None:
 
 
 def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
-    """The budget-tracked smoke suite runs independent harness rows concurrently."""
+    """The budget-tracked smoke suite runs each harness row concurrently."""
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    # Eight workers avoid oversubscribing the host while keeping rows concurrent.
-    assert "-n 8 --dist worksteal" in body[0]
+    assert "-n 15 --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

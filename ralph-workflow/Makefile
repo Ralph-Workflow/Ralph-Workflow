@@ -2,21 +2,12 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: ``auto`` — one shard per available core minus the runner (11
-# shards on the maintained 12-core (6P+6E) host, 31 on the 32-core CI
-# profile). Re-measured wt-063 after the suite grew to 1416 files /
-# ~15k tests: the former fixed default of 8 no longer fits the 60s
-# per-suite deadline on the 12-core host. 8/9/10 shards concentrate the
-# same work into fewer serial shards (measured wt-063: deadline kill at
-# each). The standard profile retains only its real-git required-E2E
-# files; AGY smoke stays independently selected with ``-m smoke``.
-# In-shard xdist
-# is NOT the escape hatch — 6 shards * 2 workers measured ~149 s
-# slowest shard (see PYTEST_XDIST_WORKERS_PER_SHARD below). ``auto``
-# is also what ralph.test_suites resolves when the variable is unset,
-# so the exported default now matches the runner's own resolution.
+# Default: 12 shards. The auto profile can fan out to 20 concurrent pytest
+# processes on larger hosts, where scheduler and filesystem contention pushes
+# otherwise-fast tests past the immutable one-second per-test watchdog. Twelve
+# shards balance the suite while avoiding the 20-shard saturation point.
 # Operators may override after measuring their own host:
-#   PYTEST_WORKERS=8 make test   # 12-core host: may exceed the suite budget
+#   PYTEST_WORKERS=auto make test # opt into the CPU-capped auto profile
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
 #   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
 #
@@ -32,7 +23,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= auto
+PYTEST_WORKERS ?= 12
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
@@ -201,9 +192,9 @@ test-install-make-smoke:
 # `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
 # file the regular profile deliberately skips.
 #
-# The smoke tests are I/O-bound (each spawns a stub subprocess).
-# Eight xdist workers cover the independent offline harness rows without
-# oversubscribing the host after the default profile's shard fan-out.
+# The smoke tests are I/O-bound (each spawns a stub subprocess). One xdist
+# worker per harness row eliminates a second serial wave and keeps the combined
+# verification budget below 60 seconds after the default suite completes.
 #
 # wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
 # here -- its ~1 s of Python import / arg-parse startup is pure overhead
@@ -212,7 +203,7 @@ test-install-make-smoke:
 # the suite-level cap is provided by the verify runner's cumulative
 # tracker.
 test-multimodal-smoke:
-	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 8 --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 15 --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,
