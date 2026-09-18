@@ -192,7 +192,6 @@ class McpServer:
         expose_mcp_aliases: bool = True,
         wrapup_provider: Callable[[], str | None] | None = None,
         before_wrapup_warning_provider: Callable[[], bool] | None = None,
-        cycle_deadline_provider: Callable[[], str | None] | None = None,
         metrics: McpMetrics | None = None,
         mcp_activity_sink: Callable[[str], None] | None = None,
     ) -> None:
@@ -214,12 +213,6 @@ class McpServer:
         # tool result so the agent winds down before the hard force-cut.
         self._wrapup_provider = wrapup_provider
         self._before_wrapup_warning_provider = before_wrapup_warning_provider
-        # Optional cycle-deadline nag: returns the plan-to-final-commit
-        # timebox banner once the cycle passes its warning point, else None.
-        # Rides on tool results because the prompt appendix that starts an
-        # invocation is lost to context compaction and never reaches an
-        # invocation that began before the warning point.
-        self._cycle_deadline_provider = cycle_deadline_provider
         # Observability metrics — counters the production transport wires
         # to record post-header failures, terminal frames, and health-probe
         # outcomes. Tests inject a fresh instance to assert observable behavior
@@ -823,7 +816,6 @@ class McpServer:
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_notice(payload, self._wrapup_provider)
-        self._maybe_append_notice(payload, self._cycle_deadline_provider)
         return (
             JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
             ServerState.RUNNING,

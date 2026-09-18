@@ -446,7 +446,7 @@ def test_the_model_defaults_are_the_documented_ones() -> None:
         finalization_target="development_final_commit_cleanup",
     )
 
-    assert minimal.duration_seconds == 7200.0
+    assert minimal.duration_seconds == 36000.0
     assert minimal.finalization_cycle_outcome == "completed"
 
 

@@ -56,7 +56,6 @@ from ralph.mcp.server._activity_relay_sender import (
     ActivityRelaySender,
     scrub_activity_relay_environment,
 )
-from ralph.mcp.server._cycle_deadline import CycleDeadlineNotifier
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
@@ -263,7 +262,6 @@ def build_standalone_http_server(
         before_wrapup_warning_provider=(
             None if wrapup_budget is None else wrapup_budget.before_soft_warning
         ),
-        cycle_deadline_provider=None if activity_only else CycleDeadlineNotifier().notice,
         mcp_activity_sink=(
             activity_relay_sender.emit if activity_relay_sender is not None else None
         ),

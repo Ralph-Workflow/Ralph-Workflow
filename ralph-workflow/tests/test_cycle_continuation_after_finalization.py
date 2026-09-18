@@ -78,18 +78,18 @@ def test_timebox_redirect_starts_next_cycle_when_budget_remains() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 1},
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
     assert state.phase == "development_final_commit_cleanup"
 
-    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+    state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
     assert state.phase == "planning"
 
@@ -102,10 +102,10 @@ def test_concluded_cycle_does_not_redirect_a_later_development_entry() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 1},
         cycle_timebox_active=False,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
-    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(7200.0))
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(36000.0))
 
     assert state.phase == "development"
     assert state.cycle_timebox_active is True
@@ -148,18 +148,18 @@ def test_recorded_failure_outranks_a_deadline_redirect() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 5},
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
     assert state.phase == "development_final_commit_cleanup"
 
-    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+    state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
     assert state.phase == "failed_terminal"
 
@@ -190,14 +190,14 @@ def test_inactive_timer_does_not_guard_a_development_entry() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 1},
         cycle_timebox_active=False,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
 
     assert state.phase == "development"
@@ -211,18 +211,18 @@ def test_timebox_redirect_completes_run_when_budget_is_spent() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 5},
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
     assert state.phase == "development_final_commit_cleanup"
 
-    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+    state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
     assert state.phase == "complete"
 
@@ -248,16 +248,16 @@ def test_timebox_finalization_outcome_is_policy_declared() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 5},
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
-    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+    state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
     assert state.phase == "failed_terminal"
 
@@ -334,16 +334,16 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 5},
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
-    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+    state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
     # Emitted, not merely rendered: the report is validated against a CLOSED
     # markdown spec on the way out, and an undeclared section fails that
@@ -353,7 +353,7 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
         tmp_path,
         state=state,
         outcome="completed",
-        elapsed_seconds=7200.0,
+        elapsed_seconds=36000.0,
         cycle_timebox=policy.cycle_timebox,
     )
     report = (tmp_path / ".agent" / "artifacts" / "run_time_report.md").read_text(encoding="utf-8")
@@ -432,10 +432,10 @@ def test_bypassed_start_edge_does_not_redirect_the_cycle_it_just_started() -> No
         outer_progress={"iteration": 1},
         loop_iterations={"planning_analysis_iteration": 3},
         cycle_timebox_active=False,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
-    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(7200.0))
+    state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(36000.0))
 
     assert state.phase == "development"
     assert state.cycle_timebox_active is True
@@ -650,17 +650,17 @@ def test_a_redirect_reason_does_not_ride_into_the_next_cycle() -> None:
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 1},
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
     state, _ = reduce(
         state,
         AnalysisDecisionEvent(phase="development_analysis", decision="request_changes"),
         policy,
-        routing_timing=_rt(7200.0),
+        routing_timing=_rt(36000.0),
     )
     assert state.cycle_timebox_redirect_reason is not None
-    state = _drive_to_next_cycle(state, policy, elapsed=7200.0)
+    state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
     # Plan the next cycle and enter development, starting a fresh timer.
     assert state.phase == "planning"

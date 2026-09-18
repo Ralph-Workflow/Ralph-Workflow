@@ -138,7 +138,6 @@ class PromptPhaseOptions:
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
     work_unit: WorkUnit | None = None
-    cycle_timebox_warning: dict[str, object] | None = None
 
 
 def __getattr__(name: str) -> object:
@@ -149,68 +148,6 @@ def __getattr__(name: str) -> object:
         return typing.cast("object", module.MultimodalSidecarEntry)
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
-
-
-def _format_cycle_timebox_warning(warning: dict[str, object]) -> str:
-    """Format the cycle-timebox warning payload as a Markdown prompt appendix.
-
-    Appended only to the guarded development entry's prompt when elapsed
-    time has reached or passed the 80% soft-warning threshold.
-
-    The cycle deadline is enforced at routing boundaries, so it never
-    interrupts a running session. The wording says that outright: read as a
-    countdown on the agent's own clock it provokes exactly the early exit this
-    warning is not asking for. The session wrap-up nag
-    (:func:`ralph.mcp.server._session_wrapup.wrapup_notice`) remains the only
-    stop signal.
-    """
-    elapsed = float(cast("float", warning.get("elapsed_seconds", 0)))
-    remaining = float(cast("float", warning.get("remaining_seconds", 0)))
-    duration = float(cast("float", warning.get("duration_seconds", 0)))
-    target = str(warning.get("finalization_target", "final commit"))
-    elapsed_min = elapsed / 60.0
-    remaining_min = remaining / 60.0
-    duration_min = duration / 60.0
-    return (
-        "\n\n---\n\n"
-        "## ⚠ Cycle Timebox Warning\n\n"
-        f"The plan-to-final-commit cycle has consumed **{elapsed_min:.0f} minutes** "
-        f"of its **{duration_min:.0f}-minute** budget; "
-        f"**{remaining_min:.0f} minutes** remain.\n\n"
-        "**This does not cut your session short.** The cycle budget is checked "
-        "only at routing boundaries — between sessions, never during one — so "
-        "nothing here interrupts the work you are doing now. Keep working. The "
-        "only signal to wind down and call `declare_complete` is your own "
-        "session wrap-up notice (`~N min of your time budget remain …`), which "
-        "arrives on tool results when your session nears its cap. Until you see "
-        "that notice, do not finish early, do not drop scope, and do not treat "
-        "the minutes above as your own clock.\n\n"
-        f"What it does mean: when the cycle budget is spent, development entries "
-        f"are redirected to **{target}**, so with this little left this is very "
-        "likely the LAST development session of this cycle. Work you leave for "
-        "a later development pass within this cycle will not get one. Whether a "
-        "fresh cycle follows depends on the run's remaining cycle budget and is "
-        "not yours to assume. So use the whole session, but order it well:\n\n"
-        "1. **Highest-value-first**: Focus on the plan items with the greatest "
-        "user impact. Defer polish, refactoring, and nice-to-haves.\n"
-        "2. **Feasibility reassessment**: If any remaining plan item cannot be "
-        "completed, tested, and verified within this session, report it as "
-        "partial or failed with a stable ID, supporting evidence, and a concise "
-        "reason — do NOT fabricate completion or weaken verification.\n"
-        "3. **Honest triage**: A `partial` or `failed` result with clear evidence "
-        "and next steps is strictly better than a fabricated `completed` result.\n"
-        "4. **Mandatory incomplete-work reporting**: If you submit `partial` or "
-        "`failed`, include an `## Incomplete Work` section. Each item must use a "
-        "stable-ID bracket (e.g., `[S-4]`), a `Reason:` field explaining why "
-        "the step is incomplete or infeasible, and an `Evidence:` field with a "
-        "reproducible location (file, test, or command). Items without all "
-        "three are rejected by artifact validation. This requirement is "
-        "enforced from the run's own cycle clock, not from anything you "
-        "declare, so omitting the section is a validation failure rather than "
-        "a way past the check. Reporting `completed` is not a way past it "
-        "either: a completion claim made after this warning must carry "
-        "`## Plan Items Proven` naming what you proved.\n"
-    )
 
 
 def materialize_prompt_for_phase(
@@ -257,9 +194,6 @@ def materialize_prompt_for_phase(
                 work_unit=cast(
                     "WorkUnit | None", kwargs.get("work_unit")
                 ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-                cycle_timebox_warning=cast(
-                    "dict[str, object] | None", kwargs.get("cycle_timebox_warning")
-                ),
             )
     opts = options or PromptPhaseOptions()
     if opts.work_unit is not None and opts.worker_namespace is None:
@@ -270,8 +204,6 @@ def materialize_prompt_for_phase(
             ),
         )
     prompt = _render_prompt_for_phase(context, opts)
-    if opts.cycle_timebox_warning:
-        prompt += _format_cycle_timebox_warning(opts.cycle_timebox_warning)
     path = dump_rendered_prompt(
         context.workspace,
         context.phase,

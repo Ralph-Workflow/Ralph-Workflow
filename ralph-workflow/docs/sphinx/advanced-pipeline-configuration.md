@@ -396,7 +396,7 @@ concludes with a real commit rather than looping indefinitely.
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `duration_seconds` | `7200` (120 min) | Finite, positive. Total wall-clock budget per cycle. |
+| `duration_seconds` | `36000` (600 min) | Finite, positive number of seconds available to one complete plan-to-final-commit cycle. This is a cycle-wide budget, not a per-agent-session timeout. |
 | `start_source` | `planning_analysis` | Source phase of the transition that starts the timer. |
 | `start_entry` | `development` | Target phase of the start transition (phase whose entry begins the cycle). |
 | `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
@@ -404,57 +404,43 @@ concludes with a real commit rather than looping indefinitely.
 | `finalization_target` | `development_final_commit_cleanup` | Redirect target when the deadline is reached. |
 | `finalization_cycle_outcome` | `completed` | Cycle outcome stamped on a redirect so `post_commit_routes` route the finished cycle normally. |
 
-A redirect ends the cycle at the dev cycle's final commit — not the run.
+A redirect ends the cycle at the dev cycle's final commit, not the run.
 The stamped `finalization_cycle_outcome` is what `post_commit_routes`
 match on, so a timed-out cycle is followed by another planning cycle
 while the `iteration` budget counter has room, and by the terminal phase
 only once that budget is spent. Set the field to `failed` if a timed-out
 cycle should instead end an out-of-budget run in the failure terminal.
 
-The 80% soft-warning threshold is derived automatically: at the default
-`7200`s duration the warning fires at `5760`s (96 min), giving the
-agent a 24-minute window to triage and finalize. The warning is
-injected into the development prompt and does not interrupt an
-already-running invocation. Each subsequent development invocation in
-the same cycle receives an updated warning with the current elapsed and
-remaining time. The end-of-run report carries the cycle's budget,
-consumed time, and any redirect — not the warning itself, which is
-addressed to the agent rather than the operator.
+The 80% warning threshold is derived automatically. At the default
+`36000` second duration, it is reached at `28800` seconds (480 minutes),
+leaving `7200` seconds (120 minutes) before the deadline.
 
-The warning does not rely on that prompt appendix alone, which an agent
-loses to context compaction and which never reaches an invocation that
-began before the warning point:
+To override the default, copy the `[cycle_timebox]` section into the
+project's `.agent/pipeline.toml` and change `duration_seconds`. For
+example, this gives each cycle a two-hour wall-clock budget:
 
-- **On every MCP tool result.** The deadline instant is fixed for the
-  lifetime of an invocation, so the pipeline publishes it as wall-clock
-  epochs (`RALPH_CYCLE_WARN_EPOCH`, `RALPH_CYCLE_DEADLINE_EPOCH`,
-  `RALPH_CYCLE_DURATION_SECONDS`, `RALPH_CYCLE_FINALIZATION_TARGET`) in
-  the environment inherited by the
-  MCP server subprocess, which appends a banner with the remaining
-  minutes to every tool result once the warning point passes. The
-  publication is withdrawn when the invocation ends, and for any
-  invocation outside a guarded cycle, so neither a later phase nor a
-  helper agent spawned afterwards inherits a stale deadline. A fan-out
-  worker runs in its own process from a manifest and rebuilds its prompt
-  warning from these same published values.
-- **On the live phase banner.** Major phase transitions during an active
-  cycle carry a `[cycle timebox 96m/120m, 24m left]` item, so an operator
-  sees the budget draining without waiting for the end-of-run report. In
-  the bundled workflow that means the `planning_analysis → development`
-  and `development_analysis → development` entries. Minor transitions
-  render no context at all, so the item does not appear on the
-  commit-cleanup and commit legs, nor on a `planning → development` entry
-  made when planning analysis was skipped.
-- **When the deadline fires.** The redirect is logged by the routing
-  component and named on the end-of-run report's
-  `[CT-2] Redirected cycles: N;` line. The reason itself belongs to one
-  cycle and is cleared when the next starts — the normal path after a
-  redirect — so the count is what survives to the end of a multi-cycle
-  run, and the reason shown is the most recent one.
-  It is deliberately not put on the phase banner: the transitions a
-  redirected cycle makes on the way to its final commit are all minor,
-  and the banner renders context only on major ones, so the notice would
-  be dropped before an operator saw it.
+```toml
+[cycle_timebox]
+duration_seconds = 7200
+start_source = "planning_analysis"
+start_entry = "development"
+guarded_entry = "development"
+end_entry = "development_final_commit_cleanup"
+finalization_target = "development_final_commit_cleanup"
+finalization_cycle_outcome = "completed"
+```
+
+Keep the other fields aligned with the active workflow graph. Removing
+the section disables the cycle timebox for a fully custom pipeline.
+
+The runtime publishes the warning and deadline as wall-clock epochs for
+enforcement and artifact validation. It does not append warnings to agent
+prompts or MCP tool results. When the deadline fires, the routing
+component redirects the guarded entry to `finalization_target`. The
+redirect is logged and named on the end-of-run report's
+`[CT-2] Redirected cycles: N;` line. The report carries the cycle budget,
+consumed time, and any redirect. The count survives across a multi-cycle
+run; the recorded reason is for the most recent redirect.
 
 #### Relationship to other limits
 
@@ -506,14 +492,10 @@ checkpoint that predates this feature and has no cycle timing state
 initializes safely from the resume time without a migration failure and
 without charging pre-resume time.
 
-#### Warning guidance and honest incomplete-work reporting
+#### Artifact validation after the warning threshold
 
-When the 80% threshold is reached, the development agent's prompt
-instructs it to prioritize the highest-value remaining plan steps,
-reassess whether any step is infeasible within the remaining time
-(dependency, missing authority, excessive scope, technical blocker), and
-report incomplete or infeasible steps honestly. A warned `partial` or
-`failed` development result must include an `## Incomplete Work` section.
+When the runtime determines that the 80% threshold has been reached, a
+`partial` or `failed` development result must include an `## Incomplete Work` section.
 Each incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
 `Reason:` field explaining why the step is incomplete or infeasible, and
 an `Evidence:` field with a reproducible location (file, test, or
@@ -529,14 +511,11 @@ proof — what it enforces is that a claim made under warning is
 accompanied by one.
 
 Whether the cycle warned is decided by the runtime, not by the reporting
-agent: artifact validation reads the same published deadline
-(`RALPH_CYCLE_WARN_EPOCH`) the tool-result banner reads. Keying the
-requirement on a self-declared `cycle_timebox_warned: true` frontmatter
-flag made it optional in practice, since the agent inclined to hide
-unfinished work is precisely the one that would omit the flag. The flag
-is still honoured when it is present, so a result validated outside its
-warned invocation — a replay, a hand-written report — keeps the stricter
-reading.
+agent. Artifact validation reads the published warning epoch
+(`RALPH_CYCLE_WARN_EPOCH`). A self-declared `cycle_timebox_warned: true`
+frontmatter flag is also honoured, so a result validated outside its
+warned invocation, such as a replay or hand-written report, keeps the
+stricter reading.
 
 The bundled workflow declares a sensible default; no customization is
 required.

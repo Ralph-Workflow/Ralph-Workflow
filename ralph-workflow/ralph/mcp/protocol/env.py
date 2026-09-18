@@ -24,12 +24,10 @@ class McpEnvVar(StrEnum):
     SESSION_SOFT_WRAPUP_SECONDS = "RALPH_SESSION_SOFT_WRAPUP_SECONDS"
     MAX_SESSION_SECONDS = "RALPH_MAX_SESSION_SECONDS"
     # Wall-clock epochs, not durations: the cycle deadline is fixed for the
-    # lifetime of one agent invocation, and epochs are the only clock reading
-    # the pipeline and the MCP server subprocess can compare directly.
+    # lifetime of one agent invocation, and its artifact validator reads them
+    # against its own wall clock.
     CYCLE_WARN_EPOCH = "RALPH_CYCLE_WARN_EPOCH"
     CYCLE_DEADLINE_EPOCH = "RALPH_CYCLE_DEADLINE_EPOCH"
-    CYCLE_FINALIZATION_TARGET = "RALPH_CYCLE_FINALIZATION_TARGET"
-    CYCLE_DURATION_SECONDS = "RALPH_CYCLE_DURATION_SECONDS"
     REQUEST_TIMEOUT_MS = "RALPH_MCP_REQUEST_TIMEOUT_MS"
 
 
@@ -51,5 +49,3 @@ MAX_SESSION_SECONDS_ENV = McpEnvVar.MAX_SESSION_SECONDS
 MCP_REQUEST_TIMEOUT_MS_ENV = McpEnvVar.REQUEST_TIMEOUT_MS
 CYCLE_WARN_EPOCH_ENV = McpEnvVar.CYCLE_WARN_EPOCH
 CYCLE_DEADLINE_EPOCH_ENV = McpEnvVar.CYCLE_DEADLINE_EPOCH
-CYCLE_FINALIZATION_TARGET_ENV = McpEnvVar.CYCLE_FINALIZATION_TARGET
-CYCLE_DURATION_SECONDS_ENV = McpEnvVar.CYCLE_DURATION_SECONDS

@@ -377,8 +377,8 @@ def cycle_deadline_epochs(
     policy: PipelinePolicy,
     routing_timing: RoutingTiming | None,
     now_epoch: float,
-) -> tuple[float, float, str] | None:
-    """Return ``(warn_epoch, deadline_epoch, finalization_target)`` for an invocation.
+) -> tuple[float, float] | None:
+    """Return ``(warn_epoch, deadline_epoch)`` for an invocation.
 
     The deadline does not move while an invocation runs, so it is published
     once as wall-clock epochs the agent-facing MCP server process can compare
@@ -396,43 +396,5 @@ def cycle_deadline_epochs(
     return (
         now_epoch + max(0.0, ct.warning_threshold_seconds - elapsed),
         now_epoch + max(0.0, ct.duration_seconds - elapsed),
-        ct.finalization_target,
     )
 
-
-def cycle_timebox_warning(
-    state: PipelineState,
-    target_phase: str,
-    *,
-    policy: PipelinePolicy,
-    routing_timing: RoutingTiming | None,
-) -> dict[str, object] | None:
-    """Return the soft warning payload for a guarded entry at/after 80% elapsed.
-
-    The warning is emitted only for the configured guarded entry when the cycle
-    is active and elapsed time has reached the derived 80% warning point but the
-    deadline has not expired (expired entries are redirected, not warned). The
-    payload carries elapsed seconds, remaining seconds, and the deadline
-    consequence so the caller can inject it into the agent prompt and the
-    operator status surface.
-    """
-    ct = policy.cycle_timebox
-    if ct is None or routing_timing is None:
-        return None
-    if target_phase != ct.guarded_entry:
-        return None
-    if not state.cycle_timebox_active:
-        return None
-    elapsed = routing_timing.total_elapsed_seconds
-    if elapsed < ct.warning_threshold_seconds:
-        return None
-    if elapsed >= ct.duration_seconds:
-        # Expired entries are redirected, not warned.
-        return None
-    remaining = max(0.0, ct.duration_seconds - elapsed)
-    return {
-        "elapsed_seconds": elapsed,
-        "remaining_seconds": remaining,
-        "duration_seconds": ct.duration_seconds,
-        "finalization_target": ct.finalization_target,
-    }

@@ -19,8 +19,7 @@ from ralph.policy.loader import load_policy
 
 _DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" / "defaults")
 
-# 80% of the bundled 7200s cycle budget: the soft-warning point.
-_WARNED_CONSUMED_SECONDS = 5760.0
+_WARNED_CONSUMED_SECONDS = 28800.0
 
 
 def _banner_output(state: PipelineState, previous_phase: str) -> str:
@@ -49,8 +48,8 @@ def test_active_cycle_shows_elapsed_and_remaining_on_phase_banner() -> None:
     output = _banner_output(state, "development_commit")
 
     assert "cycle timebox" in output
-    assert "96m/120m" in output
-    assert "24m left" in output
+    assert "480m/600m" in output
+    assert "120m left" in output
 
 
 def test_inactive_cycle_shows_no_timebox_item() -> None:
@@ -79,10 +78,10 @@ def test_redirect_leaves_no_banner_item_because_the_operator_never_sees_one() ->
         phase="development_final_commit_cleanup",
         previous_phase="development_analysis",
         cycle_timebox_active=False,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
         pending_cycle_outcome="completed",
         cycle_timebox_redirect_reason=(
-            "cycle timebox reached 7200s (elapsed 7200s); "
+            "cycle timebox reached 36000s (elapsed 36000s); "
             "redirecting to development_final_commit_cleanup"
         ),
     )

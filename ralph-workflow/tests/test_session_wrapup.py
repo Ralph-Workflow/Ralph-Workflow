@@ -83,7 +83,6 @@ def test_conflict_resolution_regression_excludes_normal_session_wrapup(
     )
 
     assert server._mcp_server._wrapup_provider is None
-    assert server._mcp_server._cycle_deadline_provider is None
 
 
 def test_disabled_soft_threshold_never_notices() -> None:

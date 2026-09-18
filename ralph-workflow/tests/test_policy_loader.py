@@ -800,8 +800,8 @@ def test_default_cycle_timebox_values() -> None:
     bundle = load_policy(_DEFAULTS_DIR)
     ct = bundle.pipeline.cycle_timebox
     assert ct is not None
-    assert ct.duration_seconds == 7200.0
-    assert ct.warning_threshold_seconds == 5760.0
+    assert ct.duration_seconds == 36000.0
+    assert ct.warning_threshold_seconds == 28800.0
     assert ct.start_source == "planning_analysis"
     assert ct.start_entry == "development"
     assert ct.guarded_entry == "development"
@@ -813,7 +813,7 @@ def test_default_cycle_timebox_values() -> None:
 def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path) -> None:
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()
-    pipeline = pipeline.replace("duration_seconds = 7200", "duration_seconds = 3600")
+    pipeline = pipeline.replace("duration_seconds = 36000", "duration_seconds = 3600")
     (tmp_path / "pipeline.toml").write_text(pipeline)
     bundle = load_policy(tmp_path)
     ct = bundle.pipeline.cycle_timebox

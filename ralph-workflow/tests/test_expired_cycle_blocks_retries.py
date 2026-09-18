@@ -21,8 +21,8 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-_LIMIT = 7200.0
-_SPENT = 7300.0
+_LIMIT = 36000.0
+_SPENT = 36001.0
 
 
 @lru_cache(maxsize=1)

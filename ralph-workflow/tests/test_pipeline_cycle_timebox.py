@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.pipeline.cycle_timing import RoutingTiming, cycle_timebox_warning
+from ralph.pipeline.cycle_timing import RoutingTiming
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -119,9 +119,9 @@ def test_development_reentry_redirected_at_deadline() -> None:
     state = _state(
         "development_analysis",
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
-    next_state = _request_changes_to_development(state, 7200.0)
+    next_state = _request_changes_to_development(state, 36000.0)
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.cycle_timebox_active is False
 
@@ -130,9 +130,9 @@ def test_development_reentry_redirected_after_deadline() -> None:
     state = _state(
         "development_analysis",
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=8000.0,
+        cycle_timebox_consumed_seconds=36001.0,
     )
-    next_state = _request_changes_to_development(state, 8000.0)
+    next_state = _request_changes_to_development(state, 36001.0)
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.cycle_timebox_active is False
 
@@ -216,14 +216,14 @@ def test_phase_failure_workflow_fallback_enforces_deadline() -> None:
     state = _state(
         "development_analysis",
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
     event = PhaseFailureEvent(
         phase="development_analysis",
         reason="non-recoverable handler failure",
         recoverable=False,
     )
-    next_state, _ = reduce(state, event, policy, routing_timing=_rt(7200.0))
+    next_state, _ = reduce(state, event, policy, routing_timing=_rt(36000.0))
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.cycle_timebox_active is False
 
@@ -253,12 +253,12 @@ def test_agent_failure_workflow_fallback_enforces_deadline() -> None:
     state = _state(
         "development_analysis",
         cycle_timebox_active=True,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
         phase_chains={
             "development_analysis": AgentChainState(agents=["claude"], current_index=0, retries=3)
         },
     )
-    next_state, _ = reduce(state, PipelineEvent.AGENT_FAILURE, policy, routing_timing=_rt(7200.0))
+    next_state, _ = reduce(state, PipelineEvent.AGENT_FAILURE, policy, routing_timing=_rt(36000.0))
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.cycle_timebox_active is False
 
@@ -327,57 +327,6 @@ def test_legacy_checkpoint_without_cycle_state_resumes_safely() -> None:
     restored = PipelineState.model_validate(data)
     assert restored.cycle_timebox_active is False
     assert restored.cycle_timebox_consumed_seconds == 0.0
-
-
-# ---------------------------------------------------------------------------
-# Soft warning (80% derived point)
-# ---------------------------------------------------------------------------
-
-
-def test_warning_absent_before_threshold() -> None:
-    policy = _policy()
-    state = _state(
-        "development_analysis", cycle_timebox_active=True, cycle_timebox_consumed_seconds=100.0
-    )
-    assert (
-        cycle_timebox_warning(state, "development", policy=policy, routing_timing=_rt(100.0))
-        is None
-    )
-
-
-def test_warning_present_at_80_percent_under_default() -> None:
-    policy = _policy()
-    state = _state(
-        "development_analysis", cycle_timebox_active=True, cycle_timebox_consumed_seconds=5760.0
-    )
-    warning = cycle_timebox_warning(state, "development", policy=policy, routing_timing=_rt(5760.0))
-    assert warning is not None
-    assert warning["elapsed_seconds"] == 5760.0
-    # 7200 - 5760 = 1440s = 24 minutes remaining.
-    assert warning["remaining_seconds"] == 1440.0
-    assert warning["finalization_target"] == "development_final_commit_cleanup"
-
-
-def test_warning_absent_for_inactive_cycle() -> None:
-    policy = _policy()
-    state = _state("planning_analysis")  # inactive
-    assert (
-        cycle_timebox_warning(state, "development", policy=policy, routing_timing=_rt(5760.0))
-        is None
-    )
-
-
-def test_warning_absent_for_non_guarded_phase() -> None:
-    policy = _policy()
-    state = _state(
-        "development_analysis", cycle_timebox_active=True, cycle_timebox_consumed_seconds=5760.0
-    )
-    assert (
-        cycle_timebox_warning(
-            state, "development_commit", policy=policy, routing_timing=_rt(5760.0)
-        )
-        is None
-    )
 
 
 # ---------------------------------------------------------------------------

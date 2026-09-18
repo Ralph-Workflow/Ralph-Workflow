@@ -9,8 +9,8 @@ from pydantic import ConfigDict, Field, model_validator
 
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
-# Bundled default cycle deadline: 120 minutes (7,200 seconds).
-DEFAULT_CYCLE_TIMEBOX_SECONDS: float = 7200.0
+# Bundled default cycle deadline: 600 minutes (36,000 seconds).
+DEFAULT_CYCLE_TIMEBOX_SECONDS: float = 36000.0
 # The soft-warning point is derived as 80% of the configured duration; it is
 # never stored as an independent second duration so a custom deadline keeps the
 # same warning ratio without runtime code changes.
@@ -49,7 +49,7 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
         default=DEFAULT_CYCLE_TIMEBOX_SECONDS,
         description=(
             "Cycle deadline in seconds. Must be finite and greater than zero. "
-            "The bundled default is 7200 (120 minutes)."
+            "The bundled default is 36000 (600 minutes)."
         ),
     )
     start_source: str = Field(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import os
 import time
 from contextlib import contextmanager
@@ -14,8 +13,6 @@ from loguru import logger
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
-    CYCLE_DURATION_SECONDS_ENV,
-    CYCLE_FINALIZATION_TARGET_ENV,
     CYCLE_WARN_EPOCH_ENV,
     WORKER_NAMESPACE_ENV,
 )
@@ -23,7 +20,6 @@ from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     cycle_deadline_epochs,
-    cycle_timebox_warning,
 )
 from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
@@ -307,45 +303,12 @@ def _materialize_prepared_prompt(
             )
         ),
         multimodal_entries=media_entries,
-        cycle_timebox_warning=_worker_cycle_timebox_warning(state, effect.phase, pipeline_policy),
     )
 
 
-def _worker_cycle_timebox_warning(
-    state: PipelineState | None,
-    target_phase: str,
-    pipeline_policy: PipelinePolicy,
-) -> dict[str, object] | None:
-    """Return the timebox warning for a prepared prompt, if one is due.
-
-    A prompt prepared ahead of its invocation has no routing timing to sample,
-    so the cycle's consumed seconds carried on the state stand in for elapsed
-    time. That omits only the current step's in-flight delta, which is what
-    the agent-invocation path adds. Fan-out workers do NOT come through here —
-    they run in their own process from a manifest and rebuild the warning from
-    the published environment instead (see
-    :func:`_cycle_timebox_warning_from_env`).
-    """
-    if state is None:
-        return None
-    return cycle_timebox_warning(
-        state,
-        target_phase,
-        policy=pipeline_policy,
-        routing_timing=RoutingTiming(
-            total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
-        ),
-    )
-
-
-#: Every name a cycle deadline publication occupies. Withdrawal and suspension
-#: both cover the whole set: a partially cleared publication leaves consumers
-#: reading a deadline whose duration or target belongs to a different cycle.
 _CYCLE_DEADLINE_ENV_NAMES = (
     CYCLE_WARN_EPOCH_ENV,
     CYCLE_DEADLINE_EPOCH_ENV,
-    CYCLE_DURATION_SECONDS_ENV,
-    CYCLE_FINALIZATION_TARGET_ENV,
 )
 
 
@@ -411,54 +374,9 @@ def _publish_cycle_deadline_env(
     if published is None:
         _withdraw_cycle_deadline_env()
         return
-    warn_epoch, deadline_epoch, finalization_target = published
+    warn_epoch, deadline_epoch = published
     os.environ[CYCLE_WARN_EPOCH_ENV] = repr(warn_epoch)
     os.environ[CYCLE_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
-    os.environ[CYCLE_FINALIZATION_TARGET_ENV] = finalization_target
-    duration = policy_bundle.pipeline.cycle_timebox
-    if duration is not None:
-        os.environ[CYCLE_DURATION_SECONDS_ENV] = repr(duration.duration_seconds)
-
-
-def _env_seconds(env: Mapping[str, str], name: str) -> float | None:
-    raw = env.get(name)
-    if raw is None or not raw.strip():
-        return None
-    try:
-        value = float(raw)
-    except ValueError:
-        return None
-    return value if math.isfinite(value) else None
-
-
-def _cycle_timebox_warning_from_env(
-    env: Mapping[str, str],
-    *,
-    now_epoch: float,
-) -> dict[str, object] | None:
-    """Rebuild the timebox warning from the deadline the parent published.
-
-    A fan-out worker runs in its own process from a manifest and its pipeline
-    state carries no cycle timing, so the state-based warning the serial path
-    uses is always empty for it. The published epochs it inherits are the only
-    thing that crosses that boundary, so the worker's prompt appendix is
-    derived from them. Returns ``None`` when nothing was published, when the
-    warning point is still ahead, or when any published value is unusable.
-    """
-    warn_epoch = _env_seconds(env, CYCLE_WARN_EPOCH_ENV)
-    deadline_epoch = _env_seconds(env, CYCLE_DEADLINE_EPOCH_ENV)
-    duration = _env_seconds(env, CYCLE_DURATION_SECONDS_ENV)
-    if warn_epoch is None or deadline_epoch is None or duration is None:
-        return None
-    if now_epoch < warn_epoch:
-        return None
-    remaining = max(0.0, deadline_epoch - now_epoch)
-    return {
-        "elapsed_seconds": max(0.0, duration - remaining),
-        "remaining_seconds": remaining,
-        "duration_seconds": duration,
-        "finalization_target": env.get(CYCLE_FINALIZATION_TARGET_ENV) or "the final commit",
-    }
 
 
 def _materialize_agent_prompt_if_needed(
@@ -483,30 +401,19 @@ def _materialize_agent_prompt_if_needed(
     media_entries = (
         collect_media_entries_for_phase(workspace, effect.phase, drain=agent_drain) or None
     )
-    # Build the optional cycle-timebox warning payload for the guarded
-    # development entry when elapsed >= 80% of the configured duration.
-    _warning_data = None
-    if cycle_total_elapsed is not None:
-        _warning_data = cycle_timebox_warning(
-            state,
-            effect.phase,
-            policy=policy_bundle.pipeline,
-            routing_timing=RoutingTiming(
-                total_elapsed_seconds=cycle_total_elapsed,
-            ),
-        )
-    if _warning_data is not None:
-        _raw_elapsed = _warning_data.get("elapsed_seconds", 0.0)
-        _raw_duration = _warning_data.get("duration_seconds", 0.0)
-        _elapsed = float(_raw_elapsed) if isinstance(_raw_elapsed, (int, float)) else 0.0
-        _duration = float(_raw_duration) if isinstance(_raw_duration, (int, float)) else 0.0
-        _pct = (_elapsed / _duration * 100.0) if _duration > 0 else 0.0
+    timebox = policy_bundle.pipeline.cycle_timebox
+    if (
+        timebox is not None
+        and cycle_total_elapsed is not None
+        and state.cycle_timebox_active
+        and effect.phase == timebox.guarded_entry
+        and timebox.warning_threshold_seconds <= cycle_total_elapsed < timebox.duration_seconds
+    ):
         logger.warning(
-            "cycle-timebox warning: {:.0f}s consumed of {:.0f}s budget "
-            "({:.0f}% elapsed) on phase {!r}",
-            _elapsed,
-            _duration,
-            _pct,
+            "cycle-timebox warning: {:.0f}s consumed of {:.0f}s budget ({:.0f}% elapsed) on phase {!r}",
+            cycle_total_elapsed,
+            timebox.duration_seconds,
+            cycle_total_elapsed / timebox.duration_seconds * 100.0,
             effect.phase,
         )
     _mat = materialize_fn or materialize_prompt_for_phase
@@ -535,13 +442,11 @@ def _materialize_agent_prompt_if_needed(
             )
         ),
         multimodal_entries=media_entries,
-        cycle_timebox_warning=_warning_data,
     )
 
 
 materialize_prepared_prompt = _materialize_prepared_prompt
 materialize_agent_prompt_if_needed = _materialize_agent_prompt_if_needed
 publish_cycle_deadline_env = _publish_cycle_deadline_env
-cycle_timebox_warning_from_env = _cycle_timebox_warning_from_env
 withdraw_cycle_deadline_env = _withdraw_cycle_deadline_env
 prompt_session_drain_for_phase = _prompt_session_drain_for_phase

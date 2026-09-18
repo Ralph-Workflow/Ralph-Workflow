@@ -9,6 +9,7 @@ not inside a guarded cycle.
 
 from __future__ import annotations
 
+import inspect
 import os
 import time
 from functools import lru_cache
@@ -18,14 +19,12 @@ from unittest.mock import MagicMock
 
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
-    CYCLE_DURATION_SECONDS_ENV,
-    CYCLE_FINALIZATION_TARGET_ENV,
     CYCLE_WARN_EPOCH_ENV,
 )
+from ralph.mcp.server._mcp_server import McpServer
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.prompt_prep import cycle_timebox_warning_from_env
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
@@ -35,9 +34,8 @@ if TYPE_CHECKING:
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 _ELAPSED_SECONDS = 3600.0
-# Bundled budget is 7200s with the warning derived at 80% (5760s).
-_EXPECTED_SECONDS_TO_WARNING = 2160.0
-_EXPECTED_WARNING_TO_DEADLINE = 1440.0
+_EXPECTED_SECONDS_TO_WARNING = 25200.0
+_EXPECTED_WARNING_TO_DEADLINE = 7200.0
 _CLOCK_TOLERANCE_SECONDS = 30.0
 
 
@@ -47,9 +45,13 @@ def _bundle() -> object:
     return load_policy(_DEFAULTS_DIR)
 
 
+def test_cycle_deadline_regression_mcp_server_has_no_notice_provider() -> None:
+    assert "cycle_deadline_provider" not in inspect.signature(McpServer).parameters
+
+
 def _reserve_env(monkeypatch: MonkeyPatch) -> None:
     """Register the published names with monkeypatch so the test restores them."""
-    for name in (CYCLE_WARN_EPOCH_ENV, CYCLE_DEADLINE_EPOCH_ENV, CYCLE_FINALIZATION_TARGET_ENV):
+    for name in (CYCLE_WARN_EPOCH_ENV, CYCLE_DEADLINE_EPOCH_ENV):
         monkeypatch.setenv(name, "stale-value")
 
 
@@ -102,7 +104,6 @@ def test_guarded_invocation_publishes_warning_and_deadline_epochs(
         abs((deadline_epoch - warn_epoch) - _EXPECTED_WARNING_TO_DEADLINE)
         < _CLOCK_TOLERANCE_SECONDS
     )
-    assert os.environ[CYCLE_FINALIZATION_TARGET_ENV] == "development_final_commit_cleanup"
 
 
 def test_invocation_outside_a_cycle_withdraws_a_stale_deadline(
@@ -116,7 +117,6 @@ def test_invocation_outside_a_cycle_withdraws_a_stale_deadline(
 
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
-    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
 
 
 def test_deadline_is_withdrawn_once_the_cycle_concludes(
@@ -127,10 +127,10 @@ def test_deadline_is_withdrawn_once_the_cycle_concludes(
     state = PipelineState(
         phase="development_final_commit_cleanup",
         cycle_timebox_active=False,
-        cycle_timebox_consumed_seconds=7200.0,
+        cycle_timebox_consumed_seconds=36000.0,
     )
 
-    _materialize("development_final_commit_cleanup", state, tmp_path, cycle_total_elapsed=7200.0)
+    _materialize("development_final_commit_cleanup", state, tmp_path, cycle_total_elapsed=36000.0)
 
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
 
@@ -150,7 +150,6 @@ def test_untimed_invocation_withdraws_the_deadline(
 
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
-    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
 
 
 def test_publication_is_withdrawn_once_the_invocation_returns(
@@ -176,7 +175,6 @@ def test_publication_is_withdrawn_once_the_invocation_returns(
 
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
-    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
 
 
 def test_publish_then_withdraw_across_two_invocations(
@@ -210,7 +208,6 @@ def test_publish_then_withdraw_across_two_invocations(
 
     assert CYCLE_WARN_EPOCH_ENV not in os.environ
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
-    assert CYCLE_FINALIZATION_TARGET_ENV not in os.environ
 
 
 def test_fan_out_publishes_the_deadline_for_its_workers(
@@ -232,7 +229,6 @@ def test_fan_out_publishes_the_deadline_for_its_workers(
     runner_module.publish_cycle_deadline_env(state, "development", _bundle(), _ELAPSED_SECONDS)
 
     assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
-    assert os.environ[CYCLE_FINALIZATION_TARGET_ENV] == "development_final_commit_cleanup"
 
 
 def test_fan_out_withdraws_a_stale_deadline_when_no_cycle_runs(
@@ -301,35 +297,6 @@ def test_finalizing_an_agent_invocation_keeps_the_deadline_readable(
     assert state.phase == "development"
 
 
-def test_the_published_deadline_round_trips_into_a_worker_warning(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """Producer and consumer must agree, not just each match a hand-built dict.
-
-    The worker rebuilds its warning from what the pipeline published, so a
-    missing or renamed published value silently leaves every fan-out worker
-    unwarned.
-    """
-    _reserve_env(monkeypatch)
-    # 80% of the bundled 7200s budget has elapsed: the warning point is now.
-    _materialize(
-        "development",
-        PipelineState(
-            phase="development",
-            cycle_timebox_active=True,
-            cycle_timebox_consumed_seconds=5760.0,
-        ),
-        tmp_path,
-        cycle_total_elapsed=5760.0,
-    )
-
-    warning = cycle_timebox_warning_from_env(os.environ, now_epoch=time.time())
-
-    assert warning is not None
-    assert warning["duration_seconds"] == 7200.0
-    assert 1380.0 <= float(str(warning["remaining_seconds"])) <= 1440.0
-
-
 def test_withdrawing_clears_every_published_name(monkeypatch: MonkeyPatch) -> None:
     """A partial withdrawal is worse than none: consumers read a mixed deadline.
 
@@ -347,8 +314,6 @@ def test_withdrawing_clears_every_published_name(monkeypatch: MonkeyPatch) -> No
     for name in (
         CYCLE_WARN_EPOCH_ENV,
         CYCLE_DEADLINE_EPOCH_ENV,
-        CYCLE_FINALIZATION_TARGET_ENV,
-        CYCLE_DURATION_SECONDS_ENV,
     ):
         assert name not in os.environ
 
@@ -366,16 +331,9 @@ def _publish_a_guarded_deadline() -> None:
     )
 
 
-def test_the_warning_reaches_the_prompt_materializer(
+def test_cycle_deadline_regression_does_not_reach_the_prompt_materializer(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Publishing the deadline is not the same as warning the agent.
-
-    The prompt's own warning is a separate argument handed to the materializer,
-    and every test here injected a materializer that discarded it — so the
-    argument could be replaced with None, silencing the development prompt,
-    with this whole file still green.
-    """
     _reserve_env(monkeypatch)
     captured: dict[str, object] = {}
     workspace = FsWorkspace(tmp_path)
@@ -387,7 +345,6 @@ def test_the_warning_reaches_the_prompt_materializer(
         captured.update(kwargs)
         return "fake-prompt.md"
 
-    # 80% of the bundled 7200s budget has elapsed: the warning point is now.
     runner_module.materialize_agent_prompt_if_needed(
         InvokeAgentEffect(
             agent_name="claude",
@@ -399,28 +356,21 @@ def test_the_warning_reaches_the_prompt_materializer(
         PipelineState(
             phase="development",
             cycle_timebox_active=True,
-            cycle_timebox_consumed_seconds=5760.0,
+            cycle_timebox_consumed_seconds=28800.0,
         ),
         workspace,
         _bundle(),
         registry,
         materialize_fn=_capture,
-        cycle_total_elapsed=5760.0,
+        cycle_total_elapsed=28800.0,
     )
 
-    warning = captured["cycle_timebox_warning"]
-    assert warning is not None
-    assert warning["finalization_target"] == "development_final_commit_cleanup"
+    assert "cycle_timebox_warning" not in captured
 
 
-def test_the_prepared_prompt_path_also_warns(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """The second prompt path must warn too, and only one of them was pinned.
-
-    A `PreparePromptEffect` re-prompt renders through a different call site
-    than an agent invocation. Its warning argument could be replaced with None
-    — silencing every re-prompted development agent inside a warned cycle —
-    with the invocation path's coverage still green.
-    """
+def test_prepared_prompt_regression_does_not_receive_a_cycle_timebox_warning(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
     from ralph.pipeline.effects import PreparePromptEffect
     from ralph.pipeline.prompt_prep import materialize_prepared_prompt
     from ralph.workspace.scope import WorkspaceScope
@@ -437,18 +387,15 @@ def test_the_prepared_prompt_path_also_warns(tmp_path: Path, monkeypatch: Monkey
         bundle.artifacts,
         WorkspaceScope(tmp_path),
         agents_policy=bundle.agents,
-        # 80% of the bundled 7200s budget is spent: the warning point is now.
         state=PipelineState(
             phase="development",
             cycle_timebox_active=True,
-            cycle_timebox_consumed_seconds=5760.0,
+            cycle_timebox_consumed_seconds=28800.0,
         ),
         materialize_fn=lambda **kwargs: captured.update(kwargs) or "fake-prompt.md",
     )
 
-    warning = captured["cycle_timebox_warning"]
-    assert warning is not None
-    assert warning["finalization_target"] == "development_final_commit_cleanup"
+    assert "cycle_timebox_warning" not in captured
 
 
 def test_the_fan_out_phase_publishes_before_spawning_its_workers(
@@ -539,10 +486,10 @@ def test_the_warning_point_is_announced_to_the_operator(
             PipelineState(
                 phase="development",
                 cycle_timebox_active=True,
-                cycle_timebox_consumed_seconds=5760.0,
+                cycle_timebox_consumed_seconds=28800.0,
             ),
             tmp_path,
-            cycle_total_elapsed=5760.0,
+            cycle_total_elapsed=28800.0,
         )
     finally:
         logger.remove(sink_id)

@@ -150,8 +150,8 @@ class TestRenderExplanationText:
         assert exp.cycle_timebox is not None
         text = render_explanation_text(exp)
         assert "CYCLE TIMEBOX POLICY" in text
-        assert "7200s" in text
-        assert "5760s" in text
+        assert "36000s" in text
+        assert "28800s" in text
         assert "planning_analysis -> development" in text
         assert "development_final_commit_cleanup" in text
         # The outcome a redirected cycle is finalized with decides whether the

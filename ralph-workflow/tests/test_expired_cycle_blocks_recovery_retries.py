@@ -22,7 +22,7 @@ from ralph.policy.loader import load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-_SPENT = 7300.0
+_SPENT = 36001.0
 _TARGET = "development_final_commit_cleanup"
 
 
