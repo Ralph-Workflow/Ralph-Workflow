@@ -71,22 +71,13 @@ class AgyMcpConfigLockTimeoutError(McpConfigOverlayLockTimeoutError):
     """The AGY global-MCP-config advisory lock could not be acquired in time.
 
     Raised fail-closed by :func:`agy_workspace_mcp_endpoint` when another
-    process holds the overlay lock past ``_AGY_CONFIG_LOCK_TIMEOUT_SECONDS``.
+    process holds the overlay lock past the caller's bounded session-lifetime budget.
     The run surfaces the timeout as a launch failure instead of racing the
     holder's write/restore steps and corrupting the shared config. It
     specialises the shared
     :class:`~ralph.mcp.transport.config_overlay.McpConfigOverlayLockTimeoutError`
     so callers may catch either the AGY-specific or the shared name.
     """
-
-
-#: Bounded acquisition budget for the cross-process advisory lock. An
-#: AGY overlay transaction is milliseconds long, so 10 s is far beyond
-#: legitimate holder time while still failing closed fast enough that a
-#: hung or crashed holder surfaces as an actionable launch error rather
-#: than an unbounded stall. Read at call time so a test can shrink the
-#: budget by assigning this module attribute.
-_AGY_CONFIG_LOCK_TIMEOUT_SECONDS = 10.0
 
 
 def _agy_global_config_path() -> Path:
@@ -139,7 +130,11 @@ def agy_mcp_config(endpoint: str) -> str:
 
 @contextmanager
 def agy_workspace_mcp_endpoint(
-    workspace_path: Path, endpoint: str, *, unsafe_mode: bool = False
+    workspace_path: Path,
+    endpoint: str,
+    *,
+    unsafe_mode: bool = False,
+    lock_timeout_seconds: float = 10.0,
 ) -> Iterator[None]:
     """Write a run-scoped Ralph MCP config to AGY's global paths and restore them after exit.
 
@@ -166,10 +161,11 @@ def agy_workspace_mcp_endpoint(
     read-stage-write/restore transactions instead of interleaving them.
     Both the original-bytes read and the restore happen INSIDE the
     critical section, so a racing process cannot observe a torn write or
-    clobber a sibling's restore step. The advisory lock is bounded
-    (``_AGY_CONFIG_LOCK_TIMEOUT_SECONDS``) and fails closed with
-    :class:`AgyMcpConfigLockTimeoutError` rather than hanging the launch
-    path; the config writes themselves stay atomic via ``os.replace``.
+    clobber a sibling's restore step. A healthy holder owns the overlay for
+    its complete agent session. The caller therefore supplies a finite wait
+    budget covering that session lifetime plus restoration, after which the
+    advisory lock fails closed with :class:`AgyMcpConfigLockTimeoutError`;
+    the config writes themselves stay atomic via ``os.replace``.
     """
     config_paths = (_agy_global_config_path(), _agy_secondary_config_path())
     lock_path = mcp_config_lock_path(config_paths[0])
@@ -177,7 +173,7 @@ def agy_workspace_mcp_endpoint(
     try:
         with mcp_config_overlay_lock(
             lock_path,
-            timeout_seconds=_AGY_CONFIG_LOCK_TIMEOUT_SECONDS,
+            timeout_seconds=lock_timeout_seconds,
             error_type=AgyMcpConfigLockTimeoutError,
         ):
             for path in config_paths:

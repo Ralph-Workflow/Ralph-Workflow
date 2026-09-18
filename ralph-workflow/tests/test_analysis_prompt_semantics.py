@@ -65,26 +65,27 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         assert required in source, (template_name, required)
 
 
-def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submission() -> None:
-    for template_name in (
-        "planning_analysis",
-        "development_analysis",
-        "policy_remediation_analysis",
+@pytest.mark.parametrize(
+    "template_name",
+    ("planning_analysis", "development_analysis", "policy_remediation_analysis"),
+)
+def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submission(
+    template_name: str,
+) -> None:
+    rendered = _render_verifier(template_name)
+    contract_start = rendered.index("## Criteria and verdicts")
+    final_action = rendered.index("## Decision artifact")
+    assert contract_start < final_action
+    for required in (
+        "Expected observation",
+        "`met`, `not met`, or `not evaluable`",
+        "implementer summary, rationale, or completion claim",
+        "no counterexample found",
+        "Correctness outranks a passing proxy",
+        "do not propose remedies",
+        "Report only material, localized findings",
     ):
-        rendered = _render_verifier(template_name)
-        contract_start = rendered.index("## Criteria and verdicts")
-        final_action = rendered.index("## Decision artifact")
-        assert contract_start < final_action
-        for required in (
-            "Expected observation",
-            "`met`, `not met`, or `not evaluable`",
-            "implementer summary, rationale, or completion claim",
-            "no counterexample found",
-            "Correctness outranks a passing proxy",
-            "do not propose remedies",
-            "Report only material, localized findings",
-        ):
-            assert required in rendered[contract_start:final_action], (template_name, required)
+        assert required in rendered[contract_start:final_action], (template_name, required)
 
 
 def test_planning_and_development_share_the_verification_only_procedure() -> None:

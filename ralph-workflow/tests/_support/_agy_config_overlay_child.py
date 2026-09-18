@@ -8,7 +8,7 @@ Invoked as::
 
 The child monkeypatches AGY's two global config paths to the supplied
 temporary paths, shrinks the advisory-lock budget to ``timeout_seconds``,
-opens :func:`ralph.mcp.transport.agy.agy_workspace_mcp_endpoint`, prints
+passes that budget to :func:`ralph.mcp.transport.agy.agy_workspace_mcp_endpoint`, prints
 ``STAGED`` once the Ralph endpoint is provably staged, holds the overlay
 for ``hold_seconds``, then exits. A child that cannot acquire the
 cross-process lock inside the deadline prints ``LOCK_TIMEOUT`` and exits
@@ -64,14 +64,13 @@ def main() -> int:
 
     agy_transport._agy_global_config_path = lambda: primary
     agy_transport._agy_secondary_config_path = lambda: secondary
-    # Shrink the lock budget so the contending case resolves quickly. The
-    # endpoint's context manager rebinds this module attribute at call
-    # time, so assigning it here changes the effective deadline.
-    agy_transport._AGY_CONFIG_LOCK_TIMEOUT_SECONDS = timeout_seconds
-
     workspace = primary.parent.parent
     try:
-        with agy_transport.agy_workspace_mcp_endpoint(workspace, "http://127.0.0.1:9/mcp"):
+        with agy_transport.agy_workspace_mcp_endpoint(
+            workspace,
+            "http://127.0.0.1:9/mcp",
+            lock_timeout_seconds=timeout_seconds,
+        ):
             # While inside the overlay the Ralph endpoint MUST be staged.
             staged = json.loads(primary.read_text(encoding="utf-8"))
             assert "ralph" in staged.get("mcpServers", {}), staged

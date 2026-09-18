@@ -103,10 +103,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         relative_path = item.path.relative_to(Path.cwd()).as_posix()
         if relative_path in _REQUIRED_AUTO_INTEGRATE_E2E_PATHS:
             item.add_marker("required_auto_integrate_e2e")
-        # AGY regression coverage is intentionally an explicit smoke profile.
-        # Node IDs cover AGY-only modules and mixed-module AGY parametrizations
-        # without excluding the non-AGY cases in those mixed modules.
-        if "agy" in item.nodeid.casefold():
+        # Most AGY regression coverage is an explicit smoke profile. The
+        # sub-second in-memory PTY invocation module remains in the default
+        # suite so launch-policy regressions cannot hide behind an opt-in gate.
+        if (
+            "agy" in item.nodeid.casefold()
+            and relative_path != "tests/test_agy_pty_invocation.py"
+        ):
             item.add_marker("smoke")
 
 
