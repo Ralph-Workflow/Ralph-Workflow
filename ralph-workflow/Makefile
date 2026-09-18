@@ -202,8 +202,8 @@ test-install-make-smoke:
 # file the regular profile deliberately skips.
 #
 # The smoke tests are I/O-bound (each spawns a stub subprocess).
-# One xdist worker per independent offline harness row minimizes the
-# budget-critical smoke tail on the maintained 40-core verification host.
+# Eight xdist workers cover the independent offline harness rows without
+# oversubscribing the host after the default profile's shard fan-out.
 #
 # wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
 # here -- its ~1 s of Python import / arg-parse startup is pure overhead
@@ -212,7 +212,7 @@ test-install-make-smoke:
 # the suite-level cap is provided by the verify runner's cumulative
 # tracker.
 test-multimodal-smoke:
-	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 15 --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 8 --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,

@@ -238,8 +238,8 @@ def _load_upstreams_for_agent(
     servers strict mode had learned to find.
 
     For claude/agy/nanocoder: if current_config already contains a populated
-    "mcpServers" dict with non-ralph servers (from a prior merge by e.g.
-    build_nanocoder_mcp_config or agy_workspace_mcp_endpoint), use those
+    "mcpServers" dict with non-ralph servers (from a prior merge by a native
+    runtime resolver or build_nanocoder_mcp_config), use those
     directly instead of re-loading from disk. This preserves pre-merged env
     servers that would otherwise be lost when the caller passes a
     workspace_path but the file-based loader would only see file servers.

@@ -2657,13 +2657,6 @@ ralph.mcp.transport.kimi
    :members:
    :show-inheritance:
 
-ralph.mcp.transport.config_overlay
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.transport.config_overlay
-   :members:
-   :show-inheritance:
-
 ralph.mcp.upstream
 ~~~~~~~~~~~~~~~~~~
 

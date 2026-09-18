@@ -346,7 +346,7 @@ above from reaching and recording their real result.
 entry in `~/.gemini/antigravity-cli/mcp_config.json` (noted as a risk in
 the plan before this pass started) was still present after every run in
 this pass, restored to the same dirty pre-run bytes each time (confirmed:
-`agy_workspace_mcp_endpoint`'s restore-on-exit ran correctly and restored
+the then-current run-scoped config restoration completed correctly and restored
 exactly what it read at start; the underlying staleness predates this
 session and was not chased further here, since the write behaviour it
 restores is provably correct in isolation -- see

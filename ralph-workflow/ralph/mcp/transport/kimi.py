@@ -49,51 +49,22 @@ upstream merge flow (``merge_existing_upstreams``), and writes the
 merged config to the user-global path always (no trust gate) plus the
 workspace path only when it already exists.
 
-The write/restore protocol is the shared one in
-``ralph/mcp/transport/config_overlay.py``: a process-local
-``threading.Lock`` for sibling threads, a bounded cross-process advisory
-lock for sibling PROCESSES, a durable ``mcp.json.ralph-backup`` record
-written before the overwrite so a killed run self-heals on the next
-invocation, and an atomic ``Path.replace`` that keeps every publication
-torn-write-safe.
+Each invocation publishes its merged run-scoped configuration under a
+private ``KIMI_CODE_HOME`` selected by the runtime resolver, so concurrent
+sessions never mutate workspace or operator configuration.
 """
 
 from __future__ import annotations
 
 import json
-import threading
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
 from ralph.config._agent_overrides import agent_environment_value
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
-from ralph.mcp.transport.config_overlay import (
-    mcp_config_lock_path,
-    mcp_config_overlay_lock,
-    reclaim_config_overlay,
-    restore_config_overlay,
-    stage_config_overlay,
-)
+from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
-
-# Process-local lock that serialises concurrent invocations of
-# :func:`kimi_workspace_mcp_endpoint` so two sibling Kimi sessions IN
-# THIS PROCESS cannot interleave their read/write/restore steps on the
-# global MCP config file.  Cross-process contention is handled by the
-# bounded advisory lock below; both layers are needed because the
-# advisory lock serialises processes while the threading lock keeps the
-# retry loop from racing two threads in this process against one
-# lock-file handle.  See the context manager's docstring for the full
-# concurrency contract.
-_kimi_mcp_lock = threading.Lock()
-
-#: Bounded acquisition budget for the cross-process advisory lock that
-#: guards Kimi Code's user-global MCP config.  Read at call time so a
-#: test can shrink the budget by assigning this module attribute.
-_KIMI_CONFIG_LOCK_TIMEOUT_SECONDS = 10.0
 
 
 def _kimi_global_config_path() -> Path:
@@ -181,74 +152,6 @@ def _kimi_write_target_paths(workspace_path: Path | None) -> tuple[Path, ...]:
     return tuple(targets)
 
 
-@contextmanager
-def kimi_workspace_mcp_endpoint(
-    workspace_path: Path, endpoint: str, *, unsafe_mode: bool = False
-) -> Iterator[None]:
-    """Write a run-scoped Ralph MCP config to Kimi Code's paths and restore them on exit.
-
-    Writes the merged config (Ralph entry + merged upstream servers in
-    ``unsafe_mode``) to the user-global ``$KIMI_CODE_HOME/mcp.json``
-    ALWAYS (no trust gate) and to the workspace-local
-    ``.kimi-code/mcp.json`` ONLY when that file already exists -- headless
-    ``kimi -p`` silently ignores project-level MCP config in untrusted
-    folders, so a newly created workspace file would never be honored.
-    On exit the original bytes are restored on each path that was
-    modified.
-
-    Crash recovery: each overwrite is preceded by a durable
-    ``<name>.ralph-backup`` record, and every transaction begins by
-    reclaiming a record an earlier run was killed before it could apply
-    (:func:`ralph.mcp.transport.config_overlay.reclaim_config_overlay`).
-    An operator whose machine died mid-run gets their own MCP servers back
-    on the next invocation instead of a permanently Ralph-only config file
-    pointing at a dead port.  The reclaim runs BEFORE the snapshot, so this
-    run also cannot mistake an abandoned overlay for the operator's config.
-
-    Concurrency safety: callers are serialised by TWO layers -- a
-    process-local :class:`threading.Lock` for sibling threads, and the
-    bounded cross-process advisory lock in
-    :mod:`ralph.mcp.transport.config_overlay` so two INDEPENDENT Ralph
-    processes cannot interleave their snapshot/write/restore steps on the
-    shared user-global file.  Both the original-bytes read and the restore
-    happen INSIDE the critical section.  The advisory lock is bounded
-    (``_KIMI_CONFIG_LOCK_TIMEOUT_SECONDS``) and fails closed with
-    :class:`~ralph.mcp.transport.config_overlay.McpConfigOverlayLockTimeoutError`
-    rather than hanging the launch path.
-    """
-    lock_path = mcp_config_lock_path(_kimi_global_config_path())
-    _kimi_mcp_lock.acquire()
-    try:
-        with mcp_config_overlay_lock(lock_path, timeout_seconds=_KIMI_CONFIG_LOCK_TIMEOUT_SECONDS):
-            # Reclaim before resolving the write targets: an abandoned
-            # overlay is undone first so the target set and the snapshot
-            # both reflect the operator's own config, not the corpse a
-            # killed run left behind.
-            for config_path in _kimi_paths_to_consider(workspace_path):
-                reclaim_config_overlay(config_path)
-            write_targets = _kimi_write_target_paths(workspace_path)
-
-            current_config: dict[str, object] = {
-                "mcpServers": {RALPH_MCP_SERVER_NAME: {"url": endpoint}},
-                "workspace_path": workspace_path,
-            }
-            merged_config = merge_existing_upstreams(
-                "kimi", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
-            )
-            config_payload = json.dumps(merged_config, indent=2).encode("utf-8")
-            original_bytes_by_path = {
-                config_path: stage_config_overlay(config_path, config_payload)
-                for config_path in write_targets
-            }
-            try:
-                yield
-            finally:
-                for config_path in write_targets:
-                    restore_config_overlay(config_path, original_bytes_by_path[config_path])
-    finally:
-        _kimi_mcp_lock.release()
-
-
 def _normalize_kimi_server_entry(name: str, entry: object) -> tuple[str, object] | None:
     """Normalize a Kimi Code server entry to Ralph's expected format.
 
@@ -297,6 +200,5 @@ def load_existing_kimi_upstream_servers(
 
 __all__ = [
     "kimi_mcp_config",
-    "kimi_workspace_mcp_endpoint",
     "load_existing_kimi_upstream_servers",
 ]

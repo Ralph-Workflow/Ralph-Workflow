@@ -179,8 +179,8 @@ def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
     """The budget-tracked smoke suite runs independent harness rows concurrently."""
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    # One worker per independent row minimizes the budget-critical smoke tail.
-    assert "-n 15 --dist worksteal" in body[0]
+    # Eight workers avoid oversubscribing the host while keeping rows concurrent.
+    assert "-n 8 --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

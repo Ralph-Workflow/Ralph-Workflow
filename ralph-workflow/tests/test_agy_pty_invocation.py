@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -223,9 +222,6 @@ def test_agy_invoke_completes_when_completion_signal_present(
     def fake_get_process_manager() -> _FakeProcessManager:
         return _FakeProcessManager()
 
-    def fake_agy_workspace_mcp_endpoint(*_args: object, **_kwargs: object) -> object:
-        return contextlib.nullcontext()
-
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_runner.get_process_manager",
         fake_get_process_manager,
@@ -241,10 +237,6 @@ def test_agy_invoke_completes_when_completion_signal_present(
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_runner.check_process_result",
         fakecheck_process_result,
-    )
-    monkeypatch.setattr(
-        "ralph.agents.invoke.agy_workspace_mcp_endpoint",
-        fake_agy_workspace_mcp_endpoint,
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",

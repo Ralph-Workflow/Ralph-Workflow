@@ -136,10 +136,7 @@ from ralph.mcp.tool_contract import canonicalize_tool_names
 from ralph.mcp.tools.names import (
     claude_tool_name,
 )
-from ralph.mcp.transport.agy import (
-    agy_workspace_mcp_endpoint,
-    load_existing_agy_upstream_servers,
-)
+from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import (
@@ -831,7 +828,6 @@ __all__ = [
     "WatchdogFireReason",
     "WorkspaceMonitor",
     "_parent_broker_secret",
-    "agy_workspace_mcp_endpoint",
     "bounded_output_lines",
     "build_command",
     "build_invoke_options_from_config",

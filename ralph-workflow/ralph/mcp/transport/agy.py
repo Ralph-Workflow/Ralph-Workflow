@@ -35,50 +35,16 @@ endpoint using AGY's serverUrl field.
 from __future__ import annotations
 
 import json
-import threading
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
-from ralph.mcp.transport.config_overlay import (
-    McpConfigOverlayLockTimeoutError,
-    mcp_config_lock_path,
-    mcp_config_overlay_lock,
-    reclaim_config_overlay,
-    restore_config_overlay,
-    stage_config_overlay,
-)
+from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 # AGY home config directory name within its default config root
 _AGY_HOME_SUBDIR = "antigravity-cli"
-
-# Process-local lock that serialises concurrent invocations of
-# :func:`agy_workspace_mcp_endpoint` so two sibling AGY sessions IN THIS
-# PROCESS cannot interleave their read/write/restore steps on the global
-# MCP config file. Cross-process contention is handled by the bounded
-# advisory lock in :mod:`ralph.mcp.transport.config_overlay`; both layers
-# are needed because ``flock`` serialises processes while the threading
-# lock keeps the flock retry loop from racing two threads in the same
-# process against one lock-file handle.
-_agy_mcp_lock = threading.Lock()
-
-
-class AgyMcpConfigLockTimeoutError(McpConfigOverlayLockTimeoutError):
-    """The AGY global-MCP-config advisory lock could not be acquired in time.
-
-    Raised fail-closed by :func:`agy_workspace_mcp_endpoint` when another
-    process holds the overlay lock past the caller's bounded session-lifetime budget.
-    The run surfaces the timeout as a launch failure instead of racing the
-    holder's write/restore steps and corrupting the shared config. It
-    specialises the shared
-    :class:`~ralph.mcp.transport.config_overlay.McpConfigOverlayLockTimeoutError`
-    so callers may catch either the AGY-specific or the shared name.
-    """
-
 
 def _agy_global_config_path() -> Path:
     """Return AGY's legacy global MCP config path.
@@ -126,77 +92,6 @@ def agy_mcp_config(endpoint: str) -> str:
         }
     }
     return json.dumps(config_payload, separators=(",", ":"))
-
-
-@contextmanager
-def agy_workspace_mcp_endpoint(
-    workspace_path: Path,
-    endpoint: str,
-    *,
-    unsafe_mode: bool = False,
-    lock_timeout_seconds: float = 10.0,
-) -> Iterator[None]:
-    """Write a run-scoped Ralph MCP config to AGY's global paths and restore them after exit.
-
-    Writes the identical merged payload to both
-    :func:`_agy_global_config_path` and :func:`_agy_secondary_config_path`
-    (module docstring: live dispatch needs the second path; some other
-    AGY-side consumer may still read the first) and restores each
-    independently on exit.
-
-    Crash recovery: each overwrite is preceded by a durable
-    ``<name>.ralph-backup`` record, and every transaction begins by
-    reclaiming a record an earlier run was killed before it could apply
-    (:func:`ralph.mcp.transport.config_overlay.reclaim_config_overlay`).
-    An operator whose machine died mid-run gets their own MCP servers back
-    on the next invocation instead of a permanently Ralph-only config file
-    pointing at a dead port. The reclaim runs BEFORE the snapshot, so this
-    run also cannot mistake an abandoned overlay for the operator's config.
-
-    Concurrency safety: this context manager serialises concurrent callers
-    with TWO layers: a process-local :class:`threading.Lock` for sibling
-    threads in this process, and the bounded cross-process advisory lock
-    in :mod:`ralph.mcp.transport.config_overlay` so two INDEPENDENT Ralph
-    processes racing the same global config files serialize their
-    read-stage-write/restore transactions instead of interleaving them.
-    Both the original-bytes read and the restore happen INSIDE the
-    critical section, so a racing process cannot observe a torn write or
-    clobber a sibling's restore step. A healthy holder owns the overlay for
-    its complete agent session. The caller therefore supplies a finite wait
-    budget covering that session lifetime plus restoration, after which the
-    advisory lock fails closed with :class:`AgyMcpConfigLockTimeoutError`;
-    the config writes themselves stay atomic via ``os.replace``.
-    """
-    config_paths = (_agy_global_config_path(), _agy_secondary_config_path())
-    lock_path = mcp_config_lock_path(config_paths[0])
-    _agy_mcp_lock.acquire()
-    try:
-        with mcp_config_overlay_lock(
-            lock_path,
-            timeout_seconds=lock_timeout_seconds,
-            error_type=AgyMcpConfigLockTimeoutError,
-        ):
-            for path in config_paths:
-                reclaim_config_overlay(path)
-
-            current_config: dict[str, object] = {
-                "mcpServers": {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}},
-                "workspace_path": workspace_path,
-            }
-            merged_config = merge_existing_upstreams(
-                "agy", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
-            )
-            config_payload = json.dumps(merged_config, indent=2).encode("utf-8")
-            original_bytes_by_path = {
-                path: stage_config_overlay(path, config_payload) for path in config_paths
-            }
-            try:
-                yield
-            finally:
-                for path in config_paths:
-                    restore_config_overlay(path, original_bytes_by_path[path])
-    finally:
-        _agy_mcp_lock.release()
 
 
 def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] | None:
@@ -262,8 +157,6 @@ def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
 
 
 __all__ = [
-    "AgyMcpConfigLockTimeoutError",
     "agy_mcp_config",
-    "agy_workspace_mcp_endpoint",
     "load_existing_agy_upstream_servers",
 ]
