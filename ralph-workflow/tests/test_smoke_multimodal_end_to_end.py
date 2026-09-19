@@ -268,7 +268,7 @@ def _end_to_end_test_for_harness(
             cursor_config_home = workspace / ".xdg-config"
             cursor_auth_path = cursor_config_home / "cursor" / "auth.json"
             cursor_auth_path.parent.mkdir(parents=True)
-            cursor_auth_path.write_text("credential", encoding="utf-8")
+            cursor_auth_path.write_text('{"token":"credential"}', encoding="utf-8")
             monkeypatch.setenv("HOME", str(cursor_home))
             monkeypatch.setenv("XDG_CONFIG_HOME", str(cursor_config_home))
         elif cursor_credential == "missing":

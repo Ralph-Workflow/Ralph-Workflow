@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -196,7 +197,7 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
     else:
         auth_path = operator_config / "cursor" / "auth.json"
         auth_path.parent.mkdir(parents=True)
-        auth_path.write_text("{}", encoding="utf-8")
+        auth_path.write_text('{"token":"non-empty-value"}', encoding="utf-8")
 
     captured_env: dict[str, str] = {}
 
@@ -251,6 +252,61 @@ def test_cursor_invocation_without_credentials_fails_before_spawn(
     assert excinfo.value.env_var == "CURSOR_API_KEY"
     assert excinfo.value.stderr.startswith("CURSOR_API_KEY")
     assert "file-backed Cursor login" in excinfo.value.stderr
+
+
+@mark.parametrize("auth_payload", ["{}", '{"invalid":true}', "not json"])
+def test_cursor_invocation_with_unusable_auth_fails_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth_payload: str
+) -> None:
+    """S-3: empty and wrong-schema logins never launch Cursor."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("task", encoding="utf-8")
+    operator_home = tmp_path / "operator-home"
+    operator_config = operator_home / ".config"
+    auth_path = operator_config / "cursor" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text(auth_payload, encoding="utf-8")
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(operator_config))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.run_subprocess_and_read_lines",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not spawn")),
+    )
+
+    with raises(MissingCredentialsError):
+        list(
+            invoke_agent(
+                AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+            )
+        )
+
+
+def test_cursor_parallel_worker_environment_cannot_restore_keychain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-4: a worker inherits hostile ambient env but its Cursor child cannot."""
+    monkeypatch.setenv("HOME", str(tmp_path / "operator-home"))
+    monkeypatch.setenv("AGENT_CLI_CREDENTIAL_STORE", "keychain")
+    worker_extra_env = {str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"}
+    worker_env = {**os.environ, **worker_extra_env}
+    runtime = CursorRuntimeResolver().resolve(
+        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+        extra_env=worker_extra_env,
+        workspace_path=tmp_path,
+        base_env=worker_env,
+    )
+
+    try:
+        assert runtime.agent_env is not None
+        assert runtime.agent_env["AGENT_CLI_CREDENTIAL_STORE"] in {"file", "memory"}
+        assert Path(runtime.agent_env["HOME"]) != Path(worker_env["HOME"])
+        assert Path(runtime.agent_env["XDG_CONFIG_HOME"]).parent == Path(runtime.agent_env["HOME"])
+    finally:
+        assert runtime.cleanup is not None
+        runtime.cleanup()
 
 
 def test_cursor_home_mirror_skips_entry_that_vanishes_before_stat(

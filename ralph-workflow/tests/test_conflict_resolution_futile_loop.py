@@ -47,6 +47,11 @@ def _install_seams(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )
+    monkeypatch.setattr(
+        driver_module,
+        "render_conflict_prompt",
+        lambda *, root, **_kwargs: root / "resolution-prompt.md",
+    )
 
 
 def test_transport_loop_detected_is_a_typed_attempt_failure() -> None:

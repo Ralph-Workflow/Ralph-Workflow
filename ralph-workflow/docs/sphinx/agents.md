@@ -18,7 +18,7 @@ own native authentication:
 - **Nanocoder** — local-only TUI, no remote auth
 - **Google Anti Gravity (AGY)** — `agy login` / Google account
 - **Pi** — `pi` provider configuration
-- **Cursor** — Cursor Agent uses `CURSOR_API_KEY` or projected file-backed login. Ralph Workflow gives every invocation a private runtime and coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so it never selects macOS Keychain.
+- **Cursor** — Cursor Agent uses `CURSOR_API_KEY` or a projected file-backed login. Ralph Workflow gives every invocation a private runtime and coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so it never selects macOS Keychain. Missing, empty, and invalid-schema `auth.json` files fail with `MissingCredentialsError` before Cursor starts; run `AGENT_CLI_CREDENTIAL_STORE=file agent login` once or set `CURSOR_API_KEY`.
 
 You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
 Ralph Workflow then calls the agent CLI as-is and supervises the workflow.

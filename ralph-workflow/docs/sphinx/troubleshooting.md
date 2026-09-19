@@ -95,10 +95,10 @@ AGENT_CLI_CREDENTIAL_STORE=file agent login
 ```
 
 This writes `~/.config/cursor/auth.json`, which Ralph Workflow projects into each
-private runtime. Alternatively, set `CURSOR_API_KEY`. If neither source is
-available, Ralph Workflow raises `MissingCredentialsError` before launching Cursor. Re-run
-`ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential
-path.
+private runtime. Alternatively, set `CURSOR_API_KEY`. A missing, empty, or invalid
+schema `auth.json` raises `MissingCredentialsError` before Cursor is spawned, so it
+cannot trigger a Keychain prompt or dialog. Re-run
+`ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential path.
 
 ## AGY transport unavailable on Windows
 
