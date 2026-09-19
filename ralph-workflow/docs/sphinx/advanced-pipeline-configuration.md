@@ -377,6 +377,7 @@ retry_in_session = false
 | `max_retries` | `3` | Maximum retry attempts per phase under this policy. |
 | `retry_delay_ms` | `1000` | Base delay before a retry. |
 | `retry_in_session` | `false` | When `true`, retries stay inside the same agent session; when `false`, each retry starts a fresh session. |
+| `in_session_retry_escalation_limit` | `3` | Consecutive qualifying in-session retries allowed before escalating to an agent failure with standard cooldown and fallover (`[general]` config). |
 
 Use this when you want a single global retry behavior rather than per-phase retry tables.
 

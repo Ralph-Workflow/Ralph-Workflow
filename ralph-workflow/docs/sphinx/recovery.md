@@ -58,6 +58,8 @@ When no agent is selectable, both the normal and skip-same-agent `AGENT_FAILURE`
 
 That is how longer unattended runs stay moving without being pinned to one provider while always preferring the highest-priority agent when available.
 
+For in-session retries, after a configurable number of consecutive qualifying retries (`in_session_retry_escalation_limit`, default 3) for a given phase and agent, the next retry is treated as an agent failure with standard cooldown and fallover to the next eligible agent, preventing endless retry loops with the same agent. Successful completion of the retried work resets the consecutive failure count.
+
 ## Recovery-cycle cap
 
 `[general].max_cycles` limits how many full fallback cycles Ralph Workflow will attempt before stopping.

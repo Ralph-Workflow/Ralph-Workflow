@@ -178,6 +178,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
+| `in_session_retry_escalation_limit` | `3` | Consecutive qualifying in-session retries allowed per phase+agent before the next retry is treated as an agent failure with standard cooldown and fallover; minimum 1; success resets the count. |
 
 ### `[conflict_resolution]`
 
