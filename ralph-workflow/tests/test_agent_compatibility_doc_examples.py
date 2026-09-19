@@ -31,6 +31,7 @@ from ralph.config.ccs_config import CcsConfig
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOC_PATH = REPO_ROOT / "docs" / "sphinx" / "agent-compatibility.md"
 TROUBLESHOOTING_PATH = REPO_ROOT / "docs" / "sphinx" / "troubleshooting.md"
+AGENTS_PATH = REPO_ROOT / "docs" / "sphinx" / "agents.md"
 
 
 def _extract_toml_blocks(markdown: str) -> dict[str, str]:
@@ -244,8 +245,12 @@ def test_ccs_block_matches_real_ccsconfig_schema() -> None:
 
 
 def test_cursor_credential_prose_documents_file_auth_and_keychain_policy() -> None:
-    """S-4: Cursor docs name both auth paths and the no-Keychain store policy."""
-    docs = (DOC_PATH.read_text(encoding="utf-8"), TROUBLESHOOTING_PATH.read_text(encoding="utf-8"))
+    """Cursor docs name both auth paths and the no-Keychain store policy."""
+    docs = (
+        DOC_PATH.read_text(encoding="utf-8"),
+        TROUBLESHOOTING_PATH.read_text(encoding="utf-8"),
+        AGENTS_PATH.read_text(encoding="utf-8"),
+    )
 
     for markdown in docs:
         assert "AGENT_CLI_CREDENTIAL_STORE" in markdown

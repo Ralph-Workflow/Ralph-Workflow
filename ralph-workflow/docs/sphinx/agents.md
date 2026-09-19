@@ -18,7 +18,7 @@ own native authentication:
 - **Nanocoder** — local-only TUI, no remote auth
 - **Google Anti Gravity (AGY)** — `agy login` / Google account
 - **Pi** — `pi` provider configuration
-- **Cursor** — Cursor Agent uses `CURSOR_API_KEY` or a projected file-backed login. Ralph Workflow gives every invocation a private runtime and coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so it never selects macOS Keychain. Missing, empty, and invalid-schema `auth.json` files fail with `MissingCredentialsError` before Cursor starts; run `AGENT_CLI_CREDENTIAL_STORE=file agent login` once or set `CURSOR_API_KEY`.
+- **Cursor** — Cursor Agent uses `CURSOR_API_KEY` or a projected file-backed login at `~/.config/cursor/auth.json` / `~/.cursor/auth.json`. If neither file is valid, Ralph Workflow extracts the logged-in IDE token from local Cursor state into both private file-store paths. Every invocation coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so macOS and Linux never select a Keychain or show an authentication dialog. Missing, empty, and invalid credentials fail with `MissingCredentialsError` before Cursor starts; run `AGENT_CLI_CREDENTIAL_STORE=file agent login` once or set `CURSOR_API_KEY`. 
 
 You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
 Ralph Workflow then calls the agent CLI as-is and supervises the workflow.
@@ -227,11 +227,12 @@ Cursor's documented `system` / `user` / `assistant` / `thinking` /
 through the documented `.cursor/mcp.json` (workspace-local) AND
 `~/.cursor/mcp.json` (user-global) JSON files so the agent picks up the
 endpoint regardless of the cwd it was launched from. The runtime
-resolver projects file-backed Cursor configuration into its private home and
-coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so
-unattended runs never invoke macOS Keychain. The resolver restores the original
-bytes on exit so operator-managed MCP servers are preserved across Ralph Workflow
-runs. For the exact flag
+resolver projects valid file-backed Cursor credentials into both private auth
+locations, or extracts a valid logged-in IDE token when the files are absent.
+It coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so
+unattended macOS and Linux runs never invoke a Keychain or dialog. The resolver
+restores the original bytes on exit so operator-managed MCP servers are preserved
+across Ralph Workflow runs. For the exact flag
 values see the [Cursor section in Agent
 Compatibility](agent-compatibility.md#cursor-cursor).
 

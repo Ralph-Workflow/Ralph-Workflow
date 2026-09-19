@@ -63,9 +63,13 @@ def test_cursor_runtime_regression_projects_xdg_auth_into_private_config_root(
         private_config_home = Path(runtime.agent_env["XDG_CONFIG_HOME"])
         assert private_config_home != source_config_home
         assert private_config_home.parent == private_home
-        assert (private_config_home / "cursor" / "auth.json").read_text(
-            encoding="utf-8"
-        ) == credentials.read_text(encoding="utf-8")
+        for projected_auth in (
+            private_home / ".cursor" / "auth.json",
+            private_config_home / "cursor" / "auth.json",
+        ):
+            assert json.loads(projected_auth.read_text(encoding="utf-8")) == json.loads(
+                credentials.read_text(encoding="utf-8")
+            )
         assert not (private_config_home / "cursor" / mutable_sibling.name).exists()
         generated_mcp: dict[str, object] = json.loads(
             (private_home / ".cursor" / "mcp.json").read_text(encoding="utf-8")
@@ -333,9 +337,11 @@ def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
 
     def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
         captured_env.update(ctx.extra_env)
-        captured_projected_auth.append(
-            (Path(ctx.extra_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json").read_text(
-                encoding="utf-8"
+        captured_projected_auth.extend(
+            path.read_text(encoding="utf-8")
+            for path in (
+                Path(ctx.extra_env["HOME"]) / ".cursor" / "auth.json",
+                Path(ctx.extra_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json",
             )
         )
         return iter(())
@@ -352,7 +358,9 @@ def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
     )
 
     assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] == "file"
-    assert captured_projected_auth == [auth_path.read_text(encoding="utf-8")]
+    assert [json.loads(payload) for payload in captured_projected_auth] == [
+        json.loads(auth_path.read_text(encoding="utf-8"))
+    ] * 2
 
 
 @mark.parametrize("auth_payload", ["{}", '{"invalid":true}', "not json"])
@@ -401,6 +409,8 @@ def test_cursor_file_credentials_helper_recognizes_private_dot_cursor(tmp_path: 
     assert _has_cursor_file_credentials(config_home, home)
     dot_cursor_auth.write_text("{}", encoding="utf-8")
     assert not _has_cursor_file_credentials(config_home, home)
+    dot_cursor_auth.write_text('{"unrelated":"value"}', encoding="utf-8")
+    assert not _has_cursor_file_credentials(config_home, home)
 
 
 def test_cursor_home_mirror_skips_entry_that_vanishes_before_stat(
@@ -440,3 +450,127 @@ def test_cursor_home_mirror_excludes_mcp_config_and_ralph_sidecar_locks(tmp_path
     assert not (destination / "mcp.json").exists()
     assert not (destination / "mcp.json.ralph.lock").exists()
     assert (destination / "auth.json").is_symlink()
+
+
+def test_cursor_runtime_uses_valid_home_auth_when_xdg_auth_is_malformed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A malformed XDG file cannot suppress a usable ~/.cursor login."""
+    operator_home = tmp_path / "operator-home"
+    source_config_home = tmp_path / "operator-config"
+    xdg_auth = source_config_home / "cursor" / "auth.json"
+    home_auth = operator_home / ".cursor" / "auth.json"
+    xdg_auth.parent.mkdir(parents=True)
+    home_auth.parent.mkdir(parents=True)
+    xdg_auth.write_text("not json", encoding="utf-8")
+    home_auth.write_text('{"token":"home-token"}', encoding="utf-8")
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
+
+    runtime = CursorRuntimeResolver().resolve(
+        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+        extra_env={},
+        workspace_path=tmp_path,
+    )
+
+    try:
+        assert runtime.agent_env is not None
+        assert all(
+            json.loads(path.read_text(encoding="utf-8")) == {"token": "home-token"}
+            for path in (
+                Path(runtime.agent_env["HOME"]) / ".cursor" / "auth.json",
+                Path(runtime.agent_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json",
+            )
+        )
+    finally:
+        assert runtime.cleanup is not None
+        runtime.cleanup()
+
+
+@mark.parametrize("platform", ["darwin", "linux"])
+def test_cursor_runtime_extracts_ide_auth_when_file_auth_is_unusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    """Cursor IDE SQLite login supplies both private file-store locations."""
+    import sqlite3
+
+    operator_home = tmp_path / "operator-home"
+    source_config_home = tmp_path / "operator-config"
+    invalid_auth = source_config_home / "cursor" / "auth.json"
+    invalid_auth.parent.mkdir(parents=True)
+    invalid_auth.write_text("{}", encoding="utf-8")
+    state_db = (
+        operator_home / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+        if platform == "darwin"
+        else source_config_home / "Cursor/User/globalStorage/state.vscdb"
+    )
+    state_db.parent.mkdir(parents=True)
+    with sqlite3.connect(state_db) as connection:
+        connection.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        connection.execute(
+            "INSERT INTO ItemTable VALUES (?, ?)", ("cursorAuth/accessToken", "ide-token")
+        )
+        connection.execute(
+            "INSERT INTO ItemTable VALUES (?, ?)", ("cursorAuth/refreshToken", "refresh-token")
+        )
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
+    monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", platform)
+
+    runtime = CursorRuntimeResolver().resolve(
+        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+        extra_env={},
+        workspace_path=tmp_path,
+    )
+
+    try:
+        assert runtime.agent_env is not None
+        assert all(
+            json.loads(path.read_text(encoding="utf-8")) == {"accessToken": "ide-token"}
+            for path in (
+                Path(runtime.agent_env["HOME"]) / ".cursor" / "auth.json",
+                Path(runtime.agent_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json",
+            )
+        )
+    finally:
+        assert runtime.cleanup is not None
+        runtime.cleanup()
+
+
+def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SQLite fallback replaces a mirrored auth symlink only in the private home."""
+    import sqlite3
+
+    operator_home = tmp_path / "operator-home"
+    source_config_home = tmp_path / "operator-config"
+    operator_auth = operator_home / ".cursor" / "auth.json"
+    operator_auth.parent.mkdir(parents=True)
+    operator_auth.write_text("{}", encoding="utf-8")
+    state_db = source_config_home / "Cursor/User/globalStorage/state.vscdb"
+    state_db.parent.mkdir(parents=True)
+    with sqlite3.connect(state_db) as connection:
+        connection.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        connection.execute(
+            "INSERT INTO ItemTable VALUES (?, ?)", ("cursorAuth/refreshToken", "refresh-token")
+        )
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
+    monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", "linux")
+
+    runtime = CursorRuntimeResolver().resolve(
+        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+        extra_env={},
+        workspace_path=tmp_path,
+    )
+
+    try:
+        assert runtime.agent_env is not None
+        private_auth = Path(runtime.agent_env["HOME"]) / ".cursor" / "auth.json"
+        assert not private_auth.is_symlink()
+        assert json.loads(private_auth.read_text(encoding="utf-8")) == {"accessToken": "refresh-token"}
+        assert operator_auth.read_text(encoding="utf-8") == "{}"
+    finally:
+        assert runtime.cleanup is not None
+        runtime.cleanup()

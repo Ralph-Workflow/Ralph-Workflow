@@ -569,6 +569,42 @@ def _dispatch(endpoint: str, name: str, arguments: dict[str, Any]) -> dict[str, 
         return {"result": None, "_parse_error": str(exc)}
 
 
+def _extension_path() -> str:
+    """Read Pi's extension path from its env variable or argv flag."""
+    extension_path = os.environ.get("RALPH_PI_MCP_EXTENSION", "")
+    if not extension_path and "--extension" in sys.argv:
+        extension_index = sys.argv.index("--extension")
+        if extension_index + 1 < len(sys.argv):
+            return sys.argv[extension_index + 1]
+    return extension_path
+
+
+def _endpoint_from_extension(extension_path: str) -> str:
+    """Extract the endpoint embedded in a generated Pi extension."""
+    try:
+        extension_source = Path(extension_path).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    endpoint_match = re.search(r'^const ENDPOINT = "([^"]+)";', extension_source, re.MULTILINE)
+    return endpoint_match.group(1) if endpoint_match is not None else ""
+
+
+def _endpoint_from_opencode_config() -> str:
+    """Extract the first URL from an OpenCode MCP configuration payload."""
+    try:
+        config = json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT", ""))
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(config, dict) or not isinstance(mcp := config.get("mcp"), dict):
+        return ""
+    for definition in mcp.values():
+        if isinstance(definition, dict):
+            url = definition.get("url") or definition.get("endpoint")
+            if isinstance(url, str) and url:
+                return url
+    return ""
+
+
 def _read_env_or_fail() -> tuple[str, str, str]:
     """Read the harness-exported env vars; return ``(endpoint, output_file, run_id)``.
 
@@ -583,39 +619,18 @@ def _read_env_or_fail() -> tuple[str, str, str]:
     4. ``MCP_URL`` (a fallback for transports that do not export either
        of the above).
     """
-    endpoint = os.environ.get(ENDPOINT_ENV, "")
-    if not endpoint:
-        extension_path = os.environ.get("RALPH_PI_MCP_EXTENSION", "")
-        if extension_path:
-            try:
-                extension_source = Path(extension_path).read_text(encoding="utf-8")
-            except OSError:
-                extension_source = ""
-            endpoint_match = re.search(
-                r'^const ENDPOINT = "([^"]+)";', extension_source, re.MULTILINE
-            )
-            if endpoint_match is not None:
-                endpoint = endpoint_match.group(1)
-    if not endpoint:
-        opencode_cfg = os.environ.get("OPENCODE_CONFIG_CONTENT")
-        if opencode_cfg:
-            try:
-                cfg = json.loads(opencode_cfg)
-            except json.JSONDecodeError:
-                cfg = None
-            if isinstance(cfg, dict):
-                mcp = cfg.get("mcp")
-                if isinstance(mcp, dict):
-                    for defn in mcp.values():
-                        if isinstance(defn, dict):
-                            url = defn.get("url") or defn.get("endpoint")
-                            if isinstance(url, str) and url:
-                                endpoint = url
-                                break
-    if not endpoint:
-        endpoint = os.environ.get("MCP_URL", "")
+    endpoint = (
+        os.environ.get(ENDPOINT_ENV, "")
+        or _endpoint_from_extension(_extension_path())
+        or _endpoint_from_opencode_config()
+        or os.environ.get("MCP_URL", "")
+    )
     output_file = os.environ.get(OUTPUT_FILE_ENV, "")
-    run_id = os.environ.get(RUN_ID_ENV, "multimodal-smoke")
+    run_id = (
+        os.environ.get(RUN_ID_ENV)
+        or os.environ.get("RALPH_MCP_RUN_ID")
+        or "multimodal-smoke"
+    )
     return endpoint, output_file, run_id
 
 

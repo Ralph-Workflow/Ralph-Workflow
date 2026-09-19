@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sqlite3
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -18,6 +19,8 @@ from loguru import logger
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -265,19 +268,64 @@ def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> s
     return runtime_env.get(MCP_ENDPOINT_ENV) or base_env.get(MCP_ENDPOINT_ENV)
 
 
-def _project_cursor_auth(source: Path, destination: Path) -> None:
-    """Project Cursor's auth file into an invocation-owned XDG config root."""
+_CURSOR_AUTH_TOKEN_KEYS = frozenset(
+    {"accessToken", "token", "refreshToken", "cursorAuth/accessToken", "cursorAuth/refreshToken"}
+)
+
+
+def _read_valid_cursor_auth(source: Path) -> dict[str, object] | None:
+    """Read a Cursor file-store payload only when it carries a known token."""
     try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.symlink_to(source)
-    except FileNotFoundError:
-        return
-    except OSError:
-        try:
-            if source.stat().st_size <= 64 * 1024 * 1024:
-                shutil.copy2(source, destination)  # filesystem-write-ok: bounded fallback materializes one credential in an invocation-owned private config root
-        except FileNotFoundError:
-            return
+        payload: object = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    credential_payload = cast("dict[str, object]", payload)
+    if not any(
+        isinstance(token := credential_payload.get(key), str) and token.strip()
+        for key in _CURSOR_AUTH_TOKEN_KEYS
+    ):
+        return None
+    return credential_payload
+
+
+def _is_valid_cursor_auth_file(source: Path) -> bool:
+    """Return whether ``source`` is a usable Cursor file-store credential."""
+    return _read_valid_cursor_auth(source) is not None
+
+
+def _replace_private_cursor_auth(destination: Path, payload: dict[str, object]) -> None:
+    """Materialize auth beneath the invocation-owned home without following links."""
+    destination.unlink(missing_ok=True)
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        destination,
+        json.dumps(payload, separators=(",", ":")),
+        encoding="utf-8",
+        prepare_write=lambda: destination.parent.mkdir(parents=True, exist_ok=True),
+    )
+
+
+def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, object] | None:
+    """Extract a non-empty Cursor IDE token from its read-only state database."""
+    state_db = (
+        source_home / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+        if sys.platform == "darwin"
+        else source_config_home / "Cursor/User/globalStorage/state.vscdb"
+    )
+    try:
+        with sqlite3.connect(
+            state_db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2.0
+        ) as connection:
+            for key in ("cursorAuth/accessToken", "cursorAuth/refreshToken"):
+                cursor = connection.execute("SELECT value FROM ItemTable WHERE key = ?", (key,))
+                row: tuple[object] | None = cursor.fetchone()
+                if row is not None and isinstance(token := row[0], str) and token.strip():
+                    return {"accessToken": token}
+    except (OSError, sqlite3.Error, ValueError):
+        return None
+    return None
 
 
 class OpencodeRuntimeResolver:
@@ -715,7 +763,7 @@ class CursorRuntimeResolver:
                 "mcpServers": {"ralph": {"url": endpoint}},
                 "workspace_path": resolved_workspace,
             }
-            payload = json.dumps(
+            config_payload = json.dumps(
                 merge_existing_upstreams(
                     "cursor",
                     current_config,
@@ -724,18 +772,31 @@ class CursorRuntimeResolver:
                 ),
                 indent=2,
             ).encode("utf-8")
-            config_files = ((Path(".cursor/mcp.json"), payload),)
+            config_files = ((Path(".cursor/mcp.json"), config_payload),)
 
         private_home, cleanup = prepare_private_config_root(
             config_files, prefix="ralph-cursor-home-"
         )
         _mirror_cursor_home(source_home / ".cursor", private_home / ".cursor")
         private_config_home = private_home / "config"
-        source_config_auth = source_config_home / "cursor" / "auth.json"
-        _project_cursor_auth(
-            source_config_auth if source_config_auth.exists() else source_home / ".cursor" / "auth.json",
-            private_config_home / "cursor" / "auth.json",
+        source_auth_paths = (
+            source_config_home / "cursor" / "auth.json",
+            source_home / ".cursor" / "auth.json",
         )
+        credential_payload = next(
+            (
+                payload
+                for source_auth in source_auth_paths
+                if (payload := _read_valid_cursor_auth(source_auth)) is not None
+            ),
+            None,
+        ) or _cursor_ide_auth(source_home, source_config_home)
+        if credential_payload is not None:
+            for private_auth in (
+                private_home / ".cursor" / "auth.json",
+                private_config_home / "cursor" / "auth.json",
+            ):
+                _replace_private_cursor_auth(private_auth, credential_payload)
         runtime_env["HOME"] = str(private_home)
         runtime_env["XDG_CONFIG_HOME"] = str(private_config_home)
 

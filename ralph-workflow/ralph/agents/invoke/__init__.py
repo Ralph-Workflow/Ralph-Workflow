@@ -20,7 +20,7 @@ import sqlite3
 import subprocess
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from loguru import logger
@@ -362,8 +362,13 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
     )
 
 
+_CURSOR_AUTH_TOKEN_KEYS = frozenset(
+    {"accessToken", "token", "refreshToken", "cursorAuth/accessToken", "cursorAuth/refreshToken"}
+)
+
+
 def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = None) -> bool:
-    """Return whether either supported Cursor auth file has a non-empty string."""
+    """Return whether either supported Cursor auth file carries a known token."""
     auth_paths: list[Path] = []
     if config_home is not None:
         auth_paths.append(config_home / "cursor" / "auth.json")
@@ -374,10 +379,13 @@ def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = N
             payload: object = json.loads(auth_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        if isinstance(payload, dict) and any(
-            isinstance(value, str) and bool(value.strip()) for value in payload.values()
-        ):
-            return True
+        if isinstance(payload, dict):
+            credential_payload = cast("dict[str, object]", payload)
+            if any(
+                isinstance(token := credential_payload.get(key), str) and token.strip()
+                for key in _CURSOR_AUTH_TOKEN_KEYS
+            ):
+                return True
     return False
 
 

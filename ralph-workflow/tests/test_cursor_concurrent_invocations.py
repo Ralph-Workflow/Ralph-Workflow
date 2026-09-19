@@ -32,7 +32,7 @@ def test_concurrent_cursor_resolves_isolate_mcp_config_and_project_operator_xdg_
     operator_cursor_config = operator_xdg / "cursor"
     operator_cursor_config.mkdir(parents=True)
     operator_auth = operator_cursor_config / "auth.json"
-    operator_auth.write_text("credential", encoding="utf-8")
+    operator_auth.write_text('{"token":"credential"}', encoding="utf-8")
     mutable_sibling = operator_cursor_config / "state.vscdb"
     mutable_sibling.write_text("transient state", encoding="utf-8")
     barrier = Barrier(2)
@@ -76,11 +76,17 @@ def test_concurrent_cursor_resolves_isolate_mcp_config_and_project_operator_xdg_
             private_cursor = home / ".cursor"
             private_cursor_config = config_home / "cursor"
             assert config_home.parent == home
-            assert tuple(private_cursor.iterdir()) == (private_cursor / "mcp.json",)
-            assert tuple(private_cursor_config.iterdir()) == (private_cursor_config / "auth.json",)
-            assert (private_cursor_config / "auth.json").read_text(encoding="utf-8") == operator_auth.read_text(
-                encoding="utf-8"
+            assert tuple(private_cursor.iterdir()) == (
+                private_cursor / "auth.json",
+                private_cursor / "mcp.json",
             )
+            assert tuple(private_cursor_config.iterdir()) == (private_cursor_config / "auth.json",)
+            assert json.loads((private_cursor_config / "auth.json").read_text(encoding="utf-8")) == {
+                "token": "credential"
+            }
+            assert json.loads((private_cursor / "auth.json").read_text(encoding="utf-8")) == {
+                "token": "credential"
+            }
             assert not (private_cursor_config / mutable_sibling.name).exists()
             config_payload: dict[str, dict[str, dict[str, str]]] = json.loads(
                 (private_cursor / "mcp.json").read_text(encoding="utf-8")
