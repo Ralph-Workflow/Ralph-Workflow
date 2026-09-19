@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL, WRITE_FILE_TOOL
+from ralph.phases.required_artifacts import read_validation_retry_hint
 
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ..template_engine import render_template
@@ -41,6 +42,7 @@ def prompt_commit_message(
     partials: Mapping[str, str] | None = None,
     submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,),
     payload_config: CommitPromptPayloadConfig | None = None,
+    workspace_root: Path | None = None,
 ) -> str:
     """Return the commit message prompt for the provided diff."""
 
@@ -64,6 +66,7 @@ def prompt_commit_message(
         "WRITE_FILE_TOOL_REFERENCE": (
             f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
         ),
+        "LAST_RETRY_ERROR": _read_commit_retry_hint(workspace_root),
     }
     variables.update(
         _commit_payload_variables(
@@ -83,6 +86,7 @@ def prompt_commit_message_for_opencode(
     *,
     submit_artifact_tool_name: str,
     payload_config: CommitPromptPayloadConfig | None = None,
+    workspace_root: Path | None = None,
 ) -> str:
     """Return a simplified commit message prompt for OpenCode's single-tool interface."""
     diff_content = diff.strip()
@@ -104,6 +108,7 @@ def prompt_commit_message_for_opencode(
         "WRITE_FILE_TOOL_REFERENCE": (
             f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
         ),
+        "LAST_RETRY_ERROR": _read_commit_retry_hint(workspace_root),
     }
     variables.update(
         _commit_payload_variables(
@@ -116,6 +121,12 @@ def prompt_commit_message_for_opencode(
         variables,
         _default_commit_partials(),
     ).lstrip()
+
+
+def _read_commit_retry_hint(workspace_root: Path | None) -> str:
+    if workspace_root is None:
+        return ""
+    return read_validation_retry_hint(workspace_root, "commit")
 
 
 def _select_template(template_registry: TemplateRegistry | None) -> str:

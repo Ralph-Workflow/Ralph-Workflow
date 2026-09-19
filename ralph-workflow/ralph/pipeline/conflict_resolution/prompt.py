@@ -32,6 +32,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tools.names import claude_tool_name_prefix
+from ralph.phases.required_artifacts import read_validation_retry_hint
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.prompts.debug_dump import prompt_dump_path
 from ralph.prompts.template_engine import render_template
@@ -127,6 +128,7 @@ def render_conflict_prompt(
         "replaying_commit_subject": replaying_commit_subject or "",
         "stop_index": str(stop_index) if stop_index is not None else "",
         "stop_cap": str(stop_cap) if stop_cap is not None else "",
+        "LAST_RETRY_ERROR": read_validation_retry_hint(root, _RESOLUTION_DRAIN),
         **_session_preamble_variables(),
     }
     template_root = packaged_template_root()

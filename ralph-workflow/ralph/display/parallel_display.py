@@ -191,6 +191,7 @@ from ralph.display.theme import (
 )
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.recovery.retry_prompt import VALIDATION_FAILURE_BANNER
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -4268,9 +4269,14 @@ class ParallelDisplay:
                 tool_calls=exit_model.tool_calls,
                 errors=exit_model.errors,
             )
+            artifact_outcome = (
+                VALIDATION_FAILURE_BANNER
+                if exit_model.last_failure_category == "artifact_validation"
+                else exit_model.artifact_outcome
+            )
             self._emit_phase_close_body(
                 exit_model.phase_name,
-                exit_model.artifact_outcome,
+                artifact_outcome,
                 options=PhaseCloseOptions(
                     phase_role=exit_model.phase_role,
                     iteration_context=iter_ctx if iter_ctx.has_context() else None,
@@ -4287,14 +4293,20 @@ class ParallelDisplay:
                     debug_parts.append(
                         f"failure_category={_sanitize(exit_model.last_failure_category)}"
                     )
-                self._console.print(
-                    self._build_line(
-                        timestamp,
-                        "WARN",
-                        "META",
+                if exit_model.last_failure_category == "artifact_validation":
+                    level = "ERROR"
+                    message = (
+                        f"[phase-close] {VALIDATION_FAILURE_BANNER} "
+                        f"phase={exit_model.phase_name} {' '.join(debug_parts)}"
+                    )
+                else:
+                    level = "WARN"
+                    message = (
                         f"[phase-close] debug phase={exit_model.phase_name} "
-                        f"{' '.join(debug_parts)}",
-                    ),
+                        f"{' '.join(debug_parts)}"
+                    )
+                self._console.print(
+                    self._build_line(timestamp, level, "META", message),
                     markup=False,
                     highlight=False,
                     no_wrap=True,

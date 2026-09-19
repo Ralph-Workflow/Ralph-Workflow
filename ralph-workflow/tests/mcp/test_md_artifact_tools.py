@@ -98,8 +98,9 @@ def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -
     verified_payload = _payload(verified)
     submitted_payload = _payload(submitted)
     assert verified_payload["status"] == "validation_failed"
-    assert "severity" not in verified_payload
-    assert "message" not in verified_payload
+    assert verified_payload["severity"] == "error"
+    assert isinstance(verified_payload["message"], str)
+    assert verified_payload["message"].startswith("VALIDATION FAILURE")
     assert submitted_payload["status"] == "validation_failed"
     assert submitted_payload["severity"] == "error"
     assert isinstance(submitted_payload["message"], str)

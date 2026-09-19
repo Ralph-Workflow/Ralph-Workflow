@@ -14,6 +14,7 @@ for all commit-role phases declared in the active pipeline policy.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError
@@ -30,12 +31,24 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
+from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
 from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
     from ralph.pipeline.events import Event
+
+
+def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
+    hint_path = retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
+    hint = build_retry_hint(phase, detail, validation=True)
+    with suppress(Exception):
+        if ctx.workspace.exists(hint_path):
+            existing = ctx.workspace.read(hint_path).strip()
+            if existing:
+                hint = f"{existing}\n\n{hint}"
+        ctx.workspace.write(hint_path, hint)
 
 
 def _has_no_diff(ctx: PhaseContext) -> bool:
@@ -103,15 +116,12 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
             phase_name,
             COMMIT_MESSAGE_ARTIFACT,
         )
-        return [
-            artifact_validation_failure_event(
-                phase=phase_name,
-                reason=(
-                    f"Missing commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
-                    "the agent must submit commit_message before declaring completion"
-                ),
-            )
-        ]
+        detail = (
+            f"Missing commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
+            "the agent must submit commit_message before declaring completion"
+        )
+        _write_retry_hint(ctx, phase_name, detail)
+        return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
     # Artifact exists — validate that it can actually be parsed before deferring
     # to the runner. Otherwise the phase is marked successful and the runner
@@ -123,16 +133,13 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
             phase_name,
             COMMIT_MESSAGE_ARTIFACT,
         )
-        return [
-            artifact_validation_failure_event(
-                phase=phase_name,
-                reason=(
-                    f"Invalid or empty commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
-                    "the agent must submit a readable commit_message payload "
-                    "before declaring completion"
-                ),
-            )
-        ]
+        detail = (
+            f"Invalid or empty commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
+            "the agent must submit a readable commit_message payload "
+            "before declaring completion"
+        )
+        _write_retry_hint(ctx, phase_name, detail)
+        return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
     # Artifact exists — check if the agent submitted a skip response.
     # Without this guard, a skip artifact would be passed to the runner

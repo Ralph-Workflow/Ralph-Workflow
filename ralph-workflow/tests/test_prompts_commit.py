@@ -75,6 +75,30 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     # same scope statement.
 
 
+@pytest.mark.parametrize("opencode", [False, True])
+def test_commit_prompts_lead_with_a_persisted_validation_hint_without_consuming_it(
+    tmp_path: Path,
+    opencode: bool,
+) -> None:
+    hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_commit.txt"
+    hint_path.parent.mkdir(parents=True)
+    hint = "VALIDATION FAILURE\nCOMMIT001: invalid subject"
+    hint_path.write_text(hint, encoding="utf-8")
+    diff = "diff --git a/app.py b/app.py\n+hello"
+
+    if opencode:
+        prompt = prompt_commit_message_for_opencode(
+            diff,
+            submit_artifact_tool_name="ralph_submit_md_artifact",
+            workspace_root=tmp_path,
+        )
+    else:
+        prompt = prompt_commit_message(diff, workspace_root=tmp_path)
+
+    assert prompt.startswith(hint)
+    assert hint_path.read_text(encoding="utf-8") == hint
+
+
 def test_commit_prompt_rejects_empty_diff() -> None:
     with pytest.raises(ValueError):
         prompt_commit_message("   \n \t ")

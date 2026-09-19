@@ -353,6 +353,7 @@ def _render_prompt_for_phase(
                 output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
                 name_prefix=phase,
             ),
+            workspace_root=workspace_root,
         )
     # Commit-cleanup prompt: commit_cleanup role
     if phase_role == "commit_cleanup":

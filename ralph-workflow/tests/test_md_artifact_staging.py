@@ -310,7 +310,7 @@ def test_finalize_rejects_an_invalid_draft_and_keeps_it_for_repair(tmp_path: Pat
     verified_payload = _payload(verified)
     assert finalized_payload["severity"] == "error"
     assert str(finalized_payload["message"]).startswith("VALIDATION FAILURE")
-    assert {key: value for key, value in finalized_payload.items() if key not in {"severity", "message"}} == verified_payload
+    assert finalized_payload == verified_payload
     assert not (tmp_path / ".agent" / "artifacts" / "product_spec.md").exists()
     kept = _payload(handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"}))
     assert kept["exists"] is True

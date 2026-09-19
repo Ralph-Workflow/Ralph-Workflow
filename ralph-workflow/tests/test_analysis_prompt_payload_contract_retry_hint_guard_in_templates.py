@@ -27,6 +27,8 @@ _RETRY_HINT_TEMPLATES = (
     "developer_iteration_fallback.jinja",
     "policy_remediation.jinja",
     "policy_remediation_analysis.jinja",
+    "developer_iteration.jinja",
+    "worker_developer.jinja",
 )
 _TEMPLATE_DRAINS = {
     "planning.jinja": SessionDrain.PLANNING,
@@ -38,6 +40,8 @@ _TEMPLATE_DRAINS = {
     "developer_iteration_fallback.jinja": SessionDrain.DEVELOPMENT,
     "policy_remediation.jinja": SessionDrain.DEVELOPMENT,
     "policy_remediation_analysis.jinja": SessionDrain.ANALYSIS,
+    "developer_iteration.jinja": SessionDrain.DEVELOPMENT,
+    "worker_developer.jinja": SessionDrain.DEVELOPMENT,
 }
 
 
@@ -93,6 +97,9 @@ def _render(name: str, last_retry_error: str) -> str:
         "verify_tool_names": "ralph_verify_md_artifact",
         "declare_complete_tool_names": "declare_complete",
         "artifact_type": "policy_remediation_analysis_decision",
+        "unit_id": "S-2",
+        "description": "Repair the validation failure.",
+        "allowed_directories": "ralph-workflow/",
     }
     return render_template(context.registry.get_template(name), variables, context.partials)
 
@@ -115,7 +122,11 @@ class TestRetryHintGuardInTemplates:
         rendered = _render(name, retry_error)
 
         assert rendered.startswith(retry_error)
-        assert rendered.count(build_validation_retry_footer()) == 1
+        if name in {"developer_iteration.jinja", "worker_developer.jinja"}:
+            assert "PREVIOUS ATTEMPT ERROR:" in rendered
+            assert "SPEC001: missing required field" in rendered
+        expected_footer_count = 2 if name in {"developer_iteration.jinja", "worker_developer.jinja"} else 1
+        assert rendered.count(build_validation_retry_footer()) == expected_footer_count
 
     @pytest.mark.parametrize("name", _RETRY_HINT_TEMPLATES)
     def test_inactive_retry_has_no_validation_banner_or_footer(self, name: str) -> None:

@@ -416,6 +416,7 @@ def _commit_prompt_for_agent(
                 output_dir=payload_output_dir,
                 name_prefix="commit_plumbing",
             ),
+            workspace_root=repo_root,
         )
     return prompt_commit_message(
         diff,
@@ -425,6 +426,7 @@ def _commit_prompt_for_agent(
             output_dir=payload_output_dir,
             name_prefix="commit_plumbing",
         ),
+        workspace_root=repo_root,
     )
 
 

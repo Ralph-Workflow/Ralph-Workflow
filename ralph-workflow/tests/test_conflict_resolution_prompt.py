@@ -53,6 +53,20 @@ def _render_rebase_stop(tmp_path: Path) -> str:
     return prompt_path.read_text(encoding="utf-8")
 
 
+def test_conflict_prompt_leads_with_a_persisted_validation_hint_without_consuming_it(
+    tmp_path: Path,
+) -> None:
+    hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
+    hint_path.parent.mkdir(parents=True)
+    hint = "VALIDATION FAILURE\nCONFLICT001: unresolved marker"
+    hint_path.write_text(hint, encoding="utf-8")
+
+    rendered = _render(tmp_path)
+
+    assert rendered.startswith(hint)
+    assert hint_path.read_text(encoding="utf-8") == hint
+
+
 def test_every_conflicted_path_appears(tmp_path: Path) -> None:
     rendered = _render(tmp_path)
     for path in _CONFLICTED:

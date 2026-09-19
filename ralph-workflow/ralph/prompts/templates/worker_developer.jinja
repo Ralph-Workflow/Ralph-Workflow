@@ -1,8 +1,14 @@
+{% include 'shared/_validation_failure.j2' -%}
 Complete and verify the entire assigned work unit. Incremental progress is not
 completion.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not complete successfully.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
 
 {% include 'shared/_unattended_mode.j2' %}
 
@@ -15,12 +21,6 @@ completion.
 {% include 'shared/_development_skills.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
 {% include 'shared/_run_budget.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-IMPORTANT: The previous attempt did not complete successfully.
-
-{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
-{% endif %}
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
