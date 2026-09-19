@@ -126,7 +126,7 @@ def _has_new_commits_since_baseline(ctx: PhaseContext, baseline: str) -> bool:
 
 
 def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
-    hint_path = retry_hint_path(phase)
+    hint_path = retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
     hint = build_retry_hint(phase, detail)
     with suppress(Exception):
         if ctx.workspace.exists(hint_path):

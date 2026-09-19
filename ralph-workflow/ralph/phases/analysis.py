@@ -194,7 +194,7 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
                 artifact_path,
             )
             with suppress(Exception):
-                hint_path = retry_hint_path(phase_name)
+                hint_path = retry_hint_path(phase_name, pipeline_policy=ctx.pipeline_policy)
                 hint = build_retry_hint(phase_name, detail, registry=registry)
                 if ctx.workspace.exists(hint_path):
                     existing = ctx.workspace.read(hint_path).strip()

@@ -1151,6 +1151,8 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         model=prompt_model,
         run_id=recovery_input.run_id,
         completion_recovery=completion_recovery,
+        drain=recovery_input.effect.drain,
+        worker_namespace=recovery_input.worker_namespace,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
@@ -1310,6 +1312,7 @@ def _build_recovery_input_for_attempt(
         model=_model_value if is_stale_session_failure else None,
         run_id=run_id,
         completion_reprompt_used=state.completion_reprompt_used,
+        worker_namespace=ctx.worker_namespace,
     )
 
 
@@ -1371,6 +1374,23 @@ def _condense_recovery_line(line: str) -> str:
     return stripped[:_RECOVERY_CONTEXT_MAX_CHARS].rstrip() + " ... (truncated)"
 
 
+def _validation_retry_context(
+    workspace_root: Path,
+    drain: str | None,
+    worker_namespace: Path | None,
+) -> str:
+    """Return persisted validator diagnostics without consuming phase retry state."""
+    if drain is None:
+        return ""
+    from ralph.phases.required_artifacts import read_validation_retry_hint
+
+    return read_validation_retry_hint(
+        workspace_root,
+        drain,
+        worker_namespace=worker_namespace,
+    )
+
+
 def _retry_prompt_file_for_context(
     *,
     workspace_root: Path,
@@ -1384,6 +1404,8 @@ def _retry_prompt_file_for_context(
     model: str | None = None,
     run_id: str | None = None,
     completion_recovery: bool = False,
+    drain: str | None = None,
+    worker_namespace: Path | None = None,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -1397,6 +1419,8 @@ def _retry_prompt_file_for_context(
         model=model,
         run_id=run_id,
         completion_recovery=completion_recovery,
+        drain=drain,
+        worker_namespace=worker_namespace,
     )
 
 
@@ -1507,6 +1531,8 @@ def _write_agent_retry_prompt(
     model: str | None = None,
     run_id: str | None = None,
     completion_recovery: bool = False,
+    drain: str | None = None,
+    worker_namespace: Path | None = None,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -1525,6 +1551,14 @@ def _write_agent_retry_prompt(
         prompt_path=str(prompt_path),
         context_path=str(context_path),
     )
+    validation_hint = _validation_retry_context(workspace_root, drain, worker_namespace)
+    validation_block = (
+        "VALIDATION ERRORS (ACCUMULATED) - FIX THE UNDERLYING ISSUE BEFORE RESUBMITTING\n"
+        f"{validation_hint}\n\n"
+        "The retained draft contains the prior work. Repair it in place before resubmitting.\n\n"
+        if validation_hint
+        else ""
+    )
     if recovery_action in {"resume", "new_session_with_id"}:
         # Resume / new_session_with_id: do NOT read the original task body
         # and do NOT include the 'ORIGINAL TASK PROMPT:' section. The
@@ -1537,7 +1571,7 @@ def _write_agent_retry_prompt(
         tail = _resume_mode_tail(prompt_path)
         # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
         retry_prompt_path.write_text(
-            (f"{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
+            (f"{validation_block}{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
             encoding="utf-8",
         )
         if run_id is not None:
@@ -1560,6 +1594,8 @@ def _write_agent_retry_prompt(
         "ORIGINAL TASK PROMPT:",
         base_prompt,
     ]
+    if validation_block:
+        body_parts.insert(0, validation_block.rstrip())
     # Empty-prior-output stale-session explanation: when ``stale_session_id``
     # is set AND the prior output is empty (``condensed`` is empty, so the
     # summary placeholder falls through to ``(no output captured)``),
@@ -1664,7 +1700,10 @@ def _write_terminal_missing_artifact_hint(
             else None
         )
         hint = build_retry_hint(str(ctx.effect.phase), str(exc), registry=registry)
-        hint_file = workspace_root / retry_hint_path(str(ctx.effect.phase))
+        hint_file = workspace_root / retry_hint_path(
+            str(ctx.effect.phase),
+            pipeline_policy=ctx.policy_bundle.pipeline if ctx.policy_bundle is not None else None,
+        )
         hint_file.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, hint_file, hint, encoding="utf-8")
     except Exception:

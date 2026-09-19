@@ -43,3 +43,4 @@ class AgentRecoveryInput:
     # incomplete-exit failure. APPENDED with a default so existing
     # construction sites stay valid.
     completion_reprompt_used: bool = False
+    worker_namespace: Path | None = None

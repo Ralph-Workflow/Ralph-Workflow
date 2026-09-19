@@ -10,7 +10,9 @@ definition.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from re import Pattern
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.development_result import normalize_development_result_content
@@ -18,13 +20,15 @@ from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
     normalize_issues_content,
 )
+from ralph.policy.models import PipelinePolicy
 from ralph.recovery.retry_prompt import build_retry_error_block
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ralph.mcp.artifacts.markdown import Diagnostic
-    from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
+    from ralph.policy.models import ArtifactsPolicy
 
 # Normalizers keyed by artifact_type — used by build_required_artifacts()
 _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
@@ -115,9 +119,34 @@ def resolve_phase_required_artifact(
     )
 
 
-def retry_hint_path(phase: str) -> str:
-    """Return the workspace-relative path for the retry hint file for a phase."""
-    return f".agent/tmp/last_retry_error_{phase}.txt"
+def retry_hint_path(phase: str, *, pipeline_policy: object | None = None) -> str:
+    """Return the workspace-relative retry-hint path keyed by the effective drain."""
+    phase_def = pipeline_policy.phases.get(phase) if isinstance(pipeline_policy, PipelinePolicy) else None
+    drain = phase_def.drain if phase_def is not None else phase
+    return f".agent/tmp/last_retry_error_{drain}.txt"
+
+
+def read_validation_retry_hint(
+    workspace_root: Path,
+    drain: str,
+    *,
+    worker_namespace: Path | None = None,
+) -> str:
+    """Read validation retry context without consuming phase-reentry state."""
+    hint_path = (
+        worker_namespace / "tmp" / f"last_retry_error_{drain}.txt"
+        if worker_namespace is not None
+        else workspace_root / retry_hint_path(drain)
+    )
+    try:
+        return hint_path.read_text(encoding="utf-8") if hint_path.is_file() else ""
+    except OSError:
+        return ""
+
+
+_VALIDATION_RETRY_BODY_CAP = 4_096
+_VALIDATION_RETRY_HISTORY_CAP = 16_384
+_MINIMUM_VALIDATION_RETRY_ATTEMPTS = 2
 
 
 def build_validation_retry_hint(
@@ -150,14 +179,71 @@ def build_validation_retry_hint(
         ]
     )
     current_attempt = "\n".join(lines)
-    attempts = _validation_retry_attempts(prior_hint)
-    return "\n\n".join([*attempts[-2:], current_attempt])
+    attempts = [*_validation_retry_attempts(prior_hint), current_attempt]
+    numbered_attempts = [
+        _number_validation_retry_attempt(attempt, index)
+        for index, attempt in enumerate(attempts, start=1)
+    ]
+    # bounded-accumulator-ok: old validation bodies share a 16384-character cap while every headline remains.
+    bounded_attempts = _bound_validation_retry_attempts(numbered_attempts)
+    header = (
+        f"THIS VALIDATION HAS FAILED {len(attempts)} TIMES - FIX THE UNDERLYING ISSUE, "
+        "DO NOT RESUBMIT UNCHANGED\n\n"
+        if len(attempts) > 1
+        else ""
+    )
+    return header + "\n\n".join(bounded_attempts)
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:
     """Extract complete validation attempts from a prior retry hint."""
     marker = "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft."
+    attempt_pattern: Pattern[str] = re.compile(
+        rf"ATTEMPT \d+\n({re.escape(marker)}.*?)(?=\n\nATTEMPT \d+\n|\Z)",
+        flags=re.DOTALL,
+    )
+    numbered_attempts: list[str] = [match.group(1) for match in attempt_pattern.finditer(hint)]
+    if numbered_attempts:
+        return [attempt.strip() for attempt in numbered_attempts]
     return [f"{marker}{attempt.strip()}" for attempt in hint.split(marker)[1:] if attempt.strip()]
+
+
+def _number_validation_retry_attempt(attempt: str, index: int) -> str:
+    """Attach the current ordinal to one complete validation retry attempt."""
+    marker = "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft."
+    return f"ATTEMPT {index}\n{marker}{attempt.removeprefix(marker)}"
+
+
+def _bound_validation_retry_attempts(attempts: list[str]) -> list[str]:
+    """Bound old attempt bodies while retaining every current headline."""
+    if len(attempts) < _MINIMUM_VALIDATION_RETRY_ATTEMPTS:
+        return attempts
+    newest = attempts[-1]
+    old_attempts = attempts[:-1]
+    headlines = [_validation_retry_headline(attempt) for attempt in old_attempts]
+    remaining_body_budget = max(
+        0,
+        _VALIDATION_RETRY_HISTORY_CAP - len(newest) - sum(len(headline) for headline in headlines),
+    )
+    body_budget = min(_VALIDATION_RETRY_BODY_CAP, remaining_body_budget // len(old_attempts))
+    return [
+        _bound_validation_retry_attempt(headline, attempt, body_budget)
+        for headline, attempt in zip(headlines, old_attempts, strict=True)
+    ] + [newest]
+
+
+def _validation_retry_headline(attempt: str) -> str:
+    """Keep ordinal and first diagnostic visible when trimming old bodies."""
+    lines = attempt.splitlines()
+    return "\n".join(lines[:5])
+
+
+def _bound_validation_retry_attempt(headline: str, attempt: str, body_budget: int) -> str:
+    """Trim an old attempt only after its retained headline."""
+    body = attempt.removeprefix(headline).lstrip("\n")
+    if len(body) <= body_budget:
+        return attempt
+    return f"{headline}\n{body[:body_budget].rstrip()}\n[older attempt body truncated]"
 
 
 def build_retry_hint(

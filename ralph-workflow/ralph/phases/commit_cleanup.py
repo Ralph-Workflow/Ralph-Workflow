@@ -479,7 +479,15 @@ def _persist_unapplied_hint(
     if not hint:
         return
     try:
-        ctx.workspace.write(retry_hint_path(phase_name), hint)
+        ctx.workspace.write(
+            retry_hint_path(
+                phase_name,
+                pipeline_policy=ctx.pipeline_policy
+                if isinstance(ctx.pipeline_policy, PipelinePolicy)
+                else None,
+            ),
+            hint,
+        )
     except Exception as exc:
         logger.warning("Failed to persist commit-cleanup retry hint: {}", exc)
 

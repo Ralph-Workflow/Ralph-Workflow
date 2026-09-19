@@ -111,7 +111,7 @@ def handle_execution_phase(
     if ra is not None and output_artifact_path is not None:
         ra = replace(ra, artifact_path=output_artifact_path)
     worker_retry_hint_path = _worker_retry_hint_path(
-        phase,
+        drain,
         output_artifact_path,
     )
 
@@ -265,7 +265,7 @@ def _validate_plan_input(
         detail = f"Missing planning artifact at {PLAN_ARTIFACT_PATH}"
         hint = build_missing_input_hint(phase, upstream, PLAN_ARTIFACT_PATH)
         with suppress(Exception):
-            ctx.workspace.write(retry_hint_path_override or retry_hint_path(phase), hint)
+            ctx.workspace.write(retry_hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy), hint)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
@@ -384,7 +384,7 @@ def _write_retry_hint(
     unsubmitted_draft: bool = False,
     preserve_existing: bool = True,
 ) -> None:
-    hint_path = hint_path_override or retry_hint_path(phase)
+    hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
     try:
         registry = build_required_artifacts(ctx.artifacts_policy)
     except AttributeError:
@@ -410,7 +410,7 @@ def _write_proof_failure_hint(
     *,
     hint_path_override: str | None = None,
 ) -> None:
-    hint_path = hint_path_override or retry_hint_path(phase)
+    hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
     hint = build_proof_failure_hint(phase, detail)
     with suppress(Exception):
         ctx.workspace.write(hint_path, hint)
@@ -646,7 +646,7 @@ def _validate_development_result_proof(
 
 
 def _worker_retry_hint_path(
-    phase: str,
+    drain: str,
     output_artifact_path: str | None,
 ) -> str | None:
     if output_artifact_path is None:
@@ -654,7 +654,7 @@ def _worker_retry_hint_path(
     artifact_path = Path(output_artifact_path)
     if artifact_path.parent.name != "artifacts":
         return None
-    return str(artifact_path.parent.parent / "tmp" / f"last_retry_error_{phase}.txt")
+    return str(artifact_path.parent.parent / "tmp" / f"last_retry_error_{drain}.txt")
 
 
 def _transitions_on_success(phase_def: PhaseDefinition | None) -> str | None:

@@ -42,7 +42,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -449,7 +449,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import AgentChainConfig
+    from ralph.policy.models import AgentChainConfig, PipelinePolicy
     from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
@@ -472,7 +472,13 @@ def _build_fallover_record(
     )
 
 
-def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], Callable[[str], str]]:
+class _RetryHintPath(Protocol):
+    """Lazy-imported retry hint path function with policy-aware resolution."""
+
+    def __call__(self, phase: str, *, pipeline_policy: PipelinePolicy | None = None) -> str: ...
+
+
+def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], _RetryHintPath]:
     # Lazy import to avoid circular dependency via ralph.phases import chain
     module = import_module("ralph.phases.required_artifacts")
     namespace = cast("dict[str, object]", module.__dict__)
@@ -480,7 +486,7 @@ def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], Callabl
         "Callable[[str, str], str]", namespace["build_retry_hint"]
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     retry_hint_path = cast(
-        "Callable[[str], str]", namespace["retry_hint_path"]
+        "_RetryHintPath", namespace["retry_hint_path"]
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return build_retry_hint, retry_hint_path
 
@@ -1133,7 +1139,12 @@ class RecoveryController:
             f" Original failure: {failure.raw_message}"
         )
         hint_content = build_retry_hint(phase, detail)
-        hint_file = Path(retry_hint_path(phase))
+        hint_file = Path(
+            retry_hint_path(
+                phase,
+                pipeline_policy=self._policy_bundle.pipeline if self._policy_bundle is not None else None,
+            )
+        )
         try:
             backend.mkdir(hint_file.parent, parents=True, exist_ok=True)
             write_text_if_changed(backend, hint_file, hint_content, encoding="utf-8")

@@ -24,6 +24,7 @@ from ralph.prompts.template_engine import render_template
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.policy.models import PipelinePolicy
     from ralph.prompts.template_context import TemplateContext
     from ralph.prompts.types import SessionCapabilities
 
@@ -37,13 +38,19 @@ def render_commit_cleanup_prompt(
     template_name: str,
     tmpl_ctx: TemplateContext,
     session_caps: SessionCapabilities,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> str:
     """Render the commit cleanup prompt using the commit_cleanup.jinja template."""
     diff = commit_cleanup_diff(workspace_root)
     output_dir = workspace_root / ".agent/tmp/prompt_payloads"
     if worker_namespace:
         output_dir = worker_namespace / "tmp/prompt_payloads"
-    last_retry_error = _read_and_clear_retry_hint(workspace_root, phase, worker_namespace)
+    last_retry_error = _read_and_clear_retry_hint(
+        workspace_root,
+        phase,
+        worker_namespace,
+        pipeline_policy,
+    )
     bv = {
         "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
             SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
@@ -74,18 +81,29 @@ def _read_and_clear_retry_hint(
     workspace_root: Path,
     phase: str,
     worker_namespace: Path | None,
+    pipeline_policy: PipelinePolicy | None,
 ) -> str:
     """Read the phase retry-hint file and delete it after reading."""
+    phase_def = pipeline_policy.phases.get(phase) if pipeline_policy is not None else None
+    drain = phase_def.drain if phase_def is not None else phase
     hint_file = (
+        worker_namespace / "tmp" / f"last_retry_error_{drain}.txt"
+        if worker_namespace is not None
+        else workspace_root / retry_hint_path(phase, pipeline_policy=pipeline_policy)
+    )
+    legacy_hint_file = (
         worker_namespace / "tmp" / f"last_retry_error_{phase}.txt"
         if worker_namespace is not None
         else workspace_root / retry_hint_path(phase)
     )
-    if not hint_file.is_file():
+    source_file = hint_file if hint_file.is_file() else legacy_hint_file
+    if not source_file.is_file():
         return ""
     try:
-        hint = hint_file.read_text(encoding="utf-8")
-        hint_file.unlink()
+        hint = source_file.read_text(encoding="utf-8")
+        source_file.unlink()
+        if legacy_hint_file != source_file and legacy_hint_file.is_file():
+            legacy_hint_file.unlink()
         return hint
     except OSError:
         return ""

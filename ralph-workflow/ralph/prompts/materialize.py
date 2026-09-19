@@ -250,21 +250,37 @@ def read_and_clear_retry_hint(
     phase: str,
     *,
     worker_namespace: Path | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
+    drain = _retry_hint_drain(phase, pipeline_policy)
     path = (
+        str(worker_namespace / "tmp" / f"last_retry_error_{drain}.txt")
+        if worker_namespace is not None
+        else retry_hint_path(phase, pipeline_policy=pipeline_policy)
+    )
+    legacy_path = (
         str(worker_namespace / "tmp" / f"last_retry_error_{phase}.txt")
         if worker_namespace is not None
         else retry_hint_path(phase)
     )
-    if not workspace.exists(path):
+    source_path = path if workspace.exists(path) else legacy_path
+    if not workspace.exists(source_path):
         return ""
     try:
-        hint = workspace.read(path)
-        workspace.remove(path)
+        hint = workspace.read(source_path)
+        workspace.remove(source_path)
+        if legacy_path != source_path and workspace.exists(legacy_path):
+            workspace.remove(legacy_path)
         return hint
     except Exception:
         return ""
+
+
+def _retry_hint_drain(phase: str, pipeline_policy: PipelinePolicy | None) -> str:
+    """Resolve a phase name to the shared retry-hint drain key."""
+    phase_def = pipeline_policy.phases.get(phase) if pipeline_policy is not None else None
+    return phase_def.drain if phase_def is not None else phase
 
 
 def _render_prompt_for_phase(
@@ -354,6 +370,7 @@ def _render_prompt_for_phase(
             template_name=template_name,
             tmpl_ctx=tmpl_ctx,
             session_caps=session_caps,
+            pipeline_policy=pipeline_policy,
         )
     plan_content, plan_path = _resolve_required_plan_handoff(
         workspace,
@@ -421,6 +438,7 @@ def _render_planning_prompt(
         workspace,
         phase,
         worker_namespace=options.worker_namespace,
+        pipeline_policy=context.pipeline_policy,
     )
     artifact_history_path = resolve_planning_history_path(workspace_root)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
@@ -511,6 +529,7 @@ def _render_developer_prompt(
         workspace,
         phase,
         worker_namespace=options.worker_namespace,
+        pipeline_policy=pipeline_policy,
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
@@ -593,6 +612,7 @@ def _render_template_based_prompt(
         workspace,
         phase,
         worker_namespace=worker_namespace,
+        pipeline_policy=pipeline_policy,
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
@@ -733,7 +753,7 @@ def _should_preserve_planning_context(
         previous_phase=previous_phase,
         pipeline_policy=pipeline_policy,
     )
-    has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase)))
+    has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase, pipeline_policy=pipeline_policy)))
     preserve_retry_context = previous_phase == phase and has_retry_hint
     return is_loopback or preserve_retry_context or resume_existing_phase
 

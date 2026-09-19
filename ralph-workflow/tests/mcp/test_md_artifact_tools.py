@@ -150,10 +150,10 @@ def test_md_artifact_regression_validation_failure_persists_retry_context(
     assert "Do not restart" in hint
 
 
-def test_md_artifact_regression_validation_retry_keeps_newest_three_complete_attempts(
+def test_md_artifact_regression_validation_retry_keeps_all_attempt_headlines(
     tmp_path,
 ) -> None:
-    """S-2: four failures retain complete attempts two through four in order."""
+    """S-4: repeated failures retain every ordered attempt and escalate."""
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -176,12 +176,15 @@ def test_md_artifact_regression_validation_retry_keeps_newest_three_complete_att
 
     hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
     hint = backend.read_text(hint_path)
-    assert hint.count("PREVIOUS ATTEMPT FAILED") == 3
+    assert hint.count("PREVIOUS ATTEMPT FAILED") == 4
     attempt_blocks = hint.split("PREVIOUS ATTEMPT FAILED: ")[1:]
-    assert len(attempt_blocks) == 3
-    assert "section Title: section requires list items" in attempt_blocks[0]
-    assert "section Scope: section requires list items" in attempt_blocks[1]
-    assert "section Goals: section requires list items" in attempt_blocks[2]
+    assert len(attempt_blocks) == 4
+    assert "ATTEMPT 1" in hint
+    assert "ATTEMPT 4" in hint
+    assert "THIS VALIDATION HAS FAILED 4 TIMES" in hint
+    assert "section Title: section requires list items" in attempt_blocks[1]
+    assert "section Scope: section requires list items" in attempt_blocks[2]
+    assert "section Goals: section requires list items" in attempt_blocks[3]
     normalized_hint = " ".join(hint.split())
     assert "Do not blindly resubmit identical content" in normalized_hint
     assert "Fix the underlying document issue" in normalized_hint
