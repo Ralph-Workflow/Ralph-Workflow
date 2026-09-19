@@ -1,0 +1,117 @@
+"""Black-box regressions for terminal agent quota exhaustion.
+
+KEEP: existing unavailable-agent tests cover temporary provider limits. This
+module covers the distinct terminal failure contract: recognized quota output
+must name its agent, avoid authentication/timeout/ambiguous routing, skip a
+same-agent retry, and be surfaced by the completion gate.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
+
+import pytest
+
+from ralph.agents.invoke import AgentInvocationError, check_process_result
+from ralph.pipeline.agent_retry_decision import resolve_retry_intent
+from ralph.recovery.classifier import FailureCategory, FailureClassifier
+
+if TYPE_CHECKING:
+    from ralph.process.manager._managed_process import ManagedProcess
+
+
+class _CompletedProcess:
+    def __init__(self, returncode: int, stderr: str) -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+@pytest.mark.parametrize(
+    ("agent", "line"),
+    (
+        ("agy", "RESOURCE_EXHAUSTED (code 429)"),
+        ("agy", "API quota exhausted"),
+        ("claude", "You've hit your session limit"),
+        ("codex", "you exceeded your current quota"),
+        ("claude", "rate limit reached"),
+        ("codex", "resource exhausted"),
+    ),
+    ids=(
+        "resource-exhausted-429",
+        "api-quota-exhausted",
+        "session-limit",
+        "current-quota",
+        "rate-limit",
+        "resource-exhausted",
+    ),
+)
+def test_recognized_quota_output_is_terminal_for_the_affected_agent(
+    agent: str,
+    line: str,
+) -> None:
+    exc = AgentInvocationError(agent, 1, line)
+
+    classified = FailureClassifier().classify(
+        exc,
+        phase="development",
+        agent=agent,
+        connectivity_state="online",
+    )
+    intent = resolve_retry_intent(
+        exc,
+        phase="development",
+        agent=agent,
+        session_id="session-1",
+        inactivity_error_type=RuntimeError,
+    )
+
+    assert intent is not None
+    assert intent.skip_same_agent_retries is True
+    assert classified.category == FailureCategory.AGENT
+    assert agent in classified.reason
+    assert "quota or rate limit is exhausted" in classified.reason
+
+
+@pytest.mark.parametrize(
+    "line",
+    (
+        "Failed to get OAuth token",
+        "You are not logged into Antigravity\nChainedAuth succeeded",
+        "connection reset by peer",
+        "timed out with no output",
+        "The project documentation uses the word quota incidentally.",
+    ),
+)
+def test_non_quota_output_is_not_routed_as_terminal_quota(line: str) -> None:
+    classified = FailureClassifier().classify(
+        AgentInvocationError("agy", 1, line),
+        phase="development",
+        agent="agy",
+        connectivity_state="online",
+    )
+
+    assert "quota or rate limit is exhausted" not in classified.reason
+
+
+def test_completion_gate_reports_quota_before_missing_completion_evidence() -> None:
+    with pytest.raises(AgentInvocationError) as excinfo:
+        check_process_result(
+            cast(
+                "ManagedProcess",
+                _CompletedProcess(1, "RESOURCE_EXHAUSTED (code 429)"),
+            ),
+            "agy",
+            ["RESOURCE_EXHAUSTED (code 429)"],
+        )
+
+    classified = FailureClassifier().classify(
+        excinfo.value,
+        phase="development",
+        agent="agy",
+        connectivity_state="online",
+    )
+
+    assert "agy" in str(excinfo.value)
+    assert "quota or rate limit is exhausted" in str(excinfo.value)
+    assert classified.category == FailureCategory.AGENT
+    assert classified.category == FailureCategory.AGENT

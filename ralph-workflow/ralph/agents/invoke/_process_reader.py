@@ -17,6 +17,10 @@ import psutil
 from loguru import logger
 from tqdm import tqdm
 
+from ralph.agents._agy_upstream_diagnostic import (
+    agy_cli_log_start_offset,
+    agy_fresh_cli_log_tail,
+)
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.agents.execution_state import (
@@ -52,6 +56,7 @@ from ralph.agents.invoke._errors import (
     _IdleStreamTimeoutError,
 )
 from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
+from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
@@ -96,6 +101,7 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.teardown import teardown_subtree
+from ralph.recovery.failure_classifier import _is_subscription_limit_message
 from ralph.timeout_defaults import (
     BROKEN_AGENT_EXIT_SETTLE_SECONDS,
     BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
@@ -510,6 +516,13 @@ class ProcessLineReader:
         self._remove_relay_sink: Callable[[], None] | None = None
         self._clock = clock
         self._workspace_path = ctx.workspace_path
+        self._quota_error: QuotaExhaustedError | None = None
+        agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
+        self._agy_cli_log = (
+            agy_cli_log_start_offset(agy_cli_log_path)
+            if self._config.transport == AgentTransport.AGY
+            else None
+        )
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
         # Anything the bounded queue evicts still reaches the raw
         # capture; see ``_capture_evicted_line``.
@@ -849,6 +862,9 @@ class ProcessLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
+                if _is_subscription_limit_message([line]):
+                    self._terminate_for_quota()
+                    break
                 # Per-line session id capture mirrors the canonical
                 # extraction in ``_run_subprocess_and_read_lines``
                 # (``captured_session_id`` accumulator there) so the
@@ -908,6 +924,34 @@ class ProcessLineReader:
         if self._pre_output_listener is not None:
             with contextlib.suppress(Exception):
                 self._pre_output_listener()
+
+    def _terminate_for_quota(self) -> None:
+        """Stop a quota-exhausted process without waiting for further output."""
+        if self._quota_error is not None:
+            return
+        self._handle.terminate(grace_period_s=0.5)
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if pid is not None:
+            if self._process_teardown is None:
+                teardown_subtree(pid)
+            else:
+                self._process_teardown.teardown_subtree(pid)
+        self._quota_error = QuotaExhaustedError(_agent_command_name(self._config))
+        self._lines_event.set()
+
+    def _raise_if_fresh_agy_log_has_quota(self) -> None:
+        if self._agy_cli_log is None:
+            return
+        cli_log_path, start_offset = self._agy_cli_log
+        if _is_subscription_limit_message([agy_fresh_cli_log_tail(cli_log_path, start_offset)]):
+            self._terminate_for_quota()
+
+    def _raise_if_quota_exhausted(self) -> None:
+        self._raise_if_fresh_agy_log_has_quota()
+        if self._quota_error is not None:
+            raise self._quota_error
 
     def _terminate_completed_process(self) -> None:
         """Stop the agent process after verified completion without waiting for stdout EOF."""
@@ -1406,6 +1450,7 @@ class ProcessLineReader:
         try:
             while True:
                 self._lines_event.clear()
+                self._raise_if_quota_exhausted()
                 self._poll_opencode_subagent_probe()
                 queued_line: str | None = None
                 is_done = False

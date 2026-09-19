@@ -8,6 +8,7 @@ from ralph.recovery.failure_classifier import (
     POST_TOOL_ACTIVITY_MARKERS,
     POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS,
     SESSION_NOT_FOUND_SUBSTRINGS,
+    _is_subscription_limit_message,
 )
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 
@@ -47,6 +48,10 @@ def retryable_agent_failure_reason(
 ) -> str | None:
     """Return the canonical retry reason for a retryable agent failure."""
     detail_parts = failure_detail_parts(exc)
+    if type(exc).__name__ == "QuotaExhaustedError" or _is_subscription_limit_message(
+        detail_parts
+    ):
+        return None
     primary_text = _primary_recovery_error_text(exc)
     checks: tuple[tuple[bool, str], ...] = (
         (isinstance(exc, inactivity_error_type), "an inactivity timeout"),

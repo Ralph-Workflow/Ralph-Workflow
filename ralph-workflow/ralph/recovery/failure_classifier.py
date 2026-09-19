@@ -193,6 +193,7 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "resource_exhausted",
     "resource exhausted",
     "quota exceeded",
+    "quota exhausted",
     "quota limit has been exceeded",
     # Cohere / general providers
     "rate limit exceeded",
@@ -519,6 +520,7 @@ _TYPED_EXIT_REASON_CATEGORIES: dict[str, tuple[FailureCategory, bool, bool]] = {
     "PiContextExhaustedExitError": (FailureCategory.AGENT, False, False),
     # pi could not reach its provider: the environment, not the agent.
     "PiProviderFailureExitError": (FailureCategory.ENVIRONMENTAL, False, False),
+    "QuotaExhaustedError": (FailureCategory.AGENT, False, False),
     "BrokenAgentExitError": (FailureCategory.AGENT, False, False),
     "MissingCredentialsError": (FailureCategory.USER_CONFIG, False, False),
     # A name this workspace's registry cannot produce is configuration.
@@ -792,11 +794,15 @@ class FailureClassifier:
         # the agent unavailable, fall over to the next chain agent, and
         # clear ``last_agent_session_id`` -- silently dropping the
         # captured id and starting a fresh session.
+        typed_quota_exhaustion = (
+            exc_obj is not None and type(exc_obj).__name__ == "QuotaExhaustedError"
+        )
         broken_agent = exc_obj is not None and type(exc_obj).__name__ == "BrokenAgentExitError"
         base_unavailable = broken_agent or (
             category == FailureCategory.AGENT
             and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
+            and not typed_quota_exhaustion
             and (
                 (
                     watchdog_reason in _WATCHDOG_UNAVAILABILITY_REASONS
@@ -960,8 +966,12 @@ class FailureClassifier:
         # its ONE bounded fresh-session reprompt (the bound itself lives
         # in build_agent_recovery_plan and the direct-MCP recovery
         # loop, not here).
-        if type_name in {"OpenCodeResumableExitError", "AgyIncompleteExitError"}:
-            return FailureCategory.AGENT, True, False
+        if type_name in {
+            "QuotaExhaustedError",
+            "OpenCodeResumableExitError",
+            "AgyIncompleteExitError",
+        }:
+            return FailureCategory.AGENT, type_name != "QuotaExhaustedError", False
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(
                 raw_message,
@@ -1143,4 +1153,6 @@ class FailureClassifier:
         }
         prefix = prefix_map.get(category, "Unknown fault")
         msg = raw_message[:300] if raw_message else "(no message)"
+        if _is_subscription_limit_message([raw_message]):
+            return f"{prefix}: {msg}; quota or rate limit is exhausted"
         return f"{prefix}: {msg}"

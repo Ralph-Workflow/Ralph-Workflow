@@ -22,7 +22,8 @@ from __future__ import annotations
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent, agent_retry_intent_for_failure
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
-from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.failure_classifier import FailureClassifier, _is_subscription_limit_message
+from ralph.recovery.failure_details import failure_detail_parts
 
 
 def resolve_retry_intent(
@@ -51,7 +52,8 @@ def resolve_retry_intent(
         "MissingCredentialsError",
         "PiContextExhaustedExitError",
         "PiProviderFailureExitError",
-    }:
+        "QuotaExhaustedError",
+    } or _is_subscription_limit_message(failure_detail_parts(exc)):
         broken_agent_reason = exc.reason if isinstance(exc, BrokenAgentExitError) else None
         return AgentRetryIntent(
             failure_reason=type(exc).__name__,

@@ -33,6 +33,7 @@ from ralph.agents.invoke._errors import (
 )
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
+from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
@@ -48,6 +49,7 @@ from ralph.process.teardown import teardown_subtree
 from ralph.recovery.failure_classifier import (
     SESSION_NOT_FOUND_SUBSTRINGS,
     FailureClassifier,
+    _is_subscription_limit_message,
 )
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
@@ -90,6 +92,15 @@ CREDENTIALS_FAILURE_SUBSTRINGS = (
 def _looks_like_credentials_failure(text: str) -> bool:
     """Return whether text carries a known credential/authentication failure marker."""
     return contains_casefolded_marker([text], CREDENTIALS_FAILURE_SUBSTRINGS)
+
+
+def _raise_if_quota_exhausted(
+    agent_name: str,
+    stderr_text: str,
+    parsed_output: list[str] | None,
+) -> None:
+    if _is_subscription_limit_message([stderr_text, *(parsed_output or [])]):
+        raise QuotaExhaustedError(agent_name)
 
 
 @runtime_checkable
@@ -656,6 +667,7 @@ def check_process_result(
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None
+    _raise_if_quota_exhausted(agent_name, stderr_text, parsed_output)
     if returncode != 0:
         if _looks_like_credentials_failure(stderr_text) and (
             check_options is None

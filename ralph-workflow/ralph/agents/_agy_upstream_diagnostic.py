@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
 _AGY_CLI_LOG_PATH = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+_AGY_CLI_LOG_TAIL_BYTES = 4096
 _QUOTA_PATTERN = re.compile(
     r"(?:RESOURCE_EXHAUSTED(?: \(code 429\))?|\b429\b|quota exhausted)", re.IGNORECASE
 )
@@ -32,6 +34,29 @@ _PRINT_MODE_TIMEOUT_PATTERN = re.compile(
 )
 
 
+def agy_cli_log_start_offset(cli_log_path: Path | None = None) -> tuple[Path, int]:
+    """Return the injected AGY log path and its size before an invocation starts."""
+    path = cli_log_path or _AGY_CLI_LOG_PATH
+    try:
+        return path, path.stat().st_size
+    except OSError:
+        return path, 0
+
+
+def agy_fresh_cli_log_tail(cli_log_path: Path, start_offset: int) -> str:
+    """Return at most 4096 bytes appended to an AGY CLI log after ``start_offset``."""
+    try:
+        end_offset = cli_log_path.stat().st_size
+        if end_offset <= start_offset:
+            return ""
+        read_offset = max(start_offset, end_offset - _AGY_CLI_LOG_TAIL_BYTES)
+        with cli_log_path.open("rb") as log_file:
+            log_file.seek(read_offset, os.SEEK_SET)
+            return log_file.read(_AGY_CLI_LOG_TAIL_BYTES).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def agy_empty_output_reason(output: list[str], cli_log_path: Path | None = None) -> str | None:
     """Return AGY's actionable empty-output cause from output or its bounded log tail.
 
@@ -53,7 +78,7 @@ def agy_empty_output_reason(output: list[str], cli_log_path: Path | None = None)
     if not evidence:
         path = cli_log_path or _AGY_CLI_LOG_PATH
         try:
-            evidence = path.read_text(encoding="utf-8", errors="replace")[-4096:]
+            evidence = path.read_text(encoding="utf-8", errors="replace")[-_AGY_CLI_LOG_TAIL_BYTES:]
         except OSError:
             evidence = ""
     if _QUOTA_PATTERN.search(evidence):

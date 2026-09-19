@@ -239,13 +239,14 @@ def test_mock_normal_prints_and_writes_artifact(
     assert artifact_path.exists()
 
 
-def test_mock_quota_exhausted_returns_empty(
+def test_mock_quota_exhausted_prints_resource_exhausted_and_exits(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Quota-exhausted behavior exits 0 with empty stdout."""
+    """Quota-exhausted behavior reports the observed terminal provider signal."""
     result = mock_agy_batch["quota_exhausted"]
-    assert result.returncode == 0
+    assert result.returncode != 0
     assert result.stdout == ""
+    assert result.stderr == "RESOURCE_EXHAUSTED (code 429)\n"
 
 
 def test_mock_invalid_model_returns_empty(

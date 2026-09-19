@@ -8,7 +8,7 @@ that pin the simulated contract.
 Controlled by environment variables:
 
 * ``MOCK_AGY_BEHAVIOR`` - ``normal`` (default), ``quota_exhausted``,
-  ``invalid_model``, plus the v1.1.13 negative-contract selectors
+  ``auth_failure``, ``unknown_failure``, ``invalid_model``, plus the v1.1.13 negative-contract selectors
   ``no_output``, ``malformed_stream``, ``failed_result``,
   ``missing_dispatch``, ``missing_result``, ``missing_artifact``, and
   ``missing_completion``. Each selector alters only its named contract
@@ -682,7 +682,16 @@ def _validate_mock_agy_args(args: argparse.Namespace, behavior: str) -> int | No
         print("mock AGY: --print is required", file=sys.stderr)
         return 2
 
-    if behavior in {"quota_exhausted", "invalid_model", "no_output"}:
+    terminal_failures = {
+        "quota_exhausted": ("RESOURCE_EXHAUSTED (code 429)", 1),
+        "auth_failure": ("authentication failed", 1),
+        "unknown_failure": ("mock AGY unknown failure", 1),
+    }
+    if failure := terminal_failures.get(behavior):
+        message, returncode = failure
+        print(message, file=sys.stderr)
+        return returncode
+    if behavior in {"invalid_model", "no_output"}:
         return 0
 
     if args.model is not None and args.model not in CANONICAL_MODELS:

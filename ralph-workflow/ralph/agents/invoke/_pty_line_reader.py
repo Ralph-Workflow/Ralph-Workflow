@@ -17,6 +17,10 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 import psutil
 from loguru import logger
 
+from ralph.agents._agy_upstream_diagnostic import (
+    agy_cli_log_start_offset,
+    agy_fresh_cli_log_tail,
+)
 from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, clamp_tail
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
@@ -74,6 +78,7 @@ from ralph.agents.invoke._pty_transcript import (
     find_latest_claude_transcript_entry,
     transcript_lines_from_events,
 )
+from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._session import (
     TURN_BOUNDARY_MARKER,
     extract_visible_tui_transport_session_id,
@@ -81,6 +86,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
+from ralph.config.enums import AgentTransport
 from ralph.display.raw_overflow import (
     RawOverflowLog,
     get_or_create_raw_overflow_log,
@@ -106,6 +112,7 @@ from ralph.process.manager import (
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 from ralph.process.teardown import teardown_subtree
+from ralph.recovery.failure_classifier import _is_subscription_limit_message
 
 from ._monitor_factory import _make_process_monitor
 
@@ -273,6 +280,13 @@ class PtyLineReader:
         self._started_at_wall_clock = time.time()
         self._config = ctx.config
         self._policy = ctx.policy
+        self._quota_error: QuotaExhaustedError | None = None
+        agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
+        self._agy_cli_log = (
+            agy_cli_log_start_offset(agy_cli_log_path)
+            if self._config.transport == AgentTransport.AGY
+            else None
+        )
         self._monitor = ctx.monitor
         self._workspace_path = cast(
             "Path | None", getattr(ctx, "workspace_path", None)
@@ -1407,6 +1421,8 @@ class PtyLineReader:
 
     def _on_interrupt(self) -> None:
         self._monitor_stop.set()
+        if hasattr(self, "_quota_error") and self._quota_error is not None:
+            return
         with contextlib.suppress(Exception):
             self._handle.close()
         # Mirrors the watchdog-fire path at _check_fire (lines 571-574):
@@ -1447,6 +1463,31 @@ class PtyLineReader:
                 self._stop_sentinel_path.unlink()
         unsubscribe()
 
+    def _terminate_for_quota(self) -> None:
+        """Stop a quota-exhausted process without waiting for further output."""
+        if self._quota_error is not None:
+            return
+        self._handle.terminate(grace_period_s=0.5)
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if pid is not None:
+            teardown_subtree(pid)
+        self._quota_error = QuotaExhaustedError(self._agent_name)
+        self._lines_event.set()
+
+    def _raise_if_fresh_agy_log_has_quota(self) -> None:
+        if self._agy_cli_log is None:
+            return
+        cli_log_path, start_offset = self._agy_cli_log
+        if _is_subscription_limit_message([agy_fresh_cli_log_tail(cli_log_path, start_offset)]):
+            self._terminate_for_quota()
+
+    def _raise_if_quota_exhausted(self) -> None:
+        self._raise_if_fresh_agy_log_has_quota()
+        if self._quota_error is not None:
+            raise self._quota_error
+
     def _raise_if_terminal_startup_error(self, queued_line: str) -> None:
         terminal_startup_error = _terminal_interactive_startup_error(
             self._agent_name,
@@ -1469,6 +1510,11 @@ class PtyLineReader:
         )
 
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
+        if _is_subscription_limit_message([queued_line]):
+            if self._raw_overflow is not None:
+                self._raw_overflow.append(queued_line)
+            self._terminate_for_quota()
+            self._raise_if_quota_exhausted()
         self._record_transcript_session_id(queued_line)
         self._observe_queued_line(queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
@@ -1649,6 +1695,7 @@ class PtyLineReader:
     def _run_read_loop(self, watchdog: IdleWatchdog) -> Iterator[str]:
         while True:
             self._lines_event.clear()
+            self._raise_if_quota_exhausted()
             queued_line: str | None = None
             is_done = False
             with self._lines_lock:
