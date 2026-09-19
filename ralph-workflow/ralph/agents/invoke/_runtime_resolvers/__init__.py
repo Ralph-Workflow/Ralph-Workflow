@@ -318,14 +318,22 @@ def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, o
         with sqlite3.connect(
             state_db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2.0
         ) as connection:
-            for key in ("cursorAuth/accessToken", "cursorAuth/refreshToken"):
-                cursor = connection.execute("SELECT value FROM ItemTable WHERE key = ?", (key,))
-                row: tuple[object] | None = cursor.fetchone()
+            credentials: dict[str, object] = {}
+            for key, name in (
+                ("cursorAuth/accessToken", "accessToken"),
+                ("cursorAuth/refreshToken", "refreshToken"),
+            ):
+                row = cast(
+                    "tuple[object, ...] | None",
+                    connection.execute(
+                        "SELECT value FROM ItemTable WHERE key = ?", (key,)
+                    ).fetchone(),
+                )  # cast-policy: sqlite row boundary
                 if row is not None and isinstance(token := row[0], str) and token.strip():
-                    return {"accessToken": token}
+                    credentials[name] = token
     except (OSError, sqlite3.Error, ValueError):
         return None
-    return None
+    return credentials or None
 
 
 class OpencodeRuntimeResolver:

@@ -254,6 +254,10 @@ def test_cursor_credential_prose_documents_file_auth_and_keychain_policy() -> No
 
     for markdown in docs:
         assert "AGENT_CLI_CREDENTIAL_STORE" in markdown
+        assert "file-backed" in markdown
+        assert "Keychain" in markdown
+        assert "macOS" in markdown
+        assert "Linux" in markdown
         assert "~/.cursor/auth.json" in markdown
         assert "~/.config/cursor/auth.json" in markdown
         assert "CURSOR_AUTH_TOKEN" not in markdown

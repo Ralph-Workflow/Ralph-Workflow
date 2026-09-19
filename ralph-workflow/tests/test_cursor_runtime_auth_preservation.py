@@ -526,7 +526,8 @@ def test_cursor_runtime_extracts_ide_auth_when_file_auth_is_unusable(
     try:
         assert runtime.agent_env is not None
         assert all(
-            json.loads(path.read_text(encoding="utf-8")) == {"accessToken": "ide-token"}
+            json.loads(path.read_text(encoding="utf-8"))
+            == {"accessToken": "ide-token", "refreshToken": "refresh-token"}
             for path in (
                 Path(runtime.agent_env["HOME"]) / ".cursor" / "auth.json",
                 Path(runtime.agent_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json",
@@ -535,6 +536,76 @@ def test_cursor_runtime_extracts_ide_auth_when_file_auth_is_unusable(
     finally:
         assert runtime.cleanup is not None
         runtime.cleanup()
+
+
+@mark.parametrize("platform", ["darwin", "linux"])
+@mark.parametrize("credential_store", ["file", "memory"])
+def test_cursor_invocation_projects_ide_credentials_before_spawn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+    credential_store: str,
+) -> None:
+    """Unattended macOS/Linux launches pass projected IDE auth without Keychain."""
+    import sqlite3
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("task", encoding="utf-8")
+    operator_home = tmp_path / "operator-home"
+    source_config_home = tmp_path / "operator-config"
+    state_db = (
+        operator_home / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+        if platform == "darwin"
+        else source_config_home / "Cursor/User/globalStorage/state.vscdb"
+    )
+    state_db.parent.mkdir(parents=True)
+    with sqlite3.connect(state_db) as connection:
+        connection.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+        connection.executemany(
+            "INSERT INTO ItemTable VALUES (?, ?)",
+            (
+                ("cursorAuth/accessToken", "ide-token"),
+                ("cursorAuth/refreshToken", "refresh-token"),
+            ),
+        )
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", platform)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+    captured_env: dict[str, str] = {}
+    projected_payloads: list[dict[str, object]] = []
+
+    def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
+        captured_env.update(ctx.extra_env)
+        projected_payloads.extend(
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in (
+                Path(ctx.extra_env["HOME"]) / ".cursor" / "auth.json",
+                Path(ctx.extra_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json",
+            )
+        )
+        return iter(())
+
+    monkeypatch.setattr("ralph.agents.invoke.run_subprocess_and_read_lines", capture_runtime)
+
+    list(
+        invoke_agent(
+            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"AGENT_CLI_CREDENTIAL_STORE": credential_store},
+            ),
+        )
+    )
+
+    assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] == credential_store
+    assert Path(captured_env["HOME"]) != operator_home
+    assert projected_payloads == [
+        {"accessToken": "ide-token", "refreshToken": "refresh-token"}
+    ] * 2
 
 
 def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
@@ -569,7 +640,9 @@ def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
         assert runtime.agent_env is not None
         private_auth = Path(runtime.agent_env["HOME"]) / ".cursor" / "auth.json"
         assert not private_auth.is_symlink()
-        assert json.loads(private_auth.read_text(encoding="utf-8")) == {"accessToken": "refresh-token"}
+        assert json.loads(private_auth.read_text(encoding="utf-8")) == {
+            "refreshToken": "refresh-token"
+        }
         assert operator_auth.read_text(encoding="utf-8") == "{}"
     finally:
         assert runtime.cleanup is not None
