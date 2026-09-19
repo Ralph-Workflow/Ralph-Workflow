@@ -131,6 +131,9 @@ json_parser = "generic"
 - **Install / auth**: <https://docs.cursor.com/agent>
 - **Transport**: `cursor`
 - **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
+- **Credentials**: Set `CURSOR_API_KEY` or run `agent login`. Ralph Workflow mirrors non-MCP login material from `~/.cursor` into each invocation's private `HOME` while replacing `mcp.json` with the run-scoped endpoint.
+- **Concurrency**: Private homes keep each run's `mcp.json` independent. Large session directories such as `chats/` and `projects/` remain symlinked to the operator state so `--resume` works across concurrent runs; Ralph Workflow sidecar lock files are excluded.
+- **Failure behavior**: If neither credential source is available, Ralph Workflow fails before launch with a `USER_CONFIG` error and the hint `agent login required`; it does not reset the session as stale or consume retry budget.
 - **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.
 
 ### Kimi (Kimi Code)

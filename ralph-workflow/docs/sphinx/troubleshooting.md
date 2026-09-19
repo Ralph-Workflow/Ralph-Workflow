@@ -79,6 +79,14 @@ to a custom wrapper, alternate live binary, or operator-wired test
 stub if the binary is not on `PATH`; non-executable paths are
 ignored with a WARNING.
 
+## Cursor authentication required
+
+**Symptom:** A Cursor run reports `Authentication required`, asks you to run `agent login` or set `CURSOR_API_KEY`, or stops with a `USER_CONFIG` failure before the agent starts.
+
+**Cause:** Ralph Workflow's Cursor preflight found neither a non-empty `CURSOR_API_KEY` nor login material under `~/.cursor`. The generated `mcp.json` and Ralph Workflow sidecar lock files do not count as credentials.
+
+**Fix:** Run `agent login` from the same operator account that launches Ralph Workflow, or export `CURSOR_API_KEY` in that shell. Re-run `ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential path. The preflight is intentionally fail-fast: missing credentials do not enter stale-session recovery or consume retry budget.
+
 ## AGY transport unavailable on Windows
 
 **Symptom:** The AGY transport fails immediately on Windows, or the run log reports that PTY-backed terminal handling is supported only on POSIX platforms.

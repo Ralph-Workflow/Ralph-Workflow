@@ -44,11 +44,17 @@ from __future__ import annotations
 
 import os
 import shlex
+import time
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents import invoke as invoke_module
+from ralph.agents.invoke import (
+    InvokeOptions,
+    MissingCredentialsError,
+    _fail_for_missing_credentials,
+)
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.smoke_binary_override import (
     apply_smoke_binary_override,
@@ -57,6 +63,7 @@ from ralph.cli.commands.smoke_binary_override import (
 )
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
+from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.smoke_plumbing import (
@@ -64,6 +71,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
+from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [
@@ -75,7 +83,7 @@ pytestmark = [
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
 
 
 # Per-harness redirect seams (S-13). Each entry maps:
@@ -177,6 +185,7 @@ def _stub_is_executable() -> bool:
 
 def _apply_redirect(
     *,
+    monkeypatch: pytest.MonkeyPatch,
     transport: str,
     redirect_method: str,
     stub_path: Path,
@@ -200,7 +209,7 @@ def _apply_redirect(
     if redirect_method.endswith("_env"):
         env_var = smoke_binary_override_env_var(AgentTransport(redirect_method[: -len("_env")]))
         assert env_var is not None, f"transport {transport!r}: no binary override entry"
-        os.environ[env_var] = str(stub_path)
+        monkeypatch.setenv(env_var, str(stub_path))
         agent_config = apply_smoke_binary_override(agent_config)
         config = apply_smoke_binary_overrides_to_config(config)
     elif redirect_method == "cmd_override":
@@ -222,6 +231,8 @@ def _end_to_end_test_for_harness(
     transport: str,
     *,
     positive: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    cursor_credential: str = "api_key",
 ) -> SmokeRunResult:
     """Drive the multimodal stub through ``run_smoke_plumbing`` for one transport.
 
@@ -250,17 +261,29 @@ def _end_to_end_test_for_harness(
         )
 
     broker_secret = "multimodal-broker-secret-for-e2e-test"
-    os.environ["RALPH_BROKER_SECRET"] = broker_secret
-    os.environ["MOCK_MULTIMODAL_WORKSPACE_ROOT"] = str(workspace)
-    os.environ["MOCK_MULTIMODAL_TRANSPORT"] = transport_prefix
+    monkeypatch.setenv("RALPH_BROKER_SECRET", broker_secret)
+    monkeypatch.setenv("MOCK_MULTIMODAL_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("MOCK_MULTIMODAL_TRANSPORT", transport_prefix)
     if transport == "cursor":
-        os.environ["CURSOR_API_KEY"] = "multimodal-smoke-test-credential"
+        if cursor_credential == "api_key":
+            monkeypatch.setenv("CURSOR_API_KEY", "multimodal-smoke-test-credential")
+        elif cursor_credential == "login":
+            monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+            cursor_home = workspace / ".cursor"
+            cursor_home.mkdir(exist_ok=True)
+            (cursor_home / "auth.json").write_text("credential", encoding="utf-8")
+            monkeypatch.setenv("HOME", str(workspace))
+        elif cursor_credential == "missing":
+            monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+            monkeypatch.setenv("HOME", str(workspace))
+        else:
+            raise AssertionError(f"unknown cursor credential mode {cursor_credential!r}")
     if positive:
-        os.environ.pop("MOCK_MULTIMODAL_IGNORE_RESPONSE", None)
-        os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
+        monkeypatch.delenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", raising=False)
+        monkeypatch.delenv("MOCK_MULTIMODAL_SKIP_MEDIA", raising=False)
     else:
-        os.environ["MOCK_MULTIMODAL_IGNORE_RESPONSE"] = "1"
-        os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
+        monkeypatch.setenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", "1")
+        monkeypatch.delenv("MOCK_MULTIMODAL_SKIP_MEDIA", raising=False)
 
     workspace_scope = WorkspaceScope(workspace)
     config = load_config(None, {}, workspace_scope=workspace_scope)
@@ -295,6 +318,7 @@ def _end_to_end_test_for_harness(
         )
 
     agent_config, config = _apply_redirect(
+        monkeypatch=monkeypatch,
         transport=transport,
         redirect_method=redirect_method,
         stub_path=stub_path,
@@ -311,7 +335,7 @@ def _end_to_end_test_for_harness(
     output_file = workspace / spec.output_file
     # The stub receives the harness's expected output path so the
     # multimodal token lines land in the file the harness grades.
-    os.environ["MOCK_MULTIMODAL_OUTPUT_FILE"] = str(output_file)
+    monkeypatch.setenv("MOCK_MULTIMODAL_OUTPUT_FILE", str(output_file))
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
         "# Multimodal smoke stub prompt\n"
@@ -357,7 +381,9 @@ def test_positive_multimodal_run_grades_wire(
         return original_start_workspace_monitor(*args, **kwargs)
 
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", record_start_workspace_monitor)
-    result = _end_to_end_test_for_harness(tmp_path, transport, positive=True)
+    result = _end_to_end_test_for_harness(
+        tmp_path, transport, positive=True, monkeypatch=monkeypatch
+    )
     assert len(monitor_factories) == 1
     assert callable(monitor_factories[0])
     assert result.multimodal_tool_used is not None
@@ -368,6 +394,41 @@ def test_positive_multimodal_run_grades_wire(
     )
 
 
+def test_cursor_smoke_accepts_operator_login_without_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = _end_to_end_test_for_harness(
+        tmp_path,
+        "cursor",
+        positive=True,
+        monkeypatch=monkeypatch,
+        cursor_credential="login",
+    )
+
+    assert result.multimodal_tool_used is not None
+    assert result.multimodal_tool_used.provenance is result.multimodal_tool_used.provenance.WIRE
+
+
+def test_cursor_smoke_without_credentials_fails_fast_as_user_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
+    started = time.monotonic()
+    with pytest.raises(MissingCredentialsError, match="agent login") as excinfo:
+        _fail_for_missing_credentials(config, InvokeOptions())
+
+    assert time.monotonic() - started < 1.0
+    failure = FailureClassifier().classify(
+        excinfo.value,
+        phase="development",
+        agent="cursor/auto",
+    )
+    assert failure.category is FailureCategory.USER_CONFIG
+    assert failure.reset_session is False
+
+
 @pytest.mark.parametrize(
     "transport",
     _INLINE_IMAGE_RESTRICTED_TRANSPORTS,
@@ -375,6 +436,7 @@ def test_positive_multimodal_run_grades_wire(
 def test_restricted_transport_cannot_grade_wire(
     transport: str,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A transport denied inline images cannot -- and must not -- grade WIRE.
 
@@ -389,7 +451,9 @@ def test_restricted_transport_cannot_grade_wire(
     this test fails; and the positive WIRE contract above stays a real
     assertion for every transport that can actually meet it.
     """
-    result = _end_to_end_test_for_harness(tmp_path, transport, positive=True)
+    result = _end_to_end_test_for_harness(
+        tmp_path, transport, positive=True, monkeypatch=monkeypatch
+    )
 
     assert result.multimodal_tool_used is not None
     provenance = result.multimodal_tool_used.provenance
@@ -407,6 +471,7 @@ def test_restricted_transport_cannot_grade_wire(
 def test_ignore_response_multimodal_run_exits_nonzero(
     transport: str,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Poisoned-response case: dial the endpoint but discard the response (criterion 5 causal use).
 
@@ -417,7 +482,9 @@ def test_ignore_response_multimodal_run_exits_nonzero(
     receipt from the server registry, so the fact grades
     ``WORKSPACE_EFFECT`` and the run fails the multimodal contract.
     """
-    result = _end_to_end_test_for_harness(tmp_path, transport, positive=False)
+    result = _end_to_end_test_for_harness(
+        tmp_path, transport, positive=False, monkeypatch=monkeypatch
+    )
     assert result.multimodal_tool_used is not None
     assert (
         result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE
@@ -432,14 +499,15 @@ def test_ignore_response_multimodal_run_exits_nonzero(
     )
 
 
-def test_skip_media_multimodal_run_exits_nonzero(tmp_path: Path) -> None:
+def test_skip_media_multimodal_run_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """No-call case: skipping the media tool call entirely fails the smoke run with a named break."""
-    os.environ.pop("MOCK_MULTIMODAL_IGNORE_RESPONSE", None)
-    os.environ["MOCK_MULTIMODAL_SKIP_MEDIA"] = "1"
-    try:
-        result = _end_to_end_test_for_harness(tmp_path, "agy", positive=False)
-    finally:
-        os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
+    monkeypatch.delenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", raising=False)
+    monkeypatch.setenv("MOCK_MULTIMODAL_SKIP_MEDIA", "1")
+    result = _end_to_end_test_for_harness(
+        tmp_path, "agy", positive=False, monkeypatch=monkeypatch
+    )
     assert result.multimodal_tool_used is not None
     assert (
         result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE

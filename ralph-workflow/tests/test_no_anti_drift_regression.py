@@ -982,6 +982,7 @@ class TestNoInlineConsoleConstructor:
     can still be made.
     """
 
+    @pytest.mark.timeout_seconds(2)
     def test_no_inline_console_constructor_outside_ralph_display(self) -> None:
         excluded_dirs = {"tests", "docs"}
         excluded_files = {

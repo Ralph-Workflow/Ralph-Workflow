@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
@@ -39,8 +41,6 @@ from ralph.recovery.controller import RecoveryController
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
-
-    import pytest
 
     from ralph.config.models import UnifiedConfig
 
@@ -545,6 +545,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     assert observed_deps.artifact_requirements_resolver is fake_artifact_resolver
 
 
+@pytest.mark.timeout_seconds(2)
 def test_late_marker_adoption_starts_heartbeat_after_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

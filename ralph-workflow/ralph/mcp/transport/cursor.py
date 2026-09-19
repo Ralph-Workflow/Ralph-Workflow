@@ -152,13 +152,19 @@ def _mirror_cursor_home(source_cursor_root: Path, private_cursor_root: Path) -> 
     if not source_cursor_root.exists():
         return
     for entry in source_cursor_root.iterdir():
-        if entry.name == "mcp.json":
+        if entry.name == "mcp.json" or entry.name.endswith(".ralph.lock"):
             continue
         destination = private_cursor_root / entry.name
         try:
-            destination.symlink_to(entry, target_is_directory=entry.is_dir())
+            target_is_directory = entry.is_dir()
+            destination.symlink_to(entry, target_is_directory=target_is_directory)
+        except FileNotFoundError:
+            continue
         except OSError:
-            _copy_cursor_home_entry(entry, destination)
+            try:
+                _copy_cursor_home_entry(entry, destination)
+            except FileNotFoundError:
+                continue
 
 
 def _copy_cursor_home_entry(entry: Path, destination: Path) -> None:

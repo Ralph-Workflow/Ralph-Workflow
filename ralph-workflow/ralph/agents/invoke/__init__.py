@@ -616,7 +616,8 @@ def _fail_for_missing_credentials(
         operator_home = Path(home_value).expanduser() if home_value else Path.home()
         cursor_home = operator_home / ".cursor"
         if cursor_home.is_dir() and any(
-            entry.name != "mcp.json" for entry in cursor_home.iterdir()
+            entry.name != "mcp.json" and not entry.name.endswith(".ralph.lock")
+            for entry in cursor_home.iterdir()
         ):
             return
         detail = "CURSOR_API_KEY not set; agent login required"

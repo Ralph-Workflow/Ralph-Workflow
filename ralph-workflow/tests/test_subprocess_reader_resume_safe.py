@@ -553,6 +553,7 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
     )
 
 
+@pytest.mark.timeout_seconds(2)
 def test_subprocess_reader_regression_silent_agent_uses_startup_watchdog_when_grace_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
