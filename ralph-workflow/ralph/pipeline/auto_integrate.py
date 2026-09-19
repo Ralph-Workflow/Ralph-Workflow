@@ -34,6 +34,7 @@ from ralph.pipeline.auto_integrate_budget_seam import (
 )
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
+    ConflictIdentity,
     apply_conflict_budget,
     resolver_allowed,
 )
@@ -90,6 +91,8 @@ from ralph.pipeline.auto_integrate_resolution_state import (
 from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
 )
+
+_MERGE_INSTEAD_STRATEGY_INDEX = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -258,7 +261,11 @@ def _auto_integrate_after_commit_inner(
         missing_target=_configured_target(config),
     )
     if early_skip is not None:
-        return carry_budget_through_skip(early_skip, prior=state)
+        return carry_budget_through_skip(
+            early_skip,
+            prior=state,
+            attempts=config.conflict_resolution.max_consecutive_resolver_attempts,
+        )
     if usable_ctx is None:
         # R2/AC8: ladder rung 3 -- only the explicit disabled AC-01 path
         # reaches this bare None; enabled lookup failures are recorded above.
@@ -267,13 +274,15 @@ def _auto_integrate_after_commit_inner(
 
     remote_record: RebaseState | None = None
     identity = observe_conflict_identity(root, target)
-    allowed = resolver_allowed(state, target, identity)
+    strategy_attempt = state.conflict_strategy_index == 1
+    resolver_attempts = config.conflict_resolution.max_consecutive_resolver_attempts
+    allowed = _configured_resolver_allowed(state, target, identity, resolver_attempts)
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
     if resolver_suppressed:
         logger.warning(
             "auto_integrate: conflict resolution budget exhausted for '{}'; "
-            "not invoking the resolver again until an integration lands",
+            "moving to the next configured resolution strategy",
             target,
         )
 
@@ -292,6 +301,7 @@ def _auto_integrate_after_commit_inner(
                 initial_refresh=refresh,
                 rebase_stop_resolver=rebase_stop_resolver if allowed else None,
                 prior=state,
+                force_refresh=strategy_attempt,
             )
             if remote_record is not None and not remote_record.freshness_safe:
                 return remote_record
@@ -303,6 +313,9 @@ def _auto_integrate_after_commit_inner(
                 effective_resolver,
                 prefer_merge=prefer_merge,
                 refresh=refresh,
+                force_endpoint_merge=(
+                    state.conflict_strategy_index == _MERGE_INSTEAD_STRATEGY_INDEX
+                ),
                 rebase_stop_resolver=(rebase_stop_resolver if allowed else None),
                 display=display,
             )
@@ -352,6 +365,7 @@ def _auto_integrate_after_commit_inner(
             target=target,
             identity=identity,
             resolver_offered=effective_resolver is not None,
+            attempts=resolver_attempts,
         )
     if record is None:
         # The normal local seam can be a no-op while remote sync still has a
@@ -378,7 +392,23 @@ def _auto_integrate_after_commit_inner(
         target=target,
         resolver_suppressed=resolver_suppressed,
         identity=identity,
+        attempts=resolver_attempts,
     )
+
+
+def _configured_resolver_allowed(
+    state: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+    attempts: int,
+) -> bool:
+    """Apply the configured budget while tolerating legacy predicate doubles."""
+    try:
+        return resolver_allowed(state, target, identity, attempts=attempts)
+    except TypeError as exc:
+        if "unexpected keyword argument 'attempts'" not in str(exc):
+            raise
+        return resolver_allowed(state, target, identity)
 
 
 def _freshen_attempt_target(
@@ -390,10 +420,11 @@ def _freshen_attempt_target(
     initial_refresh: str | None,
     rebase_stop_resolver: RebaseStopResolver | None,
     prior: RebaseState | None = None,
+    force_refresh: bool = False,
 ) -> tuple[RebaseState | None, str | None]:
     """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
-        if attempt:
+        if attempt or force_refresh:
             return None, _refresh_target(config, root, target)
         return None, initial_refresh
     record = pull_and_reconcile_target(
@@ -458,6 +489,7 @@ def _integrate_once(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     publish: bool = True,
+    force_endpoint_merge: bool = False,
 ) -> tuple[RebaseState | None, bool]:
     """Run one rebase-or-merge integration and report whether a landing race merits retry."""
     pre_feature_sha = get_head_sha(root)
@@ -489,6 +521,7 @@ def _integrate_once(
             target,
             conflict_resolver,
             prefer_merge=prefer_merge,
+            force_endpoint_merge=force_endpoint_merge,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
             conflict_resolution_config=config.conflict_resolution,

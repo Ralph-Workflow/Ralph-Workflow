@@ -150,6 +150,11 @@ class RebaseState(RalphBaseModel):
     resolution_exhausted: bool = False
     resolution_exhaustion_reason: str | None = None
 
+    # The conflict-resolution ladder is durable so a restart continues with
+    # the next genuinely different integration strategy.
+    conflict_strategy_index: int = 0
+    conflict_strategies_tried: tuple[str, ...] = ()
+
     # An earlier seam recorded an unresolved integration and a LATER seam
     # neither landed nor re-recorded one -- a skip, which changes nothing
     # about the repository and so cannot resolve anything either. Carrying

@@ -424,6 +424,45 @@ class TestPhaseFailureEvent:
         assert new_state.recovery_epoch == 1
         assert effects == []
 
+    def test_integration_conflict_failure_advances_durable_strategy_ladder(self) -> None:
+        """The reducer, not the run loop, owns conflict-strategy progression."""
+        state = PipelineState(phase="development")
+        reason = "integration conflict requires resolution: unresolved shared.txt"
+
+        first, _ = _reduce(
+            state,
+            PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+            _basic_pipeline_policy(),
+        )
+
+        assert first.phase == "failed_terminal"
+        assert first.rebase.conflict_strategy_index == 1
+        assert first.rebase.conflict_strategies_tried == (
+            f"rebase_resolver: development: {reason}",
+        )
+        assert first.rebase.resolution_exhausted is False
+
+        current = first
+        for _ in range(3):
+            current, _ = _reduce(
+                current,
+                PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+                _basic_pipeline_policy(),
+            )
+
+        assert current.phase == "failed_terminal"
+        assert current.rebase.conflict_strategy_index == 4
+        assert current.rebase.resolution_exhausted is True
+        assert current.rebase.resolution_exhaustion_reason == "; ".join(
+            current.rebase.conflict_strategies_tried
+        )
+        assert [entry.split(":", 1)[0] for entry in current.rebase.conflict_strategies_tried] == [
+            "rebase_resolver",
+            "refresh_retry",
+            "merge_instead",
+            "resolver_with_history",
+        ]
+
     def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
         """When chain exhausts, the original PhaseFailureEvent reason is preserved."""
         state = PipelineState(

@@ -35,6 +35,8 @@
     "recovery_record_retained": false,
     "resolution_exhausted": false,
     "resolution_exhaustion_reason": null,
+    "conflict_strategy_index": 0,
+    "conflict_strategies_tried": [],
     "unresolved_integration_carried": false,
     "legacy_checkpoint_blocked": false,
     "legacy_phase": null,

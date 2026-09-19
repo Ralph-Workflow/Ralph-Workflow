@@ -42,6 +42,7 @@ from ralph.pipeline.auto_integrate_agent import (
 )
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
+from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
@@ -1340,6 +1341,7 @@ def _run_integration_conflict_resolution(
     """
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
+    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
     target = _integration_target_or_none(ctx)
     if not target:
@@ -1358,7 +1360,10 @@ def _run_integration_conflict_resolution(
     except Exception as identity_exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", identity_exc)
         identity = ConflictIdentity()
-    if rebase is not None and not resolver_allowed(rebase, target, identity):
+    resolver_attempts = resolver_attempt_limit(ctx.config)
+    if rebase is not None and not resolver_allowed(
+        rebase, target, identity, attempts=resolver_attempts
+    ):
         logger.warning(
             "integration resolution: resolver budget spent for target '{}'; escalating",
             target,
@@ -1595,6 +1600,7 @@ def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bo
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
+    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
     if rebase is None:
         return True
@@ -1610,7 +1616,12 @@ def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bo
     except Exception as exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", exc)
         identity = ConflictIdentity()
-    if resolver_allowed(rebase, target, identity):
+    if resolver_allowed(
+        rebase,
+        target,
+        identity,
+        attempts=resolver_attempt_limit(ctx.config),
+    ):
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",
@@ -1636,6 +1647,10 @@ def _block_unresolved_integration(
     """
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
+        reconciled = reconcile_stale_unresolved_state(state.rebase)
+        if reconciled != state.rebase:
+            state = state.copy_with(rebase=reconciled)
+            _save_recovered_rebase_checkpoint(state, ctx)
         return None
     _save_recovered_rebase_checkpoint(state, ctx)
     # An exhausted record describes ONE conflict: the one whose chain it
@@ -1764,7 +1779,13 @@ def _run_inner_loop_after_startup(
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
     state = initialize_legacy_cycle_on_resume(state, ctx.policy_bundle.pipeline)
-    while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
+    while (
+        state.phase != ctx.policy_bundle.pipeline.terminal_phase
+        and not (
+            state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
+            and state.rebase.resolution_exhausted
+        )
+    ):
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:

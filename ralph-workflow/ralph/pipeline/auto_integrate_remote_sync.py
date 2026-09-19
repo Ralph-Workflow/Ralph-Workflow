@@ -13,9 +13,11 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
+    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
     finish_conflict_attempt,
@@ -40,7 +42,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 
@@ -119,6 +120,13 @@ def remote_target_name(config: object, *, default: str = DEFAULT_REFRESH_REMOTE)
     return remote.strip() if isinstance(remote, str) and remote.strip() else default
 
 
+def resolver_attempt_limit(config: object) -> int:
+    """Return the configured budget, retaining the public GeneralConfig seam."""
+    if not isinstance(config, UnifiedConfig):
+        return MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    return config.conflict_resolution.max_consecutive_resolver_attempts
+
+
 def reclaim_target_worktree_enabled(config: object | None) -> bool:
     """Return the target-owner reclamation policy, defaulting safely to enabled."""
     general: object = getattr(config, "general", config)
@@ -181,7 +189,7 @@ def pull_and_reconcile_target(
         ``last_refresh``; or ``None`` when the call is a no-op
         (disabled, throttled, or no remote configured).
     """
-    if not remote_sync_enabled(config):
+    if config is None or not remote_sync_enabled(config):
         # AC-13 byte-identical contract: with the flag false this
         # helper does NOTHING.
         return None
@@ -192,12 +200,13 @@ def pull_and_reconcile_target(
     except Exception:
         identity = ConflictIdentity(scope="remote")
     prior_state = prior or RebaseState()
+    resolver_attempts = resolver_attempt_limit(config)
     booked = False
     effective_resolver = rebase_stop_resolver
     if effective_resolver is not None:
-        if not resolver_allowed(prior_state, target, identity) or not start_conflict_attempt(
-            identity
-        ):
+        if not resolver_allowed(
+            prior_state, target, identity, attempts=resolver_attempts
+        ) or not start_conflict_attempt(identity):
             effective_resolver = None
         else:
             booked = True
@@ -239,6 +248,7 @@ def pull_and_reconcile_target(
             target=target,
             resolver_suppressed=rebase_stop_resolver is not None and effective_resolver is None,
             identity=identity,
+            attempts=resolver_attempts,
         )
     finally:
         if booked:

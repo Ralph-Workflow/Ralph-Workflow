@@ -10,6 +10,7 @@ import pytest
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.git.subprocess_runner import GitRunResult
 from ralph.pipeline import effect_executor, runner
+from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.integration_resolution import (
@@ -125,6 +126,33 @@ def test_unreadable_porcelain_still_fails_closed(tmp_path: Path) -> None:
 
     assert verdict.status is RECOVERABLE
     assert not verdict.dispatch_allowed
+
+
+def test_clean_live_inspection_reconciles_stale_resolution_evidence(tmp_path: Path) -> None:
+    """Clean Git state clears persisted conflict evidence before dispatch resumes."""
+    stale = RebaseState(
+        last_action="conflict",
+        unresolved_integration_carried=True,
+        resolution_exhausted=True,
+        resolution_exhaustion_reason="all strategies failed",
+        conflict_strategy_index=4,
+        conflict_strategies_tried=("merge_instead: unresolved",),
+    )
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        stale,
+        porcelain=lambda _: (True, ""),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+
+    assert verdict.status is RESOLVED
+    reconciled = reconcile_stale_unresolved_state(stale)
+    assert reconciled.integration_unresolved is False
+    assert reconciled.resolution_exhausted is False
+    assert reconciled.conflict_strategy_index == 0
+    assert reconciled.conflict_strategies_tried == ()
+    assert reconcile_stale_unresolved_state(reconciled) == reconciled
 
 
 def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_path: Path) -> None:

@@ -95,7 +95,12 @@ def _build_config(target: str) -> UnifiedConfig:
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": target,
-            }
+            },
+            # These legacy regression cases pin the compatibility fallback;
+            # configurable deployments are covered separately below.
+            "conflict_resolution": {
+                "max_consecutive_resolver_attempts": MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+            },
         }
     )
 
@@ -174,6 +179,34 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
     assert final.last_reason is not None
     assert "budget" in final.last_reason
     assert base in final.last_reason
+
+
+def test_configured_resolver_attempt_budget_overrides_compatibility_default(
+    tmp_git_repo: Path,
+) -> None:
+    """The configured per-strategy limit, not the legacy fallback, governs calls."""
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {"auto_integrate_enabled": True, "auto_integrate_target": base},
+            "conflict_resolution": {"max_consecutive_resolver_attempts": 3},
+        }
+    )
+    invocations: list[str] = []
+
+    def _never_resolves(_root: Path, target: str) -> bool:
+        invocations.append(target)
+        return False
+
+    state = RebaseState()
+    for _ in range(4):
+        result = auto_integrate_after_commit(
+            config, WorkspaceScope(tmp_git_repo), state, conflict_resolver=_never_resolves
+        )
+        assert result is not None
+        state = result
+
+    assert invocations == [base] * 3
 
 
 def test_first_conflict_attempt_is_never_suppressed(tmp_git_repo: Path) -> None:

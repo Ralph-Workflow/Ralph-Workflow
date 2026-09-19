@@ -135,6 +135,8 @@ def prior_conflict_count(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
+    *,
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> int:
     """Consecutive unresolved conflicts carried in from the previous seam.
 
@@ -161,6 +163,8 @@ def resolver_allowed(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
+    *,
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> bool:
     """Whether this attempt may invoke the dev-agent conflict resolver.
 
@@ -169,7 +173,7 @@ def resolver_allowed(
     the same ``identity``. A fresh :class:`RebaseState` always yields
     True, so the first attempt of a run is never suppressed.
     """
-    return prior_conflict_count(state, target, identity) < MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    return prior_conflict_count(state, target, identity, attempts=attempts) < attempts
 
 
 def apply_conflict_budget(
@@ -179,6 +183,7 @@ def apply_conflict_budget(
     target: str,
     resolver_suppressed: bool,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> RebaseState:
     """Carry the conflict counter onto ``record`` and escalate when exhausted.
 
@@ -197,7 +202,7 @@ def apply_conflict_budget(
     budget and the blocked target, which is what turns an apparent
     stall into an actionable operator message.
     """
-    carried = prior_conflict_count(prior, target, identity)
+    carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     if record.fast_forwarded:
         return record.model_copy(
             update={
@@ -232,8 +237,7 @@ def apply_conflict_budget(
     if resolver_suppressed:
         update["last_reason"] = (
             f"conflict resolution budget exhausted for '{target}' after "
-            f"{carried} unresolved attempts; agent resolution suppressed "
-            f"until an integration lands"
+            f"{carried} unresolved attempts; escalating to the next resolution strategy"
         )
     return record.model_copy(update=update)
 

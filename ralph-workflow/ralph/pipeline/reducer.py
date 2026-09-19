@@ -494,9 +494,27 @@ def _enter_failed_recovery(
     logger.bind(component="policy.routing").info(
         explain_routing_decision(state.phase, target, "failure", reason, recovery=True)
     )
+    rebase = state.rebase
+    if "integration conflict requires resolution:" in reason:
+        strategies = ("rebase_resolver", "refresh_retry", "merge_instead", "resolver_with_history")
+        index = rebase.conflict_strategy_index
+        tried = rebase.conflict_strategies_tried
+        if index < len(strategies):
+            tried = (*tried, f"{strategies[index]}: {reason}")
+            index += 1
+        exhausted = index >= len(strategies)
+        rebase = rebase.model_copy(
+            update={
+                "conflict_strategy_index": index,
+                "conflict_strategies_tried": tried,
+                "resolution_exhausted": exhausted,
+                "resolution_exhaustion_reason": "; ".join(tried) if exhausted else None,
+            }
+        )
     new_state = progress.advance_phase(state, target, policy=policy).copy_with(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
+        rebase=rebase,
     )
     # The cycle timer is deliberately NOT concluded here. The recovery failed
     # route is a terminal to this reducer but does not end the run: the effect

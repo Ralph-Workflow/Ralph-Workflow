@@ -32,8 +32,30 @@ if TYPE_CHECKING:
 
 __all__ = [
     "preserve_unresolved_resolution_state",
+    "reconcile_stale_unresolved_state",
     "retains_unresolved_resolution_state",
 ]
+
+
+def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
+    """Clear persisted conflict evidence after a clean live inspection.
+
+    Call this only when :func:`inspect_integration_resolution` returned
+    ``RESOLVED``. The persisted predicate identifies precisely the fields whose
+    stale values used to re-latch the next integration seam.
+    """
+    if persisted_integration_resolution_verdict(state) is None:
+        return state
+    return state.model_copy(
+        update={
+            "last_action": None if state.last_action == "conflict" else state.last_action,
+            "unresolved_integration_carried": False,
+            "resolution_exhausted": False,
+            "resolution_exhaustion_reason": None,
+            "conflict_strategy_index": 0,
+            "conflict_strategies_tried": (),
+        }
+    )
 
 
 def retains_unresolved_resolution_state(state: RebaseState) -> bool:

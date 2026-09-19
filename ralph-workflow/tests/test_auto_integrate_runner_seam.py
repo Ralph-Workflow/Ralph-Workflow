@@ -237,7 +237,11 @@ def _install_retry_loop(
         lambda _root, _branch, _target: None,
     )
     monkeypatch.setattr(auto_integrate, "observe_conflict_identity", lambda _root, _target: "id")
-    monkeypatch.setattr(auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True)
+    monkeypatch.setattr(
+        auto_integrate,
+        "resolver_allowed",
+        lambda _state, _target, _identity, **_kwargs: True,
+    )
 
     def _refresh(_config, _root, _target) -> str:
         if events is not None:

@@ -24,6 +24,7 @@ class ConflictResolutionConfig(RalphBaseModel):
     status_interval_seconds: float = Field(default=30.0, gt=0.0)
     max_rounds_per_stop: int = Field(default=3, ge=1)
     max_rebase_conflict_stops: int = Field(default=10, ge=1)
+    max_consecutive_resolver_attempts: int = Field(default=4, ge=1)
     max_fallback_agents: int = Field(
         default=2,
         ge=1,

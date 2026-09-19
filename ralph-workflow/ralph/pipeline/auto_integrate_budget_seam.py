@@ -25,6 +25,7 @@ from loguru import logger
 from ralph.git.merge import branch_sha, conflict_stage_entries, unmerged_paths
 from ralph.git.operations import GitOperationError, get_head_sha
 from ralph.pipeline.auto_integrate_conflict_budget import (
+    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
     prior_conflict_count,
@@ -75,7 +76,12 @@ def observe_conflict_identity(
     )
 
 
-def carry_budget_through_skip(skip: RebaseState, *, prior: RebaseState) -> RebaseState:
+def carry_budget_through_skip(
+    skip: RebaseState,
+    *,
+    prior: RebaseState,
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+) -> RebaseState:
     """Preserve the conflict budget across an early skip.
 
     An early skip (dirty worktree, failed preconditions, ...)
@@ -98,6 +104,7 @@ def carry_budget_through_skip(skip: RebaseState, *, prior: RebaseState) -> Rebas
         prior=prior,
         target=skip.last_target,
         resolver_suppressed=False,
+        attempts=attempts,
     )
 
 
@@ -108,6 +115,7 @@ def charge_failed_attempt(
     target: str,
     identity: ConflictIdentity,
     resolver_offered: bool,
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> RebaseState:
     """Account for an integration attempt that died with an exception.
 
@@ -127,7 +135,7 @@ def charge_failed_attempt(
     and the endpoint merge still run at the next seam, and any
     successful land still resets the count to zero.
     """
-    carried = prior_conflict_count(prior, target, identity)
+    carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     return skip.model_copy(
         update={
             "consecutive_conflicts": carried + 1 if resolver_offered else carried,

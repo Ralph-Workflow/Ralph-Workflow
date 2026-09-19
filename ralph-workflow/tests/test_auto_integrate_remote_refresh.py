@@ -361,7 +361,11 @@ def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     monkeypatch.setattr(
         auto_integrate, "observe_conflict_identity", lambda _root, _target: "identity"
     )
-    monkeypatch.setattr(auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True)
+    monkeypatch.setattr(
+        auto_integrate,
+        "resolver_allowed",
+        lambda _state, _target, _identity, **_kwargs: True,
+    )
     monkeypatch.setattr(
         auto_integrate,
         "pull_and_reconcile_target",

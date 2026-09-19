@@ -127,6 +127,7 @@ def run_rebase_or_merge(
     conflict_resolver: ConflictResolver | None,
     *,
     prefer_merge: bool = False,
+    force_endpoint_merge: bool = False,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     conflict_resolution_config: ConflictResolutionConfig | None = None,
@@ -165,7 +166,7 @@ def run_rebase_or_merge(
     ``display`` is used only to own the resolution footer for the whole
     loop; it is optional and never required for correctness.
     """
-    if prefer_merge:
+    if prefer_merge or force_endpoint_merge:
         return _endpoint_merge_result(
             root,
             target,
