@@ -118,7 +118,7 @@ def test_recovery_controller_falls_over_on_no_progress_quiet() -> None:
 
     # Cooldown timeout is set
     snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["development:claude"] == 5000
+    assert snap["unavailable_timeouts"]["claude"] == 5000
 
 
 def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:

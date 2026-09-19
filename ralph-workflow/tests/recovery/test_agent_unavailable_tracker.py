@@ -70,11 +70,11 @@ def test_unavailable_failure_sets_timeout() -> None:
     )
 
     snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["development:claude"] == 5_000
+    assert snap["unavailable_timeouts"]["claude"] == 5_000
 
 
-def test_unavailable_timeout_is_per_phase_agent_pair() -> None:
-    """Timeouts are isolated per phase:agent key."""
+def test_unavailable_timeout_is_agent_scoped_across_phases() -> None:
+    """The second phase records the same agent's increased cooldown."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -102,8 +102,7 @@ def test_unavailable_timeout_is_per_phase_agent_pair() -> None:
     )
 
     snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["development:claude"] == 5_000
-    assert snap["unavailable_timeouts"]["review:claude"] == 5_000
+    assert snap["unavailable_timeouts"]["claude"] == 10_000
 
 
 def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
@@ -120,7 +119,7 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
             budget_registry=registry,
             clock=clock,
             event_bus=bus,
-            unavailable_timeouts={"development:claude": starting_timeout_ms},
+            unavailable_timeouts={"claude": starting_timeout_ms},
         )
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
@@ -138,8 +137,8 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     assert fallovers[0].to_agent == "opencode"
 
     snap = controller.snapshot()
-    assert snap["backoff_attempts"]["development:claude"] == 1
-    claude_timeout = snap["unavailable_timeouts"]["development:claude"]
+    assert snap["backoff_attempts"]["claude"] == 1
+    claude_timeout = snap["unavailable_timeouts"]["claude"]
     assert claude_timeout > starting_timeout_ms
     assert claude_timeout == 5_000
 
@@ -166,8 +165,8 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
             cycle_cap=10,
             clock=clock,
             unavailable_timeouts={
-                "development:claude": 60_000,
-                "development:opencode": 60_000,
+                "claude": 60_000,
+                "opencode": 60_000,
             },
         )
     )
@@ -187,7 +186,7 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert "waiting for cooldown expiry" in new_state.last_error.lower()
 
     snap = controller.snapshot()
-    assert snap["backoff_attempts"]["development:claude"] == 1
+    assert snap["backoff_attempts"]["claude"] == 1
 
     # Once at least one cooldown expires, the same phase can make progress.
     # Because claude fails again immediately, it is marked unavailable again
@@ -203,8 +202,8 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert retried_state.chain_for_phase("development").current_index == 1
 
     snap2 = controller.snapshot()
-    assert snap2["backoff_attempts"]["development:claude"] == 2
-    assert snap2["unavailable_timeouts"]["development:claude"] > 60_000
+    assert snap2["backoff_attempts"]["claude"] == 2
+    assert snap2["unavailable_timeouts"]["claude"] > 60_000
 
 
 def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> None:
@@ -215,8 +214,8 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
             cycle_cap=10,
             clock=clock,
             unavailable_timeouts={
-                "development:claude": 5_000,
-                "development:opencode": 10_000,
+                "claude": 5_000,
+                "opencode": 10_000,
             },
         )
     )
@@ -235,7 +234,7 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
     assert "all agents unavailable" in waiting_state.last_error.lower()
     assert "waiting for cooldown expiry" in waiting_state.last_error.lower()
     snap = controller.snapshot()
-    assert snap["backoff_attempts"]["development:claude"] == 1
+    assert snap["backoff_attempts"]["claude"] == 1
 
     # Advance to the earliest cooldown expiry; claude can be reconsidered.
     clock.advance(5)
@@ -295,8 +294,8 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     assert fallovers[-1].from_agent == "claude"
     assert fallovers[-1].to_agent == "opencode"
     snap1 = controller.snapshot()
-    assert snap1["unavailable_timeouts"]["development:claude"] == 5_000
-    assert snap1["backoff_attempts"]["development:claude"] == 1
+    assert snap1["unavailable_timeouts"]["claude"] == 5_000
+    assert snap1["backoff_attempts"]["claude"] == 1
 
     # Advance past A's cooldown so A can be reconsidered.
     clock.advance(5)
@@ -327,8 +326,8 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     # Backoff duration grew from 5s to 10s (unavailable_timeouts stores absolute
     # expiration timestamps, so compute the remaining cooldown).
     current_time_ms = int(clock.monotonic() * 1000)
-    assert snap2["unavailable_timeouts"]["development:claude"] - current_time_ms == 10_000
-    assert snap2["backoff_attempts"]["development:claude"] == 2
+    assert snap2["unavailable_timeouts"]["claude"] - current_time_ms == 10_000
+    assert snap2["backoff_attempts"]["claude"] == 2
 
 
 def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() -> None:
@@ -374,8 +373,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].to_agent == "opencode"
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
     snap1 = controller.snapshot()
-    assert snap1["unavailable_timeouts"]["development:claude"] == 5_000
-    assert snap1["backoff_attempts"]["development:claude"] == 1
+    assert snap1["unavailable_timeouts"]["claude"] == 5_000
+    assert snap1["backoff_attempts"]["claude"] == 1
 
     # Advance past A's cooldown so A can be reconsidered.
     clock.advance(5)
@@ -407,8 +406,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
 
     snap2 = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
-    assert snap2["unavailable_timeouts"]["development:claude"] - current_time_ms == 10_000
-    assert snap2["backoff_attempts"]["development:claude"] == 2
+    assert snap2["unavailable_timeouts"]["claude"] - current_time_ms == 10_000
+    assert snap2["backoff_attempts"]["claude"] == 2
 
     # Advance past A's cooldown so A can be reconsidered when B fails again.
     clock.advance(10)
@@ -440,8 +439,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
 
     snap3 = controller.snapshot()
     current_time_ms3 = int(clock.monotonic() * 1000)
-    assert snap3["unavailable_timeouts"]["development:claude"] - current_time_ms3 == 20_000
-    assert snap3["backoff_attempts"]["development:claude"] == 3
+    assert snap3["unavailable_timeouts"]["claude"] - current_time_ms3 == 20_000
+    assert snap3["backoff_attempts"]["claude"] == 3
 
 
 def test_unavailable_skip_does_not_consume_budget() -> None:
@@ -452,7 +451,7 @@ def test_unavailable_skip_does_not_consume_budget() -> None:
             cycle_cap=10,
             budget_registry=registry,
             clock=FakeClock(start=0.0),
-            unavailable_timeouts={"development:claude": 60_000},
+            unavailable_timeouts={"claude": 60_000},
         )
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
@@ -489,8 +488,8 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         FailureContext(phase="development", agent="claude"),
     )
     snap1 = controller.snapshot()
-    assert snap1["unavailable_timeouts"]["development:claude"] == 5_000
-    assert snap1["backoff_attempts"]["development:claude"] == 1
+    assert snap1["unavailable_timeouts"]["claude"] == 5_000
+    assert snap1["backoff_attempts"]["claude"] == 1
 
     clock.advance(4.9)
     controller.handle(
@@ -499,8 +498,8 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         FailureContext(phase="development", agent="claude"),
     )
     snap2 = controller.snapshot()
-    assert snap2["unavailable_timeouts"]["development:claude"] == 14_900
-    assert snap2["backoff_attempts"]["development:claude"] == 2
+    assert snap2["unavailable_timeouts"]["claude"] == 14_900
+    assert snap2["backoff_attempts"]["claude"] == 2
 
     clock.advance(9.9)
     controller.handle(
@@ -509,15 +508,15 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         FailureContext(phase="development", agent="claude"),
     )
     snap3 = controller.snapshot()
-    assert snap3["unavailable_timeouts"]["development:claude"] == 34_800
-    assert snap3["backoff_attempts"]["development:claude"] == 3
+    assert snap3["unavailable_timeouts"]["claude"] == 34_800
+    assert snap3["backoff_attempts"]["claude"] == 3
 
     clock.advance(20.1)
     # Simulate the production success path: the runner resets backoff after
     # a successful agent invocation, clearing the attempt counter.
     _simulate_successful_run(controller, "development", "claude")
     snap_after_reset = controller.snapshot()
-    assert "development:claude" not in snap_after_reset["backoff_attempts"]
+    assert "claude" not in snap_after_reset["backoff_attempts"]
 
     controller.handle(
         _fresh_state(),
@@ -525,8 +524,8 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         FailureContext(phase="development", agent="claude"),
     )
     snap4 = controller.snapshot()
-    assert snap4["unavailable_timeouts"]["development:claude"] == 39_900
-    assert snap4["backoff_attempts"]["development:claude"] == 1
+    assert snap4["unavailable_timeouts"]["claude"] == 39_900
+    assert snap4["backoff_attempts"]["claude"] == 1
 
     assert compute_backoff_ms(5_000, 0, 300_000) == 5_000
     assert compute_backoff_ms(5_000, 1, 300_000) == 10_000
@@ -709,7 +708,7 @@ def test_credit_exhaustion_failure_sets_timeout() -> None:
     )
 
     snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["development:claude"] == 60_000
+    assert snap["unavailable_timeouts"]["claude"] == 60_000
 
 
 def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
@@ -751,8 +750,8 @@ def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
             cycle_cap=10,
             clock=clock,
             unavailable_timeouts={
-                "development:claude": 60_000,
-                "development:opencode": 60_000,
+                "claude": 60_000,
+                "opencode": 60_000,
             },
         )
     )
@@ -862,8 +861,8 @@ def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
             clock=clock,
             event_bus=bus,
             unavailable_timeouts={
-                "development:claude": 60_000,
-                "development:opencode": 60_000,
+                "claude": 60_000,
+                "opencode": 60_000,
             },
         )
     )
@@ -913,7 +912,7 @@ def test_out_of_credits_uses_30min_cap() -> None:
 
     snap = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap["unavailable_timeouts"]["development:claude"]
+    timeout = snap["unavailable_timeouts"]["claude"]
     remaining = timeout - current_time_ms
     assert remaining == 1_800_000
 
@@ -955,7 +954,7 @@ def test_no_output_at_start_uses_30s_cap() -> None:
 
     snap = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap["unavailable_timeouts"]["development:claude"]
+    timeout = snap["unavailable_timeouts"]["claude"]
     remaining = timeout - current_time_ms
     assert remaining == 30_000
 
@@ -997,7 +996,7 @@ def test_stale_child_quiet_uses_5min_cap() -> None:
 
     snap = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap["unavailable_timeouts"]["development:claude"]
+    timeout = snap["unavailable_timeouts"]["claude"]
     remaining = timeout - current_time_ms
     assert remaining == 300_000
 
@@ -1081,8 +1080,8 @@ def test_legacy_unavailable_timeouts_seam_still_works() -> None:
             cycle_cap=10,
             clock=FakeClock(start=0.0),
             unavailable_timeouts={
-                "development:claude": 60_000,
-                "development:opencode": 60_000,
+                "claude": 60_000,
+                "opencode": 60_000,
             },
         )
     )

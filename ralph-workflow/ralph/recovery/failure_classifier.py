@@ -143,7 +143,7 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
 # after a cooldown. These are matched case-insensitively via
 # ``contains_casefolded_marker`` and routed to USER_CONFIG so the pipeline
 # terminates through the normal failure path instead of waiting forever.
-_CURSOR_AUTH_SUBSTRINGS: tuple[str, ...] = (
+_AUTH_CONFIG_SUBSTRINGS: tuple[str, ...] = (
     "authentication required",
     "please run 'agent login'",
     "cursor_api_key",
@@ -478,9 +478,9 @@ def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) ->
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
 
 
-def _is_cursor_auth_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
-    """Return True when Cursor requires user authentication configuration."""
-    return contains_casefolded_marker(detail_parts, _CURSOR_AUTH_SUBSTRINGS)
+def _is_auth_config_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
+    """Return True when the agent requires user authentication configuration."""
+    return contains_casefolded_marker(detail_parts, _AUTH_CONFIG_SUBSTRINGS)
 
 
 def _is_permanent_account_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
@@ -835,15 +835,11 @@ class FailureClassifier:
             and watchdog_reason == "no_output_at_start"
             and bool(resumable_session_id)
         )
-        cursor_auth_failure = (
-            agent is not None
-            and agent.partition("/")[0] == "cursor"
-            and _is_cursor_auth_failure(detail_parts)
-        )
-        is_unavailable = (base_unavailable and not resumable_kill) or cursor_auth_failure
+        auth_config_failure = _is_auth_config_failure(detail_parts)
+        is_unavailable = (base_unavailable and not resumable_kill) or auth_config_failure
 
         unavailability_reason: UnavailabilityReason | None = None
-        if cursor_auth_failure:
+        if auth_config_failure:
             unavailability_reason = UnavailabilityReason.AUTH_CONFIG
         elif broken_agent:
             unavailability_reason = UnavailabilityReason.BROKEN_AGENT
@@ -940,7 +936,7 @@ class FailureClassifier:
                 (FailureCategory.ARTIFACT_VALIDATION, False, False),
             ),
             (_is_environmental_exc(exc), (FailureCategory.ENVIRONMENTAL, False, False)),
-            (_is_cursor_auth_failure(detail_parts), (FailureCategory.USER_CONFIG, False, False)),
+            (_is_auth_config_failure(detail_parts), (FailureCategory.USER_CONFIG, False, False)),
         ):
             if predicate:
                 return result
@@ -1050,7 +1046,7 @@ class FailureClassifier:
     ) -> tuple[FailureCategory, bool, bool] | None:
         checks = (
             (
-                _is_cursor_auth_failure(detail_parts),
+                _is_auth_config_failure(detail_parts),
                 (FailureCategory.USER_CONFIG, False, False),
             ),
             (

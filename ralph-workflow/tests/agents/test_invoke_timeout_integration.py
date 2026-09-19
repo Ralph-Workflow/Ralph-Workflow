@@ -22,15 +22,18 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 from ralph.agents.execution_state import (
+    AgentExecutionState,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
 )
 from ralph.agents.idle_watchdog import (
+    IdleWatchdog,
     TimeoutPolicy,
     WaitingStatusEvent,
     WaitingStatusKind,
     WaitingStatusListener,
     WatchdogFireReason,
+    WatchdogVerdict,
 )
 from ralph.agents.invoke import (
     IdleStreamTimeoutError,
@@ -829,16 +832,16 @@ def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
 
 
 def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
-    """OpenCode child fresh then stale fires NO_OUTPUT_DEADLINE, not ceiling.
+    """OpenCode child freshness expires into the normal idle deadline.
 
-    Regression for activity-aware idle watchdog: a run that enters
-    WAITING_ON_CHILD while the OpenCode child is demonstrably active must
-    still fall back to the normal idle timeout when the child evidence goes
-    stale, rather than lingering under WAITING_ON_CHILD until the larger
-    cumulative ceiling fires.
+    This exercises the real strategy and watchdog with only FakeClock time.
+    A blocked reader thread previously made this unit scenario depend on a
+    0.5-second real teardown join, which is incompatible with the default
+    per-test deadline under shard contention.
     """
     idle_timeout = 0.1
     max_waiting = 20.0
+    clock = FakeClock(start=0.0)
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
@@ -849,32 +852,8 @@ def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> No
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
-    clock = FakeClock(start=0.0)
-
-    _reader_release = threading.Event()
-    progress_yielded = [False]
-
-    def _stdout_gen() -> Iterator[str]:
-        if not progress_yielded[0]:
-            progress_yielded[0] = True
-            yield json.dumps({"type": "child_started", "child_id": "child-x"}) + "\n"
-            yield (
-                json.dumps({"type": "child_progress", "child_id": "child-x", "phase": "running"})
-                + "\n"
-            )
-        _reader_release.wait(timeout=5.0)
-        yield from ()
-
-    handle = _FakeManagedHandle(
-        _stdout_gen(),
-        descendant_count=1,
-        descendant_oldest_seconds=5.0,
-        on_terminate=_reader_release.set,
-    )
-
     registry = ChildLivenessRegistry(
         progress_ttl=0.2,
         heartbeat_ttl=0.2,
@@ -883,24 +862,21 @@ def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> No
         now=clock.monotonic,
     )
     strategy = OpenCodeExecutionStrategy(label_scope="test", registry=registry)
+    strategy.observe_line(json.dumps({"type": "child_started", "child_id": "child-x"}))
+    strategy.observe_line(
+        json.dumps({"type": "child_progress", "child_id": "child-x", "phase": "running"})
+    )
+    handle = _FakeManagedHandle(iter(()), descendant_count=1, descendant_oldest_seconds=5.0)
     probe = FakeLivenessProbe(active=False)
+    watchdog = IdleWatchdog(policy, clock)
+    watchdog.record_invocation_start()
+    watchdog.record_activity()
 
-    try:
-        with pytest.raises(IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines(
-                handle,
-                policy=policy,
-                execution_strategy=strategy,
-                liveness_probe=probe,
-                _clock=clock,
-            ):
-                pass
-    finally:
-        _reader_release.set()
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.WAITING_ON_CHILD
 
-    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE, (
-        f"Fresh-then-stale scoped child must fire NO_OUTPUT_DEADLINE, not {exc_info.value.reason!r}"
+    clock.advance(idle_timeout + 0.2)
+    assert strategy.classify_quiet(handle, probe) == AgentExecutionState.ACTIVE
+    assert watchdog.evaluate(classify_quiet=lambda: strategy.classify_quiet(handle, probe)) == (
+        WatchdogVerdict.FIRE
     )
-    assert exc_info.value.timeout_seconds == idle_timeout, (
-        f"Must fire at idle timeout ({idle_timeout}s), not the waiting ceiling ({max_waiting}s)"
-    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE

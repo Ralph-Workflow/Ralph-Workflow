@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from loguru import logger
+
 from ralph.agents.invoke import BrokenAgentExitError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import effect_router
@@ -54,10 +56,11 @@ def _state(phase: str = "development") -> PipelineState:
 def _cooldown_remaining_ms(
     controller: RecoveryController,
     clock: FakeClock,
-    phase: str = "development",
+    _phase: str = "development",
+    agent: str = "cursor/auto",
 ) -> int:
     snapshot = controller.unavailability_store.snapshot()
-    deadline_ms = snapshot["unavailable_timeouts"][f"{phase}:cursor/auto"]
+    deadline_ms = snapshot["unavailable_timeouts"][agent]
     assert isinstance(deadline_ms, int)
     return deadline_ms - int(clock.monotonic() * 1000)
 
@@ -139,11 +142,12 @@ def test_cursor_auth_backoff_history_survives_a_phase_transition() -> None:
     assert _cooldown_remaining_ms(controller, clock, "review") == 10_000
 
 
-def test_non_cursor_auth_message_does_not_cool_agent() -> None:
+def test_non_cursor_auth_message_cools_agent_before_fallback_selection() -> None:
+    """Plan S-1: authentication messages cool every configured agent."""
     clock = FakeClock(start=0.0)
     controller = _controller(clock)
 
-    _, _, event = controller.handle(
+    new_state, _, event = controller.handle(
         _state(),
         "Authentication required. Please run 'agent login' first.",
         FailureContext(phase="development", agent="fallback"),
@@ -151,7 +155,38 @@ def test_non_cursor_auth_message_does_not_cool_agent() -> None:
 
     assert event.category == str(FailureCategory.USER_CONFIG)
     assert event.counted_against_budget is False
-    assert controller.unavailability_store.is_available("development", "fallback") is True
+    assert event.unavailability_reason == str(UnavailabilityReason.AUTH_CONFIG)
+    assert new_state.phase == "failed_terminal"
+    assert _cooldown_remaining_ms(controller, clock, "development", "fallback") == 5_000
+
+    selection = controller.preferred_agent_index(
+        "development",
+        ["fallback", "cursor/auto"],
+    )
+
+    assert selection.agent == "cursor/auto"
+    assert selection.index == 1
+
+
+def test_uncounted_auth_config_failure_logs_one_cooldown_transition() -> None:
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock)
+    logs: list[str] = []
+    sink_id = logger.add(logs.append, level="INFO", format="{message}")
+    try:
+        _, _, event = controller.handle(
+            _state(),
+            _cursor_auth_failure(),
+            FailureContext(phase="development", agent="cursor/auto"),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert event.counted_against_budget is False
+    cooldown_lines = [line for line in logs if "cursor/auto unavailable:" in line]
+    assert len(cooldown_lines) == 1
+    assert "auth_config" in cooldown_lines[0]
+    assert "cooldown 5000ms active" in cooldown_lines[0]
 
 
 def test_non_auth_user_config_failure_does_not_cool_agent() -> None:

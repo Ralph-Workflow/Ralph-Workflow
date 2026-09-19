@@ -56,9 +56,9 @@ def test_agent_failure_waits_when_every_chain_agent_is_in_cooldown() -> None:
     controller = _controller(
         clock,
         {
-            "development:claude": _entry(5000),
-            "development:opencode": _entry(8000),
-            "development:agy": _entry(10000),
+            "claude": _entry(5000),
+            "opencode": _entry(8000),
+            "agy": _entry(10000),
         },
     )
 
@@ -87,8 +87,8 @@ def test_agent_failure_falls_over_when_an_agent_is_available() -> None:
     controller = _controller(
         clock,
         {
-            "development:claude": _entry(5000),
-            "development:opencode": _entry(8000),
+            "claude": _entry(5000),
+            "opencode": _entry(8000),
         },
     )
 

@@ -113,14 +113,14 @@ def test_controller_earliest_available_wait_uses_smallest_remaining_cooldown() -
             cycle_cap=10,
             clock=clock,
             unavailability_entries={
-                "development:claude": UnavailabilityEntry(
+                "claude": UnavailabilityEntry(
                     unavailable_until_ms=5000,
                     reason=UnavailabilityReason.NO_OUTPUT_AT_START,
                     attempt=0,
                     base_backoff_ms=5000,
                     max_backoff_ms=5000,
                 ),
-                "development:opencode": UnavailabilityEntry(
+                "opencode": UnavailabilityEntry(
                     unavailable_until_ms=8000,
                     reason=UnavailabilityReason.NO_OUTPUT_AT_START,
                     attempt=0,
@@ -142,7 +142,7 @@ def test_controller_selection_evidence_includes_stored_cooldown_reason() -> None
         options=RecoveryControllerOptions(
             clock=clock,
             unavailability_entries={
-                "development:cursor/auto": UnavailabilityEntry(
+                "cursor/auto": UnavailabilityEntry(
                     unavailable_until_ms=5_000,
                     reason=UnavailabilityReason.AUTH_CONFIG,
                     attempt=0,

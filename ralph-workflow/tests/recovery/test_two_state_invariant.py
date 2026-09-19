@@ -125,21 +125,21 @@ def test_walk_through_every_agent_on_cooldown_returns_wait() -> None:
     permanently skips an agent.
     """
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=10000,
             max_backoff_ms=10000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=3000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=3000,
             max_backoff_ms=3000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -198,7 +198,7 @@ def test_wrap_true_rearms_to_earliest_cooldown() -> None:
     priority agent selection.
     """
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -206,7 +206,7 @@ def test_wrap_true_rearms_to_earliest_cooldown() -> None:
             max_backoff_ms=10000,
         ),
         # opencode (index 1) is intentionally NOT in initial_entries -> available
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=30000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,

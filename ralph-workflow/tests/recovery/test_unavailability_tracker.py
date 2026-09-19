@@ -57,6 +57,51 @@ class TestAgentUnavailabilityTracker:
         assert entry3.attempt == 2
         assert entry3.unavailable_until_ms - entry2.unavailable_until_ms == 20_000
 
+    def test_non_auth_backoff_grows_across_phase_transition(self) -> None:
+        """Plan S-1: non-auth backoff belongs to the agent across phases."""
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        first_entry = tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        assert first_entry.unavailable_until_ms == 5_000
+
+        clock.advance(5)
+        second_entry = tracker.mark_unavailable(
+            "review", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+
+        assert second_entry.attempt == 1
+        assert second_entry.unavailable_until_ms - int(clock.monotonic() * 1000) == 10_000
+
+    def test_cross_phase_cooldown_blocks_availability_and_waits_by_agent(self) -> None:
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+
+        assert tracker.is_available("review", "claude") is False
+        assert tracker.earliest_unavailable_wait_ms("review", ["claude"]) == 5_000
+
+    def test_reset_backoff_in_another_phase_clears_agent_history(self) -> None:
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        tracker.reset_backoff("review", "claude")
+
+        entry = tracker.mark_unavailable(
+            "review", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+
+        assert entry.attempt == 0
+        assert entry.unavailable_until_ms == 5_000
+
     def test_mark_unavailable_caps_at_max(self) -> None:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
@@ -69,7 +114,7 @@ class TestAgentUnavailabilityTracker:
                 clock.advance(300)
 
         snap = tracker.snapshot()
-        timeout = snap["unavailable_timeouts"]["development:claude"]
+        timeout = snap["unavailable_timeouts"]["claude"]
         current_time_ms = int(clock.monotonic() * 1000)
         remaining = timeout - current_time_ms
         assert remaining == 30_000
@@ -84,7 +129,7 @@ class TestAgentUnavailabilityTracker:
                 clock.advance(3000)
 
         snap = tracker.snapshot()
-        timeout = snap["unavailable_timeouts"]["development:claude"]
+        timeout = snap["unavailable_timeouts"]["claude"]
         current_time_ms = int(clock.monotonic() * 1000)
         remaining = timeout - current_time_ms
         assert remaining == 1_800_000
@@ -101,7 +146,7 @@ class TestAgentUnavailabilityTracker:
                 clock.advance(3000)
 
         snap = tracker.snapshot()
-        timeout = snap["unavailable_timeouts"]["development:claude"]
+        timeout = snap["unavailable_timeouts"]["claude"]
         current_time_ms = int(clock.monotonic() * 1000)
         remaining = timeout - current_time_ms
         assert remaining == 300_000
@@ -150,7 +195,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(
             clock=clock,
-            initial_timeouts={"development:claude": 60_000},
+            initial_timeouts={"claude": 60_000},
         )
         assert tracker.is_available("development", "claude") is False
 
@@ -165,10 +210,10 @@ class TestAgentUnavailabilityTracker:
         )
         tracker = AgentUnavailabilityTracker(
             clock=clock,
-            initial_entries={"development:claude": entry},
+            initial_entries={"claude": entry},
         )
         snap = tracker.snapshot()
-        assert snap["unavailable_timeouts"]["development:claude"] == 120_000
+        assert snap["unavailable_timeouts"]["claude"] == 120_000
 
     def test_mark_unavailable_reason_none_uses_legacy_policy(self) -> None:
         clock = FakeClock(start=0.0)
@@ -202,8 +247,8 @@ class TestAgentUnavailabilityTracker:
         # that the opportunistic path is correct, then advance
         # further and exercise the explicit prune_expired path.
         snap_after_opencode = tracker.snapshot()
-        assert "development:claude" not in snap_after_opencode["unavailable_timeouts"]
-        assert "development:opencode" in snap_after_opencode["unavailable_timeouts"]
+        assert "claude" not in snap_after_opencode["unavailable_timeouts"]
+        assert "opencode" in snap_after_opencode["unavailable_timeouts"]
 
         # Advance past opencode's cooldown and call prune_expired.
         clock.advance(20)
@@ -213,7 +258,7 @@ class TestAgentUnavailabilityTracker:
             f" cooldown elapses, got pruned={pruned}"
         )
         snap_final = tracker.snapshot()
-        assert "development:opencode" not in snap_final["unavailable_timeouts"]
+        assert "opencode" not in snap_final["unavailable_timeouts"]
 
     def test_prune_expired_returns_count_of_pruned_entries(self) -> None:
         clock = FakeClock(start=0.0)
@@ -240,7 +285,7 @@ class TestAgentUnavailabilityTracker:
             f" still active, got pruned={pruned}"
         )
         snap = tracker.snapshot()
-        assert "development:claude" in snap["unavailable_timeouts"]
+        assert "claude" in snap["unavailable_timeouts"]
 
     def test_prune_expired_preserves_backoff_attempts(self) -> None:
         """``prune_expired`` MUST NOT reset the exponential backoff counter.
@@ -264,7 +309,7 @@ class TestAgentUnavailabilityTracker:
         snap = tracker.snapshot()
         # Backoff attempts survives the prune so the next mark_unavailable
         # bumps it to attempt=2 (continuing exponential growth).
-        assert snap["backoff_attempts"]["development:claude"] == 2
+        assert snap["backoff_attempts"]["claude"] == 2
 
     def test_prune_expired_explicit_now_argument(self) -> None:
         """``prune_expired`` MUST honor an explicit ``now_ms`` argument.
@@ -308,5 +353,5 @@ class TestAgentUnavailabilityTracker:
 
         snap = tracker.snapshot()
         # 'stale' was swept by the opportunistic prune.
-        assert "development:stale" not in snap["unavailable_timeouts"]
-        assert "development:fresh" in snap["unavailable_timeouts"]
+        assert "stale" not in snap["unavailable_timeouts"]
+        assert "fresh" in snap["unavailable_timeouts"]

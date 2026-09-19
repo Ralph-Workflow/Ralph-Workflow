@@ -216,21 +216,21 @@ def test_recovery_never_exits_on_unavailability_when_all_agents_on_cooldown() ->
       (e) Return an empty effects list (no ``ExitFailureEffect``).
     """
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=10000,
             max_backoff_ms=10000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=7000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -281,21 +281,21 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     """
     clock = FakeClock(start=0.0)
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=60000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=60000,
             max_backoff_ms=60000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=30000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -388,14 +388,14 @@ def test_recovery_chain_exhaustion_only_when_no_budget_remaining() -> None:
     )
 
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=10000,
             max_backoff_ms=10000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,

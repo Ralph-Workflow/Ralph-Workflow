@@ -66,7 +66,7 @@ def test_reducer_fallover_returns_to_preferred_available_agent() -> None:
 def test_reducer_fallover_skips_agent_in_cooldown() -> None:
     clock = FakeClock(start=0.0)
     initial_entries = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,

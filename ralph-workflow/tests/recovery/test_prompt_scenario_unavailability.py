@@ -220,7 +220,7 @@ def test_prompt_scenario_five_hour_stall_caught_at_the_startup_grace() -> None:
     assert chain.current_index == 1
 
     snapshot = controller.snapshot()
-    claude_cooldown_ms = snapshot["unavailable_timeouts"]["development:claude"]
+    claude_cooldown_ms = snapshot["unavailable_timeouts"]["claude"]
     current_time_ms = int(clock.monotonic() * 1000)
     claude_remaining_ms = claude_cooldown_ms - current_time_ms
     assert 5_000 <= claude_remaining_ms <= 30_000, (
@@ -530,7 +530,7 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
 
         Records every ``mark_unavailable`` call into the shared
         ``marker`` dict and tracks entries in a dict keyed by
-        ``phase:agent`` so the public ``is_available`` /
+        agent name so the public ``is_available`` /
         ``waiting_state_payload`` surface can be exercised end-to-end
         through the controller.
         """
@@ -546,7 +546,7 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
             reason: UnavailabilityReason | None = None,
         ) -> UnavailabilityEntry:
             marker["last_call"] = (phase, agent, reason)
-            key = f"{phase}:{agent}"
+            key = agent
             entry = UnavailabilityEntry(
                 unavailable_until_ms=10_000,
                 reason=reason,
@@ -558,14 +558,15 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
             return entry
 
         def is_available(self, phase: str, agent: str) -> bool:
-            key = f"{phase}:{agent}"
-            return key not in entries
+            del phase
+            return agent not in entries
 
         def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
             return 0
 
         def reset_backoff(self, phase: str, agent: str) -> None:
-            entries.pop(f"{phase}:{agent}", None)
+            del phase
+            entries.pop(agent, None)
 
         def snapshot(self) -> dict[str, dict[str, object]]:
             unavailable_timeouts: dict[str, int] = {
@@ -646,4 +647,4 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
     snapshot = controller.snapshot()
     assert "unavailable_timeouts" in snapshot
     assert "backoff_attempts" in snapshot
-    assert snapshot["unavailable_timeouts"] == {"development:claude": 10_000}
+    assert snapshot["unavailable_timeouts"] == {"claude": 10_000}

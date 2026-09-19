@@ -2,10 +2,11 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 12 shards. The measured profile avoids concurrent pytest startup,
-# collection, and filesystem contention while preserving the existing test
-# selection and timeout policy under the immutable 60-second deadline.
-# Operators may override after measuring their own host:
+# Default: 20 shards. This profile reduces the slowest weighted shard while
+# leaving the four remaining CPU slots available for runner, I/O, and smoke
+# process cleanup. Nested xdist remains disabled because its coordination
+# overhead exceeds the gain for this shard-saturated profile. Operators may
+# override after measuring their own host:
 #   PYTEST_WORKERS=auto make test # opt into the CPU-capped auto profile
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
 #   PYTEST_WORKERS=12 make test   # maintained contention-safe profile
@@ -22,7 +23,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 12
+PYTEST_WORKERS ?= 20
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to

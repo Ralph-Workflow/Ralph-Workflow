@@ -93,21 +93,21 @@ def test_handle_with_all_agents_unavailable_enters_wait_state_not_failed() -> No
     bus = FailureEventBus()
 
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=10000,
             max_backoff_ms=10000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=7000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -189,21 +189,21 @@ def test_handle_after_earliest_cooldown_expires_does_not_exit_pipeline() -> None
     bus = FailureEventBus()
 
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=10000,
             max_backoff_ms=10000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=7000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -302,21 +302,21 @@ def test_wrap_rearming_skips_later_agents_still_on_cooldown() -> None:
     bus = FailureEventBus()
 
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=60000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=60000,
             max_backoff_ms=60000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=30000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,

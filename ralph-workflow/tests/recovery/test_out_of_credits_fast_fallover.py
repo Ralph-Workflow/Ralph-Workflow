@@ -52,7 +52,7 @@ def test_out_of_credits_message_classifies_as_unavailable_with_per_reason_backof
     assert controller._unavailability_tracker.is_available("development", "opencode") is True
     # claude has the OUT_OF_CREDITS base timeout (60_000ms)
     snapshot = controller.snapshot()
-    assert snapshot["unavailable_timeouts"]["development:claude"] == 60_000
+    assert snapshot["unavailable_timeouts"]["claude"] == 60_000
 
 
 def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credits_backoff() -> None:
@@ -90,7 +90,7 @@ def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credit
 
     assert failure_evt.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS.value
     assert state.chain_for_phase("development").current_index == 1
-    assert controller.snapshot()["unavailable_timeouts"]["development:codex"] == 60_000
+    assert controller.snapshot()["unavailable_timeouts"]["codex"] == 60_000
 
 
 def test_out_of_credits_backoff_doubles_each_retry_up_to_thirty_minute_cap() -> None:
@@ -122,7 +122,7 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_thirty_minute_cap() -> 
         )
         snapshot = controller.snapshot()
         current_time_ms = int(clock.monotonic() * 1000)
-        cooldown = snapshot["unavailable_timeouts"]["development:claude"] - current_time_ms
+        cooldown = snapshot["unavailable_timeouts"]["claude"] - current_time_ms
         assert cooldown == expected_cooldowns[i]
 
         # Advance the clock past the cooldown so it can be marked again
@@ -173,7 +173,7 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes() -> 
         )
         # The helper return value must agree with the store-recorded cooldown.
         snap = controller._unavailability_tracker.snapshot()
-        stored_timeout = snap["unavailable_timeouts"]["development:claude"]
+        stored_timeout = snap["unavailable_timeouts"]["claude"]
         current_time_ms = int(clock.monotonic() * 1000)
         stored_remaining = stored_timeout - current_time_ms
         assert helper_return == stored_remaining, (

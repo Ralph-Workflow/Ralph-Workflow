@@ -676,7 +676,15 @@ class RecoveryController:
 
         if failure.category == FailureCategory.USER_CONFIG:
             if failure.is_unavailable and agent is not None:
-                self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
+                cooldown_ms = self._mark_agent_unavailable(
+                    phase, agent, reason=failure.unavailability_reason
+                )
+                logger.info(
+                    "{} unavailable: {}; cooldown {}ms active",
+                    agent,
+                    failure.unavailability_reason,
+                    cooldown_ms,
+                )
                 new_state = new_state.copy_with(
                     last_unavailability_reason=(
                         str(failure.unavailability_reason)
@@ -697,7 +705,15 @@ class RecoveryController:
 
         # AGENT category: debit budget and handle chain progression
         if failure.is_unavailable and agent is not None:
-            self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
+            cooldown_ms = self._mark_agent_unavailable(
+                phase, agent, reason=failure.unavailability_reason
+            )
+            logger.info(
+                "{} unavailable: {}; cooldown {}ms active",
+                agent,
+                failure.unavailability_reason,
+                cooldown_ms,
+            )
             new_state = new_state.copy_with(
                 last_unavailability_reason=(
                     str(failure.unavailability_reason) if failure.unavailability_reason else None
@@ -1114,9 +1130,8 @@ class RecoveryController:
 
         rows: list[tuple[str, bool, int, bool, str | None]] = []
         for idx, agent in enumerate(agents):
-            key = f"{phase}:{agent}"
-            timeout_ms = cooldowns_dict.get(key)
-            reason = reasons_dict.get(key)
+            timeout_ms = cooldowns_dict.get(agent)
+            reason = reasons_dict.get(agent)
             cooldown_reason = reason if isinstance(reason, str) else None
             cooldown_ms = 0
             if isinstance(timeout_ms, int):
@@ -1442,9 +1457,8 @@ class RecoveryController:
         now_ms = int(self._clock.monotonic() * 1000)
         result: list[tuple[str, int, int]] = []
         for agent in agents:
-            key = f"{phase}:{agent}"
-            timeout_ms = cooldowns_dict.get(key)
-            attempt = attempts_dict.get(key, 0)
+            timeout_ms = cooldowns_dict.get(agent)
+            attempt = attempts_dict.get(agent, 0)
             attempt_int = int(attempt) if isinstance(attempt, int) else 0
             cooldown_ms = 0
             if isinstance(timeout_ms, int):

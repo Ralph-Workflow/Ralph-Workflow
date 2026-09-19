@@ -101,7 +101,7 @@ def _build_real_controller_with_unavailable(
     """
     clock = FakeClock(start=0.0)
     initial_entries: dict[str, UnavailabilityEntry] = {
-        f"{phase}:{a}": UnavailabilityEntry(
+        a: UnavailabilityEntry(
             unavailable_until_ms=unavailable_until_ms_by_agent[a],
             reason=reason,
             attempt=0,

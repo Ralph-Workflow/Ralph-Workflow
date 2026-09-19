@@ -82,7 +82,7 @@ def test_reducer_regression_skip_same_agent_never_selects_agent_in_cooldown() ->
         _state(),
         PipelineEvent.AGENT_FAILURE,
         _minimal_policy(),
-        recovery=_controller({"development:claude": _cooldown(5000)}),
+        recovery=_controller({"claude": _cooldown(5000)}),
     )
 
     chain = reduced_state.chain_for_phase("development")
@@ -94,9 +94,9 @@ def test_reducer_regression_skip_same_agent_never_selects_agent_in_cooldown() ->
 def test_reducer_regression_skip_same_agent_waits_when_every_agent_is_in_cooldown() -> None:
     """S-2: skip path waits instead of failing when no chain agent is selectable."""
     entries = {
-        "development:claude": _cooldown(3000),
-        "development:opencode": _cooldown(1000),
-        "development:agy": _cooldown(5000),
+        "claude": _cooldown(3000),
+        "opencode": _cooldown(1000),
+        "agy": _cooldown(5000),
     }
 
     reduced_state, effects = reduce(

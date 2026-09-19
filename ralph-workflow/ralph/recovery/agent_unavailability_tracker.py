@@ -140,15 +140,13 @@ class AgentUnavailabilityTracker:
         Returns:
             The new UnavailabilityEntry with computed backoff.
         """
-        key = f"{phase}:{agent}"
-        attempt_key = (
-            agent if reason is UnavailabilityReason.AUTH_CONFIG else key
-        )
+        del phase
+        key = agent
         current_time_ms = int(self._clock.monotonic() * 1000)
         # Opportunistically prune expired entries so the dict does
         # not grow without bound across long parallel runs.
         self.prune_expired(now_ms=current_time_ms)
-        attempt: int = self._backoff_attempts.get(attempt_key, 0)
+        attempt: int = self._backoff_attempts.get(key, 0)
 
         if reason is not None and reason in self._backoff_policy:
             policy = self._backoff_policy[reason]
@@ -177,13 +175,13 @@ class AgentUnavailabilityTracker:
             base_backoff_ms=base_ms_int,
             max_backoff_ms=cap_ms_int,
         )
-        self._backoff_attempts[attempt_key] = attempt + 1
+        self._backoff_attempts[key] = attempt + 1
         return self._entries[key]
 
     def is_available(self, phase: str, agent: str) -> bool:
         """Return True when the agent is not currently marked unavailable."""
-        key = f"{phase}:{agent}"
-        entry = self._entries.get(key)
+        del phase
+        entry = self._entries.get(agent)
         if entry is None:
             return True
         current_time_ms = int(self._clock.monotonic() * 1000)
@@ -194,11 +192,11 @@ class AgentUnavailabilityTracker:
 
         Returns 0 if any agent is available.
         """
+        del phase
         current_time_ms = int(self._clock.monotonic() * 1000)
         min_remaining: int | None = None
         for agent in agents:
-            key = f"{phase}:{agent}"
-            entry = self._entries.get(key)
+            entry = self._entries.get(agent)
             if entry is None:
                 return 0
             if entry.unavailable_until_ms > current_time_ms:
@@ -208,10 +206,9 @@ class AgentUnavailabilityTracker:
         return max(0, min_remaining or 0)
 
     def reset_backoff(self, phase: str, agent: str) -> None:
-        """Clear the unavailable entry for a phase:agent."""
-        key = f"{phase}:{agent}"
-        self._entries.pop(key, None)
-        self._backoff_attempts.pop(key, None)
+        """Clear the unavailable entry and history for an agent."""
+        del phase
+        self._entries.pop(agent, None)
         self._backoff_attempts.pop(agent, None)
 
     def prune_expired(self, now_ms: int | None = None) -> int:
@@ -221,7 +218,7 @@ class AgentUnavailabilityTracker:
         ``ChildLivenessRegistry.prune_stale``: the tracker is
         unbounded on the ``_entries`` axis (only ``reset_backoff``
         ever pops a single key), so a long-lived pipeline that
-        accumulates hundreds of (phase, agent) pairs would retain
+        accumulates hundreds of agent entries would retain
         every expired entry forever. ``prune_expired`` drops the
         expired entries WITHOUT touching ``_backoff_attempts`` so
         exponential backoff continues across fail/recover cycles

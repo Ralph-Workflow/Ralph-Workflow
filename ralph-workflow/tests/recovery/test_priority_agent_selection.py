@@ -46,7 +46,7 @@ def _three_agent_state(current_index: int = 1) -> PipelineState:
 def test_return_to_preferred_agent_after_cooldown_expiry() -> None:
     clock = FakeClock(start=0.0)
     initial_entries = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -124,7 +124,7 @@ def test_priority_beats_same_agent_retry() -> None:
 def test_cooldown_is_never_picked() -> None:
     clock = FakeClock(start=0.0)
     initial_entries = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -156,21 +156,21 @@ def test_cooldown_is_never_picked() -> None:
 def test_all_in_cooldown_still_waits() -> None:
     clock = FakeClock(start=0.0)
     initial_entries = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=8000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=8000,
             max_backoff_ms=8000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -203,7 +203,7 @@ def test_all_in_cooldown_still_waits() -> None:
 def test_transcript_visibility() -> None:
     clock = FakeClock(start=0.0)
     initial_entries = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,

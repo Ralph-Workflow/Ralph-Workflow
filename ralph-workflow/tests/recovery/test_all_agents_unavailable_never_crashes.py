@@ -247,21 +247,21 @@ def test_wait_state_resumes_to_first_available_agent_after_cooldown() -> None:
     # option. Each entry has a distinct unavailable_until_ms; the attempt
     # counter is 0 (no prior mark_unavailable calls).
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=2000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=2000,
             max_backoff_ms=2000,
         ),
-        "development:agy": UnavailabilityEntry(
+        "agy": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
@@ -333,14 +333,14 @@ def test_wait_state_first_cooldown_uses_earliest_unavailable_wait() -> None:
     bus = FailureEventBus()
 
     initial_entries: dict[str, UnavailabilityEntry] = {
-        "development:claude": UnavailabilityEntry(
+        "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
             base_backoff_ms=5000,
             max_backoff_ms=5000,
         ),
-        "development:opencode": UnavailabilityEntry(
+        "opencode": UnavailabilityEntry(
             unavailable_until_ms=10000,
             reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             attempt=0,
