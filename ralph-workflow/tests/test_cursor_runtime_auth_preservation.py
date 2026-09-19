@@ -220,15 +220,20 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
     assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] in {"file", "memory"}
 
 
+@mark.parametrize("ambient_store", [None, "default", "keychain"])
 def test_cursor_invocation_without_credentials_fails_before_spawn(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ambient_store: str | None
 ) -> None:
-    """S-2: a credential-free Cursor run never reaches the subprocess."""
+    """S-2: keychain-only Cursor runs never reach the subprocess."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("task", encoding="utf-8")
     monkeypatch.setenv("HOME", str(tmp_path / "operator-home"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "operator-config"))
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    if ambient_store is None:
+        monkeypatch.delenv("AGENT_CLI_CREDENTIAL_STORE", raising=False)
+    else:
+        monkeypatch.setenv("AGENT_CLI_CREDENTIAL_STORE", ambient_store)
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not spawn")),
@@ -244,6 +249,8 @@ def test_cursor_invocation_without_credentials_fails_before_spawn(
         )
 
     assert excinfo.value.env_var == "CURSOR_API_KEY"
+    assert excinfo.value.stderr.startswith("CURSOR_API_KEY")
+    assert "file-backed Cursor login" in excinfo.value.stderr
 
 
 def test_cursor_home_mirror_skips_entry_that_vanishes_before_stat(

@@ -57,9 +57,9 @@ elif [ "$#" -eq 6 ] && [ "$1" = "run" ] && [ "$2" = "--locked" ] && [ "$3" = "--
         printf '%s\\n' 'snapshot is missing the required fake uv environment' >&2
         exit 19
     fi
-    version=$(sed -n 's/^__version__\\(: str\\)\\? = "\\([^"]*\\)"$/\\2/p' "$project/ralph/__init__.py")
-    flavor=$(grep '^BUILD_FLAVOR' "$project/ralph/_build_meta.py" | sed 's/.*= //' | tr -d '"' | tr -d "'")
-    if [ -z "$version" ] || ! grep -q '^BUILD_FLAVOR\\(: str\\)\\? = ' "$project/ralph/_build_meta.py"; then
+    version=$(sed -En 's/^__version__(: str)? = "([^"]*)"$/\\2/p' "$project/ralph/__init__.py")
+    flavor=$(grep -E '^BUILD_FLAVOR(: str)? = ' "$project/ralph/_build_meta.py" | sed 's/.*= //' | tr -d '"' | tr -d "'")
+    if [ -z "$version" ] || ! grep -Eq '^BUILD_FLAVOR(: str)? = ' "$project/ralph/_build_meta.py"; then
         printf '%s\\n' 'snapshot has no version' >&2
         exit 18
     fi

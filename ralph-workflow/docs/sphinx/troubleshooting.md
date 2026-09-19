@@ -84,14 +84,19 @@ alternate live binary, or operator-wired test stub if the binary is not on
 `agent login` or set `CURSOR_API_KEY`.
 
 **Cause:** Cursor Agent could not resolve an API key or projected file-backed
-login. Ralph Workflow gives every Cursor invocation a private runtime home and
-coerces `AGENT_CLI_CREDENTIAL_STORE` to `file` unless it is explicitly `memory`,
-so it never selects macOS Keychain.
+login. Ralph-managed Cursor runs never touch the macOS Keychain: every run uses
+`AGENT_CLI_CREDENTIAL_STORE=file`, or `memory` when explicitly requested.
+A login stored only in the Keychain is unusable by Ralph Workflow.
 
-**Fix:** Authenticate with the Cursor CLI as needed (for example, `agent login`)
-or provide `CURSOR_API_KEY` as an explicit override. Ralph Workflow projects
-file-backed `cursor/auth.json` into the private runtime home. If neither source
-is available, it raises `MissingCredentialsError` before launching Cursor. Re-run
+**Fix:** Create a file-backed login once as the operator:
+
+```bash
+AGENT_CLI_CREDENTIAL_STORE=file agent login
+```
+
+This writes `~/.config/cursor/auth.json`, which Ralph Workflow projects into each
+private runtime. Alternatively, set `CURSOR_API_KEY`. If neither source is
+available, Ralph Workflow raises `MissingCredentialsError` before launching Cursor. Re-run
 `ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential
 path.
 

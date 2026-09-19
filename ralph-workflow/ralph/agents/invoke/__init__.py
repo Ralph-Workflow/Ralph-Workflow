@@ -421,7 +421,12 @@ def invoke_agent(
                 and (cursor_config_home / "cursor" / "auth.json").exists()
             )
             if not (runtime_env and runtime_env.get("CURSOR_API_KEY")) and not has_cursor_auth:
-                raise MissingCredentialsError(config.cmd.split()[0], "CURSOR_API_KEY not set")
+                raise MissingCredentialsError(
+                    config.cmd.split()[0],
+                    "CURSOR_API_KEY not set and no file-backed Cursor login projected: "
+                    "set CURSOR_API_KEY or run 'AGENT_CLI_CREDENTIAL_STORE=file agent login' "
+                    "once (keychain logins are never used by unattended runs)",
+                )
         opts = _prepare_interactive_claude_options(base_opts, config)
         mcp_endpoint = runtime.mcp_endpoint
         allowed_mcp_tool_names = provider_allowed_mcp_tool_names(config, mcp_endpoint)
@@ -609,9 +614,9 @@ def _fail_for_missing_credentials(
             "openai": "OPENAI_API_KEY",
         }.get(provider)
     elif transport == AgentTransport.CURSOR:
-        # Cursor Agent resolves its default credentials itself, including macOS
-        # keychain-backed credentials. Ralph must not preflight implementation
-        # details that would block unattended runs before the CLI launches.
+        # Cursor credentials are checked after runtime resolution, when Ralph
+        # can inspect the private file-backed login before subprocess launch.
+        # That projection and gate keep the macOS Keychain path unreachable.
         return
     if required_env_var is None:
         return

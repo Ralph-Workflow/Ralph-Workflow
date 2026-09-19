@@ -153,6 +153,7 @@ def test_an_unrecordable_resolution_is_never_started(
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
     monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda _root, _resolving: False)
+    monkeypatch.setattr(merge_module, "_rebase_has_landed_stops", lambda _root: False)
     # The paused rebase is real until the fallback aborts it, so the
     # abort must be OBSERVED rather than assumed: "handed to the
     # fallback" is only safe because the fallback tears the rebase down
