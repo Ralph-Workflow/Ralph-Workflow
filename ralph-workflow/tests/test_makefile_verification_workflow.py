@@ -168,11 +168,13 @@ def test_focused_make_targets_do_not_duplicate_pytest_orchestration() -> None:
         assert "ralph.verify_timeout" not in body[0]
 
 
-def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
-    """The budget-tracked smoke suite runs each harness row concurrently."""
+def test_multimodal_smoke_uses_configurable_bounded_parallel_workers() -> None:
+    """The multimodal smoke suite uses its named worker policy and markers."""
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    assert "-n 12 --dist worksteal" in body[0]
+    assert "MULTIMODAL_SMOKE_WORKERS ?=" in makefile_text
+    assert "-n $(MULTIMODAL_SMOKE_WORKERS) --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

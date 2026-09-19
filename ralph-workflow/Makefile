@@ -11,6 +11,11 @@
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
 #   PYTEST_WORKERS=12 make test   # maintained contention-safe profile
 #
+# Multimodal smoke tests are I/O-bound and use an independently bounded
+# worker pool so their parallelism remains configurable without changing the
+# primary suite policy.
+MULTIMODAL_SMOKE_WORKERS ?= 12
+#
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
 # literally, so this exported default governs both ralph.test_suites and
@@ -201,7 +206,7 @@ test-install-make-smoke:
 # the suite-level cap is provided by the verify runner's cumulative
 # tracker.
 test-multimodal-smoke:
-	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n 12 --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n $(MULTIMODAL_SMOKE_WORKERS) --dist worksteal -m "smoke and subprocess_e2e"
 
 # Visual capture suite (criteria 6 and 7). These public-contract tests cover
 # server-minted capture matrices, immutable before-state lifecycle behavior,
