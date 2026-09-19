@@ -94,3 +94,16 @@ def test_subprocess_env_does_not_mutate_parent_environ(
     assert os.environ.get(_BROKER_SECRET_KEY) == _BROKER_SECRET_VALUE, (
         "_subprocess_env leaked the strip back into os.environ"
     )
+
+
+def test_cursor_subprocess_env_strips_inherited_ssh_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cursor's file-store runtime prevents SSH-triggered Keychain mode."""
+    markers = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
+    for marker in markers:
+        monkeypatch.setenv(marker, "hostile")
+
+    env = _subprocess_env({"AGENT_CLI_CREDENTIAL_STORE": "file"})
+
+    assert not set(markers) & env.keys()

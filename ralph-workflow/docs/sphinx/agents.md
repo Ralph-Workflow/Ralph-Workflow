@@ -229,9 +229,10 @@ through the documented `.cursor/mcp.json` (workspace-local) AND
 endpoint regardless of the cwd it was launched from. The runtime
 resolver projects valid file-backed Cursor credentials into both private auth
 locations, or extracts a valid logged-in IDE token when the files are absent.
-It coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so
-unattended macOS and Linux runs never invoke a Keychain or dialog. The resolver
-restores the original bytes on exit so operator-managed MCP servers are preserved
+It coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, and
+removes inherited `SSH_CLIENT`, `SSH_TTY`, and `SSH_CONNECTION` markers before
+launch. Unattended macOS and Linux runs therefore use the projected credentials
+without invoking a Keychain or dialog. The resolver restores the original bytes on exit so operator-managed MCP servers are preserved
 across Ralph Workflow runs. For the exact flag
 values see the [Cursor section in Agent
 Compatibility](agent-compatibility.md#cursor-cursor).

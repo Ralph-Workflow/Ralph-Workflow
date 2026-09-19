@@ -228,6 +228,7 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
     assert Path(captured_env["HOME"]) != operator_home
     assert Path(captured_env["XDG_CONFIG_HOME"]).parent == Path(captured_env["HOME"])
     assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] in {"file", "memory"}
+    assert not {"SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION"} & captured_env.keys()
 
 
 @mark.parametrize("ambient_store", [None, "default", "keychain"])
@@ -647,3 +648,51 @@ def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
     finally:
         assert runtime.cleanup is not None
         runtime.cleanup()
+
+
+@mark.parametrize("credential_source", ["file", "ide"])
+def test_cursor_runtime_regression_strips_ssh_markers_for_each_credential_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, credential_source: str
+) -> None:
+    """S-1: Cursor never receives SSH markers that trigger Keychain mode."""
+    import sqlite3
+
+    operator_home = tmp_path / "operator-home"
+    source_config_home = tmp_path / "operator-config"
+    if credential_source == "file":
+        auth_path = source_config_home / "cursor" / "auth.json"
+        auth_path.parent.mkdir(parents=True)
+        auth_path.write_text('{"token":"file-token"}', encoding="utf-8")
+    else:
+        state_db = source_config_home / "Cursor/User/globalStorage/state.vscdb"
+        state_db.parent.mkdir(parents=True)
+        with sqlite3.connect(state_db) as connection:
+            connection.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+            connection.execute(
+                "INSERT INTO ItemTable VALUES (?, ?)", ("cursorAuth/accessToken", "ide-token")
+            )
+        monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", "linux")
+
+    runtime = CursorRuntimeResolver().resolve(
+        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+        extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+        workspace_path=tmp_path,
+        base_env={
+            "HOME": str(operator_home),
+            "XDG_CONFIG_HOME": str(source_config_home),
+            "SSH_CLIENT": "192.0.2.1 12345 22",
+            "SSH_TTY": "/dev/ttys001",
+            "SSH_CONNECTION": "192.0.2.1 12345 198.51.100.1 22",
+        },
+    )
+
+    try:
+        assert runtime.agent_env is not None
+        assert not {"SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION"} & runtime.agent_env.keys()
+        assert _has_cursor_file_credentials(
+            Path(runtime.agent_env["XDG_CONFIG_HOME"]), Path(runtime.agent_env["HOME"])
+        )
+    finally:
+        assert runtime.cleanup is not None
+        runtime.cleanup()
+

@@ -103,6 +103,8 @@ from ralph.timeout_defaults import (
 
 from ._monitor_factory import _make_process_monitor
 
+_CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
     from contextvars import Token
@@ -464,6 +466,9 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env.pop(_BROKER_SECRET_ENV, None)
     if extra_env:
         env.update(extra_env)
+    if extra_env and "AGENT_CLI_CREDENTIAL_STORE" in extra_env:
+        for marker in _CURSOR_SSH_MARKERS:
+            env.pop(marker, None)
     env.pop(_BROKER_SECRET_ENV, None)
     scrub_activity_relay_controls(env)
     return env

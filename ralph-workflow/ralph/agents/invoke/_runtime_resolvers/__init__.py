@@ -271,6 +271,7 @@ def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> s
 _CURSOR_AUTH_TOKEN_KEYS = frozenset(
     {"accessToken", "token", "refreshToken", "cursorAuth/accessToken", "cursorAuth/refreshToken"}
 )
+_CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
 
 def _read_valid_cursor_auth(source: Path) -> dict[str, object] | None:
@@ -807,6 +808,8 @@ class CursorRuntimeResolver:
                 _replace_private_cursor_auth(private_auth, credential_payload)
         runtime_env["HOME"] = str(private_home)
         runtime_env["XDG_CONFIG_HOME"] = str(private_config_home)
+        for marker in _CURSOR_SSH_MARKERS:
+            runtime_env.pop(marker, None)
 
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,

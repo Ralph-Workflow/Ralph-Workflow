@@ -85,8 +85,9 @@ alternate live binary, or operator-wired test stub if the binary is not on
 
 **Cause:** Cursor Agent could not resolve an API key or projected file-backed
 login. Ralph-managed Cursor runs never touch the macOS Keychain: every run uses
-`AGENT_CLI_CREDENTIAL_STORE=file`, or `memory` when explicitly requested.
-A login stored only in the Keychain is unusable by Ralph Workflow.
+`AGENT_CLI_CREDENTIAL_STORE=file`, or `memory` when explicitly requested, and
+removes inherited `SSH_CLIENT`, `SSH_TTY`, and `SSH_CONNECTION` markers before
+spawning Cursor. A login stored only in the Keychain is unusable by Ralph Workflow.
 
 **Fix:** Create a file-backed login once as the operator:
 
