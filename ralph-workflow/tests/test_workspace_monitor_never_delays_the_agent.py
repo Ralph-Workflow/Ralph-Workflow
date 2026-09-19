@@ -357,19 +357,21 @@ class _SlowSidecar:
     def __init__(self) -> None:
         self.polling = threading.Event()
         self.polled = threading.Event()
+        self.allow_poll_completion = threading.Event()
         self.writing = threading.Event()
         self.written = threading.Event()
+        self.allow_write_completion = threading.Event()
 
     def poll(self) -> object:
         self.polling.set()
-        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.allow_poll_completion.wait(timeout=_SLOW_WATCH_SECONDS)
         self.polled.set()
         return None
 
     def begin_ownership(self, owner_id: str, *, prior_holder: str | None = None) -> None:
         del owner_id, prior_holder
         self.writing.set()
-        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.allow_write_completion.wait(timeout=_SLOW_WATCH_SECONDS)
         self.written.set()
 
     def publish_changes(self, *args: object, **kwargs: object) -> None:
@@ -402,6 +404,7 @@ def test_a_slow_ownership_write_does_not_park_the_launch(
         still_writing = not sidecar.written.is_set()
         status = awareness_for_workspace(tmp_path).snapshot()
     finally:
+        sidecar.allow_write_completion.set()
         monitor.stop()
         release_workspace_awareness(tmp_path)
 
@@ -440,6 +443,7 @@ def test_a_slow_owner_sidecar_read_does_not_park_the_launch(
         still_polling = not sidecar.polled.is_set()
         status = awareness_for_workspace(tmp_path).snapshot()
     finally:
+        sidecar.allow_poll_completion.set()
         monitor.stop()
         release_workspace_awareness(tmp_path)
 

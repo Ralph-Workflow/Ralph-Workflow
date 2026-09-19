@@ -112,10 +112,6 @@ CAPACITY_PROBE_BUDGET_SECONDS = 10.0
 #: Names the worker so an abandoned step is identifiable in a stack dump.
 _PROBE_THREAD_NAME = "ralph-watch-capacity-probe"
 
-#: Names the thread a timeout is reported on.
-_TIMEOUT_REPORT_THREAD_NAME = "ralph-watch-step-timed-out"
-
-
 class _ProbeFailed:
     """Signals a probe exception through the bounded publication channel."""
 
@@ -150,38 +146,10 @@ def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: f
     try:
         answer = publication.get(timeout=budget_seconds)
     except Empty:
-        _say_it_timed_out(budget_seconds)
         return fallback
     if isinstance(answer, _ProbeFailed):
-        _say_it_timed_out(budget_seconds)
         return fallback
     return answer
-
-
-def _say_it_timed_out(budget_seconds: float) -> None:
-    """Report a timeout WITHOUT waiting to be able to report it.
-
-    Ralph's log sink prints through the same ``rich.Console`` the status
-    bar paints with, under loguru's per-handler lock and the Console's
-    own. This line runs on the launch thread at the exact moment
-    something has been detected as wedged, so taking that lock here can
-    park the launch on the way out of the step that was giving up.
-    Saying it costs a thread; not returning costs the run.
-    """
-    try:
-        threading.Thread(
-            target=lambda: logger.warning(
-                "Workspace watch step did not answer within {}s; "
-                "starting the agent without workspace monitoring",
-                budget_seconds,
-            ),
-            name=_TIMEOUT_REPORT_THREAD_NAME,
-            daemon=True,
-        ).start()
-    except RuntimeError:
-        # Out of threads, so there is nothing left to say it on. The
-        # launch still proceeds, which is the point.
-        return
 
 
 def watch_capacity_is_predicted(
