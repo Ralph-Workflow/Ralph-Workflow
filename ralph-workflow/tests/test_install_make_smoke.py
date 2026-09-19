@@ -23,9 +23,9 @@ _COMMAND_TIMEOUT_SECONDS = 5.0
 
 def _write_fake_uv(directory: Path) -> None:
     fake_uv = directory / "uv"
-    fake_uv.write_text(
-        f"""#!{sys.executable}
-import os
+    fake_uv_python = directory / "uv.py"
+    fake_uv_python.write_text(
+        f"""import os
 import re
 import sys
 import ast
@@ -71,6 +71,10 @@ if len(args) == 6 and args[0:3] == ["run", "--locked", "--project"] and args[4:]
 print(f"offline fake uv rejected argv: {{args!r}}", file=sys.stderr)
 raise SystemExit(64)
 """,
+        encoding="utf-8",
+    )
+    fake_uv.write_text(
+        f"#!/bin/sh\nexec {sys.executable!r} \"$0.py\" \"$@\"\n",
         encoding="utf-8",
     )
     fake_uv.chmod(0o755)

@@ -18,7 +18,7 @@ own native authentication:
 - **Nanocoder** — local-only TUI, no remote auth
 - **Google Anti Gravity (AGY)** — `agy login` / Google account
 - **Pi** — `pi` provider configuration
-- **Cursor** — `agent login` / `CURSOR_API_KEY`
+- **Cursor** — `agent login` / `CURSOR_API_KEY`; macOS `agent login` credentials in the OS keychain are accepted for unattended runs.
 
 You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
 Ralph Workflow then calls the agent CLI as-is and supervises the workflow.
