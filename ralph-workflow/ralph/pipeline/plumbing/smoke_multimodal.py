@@ -39,7 +39,7 @@ import zlib
 from typing import TYPE_CHECKING
 
 from ralph.mcp.server._wire_ledger import (
-    WIRE_LEDGER_RELPATH,
+    _ledger_path,
     params_digest,
     verify_chain,
     wire_evidence_for,
@@ -580,7 +580,7 @@ def grade_multimodal_evidence(  # 6-condition contract: 9 returns (absent, broke
         if secret_check is not None:
             return secret_check
         delivery_check = _check_delivery_mode_perceptible(
-            workspace_root, run_id, expected_delivery_mode
+            workspace_root, run_id, secret, expected_delivery_mode
         )
         if delivery_check is not None:
             return delivery_check
@@ -607,6 +607,7 @@ _PERCEPTIBLE_DELIVERY_MODES: frozenset[str] = frozenset({"inline_image", "typed_
 def _wire_ledger_records_for_run(
     workspace_root: Path,
     run_id: str,
+    secret: str | None,
 ) -> tuple[dict[str, object], ...]:
     """Return the on-disk wire-ledger rows whose ``run_id`` matches.
 
@@ -618,7 +619,7 @@ def _wire_ledger_records_for_run(
     confirmed via :func:`_check_broker_chain` before this helper
     runs.
     """
-    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path = _ledger_path(workspace_root, secret)
     if not ledger_path.exists():
         return ()
     rows: list[dict[str, object]] = []
@@ -646,6 +647,7 @@ def _wire_ledger_records_for_run(
 def _check_delivery_mode_perceptible(
     workspace_root: Path,
     run_id: str,
+    secret: str | None,
     expected_delivery_mode: str | None,
 ) -> Evidence | None:
     """Confirm a wire-ledger row carries a perceptible ``delivery_mode``.
@@ -658,7 +660,7 @@ def _check_delivery_mode_perceptible(
     delivery mode so the grader can verify the smoke run picked a
     perceptible path. Returns ``None`` on success.
     """
-    rows = _wire_ledger_records_for_run(workspace_root, run_id)
+    rows = _wire_ledger_records_for_run(workspace_root, run_id, secret)
     if not rows:
         return Evidence(
             holds=False,

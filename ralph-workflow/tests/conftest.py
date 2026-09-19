@@ -42,6 +42,12 @@ from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+_AGY_DEFAULT_TEST_PATHS = frozenset(
+    {
+        "tests/test_agy_pty_invocation.py",
+        "tests/test_agy_runtime_home_auth.py",
+    }
+)
 
 
 @pytest.fixture(autouse=True)
@@ -108,7 +114,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # suite so launch-policy regressions cannot hide behind an opt-in gate.
         if (
             "agy" in item.nodeid.casefold()
-            and relative_path != "tests/test_agy_pty_invocation.py"
+            and relative_path not in _AGY_DEFAULT_TEST_PATHS
         ):
             item.add_marker("smoke")
 

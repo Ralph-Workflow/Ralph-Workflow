@@ -63,6 +63,13 @@ WIRE_LEDGER_RELPATH = Path(".agent/tmp/mcp-wire-ledger.jsonl")
 _GENESIS_HMAC = "0" * 64
 
 
+def _ledger_path(workspace_root: Path, secret: str | None) -> Path:
+    if secret is None:
+        return workspace_root / WIRE_LEDGER_RELPATH
+    fingerprint = hashlib.sha256(secret.encode()).hexdigest()[:32]
+    return workspace_root / ".agent" / "tmp" / f"mcp-wire-ledger-{fingerprint}.jsonl"
+
+
 @dataclass(frozen=True)
 class WireLedgerRecord:
     """One HMAC-chained wire-ledger row for a dispatched JSON-RPC frame.
@@ -217,7 +224,7 @@ def collect_captures(workspace_root: Path, secret: str | None) -> list[WireLedge
         return []
     if not verify_chain(workspace_root, secret):
         return []
-    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path = _ledger_path(workspace_root, secret)
     captures: list[WireLedgerCapture] = []
     for row in _iter_ledger_rows(ledger_path):
         capture = WireLedgerCapture.from_row(row)
@@ -320,9 +327,9 @@ def append_wire_record(
     """
     if secret is None:
         return None
-    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path = _ledger_path(workspace_root, secret)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = workspace_root / (str(WIRE_LEDGER_RELPATH) + ".lock")
+    lock_path = ledger_path.with_name(ledger_path.name + ".lock")
     # filesystem-write-ok: lock-file sidecar used only to coordinate concurrent appends; the file's contents are never read back, so write_text_if_changed's whole-file replace contract does not fit (it would clobber any in-flight fcntl owner).
     lock_handle = lock_path.open("w", encoding="utf-8")
     try:
@@ -388,7 +395,7 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
     matches the bytes the appender signed. A pre-S-6 row therefore
     still verifies under the post-S-6 verifier.
     """
-    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path = _ledger_path(workspace_root, secret)
     rows = _iter_ledger_rows(ledger_path)
     prior = _GENESIS_HMAC
     for row in rows:
@@ -478,7 +485,7 @@ def wire_evidence_for(
         return False
     if not verify_chain(workspace_root, secret):
         return False
-    ledger_path = workspace_root / WIRE_LEDGER_RELPATH
+    ledger_path = _ledger_path(workspace_root, secret)
     for row in _iter_ledger_rows(ledger_path):
         if row.get("run_id") != run_id or row.get("method") != "tools/call":
             continue

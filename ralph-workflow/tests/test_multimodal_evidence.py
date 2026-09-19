@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 from ralph.mcp.server._wire_ledger import (
-    WIRE_LEDGER_RELPATH,
+    _ledger_path,
     append_wire_record,
     params_digest,
     verify_chain,
@@ -704,7 +704,7 @@ class TestWireLedgerDeliveryModeMetadata:
         # The chain still verifies when the S-6 fields are present.
         assert verify_chain(tmp_path, "s3cr3t") is True
         # The on-disk row carries every S-6 field as a top-level key.
-        ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+        ledger_path = _ledger_path(tmp_path, "s3cr3t")
         import json as _json
 
         rows = [
@@ -744,7 +744,7 @@ class TestWireLedgerDeliveryModeMetadata:
         assert verify_chain(tmp_path, "s3cr3t") is True
         # The on-disk row omits the S-6 fields entirely -- the
         # pre-S-6 row shape is preserved.
-        ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+        ledger_path = _ledger_path(tmp_path, "s3cr3t")
         import json as _json
 
         rows = [

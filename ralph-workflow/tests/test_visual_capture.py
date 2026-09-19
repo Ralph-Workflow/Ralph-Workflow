@@ -44,6 +44,7 @@ from ralph.executor._process_result import ProcessResult
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.server._wire_ledger import (
     WIRE_LEDGER_RELPATH,
+    _ledger_path,
     verify_chain,
 )
 from ralph.mcp.tools.workspace._media_capture import (
@@ -166,9 +167,16 @@ class _FakeExecutor:
         return ProcessResult((command, *args), 0, "", "")
 
 
-def _read_ledger_rows(workspace_root: Path) -> list[dict[str, object]]:
+def _read_ledger_rows(
+    workspace_root: Path,
+    secret: str | None = None,
+) -> list[dict[str, object]]:
     """Read every JSONL row from the wire ledger under ``workspace_root``."""
-    path = workspace_root / WIRE_LEDGER_RELPATH
+    path = (
+        _ledger_path(workspace_root, secret)
+        if secret is not None
+        else workspace_root / WIRE_LEDGER_RELPATH
+    )
     if not path.exists():
         return []
     rows: list[dict[str, object]] = []
@@ -287,7 +295,7 @@ def test_handle_media_capture_appends_ledger_records(tmp_path: Path) -> None:
         executor=fake,
     )
 
-    rows = _read_ledger_rows(tmp_path)
+    rows = _read_ledger_rows(tmp_path, _TEST_SECRET)
     assert len(rows) == len(request.matrix)
     # The HMAC chain verifies when the secret matches.
     assert verify_chain(tmp_path, _TEST_SECRET) is True
@@ -326,7 +334,7 @@ def test_handle_media_capture_records_geometry_and_sha256(tmp_path: Path) -> Non
     by_cell_id: dict[str, object] = {
         cell_result.cell.cell_id: cell_result for cell_result in result.cells
     }
-    rows = _read_ledger_rows(tmp_path)
+    rows = _read_ledger_rows(tmp_path, _TEST_SECRET)
     assert len(rows) == len(request.matrix)
     for row in rows:
         # We cannot recover the params payload from the row, but
@@ -467,7 +475,7 @@ def test_handle_media_capture_fails_when_output_missing(tmp_path: Path) -> None:
             executor=fake,
         )
     assert "did not write" in excinfo.value.reason
-    assert _read_ledger_rows(tmp_path) == []
+    assert _read_ledger_rows(tmp_path, _TEST_SECRET) == []
 
 
 def test_handle_media_capture_fails_when_output_not_png(tmp_path: Path) -> None:

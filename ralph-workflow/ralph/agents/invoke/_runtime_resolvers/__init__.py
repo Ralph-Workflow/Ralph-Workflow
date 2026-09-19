@@ -505,8 +505,31 @@ class ClaudeRuntimeResolver:
         )
 
 
+_AGY_AUTH_ARTIFACTS = (
+    "antigravity-oauth-token",
+    "settings.json",
+    "installation_id",
+)
+
+
+def _project_agy_auth(source_root: Path, destination_root: Path) -> None:
+    """Copy AGY's bounded auth artifacts into an invocation-owned private HOME."""
+    for artifact_name in _AGY_AUTH_ARTIFACTS:
+        source = source_root / artifact_name
+        destination = destination_root / artifact_name
+        try:
+            destination_root.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)  # filesystem-write-ok: bounded AGY credential projection into an invocation-owned private HOME
+        except FileNotFoundError:
+            continue
+
+
 class AgyRuntimeResolver:
-    """RuntimeResolver for AgentTransport.AGY."""
+    """RuntimeResolver for AgentTransport.AGY.
+
+    AGY receives a private HOME containing generated MCP configs and the
+    bounded credential artifacts present in the operator's AGY config directory.
+    """
 
     def resolve(
         self,
@@ -522,6 +545,7 @@ class AgyRuntimeResolver:
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -548,6 +572,10 @@ class AgyRuntimeResolver:
                 (Path(".gemini/config/mcp_config.json"), payload),
             ),
             prefix="ralph-agy-home-",
+        )
+        _project_agy_auth(
+            source_home / ".gemini" / "antigravity-cli",
+            private_home / ".gemini" / "antigravity-cli",
         )
         runtime_env["HOME"] = str(private_home)
 

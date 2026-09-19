@@ -21,6 +21,7 @@ from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._wire_ledger import (
     WIRE_LEDGER_RELPATH,
     WireLedgerRecord,
+    _ledger_path,
     append_wire_record,
     verify_chain,
     wire_evidence_for,
@@ -33,6 +34,10 @@ class _Workspace:
 
     def __init__(self, root: Path) -> None:
         self.root = root
+
+
+def _signed_ledger_path(tmp_path: Path, secret: str) -> Path:
+    return _ledger_path(tmp_path, secret)
 
 
 class _FakeRegistry:
@@ -113,7 +118,7 @@ def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
         response, _ = server.handle_request(request, ServerState.RUNNING)
         assert response is not None
 
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    ledger_path = _signed_ledger_path(tmp_path, "s3cr3t")
     assert ledger_path.exists()
     assert verify_chain(tmp_path, "s3cr3t") is True
 
@@ -146,7 +151,7 @@ def test_notification_methods_append_a_ledger_row(tmp_path: Path) -> None:
         response, _ = server.handle_request(request, ServerState.RUNNING)
         assert response is None  # notifications never carry a response
 
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    ledger_path = _signed_ledger_path(tmp_path, "s3cr3t")
     assert ledger_path.exists()
     assert verify_chain(tmp_path, "s3cr3t") is True
 
@@ -176,7 +181,7 @@ def test_ledger_with_only_handler_dict_rows_grants_no_wire_evidence(tmp_path: Pa
 def test_dispatch_appends_verified_wire_record(tmp_path: Path) -> None:
     _dispatch_tools_call(tmp_path, run_id="run-1", broker_secret="s3cr3t")
 
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    ledger_path = _signed_ledger_path(tmp_path, "s3cr3t")
     assert ledger_path.exists()
     assert verify_chain(tmp_path, "s3cr3t") is True
     assert wire_evidence_for(tmp_path, "run-1", secret="s3cr3t") is True
@@ -203,7 +208,7 @@ def test_media_tools_call_records_delivery_and_agent_identity(tmp_path: Path) ->
     response, _ = server.handle_request(request, ServerState.RUNNING)
 
     assert response is not None
-    row = json.loads((tmp_path / WIRE_LEDGER_RELPATH).read_text(encoding="utf-8"))
+    row = json.loads((_signed_ledger_path(tmp_path, "s3cr3t")).read_text(encoding="utf-8"))
     assert row["delivery_mode"] == "inline_image"
     assert row["provider"] == "openai"
     assert row["model_id"] == "gpt-future"
@@ -227,6 +232,53 @@ def test_wire_evidence_scoped_to_run_id(tmp_path: Path) -> None:
 
     assert wire_evidence_for(tmp_path, "run-a", secret="s3cr3t") is True
     assert wire_evidence_for(tmp_path, "run-b", secret="s3cr3t") is False
+
+
+def test_wire_evidence_isolated_between_secrets(tmp_path: Path) -> None:
+    append_wire_record(
+        tmp_path,
+        method="tools/call",
+        tool_name="secret_a_tool",
+        params={"value": "a"},
+        run_id="run-secret-a",
+        secret="static-secret-a",
+    )
+    append_wire_record(
+        tmp_path,
+        method="tools/call",
+        tool_name="secret_b_tool",
+        params={"value": "b"},
+        run_id="run-secret-b",
+        secret="static-secret-b",
+    )
+
+    assert (
+        wire_evidence_for(
+            tmp_path,
+            "run-secret-a",
+            tool_name="secret_a_tool",
+            secret="static-secret-a",
+        )
+        is True
+    )
+    assert (
+        wire_evidence_for(
+            tmp_path,
+            "run-secret-b",
+            tool_name="secret_b_tool",
+            secret="static-secret-b",
+        )
+        is True
+    )
+    assert (
+        wire_evidence_for(
+            tmp_path,
+            "run-secret-a",
+            tool_name="secret_a_tool",
+            secret="static-secret-b",
+        )
+        is False
+    )
 
 
 def test_delegated_media_call_derives_and_seals_its_caller_identity(tmp_path: Path) -> None:
@@ -267,7 +319,7 @@ def test_delegated_media_call_derives_and_seals_its_caller_identity(tmp_path: Pa
 
     rows = [
         json.loads(line)
-        for line in (tmp_path / WIRE_LEDGER_RELPATH).read_text(encoding="utf-8").splitlines()
+        for line in (_signed_ledger_path(tmp_path, "s3cr3t")).read_text(encoding="utf-8").splitlines()
     ]
     assert [row["agent_id"] for row in rows] == ["sess-1", "vision-verdict-1"]
     assert [row["model_id"] for row in rows] == ["parent-model", "vision-model"]
@@ -319,8 +371,7 @@ def test_unsigned_server_writes_no_ledger_record(tmp_path: Path) -> None:
     """A5: RALPH_BROKER_SECRET unset -> no ledger record, never grades WIRE."""
     _dispatch_tools_call(tmp_path, run_id="run-1", broker_secret=None)
 
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
-    assert not ledger_path.exists()
+    assert not (tmp_path / WIRE_LEDGER_RELPATH).exists()
     assert wire_evidence_for(tmp_path, "run-1", secret=None) is False
     assert wire_evidence_for(tmp_path, "run-1", secret="any-secret-guessed-later") is False
 
@@ -342,7 +393,7 @@ def test_forged_row_breaks_the_chain(tmp_path: Path) -> None:
         run_id="run-1",
         secret="s3cr3t",
     )
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    ledger_path = _signed_ledger_path(tmp_path, "s3cr3t")
     lines = ledger_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
 
@@ -368,7 +419,7 @@ def test_unchained_appended_row_is_rejected(tmp_path: Path) -> None:
         run_id="run-1",
         secret="s3cr3t",
     )
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    ledger_path = _signed_ledger_path(tmp_path, "s3cr3t")
     import json
 
     rogue = {

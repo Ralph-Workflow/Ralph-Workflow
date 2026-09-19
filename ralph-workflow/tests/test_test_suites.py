@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import ralph.test_suites as test_suites_module
+import tests.conftest as conftest_module
 from tests._test_test_suites_helpers import _FakeShardProcess, _StubSpawner
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
@@ -32,6 +33,16 @@ EXPECTED_FAST_TEST_FILES = (
 EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES = (
     "tests/agents/test_terminal_state_restored_on_exit.py",
 )
+
+
+def test_default_routing_allowlist_is_exact_and_immutable() -> None:
+    """AGY's two deterministic regressions stay in the default suite."""
+    assert frozenset(
+        {
+            "tests/test_agy_pty_invocation.py",
+            "tests/test_agy_runtime_home_auth.py",
+        }
+    ) == conftest_module._AGY_DEFAULT_TEST_PATHS
 
 
 def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
