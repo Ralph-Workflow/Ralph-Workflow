@@ -100,7 +100,7 @@ def test_agent_retry_prompt_reads_drain_keyed_validator_context_without_consumin
     )
 
     content = Path(retry_prompt).read_text(encoding="utf-8")
-    assert content.startswith("VALIDATION ERRORS (ACCUMULATED)")
+    assert content.startswith("VALIDATION FAILURE")
     assert hint in content
     assert "retained draft" in content.lower()
     assert "Prior work repaired cleanup decisions." in content
@@ -245,7 +245,7 @@ def test_fresh_retry_prompt_without_validation_hint_starts_with_error_block(tmp_
         drain="commit",
     )
 
-    assert Path(retry_prompt).read_text(encoding="utf-8").startswith("ERROR RECOVERY REQUIRED")
+    assert Path(retry_prompt).read_text(encoding="utf-8").startswith("VALIDATION FAILURE")
 
 
 def test_recovery_controller_writes_session_reset_hint_for_effective_drain(tmp_path: Path) -> None:

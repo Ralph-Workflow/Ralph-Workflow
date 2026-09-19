@@ -177,6 +177,7 @@ def advance_phase(
         "previous_phase": state.phase,
         "last_agent_session_id": None,
         "agent_retry_intent": cleared_agent_retry_intent(),
+        "last_failure_category": None,
         "recovery_epoch": 0,
     }
 

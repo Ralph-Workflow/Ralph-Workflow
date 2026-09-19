@@ -20,6 +20,7 @@ from ralph.prompts.payload_refs import (
     write_payload_to_directory,
 )
 from ralph.prompts.template_engine import render_template
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -70,11 +71,14 @@ def render_commit_cleanup_prompt(
         ),
         **_product_criteria_variables(prompt_content, product_criteria_path),
     }
-    return render_template(
+    rendered = render_template(
         tmpl_ctx.registry.get_template(template_name),
         _merged_variables(bv, session_caps),
         tmpl_ctx.partials,
     )
+    if not last_retry_error.startswith("VALIDATION FAILURE"):
+        return rendered
+    return f"{rendered.rstrip()}\n\n{build_validation_retry_footer()}\n"
 
 
 def _read_and_clear_retry_hint(

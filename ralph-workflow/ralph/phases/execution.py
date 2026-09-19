@@ -394,6 +394,7 @@ def _write_retry_hint(
         detail,
         registry=registry,
         unsubmitted_draft=unsubmitted_draft,
+        validation=True,
     )
     with suppress(Exception):
         if preserve_existing and ctx.workspace.exists(hint_path):
@@ -411,8 +412,12 @@ def _write_proof_failure_hint(
     hint_path_override: str | None = None,
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
-    hint = build_proof_failure_hint(phase, detail)
+    hint = build_proof_failure_hint(phase, detail, validation=True)
     with suppress(Exception):
+        if ctx.workspace.exists(hint_path):
+            existing = ctx.workspace.read(hint_path).strip()
+            if existing:
+                hint = f"{existing}\n\n{hint}"
         ctx.workspace.write(hint_path, hint)
 
 

@@ -139,7 +139,7 @@ def test_md_artifact_regression_validation_failure_persists_retry_context(
             deps=deps,
         )
 
-    assert result.is_error is (operation != "edit")
+    assert result.is_error is True
     hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
     assert backend.exists(hint_path)
     hint = backend.read_text(hint_path)

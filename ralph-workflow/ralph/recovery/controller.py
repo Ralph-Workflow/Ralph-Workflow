@@ -830,6 +830,13 @@ class RecoveryController:
             if failure.category == FailureCategory.ARTIFACT_VALIDATION
             else "Ambiguous"
         )
+        if failure.category == FailureCategory.ARTIFACT_VALIDATION:
+            logger.error(
+                "VALIDATION FAILURE in phase={} (retry without budget debit): {}",
+                phase,
+                failure.reason[:200],
+            )
+            return
         logger.info(
             "{} failure in phase={} (retry without budget debit): {}",
             category_label,

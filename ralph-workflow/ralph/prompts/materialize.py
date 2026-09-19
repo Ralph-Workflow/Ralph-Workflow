@@ -82,6 +82,7 @@ from ralph.prompts.payload_refs import (
 )
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
 
@@ -415,6 +416,16 @@ def _render_prompt_for_phase(
     raise ValueError(msg)
 
 
+def _append_retry_footer(rendered: str, last_retry_error: str) -> str:
+    """Repeat active validation repair guidance at the prompt's final action point."""
+    if not last_retry_error.startswith("VALIDATION FAILURE"):
+        return rendered
+    return f"{rendered.rstrip()}\n\n{build_validation_retry_footer()}\n"
+
+
+append_retry_footer = _append_retry_footer
+
+
 def _render_planning_prompt(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
@@ -443,7 +454,7 @@ def _render_planning_prompt(
     artifact_history_path = resolve_planning_history_path(workspace_root)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
-    return prompt_planning_xml_with_context(
+    rendered = prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
             prompt_content=prompt_content,
@@ -472,6 +483,7 @@ def _render_planning_prompt(
         session_caps=session_caps,
         template_name=template_name,
     )
+    return _append_retry_footer(rendered, last_retry_error)
 
 
 def _render_developer_prompt(
@@ -533,7 +545,7 @@ def _render_developer_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
-    return prompt_developer_iteration_xml_with_context(
+    rendered = prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
             prompt_content=prompt_content,
@@ -578,6 +590,7 @@ def _render_developer_prompt(
         session_caps=session_caps,
         template_name=template_name,
     )
+    return _append_retry_footer(rendered, last_retry_error)
 
 
 def _render_template_based_prompt(
@@ -645,11 +658,12 @@ def _render_template_based_prompt(
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
-    return render_template(
+    rendered = render_template(
         template,
         _merged_variables(variables, session_caps),
         tmpl_ctx.partials,
     )
+    return _append_retry_footer(rendered, last_retry_error)
 
 
 def _worker_description(unit: WorkUnit) -> str:

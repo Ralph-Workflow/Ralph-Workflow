@@ -606,6 +606,13 @@ class PipelineSubscriber:
             self._publish(snapshot)
 
     def _record_state_transitions_locked(self, state: PipelineState) -> None:
+        previous_state = self._last_state
+        if (
+            previous_state is not None
+            and previous_state.last_failure_category == "artifact_validation"
+            and state.last_failure_category is None
+        ):
+            self._activity.last_activity_line = "VALIDATION RECOVERED"
         prev = self._previous_phase
         cur = state.phase
         if prev is None or prev == cur:

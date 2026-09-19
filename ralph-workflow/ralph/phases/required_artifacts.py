@@ -255,6 +255,7 @@ def build_retry_hint(
     submit_tool_name: str | None = None,
     example_payload: str | None = None,
     unsubmitted_draft: bool = False,
+    validation: bool = False,
 ) -> str:
     """Build the retry hint for an agent that failed to submit a required artifact.
 
@@ -281,6 +282,7 @@ def build_retry_hint(
                 "the required artifact was not submitted before completion was declared"
             ),
             detail=detail,
+            validation=validation,
         )
         artifact_type, artifact_path = "the required artifact", None
     else:
@@ -290,6 +292,7 @@ def build_retry_hint(
                 "was not submitted or was invalid"
             ),
             detail=detail,
+            validation=validation,
         )
         artifact_type, artifact_path = ra.artifact_type, ra.artifact_path
 
@@ -345,11 +348,12 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
     )
 
 
-def build_proof_failure_hint(phase: str, detail: str) -> str:
+def build_proof_failure_hint(phase: str, detail: str, *, validation: bool = False) -> str:
     """Build a retry hint for a phase that submitted proof but failed validation."""
     return build_retry_error_block(
         failure_summary="proof entries are incomplete or invalid",
         detail=detail,
+        validation=validation,
     )
 
 

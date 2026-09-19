@@ -2005,20 +2005,42 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
                     budget_info = budgets.get(key)
                     if isinstance(budget_info, dict):
                         remaining = budget_info.get("remaining")
-            logger.bind(recovery=True).info(
-                "FAILURE phase={} agent={} category={} counted={}"
+            log = logger.bind(recovery=True)
+            message = (
+                "VALIDATION FAILURE phase={} agent={} category={} counted={}"
                 " chain_cap={} cycle={} delay_ms={} remaining={}"
-                " unavailability_reason={}",
-                evt.phase,
-                evt.agent,
-                evt.category,
-                evt.counted_against_budget,
-                evt.chain_capacity_remaining,
-                evt.recovery_cycle,
-                evt.retry_delay_ms,
-                remaining,
-                evt.unavailability_reason,
+                " unavailability_reason={}"
+                if evt.category == "artifact_validation"
+                else "FAILURE phase={} agent={} category={} counted={}"
+                " chain_cap={} cycle={} delay_ms={} remaining={}"
+                " unavailability_reason={}"
             )
+            if evt.category == "artifact_validation":
+                log.error(
+                    message,
+                    evt.phase,
+                    evt.agent,
+                    evt.category,
+                    evt.counted_against_budget,
+                    evt.chain_capacity_remaining,
+                    evt.recovery_cycle,
+                    evt.retry_delay_ms,
+                    remaining,
+                    evt.unavailability_reason,
+                )
+            else:
+                log.info(
+                    message,
+                    evt.phase,
+                    evt.agent,
+                    evt.category,
+                    evt.counted_against_budget,
+                    evt.chain_capacity_remaining,
+                    evt.recovery_cycle,
+                    evt.retry_delay_ms,
+                    remaining,
+                    evt.unavailability_reason,
+                )
         elif isinstance(evt, _FalloverEvent):
             logger.bind(recovery=True).info(
                 "FALLOVER phase={} from={} to={} reason={}"
@@ -2109,6 +2131,13 @@ def _subscribe_recovery_display(
                         value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
                     style = "red"
                     tag = "terminal"
+                elif evt.category == "artifact_validation":
+                    label = "VALIDATION FAILURE"
+                    value = (
+                        f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}"
+                    )
+                    style = "red"
+                    tag = "validation_recoverable"
                 elif evt.watchdog_reason is not None:
                     label = "RECOVERING"
                     value = f"agent stalled: {evt.watchdog_reason}; resuming"

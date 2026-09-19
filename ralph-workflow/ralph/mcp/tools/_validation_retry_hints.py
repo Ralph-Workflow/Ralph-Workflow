@@ -81,21 +81,24 @@ def clear_validation_retry_hint(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     deps: ArtifactHandlerDeps | None,
-) -> None:
+) -> bool:
     """Clear canonical and legacy validation context after successful submission."""
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     path = validation_retry_hint_file(session, workspace)
     if path is None:
-        return
+        return False
+    cleared = backend.exists(path)
     backend.unlink(path, missing_ok=True)
     phase_name = session.phase if isinstance(session, _PhaseScopedSession) else None
     drain = _session_drain(session)
     if not isinstance(phase_name, str) or drain is None or phase_name == drain:
-        return
+        return cleared
     worker_namespace = _worker_namespace(session)
     legacy_path = (
         worker_namespace / "tmp" / f"last_retry_error_{phase_name}.txt"
         if worker_namespace is not None
         else _workspace_root(workspace) / retry_hint_path(phase_name)
     )
+    cleared = backend.exists(legacy_path) or cleared
     backend.unlink(legacy_path, missing_ok=True)
+    return cleared

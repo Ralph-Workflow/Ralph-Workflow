@@ -123,8 +123,10 @@ def handle_submit_md_artifact(
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
-    _clear_validation_retry_hint(session, workspace, deps)
-    return _submitted_validation_result(artifact_type, content, diagnostics, overridden)
+    recovered = _clear_validation_retry_hint(session, workspace, deps)
+    return _submitted_validation_result(
+        artifact_type, content, diagnostics, overridden, validation_recovered=recovered
+    )
 
 
 def handle_edit_md_artifact(
@@ -207,9 +209,10 @@ def handle_edit_md_artifact(
         )
     )
     submitted = not any(item.severity == "error" for item in diagnostics)
+    validation_recovered = False
     if submitted:
         _submit_canonical(session, workspace, artifact_type, parsed_content, outcome.content, deps)
-        _clear_validation_retry_hint(session, workspace, deps)
+        validation_recovered = _clear_validation_retry_hint(session, workspace, deps)
     else:
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
     return _edit_result(
@@ -221,6 +224,7 @@ def handle_edit_md_artifact(
         ambiguous_edits=ambiguous_edits,
         submitted=submitted,
         analysis=(diagnostics, overridden),
+        validation_recovered=validation_recovered,
     )
 
 
@@ -342,8 +346,10 @@ def handle_finalize_md_artifact(
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
-    _clear_validation_retry_hint(session, workspace, deps)
-    return _submitted_validation_result(artifact_type, content, diagnostics, overridden)
+    recovered = _clear_validation_retry_hint(session, workspace, deps)
+    return _submitted_validation_result(
+        artifact_type, content, diagnostics, overridden, validation_recovered=recovered
+    )
 
 
 def _submit_canonical(
@@ -468,6 +474,7 @@ def _edit_result(
     ambiguous_edits: list[dict[str, int]],
     submitted: bool,
     analysis: tuple[list[Diagnostic], list[object]] | None = None,
+    validation_recovered: bool = False,
 ) -> ToolResult:
     """Return the edit outcome alongside the refreshed draft diagnostics.
 
@@ -484,7 +491,19 @@ def _edit_result(
     payload["submitted"] = submitted
     if submitted:
         payload["persisted_document"] = _document_summary(draft)
-    return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
+    if validation_recovered:
+        payload["validation_recovered"] = True
+        payload["message"] = "VALIDATION RECOVERED"
+    invalid = not bool(payload["valid"])
+    if invalid and status != "preview":
+        payload["status"] = "validation_failed"
+    return ToolResult(
+        content=[ToolContent.json_content(payload)],
+        is_error=invalid and status != "preview",
+    )
+
+
+edit_result = _edit_result
 
 
 def _ambiguous_edits(draft: str, edits: list[TextEdit]) -> list[dict[str, int]]:
@@ -562,6 +581,8 @@ def _submitted_validation_result(
     content: str,
     diagnostics: list[Diagnostic],
     overridden: list[object] | None = None,
+    *,
+    validation_recovered: bool = False,
 ) -> ToolResult:
     """Return successful validation plus the exact document summary persisted."""
     result = _validation_result(artifact_type, diagnostics, overridden)
@@ -575,6 +596,9 @@ def _submitted_validation_result(
             "persisted_document": _document_summary(content),
         }
     )
+    if validation_recovered:
+        payload["validation_recovered"] = True
+        payload["message"] = "VALIDATION RECOVERED"
     return ToolResult(content=[ToolContent.json_content(payload)], is_error=result.is_error)
 
 
@@ -583,22 +607,23 @@ def _validation_result(
     diagnostics: list[Diagnostic],
     overridden: list[object] | None = None,
 ) -> ToolResult:
+    invalid = any(item.severity == "error" for item in diagnostics)
+    payload: dict[str, object] = {
+        "artifact_type": artifact_type,
+        "valid": not invalid,
+        "diagnostics": [_diagnostic_payload(item) for item in diagnostics],
+        "counts": _severity_counts(diagnostics),
+        "overridden": [_override_payload(item) for item in (overridden or [])],
+    }
+    if invalid:
+        payload["status"] = "validation_failed"
     return ToolResult(
-        content=[
-            ToolContent.json_content(
-                _with_hint(
-                    {
-                        "artifact_type": artifact_type,
-                        "valid": not any(item.severity == "error" for item in diagnostics),
-                        "diagnostics": [_diagnostic_payload(item) for item in diagnostics],
-                        "counts": _severity_counts(diagnostics),
-                        "overridden": [_override_payload(item) for item in (overridden or [])],
-                    }
-                )
-            )
-        ],
-        is_error=any(item.severity == "error" for item in diagnostics),
+        content=[ToolContent.json_content(_with_hint(payload))],
+        is_error=invalid,
     )
+
+
+validation_result = _validation_result
 
 
 def _validate_with_overrides(

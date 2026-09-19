@@ -83,7 +83,10 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
-from ralph.recovery.retry_prompt import build_retry_error_block
+from ralph.recovery.retry_prompt import (
+    build_retry_error_block,
+    build_validation_retry_footer,
+)
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
@@ -1546,19 +1549,22 @@ def _write_agent_retry_prompt(
     )
     condensed = _condense_recovery_context_lines(context_lines, untruncated=untruncated)
     summary = "\n".join(condensed) if condensed else "(no output captured)"
+    validation_hint = _validation_retry_context(workspace_root, drain, worker_namespace)
+    validation_retry = reason == "ArtifactValidation" or bool(validation_hint)
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         prompt_path=str(prompt_path),
         context_path=str(context_path),
+        validation=validation_retry,
     )
-    validation_hint = _validation_retry_context(workspace_root, drain, worker_namespace)
     validation_block = (
-        "VALIDATION ERRORS (ACCUMULATED) - FIX THE UNDERLYING ISSUE BEFORE RESUBMITTING\n"
+        "VALIDATION ERRORS (ACCUMULATED)\n"
         f"{validation_hint}\n\n"
-        "The retained draft contains the prior work. Repair it in place before resubmitting.\n\n"
+        "The retained draft contains the prior work. Repair it in place before resubmitting."
         if validation_hint
         else ""
     )
+    validation_footer = build_validation_retry_footer() if validation_retry else ""
     if recovery_action in {"resume", "new_session_with_id"}:
         # Resume / new_session_with_id: do NOT read the original task body
         # and do NOT include the 'ORIGINAL TASK PROMPT:' section. The
@@ -1571,7 +1577,12 @@ def _write_agent_retry_prompt(
         tail = _resume_mode_tail(prompt_path)
         # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
         retry_prompt_path.write_text(
-            (f"{validation_block}{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
+            (
+                f"{error_block}\n\n"
+                f"{validation_block + chr(10) + chr(10) if validation_block else ''}"
+                f"PREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}"
+                f"{chr(10) + chr(10) + validation_footer if validation_footer else ''}\n"
+            ),
             encoding="utf-8",
         )
         if run_id is not None:
@@ -1595,7 +1606,7 @@ def _write_agent_retry_prompt(
         base_prompt,
     ]
     if validation_block:
-        body_parts.insert(0, validation_block.rstrip())
+        body_parts[1:1] = ["", validation_block]
     # Empty-prior-output stale-session explanation: when ``stale_session_id``
     # is set AND the prior output is empty (``condensed`` is empty, so the
     # summary placeholder falls through to ``(no output captured)``),
@@ -1652,6 +1663,8 @@ def _write_agent_retry_prompt(
     # ``ralph_submit_md_artifact``, and call ``declare_complete``.
     if completion_recovery:
         body_parts.extend(["", _completion_recovery_block()])
+    if validation_footer:
+        body_parts.extend(["", validation_footer])
     # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
     retry_prompt_path.write_text(
         "\n".join(body_parts) + "\n",
@@ -1673,6 +1686,7 @@ recovery_context_lines = _recovery_context_lines
 AGENT_NOT_FOUND_REASON = "AgentNotFound"
 
 retry_prompt_file_for_context = _retry_prompt_file_for_context
+write_agent_retry_prompt = _write_agent_retry_prompt
 
 
 _retry_intent_local: _threading.local = _threading.local()
