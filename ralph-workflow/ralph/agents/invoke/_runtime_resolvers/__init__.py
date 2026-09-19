@@ -731,8 +731,9 @@ class CursorRuntimeResolver:
         )
         _mirror_cursor_home(source_home / ".cursor", private_home / ".cursor")
         private_config_home = private_home / "config"
+        source_config_auth = source_config_home / "cursor" / "auth.json"
         _project_cursor_auth(
-            source_config_home / "cursor" / "auth.json",
+            source_config_auth if source_config_auth.exists() else source_home / ".cursor" / "auth.json",
             private_config_home / "cursor" / "auth.json",
         )
         runtime_env["HOME"] = str(private_home)

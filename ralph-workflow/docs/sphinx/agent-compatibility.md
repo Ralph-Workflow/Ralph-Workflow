@@ -131,9 +131,9 @@ json_parser = "generic"
 - **Install / auth**: <https://docs.cursor.com/agent>
 - **Transport**: `cursor`
 - **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
-- **Credentials**: Cursor Agent uses `CURSOR_API_KEY` or projected file-backed `cursor/auth.json`. Every private runtime coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except an explicit `memory` value, so unattended runs never select macOS Keychain. Endpoint runs replace `mcp.json` with the run-scoped endpoint.
+- **Credentials**: Cursor Agent uses ambient `CURSOR_API_KEY` or file-backed `~/.config/cursor/auth.json` (including `$XDG_CONFIG_HOME/cursor/auth.json`) or `~/.cursor/auth.json`; Ralph Workflow projects either file into the private runtime. Every private runtime coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except an explicit `memory` value, so unattended runs never select macOS Keychain. Endpoint runs replace `mcp.json` with the run-scoped endpoint.
 - **Concurrency**: Private homes keep each run's `mcp.json` independent. Large session directories such as `chats/` and `projects/` remain symlinked to the operator state so `--resume` works across concurrent runs; Ralph Workflow sidecar lock files are excluded.
-- **Failure behavior**: Ralph Workflow raises `MissingCredentialsError` before launch when neither `CURSOR_API_KEY` nor projected `cursor/auth.json` is available.
+- **Failure behavior**: Ralph Workflow raises `MissingCredentialsError` before launch when neither `CURSOR_API_KEY` nor either projected auth file is available.
 - **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.
 
 ### Kimi (Kimi Code)

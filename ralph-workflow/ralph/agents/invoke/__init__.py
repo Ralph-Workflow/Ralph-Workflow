@@ -362,17 +362,23 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
     )
 
 
-def _has_cursor_file_credentials(config_home: Path | None) -> bool:
-    """Return whether the projected Cursor auth object has a non-empty string."""
-    if config_home is None:
-        return False
-    try:
-        payload: object = json.loads((config_home / "cursor" / "auth.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict):
-        return False
-    return any(isinstance(value, str) and bool(value.strip()) for value in payload.values())
+def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = None) -> bool:
+    """Return whether either supported Cursor auth file has a non-empty string."""
+    auth_paths: list[Path] = []
+    if config_home is not None:
+        auth_paths.append(config_home / "cursor" / "auth.json")
+    if home is not None:
+        auth_paths.append(home / ".cursor" / "auth.json")
+    for auth_path in auth_paths:
+        try:
+            payload: object = json.loads(auth_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict) and any(
+            isinstance(value, str) and bool(value.strip()) for value in payload.values()
+        ):
+            return True
+    return False
 
 
 def invoke_agent(
@@ -430,7 +436,8 @@ def invoke_agent(
         runtime_env = runtime.agent_env
         if _agent_transport(config) == AgentTransport.CURSOR:
             cursor_config_home = Path(runtime_env["XDG_CONFIG_HOME"]) if runtime_env else None
-            has_cursor_auth = _has_cursor_file_credentials(cursor_config_home)
+            cursor_home = Path(runtime_env["HOME"]) if runtime_env else None
+            has_cursor_auth = _has_cursor_file_credentials(cursor_config_home, cursor_home)
             if not (runtime_env and runtime_env.get("CURSOR_API_KEY")) and not has_cursor_auth:
                 raise MissingCredentialsError(
                     config.cmd.split()[0],

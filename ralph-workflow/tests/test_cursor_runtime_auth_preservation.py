@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING
 
 from pytest import mark, raises
 
-from ralph.agents.invoke import InvokeOptions, MissingCredentialsError, invoke_agent
+from ralph.agents.invoke import (
+    InvokeOptions,
+    MissingCredentialsError,
+    _has_cursor_file_credentials,
+    invoke_agent,
+)
 from ralph.agents.invoke._runtime_resolvers import CursorRuntimeResolver
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -307,6 +312,95 @@ def test_cursor_parallel_worker_environment_cannot_restore_keychain(
     finally:
         assert runtime.cleanup is not None
         runtime.cleanup()
+
+
+def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-2: a standard ~/.cursor file login is sufficient for unattended Cursor."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("task", encoding="utf-8")
+    operator_home = tmp_path / "operator-home"
+    operator_config = operator_home / ".config"
+    auth_path = operator_home / ".cursor" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text('{"token":"non-empty-value"}', encoding="utf-8")
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(operator_config))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    captured_env: dict[str, str] = {}
+    captured_projected_auth: list[str] = []
+
+    def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
+        captured_env.update(ctx.extra_env)
+        captured_projected_auth.append(
+            (Path(ctx.extra_env["XDG_CONFIG_HOME"]) / "cursor" / "auth.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return iter(())
+
+    monkeypatch.setattr("ralph.agents.invoke.run_subprocess_and_read_lines", capture_runtime)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+
+    list(
+        invoke_agent(
+            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+        )
+    )
+
+    assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] == "file"
+    assert captured_projected_auth == [auth_path.read_text(encoding="utf-8")]
+
+
+@mark.parametrize("auth_payload", ["{}", '{"invalid":true}', "not json"])
+def test_cursor_invocation_with_unusable_dot_cursor_auth_fails_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth_payload: str
+) -> None:
+    """S-2: unusable ~/.cursor auth cannot fall through to a keychain prompt."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("task", encoding="utf-8")
+    operator_home = tmp_path / "operator-home"
+    auth_path = operator_home / ".cursor" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text(auth_payload, encoding="utf-8")
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(operator_home / ".config"))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.run_subprocess_and_read_lines",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not spawn")),
+    )
+
+    with raises(MissingCredentialsError):
+        list(
+            invoke_agent(
+                AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+            )
+        )
+
+
+def test_cursor_file_credentials_helper_recognizes_private_dot_cursor(tmp_path: Path) -> None:
+    """S-2: the preflight recognizes valid auth in either Cursor file location."""
+    config_home = tmp_path / "config"
+    home = tmp_path / "home"
+    config_auth = config_home / "cursor" / "auth.json"
+    dot_cursor_auth = home / ".cursor" / "auth.json"
+
+    assert not _has_cursor_file_credentials(config_home, home)
+    config_auth.parent.mkdir(parents=True)
+    config_auth.write_text('{"token":"config-token"}', encoding="utf-8")
+    assert _has_cursor_file_credentials(config_home, home)
+    config_auth.unlink()
+    dot_cursor_auth.parent.mkdir(parents=True)
+    dot_cursor_auth.write_text('{"token":"home-token"}', encoding="utf-8")
+    assert _has_cursor_file_credentials(config_home, home)
+    dot_cursor_auth.write_text("{}", encoding="utf-8")
+    assert not _has_cursor_file_credentials(config_home, home)
 
 
 def test_cursor_home_mirror_skips_entry_that_vanishes_before_stat(

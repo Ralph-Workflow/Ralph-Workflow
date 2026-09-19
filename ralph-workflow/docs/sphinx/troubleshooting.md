@@ -94,11 +94,13 @@ A login stored only in the Keychain is unusable by Ralph Workflow.
 AGENT_CLI_CREDENTIAL_STORE=file agent login
 ```
 
-This writes `~/.config/cursor/auth.json`, which Ralph Workflow projects into each
-private runtime. Alternatively, set `CURSOR_API_KEY`. A missing, empty, or invalid
-schema `auth.json` raises `MissingCredentialsError` before Cursor is spawned, so it
-cannot trigger a Keychain prompt or dialog. Re-run
-`ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential path.
+Cursor may store this file at `~/.config/cursor/auth.json` (or
+`$XDG_CONFIG_HOME/cursor/auth.json`) or at `~/.cursor/auth.json`; Ralph Workflow
+projects either location into its private runtime. Alternatively, set
+`CURSOR_API_KEY`. A missing, empty, or invalid schema `auth.json` raises
+`MissingCredentialsError` before Cursor is spawned, so it cannot trigger a Keychain
+prompt or dialog. Re-run `ralph smoke-interactive-cursor --agent 'cursor/auto'` to
+verify the credential path.
 
 ## AGY transport unavailable on Windows
 
