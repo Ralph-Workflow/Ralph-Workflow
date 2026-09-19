@@ -18,15 +18,21 @@ Verifies the in-session retry escalation requirements:
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
-
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.run_loop import build_recovery_controller
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.policy.loader import load_policy
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PolicyBundle,
+)
 from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
 from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.classifier import FailureContext
@@ -35,12 +41,33 @@ from ralph.recovery.events import FailureEventBus
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
-if TYPE_CHECKING:
-    from ralph.policy.models import PolicyBundle
-
 
 def _minimal_policy_bundle() -> PolicyBundle:
-    return load_policy(Path(__file__).parents[2] / "ralph" / "policy" / "defaults")
+    return PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={
+                "development": AgentChainConfig(
+                    agents=["claude", "opencode"],
+                    max_retries=10,
+                    retry_delay_ms=1000,
+                )
+            },
+            agent_drains={
+                "development": AgentDrainConfig(chain="development"),
+            },
+        ),
+        pipeline=PipelinePolicy(
+            phases={
+                "development": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+            },
+            entry_phase="development",
+            terminal_phase="complete",
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+    )
 
 
 def _two_agent_state(current_index: int = 0, retries: int = 0) -> PipelineState:
