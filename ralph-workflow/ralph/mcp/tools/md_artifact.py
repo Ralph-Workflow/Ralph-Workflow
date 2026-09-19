@@ -62,6 +62,7 @@ from ralph.mcp.tools.text_edits import (
     parse_text_edits,
     sha256_text,
 )
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -118,7 +119,7 @@ def handle_submit_md_artifact(
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
     )
-    result = _validation_result(artifact_type, diagnostics, overridden)
+    result = _validation_result(artifact_type, diagnostics, overridden, blocking=True)
     if result.is_error:
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
@@ -341,7 +342,7 @@ def handle_finalize_md_artifact(
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
     )
-    result = _validation_result(artifact_type, diagnostics, overridden)
+    result = _validation_result(artifact_type, diagnostics, overridden, blocking=True)
     if result.is_error:
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
@@ -496,7 +497,7 @@ def _edit_result(
         payload["message"] = "VALIDATION RECOVERED"
     invalid = not bool(payload["valid"])
     if invalid and status != "preview":
-        payload["status"] = "validation_failed"
+        _add_validation_failure_envelope(payload)
     return ToolResult(
         content=[ToolContent.json_content(payload)],
         is_error=invalid and status != "preview",
@@ -606,6 +607,8 @@ def _validation_result(
     artifact_type: str,
     diagnostics: list[Diagnostic],
     overridden: list[object] | None = None,
+    *,
+    blocking: bool = False,
 ) -> ToolResult:
     invalid = any(item.severity == "error" for item in diagnostics)
     payload: dict[str, object] = {
@@ -617,10 +620,19 @@ def _validation_result(
     }
     if invalid:
         payload["status"] = "validation_failed"
+        if blocking:
+            _add_validation_failure_envelope(payload)
     return ToolResult(
         content=[ToolContent.json_content(_with_hint(payload))],
         is_error=invalid,
     )
+
+
+def _add_validation_failure_envelope(payload: dict[str, object]) -> None:
+    """Mark a submission-capable invalid payload as a blocking repair action."""
+    payload["status"] = "validation_failed"
+    payload["severity"] = "error"
+    payload["message"] = build_validation_retry_footer()
 
 
 validation_result = _validation_result

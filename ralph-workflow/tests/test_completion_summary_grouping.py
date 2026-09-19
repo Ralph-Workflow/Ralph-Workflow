@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from io import StringIO
 
@@ -154,6 +155,77 @@ def test_group_contains_pipeline_failed_title_on_failure() -> None:
         )
     )
     assert "Pipeline Failed" in out
+
+
+def test_group_active_artifact_validation_never_renders_success_headline() -> None:
+    """An active artifact validation failure overrides terminal success presentation."""
+    snapshot = _make_snapshot(last_error="SPEC008 missing proof")
+    snapshot = replace(snapshot, last_failure_category="artifact_validation")
+
+    out = _render_group(snapshot)
+
+    assert "VALIDATION FAILURE" in out
+    assert "Pipeline Complete" not in out
+
+
+def test_group_active_artifact_validation_uses_error_role() -> None:
+    """Active validation failures use the same error role as terminal failures."""
+    snapshot = replace(
+        _make_snapshot(last_error="SPEC008 missing proof"),
+        last_failure_category="artifact_validation",
+    )
+    buffer = StringIO()
+    console = make_console(
+        file=buffer,
+        force_terminal=True,
+        color_system="truecolor",
+        terminal_bg_is_light=False,
+        width=120,
+    )
+    ctx = make_display_context(console=console, env={"RALPH_TERMINAL_BG": "dark"})
+
+    console.print(
+        render_completion_summary_group(
+            snapshot,
+            display_context=ctx,
+            options=CompletionSummaryOptions(),
+        ),
+        markup=False,
+        highlight=False,
+    )
+
+    rendered = buffer.getvalue()
+    assert "VALIDATION FAILURE" in rendered
+    assert "\x1b[1;38;2;255;97;136m" in rendered
+
+
+def test_group_validation_recovery_preserves_recovered_activity_and_completion() -> None:
+    """Clearing artifact validation restores the normal completion representation."""
+    snapshot = _make_snapshot()
+    recovered_snapshot = replace(
+        snapshot,
+        last_activity_line="VALIDATION RECOVERED",
+        last_failure_category=None,
+    )
+
+    out = _render_group(recovered_snapshot)
+
+    assert "VALIDATION RECOVERED" in out
+    assert "Pipeline Complete" in out
+    assert "VALIDATION FAILURE" not in out
+
+
+def test_group_cleared_artifact_validation_restores_normal_completion() -> None:
+    """A cleared validation category cannot leave a stale failure heading behind."""
+    snapshot = replace(
+        _make_snapshot(),
+        last_failure_category=None,
+    )
+
+    out = _render_group(snapshot)
+
+    assert "Pipeline Complete" in out
+    assert "VALIDATION FAILURE" not in out
 
 
 def test_group_contains_plan_section() -> None:

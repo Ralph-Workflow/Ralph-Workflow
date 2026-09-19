@@ -28,6 +28,7 @@ from ralph.display.completion_summary import (
     _iteration_context_lines,
     _review_summary_line,
     analysis_decision_badge,
+    has_active_artifact_validation_failure,
     make_badge_text,
     style_for_role,
     style_for_terminal_failure,
@@ -226,12 +227,19 @@ def render_completion_summary_group(
 ) -> Group:
     """Render the completion summary as a Rich Group (single default-mode layout)."""
     failed = snapshot.is_terminal_failure
+    validation_failure = has_active_artifact_validation_failure(snapshot)
     style = (
         style_for_terminal_failure(options.pipeline_policy)
-        if failed
+        if failed or validation_failure
         else style_for_role("terminal", options.pipeline_policy)
     )
-    title = "Pipeline Failed" if failed else "Pipeline Complete"
+    title = (
+        "VALIDATION FAILURE"
+        if validation_failure
+        else "Pipeline Failed"
+        if failed
+        else "Pipeline Complete"
+    )
 
     renderables: list[Rule | Text] = [Rule(title, style=style)]
     # The exit trigger is the closing summary's primary durable state carrier.

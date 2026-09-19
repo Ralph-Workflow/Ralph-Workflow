@@ -211,6 +211,34 @@ def test_missing_root_raises_rather_than_scanning_nothing() -> None:
         audit_kwargs_forwarding.audit_tree(Path("/nonexistent"), ("ralph",))
 
 
+def test_audit_tree_counts_all_files_but_parses_only_files_with_unpacking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "ralph").mkdir()
+    (tmp_path / "tests").mkdir()
+    plain = tmp_path / "ralph" / "plain.py"
+    relevant = tmp_path / "tests" / "relevant.py"
+    plain.write_text("def broken(:\n", encoding="utf-8")
+    relevant.write_text(
+        "def wrapper(**opts):\n    return inner(hook=DEFAULT, **opts)\n",
+        encoding="utf-8",
+    )
+    parsed: list[str] = []
+    real_audit_source = audit_kwargs_forwarding.audit_source
+
+    def recording_audit_source(source: str, path: str) -> list[object]:
+        parsed.append(path)
+        return real_audit_source(source, path)
+
+    monkeypatch.setattr(audit_kwargs_forwarding, "audit_source", recording_audit_source)
+
+    violations, scanned = audit_kwargs_forwarding.audit_tree(tmp_path)
+
+    assert scanned == 2
+    assert parsed == ["tests/relevant.py"]
+    assert [item.keyword for item in violations] == ["hook"]
+
+
 def test_main_reports_missing_root() -> None:
     assert audit_kwargs_forwarding.main(["definitely-not-a-package"]) == 2
 

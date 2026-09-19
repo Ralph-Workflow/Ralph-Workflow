@@ -95,8 +95,17 @@ def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -
 
     assert verified.is_error is True
     assert submitted.is_error is True
-    assert _payload(submitted) == _payload(verified)
-    diagnostics = must_dict_list(_payload(verified)["diagnostics"])
+    verified_payload = _payload(verified)
+    submitted_payload = _payload(submitted)
+    assert verified_payload["status"] == "validation_failed"
+    assert "severity" not in verified_payload
+    assert "message" not in verified_payload
+    assert submitted_payload["status"] == "validation_failed"
+    assert submitted_payload["severity"] == "error"
+    assert isinstance(submitted_payload["message"], str)
+    assert submitted_payload["message"].startswith("VALIDATION FAILURE")
+    assert "before submitting again" in submitted_payload["message"].lower()
+    diagnostics = must_dict_list(verified_payload["diagnostics"])
     assert {diagnostic["rule_id"] for diagnostic in diagnostics} >= {"SPEC008"}
 
 
@@ -140,6 +149,14 @@ def test_md_artifact_regression_validation_failure_persists_retry_context(
         )
 
     assert result.is_error is True
+    payload = _payload(result)
+    assert payload["status"] == "validation_failed"
+    assert payload["severity"] == "error"
+    assert isinstance(payload["message"], str)
+    assert payload["message"].startswith("VALIDATION FAILURE")
+    assert "before submitting again" in payload["message"].lower()
+    diagnostics = must_dict_list(payload["diagnostics"])
+    assert diagnostics
     hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
     assert backend.exists(hint_path)
     hint = backend.read_text(hint_path)
@@ -229,7 +246,39 @@ def test_md_artifact_regression_success_clears_stale_validation_retry_context(tm
     )
 
     assert result.is_error is False
+    payload = _payload(result)
+    assert payload["validation_recovered"] is True
+    assert payload["message"] == "VALIDATION RECOVERED"
+    assert "severity" not in payload
     assert not backend.exists(tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt")
+
+
+def test_md_artifact_preview_keeps_invalid_diagnostics_non_gating(tmp_path) -> None:
+    """A dry-run exposes validation state without a blocking error envelope."""
+    session = MockSession()
+    workspace = MockWorkspace(tmp_path)
+    backend = MemoryBackend()
+    invalid = "---\ntype: product_spec\n---\n"
+    handle_stage_md_artifact(
+        session,
+        workspace,
+        {"artifact_type": "product_spec", "content": invalid, "mode": "replace_all"},
+        deps=ArtifactHandlerDeps(backend=backend),
+    )
+
+    result = handle_edit_md_artifact(
+        session,
+        workspace,
+        {"artifact_type": "product_spec", "edits": [{"oldText": "---", "newText": "---"}], "dry_run": True},
+        deps=ArtifactHandlerDeps(backend=backend),
+    )
+
+    assert result.is_error is False
+    payload = _payload(result)
+    assert payload["status"] == "preview"
+    assert payload["valid"] is False
+    assert "severity" not in payload
+    assert "message" not in payload
 
 
 def test_markdown_artifact_tools_are_registered() -> None:

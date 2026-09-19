@@ -1,3 +1,4 @@
+{% include 'shared/_validation_failure.j2' -%}
 Produce an executor-ready plan from the request and repository evidence.
 
 You are in PLANNING MODE.
@@ -13,11 +14,6 @@ You are in PLANNING MODE.
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-Previous attempt error: {{ LAST_RETRY_ERROR }}
-Repair the missing submission or validation issue before completing this plan.
-{% endif %}
 
 This is read-only planning: inspect the repository and run only non-mutating
 commands. Do not edit files or install dependencies.

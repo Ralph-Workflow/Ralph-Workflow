@@ -23,58 +23,54 @@ _COMMAND_TIMEOUT_SECONDS = 5.0
 
 def _write_fake_uv(directory: Path) -> None:
     fake_uv = directory / "uv"
-    fake_uv_python = directory / "uv.py"
-    fake_uv_python.write_text(
-        f"""import os
-import re
-import sys
-import ast
-from pathlib import Path
-
-args = sys.argv[1:]
-if args == ["--version"]:
-    print("uv 0.7.0")
-    raise SystemExit(0)
-if args == ["run", "--locked", "--project", ".", "python", "-m", "ralph.install", "--build"]:
-    os.execv({sys.executable!r}, [{sys.executable!r}, "-m", "ralph.install", "--build"])
-if len(args) == 2 and args == ["lock", "--check"]:
-    raise SystemExit(0)
-if args in (["sync", "--locked", "--extra", "dev"], ["sync", "--locked", "--extra", "dev", "--check"]):
-    if os.environ.get("RALPH_FAKE_UV_FAIL_SYNC") == "1":
-        print("offline fake uv injected sync failure", file=sys.stderr)
-        raise SystemExit(17)
-    venv = Path.cwd() / ".venv"
-    marker = venv / "pyvenv.cfg"
-    interpreter = venv / "bin" / "python"
-    interpreter.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("home = offline fake uv\\n", encoding="utf-8")
-    interpreter.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
-    interpreter.chmod(0o755)
-    raise SystemExit(0)
-if len(args) == 6 and args[0:3] == ["run", "--locked", "--project"] and args[4:] == ["ralph", "--version"]:
-    project = Path(args[3])
-    marker = project / ".venv" / "pyvenv.cfg"
-    interpreter = project / ".venv" / "bin" / "python"
-    if not marker.is_file() or not os.access(interpreter, os.X_OK):
-        print("snapshot is missing the required fake uv environment", file=sys.stderr)
-        raise SystemExit(19)
-    package_dir = project / "ralph"
-    version_source = (package_dir / "__init__.py").read_text(encoding="utf-8")
-    flavor_source = (package_dir / "_build_meta.py").read_text(encoding="utf-8")
-    version = re.search(r'^__version__(?:: str)? = "([^"]+)"', version_source, re.MULTILINE)
-    flavor = re.search(r'^BUILD_FLAVOR(?:: str)? = (.+)$$', flavor_source, re.MULTILINE)
-    if version is None or flavor is None:
-        print("snapshot has no version", file=sys.stderr)
-        raise SystemExit(18)
-    print(version.group(1) + ast.literal_eval(flavor.group(1)))
-    raise SystemExit(0)
-print(f"offline fake uv rejected argv: {{args!r}}", file=sys.stderr)
-raise SystemExit(64)
-""",
-        encoding="utf-8",
-    )
     fake_uv.write_text(
-        f"#!/bin/sh\nexec {sys.executable!r} \"$0.py\" \"$@\"\n",
+        f"""#!/bin/sh
+set -eu
+
+if [ "$#" -eq 1 ] && [ "$1" = "--version" ]; then
+    printf '%s\\n' 'uv 0.7.0'
+elif [ "$#" -eq 8 ] && [ "$1" = "run" ] && [ "$2" = "--locked" ] && [ "$3" = "--project" ] && [ "$4" = "." ] && [ "$5" = "python" ] && [ "$6" = "-m" ] && [ "$7" = "ralph.install" ] && [ "$8" = "--build" ]; then
+    exec {sys.executable!r} -m ralph.install --build
+elif [ "$#" -eq 2 ] && [ "$1" = "lock" ] && [ "$2" = "--check" ]; then
+    exit 0
+elif [ "$#" -eq 4 ] && [ "$1" = "sync" ] && [ "$2" = "--locked" ] && [ "$3" = "--extra" ] && [ "$4" = "dev" ]; then
+    if [ "${{RALPH_FAKE_UV_FAIL_SYNC:-0}}" = "1" ]; then
+        printf '%s\\n' 'offline fake uv injected sync failure' >&2
+        exit 17
+    fi
+    mkdir -p .venv/bin
+    printf '%s\\n' 'home = offline fake uv' > .venv/pyvenv.cfg
+    printf '%s\\n' '#!/bin/sh' 'exit 0' > .venv/bin/python
+    chmod 755 .venv/bin/python
+elif [ "$#" -eq 5 ] && [ "$1" = "sync" ] && [ "$2" = "--locked" ] && [ "$3" = "--extra" ] && [ "$4" = "dev" ] && [ "$5" = "--check" ]; then
+    if [ "${{RALPH_FAKE_UV_FAIL_SYNC:-0}}" = "1" ]; then
+        printf '%s\\n' 'offline fake uv injected sync failure' >&2
+        exit 17
+    fi
+    mkdir -p .venv/bin
+    printf '%s\\n' 'home = offline fake uv' > .venv/pyvenv.cfg
+    printf '%s\\n' '#!/bin/sh' 'exit 0' > .venv/bin/python
+    chmod 755 .venv/bin/python
+elif [ "$#" -eq 6 ] && [ "$1" = "run" ] && [ "$2" = "--locked" ] && [ "$3" = "--project" ] && [ "$5" = "ralph" ] && [ "$6" = "--version" ]; then
+    project=$4
+    if [ ! -f "$project/.venv/pyvenv.cfg" ] || [ ! -x "$project/.venv/bin/python" ]; then
+        printf '%s\\n' 'snapshot is missing the required fake uv environment' >&2
+        exit 19
+    fi
+    version=$(sed -n 's/^__version__\\(: str\\)\\? = "\\([^"]*\\)"$/\\2/p' "$project/ralph/__init__.py")
+    flavor=$(grep '^BUILD_FLAVOR' "$project/ralph/_build_meta.py" | sed 's/.*= //' | tr -d '"' | tr -d "'")
+    if [ -z "$version" ] || ! grep -q '^BUILD_FLAVOR\\(: str\\)\\? = ' "$project/ralph/_build_meta.py"; then
+        printf '%s\\n' 'snapshot has no version' >&2
+        exit 18
+    fi
+    printf '%s%s\\n' "$version" "$flavor"
+else
+    printf 'offline fake uv rejected argv: '
+    printf '%s ' "$@"
+    printf '%s\\n' >&2
+    exit 64
+fi
+""",
         encoding="utf-8",
     )
     fake_uv.chmod(0o755)

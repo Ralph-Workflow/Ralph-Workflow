@@ -1,3 +1,4 @@
+{% if LAST_RETRY_ERROR %}{% include 'shared/_validation_failure.j2' %}{% endif -%}
 Classify only the pending diff's unsafe or machine-local files and submit cleanup actions without changing the commit's meaning.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
@@ -5,11 +6,6 @@ Classify only the pending diff's unsafe or machine-local files and submit cleanu
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-Previous cleanup attempt:
-{{ LAST_RETRY_ERROR }}
-{% endif %}
 
 The diff contains tracked changes plus untracked filenames. Runtime files are pre-emptively untracked before this prompt; if one still appears, classify it as `delete_file`.
 

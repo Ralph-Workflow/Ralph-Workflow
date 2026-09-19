@@ -21,7 +21,11 @@ from ralph.mcp.artifacts.typed_artifacts import (
     normalize_issues_content,
 )
 from ralph.policy.models import PipelinePolicy
-from ralph.recovery.retry_prompt import build_retry_error_block
+from ralph.recovery.retry_prompt import (
+    VALIDATION_FAILURE_BANNER,
+    build_retry_error_block,
+    build_validation_retry_footer,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -192,7 +196,9 @@ def build_validation_retry_hint(
         if len(attempts) > 1
         else ""
     )
-    return header + "\n\n".join(bounded_attempts)
+    return "\n\n".join(
+        [VALIDATION_FAILURE_BANNER, header + "\n\n".join(bounded_attempts), build_validation_retry_footer()]
+    )
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:

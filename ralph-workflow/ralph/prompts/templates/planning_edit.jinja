@@ -1,3 +1,4 @@
+{% include 'shared/_validation_failure.j2' -%}
 Revise the current plan using fresh repository evidence and analysis feedback.
 
 PLANNING EDIT MODE
@@ -14,11 +15,6 @@ not edit workspace files, install dependencies, or run state-changing commands.
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-Previous attempt error: {{ LAST_RETRY_ERROR }}
-Repair the retained draft's submission or validation issue before completing this plan.
-{% endif %}
 
 Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}

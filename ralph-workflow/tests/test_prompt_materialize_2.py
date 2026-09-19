@@ -26,6 +26,7 @@ from ralph.prompts.materialize import (
     prompt_file_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -81,10 +82,12 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
     )
 
     rendered = workspace.read(prompt_path)
+    assert rendered.startswith("VALIDATION FAILURE")
     assert "PLANNING EDIT MODE" in rendered
     assert diagnostic["rule_id"] in rendered
     assert f"line {diagnostic['line']}" in rendered
     assert "ralph_edit_md_artifact" in rendered
+    assert rendered.rstrip().endswith(build_validation_retry_footer())
     assert not workspace.exists(".agent/tmp/last_retry_error_planning.txt")
     assert workspace.exists(".agent/artifacts/.plan.draft.md")
 

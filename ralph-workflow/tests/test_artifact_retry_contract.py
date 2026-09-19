@@ -493,8 +493,7 @@ def test_planning_analysis_regression_materializes_exact_validator_retry_context
     )
 
     rendered = workspace.read(prompt_path)
-    assert diagnostic in rendered
-    assert "PREVIOUS ATTEMPT ERROR" in rendered
+    assert rendered.startswith(diagnostic)
     assert not workspace.exists(retry_hint_path("planning_analysis"))
 
 
@@ -561,6 +560,7 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     assert "PREVIOUS ATTEMPT FAILED" in rendered
     assert not workspace.exists(retry_hint_path("development_analysis"))
 
+
 def test_worker_generic_prompt_consumes_only_worker_validation_retry_hint(
     tmp_path: Path,
 ) -> None:
@@ -572,12 +572,8 @@ def test_worker_generic_prompt_consumes_only_worker_validation_retry_hint(
     worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
     coordinator_hint = retry_hint_path("development_analysis")
     workspace.write(coordinator_hint, "COORDINATOR RETRY CONTEXT")
-    worker_hint = str(
-        worker_namespace / "tmp" / "last_retry_error_development_analysis.txt"
-    )
-    worker_draft = str(
-        worker_namespace / "artifacts" / ".development_analysis_decision.draft.md"
-    )
+    worker_hint = str(worker_namespace / "tmp" / "last_retry_error_development_analysis.txt")
+    worker_draft = str(worker_namespace / "artifacts" / ".development_analysis_decision.draft.md")
     diagnostic = {
         "rule_id": "SPEC006",
         "line": 6,
@@ -648,7 +644,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "PREVIOUS ATTEMPT ERROR" in rendered
+    assert rendered.startswith("VALIDATION FAILURE")
     assert "proof entries are incomplete or invalid" in rendered
     assert not workspace.exists(retry_hint_path("development"))
 

@@ -1,3 +1,4 @@
+{% include 'shared/_validation_failure.j2' -%}
 Verify that the submitted plan is truthful, executable, and mechanically checkable.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
@@ -8,13 +9,6 @@ Verify that the submitted plan is truthful, executable, and mechanically checkab
 {% set DOCS_LOOKUP_PHASE = 'planning analysis' %}
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% include 'shared/_docs_lookup.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-PREVIOUS ATTEMPT ERROR:
-{{ LAST_RETRY_ERROR }}
-
-Fix the underlying submission or validation issue before completing the analysis.
-{% endif %}
 
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 

@@ -1,14 +1,7 @@
+{% include 'shared/_validation_failure.j2' -%}
 You are a documentation agent. Make the policy corpus under {{ canonical_dir }} describe verified project reality and pass the readiness validator.
 
 {% include 'shared/_unattended_mode.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-## Previous Attempt Error
-
-{{ LAST_RETRY_ERROR }}
-
-Fix the underlying validation or submission issue before resubmitting; do not blindly resubmit identical content.
-{% endif %}
 
 ## Authoritative findings
 

@@ -260,7 +260,9 @@ def audit_tree(
                 label = str(path.relative_to(package_root))
             except ValueError:
                 label = str(path)
-            violations.extend(audit_source(path.read_text(encoding="utf-8"), label))
+            source = path.read_text(encoding="utf-8")
+            if "**" in source:
+                violations.extend(audit_source(source, label))
             scanned += 1
     return violations, scanned
 

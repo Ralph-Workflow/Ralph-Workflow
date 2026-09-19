@@ -238,6 +238,11 @@ def style_for_role(
     return "theme.text.muted"
 
 
+def has_active_artifact_validation_failure(snapshot: PipelineSnapshot) -> bool:
+    """Return whether an unresolved artifact validation failure overrides completion."""
+    return snapshot.last_failure_category == "artifact_validation"
+
+
 def style_for_terminal_failure(
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
@@ -326,7 +331,14 @@ def render_completion_summary(
     """Build a rich ``Text`` object summarising pipeline completion for the terminal."""
     opts = options or CompletionSummaryOptions()
     failed = snapshot.is_terminal_failure
-    lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
+    validation_failure = has_active_artifact_validation_failure(snapshot)
+    lines: list[str] = [
+        "VALIDATION FAILURE"
+        if validation_failure
+        else "Pipeline Failed"
+        if failed
+        else "Pipeline Complete"
+    ]
 
     lines.append(f"Exit: {_exit_trigger_label(snapshot)}")
     if failed:
@@ -442,6 +454,7 @@ def emit_completion_summary(
 __all__ = [
     "CompletionSummaryOptions",
     "emit_completion_summary",
+    "has_active_artifact_validation_failure",
     "make_badge_text",
     "render_completion_summary",
     "render_completion_summary_group",

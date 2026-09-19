@@ -30,6 +30,7 @@ from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 from tests._tool_artifact_2_helper_mocksession import MockSession
 from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
@@ -120,6 +121,16 @@ def test_validation_retry_history_keeps_all_headlines_and_escalates() -> None:
         assert f"ATTEMPT {attempt}" in hint
         assert f"SPEC00{attempt} at line {attempt}, section Goals: failure" in hint
     assert "THIS VALIDATION HAS FAILED 4 TIMES" in hint
+
+
+def test_validation_retry_hint_has_canonical_banner_and_footer() -> None:
+    hint = build_validation_retry_hint(
+        "product_spec",
+        [Diagnostic(1, "Goals", "SPEC001", "failure")],
+    )
+
+    assert hint.startswith("VALIDATION FAILURE")
+    assert hint.endswith(build_validation_retry_footer())
 
 
 def test_validation_retry_history_bounds_old_bodies_without_losing_headlines() -> None:
