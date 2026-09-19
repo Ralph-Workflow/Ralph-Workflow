@@ -253,6 +253,8 @@ def _end_to_end_test_for_harness(
     os.environ["RALPH_BROKER_SECRET"] = broker_secret
     os.environ["MOCK_MULTIMODAL_WORKSPACE_ROOT"] = str(workspace)
     os.environ["MOCK_MULTIMODAL_TRANSPORT"] = transport_prefix
+    if transport == "cursor":
+        os.environ["CURSOR_API_KEY"] = "multimodal-smoke-test-credential"
     if positive:
         os.environ.pop("MOCK_MULTIMODAL_IGNORE_RESPONSE", None)
         os.environ.pop("MOCK_MULTIMODAL_SKIP_MEDIA", None)
