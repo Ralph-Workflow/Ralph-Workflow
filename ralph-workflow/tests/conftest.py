@@ -289,6 +289,7 @@ def _isolate_process_home(
     # ``os.environ`` defaults.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-dummy-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-dummy-key")
+    monkeypatch.setenv("CURSOR_API_KEY", "test-dummy-key")
     # Cycle-deadline epochs are published per-invocation by the pipeline
     # runner and withdrawn when the invocation ends. A leaked value (a
     # crashed harness, an outer live run driving this test suite as its
