@@ -240,14 +240,38 @@ def test_agy_harness_writes_todo_list_with_expected_methods(
         assert method in text
 
 
-def test_agy_harness_quota_branch_emits_informational_not_live_diagnostic(
+def test_agy_harness_quota_branch_reports_provider_signal_and_terminal_classification(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """With MOCK_AGY_BEHAVIOR=quota_exhausted the harness reports the mock-empty note."""
+    """Quota smoke errors preserve the provider signal instead of a mock-empty note."""
     result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, behavior="quota_exhausted")
+
+    assert any("agy" in error for error in result.errors)
     assert any("RESOURCE_EXHAUSTED (code 429)" in error for error in result.errors)
-    assert not any("individual API quota exhausted" in error for error in result.errors)
+    assert any("quota or rate limit is exhausted" in error for error in result.errors)
+    assert not any("empty stdout by design" in error for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("behavior", "expected_error", "forbidden_error"),
+    (
+        ("auth_failure", "authentication failed", "quota or rate limit is exhausted"),
+        ("unknown_failure", "mock AGY unknown failure", "quota or rate limit is exhausted"),
+    ),
+)
+def test_agy_harness_non_quota_failures_preserve_their_provider_signal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    behavior: str,
+    expected_error: str,
+    forbidden_error: str,
+) -> None:
+    """Authentication and unknown smoke failures are not routed as quota."""
+    result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, behavior=behavior)
+
+    assert any(expected_error in error for error in result.errors)
+    assert not any(forbidden_error in error for error in result.errors)
 
 
 def test_agy_harness_session_id_present_with_mock(

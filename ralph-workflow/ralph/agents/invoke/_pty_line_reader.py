@@ -1463,7 +1463,7 @@ class PtyLineReader:
                 self._stop_sentinel_path.unlink()
         unsubscribe()
 
-    def _terminate_for_quota(self) -> None:
+    def _terminate_for_quota(self, detail: str) -> None:
         """Stop a quota-exhausted process without waiting for further output."""
         if self._quota_error is not None:
             return
@@ -1473,15 +1473,16 @@ class PtyLineReader:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             teardown_subtree(pid)
-        self._quota_error = QuotaExhaustedError(self._agent_name)
+        self._quota_error = QuotaExhaustedError(self._agent_name, detail)
         self._lines_event.set()
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
             return
         cli_log_path, start_offset = self._agy_cli_log
-        if _is_subscription_limit_message([agy_fresh_cli_log_tail(cli_log_path, start_offset)]):
-            self._terminate_for_quota()
+        tail = agy_fresh_cli_log_tail(cli_log_path, start_offset)
+        if _is_subscription_limit_message([tail]):
+            self._terminate_for_quota(tail)
 
     def _raise_if_quota_exhausted(self) -> None:
         self._raise_if_fresh_agy_log_has_quota()
@@ -1513,7 +1514,7 @@ class PtyLineReader:
         if _is_subscription_limit_message([queued_line]):
             if self._raw_overflow is not None:
                 self._raw_overflow.append(queued_line)
-            self._terminate_for_quota()
+            self._terminate_for_quota(queued_line)
             self._raise_if_quota_exhausted()
         self._record_transcript_session_id(queued_line)
         self._observe_queued_line(queued_line)

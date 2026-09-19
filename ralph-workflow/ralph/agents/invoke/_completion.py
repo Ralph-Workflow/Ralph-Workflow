@@ -99,8 +99,10 @@ def _raise_if_quota_exhausted(
     stderr_text: str,
     parsed_output: list[str] | None,
 ) -> None:
-    if _is_subscription_limit_message([stderr_text, *(parsed_output or [])]):
-        raise QuotaExhaustedError(agent_name)
+    for source in (stderr_text, *(parsed_output or [])):
+        for line in source.splitlines() or [source]:
+            if _is_subscription_limit_message([line]):
+                raise QuotaExhaustedError(agent_name, line)
 
 
 @runtime_checkable
@@ -633,6 +635,28 @@ def _raise_if_broken_agent_exit(
         )
 
 
+def _terminal_returncode(handle: ManagedProcess | ManagedPtyProcess) -> int:
+    """Return the finalized process status or fail closed on an incomplete lifecycle."""
+    returncode = handle.returncode
+    if returncode is None:
+        raise RuntimeError("process lifecycle ended without a terminal return code")
+    return returncode
+
+
+def _credentials_failure_needs_broken_exit(
+    stderr_text: str,
+    check_options: CompletionCheckOptions | None,
+) -> bool:
+    """Return whether an early credential failure lacks enough activity evidence."""
+    if not _looks_like_credentials_failure(stderr_text):
+        return False
+    return (
+        check_options is None
+        or check_options.elapsed_seconds is None
+        or check_options.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+    )
+
+
 def check_process_result(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
@@ -663,17 +687,13 @@ def check_process_result(
         OpenCodeResumableExitError: If the agent session exited without required
             completion evidence and no child agents are still running.
     """
-    returncode = int(handle.returncode or 0)
+    returncode = _terminal_returncode(handle)
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None
     _raise_if_quota_exhausted(agent_name, stderr_text, parsed_output)
     if returncode != 0:
-        if _looks_like_credentials_failure(stderr_text) and (
-            check_options is None
-            or check_options.elapsed_seconds is None
-            or check_options.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-        ):
+        if _credentials_failure_needs_broken_exit(stderr_text, check_options):
             _teardown_subtree_if_pid_available(handle)
             raise BrokenAgentExitError(
                 agent_name,
@@ -685,7 +705,7 @@ def check_process_result(
                 returncode=returncode,
                 stderr=stderr_text,
             )
-        stderr = stderr_text if stderr_available else "(unable to read stderr)"
+        stderr = stderr_text if stderr_available else ""
         exc = AgentInvocationError(
             agent_name,
             returncode,

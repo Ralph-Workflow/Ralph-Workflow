@@ -137,7 +137,22 @@ def test_process_reader_stops_after_other_agent_quota_line(tmp_path: Path) -> No
     error = _reader_error(reader)
 
     assert isinstance(error, QuotaExhaustedError), error
+    assert "rate limit reached" in str(error)
     assert stdout.second_read_attempted is False
+
+
+def test_process_reader_does_not_treat_login_prompt_as_quota(tmp_path: Path) -> None:
+    """A login prompt remains distinct from a terminal quota signal."""
+    stdout = _QuotaLineThenWouldBlock("Please log in to continue\n")
+    reader = ProcessLineReader(
+        _ProcessHandle(stdout),
+        _process_ctx(tmp_path),
+        FakeClock(start=0.0),
+    )
+
+    error = _reader_error(reader)
+
+    assert not isinstance(error, QuotaExhaustedError), error
 
 
 def test_pty_reader_stops_after_quota_is_appended_to_explicit_cli_log(
@@ -181,6 +196,7 @@ def test_pty_reader_stops_after_quota_is_appended_to_explicit_cli_log(
         error = _reader_error(reader)
 
         assert isinstance(error, QuotaExhaustedError), error
+        assert "RESOURCE_EXHAUSTED (code 429)" in str(error)
         assert handle.terminate_calls == [0.5]
     finally:
         if reader is not None:

@@ -863,7 +863,7 @@ class ProcessLineReader:
                     self._lines_queue.append(line)
                     self._lines_event.set()
                 if _is_subscription_limit_message([line]):
-                    self._terminate_for_quota()
+                    self._terminate_for_quota(line)
                     break
                 # Per-line session id capture mirrors the canonical
                 # extraction in ``_run_subprocess_and_read_lines``
@@ -925,7 +925,7 @@ class ProcessLineReader:
             with contextlib.suppress(Exception):
                 self._pre_output_listener()
 
-    def _terminate_for_quota(self) -> None:
+    def _terminate_for_quota(self, detail: str) -> None:
         """Stop a quota-exhausted process without waiting for further output."""
         if self._quota_error is not None:
             return
@@ -938,15 +938,16 @@ class ProcessLineReader:
                 teardown_subtree(pid)
             else:
                 self._process_teardown.teardown_subtree(pid)
-        self._quota_error = QuotaExhaustedError(_agent_command_name(self._config))
+        self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
         self._lines_event.set()
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
             return
         cli_log_path, start_offset = self._agy_cli_log
-        if _is_subscription_limit_message([agy_fresh_cli_log_tail(cli_log_path, start_offset)]):
-            self._terminate_for_quota()
+        tail = agy_fresh_cli_log_tail(cli_log_path, start_offset)
+        if _is_subscription_limit_message([tail]):
+            self._terminate_for_quota(tail)
 
     def _raise_if_quota_exhausted(self) -> None:
         self._raise_if_fresh_agy_log_has_quota()

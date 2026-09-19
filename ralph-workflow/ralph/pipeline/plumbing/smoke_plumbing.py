@@ -1499,6 +1499,12 @@ def _execute_smoke_turns(
             prompt_file=str(params.prompt_file),
             drain="development",
         )
+
+        def _capture_invocation_error(exc: Exception) -> None:
+            nonlocal final_exception
+            if isinstance(exc, AgentInvocationError):
+                final_exception = exc
+
         pipeline_deps = params.pipeline_deps
         if pipeline_deps is None:
             raise RuntimeError("SmokeRunParams.pipeline_deps is required")
@@ -1521,6 +1527,7 @@ def _execute_smoke_turns(
                 invoke_agent=invoke_agent,
                 invocation_options=params.options,
                 raise_resumable_exit=True,
+                agent_invocation_error_sink=_capture_invocation_error,
             )
             highest_latched_ceiling = _update_smoke_turn_state(
                 raw_lines,
@@ -1535,9 +1542,8 @@ def _execute_smoke_turns(
             current_session_id = observed_session_id or extract_transport_session_id(
                 tuple(raw_lines)
             )
-            final_exception = None
             if event == PipelineEvent.AGENT_SUCCESS:
-                break
+                final_exception = None
             # Non-success event from the shared core ends the turn loop.
             break
         except OpenCodeResumableExitError as exc:
@@ -1825,9 +1831,10 @@ def _agy_upstream_diagnostic(
 
     When the override points at the known mock binary (see
     :func:`is_mock_agy_override`), an empty stdout is expected when
-    ``MOCK_AGY_BEHAVIOR`` is ``quota_exhausted`` or ``invalid_model``; in that
-    case we surface an informational note instead of the live quota
-    diagnostic. A general ``RALPH_AGY_BINARY`` override (a real wrapper, an
+    ``MOCK_AGY_BEHAVIOR`` is ``invalid_model``; in that case we surface an
+    informational note. Terminal mock selectors retain their own failure
+    diagnostics instead of being masked as intentional empty output. A general
+    ``RALPH_AGY_BINARY`` override (a real wrapper, an
     alternate live binary path, or any non-mock executable) does NOT take
     this branch and is diagnosed against the live ``cli.log`` instead, so a
     genuine live-AGY failure is never masked as a mock-empty informational
@@ -1856,12 +1863,11 @@ def _agy_upstream_diagnostic(
         # A mock run's diagnostic must never be decided by the operator's
         # real AGY log, so non-empty-stdout selectors return None here and
         # keep their own signal-specific errors.
-        if not lines:
+        if behavior not in {"quota_exhausted", "auth_failure", "unknown_failure"}:
             return (
                 "mock AGY produced empty stdout by design "
                 f"(MOCK_AGY_BEHAVIOR={behavior}) — harness captured this correctly"
             )
-        return None
     reason = agy_empty_output_reason(lines, cli_log_path=_AGY_CLI_LOG_PATH)
     if reason is not None:
         return reason

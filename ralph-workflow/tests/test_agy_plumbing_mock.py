@@ -148,6 +148,26 @@ def test_agy_mock_empty_stdout_diagnostic_is_informational(
     assert "RESOURCE_EXHAUSTED" not in diagnostic
 
 
+@pytest.mark.parametrize(
+    "behavior",
+    ("quota_exhausted", "auth_failure", "unknown_failure"),
+)
+def test_agy_mock_terminal_failures_do_not_use_empty_stdout_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    behavior: str,
+) -> None:
+    """Terminal mock selectors are not masked as intentional empty output."""
+    mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.sh")
+    monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
+    monkeypatch.setenv("MOCK_AGY_BEHAVIOR", behavior)
+
+    diagnostic = _agy_upstream_diagnostic([], tmp_path)
+
+    assert diagnostic is not None
+    assert "empty stdout by design" not in diagnostic
+
+
 def test_agy_non_mock_empty_stdout_does_not_use_mock_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -392,7 +412,9 @@ def test_execute_smoke_turns_stops_after_one_attempt_when_ceiling_below_wire(
         raw_line_sink: object = None,
         set_session_id_cb: object,
         invoke_agent: object,
+        invocation_options: object,
         raise_resumable_exit: object,
+        agent_invocation_error_sink: object,
     ) -> object:
         nonlocal call_count
         call_count += 1
@@ -499,7 +521,9 @@ def test_execute_smoke_turns_reports_ceiling_early_for_single_turn_run(
         raw_line_sink: object = None,
         set_session_id_cb: object,
         invoke_agent: object,
+        invocation_options: object,
         raise_resumable_exit: object,
+        agent_invocation_error_sink: object,
     ) -> object:
         nonlocal call_count
         call_count += 1

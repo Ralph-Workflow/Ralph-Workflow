@@ -882,13 +882,12 @@ def _build_attempt_invoke_options(
                 "Agent process started; waiting for first output",
             )
 
+    env = {
+        str(MCP_RUN_ID_ENV): run_id,
+        str(AGENT_LABEL_SCOPE_ENV): run_id,
+    }
     if extra_env is not None:
-        env: dict[str, str] = {str(k): str(v) for k, v in extra_env.items()}
-    else:
-        env = {
-            str(MCP_RUN_ID_ENV): run_id,
-            str(AGENT_LABEL_SCOPE_ENV): run_id,
-        }
+        env.update({str(k): str(v) for k, v in extra_env.items()})
     endpoint_uri = _bridge_endpoint_uri(bridge_ctx.bridge)
     if endpoint_uri:
         env[str(MCP_ENDPOINT_ENV)] = endpoint_uri

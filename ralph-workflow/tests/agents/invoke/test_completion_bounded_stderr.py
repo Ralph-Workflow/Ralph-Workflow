@@ -124,16 +124,31 @@ def test_completion_uses_bounded_read_on_nonzero_exit(
     )
 
 
-def test_completion_no_stderr_pipe_does_not_crash() -> None:
-    """When the handle has no stderr pipe, the bounded helper must NOT be
-    invoked and the legacy fallback ``'(unable to read stderr)'`` is used."""
+def test_completion_no_stderr_pipe_preserves_bounded_merged_output() -> None:
+    """A PTY failure uses its bounded merged output as the error detail."""
 
     class _FakeHandle:
         returncode = 1
         stderr = None
 
     with pytest.raises(Exception) as excinfo:
+        completion_mod.check_process_result(
+            _FakeHandle(),
+            "test-agent",
+            ["provider terminal failure"],
+            None,
+        )
+
+    assert "provider terminal failure" in str(excinfo.value)
+    assert "(unable to read stderr)" not in str(excinfo.value)
+
+
+def test_completion_rejects_missing_terminal_returncode() -> None:
+    """Completion must fail closed when lifecycle finalization did not establish an exit."""
+
+    class _FakeHandle:
+        returncode = None
+        stderr = None
+
+    with pytest.raises(RuntimeError, match="terminal return code"):
         completion_mod.check_process_result(_FakeHandle(), "test-agent", None, None)
-    assert "(unable to read stderr)" in str(excinfo.value), (
-        f"expected fallback message; got {excinfo.value!r}"
-    )

@@ -31,6 +31,7 @@ class _CompletedProcess:
     (
         ("agy", "RESOURCE_EXHAUSTED (code 429)"),
         ("agy", "API quota exhausted"),
+        ("agy", "Individual quota reached"),
         ("claude", "You've hit your session limit"),
         ("codex", "you exceeded your current quota"),
         ("claude", "rate limit reached"),
@@ -39,6 +40,7 @@ class _CompletedProcess:
     ids=(
         "resource-exhausted-429",
         "api-quota-exhausted",
+        "individual-quota-reached",
         "session-limit",
         "current-quota",
         "rate-limit",
@@ -70,6 +72,7 @@ def test_recognized_quota_output_is_terminal_for_the_affected_agent(
     assert classified.category == FailureCategory.AGENT
     assert agent in classified.reason
     assert "quota or rate limit is exhausted" in classified.reason
+    assert line in classified.reason
 
 
 @pytest.mark.parametrize(
@@ -80,6 +83,8 @@ def test_recognized_quota_output_is_terminal_for_the_affected_agent(
         "connection reset by peer",
         "timed out with no output",
         "The project documentation uses the word quota incidentally.",
+        "authentication failed",
+        "mock AGY unknown failure",
     ),
 )
 def test_non_quota_output_is_not_routed_as_terminal_quota(line: str) -> None:
@@ -91,6 +96,7 @@ def test_non_quota_output_is_not_routed_as_terminal_quota(line: str) -> None:
     )
 
     assert "quota or rate limit is exhausted" not in classified.reason
+    assert line in classified.reason
 
 
 def test_completion_gate_reports_quota_before_missing_completion_evidence() -> None:
@@ -112,6 +118,7 @@ def test_completion_gate_reports_quota_before_missing_completion_evidence() -> N
     )
 
     assert "agy" in str(excinfo.value)
+    assert "RESOURCE_EXHAUSTED (code 429)" in str(excinfo.value)
     assert "quota or rate limit is exhausted" in str(excinfo.value)
     assert classified.category == FailureCategory.AGENT
     assert classified.category == FailureCategory.AGENT

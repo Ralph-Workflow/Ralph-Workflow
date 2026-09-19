@@ -194,6 +194,7 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "resource exhausted",
     "quota exceeded",
     "quota exhausted",
+    "individual quota reached",
     "quota limit has been exceeded",
     # Cohere / general providers
     "rate limit exceeded",
