@@ -131,7 +131,7 @@ json_parser = "generic"
 - **Install / auth**: <https://docs.cursor.com/agent>
 - **Transport**: `cursor`
 - **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
-- **Credentials**: Cursor Agent resolves its own default credentials; `CURSOR_API_KEY` is an optional explicit override. Ralph Workflow does not preflight Cursor credential sources. Its private configuration still projects any file-backed Cursor state while replacing `mcp.json` with the run-scoped endpoint.
+- **Credentials**: Cursor Agent resolves its own credentials; `CURSOR_API_KEY` is an optional explicit override. Ralph Workflow defaults `AGENT_CLI_CREDENTIAL_STORE=file` in the private runtime, avoiding macOS Keychain access for unattended runs while projecting file-backed Cursor state and replacing `mcp.json` with the run-scoped endpoint. An explicit operator credential-store setting is preserved.
 - **Concurrency**: Private homes keep each run's `mcp.json` independent. Large session directories such as `chats/` and `projects/` remain symlinked to the operator state so `--resume` works across concurrent runs; Ralph Workflow sidecar lock files are excluded.
 - **Failure behavior**: Authentication failures are reported by Cursor after launch; Ralph Workflow does not block the run based on absent environment variables or credential files.
 - **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.

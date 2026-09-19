@@ -694,6 +694,13 @@ class CursorRuntimeResolver:
             _env.get("XDG_CONFIG_HOME") or source_home / ".config"
         ).expanduser()
         runtime_env = dict(extra_env or {})
+        runtime_env.setdefault(
+            "AGENT_CLI_CREDENTIAL_STORE",
+            _env.get("AGENT_CLI_CREDENTIAL_STORE", "file"),
+        )
+        cursor_api_key = _env.get("CURSOR_API_KEY")
+        if cursor_api_key is not None and "CURSOR_API_KEY" not in runtime_env:
+            runtime_env["CURSOR_API_KEY"] = cursor_api_key
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
 

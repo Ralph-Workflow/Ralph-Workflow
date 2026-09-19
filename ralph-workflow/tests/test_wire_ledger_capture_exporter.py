@@ -25,8 +25,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ralph.mcp.server._wire_ledger import (
-    WIRE_LEDGER_RELPATH,
     WireLedgerCapture,
+    _ledger_path,
     append_wire_record,
     collect_captures,
     render_capture_table_markdown,
@@ -113,7 +113,7 @@ def test_collect_captures_returns_empty_for_unverifiable_ledger(tmp_path: Path) 
         secret=secret,
     )
     # Tamper with the row to break the chain.
-    ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+    ledger_path = _ledger_path(tmp_path, secret)
     import json
 
     lines = ledger_path.read_text(encoding="utf-8").splitlines()
@@ -273,7 +273,7 @@ def test_wire_ledger_capture_from_row_rejects_malformed() -> None:
         )
         import json as _json
 
-        ledger_path = tmp_path / WIRE_LEDGER_RELPATH
+        ledger_path = _ledger_path(tmp_path, secret)
         good_row = _json.loads(ledger_path.read_text(encoding="utf-8").splitlines()[0])
         # Build two intentionally-malformed variants from the real
         # row, keeping the type system happy.

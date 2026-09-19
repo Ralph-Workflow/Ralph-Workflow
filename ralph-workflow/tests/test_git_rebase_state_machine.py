@@ -10,14 +10,14 @@ from ralph.git.rebase.rebase_state_machine import (
 
 
 def test_start_rebase_transitions_from_idle_to_in_progress() -> None:
-    machine = RebaseStateMachine.new("main")
+    machine = RebaseStateMachine.new("main", persist=False)
     assert machine.phase == RebasePhase.NotStarted
     machine.start_rebase()
     assert machine.phase == RebasePhase.RebaseInProgress
 
 
 def test_conflict_detection_records_conflict_and_moves_to_conflict_state() -> None:
-    machine = RebaseStateMachine.new("main")
+    machine = RebaseStateMachine.new("main", persist=False)
     machine.start_rebase()
     machine.detect_conflict("file.py")
     assert machine.phase == RebasePhase.ConflictDetected
@@ -25,7 +25,7 @@ def test_conflict_detection_records_conflict_and_moves_to_conflict_state() -> No
 
 
 def test_conflict_resolution_allows_continue_and_completion() -> None:
-    machine = RebaseStateMachine.new("main")
+    machine = RebaseStateMachine.new("main", persist=False)
     machine.start_rebase()
     machine.detect_conflict("file.py")
 
@@ -44,7 +44,7 @@ def test_conflict_resolution_allows_continue_and_completion() -> None:
 
 
 def test_abort_from_active_phase_moves_to_aborted() -> None:
-    machine = RebaseStateMachine.new("main")
+    machine = RebaseStateMachine.new("main", persist=False)
     machine.start_rebase()
     machine.detect_conflict("file.py")
     machine.abort_rebase()
@@ -52,14 +52,14 @@ def test_abort_from_active_phase_moves_to_aborted() -> None:
 
 
 def test_invalid_transition_without_conflict_raises_error() -> None:
-    machine = RebaseStateMachine.new("main")
+    machine = RebaseStateMachine.new("main", persist=False)
 
     with pytest.raises(InvalidTransitionError):
         machine.resolve_conflict("file.py")
 
 
 def test_error_tracking_does_not_allow_infinite_retries() -> None:
-    machine = RebaseStateMachine.new("main")
+    machine = RebaseStateMachine.new("main", persist=False)
     for attempt in range(machine.max_recovery_attempts):
         machine.record_error(f"error {attempt}")
 

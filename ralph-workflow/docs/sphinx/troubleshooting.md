@@ -84,11 +84,14 @@ alternate live binary, or operator-wired test stub if the binary is not on
 `agent login` or set `CURSOR_API_KEY`.
 
 **Cause:** Cursor Agent could not resolve its own credentials. Ralph Workflow
-does not preflight Cursor credentials, so macOS keychain-backed and other
-native Cursor CLI credential sources remain available to unattended runs.
+uses Cursor's `AGENT_CLI_CREDENTIAL_STORE=file` mode by default for its private
+runtime home, so unattended invocations do not depend on macOS Keychain access.
 
 **Fix:** Authenticate with the Cursor CLI as needed (for example, `agent login`)
-or provide `CURSOR_API_KEY` as an explicit override. Re-run `ralph
+or provide `CURSOR_API_KEY` as an explicit override. Ralph Workflow projects
+file-backed Cursor configuration into the private runtime home. An operator-set
+`AGENT_CLI_CREDENTIAL_STORE` is preserved; if it selects Keychain and the
+login keychain is locked, unlock it before retrying. Re-run `ralph
 smoke-interactive-cursor --agent 'cursor/auto'` to verify the CLI credential
 path. Authentication failures are reported by Cursor after launch.
 
