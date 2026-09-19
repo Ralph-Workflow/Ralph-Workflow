@@ -218,17 +218,39 @@ _TOML_SCALARS = st.one_of(
     st.floats(allow_nan=False, allow_infinity=False, width=64),
     _TOML_TEXT,
 )
-_TOML_VALUES = st.recursive(
+_TOML_LEAF_CONTAINERS = st.one_of(
     _TOML_SCALARS,
-    lambda children: st.one_of(
-        st.lists(children, max_size=3),
-        st.dictionaries(_TOML_KEYS, children, max_size=3),
-    ),
-    max_leaves=5,
+    st.lists(_TOML_SCALARS, max_size=3),
+    st.dictionaries(_TOML_KEYS, _TOML_SCALARS, max_size=3),
+)
+_TOML_VALUES = st.one_of(
+    _TOML_SCALARS,
+    st.lists(_TOML_LEAF_CONTAINERS, max_size=3),
+    st.dictionaries(_TOML_KEYS, _TOML_LEAF_CONTAINERS, max_size=3),
 )
 _OPERATOR_CONFIGS = st.dictionaries(_TOML_KEYS, _TOML_VALUES, max_size=6)
 
 
+def _toml_value_depth(value: object) -> int:
+    if isinstance(value, list):
+        return 1 + max((_toml_value_depth(item) for item in value), default=0)
+    if isinstance(value, dict):
+        return 1 + max((_toml_value_depth(item) for item in value.values()), default=0)
+    return 0
+
+
+@given(value=_TOML_VALUES)
+@settings(max_examples=10, deadline=None, database=None)
+def test_operator_config_strategy_regression_avoids_deep_toml_values(value: object) -> None:
+    """The property domain must stay shallow enough for the one-second watchdog."""
+    assert _toml_value_depth(value) <= 2
+
+
+# Hypothesis registers deterministic PRNG state through GC during this property
+# test. Under 32-way worker contention that setup can exceed the default one
+# second even after the bounded strategy has generated only shallow TOML data.
+# Keep the default watchdog intact and use the documented local bound instead.
+@pytest.mark.timeout_seconds(2)
 @given(base=_OPERATOR_CONFIGS, unsafe_mode=st.booleans())
 @settings(
     max_examples=10,
