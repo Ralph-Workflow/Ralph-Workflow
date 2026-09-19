@@ -26,6 +26,11 @@ from ralph.agents.idle_watchdog._circumstantial_evidence import (
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agy_incomplete_exit_error import raise_missing_completion_evidence
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
+from ralph.agents.invoke._completion_exit_status import (
+    credentials_failure_needs_broken_exit,
+    looks_like_credentials_failure,
+    terminal_returncode,
+)
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import (
     AgentInvocationError,
@@ -68,31 +73,6 @@ _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 #: produced NO content, so nothing else in the stream names the cause.
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
-
-#: Markers emitted by common agent harnesses when their model credentials are
-#: absent, invalid, or rejected. A fast exit carrying one is not resumable.
-CREDENTIALS_FAILURE_SUBSTRINGS = (
-    "401",
-    "403",
-    "unauthorized",
-    "forbidden",
-    "api key",
-    "apikey",
-    "authentication",
-    "credentials",
-    "openai_api_key",
-    "anthropic_api_key",
-    "please set",
-    "missing key",
-    "invalid key",
-    "expired key",
-)
-
-
-def _looks_like_credentials_failure(text: str) -> bool:
-    """Return whether text carries a known credential/authentication failure marker."""
-    return contains_casefolded_marker([text], CREDENTIALS_FAILURE_SUBSTRINGS)
-
 
 def _raise_if_quota_exhausted(
     agent_name: str,
@@ -579,8 +559,8 @@ def _raise_if_broken_agent_exit(
     stderr_text: str = "",
 ) -> None:
     returncode = int(handle.returncode or 0)
-    credentials_marker_seen = _looks_like_credentials_failure(stderr_text) or any(
-        _looks_like_credentials_failure(line) for line in bounded_output
+    credentials_marker_seen = looks_like_credentials_failure(stderr_text) or any(
+        looks_like_credentials_failure(line) for line in bounded_output
     )
     if credentials_marker_seen and (
         not bounded_output or is_structurally_small_bounded_output(bounded_output)
@@ -635,28 +615,6 @@ def _raise_if_broken_agent_exit(
         )
 
 
-def _terminal_returncode(handle: ManagedProcess | ManagedPtyProcess) -> int:
-    """Return the finalized process status or fail closed on an incomplete lifecycle."""
-    returncode = handle.returncode
-    if returncode is None:
-        raise RuntimeError("process lifecycle ended without a terminal return code")
-    return returncode
-
-
-def _credentials_failure_needs_broken_exit(
-    stderr_text: str,
-    check_options: CompletionCheckOptions | None,
-) -> bool:
-    """Return whether an early credential failure lacks enough activity evidence."""
-    if not _looks_like_credentials_failure(stderr_text):
-        return False
-    return (
-        check_options is None
-        or check_options.elapsed_seconds is None
-        or check_options.elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-    )
-
-
 def check_process_result(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
@@ -687,13 +645,16 @@ def check_process_result(
         OpenCodeResumableExitError: If the agent session exited without required
             completion evidence and no child agents are still running.
     """
-    returncode = _terminal_returncode(handle)
+    returncode = terminal_returncode(handle)
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None
     _raise_if_quota_exhausted(agent_name, stderr_text, parsed_output)
     if returncode != 0:
-        if _credentials_failure_needs_broken_exit(stderr_text, check_options):
+        if credentials_failure_needs_broken_exit(
+            stderr_text,
+            check_options.elapsed_seconds if check_options is not None else None,
+        ):
             _teardown_subtree_if_pid_available(handle)
             raise BrokenAgentExitError(
                 agent_name,
