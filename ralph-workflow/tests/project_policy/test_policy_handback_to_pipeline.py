@@ -27,7 +27,6 @@ the pipeline graph.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -96,11 +95,18 @@ def _approve_policy_in_workspace(ws: MemoryWorkspace) -> None:
     ws.mkdirs(".agent/artifacts")
     ws.write(
         policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,
-        json.dumps(
-            {
-                "type": policy_analysis.ANALYSIS_ARTIFACT_TYPE,
-                "content": {"status": "completed", "summary": "policy is sound"},
-            }
+        (
+            "---\n"
+            f"type: {policy_analysis.ANALYSIS_ARTIFACT_TYPE}\n"
+            "status: completed\n"
+            "---\n\n"
+            "## Summary\n\n"
+            "- [SUM-1] Policy is sound; every committed criterion is met.\n"
+            "\n## Criterion Verdicts\n\n"
+            "- [PR-001] Criterion: the declared verification command resolves. "
+            "Expected observation: `make verify` invokes a target. "
+            "Verdict: met. Evidence: make reports the rule. "
+            "Location: verification-policy.md RALPH-COMMAND.\n"
         ),
     )
 
@@ -358,9 +364,12 @@ def _build_policy_phase_leak_fake(
         set_last_captured_session_id(LEAKED_POLICY_SESSION_ID)
         effect_executor_module._set_last_captured_retry_intent(cleared_agent_retry_intent())
         policy_phase_session_ids.append(LEAKED_POLICY_SESSION_ID)
-        _seed_agents_md(ws)
-        _seed_claude_md(ws)
-        _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        if effect.phase == "policy_remediation":
+            _seed_agents_md(ws)
+            _seed_claude_md(ws)
+            _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        elif effect.phase == "policy_remediation_analysis":
+            _approve_policy_in_workspace(ws)
         return _agent_success_sentinel
 
     return fake_execute_agent_effect

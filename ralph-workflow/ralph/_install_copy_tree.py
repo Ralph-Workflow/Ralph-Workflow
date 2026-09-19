@@ -10,7 +10,26 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-_IGNORED_NAMES = frozenset({".git", ".venv", "__pycache__", "build", "dist", "tmp"})
+_IGNORED_NAMES = frozenset(
+    {
+        ".agent",
+        ".agents",
+        ".claude",
+        ".codex",
+        ".gemini",
+        ".hypothesis",
+        ".mypy_cache",
+        ".opencode",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".git",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+        "tmp",
+    }
+)
 
 
 

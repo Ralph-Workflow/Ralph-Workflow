@@ -172,7 +172,7 @@ def test_multimodal_smoke_uses_bounded_parallel_workers() -> None:
     """The budget-tracked smoke suite runs each harness row concurrently."""
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    assert "-n 15 --dist worksteal" in body[0]
+    assert "-n 12 --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 
 

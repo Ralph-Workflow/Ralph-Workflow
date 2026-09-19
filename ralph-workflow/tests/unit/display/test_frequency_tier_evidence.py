@@ -22,6 +22,7 @@ import collections
 from typing import TYPE_CHECKING
 
 import pytest
+from pygments.lexers import get_lexer_by_name
 from rich.console import Console
 
 from ralph.display import theme as theme_mod
@@ -40,6 +41,12 @@ _PROBE_CASE: SupportCase = SupportCase("dark", "truecolour", "unicode", FULL_LAY
 #: against, so a resolved style's embedded hex can be matched back to the
 #: role that produced it.
 _PROBE_SURFACE_HEX: str = "#2D2A2E"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _warm_python_lexer() -> None:
+    """Compile the preview lexer before per-test timing begins."""
+    get_lexer_by_name("python")
 
 
 def _count_theme_style_resolutions(monkeypatch: pytest.MonkeyPatch) -> collections.Counter[str]:

@@ -75,6 +75,36 @@ def test_copy_install_tree_omits_source_virtualenv_from_new_candidate(tmp_path: 
     assert not (destination / ".venv").exists()
 
 
+def test_copy_install_tree_regression_omits_development_state_from_snapshot(
+    tmp_path: Path,
+) -> None:
+    """The dev installer must not copy checkout-local agent state or caches."""
+    from ralph._install_copy_tree import copy_install_tree
+
+    source, destination = tmp_path / "source", tmp_path / "snapshot"
+    (source / "ralph").mkdir(parents=True)
+    ignored_directories = (
+        ".agent",
+        ".agents",
+        ".claude",
+        ".codex",
+        ".gemini",
+        ".opencode",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".hypothesis",
+    )
+    for directory in ignored_directories:
+        (source / directory / "state").mkdir(parents=True)
+        (source / directory / "state" / "payload.txt").write_text("local", encoding="utf-8")
+
+    copy_install_tree(source, destination)
+
+    assert (destination / "ralph").is_dir()
+    assert all(not (destination / directory).exists() for directory in ignored_directories)
+
+
 def test_install_metadata_serializes_hostile_path_and_omits_invalid_commit(tmp_path: Path) -> None:
     from ralph._install_runtime import write_build_flavor
 
