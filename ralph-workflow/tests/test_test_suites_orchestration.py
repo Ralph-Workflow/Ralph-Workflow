@@ -8,6 +8,7 @@ discovery suite free of repeated fakes.
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,6 +44,34 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
     assert policy.enable_zombie_reaper is False
 
 
+def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """INFO-level Loguru output must not fill one independently polled shard pipe."""
+    captured_options: list[object] = []
+    sentinel = object()
+
+    def capture_spawn(_command: Sequence[str], options: object) -> object:
+        captured_options.append(options)
+        return sentinel
+
+    monkeypatch.setattr(test_suites_module._PYTEST_SHARD_PROCESS_MANAGER, "spawn", capture_spawn)
+
+    assert test_suites_module._default_spawner(
+        ("pytest",),
+        cwd=tmp_path,
+        env={},
+    ) is sentinel
+
+    assert len(captured_options) == 1
+    options = captured_options[0]
+    assert options.stdout is None
+    assert options.stderr is None
+    assert options.stdout != subprocess.PIPE
+    assert options.stderr != subprocess.PIPE
+
+
 @pytest.mark.parametrize(
     ("cpu_count", "expected_workers"),
     (
@@ -50,12 +79,12 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
         (1, "1"),
         (2, "1"),
         (12, "8"),
-        (16, "14"),
-        (32, "32"),
-        (64, "32"),
+        (16, "12"),
+        (32, "12"),
+        (64, "12"),
     ),
 )
-def test_auto_worker_count_preserves_headroom_and_caps_at_thirty_two(
+def test_auto_worker_count_preserves_headroom_and_caps_at_twelve(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
@@ -63,10 +92,11 @@ def test_auto_worker_count_preserves_headroom_and_caps_at_thirty_two(
     """Auto profile leaves two cores for the runner and I/O overhead.
 
     A 12-core host therefore uses eight shards, preserving smoke-suite
-    budget headroom; larger hosts remain bounded by the verified 32-worker cap.
+    budget headroom; larger hosts remain bounded by the verified 12-worker cap.
 
-    The 40-core verification host uses 32 shards to reduce the slowest shard
-    while retaining eight cores for runner and I/O work.
+    The 40-core verification host uses 12 shards so Python/pytest startup,
+    collection, and filesystem contention cannot consume the one-second
+    per-test watchdog or the parent deadline.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

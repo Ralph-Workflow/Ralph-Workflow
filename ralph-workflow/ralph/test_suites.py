@@ -76,9 +76,9 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
-# host, 32 plain shards reduce the slowest shard while retaining eight
-# cores for the runner and I/O-bound smoke steps.
-_MAX_PYTEST_WORKERS = 32
+# host, 12 plain shards keep concurrent pytest startup, collection, and
+# filesystem work below the per-test watchdog contention threshold.
+_MAX_PYTEST_WORKERS = 12
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host has eight useful pytest slots under the
 # standard deterministic profile.
@@ -93,8 +93,8 @@ _PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 # in-shard fan-out.
 _DEFAULT_XDIST_WORKERS_PER_SHARD = "0"
 # Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
-# Combined with ``_MAX_PYTEST_WORKERS`` (32 shards) this gives a maximum
-# fan-out of 32 * 4 = 128 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
+# Combined with ``_MAX_PYTEST_WORKERS`` (12 shards) this gives a maximum
+# fan-out of 12 * 4 = 48 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
 # is overridden to ``"auto"`` or a positive integer. The default plain-
 # pytest path keeps the slowest shard under the 60s combined budget on
 # 32-core CI without coordination overhead.
@@ -279,14 +279,15 @@ def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
     The auto profile caps the shard count at ``available_cores - 2``,
-    bounded by ``_MAX_PYTEST_WORKERS = 32``. Explicit overrides are capped
+    bounded by ``_MAX_PYTEST_WORKERS = 12``. Explicit overrides are capped
     at ``available_cores - 2``: one core for the parent process (shard
     polling, SIGCHLD cleanup) and one core for OS / I/O overhead. The
     Makefile auto ``PYTEST_WORKERS`` is tuned for the maintained
     12-core (6P+6E) dev host; on smaller hosts it is capped down so the
     slowest shard leaves budget headroom for the smoke suites. Measured
-    policy: 32 shards reduce the slowest shard on the 40-core verification
-    host while retaining eight cores for runner, I/O, and scheduler overhead.
+    policy: 12 shards avoid concurrent pytest startup, collection, and
+    filesystem contention that causes one-second per-test watchdog failures
+    and parent-deadline exhaustion on the 40-core verification host.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2
@@ -298,22 +299,14 @@ def _pytest_workers() -> str:
         if available_cores <= _HETEROGENEOUS_CORE_HOST_MAX_CORES
         else _MAX_PYTEST_WORKERS
     )
-    auto_max = (
-        worker_cap
-        if available_cores >= _MAX_PYTEST_WORKERS
-        else max(1, min(worker_cap, available_cores - 2))
-    )
+    auto_max = max(1, min(worker_cap, available_cores - 2))
     if raw == "auto":
         return str(auto_max)
     try:
         requested = int(raw)
     except ValueError:
         return raw
-    explicit_max = (
-        _MAX_PYTEST_WORKERS
-        if available_cores >= _MAX_PYTEST_WORKERS
-        else max(1, min(_MAX_PYTEST_WORKERS, available_cores - 2))
-    )
+    explicit_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 2))
     return str(max(1, min(requested, explicit_max)))
 
 
@@ -360,8 +353,8 @@ def _default_spawner(
         SpawnOptions(
             cwd=str(cwd),
             env=dict(env),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=None,
+            stderr=None,
             label="verify:pytest-shard",
         ),
     )

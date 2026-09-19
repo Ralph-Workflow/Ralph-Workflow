@@ -2,13 +2,13 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 32 shards. The measured profile completes the suite within the
-# immutable 60-second test-suites deadline on larger hosts while preserving
-# the existing test selection and timeout policy.
+# Default: 12 shards. The measured profile avoids concurrent pytest startup,
+# collection, and filesystem contention while preserving the existing test
+# selection and timeout policy under the immutable 60-second deadline.
 # Operators may override after measuring their own host:
 #   PYTEST_WORKERS=auto make test # opt into the CPU-capped auto profile
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
-#   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
+#   PYTEST_WORKERS=12 make test   # maintained contention-safe profile
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
@@ -22,22 +22,20 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 32
+PYTEST_WORKERS ?= 12
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
 # a single pytest invocation). The runner fans out into N shards and
 # then spawns M xdist workers per shard, so the total pytest worker
 # count is N * M. The default ``0`` keeps each shard on plain pytest
-# (no in-shard xdist); the maintained 32-core CI profile uses 31
-# shards * 1 worker = 31 parallel pytest workers and stays well under
-# the 60s combined budget. Setting the variable to ``auto`` opts into
-# the legacy CPU-utilisation-maximising policy: M is sized so N * M
-# does not exceed the host's available CPU count, which on a 32-core
-# host resolves to 16 * 2 = 32 parallel pytest workers. The empirical
-# 32-core measurement shows that the in-shard xdist coordination
-# overhead exceeds the parallelism gain on the shard-saturated profile,
-# so ``auto`` is no longer the default. The combined 60s budget
+# (no in-shard xdist); the maintained 40-core profile uses 12
+# shards * 1 worker = 12 parallel pytest workers. Setting the variable
+# to ``auto`` opts into the legacy CPU-utilisation-maximising policy:
+# M is sized so N * M does not exceed the host's available CPU count.
+# The measured runner profile shows that additional xdist coordination
+# cannot offset the startup and filesystem contention of higher shard
+# counts, so ``auto`` is no longer the default. The combined 60s budget
 # remains immutable: changing PYTEST_XDIST_WORKERS_PER_SHARD does NOT
 # raise that budget.
 PYTEST_XDIST_WORKERS_PER_SHARD ?= 0
