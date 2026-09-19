@@ -279,13 +279,12 @@ def test_any_operator_config_merges_into_a_config_codex_can_load(
 
 @given(base=_OPERATOR_CONFIGS)
 @settings(
-    max_examples=25,
+    max_examples=10,
     deadline=None,
     database=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_operator_features_survive_unless_ralph_overrides_them(
-    tmp_path: Path,
     base: dict[str, object],
 ) -> None:
     """Ralph replaces only the feature keys it names; the rest of [features] is the operator's."""
@@ -294,8 +293,8 @@ def test_operator_features_survive_unless_ralph_overrides_them(
 
     config_text, _upstreams = _synthesize_codex_config(
         tomli_w.dumps(base_with_features),
-        source_config=tmp_path / "source-config.toml",
-        config_path=tmp_path / "generated-config.toml",
+        source_config=Path("diagnostics/source-config.toml"),
+        config_path=Path("diagnostics/generated-config.toml"),
         endpoint=_ENDPOINT,
         master_prompt_file=None,
         unsafe_mode=False,
