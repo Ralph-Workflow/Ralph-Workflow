@@ -128,9 +128,8 @@ if TYPE_CHECKING:
 def _reset_rich_style_color_caches() -> Generator[None, None, None]:
     """Clear Rich's process-global Style/Color LRU caches after each test.
 
-    Rich memoizes ``Style.parse`` / ``Color.parse`` / ``Color.downgrade`` /
-    ``Color.get_ansi_codes`` (among others) as module-level
-    ``functools.lru_cache``-wrapped callables, keyed by style/colour string
+    Rich memoizes ``Style.parse`` / ``Style._add`` (among others) as
+    module-level ``functools.lru_cache``-wrapped callables, keyed by style
     content -- shared across every ``Console`` in the process. A test that
     renders through a non-default ``color_system`` (e.g.
     ``Console(color_system="standard")``, used to exercise ANSI-16
@@ -155,11 +154,7 @@ def _reset_rich_style_color_caches() -> Generator[None, None, None]:
     import rich.style
 
     for cached_callable in (
-        rich.color.Color.parse,
-        rich.color.Color.downgrade,
-        rich.color.Color.get_ansi_codes,
         rich.style.Style.parse,
-        rich.style.Style.normalize,
         rich.style.Style._add,
     ):
         cached_callable.cache_clear()

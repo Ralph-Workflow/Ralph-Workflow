@@ -141,11 +141,14 @@ class AgentUnavailabilityTracker:
             The new UnavailabilityEntry with computed backoff.
         """
         key = f"{phase}:{agent}"
+        attempt_key = (
+            agent if reason is UnavailabilityReason.AUTH_CONFIG else key
+        )
         current_time_ms = int(self._clock.monotonic() * 1000)
         # Opportunistically prune expired entries so the dict does
         # not grow without bound across long parallel runs.
         self.prune_expired(now_ms=current_time_ms)
-        attempt: int = self._backoff_attempts.get(key, 0)
+        attempt: int = self._backoff_attempts.get(attempt_key, 0)
 
         if reason is not None and reason in self._backoff_policy:
             policy = self._backoff_policy[reason]
@@ -174,7 +177,7 @@ class AgentUnavailabilityTracker:
             base_backoff_ms=base_ms_int,
             max_backoff_ms=cap_ms_int,
         )
-        self._backoff_attempts[key] = attempt + 1
+        self._backoff_attempts[attempt_key] = attempt + 1
         return self._entries[key]
 
     def is_available(self, phase: str, agent: str) -> bool:
@@ -209,6 +212,7 @@ class AgentUnavailabilityTracker:
         key = f"{phase}:{agent}"
         self._entries.pop(key, None)
         self._backoff_attempts.pop(key, None)
+        self._backoff_attempts.pop(agent, None)
 
     def prune_expired(self, now_ms: int | None = None) -> int:
         """Remove entries whose cooldown has elapsed at ``now_ms``.
@@ -244,6 +248,10 @@ class AgentUnavailabilityTracker:
         return {
             "unavailable_timeouts": {
                 key: entry.unavailable_until_ms for key, entry in self._entries.items()
+            },
+            "unavailability_reasons": {
+                key: str(entry.reason) if entry.reason is not None else None
+                for key, entry in self._entries.items()
             },
             "backoff_attempts": dict(self._backoff_attempts),
         }

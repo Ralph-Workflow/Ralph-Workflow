@@ -675,6 +675,15 @@ class RecoveryController:
             return new_state, effects, failure_evt
 
         if failure.category == FailureCategory.USER_CONFIG:
+            if failure.is_unavailable and agent is not None:
+                self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
+                new_state = new_state.copy_with(
+                    last_unavailability_reason=(
+                        str(failure.unavailability_reason)
+                        if failure.unavailability_reason is not None
+                        else None
+                    )
+                )
             logger.error(
                 "User/config failure reached runtime controller in phase={} (bug): {}",
                 phase,
@@ -1099,13 +1108,16 @@ class RecoveryController:
         """
         snap = self._unavailability_tracker.snapshot()
         cooldowns_dict = snap.get("unavailable_timeouts", {})
+        reasons_dict = snap.get("unavailability_reasons", {})
         now_ms = int(self._clock.monotonic() * 1000)
         spent_set = self._spent_agents.get(phase, set())
 
-        rows: list[tuple[str, bool, int, bool]] = []
+        rows: list[tuple[str, bool, int, bool, str | None]] = []
         for idx, agent in enumerate(agents):
             key = f"{phase}:{agent}"
             timeout_ms = cooldowns_dict.get(key)
+            reason = reasons_dict.get(key)
+            cooldown_reason = reason if isinstance(reason, str) else None
             cooldown_ms = 0
             if isinstance(timeout_ms, int):
                 cooldown_ms = max(0, timeout_ms - now_ms)
@@ -1119,6 +1131,7 @@ class RecoveryController:
                     avail,
                     cooldown_ms,
                     is_spent,
+                    cooldown_reason,
                 )
             )
 

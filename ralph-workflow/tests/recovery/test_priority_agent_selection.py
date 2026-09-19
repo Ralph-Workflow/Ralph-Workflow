@@ -238,7 +238,7 @@ def test_transcript_visibility() -> None:
         logger.remove(sink_id)
 
     assert any("Selected agent" in line for line in logs)
-    assert any("cooldown (5000ms remaining)" in line for line in logs)
+    assert any("cooldown (5000ms remaining, reason=no_output_at_start)" in line for line in logs)
 
 
 def test_non_unavailable_failures_re_prefer() -> None:

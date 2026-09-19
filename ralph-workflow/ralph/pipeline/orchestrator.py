@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         PhaseDefinition,
         PipelinePolicy,
     )
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -67,6 +68,8 @@ def determine_next_effect(
     pipeline_policy: PipelinePolicy,
     agents_policy: AgentsPolicy,
     workspace_scope: WorkspaceScope | None = None,
+    *,
+    recovery: RecoveryController | None = None,
 ) -> Effect:
     """Pure function: derive next effect from current state and policy.
 
@@ -125,7 +128,7 @@ def determine_next_effect(
 
     # Routing based on phase type and state flags
     return _derive_effect_for_phase(
-        state, phase_def, chain, chain_name, pipeline_policy, workspace_scope
+        state, phase_def, chain, chain_name, pipeline_policy, workspace_scope, recovery=recovery
     )
 
 
@@ -136,6 +139,8 @@ def _derive_effect_for_phase(
     chain_name: str,
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope | None = None,
+    *,
+    recovery: RecoveryController | None = None,
 ) -> Effect:
     """Derive the next effect for a known phase.
 
@@ -176,7 +181,7 @@ def _derive_effect_for_phase(
         prompt_file = str(resolve_effective_prompt_path(workspace_scope.root, os.environ))
 
     return InvokeAgentEffect(
-        agent_name=_current_agent_name(state, chain),
+        agent_name=_current_agent_name(state, chain, recovery=recovery),
         phase=phase,
         prompt_file=prompt_file,
         drain=phase_def.drain,
@@ -217,9 +222,16 @@ def _is_agent_invoked_for_phase(state: PipelineState, phase_def: PhaseDefinition
 def _current_agent_name(
     state: PipelineState,
     chain: AgentChainConfig,
+    *,
+    recovery: RecoveryController | None = None,
 ) -> str:
     """Get the current agent name from the phase chain state or policy chain."""
     phase_chain = state.chain_for_phase(state.phase)
+    agents = phase_chain.agents if phase_chain is not None and phase_chain.agents else chain.agents
+    if recovery is not None and hasattr(recovery, "preferred_agent_index"):
+        selection = recovery.preferred_agent_index(str(state.phase), agents)
+        if selection.agent is not None:
+            return selection.agent
     if phase_chain is not None and phase_chain.agents:
         idx = phase_chain.current_index
         if idx < len(phase_chain.agents):

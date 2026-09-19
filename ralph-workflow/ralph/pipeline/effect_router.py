@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 MIN_WORK_UNITS_FOR_PARALLELIZATION = 2
@@ -64,6 +65,7 @@ def determine_effect_from_policy(
     *,
     config: UnifiedConfig | None = None,
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
+    recovery: RecoveryController | None = None,
 ) -> Effect:
     """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
@@ -90,9 +92,12 @@ def determine_effect_from_policy(
             scope,
             config=config,
             has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+            recovery=recovery,
         )
 
-    return _parallel_or_agent_effect(state, phase_def, policy_bundle, config, workspace_scope)
+    return _parallel_or_agent_effect(
+        state, phase_def, policy_bundle, config, workspace_scope, recovery=recovery
+    )
 
 
 def _skip_invocation_effect(
@@ -116,6 +121,8 @@ def _parallel_or_agent_effect(
     policy_bundle: PolicyBundle,
     config: UnifiedConfig | None,
     workspace_scope: WorkspaceScope | None = None,
+    *,
+    recovery: RecoveryController | None = None,
 ) -> Effect:
     work_units = state.work_units
     if not work_units and phase_def.parallelization is not None:
@@ -138,7 +145,7 @@ def _parallel_or_agent_effect(
             )
         else:
             return _fan_out_effect(state, phase_def, work_units)
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
     return InvokeAgentEffect(
@@ -269,6 +276,7 @@ def _commit_phase_effect(
     *,
     config: UnifiedConfig | None = None,
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
+    recovery: RecoveryController | None = None,
 ) -> Effect:
     if state.commit.agent_invoked:
         return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
@@ -278,7 +286,7 @@ def _commit_phase_effect(
     ):
         delete_commit_message_artifacts(workspace_scope.root)
         return EarlySkipCommitEffect()
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
     return InvokeAgentEffect(
@@ -303,9 +311,11 @@ def _should_early_skip_commit(
 def _agent_name_for_phase_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
+    *,
+    recovery: RecoveryController | None = None,
 ) -> str | None:
     current_agent = state.current_agent()
-    if current_agent is not None:
+    if current_agent is not None and recovery is None:
         return current_agent
 
     phase_def = policy_bundle.pipeline.phases.get(state.phase)
@@ -320,7 +330,13 @@ def _agent_name_for_phase_from_policy(
     if chain_config is None or not chain_config.agents:
         return None
 
-    return chain_config.agents[0]
+    if recovery is None or not hasattr(recovery, "preferred_agent_index"):
+        return chain_config.agents[0]
+
+    phase_chain = state.chain_for_phase(state.phase)
+    agents = phase_chain.agents if phase_chain is not None and phase_chain.agents else chain_config.agents
+    selection = recovery.preferred_agent_index(str(state.phase), agents)
+    return selection.agent
 
 
 def _agents_for_phase(

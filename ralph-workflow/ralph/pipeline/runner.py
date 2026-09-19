@@ -1569,6 +1569,7 @@ def _run_pipeline_step(
             policy_bundle,
             workspace_scope,
             config,
+            recovery=recovery_controller,
             pipeline_deps=pipeline_deps,
         )
         inline_result = handle_inline_effect(
@@ -2019,6 +2020,7 @@ def _call_determine_effect_from_policy(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
     *,
+    recovery: RecoveryController | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> Effect:
     fn = determine_effect_from_policy
@@ -2030,6 +2032,15 @@ def _call_determine_effect_from_policy(
             else None
         )
         if "has_uncommitted_changes_fn" in params and has_changes is not None:
+            if "recovery" in params:
+                return fn(
+                    state,
+                    policy_bundle,
+                    workspace_scope,
+                    config=config,
+                    has_uncommitted_changes_fn=has_changes,
+                    recovery=recovery,
+                )
             return fn(
                 state,
                 policy_bundle,
@@ -2037,6 +2048,8 @@ def _call_determine_effect_from_policy(
                 config=config,
                 has_uncommitted_changes_fn=has_changes,
             )
+        if "recovery" in params:
+            return fn(state, policy_bundle, workspace_scope, config=config, recovery=recovery)
         return fn(state, policy_bundle, workspace_scope, config=config)
 
     positional = [

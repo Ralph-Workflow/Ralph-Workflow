@@ -12,7 +12,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.language_detector.models import ProjectStack
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PolicyBundle,
+)
 from ralph.project_policy import markers, starters
+from ralph.project_policy.models import PolicyFinding, ReadinessResult, ReadinessStatus
 
 if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
@@ -73,6 +84,47 @@ def complete_policy_body(filename: str) -> str:
     return "\n".join(lines)
 
 
+def policy_invocation_bundle() -> PolicyBundle:
+    """Build the smallest valid bundle for policy invocation boundary tests."""
+    phase_names = (
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_analysis",
+        "development_commit",
+    )
+    chains = {name: AgentChainConfig(agents=["test-agent"]) for name in phase_names}
+    chains["policy_remediation"] = AgentChainConfig(agents=["test-agent"])
+    drains = {name: AgentDrainConfig(chain=name) for name in chains}
+    phases = {
+        name: PhaseDefinition(
+            drain=name,
+            transitions=PhaseTransition(on_success="complete"),
+        )
+        for name in phase_names
+    }
+    return PolicyBundle(
+        agents=AgentsPolicy(agent_chains=chains, agent_drains=drains),
+        pipeline=PipelinePolicy(phases=phases),
+        artifacts=ArtifactsPolicy(),
+    )
+
+
+def remediation_required_result() -> ReadinessResult:
+    """Return one deterministic finding for a policy-invocation boundary test."""
+    return ReadinessResult(
+        status=ReadinessStatus.REMEDIATION_REQUIRED,
+        findings=[
+            PolicyFinding(
+                requirement_id="RWP-TEST:policy-boundary",
+                path="AGENTS.md",
+                missing_evidence="test policy boundary is not ready",
+                required_outcome="invoke the remediation agent",
+            )
+        ],
+    )
+
+
 def seed_complete_corpus(workspace: Workspace, *, portfolio: str | None = None) -> None:
     """Write a full policy corpus that passes the real validator."""
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
@@ -92,4 +144,10 @@ def seed_complete_corpus(workspace: Workspace, *, portfolio: str | None = None) 
     )
 
 
-__all__ = ["complete_policy_body", "seed_complete_corpus", "stack"]
+__all__ = [
+    "complete_policy_body",
+    "policy_invocation_bundle",
+    "remediation_required_result",
+    "seed_complete_corpus",
+    "stack",
+]

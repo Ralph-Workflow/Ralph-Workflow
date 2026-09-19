@@ -1236,6 +1236,8 @@ def _apply_startup_rebase_outcomes(
 def _reselect_preferred_agent(
     state: PipelineState,
     ctx: _LoopContext,
+    *,
+    allow_wait: bool = True,
 ) -> PipelineState:
     """Select the highest-priority available agent for the state's phase."""
     chain = state.chain_for_phase(state.phase)
@@ -1250,6 +1252,16 @@ def _reselect_preferred_agent(
             state = state.with_phase_chain(state.phase, chain).copy_with(
                 last_agent_session_id=None,
                 agent_retry_intent=cleared_agent_retry_intent(),
+            )
+        elif allow_wait and selection.index is None and not ctx.controller.agents_now_available(
+            str(state.phase), chain.agents
+        ):
+            state = state.copy_with(
+                last_error="all agents unavailable; waiting for cooldown expiry",
+                last_retry_delay_ms=ctx.controller.earliest_available_wait_ms(
+                    str(state.phase), chain.agents
+                ),
+                is_waiting_state=True,
             )
     return state
 
@@ -1269,7 +1281,7 @@ def _resume_after_cooldown_wait(
     )
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
-        state = _reselect_preferred_agent(state, ctx)
+        state = _reselect_preferred_agent(state, ctx, allow_wait=False)
     state = state.copy_with(is_waiting_state=False)
     _log_resumed_state(state, ctx, phase, unavailability_reason, delay_ms)
     return state

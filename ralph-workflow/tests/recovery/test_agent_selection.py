@@ -136,6 +136,35 @@ def test_controller_earliest_available_wait_uses_smallest_remaining_cooldown() -
     assert controller.earliest_available_wait_ms("development", ["claude", "opencode"]) == 0
 
 
+def test_controller_selection_evidence_includes_stored_cooldown_reason() -> None:
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            unavailability_entries={
+                "development:cursor/auto": UnavailabilityEntry(
+                    unavailable_until_ms=5_000,
+                    reason=UnavailabilityReason.AUTH_CONFIG,
+                    attempt=0,
+                    base_backoff_ms=5_000,
+                    max_backoff_ms=60_000,
+                )
+            },
+        )
+    )
+
+    selection = controller.preferred_agent_index("development", ["cursor/auto", "fallback"])
+
+    assert selection.agent == "fallback"
+    assert selection.skipped_reasons == (
+        ("cursor/auto", "cooldown (5000ms remaining, reason=auth_config)"),
+    )
+    assert format_selection_evidence("development", selection) == (
+        "Phase development: Selected agent fallback "
+        "(skipped cursor/auto: cooldown (5000ms remaining, reason=auth_config))"
+    )
+
+
 def test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_zero_ms() -> None:
     rows = [
         agent_availability(agent="claude", available=False, cooldown_ms_remaining=0, spent=False),

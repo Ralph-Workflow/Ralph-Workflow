@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-type AgentAvailability = tuple[str, bool, int, bool]
+type AgentAvailability = tuple[str, bool, int, bool, str | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,9 +20,10 @@ def agent_availability(
     available: bool,
     cooldown_ms_remaining: int,
     spent: bool,
+    cooldown_reason: str | None = None,
 ) -> AgentAvailability:
     """Create selection-relevant availability state for one agent."""
-    return agent, available, cooldown_ms_remaining, spent
+    return agent, available, cooldown_ms_remaining, spent, cooldown_reason
 
 
 def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
@@ -30,17 +31,20 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
     selected_index = next(
         (
             index
-            for index, (_agent, available, cooldown_ms_remaining, spent) in enumerate(rows)
+            for index, (_agent, available, cooldown_ms_remaining, spent, _reason) in enumerate(rows)
             if available and cooldown_ms_remaining <= 0 and not spent
         ),
         None,
     )
     skipped_reasons: list[tuple[str, str]] = []
-    for index, (agent, available, cooldown_ms_remaining, spent) in enumerate(rows):
+    for index, (agent, available, cooldown_ms_remaining, spent, cooldown_reason) in enumerate(rows):
         if index == selected_index:
             continue
         if cooldown_ms_remaining > 0:
-            skipped_reasons.append((agent, f"cooldown ({cooldown_ms_remaining}ms remaining)"))
+            reason = f", reason={cooldown_reason}" if cooldown_reason is not None else ""
+            skipped_reasons.append(
+                (agent, f"cooldown ({cooldown_ms_remaining}ms remaining{reason})")
+            )
         elif not available:
             skipped_reasons.append((agent, "unavailable"))
         elif spent:

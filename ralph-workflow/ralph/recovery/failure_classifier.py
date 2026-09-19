@@ -835,10 +835,17 @@ class FailureClassifier:
             and watchdog_reason == "no_output_at_start"
             and bool(resumable_session_id)
         )
-        is_unavailable = base_unavailable and not resumable_kill
+        cursor_auth_failure = (
+            agent is not None
+            and agent.partition("/")[0] == "cursor"
+            and _is_cursor_auth_failure(detail_parts)
+        )
+        is_unavailable = (base_unavailable and not resumable_kill) or cursor_auth_failure
 
         unavailability_reason: UnavailabilityReason | None = None
-        if broken_agent:
+        if cursor_auth_failure:
+            unavailability_reason = UnavailabilityReason.AUTH_CONFIG
+        elif broken_agent:
             unavailability_reason = UnavailabilityReason.BROKEN_AGENT
         elif is_unavailable:
             unavailability_reason = _classify_unavailability_reason(

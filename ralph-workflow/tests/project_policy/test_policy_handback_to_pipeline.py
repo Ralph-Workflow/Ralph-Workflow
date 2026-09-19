@@ -49,11 +49,14 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
-from ralph.policy.loader import default_dir, load_policy
 from ralph.project_policy import cli_integration
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests.project_policy.policy_corpus import (
+    policy_invocation_bundle,
+    remediation_required_result,
+)
 
 if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
@@ -142,7 +145,7 @@ def test_policy_phase_does_not_leak_session_id_into_pipeline_consumer() -> None:
     would resume the remediation conversation. The test asserts the drain
     is empty.
     """
-    bundle = load_policy(default_dir())
+    bundle = policy_invocation_bundle()
     policy_workspace = MemoryWorkspace()
 
     def fake_execute_agent_effect(
@@ -226,7 +229,7 @@ def test_policy_phase_failure_path_does_not_leak_retry_intent() -> None:
     case models the retry-intent surface separately so a fix that only
     clears the session id (and forgets the intent) is caught.
     """
-    bundle = load_policy(default_dir())
+    bundle = policy_invocation_bundle()
     leaked_intent_action = "fresh"
     leaked_intent_reason = "policy-remediation-leaked-failure"
     policy_workspace = MemoryWorkspace()
@@ -367,6 +370,7 @@ def _build_handback_pipeline_stubs(
     *,
     load_result: run_module._LoadResult,
     ws: MemoryWorkspace,
+    monkeypatch: pytest.MonkeyPatch,
     preflight_order: list[str],
     captured_pipeline_state: list[PipelineState],
     captured_first_effects: list[object] | None = None,
@@ -436,16 +440,22 @@ def _build_handback_pipeline_stubs(
             if policy_commit_requests is not None:
                 policy_commit_requests.append(authored_paths)
 
-        return cli_integration.run_project_policy_readiness(
-            load_result=load_result,
-            display_context=display_context,
-            display=display,
-            workspace_factory=lambda: ws,
-            emit_factory=emit_factory,
-            is_tty=lambda: False,
-            working_tree_snapshot=snapshot_working_tree,
-            commit_policy_updates=commit_policy_changes,
-        )
+        with monkeypatch.context() as policy_monkeypatch:
+            policy_monkeypatch.setattr(
+                cli_integration,
+                "run_policy_readiness_preflight",
+                lambda *_args, **_kwargs: remediation_required_result(),
+            )
+            return cli_integration.run_project_policy_readiness(
+                load_result=load_result,
+                display_context=display_context,
+                display=display,
+                workspace_factory=lambda: ws,
+                emit_factory=emit_factory,
+                is_tty=lambda: False,
+                working_tree_snapshot=snapshot_working_tree,
+                commit_policy_updates=commit_policy_changes,
+            )
 
     def stub_execute_pipeline(
         *args: object,
@@ -615,10 +625,9 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
 
     # Imports deferred so the patch is local to this test.
     from ralph.pipeline import effect_executor as effect_executor_module
-    from ralph.policy.loader import default_dir, load_policy
-
-    # Real bundle so the production closure's chain resolution succeeds.
-    real_bundle = load_policy(default_dir())
+    # Minimal valid bundle keeps this at the policy-invocation boundary
+    # without parsing the full shipped policy corpus.
+    real_bundle = policy_invocation_bundle()
     ws = MemoryWorkspace()
 
     # Captured session ids across the policy-phase agent invocations.
@@ -652,6 +661,7 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
     stubs = _build_handback_pipeline_stubs(
         load_result=load_result,
         ws=ws,
+        monkeypatch=monkeypatch,
         preflight_order=preflight_order,
         captured_pipeline_state=captured_pipeline_state,
         captured_first_effects=captured_first_effects,

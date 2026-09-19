@@ -213,7 +213,10 @@ def test_a_failing_capture_restore_does_not_block_the_run(
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline._runner_session import set_last_captured_session_id
     from ralph.pipeline.events import PipelineEvent
-    from ralph.policy.loader import default_dir, load_policy
+    from tests.project_policy.policy_corpus import (
+        policy_invocation_bundle,
+        remediation_required_result,
+    )
 
     debug_records: list[str] = []
 
@@ -250,8 +253,13 @@ def test_a_failing_capture_restore_does_not_block_the_run(
         "execute_agent_effect",
         seed_publish_execute_agent_effect,
     )
+    monkeypatch.setattr(
+        cli_integration,
+        "run_policy_readiness_preflight",
+        lambda *_args, **_kwargs: remediation_required_result(),
+    )
 
-    bundle = load_policy(default_dir())
+    bundle = policy_invocation_bundle()
     load_result = run_module._LoadResult(
         config=UnifiedConfig(),
         workspace_scope=WorkspaceScope(
@@ -271,6 +279,8 @@ def test_a_failing_capture_restore_does_not_block_the_run(
             workspace_factory=MemoryWorkspace,
             emit_factory=emitted.append,
             is_tty=lambda: False,
+            working_tree_snapshot=lambda _scope: frozenset(),
+            commit_policy_updates=lambda _scope, _dirty, _authored: None,
         )
     finally:
         _loguru_logger.remove(sink_id)
