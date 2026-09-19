@@ -413,6 +413,10 @@ SAME_SHAPE_RETRY_DEFAULT: int = 3
 #: agent before recovery fails the phase instead of waiting for cooldown.
 BROKEN_AGENT_SAME_SHAPE_DEFAULT: int = 2
 
+#: Default maximum consecutive qualifying in-session retries for an agent
+#: before escalating to standard failure cooldown.
+IN_SESSION_RETRY_ESCALATION_DEFAULT: int = 3
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

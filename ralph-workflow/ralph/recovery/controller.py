@@ -558,6 +558,10 @@ class RecoveryController:
         self._spent_agents: dict[
             str, set[str]
         ] = {}  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
+        self._in_session_retry_escalation_limit: int = opts.in_session_retry_escalation_limit
+        self._in_session_retry_counts: dict[
+            str, int
+        ] = {}  # bounded-accumulator-ok: keyed by phase:agent, drained by reset_backoff
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -1087,7 +1091,13 @@ class RecoveryController:
         self._backoff_attempts.pop(key, None)
         self._spent_agents.pop(phase, None)
         if agent is not None:
+            self._in_session_retry_counts.pop(key, None)
             self._unavailability_tracker.reset_backoff(phase, agent)
+        else:
+            phase_prefix = f"{phase}:"
+            for k in list(self._in_session_retry_counts.keys()):
+                if k.startswith(phase_prefix):
+                    self._in_session_retry_counts.pop(k, None)
 
     def note_retry_exhaustion(self, phase: str, agent: str) -> None:
         """Mark an agent's retry allowance as spent for the current round of a phase."""
@@ -1177,7 +1187,9 @@ class RecoveryController:
         hint_file = Path(
             retry_hint_path(
                 phase,
-                pipeline_policy=self._policy_bundle.pipeline if self._policy_bundle is not None else None,
+                pipeline_policy=self._policy_bundle.pipeline
+                if self._policy_bundle is not None
+                else None,
             )
         )
         try:
@@ -1240,6 +1252,22 @@ class RecoveryController:
         if current_allowance_spent and current_agent is not None:
             self.note_retry_exhaustion(phase, current_agent)
 
+        if (
+            retry_in_session
+            and not failure.is_unavailable
+            and not current_allowance_spent
+            and current_agent is not None
+        ):
+            agent_key = f"{phase}:{current_agent}"
+            current_count = self._in_session_retry_counts.get(agent_key, 0)
+            if current_count >= self._in_session_retry_escalation_limit:
+                self._mark_agent_unavailable(
+                    phase,
+                    current_agent,
+                    reason=failure.unavailability_reason,
+                )
+                self._in_session_retry_counts[agent_key] = 0
+
         selection = self.preferred_agent_index(
             phase,
             chain.agents,
@@ -1248,6 +1276,11 @@ class RecoveryController:
         )
 
         if selection.index == chain.current_index:
+            if retry_in_session and not failure.is_unavailable and current_agent is not None:
+                agent_key = f"{phase}:{current_agent}"
+                self._in_session_retry_counts[agent_key] = (
+                    self._in_session_retry_counts.get(agent_key, 0) + 1
+                )
             return (
                 self._apply_chain_retry(state, phase, chain, retry_in_session=retry_in_session),
                 [],
@@ -1422,6 +1455,7 @@ class RecoveryController:
             },
             "backoff_attempts": merged_attempts,
             "technical_retry_cap": self._technical_retry_cap,
+            "in_session_retry_escalation_limit": self._in_session_retry_escalation_limit,
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
         }
 

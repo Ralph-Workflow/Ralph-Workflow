@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.timeout_defaults import BROKEN_AGENT_SAME_SHAPE_DEFAULT, SAME_SHAPE_RETRY_DEFAULT
+from ralph.timeout_defaults import (
+    BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+    IN_SESSION_RETRY_ESCALATION_DEFAULT,
+    SAME_SHAPE_RETRY_DEFAULT,
+)
 
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
@@ -45,6 +49,9 @@ class RecoveryControllerOptions:
     # Consecutive identical broken-agent failures on one sole agent fail the
     # phase instead of entering the all-agents-unavailable cooldown loop.
     broken_agent_same_shape_limit: int = BROKEN_AGENT_SAME_SHAPE_DEFAULT
+    # Maximum consecutive qualifying in-session retries allowed for an agent
+    # before escalating to cooldown and next eligible agent selection.
+    in_session_retry_escalation_limit: int = IN_SESSION_RETRY_ESCALATION_DEFAULT
     # Initial unavailable timeout state, keyed by "phase:agent" with values as
     # monotonic timestamps in milliseconds. Used to inject test state; in
     # production this starts empty and is populated by the controller.
@@ -67,3 +74,7 @@ class RecoveryControllerOptions:
     # options are ignored (the caller is responsible for the store's
     # initial state).
     unavailability_store: UnavailabilityStore | None = None
+
+    def __post_init__(self) -> None:
+        if self.in_session_retry_escalation_limit < 1:
+            raise ValueError("in_session_retry_escalation_limit must be at least 1")

@@ -21,6 +21,7 @@ from ralph.timeout_defaults import (
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
     IDLE_TIMEOUT_SECONDS,
+    IN_SESSION_RETRY_ESCALATION_DEFAULT,
     LOG_GROWTH_SECONDS,
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
@@ -122,6 +123,14 @@ class GeneralConfig(RalphBaseModel):
             "Broken-agent sole-chain bound. Consecutive identical broken-agent"
             " failures for the same sole agent fail the phase instead of waiting"
             " for that agent's cooldown."
+        ),
+    )
+    in_session_retry_escalation_limit: int = Field(
+        default=IN_SESSION_RETRY_ESCALATION_DEFAULT,
+        ge=1,
+        description=(
+            "Maximum consecutive qualifying in-session retries allowed for an agent"
+            " before escalating to cooldown and next eligible agent selection."
         ),
     )
     max_retries: int = Field(default=3, ge=0)

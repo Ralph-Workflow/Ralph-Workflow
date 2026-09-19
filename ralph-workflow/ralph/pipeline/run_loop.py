@@ -63,6 +63,7 @@ from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.timeout_defaults import (
     BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+    IN_SESSION_RETRY_ESCALATION_DEFAULT,
     SAME_SHAPE_RETRY_DEFAULT,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
@@ -1253,8 +1254,10 @@ def _reselect_preferred_agent(
                 last_agent_session_id=None,
                 agent_retry_intent=cleared_agent_retry_intent(),
             )
-        elif allow_wait and selection.index is None and not ctx.controller.agents_now_available(
-            str(state.phase), chain.agents
+        elif (
+            allow_wait
+            and selection.index is None
+            and not ctx.controller.agents_now_available(str(state.phase), chain.agents)
         ):
             state = state.copy_with(
                 last_error="all agents unavailable; waiting for cooldown expiry",
@@ -1977,6 +1980,19 @@ def _build_recovery_controller(
         )
         else BROKEN_AGENT_SAME_SHAPE_DEFAULT
     )
+    raw_in_session_retry_escalation_limit: object = getattr(
+        config.general,
+        "in_session_retry_escalation_limit",
+        None,
+    )
+    in_session_retry_escalation_limit = (
+        raw_in_session_retry_escalation_limit
+        if (
+            isinstance(raw_in_session_retry_escalation_limit, int)
+            and raw_in_session_retry_escalation_limit >= 1
+        )
+        else IN_SESSION_RETRY_ESCALATION_DEFAULT
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
@@ -1985,6 +2001,7 @@ def _build_recovery_controller(
             technical_retry_cap=technical_retry_cap,
             same_shape_retry_limit=same_shape_limit,
             broken_agent_same_shape_limit=broken_agent_same_shape_limit,
+            in_session_retry_escalation_limit=in_session_retry_escalation_limit,
         )
     )
     return controller, _cycle_cap
@@ -2145,9 +2162,7 @@ def _subscribe_recovery_display(
                     tag = "terminal"
                 elif evt.category == "artifact_validation":
                     label = "VALIDATION FAILURE"
-                    value = (
-                        f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}"
-                    )
+                    value = f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}"
                     style = "red"
                     tag = "validation_recoverable"
                 elif evt.watchdog_reason is not None:
