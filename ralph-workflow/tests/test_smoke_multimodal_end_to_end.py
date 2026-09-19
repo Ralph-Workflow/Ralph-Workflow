@@ -44,17 +44,11 @@ from __future__ import annotations
 
 import os
 import shlex
-import time
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents import invoke as invoke_module
-from ralph.agents.invoke import (
-    InvokeOptions,
-    MissingCredentialsError,
-    _fail_for_missing_credentials,
-)
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.smoke_binary_override import (
     apply_smoke_binary_override,
@@ -63,7 +57,6 @@ from ralph.cli.commands.smoke_binary_override import (
 )
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
-from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.smoke_plumbing import (
@@ -71,7 +64,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
-from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [
@@ -83,7 +75,7 @@ pytestmark = [
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
 
 
 # Per-harness redirect seams (S-13). Each entry maps:
@@ -413,26 +405,6 @@ def test_cursor_smoke_accepts_operator_login_without_api_key(
 
     assert result.multimodal_tool_used is not None
     assert result.multimodal_tool_used.provenance is result.multimodal_tool_used.provenance.WIRE
-
-
-def test_cursor_smoke_without_credentials_fails_fast_as_user_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
-    started = time.monotonic()
-    with pytest.raises(MissingCredentialsError, match="agent login") as excinfo:
-        _fail_for_missing_credentials(config, InvokeOptions())
-
-    assert time.monotonic() - started < 1.0
-    failure = FailureClassifier().classify(
-        excinfo.value,
-        phase="development",
-        agent="cursor/auto",
-    )
-    assert failure.category is FailureCategory.USER_CONFIG
-    assert failure.reset_session is False
 
 
 @pytest.mark.parametrize(

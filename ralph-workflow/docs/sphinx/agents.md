@@ -18,7 +18,7 @@ own native authentication:
 - **Nanocoder** — local-only TUI, no remote auth
 - **Google Anti Gravity (AGY)** — `agy login` / Google account
 - **Pi** — `pi` provider configuration
-- **Cursor** — `agent login` file-backed material (`~/.cursor` or `$XDG_CONFIG_HOME/cursor/auth.json`) / `CURSOR_API_KEY`.
+- **Cursor** — Cursor Agent's default credential resolution; `CURSOR_API_KEY` is an optional explicit override. Ralph Workflow does not preflight Cursor credentials.
 
 You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
 Ralph Workflow then calls the agent CLI as-is and supervises the workflow.

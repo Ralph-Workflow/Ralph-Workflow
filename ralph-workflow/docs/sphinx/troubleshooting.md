@@ -73,19 +73,24 @@ launch `ralph` from:
 agent --version
 ```
 
-The headless smoke path requires `agent login` (or the
-`CURSOR_API_KEY` env var) for the live binary.  Set `RALPH_CURSOR_BINARY`
-to a custom wrapper, alternate live binary, or operator-wired test
-stub if the binary is not on `PATH`; non-executable paths are
-ignored with a WARNING.
+The Cursor CLI resolves its own default credentials; `CURSOR_API_KEY` is
+an optional explicit override. Set `RALPH_CURSOR_BINARY` to a custom wrapper,
+alternate live binary, or operator-wired test stub if the binary is not on
+`PATH`; non-executable paths are ignored with a WARNING.
 
 ## Cursor authentication required
 
-**Symptom:** A Cursor run reports `Authentication required`, asks you to run `agent login` or set `CURSOR_API_KEY`, or stops with a `USER_CONFIG` failure before the agent starts.
+**Symptom:** A Cursor run reports `Authentication required` or asks you to run
+`agent login` or set `CURSOR_API_KEY`.
 
-**Cause:** Ralph Workflow's Cursor preflight found neither a non-empty `CURSOR_API_KEY` nor file-backed `agent login` material under `~/.cursor` or `$XDG_CONFIG_HOME/cursor/auth.json` (defaulting to `~/.config/cursor/auth.json`). The generated `mcp.json` and Ralph Workflow sidecar lock files do not count as credentials.
+**Cause:** Cursor Agent could not resolve its own credentials. Ralph Workflow
+does not preflight Cursor credentials, so macOS keychain-backed and other
+native Cursor CLI credential sources remain available to unattended runs.
 
-**Fix:** Run `agent login` from the same operator account that launches Ralph Workflow so it creates file-backed login material, or export `CURSOR_API_KEY` in that shell for CI. Re-run `ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential path. The preflight is intentionally fail-fast: missing credentials do not enter stale-session recovery or consume retry budget.
+**Fix:** Authenticate with the Cursor CLI as needed (for example, `agent login`)
+or provide `CURSOR_API_KEY` as an explicit override. Re-run `ralph
+smoke-interactive-cursor --agent 'cursor/auto'` to verify the CLI credential
+path. Authentication failures are reported by Cursor after launch.
 
 ## AGY transport unavailable on Windows
 
