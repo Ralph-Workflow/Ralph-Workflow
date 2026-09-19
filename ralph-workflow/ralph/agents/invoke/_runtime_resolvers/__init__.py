@@ -265,6 +265,21 @@ def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> s
     return runtime_env.get(MCP_ENDPOINT_ENV) or base_env.get(MCP_ENDPOINT_ENV)
 
 
+def _project_cursor_auth(source: Path, destination: Path) -> None:
+    """Project Cursor's auth file into an invocation-owned XDG config root."""
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.symlink_to(source)
+    except FileNotFoundError:
+        return
+    except OSError:
+        try:
+            if source.stat().st_size <= 64 * 1024 * 1024:
+                shutil.copy2(source, destination)  # filesystem-write-ok: bounded fallback materializes one credential in an invocation-owned private config root
+        except FileNotFoundError:
+            return
+
+
 class OpencodeRuntimeResolver:
     """RuntimeResolver for AgentTransport.OPENCODE."""
 
@@ -647,6 +662,9 @@ class CursorRuntimeResolver:
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
+        source_config_home = Path(
+            _env.get("XDG_CONFIG_HOME") or source_home / ".config"
+        ).expanduser()
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -671,7 +689,13 @@ class CursorRuntimeResolver:
             ((Path(".cursor/mcp.json"), payload),), prefix="ralph-cursor-home-"
         )
         _mirror_cursor_home(source_home / ".cursor", private_home / ".cursor")
+        private_config_home = private_home / "config"
+        _project_cursor_auth(
+            source_config_home / "cursor" / "auth.json",
+            private_config_home / "cursor" / "auth.json",
+        )
         runtime_env["HOME"] = str(private_home)
+        runtime_env["XDG_CONFIG_HOME"] = str(private_config_home)
 
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,

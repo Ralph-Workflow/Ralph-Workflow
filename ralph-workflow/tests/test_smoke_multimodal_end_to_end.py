@@ -269,10 +269,16 @@ def _end_to_end_test_for_harness(
             monkeypatch.setenv("CURSOR_API_KEY", "multimodal-smoke-test-credential")
         elif cursor_credential == "login":
             monkeypatch.delenv("CURSOR_API_KEY", raising=False)
-            cursor_home = workspace / ".cursor"
-            cursor_home.mkdir(exist_ok=True)
-            (cursor_home / "auth.json").write_text("credential", encoding="utf-8")
-            monkeypatch.setenv("HOME", str(workspace))
+            cursor_home = workspace / ".home"
+            cursor_state_path = cursor_home / ".cursor" / "state.vscdb"
+            cursor_state_path.parent.mkdir(parents=True)
+            cursor_state_path.write_text("state", encoding="utf-8")
+            cursor_config_home = workspace / ".xdg-config"
+            cursor_auth_path = cursor_config_home / "cursor" / "auth.json"
+            cursor_auth_path.parent.mkdir(parents=True)
+            cursor_auth_path.write_text("credential", encoding="utf-8")
+            monkeypatch.setenv("HOME", str(cursor_home))
+            monkeypatch.setenv("XDG_CONFIG_HOME", str(cursor_config_home))
         elif cursor_credential == "missing":
             monkeypatch.delenv("CURSOR_API_KEY", raising=False)
             monkeypatch.setenv("HOME", str(workspace))

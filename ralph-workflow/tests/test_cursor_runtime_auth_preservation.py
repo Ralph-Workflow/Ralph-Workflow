@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pytest import mark
+
 from ralph.agents.invoke._runtime_resolvers import CursorRuntimeResolver
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -16,17 +18,28 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_cursor_runtime_preserves_operator_credentials_without_overwriting_mcp_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@mark.parametrize("use_explicit_xdg", [False, True])
+def test_cursor_runtime_regression_projects_xdg_auth_into_private_config_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_explicit_xdg: bool
 ) -> None:
+    """Regression: Cursor auth lives at XDG_CONFIG_HOME/cursor/auth.json, not ~/.cursor."""
     operator_home = tmp_path / "operator-home"
-    operator_cursor = operator_home / ".cursor"
-    operator_cursor.mkdir(parents=True)
-    credentials = operator_cursor / "auth.json"
+    source_config_home = (
+        tmp_path / "operator-xdg-config" if use_explicit_xdg else operator_home / ".config"
+    )
+    credentials = source_config_home / "cursor" / "auth.json"
+    credentials.parent.mkdir(parents=True)
     credentials.write_text('{"token":"operator-token"}', encoding="utf-8")
-    operator_mcp = operator_cursor / "mcp.json"
+    mutable_sibling = source_config_home / "cursor" / "state.vscdb"
+    mutable_sibling.write_text("mutable operator state", encoding="utf-8")
+    operator_mcp = operator_home / ".cursor" / "mcp.json"
+    operator_mcp.parent.mkdir(parents=True)
     operator_mcp.write_text('{"mcpServers":{"operator":{}}}', encoding="utf-8")
     monkeypatch.setenv("HOME", str(operator_home))
+    if use_explicit_xdg:
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
+    else:
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
 
     endpoint = "http://127.0.0.1:9999/mcp"
     runtime = CursorRuntimeResolver().resolve(
@@ -37,12 +50,24 @@ def test_cursor_runtime_preserves_operator_credentials_without_overwriting_mcp_c
 
     try:
         assert runtime.agent_env is not None
-        private_cursor = Path(runtime.agent_env["HOME"]) / ".cursor"
-        assert (private_cursor / "auth.json").read_text(encoding="utf-8") == credentials.read_text(
+        private_home = Path(runtime.agent_env["HOME"])
+        private_config_home = Path(runtime.agent_env["XDG_CONFIG_HOME"])
+        assert private_config_home != source_config_home
+        assert private_config_home.parent == private_home
+        assert (private_config_home / "cursor" / "auth.json").read_text(
             encoding="utf-8"
+        ) == credentials.read_text(encoding="utf-8")
+        assert not (private_config_home / "cursor" / mutable_sibling.name).exists()
+        generated_mcp: dict[str, object] = json.loads(
+            (private_home / ".cursor" / "mcp.json").read_text(encoding="utf-8")
         )
-        generated_mcp = json.loads((private_cursor / "mcp.json").read_text(encoding="utf-8"))
-        assert generated_mcp["mcpServers"]["ralph"]["url"] == endpoint
+        mcp_servers = generated_mcp["mcpServers"]
+        assert isinstance(mcp_servers, dict)
+        ralph_server = mcp_servers["ralph"]
+        assert isinstance(ralph_server, dict)
+        ralph_url = ralph_server["url"]
+        assert isinstance(ralph_url, str)
+        assert ralph_url == endpoint
         assert operator_mcp.read_text(encoding="utf-8") == '{"mcpServers":{"operator":{}}}'
     finally:
         assert runtime.cleanup is not None

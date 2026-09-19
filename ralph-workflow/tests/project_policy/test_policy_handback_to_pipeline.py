@@ -574,6 +574,7 @@ def _assert_handback_state_clean(
 )
 def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
     phase: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After policy preflight returns, the run resumes the persisted phase.
 
@@ -667,6 +668,17 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
     for attr_name, stub in stubs.items():
         setattr(run_module, attr_name, stub)
 
+    process_view_calls: list[str] = []
+
+    def stub_process_view(_stack: object) -> None:
+        process_view_calls.append("maybe_enter_process_view")
+
+    # This test observes policy-to-pipeline state hand-back, not whether the
+    # process skills fallback copies every bundled resource. The dedicated
+    # process-view tests cover that fallback. Keeping this existing boundary
+    # stubbed makes the policy regression independent of filesystem scheduling.
+    monkeypatch.setattr(run_module, "_maybe_enter_process_view", stub_process_view)
+
     try:
         request = run_module.RunPipelineRequest(
             config_path=None,
@@ -693,6 +705,9 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
         run_module._execute_pipeline = original_execute
 
     assert rc == 0, "NORMAL-mode run must continue into the development pipeline"
+    assert process_view_calls == ["maybe_enter_process_view"], (
+        "run_pipeline must retain the post-readiness process-view boundary"
+    )
     assert working_tree_snapshots, "policy readiness must use the injected working-tree seam"
     assert policy_commit_requests, "policy readiness must use the injected policy-commit seam"
     _assert_handback_state_clean(
