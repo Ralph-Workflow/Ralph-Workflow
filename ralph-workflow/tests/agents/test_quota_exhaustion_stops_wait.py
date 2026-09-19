@@ -53,12 +53,21 @@ class _QuotaLineThenWouldBlock:
         return self._line
 
 
+class _EmptyStdoutWouldBlock:
+    def __iter__(self) -> _EmptyStdoutWouldBlock:
+        return self
+
+    def __next__(self) -> str:
+        raise _WouldBlockError("reader requested another blocking stdout read")
+
+
 class _ProcessHandle:
     stdin = None
 
-    def __init__(self, stdout: _QuotaLineThenWouldBlock) -> None:
+    def __init__(self, stdout: object, stderr: object = None) -> None:
         self.pid: int | None = None
         self.stdout = stdout
+        self.stderr = stderr
         self.terminate_calls: list[float] = []
 
     def poll(self) -> int:
@@ -139,6 +148,22 @@ def test_process_reader_stops_after_other_agent_quota_line(tmp_path: Path) -> No
     assert isinstance(error, QuotaExhaustedError), error
     assert "rate limit reached" in str(error)
     assert stdout.second_read_attempted is False
+
+
+def test_process_reader_stops_when_quota_is_only_on_stderr(tmp_path: Path) -> None:
+    """A quota diagnostic on stderr aborts without waiting for stdout."""
+    stderr = iter(("RESOURCE_EXHAUSTED (code 429)\n",))
+    stdout = _EmptyStdoutWouldBlock()
+    reader = ProcessLineReader(
+        _ProcessHandle(stdout, stderr),
+        _process_ctx(tmp_path),
+        FakeClock(start=0.0),
+    )
+
+    error = _reader_error(reader)
+
+    assert isinstance(error, QuotaExhaustedError), error
+    assert "RESOURCE_EXHAUSTED (code 429)" in str(error)
 
 
 def test_process_reader_does_not_treat_login_prompt_as_quota(tmp_path: Path) -> None:

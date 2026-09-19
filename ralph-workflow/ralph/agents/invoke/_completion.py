@@ -86,6 +86,12 @@ def _raise_if_quota_exhausted(
 
 
 @runtime_checkable
+class _CapturedStderrHandle(Protocol):
+    @property
+    def _ralph_bounded_stderr(self) -> str: ...
+
+
+@runtime_checkable
 class _ReadableTextPipe(Protocol):
     """Minimal typed boundary for a captured text stderr pipe."""
 
@@ -125,6 +131,8 @@ def read_bounded_stderr(handle: object) -> str:
     must not replace the original process-exit classification, so read errors
     deliberately degrade to an empty diagnostic.
     """
+    if isinstance(handle, _CapturedStderrHandle):
+        return handle._ralph_bounded_stderr
     try:
         stderr_pipe: object = getattr(handle, "stderr", None)
         return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""

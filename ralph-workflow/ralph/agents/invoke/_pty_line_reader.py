@@ -273,6 +273,7 @@ class PtyLineReader:
         extras: PtyExtras | None,
         *,
         max_pending_chars: int = DEFAULT_MAX_BUFFER_CHARS,
+        agy_cli_log: tuple[Path, int] | None = None,
     ) -> None:
         _extras = extras or PtyExtras()
         self._handle = handle
@@ -283,9 +284,13 @@ class PtyLineReader:
         self._quota_error: QuotaExhaustedError | None = None
         agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
         self._agy_cli_log = (
-            agy_cli_log_start_offset(agy_cli_log_path)
-            if self._config.transport == AgentTransport.AGY
-            else None
+            agy_cli_log
+            if agy_cli_log is not None
+            else (
+                agy_cli_log_start_offset(agy_cli_log_path)
+                if self._config.transport == AgentTransport.AGY
+                else None
+            )
         )
         self._monitor = ctx.monitor
         self._workspace_path = cast(

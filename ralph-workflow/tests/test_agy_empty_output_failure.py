@@ -12,6 +12,7 @@ from ralph.agents import _agy_upstream_diagnostic as agy_diag
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.invoke import AgentInvocationError, CompletionCheckOptions, check_process_result
 from ralph.config.enums import AgentTransport
+from ralph.recovery import failure_classifier
 
 
 @pytest.mark.parametrize(
@@ -76,8 +77,8 @@ def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -
 @pytest.mark.parametrize(
     ("pattern", "documented_literal"),
     [
-        (agy_diag._QUOTA_PATTERN, "RESOURCE_EXHAUSTED"),
-        (agy_diag._QUOTA_PATTERN, "quota exhausted"),
+        (failure_classifier._SUBSCRIPTION_LIMIT_SUBSTRINGS, "resource_exhausted"),
+        (failure_classifier._SUBSCRIPTION_LIMIT_SUBSTRINGS, "quota exhausted"),
         (agy_diag._AUTH_PATTERN, "failed to get OAuth token"),
         (agy_diag._PERMISSION_AUTO_DENY_PATTERN, "auto-denied"),
         (agy_diag._MODEL_PATTERN, "not recognized"),
@@ -86,7 +87,7 @@ def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -
     ],
 )
 def test_documented_cli_log_substrings_stay_in_diagnostic_patterns(
-    pattern: re.Pattern[str],
+    pattern: re.Pattern[str] | tuple[str, ...],
     documented_literal: str,
 ) -> None:
     """Plan S-5: every documented trigger literal is pinned inside its pattern.
@@ -95,7 +96,8 @@ def test_documented_cli_log_substrings_stay_in_diagnostic_patterns(
     documented AGY CLI-log trigger substrings must fail this pin, not
     reach production as an unrecognised-cause regression.
     """
-    assert documented_literal in pattern.pattern
+    searchable = pattern.pattern if isinstance(pattern, re.Pattern) else pattern
+    assert documented_literal in searchable
 
 
 def test_agy_default_cli_log_path_is_the_documented_one() -> None:

@@ -17,6 +17,7 @@ from loguru import logger
 
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.executor import ExecutorError, WorkerResult
+from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.display.raw_overflow import (
@@ -37,6 +38,7 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.recovery.failure_classifier import _is_subscription_limit_message
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Mapping, Sequence
@@ -195,6 +197,18 @@ class SubprocessAgentExecutor:
         with contextlib.suppress(Exception):
             self._get_raw_log(unit_id).append(marker)
 
+    async def _sanitize_non_quota_output(
+        self,
+        handle: ManagedAsyncProcess,
+        raw_line: bytes,
+    ) -> str:
+        """Return a display-safe output line or stop on a quota terminal signal."""
+        line = sanitize_display_line(raw_line.rstrip(b"\n"))
+        if _is_subscription_limit_message([line]):
+            await handle.terminate(grace_period_s=0)
+            raise QuotaExhaustedError(_binary_basename(self._command), line)
+        return line
+
     async def run(
         self,
         unit: WorkUnit,
@@ -253,8 +267,8 @@ class SubprocessAgentExecutor:
                     else None
                 ),
             ):
+                line = await self._sanitize_non_quota_output(handle, raw_line)
                 stripped_bytes = raw_line.rstrip(b"\n")
-                line = sanitize_display_line(stripped_bytes)
 
                 if self.activity_router is not None:
                     raw_log = self._get_raw_log(unit.unit_id)

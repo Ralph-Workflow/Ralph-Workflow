@@ -42,7 +42,9 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import (
+    _MAX_STDERR_CAPTURE_BYTES,
     CompletionCheckOptions,
+    _truncation_marker,
     check_process_result,
     completion_run_id_from_extra_env,
     read_bounded_stderr,
@@ -496,7 +498,14 @@ def _extract_tool_call_from_activity_signal(
 class ProcessLineReader:
     """Reads lines from a subprocess stdout in a background thread."""
 
-    def __init__(self, handle: ManagedProcess, ctx: ProcessReaderCtx, clock: Clock) -> None:
+    def __init__(
+        self,
+        handle: ManagedProcess,
+        ctx: ProcessReaderCtx,
+        clock: Clock,
+        *,
+        agy_cli_log: tuple[Path, int] | None = None,
+    ) -> None:
         self._handle = handle
         self._config = ctx.config
         self._policy = ctx.policy
@@ -517,11 +526,18 @@ class ProcessLineReader:
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._quota_error: QuotaExhaustedError | None = None
+        self._stderr_lock = threading.Lock()
+        self._stderr_capture = ""
+        self._stderr_capture_truncated = False
         agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
         self._agy_cli_log = (
-            agy_cli_log_start_offset(agy_cli_log_path)
-            if self._config.transport == AgentTransport.AGY
-            else None
+            agy_cli_log
+            if agy_cli_log is not None
+            else (
+                agy_cli_log_start_offset(agy_cli_log_path)
+                if self._config.transport == AgentTransport.AGY
+                else None
+            )
         )
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
         # Anything the bounded queue evicts still reaches the raw
@@ -831,6 +847,55 @@ class ProcessLineReader:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
         return reader
+
+    def _start_stderr_thread(self) -> threading.Thread | None:
+        stderr_pipe = cast(
+            "IO[str] | None", getattr(self._handle, "stderr", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if stderr_pipe is None:
+            return None
+        reader = threading.Thread(target=self._read_stderr_thread, args=(stderr_pipe,), daemon=True)
+        reader.start()
+        return reader
+
+    def _append_stderr(self, text: str) -> None:
+        with self._stderr_lock:
+            if self._stderr_capture_truncated:
+                return
+            available = _MAX_STDERR_CAPTURE_BYTES - len(self._stderr_capture)
+            if available <= 0:
+                self._stderr_capture += _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
+                self._stderr_capture_truncated = True
+                return
+            if len(text) > available:
+                self._stderr_capture += text[:available]
+                self._stderr_capture += _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
+                self._stderr_capture_truncated = True
+                return
+            self._stderr_capture += text
+
+    def _publish_bounded_stderr(self) -> None:
+        with self._stderr_lock:
+            captured_stderr = self._stderr_capture
+        object.__setattr__(self._handle, "_ralph_bounded_stderr", captured_stderr)
+
+    def _read_stderr_thread(self, stderr_pipe: IO[str]) -> None:
+        try:
+            for line in stderr_pipe:
+                self._append_stderr(line)
+                if _is_subscription_limit_message([line]):
+                    self._terminate_for_quota(line)
+                    break
+        except (UnicodeDecodeError, ValueError):
+            return
+        except Exception:
+            logger.warning(
+                "stderr reader for {cmd} stopped early: {err}",
+                cmd=_agent_command_name(self._config),
+                err=traceback.format_exc(limit=1).strip(),
+            )
+        finally:
+            self._publish_bounded_stderr()
 
     def _finish_terminal_completion(self) -> bool:
         """Stop a process whose completion evidence is already durable."""
@@ -1166,6 +1231,7 @@ class ProcessLineReader:
         sink_token: Token[Callable[[str], None] | None],
         subagent_token: Token[Callable[[str], None] | None],
         reader: threading.Thread,
+        stderr_reader: threading.Thread | None,
     ) -> None:
         """Release everything ``read_lines`` acquired, in reverse order."""
         # The join lives HERE, not at the end of the loop. Sitting there
@@ -1187,6 +1253,10 @@ class ProcessLineReader:
         # honest limit of this guarantee.
         with contextlib.suppress(RuntimeError):
             reader.join(timeout=max(self._policy.drain_window_seconds, 0.5))
+        if stderr_reader is not None:
+            with contextlib.suppress(RuntimeError):
+                stderr_reader.join(timeout=max(self._policy.drain_window_seconds, 0.5))
+        self._publish_bounded_stderr()
         # BEFORE the capture is closed and AFTER the reader thread is
         # joined: the reader may append while the loop is breaking out,
         # so draining any earlier would leave exactly the lines this
@@ -1447,6 +1517,7 @@ class ProcessLineReader:
         # injected clock or enqueue its first line. Starting the reader first
         # let a fast producer make an elapsed session ceiling invisible.
         self._opencode_subagent_probe = self._build_opencode_subagent_probe(watchdog)
+        stderr_reader = self._start_stderr_thread()
         reader = self._start_read_thread()
         try:
             while True:
@@ -1509,7 +1580,13 @@ class ProcessLineReader:
                 )
 
         finally:
-            self._teardown_read_lines(watchdog, sink_token, subagent_token, reader)
+            self._teardown_read_lines(
+                watchdog,
+                sink_token,
+                subagent_token,
+                reader,
+                stderr_reader,
+            )
 
 
 def completion_evidence_gates_reader(ctx: AgentRunCtx) -> bool:
@@ -1540,6 +1617,19 @@ def _append_conflict_termination_diagnostic(
     diagnostic["last_activity_kind"] = snapshot.get("last_activity_kind")
     diagnostic["last_activity_at"] = snapshot.get("last_activity_at")
     diagnostic["invocation_elapsed_seconds"] = snapshot.get("invocation_elapsed_seconds")
+
+
+def _spawn_process_with_agy_log_offset(
+    argv: list[str],
+    spawn_options: SpawnOptions,
+    ctx: AgentRunCtx,
+) -> tuple[ManagedProcess, tuple[Path, int] | None]:
+    agy_cli_log = (
+        agy_cli_log_start_offset()
+        if ctx.config.transport == AgentTransport.AGY
+        else None
+    )
+    return get_process_manager().spawn(argv, spawn_options), agy_cli_log
 
 
 def _run_subprocess_and_read_lines(
@@ -1580,10 +1670,7 @@ def _run_subprocess_and_read_lines(
             text=True,
         )
     )
-    handle = get_process_manager().spawn(
-        argv,
-        spawn_options,
-    )
+    handle, agy_cli_log = _spawn_process_with_agy_log_offset(argv, spawn_options, ctx)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
@@ -1631,7 +1718,7 @@ def _run_subprocess_and_read_lines(
             relay_activity_sink_register=ctx.relay_activity_sink_register,
             relay_health_error=ctx.relay_health_error,
         )
-        reader = ProcessLineReader(handle, reader_ctx, clock)
+        reader = ProcessLineReader(handle, reader_ctx, clock, agy_cli_log=agy_cli_log)
         lines_iter = reader.read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False

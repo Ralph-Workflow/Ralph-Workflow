@@ -6,15 +6,15 @@ import os
 import re
 from pathlib import Path
 
+from ralph.recovery.failure_classifier import _is_subscription_limit_message
+
 _AGY_CLI_LOG_PATH = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
 _AGY_CLI_LOG_TAIL_BYTES = 4096
-_QUOTA_PATTERN = re.compile(
-    r"(?:RESOURCE_EXHAUSTED(?: \(code 429\))?|\b429\b|quota exhausted)", re.IGNORECASE
-)
 _AUTH_PATTERN = re.compile(
-    r"(?:not logged in|authentication failed|failed to get OAuth token|OAuth failure)",
+    r"(?:not logged in|authentication failed|failed to get OAuth token|OAuth failure|auth timed out)",
     re.IGNORECASE,
 )
+_CHAINED_AUTH_SUCCEEDED_PATTERN = re.compile(r"ChainedAuth succeeded", re.IGNORECASE)
 _MODEL_PATTERN = re.compile(
     r"(?:model .*?(?:not recognized|not in local config)|failed to resolve model)", re.IGNORECASE
 )
@@ -81,14 +81,14 @@ def agy_empty_output_reason(output: list[str], cli_log_path: Path | None = None)
             evidence = path.read_text(encoding="utf-8", errors="replace")[-_AGY_CLI_LOG_TAIL_BYTES:]
         except OSError:
             evidence = ""
-    if _QUOTA_PATTERN.search(evidence):
+    if _is_subscription_limit_message([evidence]):
         reset = _QUOTA_RESET_PATTERN.search(evidence)
         reset_hint = f" (resets in {reset.group(1)})" if reset else ""
         return (
             "AGY exited without output because API quota exhausted (quota is exhausted)"
             f"{reset_hint}; wait for quota reset and retry"
         )
-    if _AUTH_PATTERN.search(evidence):
+    if _AUTH_PATTERN.search(evidence) and not _CHAINED_AUTH_SUCCEEDED_PATTERN.search(evidence):
         return "AGY exited without output because authentication failed; authenticate with AGY and retry"
     if _PERMISSION_AUTO_DENY_PATTERN.search(evidence):
         return (

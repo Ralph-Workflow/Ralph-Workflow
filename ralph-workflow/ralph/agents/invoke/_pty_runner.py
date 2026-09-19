@@ -7,6 +7,7 @@ import dataclasses
 from collections import deque
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
+from ralph.agents._agy_upstream_diagnostic import agy_cli_log_start_offset
 from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
@@ -38,14 +39,17 @@ from ralph.agents.invoke._session import (
     extract_transport_session_id_with_visible_tui,
 )
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.config.enums import AgentTransport
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import PtySpawnOptions, get_process_manager
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
+    from ralph.process.manager import ManagedPtyProcess
 
 
 class _CompletionExitSentReader(Protocol):
@@ -97,6 +101,23 @@ def _terminate_pty_tree(handle: object) -> None:
             teardown_subtree(pid)
 
 
+def _spawn_pty_with_agy_log_offset(
+    cmd: list[str],
+    ctx: AgentRunCtx,
+) -> tuple[ManagedPtyProcess, tuple[Path, int] | None]:
+    transport: object = getattr(ctx.config, "transport", None)
+    agy_cli_log = agy_cli_log_start_offset() if transport == AgentTransport.AGY else None
+    handle = get_process_manager().spawn_pty(
+        cmd,
+        PtySpawnOptions(
+            cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
+            env=_subprocess_env(ctx.extra_env),
+            label=f"invoke:{_agent_command_name(ctx.config)}",
+        ),
+    )
+    return handle, agy_cli_log
+
+
 def run_pty_and_read_lines(
     cmd: list[str],
     ctx: AgentRunCtx,
@@ -132,14 +153,7 @@ def run_pty_and_read_lines(
             _extras,
             pre_existing_transcript_names=existing_transcript_names(ctx.workspace_path),
         )
-    handle = get_process_manager().spawn_pty(
-        cmd,
-        PtySpawnOptions(
-            cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
-            env=_subprocess_env(ctx.extra_env),
-            label=f"invoke:{_agent_command_name(ctx.config)}",
-        ),
-    )
+    handle, agy_cli_log = _spawn_pty_with_agy_log_offset(cmd, ctx)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
@@ -149,6 +163,7 @@ def run_pty_and_read_lines(
             ctx,
             clock,
             _extras,
+            agy_cli_log=agy_cli_log,
         )
         lines_iter = pty_reader.read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)

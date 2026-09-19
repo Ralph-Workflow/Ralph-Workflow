@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.config.enums import AgentTransport
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _AGENT_SESSION_CEILINGS,
@@ -126,6 +127,21 @@ def test_is_mock_agy_override_false_for_bare_agy(
     """A bare ``agy`` on PATH is the default live binary, not the mock."""
     monkeypatch.setenv("RALPH_AGY_BINARY", "agy")
     assert is_mock_agy_override() is False
+
+
+def test_agy_chained_auth_success_is_not_labeled_unauthenticated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful ChainedAuth event overrides a transient login prompt."""
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/opt/agy-wrapper/agy")
+    diagnostic = agy_empty_output_reason(
+        [
+            "You are not logged into Antigravity. Print mode: triggering interactive OAuth",
+            "ChainedAuth succeeded",
+        ],
+    )
+
+    assert diagnostic is None
 
 
 def test_agy_mock_empty_stdout_diagnostic_is_informational(
