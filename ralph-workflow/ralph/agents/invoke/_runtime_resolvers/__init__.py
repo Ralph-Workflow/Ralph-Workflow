@@ -694,34 +694,40 @@ class CursorRuntimeResolver:
             _env.get("XDG_CONFIG_HOME") or source_home / ".config"
         ).expanduser()
         runtime_env = dict(extra_env or {})
-        runtime_env.setdefault(
-            "AGENT_CLI_CREDENTIAL_STORE",
-            _env.get("AGENT_CLI_CREDENTIAL_STORE", "file"),
+        credential_store = runtime_env.get(
+            "AGENT_CLI_CREDENTIAL_STORE", _env.get("AGENT_CLI_CREDENTIAL_STORE", "file")
+        )
+        runtime_env["AGENT_CLI_CREDENTIAL_STORE"] = (
+            "memory" if credential_store == "memory" else "file"
         )
         cursor_api_key = _env.get("CURSOR_API_KEY")
         if cursor_api_key is not None and "CURSOR_API_KEY" not in runtime_env:
             runtime_env["CURSOR_API_KEY"] = cursor_api_key
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
+        config_files: tuple[tuple[Path, bytes], ...] = ()
 
-        if not endpoint:
-            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+        if endpoint:
+            resolved_workspace = workspace_path or Path.cwd()
+            upstreams = _invoke_module().load_existing_cursor_upstream_servers(resolved_workspace)
+            _apply_upstream_env(upstreams, resolved_workspace, runtime_env, server_env)
+            current_config: dict[str, object] = {
+                "mcpServers": {"ralph": {"url": endpoint}},
+                "workspace_path": resolved_workspace,
+            }
+            payload = json.dumps(
+                merge_existing_upstreams(
+                    "cursor",
+                    current_config,
+                    unsafe_mode=unsafe_mode,
+                    workspace_path=resolved_workspace,
+                ),
+                indent=2,
+            ).encode("utf-8")
+            config_files = ((Path(".cursor/mcp.json"), payload),)
 
-        resolved_workspace = workspace_path or Path.cwd()
-        upstreams = _invoke_module().load_existing_cursor_upstream_servers(resolved_workspace)
-        _apply_upstream_env(upstreams, resolved_workspace, runtime_env, server_env)
-        current_config: dict[str, object] = {
-            "mcpServers": {"ralph": {"url": endpoint}},
-            "workspace_path": resolved_workspace,
-        }
-        payload = json.dumps(
-            merge_existing_upstreams(
-                "cursor", current_config, unsafe_mode=unsafe_mode, workspace_path=resolved_workspace
-            ),
-            indent=2,
-        ).encode("utf-8")
         private_home, cleanup = prepare_private_config_root(
-            ((Path(".cursor/mcp.json"), payload),), prefix="ralph-cursor-home-"
+            config_files, prefix="ralph-cursor-home-"
         )
         _mirror_cursor_home(source_home / ".cursor", private_home / ".cursor")
         private_config_home = private_home / "config"

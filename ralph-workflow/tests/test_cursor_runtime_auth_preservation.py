@@ -6,8 +6,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pytest import mark
+from pytest import mark, raises
 
+from ralph.agents.invoke import InvokeOptions, MissingCredentialsError, invoke_agent
 from ralph.agents.invoke._runtime_resolvers import CursorRuntimeResolver
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -16,6 +17,8 @@ from ralph.mcp.transport import cursor as cursor_transport
 
 if TYPE_CHECKING:
     import pytest
+
+    from ralph.agents.invoke._subprocess import SubprocessContext
 
 
 @mark.parametrize("use_explicit_xdg", [False, True])
@@ -118,7 +121,27 @@ def test_cursor_runtime_regression_defaults_to_file_store_without_api_key(
                 "AGENT_CLI_CREDENTIAL_STORE": "memory",
                 "CURSOR_API_KEY": "ambient-key",
             },
-            "default",
+            "file",
+            "invocation-key",
+        ),
+        (
+            {
+                str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp",
+                "AGENT_CLI_CREDENTIAL_STORE": "",
+                "CURSOR_API_KEY": "invocation-key",
+            },
+            {"HOME": "/operator-home"},
+            "file",
+            "invocation-key",
+        ),
+        (
+            {
+                str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp",
+                "AGENT_CLI_CREDENTIAL_STORE": "keychain",
+                "CURSOR_API_KEY": "invocation-key",
+            },
+            {"HOME": "/operator-home"},
+            "file",
             "invocation-key",
         ),
     ],
@@ -145,6 +168,82 @@ def test_cursor_runtime_regression_preserves_credential_override_precedence(
     finally:
         assert runtime.cleanup is not None
         runtime.cleanup()
+
+
+@mark.parametrize(
+    ("extra_env", "credential"),
+    [
+        ({str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"}, "api_key"),
+        ({}, "projected_auth"),
+    ],
+)
+def test_cursor_invocation_uses_only_private_non_keychain_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra_env: dict[str, str],
+    credential: str,
+) -> None:
+    """S-3: both Cursor invocation shapes isolate credentials before spawn."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("task", encoding="utf-8")
+    operator_home = tmp_path / "operator-home"
+    operator_config = operator_home / ".config"
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(operator_config))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    if credential == "api_key":
+        extra_env["CURSOR_API_KEY"] = "test-key"
+    else:
+        auth_path = operator_config / "cursor" / "auth.json"
+        auth_path.parent.mkdir(parents=True)
+        auth_path.write_text("{}", encoding="utf-8")
+
+    captured_env: dict[str, str] = {}
+
+    def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
+        captured_env.update(ctx.extra_env)
+        return iter(())
+
+    monkeypatch.setattr("ralph.agents.invoke.run_subprocess_and_read_lines", capture_runtime)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+
+    list(
+        invoke_agent(
+            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path, extra_env=extra_env),
+        )
+    )
+
+    assert Path(captured_env["HOME"]) != operator_home
+    assert Path(captured_env["XDG_CONFIG_HOME"]).parent == Path(captured_env["HOME"])
+    assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] in {"file", "memory"}
+
+
+def test_cursor_invocation_without_credentials_fails_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-2: a credential-free Cursor run never reaches the subprocess."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("task", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path / "operator-home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "operator-config"))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.run_subprocess_and_read_lines",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not spawn")),
+    )
+
+    with raises(MissingCredentialsError) as excinfo:
+        list(
+            invoke_agent(
+                AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+            )
+        )
+
+    assert excinfo.value.env_var == "CURSOR_API_KEY"
 
 
 def test_cursor_home_mirror_skips_entry_that_vanishes_before_stat(

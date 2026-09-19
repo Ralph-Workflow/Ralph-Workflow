@@ -34,7 +34,7 @@ class _NativeFunction(Protocol):
 
 
 class _WindowsLibraryLoader(Protocol):
-    def __call__(self, name: str, *, use_last_error: bool) -> ctypes.CDLL: ...
+    def __call__(self, name: str, **kwargs: object) -> ctypes.CDLL: ...
 
 
 def _protect_darwin_process() -> None:

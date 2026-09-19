@@ -18,7 +18,7 @@ own native authentication:
 - **Nanocoder** — local-only TUI, no remote auth
 - **Google Anti Gravity (AGY)** — `agy login` / Google account
 - **Pi** — `pi` provider configuration
-- **Cursor** — Cursor Agent's default credential resolution; `CURSOR_API_KEY` is an optional explicit override. Ralph Workflow defaults its private runtime to `AGENT_CLI_CREDENTIAL_STORE=file`, preserving any explicit operator credential-store setting.
+- **Cursor** — Cursor Agent uses `CURSOR_API_KEY` or projected file-backed login. Ralph Workflow gives every invocation a private runtime and coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so it never selects macOS Keychain.
 
 You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
 Ralph Workflow then calls the agent CLI as-is and supervises the workflow.
@@ -228,10 +228,10 @@ through the documented `.cursor/mcp.json` (workspace-local) AND
 `~/.cursor/mcp.json` (user-global) JSON files so the agent picks up the
 endpoint regardless of the cwd it was launched from. The runtime
 resolver projects file-backed Cursor configuration into its private home and
-defaults `AGENT_CLI_CREDENTIAL_STORE=file` so unattended runs do not invoke the
-macOS Keychain; an explicit operator store setting is preserved. The resolver
-restores the original bytes on exit so operator-managed MCP servers are
-preserved across Ralph Workflow runs. For the exact flag
+coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so
+unattended runs never invoke macOS Keychain. The resolver restores the original
+bytes on exit so operator-managed MCP servers are preserved across Ralph Workflow
+runs. For the exact flag
 values see the [Cursor section in Agent
 Compatibility](agent-compatibility.md#cursor-cursor).
 

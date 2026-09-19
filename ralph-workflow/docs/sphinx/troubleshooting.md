@@ -83,17 +83,17 @@ alternate live binary, or operator-wired test stub if the binary is not on
 **Symptom:** A Cursor run reports `Authentication required` or asks you to run
 `agent login` or set `CURSOR_API_KEY`.
 
-**Cause:** Cursor Agent could not resolve its own credentials. Ralph Workflow
-uses Cursor's `AGENT_CLI_CREDENTIAL_STORE=file` mode by default for its private
-runtime home, so unattended invocations do not depend on macOS Keychain access.
+**Cause:** Cursor Agent could not resolve an API key or projected file-backed
+login. Ralph Workflow gives every Cursor invocation a private runtime home and
+coerces `AGENT_CLI_CREDENTIAL_STORE` to `file` unless it is explicitly `memory`,
+so it never selects macOS Keychain.
 
 **Fix:** Authenticate with the Cursor CLI as needed (for example, `agent login`)
 or provide `CURSOR_API_KEY` as an explicit override. Ralph Workflow projects
-file-backed Cursor configuration into the private runtime home. An operator-set
-`AGENT_CLI_CREDENTIAL_STORE` is preserved; if it selects Keychain and the
-login keychain is locked, unlock it before retrying. Re-run `ralph
-smoke-interactive-cursor --agent 'cursor/auto'` to verify the CLI credential
-path. Authentication failures are reported by Cursor after launch.
+file-backed `cursor/auth.json` into the private runtime home. If neither source
+is available, it raises `MissingCredentialsError` before launching Cursor. Re-run
+`ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential
+path.
 
 ## AGY transport unavailable on Windows
 

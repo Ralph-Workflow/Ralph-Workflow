@@ -413,8 +413,16 @@ def invoke_agent(
     # net) is safe.
     monitor: WorkspaceMonitor | None = None
     try:
-        opts = _prepare_interactive_claude_options(base_opts, config)
         runtime_env = runtime.agent_env
+        if _agent_transport(config) == AgentTransport.CURSOR:
+            cursor_config_home = Path(runtime_env["XDG_CONFIG_HOME"]) if runtime_env else None
+            has_cursor_auth = (
+                cursor_config_home is not None
+                and (cursor_config_home / "cursor" / "auth.json").exists()
+            )
+            if not (runtime_env and runtime_env.get("CURSOR_API_KEY")) and not has_cursor_auth:
+                raise MissingCredentialsError(config.cmd.split()[0], "CURSOR_API_KEY not set")
+        opts = _prepare_interactive_claude_options(base_opts, config)
         mcp_endpoint = runtime.mcp_endpoint
         allowed_mcp_tool_names = provider_allowed_mcp_tool_names(config, mcp_endpoint)
         cmd = _build_command(
