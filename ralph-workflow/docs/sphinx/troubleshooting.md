@@ -83,9 +83,9 @@ ignored with a WARNING.
 
 **Symptom:** A Cursor run reports `Authentication required`, asks you to run `agent login` or set `CURSOR_API_KEY`, or stops with a `USER_CONFIG` failure before the agent starts.
 
-**Cause:** Ralph Workflow's Cursor preflight found neither a non-empty `CURSOR_API_KEY`, login material under `~/.cursor`, nor (on macOS) the keychain entry created by `agent login`. The generated `mcp.json` and Ralph Workflow sidecar lock files do not count as credentials.
+**Cause:** Ralph Workflow's Cursor preflight found neither a non-empty `CURSOR_API_KEY` nor file-backed `agent login` material under `~/.cursor` or `$XDG_CONFIG_HOME/cursor/auth.json` (defaulting to `~/.config/cursor/auth.json`). The generated `mcp.json` and Ralph Workflow sidecar lock files do not count as credentials.
 
-**Fix:** Run `agent login` from the same operator account that launches Ralph Workflow, or export `CURSOR_API_KEY` in that shell for CI. On macOS, Ralph Workflow non-interactively probes the `agent login` keychain entry, so no key export or `~/.cursor` login file is required. Re-run `ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential path. The preflight is intentionally fail-fast: missing credentials do not enter stale-session recovery or consume retry budget.
+**Fix:** Run `agent login` from the same operator account that launches Ralph Workflow so it creates file-backed login material, or export `CURSOR_API_KEY` in that shell for CI. Re-run `ralph smoke-interactive-cursor --agent 'cursor/auto'` to verify the credential path. The preflight is intentionally fail-fast: missing credentials do not enter stale-session recovery or consume retry budget.
 
 ## AGY transport unavailable on Windows
 

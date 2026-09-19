@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from subprocess import TimeoutExpired
 
 import pytest
 
-import ralph.agents.invoke as invoke_module
 from ralph.agents.invoke import (
     InvokeOptions,
     MissingCredentialsError,
@@ -88,7 +86,6 @@ def test_cursor_missing_env_and_operator_credentials_raises() -> None:
             config,
             InvokeOptions(),
             env_getter={"HOME": str(home)}.get,
-            keychain_login_probe=lambda: False,
         )
 
     assert excinfo.value.agent_name == "agent"
@@ -109,76 +106,23 @@ def test_cursor_mcp_json_alone_is_not_credential_material(tmp_path: Path) -> Non
             config,
             InvokeOptions(),
             env_getter={"HOME": str(tmp_path)}.get,
-            keychain_login_probe=lambda: False,
         )
 
 
-def test_cursor_keychain_login_allows_launch_on_macos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A macOS ``agent login`` keychain entry is valid Cursor credential material."""
-    monkeypatch.setattr(invoke_module.sys, "platform", "darwin")
+@pytest.mark.parametrize("use_explicit_xdg", [False, True])
+def test_cursor_xdg_auth_material_allows_launch(tmp_path: Path, use_explicit_xdg: bool) -> None:
+    """Cursor accepts auth.json from the same XDG source the runtime projects."""
+    home = tmp_path / "home"
+    config_home = tmp_path / "xdg" if use_explicit_xdg else home / ".config"
+    auth_file = config_home / "cursor" / "auth.json"
+    auth_file.parent.mkdir(parents=True)
+    auth_file.write_text("{}", encoding="utf-8")
+    environment = {"HOME": str(home)}
+    if use_explicit_xdg:
+        environment["XDG_CONFIG_HOME"] = str(config_home)
+
     config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
-
-    _fail_for_missing_credentials(
-        config,
-        InvokeOptions(),
-        env_getter={"HOME": str(tmp_path)}.get,
-        keychain_login_probe=lambda: True,
-    )
-
-
-def test_cursor_absent_keychain_login_still_fails_on_macos(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A logged-out macOS Cursor installation remains fail-fast."""
-    monkeypatch.setattr(invoke_module.sys, "platform", "darwin")
-    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
-
-    with pytest.raises(MissingCredentialsError):
-        _fail_for_missing_credentials(
-            config,
-            InvokeOptions(),
-            env_getter={"HOME": str(tmp_path)}.get,
-            keychain_login_probe=lambda: False,
-        )
-
-
-@pytest.mark.parametrize(
-    "failure",
-    [FileNotFoundError(), PermissionError(), TimeoutExpired(["security"], 5)],
-)
-def test_cursor_unavailable_keychain_probe_still_fails_on_macos(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: OSError | TimeoutExpired
-) -> None:
-    """Probe failures are unsuccessful credential evidence, not preflight errors."""
-    monkeypatch.setattr(invoke_module.sys, "platform", "darwin")
-    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
-
-    def unavailable_probe() -> bool:
-        raise failure
-
-    with pytest.raises(MissingCredentialsError):
-        _fail_for_missing_credentials(
-            config,
-            InvokeOptions(),
-            env_getter={"HOME": str(tmp_path)}.get,
-            keychain_login_probe=unavailable_probe,
-        )
-
-
-def test_cursor_keychain_probe_does_not_run_off_macos(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Non-macOS credential behavior remains unchanged."""
-    monkeypatch.setattr(invoke_module.sys, "platform", "linux")
-    config = AgentConfig(cmd="agent", transport=AgentTransport.CURSOR)
-
-    with pytest.raises(MissingCredentialsError):
-        _fail_for_missing_credentials(
-            config,
-            InvokeOptions(),
-            env_getter={"HOME": str(tmp_path)}.get,
-            keychain_login_probe=lambda: (_ for _ in ()).throw(AssertionError("unexpected probe")),
-        )
+    _fail_for_missing_credentials(config, InvokeOptions(), env_getter=environment.get)
 
 
 def test_cursor_operator_material_allows_launch(tmp_path: Path) -> None:

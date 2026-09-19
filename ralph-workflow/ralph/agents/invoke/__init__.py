@@ -17,7 +17,6 @@ import os
 import shutil
 import sqlite3
 import subprocess
-import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -117,7 +116,6 @@ from ralph.agents.spec import AgentSpec
 from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support
 from ralph.config._agent_overrides import agent_environment_value, opencode_binary_override
 from ralph.config.enums import AgentTransport
-from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -573,24 +571,10 @@ def invoke_agent(
         _stop_workspace_monitor(monitor)
 
 
-def _cursor_keychain_login_present() -> bool:
-    """Return whether macOS Keychain contains Cursor's non-secret login entry."""
-    try:
-        result = run_process(
-            "security",
-            ("find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user"),
-            options=ProcessRunOptions(capture_output=True, timeout=5),
-        )
-    except (FileNotFoundError, PermissionError, OSError, ProcessExecutionError):
-        return False
-    return result.returncode == 0
-
-
 def _fail_for_missing_credentials(
     config: AgentConfig,
     options: InvokeOptions,
     env_getter: Callable[[str], str | None] | None = None,
-    keychain_login_probe: Callable[[], bool] | None = None,
 ) -> None:
     """Raise before launching a hosted provider without its required credential."""
     transport = _agent_transport(config)
@@ -636,14 +620,15 @@ def _fail_for_missing_credentials(
             for entry in cursor_home.iterdir()
         ):
             return
-        if sys.platform == "darwin":
-            probe = keychain_login_probe or _cursor_keychain_login_present
-            try:
-                if probe():
-                    return
-            except (FileNotFoundError, PermissionError, OSError, subprocess.TimeoutExpired):
-                pass
-        detail = "CURSOR_API_KEY not set; agent login required (including macOS keychain detection)"
+        config_home_value = getter("XDG_CONFIG_HOME")
+        config_home = (
+            Path(config_home_value).expanduser()
+            if config_home_value
+            else operator_home / ".config"
+        )
+        if (config_home / "cursor" / "auth.json").is_file():
+            return
+        detail = "CURSOR_API_KEY not set; agent login required with file-backed login material"
     else:
         detail = f"{required_env_var} not set"
     raise MissingCredentialsError(config.cmd.split()[0], detail)
