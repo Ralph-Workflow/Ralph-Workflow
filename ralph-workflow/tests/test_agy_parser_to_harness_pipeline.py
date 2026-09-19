@@ -78,8 +78,15 @@ def test_v1_1_13_fixture_flows_through_meaningful_output_lines() -> None:
     expected_prefixes = [
         event.type for event in events if event.type in _WHITELIST and event.content.strip()
     ]
-    # The harness caps output at _MAX_MEANINGFUL_OUTPUT_LINES; the returned
-    # prefixes must be a bounded prefix of the parser stream in emission order.
+    expected_semantic_lines = [
+        f"{event.type}: {event.content}"
+        for event in events
+        if event.type in _WHITELIST and event.content.strip()
+    ]
+    assert len(expected_semantic_lines) > 8
+    assert len(meaningful) == 8
+    assert meaningful == expected_semantic_lines[:8]
+    assert expected_semantic_lines[8:]
     assert prefixes == expected_prefixes[: len(prefixes)]
     assert 0 < len(prefixes) <= len(expected_prefixes)
     assert "lifecycle" not in prefixes

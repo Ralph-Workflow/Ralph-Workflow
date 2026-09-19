@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import time
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,7 +41,6 @@ from ralph.recovery.controller import RecoveryController
 if TYPE_CHECKING:
     from types import ModuleType
 
-    from ralph.config.models import UnifiedConfig
 
 
 def _load_run_loop() -> ModuleType:
@@ -51,17 +51,31 @@ def _load_runner() -> ModuleType:
     return importlib.import_module("ralph.pipeline.runner")
 
 
-def _build_config(tmp_path: Path) -> UnifiedConfig:
-    config = MagicMock()
-    config.general = MagicMock()
-    config.general.verbosity = Verbosity.NORMAL
-    config.general.developer_iters = 1
-    config.general.workflow = MagicMock()
-    config.general.workflow.checkpoint_enabled = True
-    config.general.max_same_agent_retries = 1
-    config.general.checkpoint = MagicMock()
-    config.general.parallel_max_workers = None
-    return config
+@dataclass(frozen=True)
+class _TestWorkflowConfig:
+    checkpoint_enabled: bool = True
+
+
+@dataclass(frozen=True)
+class _TestGeneralConfig:
+    verbosity: Verbosity = Verbosity.NORMAL
+    developer_iters: int = 1
+    workflow: _TestWorkflowConfig = _TestWorkflowConfig()
+    max_same_agent_retries: int = 1
+    parallel_max_workers: int | None = None
+    agent_waiting_status_interval_seconds: float = 1.0
+    auto_integrate_target: str = "main"
+    auto_integrate_enabled: bool = False
+
+
+@dataclass(frozen=True)
+class _TestConfig:
+    general: _TestGeneralConfig = _TestGeneralConfig()
+
+
+def _build_config(tmp_path: Path) -> _TestConfig:
+    del tmp_path
+    return _TestConfig()
 
 
 def _display_context() -> DisplayContext:

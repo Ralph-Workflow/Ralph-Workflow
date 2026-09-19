@@ -552,6 +552,7 @@ def _run_pipeline_with_heartbeat(
 
     config = MagicMock()
     config.general = MagicMock()
+    config.general.auto_integrate_enabled = False
     config.general.verbosity = 0
     config.general.developer_iters = 1
     config.general.workflow = MagicMock()
