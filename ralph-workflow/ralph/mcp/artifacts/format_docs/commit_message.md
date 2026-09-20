@@ -53,10 +53,6 @@ reason: No committable changes; only generated files were touched.
 - `## Body Summary` / `## Body Details` / `## Body Footer` — one item each;
   a structured alternative to `## Body` for complex changes. Never combine
   with `## Body`.
-- `## Files` — one item per file to include; must be non-empty if present.
-- `## Excluded Files` — items shaped `path | reason` with reason one of:
-  internal_ignore, not_task_related, sensitive, deferred.
-
 Most non-trivial commits should include a body explaining the why.
 
 Unknown descriptive frontmatter fields and sections are accepted and ignored
@@ -67,7 +63,6 @@ strict.
 
 Hard errors: missing or non-conventional `subject`; missing `reason` on
 skip; `type` not commit/skip; `## Body` combined with detailed body
-sections; empty `## Files`; malformed `## Excluded Files` entries or an
-unknown exclusion reason; malformed core grammar; stray prose inside a known
+sections; malformed core grammar; stray prose inside a known
 list-only section; or duplicate item IDs in a known section. `done` and
 `wrong` are not aliases for either valid type. Fix every diagnostic.

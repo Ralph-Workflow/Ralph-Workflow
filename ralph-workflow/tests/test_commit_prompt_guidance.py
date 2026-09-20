@@ -23,4 +23,3 @@ def test_commit_prompts_place_evidence_guidance_before_document_grammar() -> Non
     ):
         assert prompt.index(heading) < prompt.index("Document shape")
         assert "pytest tests/test_api.py -q (passed)" in prompt
-        assert "Small:" in prompt and "Medium:" in prompt and "Large:" in prompt

@@ -66,11 +66,12 @@ def test_ir_keeps_required_categories_and_fact_attribution() -> None:
     ir = build_commit_message_ir(evidence, subject="fix(app): preserve evidence")
 
     assert ir.intent
-    assert ir.change_areas and ir.rationale and ir.behavior_risk and ir.verification and ir.files
+    assert ir.change_areas and ir.behavior_risk and ir.verification
+    assert not ir.rationale and not ir.files
     assert ir.fact_provenance == evidence.fact_provenance
 
 
-def test_normalization_recovers_plain_prose_and_replaces_partial_files() -> None:
+def test_normalization_recovers_plain_prose_and_removes_partial_files() -> None:
     evidence = _evidence("ralph/app.py", "tests/test_app.py")
 
     normalized = normalize_commit_message_draft(
@@ -79,8 +80,7 @@ def test_normalization_recovers_plain_prose_and_replaces_partial_files() -> None
     )
 
     assert "subject: fix(app): preserve evidence" in normalized.content
-    assert "ralph/app.py" in normalized.content
-    assert "tests/test_app.py" in normalized.content
+    assert "## Files" not in normalized.content
     assert "stale.py" not in normalized.content
 
 
@@ -118,7 +118,7 @@ def test_normalization_audit_records_fresh_evidence_and_draft_revision(
     assert audit["provenance"] == ("live evidence", "draft")
 
 
-def test_normalization_audit_flags_partial_overlap_at_medium_confidence(
+def test_normalization_audit_does_not_score_authored_words(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py"))
@@ -131,11 +131,9 @@ def test_normalization_audit_flags_partial_overlap_at_medium_confidence(
     )
 
     assert audit is not None
-    assert audit["confidence"] == "medium"
+    assert audit["confidence"] == "high"
     assert audit["transformations"] == [
         {"action": "rendered canonical artifact from live evidence", "source": "live evidence", "confidence": "high"},
-        {"action": "preserved partial-overlap draft claim", "source": "live evidence", "confidence": "medium"},
-        {"action": "expanded body with grounded evidence facts", "source": "live evidence", "confidence": "high"},
     ]
 
 

@@ -46,9 +46,6 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "type: commit" in prompt
     assert "subject: fix(auth): prevent token expiry race" in prompt
     assert "type: skip" in prompt
-    assert "## Files" in prompt
-    assert "## Excluded Files" in prompt
-    assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     # Tightened opening (2026-08-12) replaced the old "Task:" prefix; the
     # instruction line now opens the prompt directly.
     assert prompt.startswith("Produce and submit one valid `commit_message` artifact")
@@ -149,11 +146,6 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "type: commit" in prompt
     assert "subject: fix(auth): prevent token expiry race" in prompt
     assert "type: skip" in prompt
-    assert "path | reason" in prompt
-    # The tightened skip-reason enumeration wraps across lines with
-    # backticked tokens; pin each token rather than one long phrase.
-    for token in ("internal_ignore", "not_task_related", "sensitive", "deferred"):
-        assert token in prompt
     assert "state-changing tools allowed are" in prompt
     assert "ralph_declare_complete" in prompt
     assert "ralph_write_file" in prompt

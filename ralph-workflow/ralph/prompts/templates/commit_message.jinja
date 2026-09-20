@@ -13,9 +13,9 @@ Read the diff, choose a commit or skip document, and submit it with the tool nam
 
 ## WRITE THE MESSAGE FIRST
 
-Explain the purpose before the schema: cover material change areas ({{ CHANGE_AREAS }}), why they belong together, factual behavior ({{ BEHAVIOR_FACTS }}), compatibility or operational risk, and verification actually run ({{ VERIFICATION_FACTS }}). Do not invent verification or risks.
+Write the message a senior maintainer would want in permanent history. Lead with why the change exists and its observable outcome. Explain the design decision when it is not obvious, call out breaking or operational consequences, and report only verification actually recorded here: {{ VERIFICATION_FACTS }}.
 
-Detail target: **{{ MESSAGE_BUDGET }}**. Small: `fix: preserve empty config values` with one concrete why. Medium: `feat(api): expose retry status` with focused behavior and verification points. Large: `refactor(runtime): unify worker recovery` with each major subsystem, compatibility risk, and verification surface. Do not narrate every file.
+Detail target: **{{ MESSAGE_BUDGET }}**. Keep a narrow change to one short paragraph. Give a broad change a concise summary followed by a few cohesive paragraphs about behavior, design, migration risk, and verification. Never inventory files or directories, copy the diff, enumerate every edit, or pad the body with generated phrases such as “Changed X.”
 
 ## HOW TO WRITE THE SUBJECT
 
@@ -42,7 +42,7 @@ Use this sequence once, then write the body.
 
 ## HOW TO WRITE THE BODY
 
-For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item explaining why it was needed and what it affects. Use `## Body Summary`, `## Body Details`, and `## Body Footer` for migration steps, breaking changes, or issue references.
+For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item containing a self-contained commit body. Describe intent and impact, not an implementation inventory. Use `## Body Summary`, `## Body Details`, and `## Body Footer` only when separation materially improves a complex migration, breaking change, or issue reference.
 
 ## Submit the result
 
@@ -52,7 +52,7 @@ The submission procedure below is the completion contract. For state changes, us
 
 Choose a commit document for pending work or a skip document when no commit is needed.
 
-- Commit document: frontmatter `type: commit` and `subject:`. Include `## Body` (one concise self-contained item) or the detailed `## Body Summary` / `## Body Details` / `## Body Footer` set, plus optional `## Files` and `## Excluded Files` (`path | reason`, where valid reasons are internal_ignore, not_task_related, sensitive, deferred).
+- Commit document: frontmatter `type: commit` and `subject:`. Include `## Body` (one concise self-contained item) or the detailed `## Body Summary` / `## Body Details` / `## Body Footer` set.
 
 ```markdown
 ---
@@ -66,8 +66,6 @@ subject: fix(auth): prevent token expiry race
 ## Body Details
 - [BD-1] The expiry check now happens after refresh; covers the concurrent-refresh edge case.
 
-## Excluded Files
-- [X-1] notes/todo.md | not_task_related
 ```
 
 - Skip document when no commit is needed:

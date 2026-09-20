@@ -25,11 +25,6 @@ Optional sections (each item is `- [ID] text` on one line):
 |---|---|---|
 | `## Body` | exactly 1 | free-form body paragraph |
 | `## Body Summary` / `## Body Details` / `## Body Footer` | exactly 1 each | structured body; use these OR `## Body`, never both |
-| `## Files` | 1+ | files to include in the commit |
-| `## Excluded Files` | 1+ | `<path> \| <reason>` per item |
-
-Each `## Excluded Files` reason must be one of `internal_ignore`,
-`not_task_related`, `sensitive`, `deferred`.
 
 **Skip variant** — frontmatter `type: skip` and `reason: <non-empty
 reason>`. No sections.

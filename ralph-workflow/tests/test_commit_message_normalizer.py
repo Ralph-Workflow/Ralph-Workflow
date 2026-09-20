@@ -17,12 +17,47 @@ def _fact_evidence() -> CommitEvidenceBundle:
     )
 
 
-def test_normalizer_repairs_subject_and_replaces_stale_files() -> None:
+def test_normalizer_repairs_subject_and_removes_stale_files() -> None:
     result = normalize_commit_message_draft("Subject: FIX: Preserve evidence\n\n- old.py", EVIDENCE)
 
     assert "subject: fix: preserve evidence" in result.content
-    assert "ralph/app.py" in result.content
+    assert "## Files" not in result.content
     assert result.confidence == "high"
+
+
+def test_normalizer_leaves_valid_safe_artifact_byte_identical() -> None:
+    content = (
+        "---\n"
+        "type: commit\n"
+        "subject: fix(commit): preserve the authored message\n"
+        "---\n\n"
+        "## Body\n"
+        "- [B-1] Keeps a useful explanation of the change without generated directory narration.\n"
+    )
+
+    result = normalize_commit_message_draft(content, EVIDENCE)
+
+    assert result.content == content
+    assert result.transformations == ()
+    assert result.provenance == ("draft",)
+
+
+def test_normalizer_removes_file_inventory_even_when_it_matches_live_changes() -> None:
+    content = (
+        "---\n"
+        "type: commit\n"
+        "subject: fix(commit): preserve the authored message\n"
+        "---\n\n"
+        "## Body\n"
+        "- [B-1] Keeps the useful explanation.\n\n"
+        "## Files\n"
+        "- [F-1] ralph/app.py\n"
+    )
+
+    result = normalize_commit_message_draft(content, EVIDENCE)
+
+    assert "## Files" not in result.content
+    assert "ralph/app.py" not in result.content
 
 
 def test_normalizer_rejects_ambiguous_intent() -> None:
@@ -38,7 +73,7 @@ def test_normalizer_accepts_paraphrased_body_claim_without_token_overlap() -> No
     )
 
     assert "Retains the user-visible retry result." in result.content
-    assert result.confidence == "medium"
+    assert result.confidence == "high"
 
 
 def test_normalizer_preserves_high_confidence_grounded_body_claim_silently() -> None:
@@ -51,15 +86,39 @@ def test_normalizer_preserves_high_confidence_grounded_body_claim_silently() -> 
     assert all(item.confidence == "high" for item in result.transformations)
 
 
-def test_normalizer_preserves_partial_overlap_claim_and_flags_medium() -> None:
+def test_normalizer_preserves_paraphrase_without_scoring_its_words() -> None:
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Changes\n* Preserve retry evidence for users.",
         _fact_evidence(),
     )
 
     assert "Preserve retry evidence for users." in result.content
-    assert result.confidence == "medium"
-    assert any(item.confidence == "medium" and item.source == "live evidence" for item in result.transformations)
+    assert result.confidence == "high"
+
+
+def test_normalizer_preserves_authored_prose_without_keyword_classification() -> None:
+    result = normalize_commit_message_draft(
+        "fix: preserve evidence\n\n## Changes\n* artifacts submit preserve evidence retry for.",
+        _fact_evidence(),
+    )
+
+    assert "artifacts submit preserve evidence retry for." in result.content
+    assert result.confidence == "high"
+
+
+def test_normalizer_treats_changed_path_anchor_as_high_support() -> None:
+    """Contiguous path/area anchors are structural relevance, not token overlap."""
+    result = normalize_commit_message_draft(
+        "fix: preserve evidence\n\n## Changes\n* Touches ralph/app.py scheduling owner write.",
+        _fact_evidence(),
+    )
+
+    assert "Touches ralph/app.py scheduling owner write." in result.content
+    assert all(
+        item.action != "preserved relevant draft claim without exact evidence match"
+        for item in result.transformations
+    )
+    assert all(item.confidence == "high" for item in result.transformations)
 
 
 def test_normalizer_reports_all_regeneration_diagnostic_components() -> None:
@@ -110,14 +169,14 @@ def test_normalizer_regression_extracts_grounded_numbered_list_claim() -> None:
 
 
 def test_normalizer_regression_accepts_architectural_numbered_list_claim() -> None:
-    """DA-004/S-5: numbered architectural summaries must not require token overlap."""
+    """DA-004/S-5: numbered architectural summaries survive without fact alignment."""
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Notes\n1. Restructures write paths so drift is unrepresentable.",
         _fact_evidence(),
     )
 
     assert "Restructures write paths so drift is unrepresentable." in result.content
-    assert result.confidence == "medium"
+    assert result.confidence == "high"
 
 
 def test_normalizer_extracts_key_value_fields() -> None:
@@ -129,7 +188,7 @@ def test_normalizer_extracts_key_value_fields() -> None:
     assert "Preserve retry evidence for submit artifacts." in result.content
 
 
-def test_normalizer_records_grounded_expansion_and_budget_compression() -> None:
+def test_normalizer_does_not_inject_evidence_or_exceed_body_budget() -> None:
     evidence = CommitEvidenceBundle(
         "diff", ("docs/guide.md",), ("docs",), (), (),
         behavior_facts=("Preserves compatibility.",), verification_facts=("pytest passed",),
@@ -140,7 +199,8 @@ def test_normalizer_records_grounded_expansion_and_budget_compression() -> None:
         evidence,
     )
 
-    assert any("expanded body" in item.action for item in expanded.transformations)
+    assert "Preserves compatibility." not in expanded.content
+    assert "pytest passed" not in expanded.content
     assert any("compressed" in item.action for item in compressed.transformations)
     assert "Changed docs." in compressed.content
     assert "Preserves compatibility." in compressed.content
@@ -164,7 +224,7 @@ def test_normalizer_regression_reconciles_canonical_stale_files() -> None:
         _fact_evidence(),
     )
 
-    assert "ralph/app.py" in result.content
+    assert "## Files" not in result.content
     assert "old.py" not in result.content
 
 
@@ -201,7 +261,7 @@ def test_normalizer_regression_accepts_canonical_architectural_claim() -> None:
     )
 
     assert "Restructures write paths so drift is unrepresentable." in result.content
-    assert result.confidence == "medium"
+    assert result.confidence == "high"
 
 
 def test_normalizer_accepts_planning_architecture_summary_without_diff_keyword_match() -> None:

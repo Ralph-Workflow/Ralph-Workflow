@@ -16,9 +16,9 @@ Read the diff silently and put reasoning only in the artifact body. The only sta
 
 ## Write the message first
 
-State purpose, material change areas ({{ CHANGE_AREAS }}), factual behavior ({{ BEHAVIOR_FACTS }}), risk, and verification actually run ({{ VERIFICATION_FACTS }}); do not invent facts. Detail target: **{{ MESSAGE_BUDGET }}**. Small: one concrete why. Medium: two or three focused points. Large: each material subsystem, risk, and verification surface.
+Write the message a senior maintainer would want in permanent history. Lead with why the change exists and its observable outcome. Explain non-obvious design decisions, breaking or operational consequences, and only verification actually recorded here: {{ VERIFICATION_FACTS }}. Detail target: **{{ MESSAGE_BUDGET }}**.
 
-Examples: Small: `fix: preserve empty config values`; Medium: `feat(api): expose retry status`; Large: `refactor(runtime): unify worker recovery`. Do not narrate every file.
+Keep a narrow change to one short paragraph. Give a broad change a concise summary followed by a few cohesive paragraphs about behavior, design, migration risk, and verification. Never inventory files or directories, copy the diff, enumerate every edit, or pad the body with generated phrases such as “Changed X.”
 
 ## Subject
 
@@ -38,8 +38,7 @@ references.
 ## Document shape
 
 For a commit, use frontmatter `type: commit` and `subject:`, then the selected
-body form. Optional `## Files` lists paths; optional `## Excluded Files` uses
-`path | reason`, where valid reasons are internal_ignore, not_task_related, sensitive, deferred. When no commit is needed, submit only `type: skip`
+body form. When no commit is needed, submit only `type: skip`
 and `reason:` frontmatter.
 
 {% set commit_message_example %}

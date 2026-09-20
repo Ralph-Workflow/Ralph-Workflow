@@ -9,7 +9,7 @@ from ralph.mcp.artifacts.commit_message_ir import (
 from ralph.prompts.commit_evidence import CommitEvidenceBundle, CommitMessageBudget
 
 
-def test_evidence_ir_render_round_trip_preserves_grounded_files(tmp_path: Path) -> None:
+def test_evidence_ir_render_round_trip_omits_default_file_inventory(tmp_path: Path) -> None:
     evidence = CommitEvidenceBundle(
         "diff", ("ralph/app.py",), ("ralph",), (), ("ralph/app.py",), verification_facts=("pytest",)
     )
@@ -22,8 +22,7 @@ def test_evidence_ir_render_round_trip_preserves_grounded_files(tmp_path: Path) 
     assert payload is not None
     assert payload["type"] == "commit"
     assert payload["subject"] == "fix: preserve evidence"
-    assert payload["files"] == ["ralph/app.py"]
-    assert "Changed ralph." in str(payload["body"])
+    assert "files" not in payload
     assert "pytest" in str(payload["body"])
 
 
@@ -35,7 +34,6 @@ def test_ir_renderer_consolidates_small_budget_without_losing_categories() -> No
     artifact = render_commit_message_artifact(replace(ir, message_budget=CommitMessageBudget("small", 1)))
 
     assert artifact.count("- [B-") == 1
-    assert "Changed docs." in artifact
     assert "Preserves compatibility." in artifact
     assert "pytest passed" in artifact
 
@@ -58,8 +56,7 @@ def test_ir_renderer_regression_expands_large_budget_into_category_items() -> No
 
     assert small.count("- [B-") == 1
     assert large.count("- [B-") > small.count("- [B-")
-    assert large.count("- [B-") == 3
-    assert "Changed ralph/app." in large
+    assert large.count("- [B-") == 2
     assert "Preserves compatibility." in large
     assert "pytest passed" in large
 

@@ -14,8 +14,3 @@ subject: fix(auth): serialize token refresh to prevent expiry race
 ## Body Footer
 
 - [BF-1] Fixes #482
-
-## Files
-
-- [F-1] src/auth/refresh.py
-- [F-2] tests/auth/test_refresh_race.py

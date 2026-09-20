@@ -1,15 +1,14 @@
 """Permissive, evidence-aware normalization for commit-message drafts.
 
-Body prose is accepted by default. Token overlap with precomputed evidence facts
-is used only to score confidence, never as a hard rejection gate. Regeneration
-is reserved for ambiguous commit subjects (and other safety/executability
-failures outside this module).
+Valid artifacts pass through byte-for-byte. Repair is limited to structural
+syntax, and authored prose is preserved without lexical scoring.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts._normalization_types import Confidence, NormalizationTransformation
@@ -17,16 +16,20 @@ from ralph.mcp.artifacts.commit_message_ir import (
     build_commit_message_ir,
     render_commit_message_artifact,
 )
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 
 if TYPE_CHECKING:
     from ralph.prompts.commit_evidence import CommitEvidenceBundle
 
 _FRONTMATTER_SUBJECT: re.Pattern[str] = re.compile(r"(?im)^subject:\s*(.+)$")
-_SUBJECT: re.Pattern[str] = re.compile(r"(?im)^\s*((?:[a-z]+(?:\([^)]+\))?!?)(?::\s*|\s+).+)$")
+_SUBJECT: re.Pattern[str] = re.compile(
+    r"(?im)^\s*((?:(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)"
+    r"(?:\([^)]+\))?!?)(?::\s*|\s+).+)$"
+)
 _HEADING: re.Pattern[str] = re.compile(r"(?m)^##+\s+.*\S\s*$")
 _BODY_ITEM: re.Pattern[str] = re.compile(r"(?m)^\s*(?:[-*]|\d+\.)\s+(?:\[[A-Z]+-\d+\]\s*)?(.*\S)\s*$")
 _KEY_VALUE: re.Pattern[str] = re.compile(r"(?im)^\s*(?:intent|rationale|changes?|verification)\s*:\s*(.+\S)\s*$")
-_MIN_CLAIM_TOKEN_LENGTH = 4
 _SUBJECT_PART_COUNT = 2
 
 
@@ -49,6 +52,8 @@ def normalize_commit_message_draft(
     """Repair recognizable drafts from live facts; keep relevant body prose."""
     if re.search(r"(?m)^type:\s*skip\s*$", content):
         return NormalizationResult(content, (), "high", ("draft",))
+    if _is_valid_safe_artifact(content):
+        return NormalizationResult(content, (), "high", ("draft",))
     match = _FRONTMATTER_SUBJECT.search(content) or _SUBJECT.search(content)
     if match is None:
         raise ValueError(_regeneration_diagnostic(
@@ -65,18 +70,12 @@ def normalize_commit_message_draft(
         ))
     ir = build_commit_message_ir(evidence, subject=subject)
     claims = _extract_claims(content)
-    grounded, claim_transformations = _reconcile_claims(claims, evidence)
-    if grounded:
-        known_claims = (*ir.rationale, *ir.behavior_risk, *ir.verification)
-        additional_claims = tuple(claim for claim in grounded if claim not in known_claims)
-        if additional_claims:
-            ir = replace(ir, rationale=(*ir.rationale, *additional_claims))
+    ir = replace(ir, rationale=claims, behavior_risk=(), verification=(), files=())
     rendered = render_commit_message_artifact(ir)
     if rendered == content:
         return NormalizationResult(rendered, (), "high", ("live evidence",))
     transformations: list[NormalizationTransformation] = [
         NormalizationTransformation("rendered canonical artifact from live evidence", "live evidence", "high"),
-        *claim_transformations,
     ]
     canonical_claims = (*ir.rationale, *ir.behavior_risk, *ir.verification)
     if len(tuple(_BODY_ITEM.finditer(content))) > evidence.message_budget.max_body_points:
@@ -91,6 +90,15 @@ def normalize_commit_message_draft(
         transformations.append(NormalizationTransformation("refreshed file selection from live changed set", "changed files", "high"))
     confidence: Confidence = "medium" if any(item.confidence == "medium" for item in transformations) else "high"
     return NormalizationResult(rendered, tuple(transformations), confidence, ("live evidence", "draft" if claims else ""))
+
+
+def _is_valid_safe_artifact(content: str) -> bool:
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    parsed, diagnostics = parse_and_validate(content, get_spec("commit_message"))
+    if any(item.severity == "error" for item in diagnostics):
+        return False
+    files = parsed.get("files")
+    return files is None
 
 
 def _extract_claims(content: str) -> tuple[str, ...]:
@@ -143,55 +151,6 @@ def _sentence_claims(body: str) -> tuple[str, ...]:
         if stripped:
             sentences.append(f"{stripped}.")
     return tuple(sentences)
-
-
-def _reconcile_claims(
-    claims: tuple[str, ...], evidence: CommitEvidenceBundle
-) -> tuple[tuple[str, ...], tuple[NormalizationTransformation, ...]]:
-    """Accept body claims; score confidence from overlap without hard rejection.
-
-    Missing evidence, weak lexical overlap, architectural paraphrases, and
-    different phrasing are not conflicts. Prefer live facts only for confidence
-    scoring and for completing the rendered IR from the evidence bundle.
-    """
-    facts = _facts(evidence)
-    canonical = tuple(f"Changed {area}." for area in evidence.change_areas)
-    grounded: list[str] = []
-    transformations: list[NormalizationTransformation] = []
-    for claim in claims:
-        if claim in canonical or any(_claim_matches(claim, fact) == "high" for fact in facts):
-            grounded.append(claim)
-        elif any(_claim_matches(claim, fact) == "medium" for fact in facts):
-            grounded.append(claim)
-            transformations.append(NormalizationTransformation(
-                "preserved partial-overlap draft claim", "live evidence", "medium"
-            ))
-        else:
-            grounded.append(claim)
-            transformations.append(NormalizationTransformation(
-                "preserved relevant draft claim without exact evidence match", "draft", "medium"
-            ))
-    return tuple(grounded), tuple(transformations)
-
-
-def _facts(evidence: CommitEvidenceBundle) -> tuple[str, ...]:
-    return (*evidence.behavior_facts, *evidence.verification_facts, *evidence.compatibility_hints, *evidence.risk_hints, *evidence.diff_summary)
-
-
-def _claim_matches(claim: str, fact: str) -> Confidence | None:
-    words = _claim_words(claim)
-    evidence_words = _claim_words(fact)
-    if not words or not evidence_words:
-        return None
-    if words <= evidence_words:
-        return "high"
-    return "medium" if len(words & evidence_words) * 2 >= len(words) else None
-
-
-def _claim_words(text: str) -> set[str]:
-    """Return normalized meaningful tokens without regex Any leakage."""
-    normalized = "".join(character if character.isalnum() or character in "_/-" else " " for character in text)
-    return {token.lower() for token in normalized.split() if len(token) >= _MIN_CLAIM_TOKEN_LENGTH}
 
 
 def _regeneration_diagnostic(reason: str, expected: str, actual: str, evidence: CommitEvidenceBundle, revision: int, attempted: str) -> str:

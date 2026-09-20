@@ -26,12 +26,11 @@ class CommitMessageIR:
 
 def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> CommitMessageIR:
     """Build a grounded IR; all non-subject claims come from live evidence."""
-    rationale = tuple(f"Changed {area}." for area in evidence.change_areas)
     behavior_risk = (*evidence.behavior_facts, *evidence.compatibility_hints, *evidence.risk_hints)
     verification = evidence.verification_facts
     return CommitMessageIR(
-        subject, evidence.change_areas, rationale, behavior_risk, verification,
-        evidence.changed_files, fact_provenance=evidence.fact_provenance,
+        subject, evidence.change_areas, (), behavior_risk, verification,
+        (), fact_provenance=evidence.fact_provenance,
         message_budget=evidence.message_budget,
     )
 
