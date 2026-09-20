@@ -993,6 +993,11 @@ def test_ec10_process_termination_error_when_kill_fails() -> None:
     with pytest.raises(ProcessTerminationError):
         handle.terminate(grace_period_s=0.0)
 
+    outcomes = pm.list_termination_outcomes()[handle.pid]
+    stages = [outcome["stage"] for outcome in outcomes]
+    assert stages.index("terminal_reason") < stages.index("force_kill")
+    assert outcomes[stages.index("terminal_reason")]["outcome"] == "operator_cancellation"
+
 
 # EC13: shutdown_all_for_label terminates only matching-label processes
 def test_ec13_shutdown_all_for_label_only_matching() -> None:

@@ -68,6 +68,9 @@ class ManagedPtyProcess:
     def isatty(self) -> bool:
         return self._proc.isatty()
 
+    def record_terminal_reason(self, reason: str) -> None:
+        self._manager.record_terminal_reason(self._record.pid, reason)
+
     def terminate(self, grace_period_s: float | None = None) -> None:
         # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:

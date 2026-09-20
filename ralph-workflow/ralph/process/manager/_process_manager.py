@@ -486,6 +486,14 @@ class ProcessManager:
             self._termination_outcomes[pid] = []
         self._termination_outcomes[pid].append({"stage": stage, "outcome": outcome})
 
+    def record_terminal_reason(self, pid: int, reason: str) -> None:
+        outcomes = self._termination_outcomes.setdefault(pid, [])
+        if not any(outcome["stage"] == "terminal_reason" for outcome in outcomes):
+            outcomes.append({"stage": "terminal_reason", "outcome": reason})
+
+    def _record_default_terminal_reason(self, pid: int) -> None:
+        self.record_terminal_reason(pid, "operator_cancellation")
+
     def list_termination_outcomes(self) -> dict[int, list[dict[str, str]]]:
         """Return a dict mapping PID to termination outcome records.
 
@@ -1339,6 +1347,8 @@ class ProcessManager:
         if record.status in _TERMINAL_STATUSES:
             return
 
+        self._record_default_terminal_reason(record.pid)
+
         # Pre-kill liveness check
         liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
@@ -1435,6 +1445,7 @@ class ProcessManager:
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
             return
+        self._record_default_terminal_reason(record.pid)
         # Pre-kill liveness check
         liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:

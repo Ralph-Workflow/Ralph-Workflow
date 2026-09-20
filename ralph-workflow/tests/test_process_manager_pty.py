@@ -99,6 +99,10 @@ def test_terminate_pty_process_kills_process_group(tmp_path: Path) -> None:
     handle.terminate(grace_period_s=0.0)
 
     assert handle.record.status == ProcessStatus.KILLED
+    outcomes = pm.list_termination_outcomes()[handle.pid]
+    stages = [outcome["stage"] for outcome in outcomes]
+    assert stages.index("terminal_reason") < stages.index("graceful_terminate")
+    assert outcomes[stages.index("terminal_reason")]["outcome"] == "operator_cancellation"
     assert psutil_proc._terminated or psutil_proc._killed
     assert child._terminated or child._killed
 

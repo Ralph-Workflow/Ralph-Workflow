@@ -1059,6 +1059,7 @@ class PtyLineReader:
         if self._completion_exit_sent:
             return
         self._completion_exit_sent = True
+        self._record_terminal_reason("interactive_completion")
         with self._lines_lock:
             self._lines_queue.append(TURN_BOUNDARY_MARKER + "\n")
             self._lines_event.set()
@@ -1171,6 +1172,7 @@ class PtyLineReader:
         with self._lines_lock:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
+        self._record_terminal_reason("conflict_inactivity")
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
@@ -1428,6 +1430,7 @@ class PtyLineReader:
         self._monitor_stop.set()
         if hasattr(self, "_quota_error") and self._quota_error is not None:
             return
+        self._record_terminal_reason("operator_cancellation")
         with contextlib.suppress(Exception):
             self._handle.close()
         # Mirrors the watchdog-fire path at _check_fire (lines 571-574):
@@ -1472,14 +1475,24 @@ class PtyLineReader:
         """Stop a quota-exhausted process without waiting for further output."""
         if self._quota_error is not None:
             return
+        self._quota_error = QuotaExhaustedError(self._agent_name, detail)
+        self._record_terminal_reason("quota_exhausted")
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             teardown_subtree(pid)
-        self._quota_error = QuotaExhaustedError(self._agent_name, detail)
         self._lines_event.set()
+
+    def _record_terminal_reason(self, reason: str) -> None:
+        reason_recorder = cast(
+            "Callable[[str], None] | None",
+            getattr(self._handle, "record_terminal_reason", None),
+            # cast-policy: seam: structural boundary (protocol conferee)
+        )
+        if reason_recorder is not None:
+            reason_recorder(reason)
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
@@ -1501,6 +1514,7 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
+        self._record_terminal_reason("terminal_startup_error")
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
             self._handle.terminate(grace_period_s=0.5)
         pid = cast(
