@@ -105,6 +105,8 @@ def _warn_unknown_policy_top_level_fields(data: dict[str, object], path: Path) -
         warn_unknown_top_level_fields(data, path, PIPELINE_POLICY_FIELDS)
     elif path.name == "artifacts.toml":
         warn_unknown_top_level_fields(data, path, _ARTIFACTS_TOP_LEVEL_FIELDS)
+    elif path.name == "agents.toml":
+        warn_unknown_top_level_fields(data, path, AgentsPolicy.model_fields)
 
 
 # tomllib.TOMLDecodeError is type-Any on 3.14 because the runtime module
@@ -136,6 +138,7 @@ PIPELINE_POLICY_FIELDS = frozenset(
         "default_phase_retry_policy",
         "recovery",
         "cycle_timebox",
+        "development_timebox",
     }
 )
 _BLOCKS_ADAPTER = TypeAdapter(dict[str, PolicyBlock])
@@ -295,6 +298,13 @@ def _validate_agents(data: dict[str, object]) -> AgentsPolicy:
     Raises:
         PolicyValidationError: On validation failure.
     """
+    misplaced_pipeline_fields = sorted(set(data).intersection(PIPELINE_POLICY_FIELDS))
+    if misplaced_pipeline_fields:
+        fields = ", ".join(f"`{field}`" for field in misplaced_pipeline_fields)
+        raise PolicyValidationError(
+            f"agents.toml field(s) {fields} belong in pipeline.toml, not agents.toml.",
+            source="agents",
+        )
     try:
         return AgentsPolicy.model_validate(data)
     except ValidationError as exc:

@@ -2,7 +2,7 @@
 
 from typing import Self
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.policy.models._agent_drain_config import AgentDrainConfig
@@ -11,6 +11,8 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 class AgentsPolicy(_FrozenPolicyModel):
     """Top-level agents.toml policy document."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     agent_chains: dict[str, AgentChainConfig] = Field(
         default_factory=dict,

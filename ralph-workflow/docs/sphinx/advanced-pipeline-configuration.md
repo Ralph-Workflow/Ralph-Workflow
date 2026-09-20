@@ -445,8 +445,9 @@ run; the recorded reason is for the most recent redirect.
 
 ### `[development_timebox]`
 
-The development timebox is a separate timer for uninterrupted development
-work. Its bundled default warns at `4200` seconds (70 minutes) and redirects
+The development timebox is a separate `pipeline.toml` table for uninterrupted
+development work; placing it in `agents.toml` fails validation and directs you
+to `pipeline.toml`. Its bundled default warns at `4200` seconds (70 minutes) and redirects
 at `5400` seconds (90 minutes). It is independent of `[cycle_timebox]`: changing
 one limit does not reset, extend, or otherwise change the other timer.
 
