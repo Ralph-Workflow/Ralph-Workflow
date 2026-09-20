@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from ralph.mcp.protocol.env import DEV_WARN_EPOCH_ENV
+from ralph.mcp.protocol.env import CYCLE_WARN_EPOCH_ENV, DEV_WARN_EPOCH_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
@@ -72,6 +72,21 @@ def test_past_development_warning_requires_two_separate_completion_calls(
     assert "COMPLETION ADMISSION REQUIRED" in _declare(server, "first")
     assert writes == []
     assert "Task declared complete" in _declare(server, "second")
+    assert writes == ["dev-timebox-run"]
+
+
+def test_past_cycle_warning_does_not_require_development_completion_admission(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, repr(time.time() - 1.0))
+    monkeypatch.delenv(DEV_WARN_EPOCH_ENV, raising=False)
+    writes: list[str] = []
+    monkeypatch.setattr(
+        "ralph.mcp.tools.coordination._write_completion_sentinel",
+        lambda _workspace, run_id, **_kwargs: writes.append(run_id) or True,
+    )
+
+    assert "Task declared complete" in _declare(_server(tmp_path), "cycle-warning")
     assert writes == ["dev-timebox-run"]
 
 

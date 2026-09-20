@@ -130,6 +130,27 @@ def test_default_watchdog_ceiling_cannot_preempt_development_redirect() -> None:
     assert decision.redirected is True
 
 
+def test_cycle_expiry_does_not_interrupt_active_development_timebox() -> None:
+    policy = _policy()
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=36_001.0,
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=60.0,
+    )
+    timing = _timing(60.0, cycle_elapsed=36_001.0)
+
+    assert development_deadline_epochs(
+        state, "development", policy=policy, routing_timing=timing, now_epoch=1000.0
+    ) == (5140.0, 6340.0)
+    assert redirect_expired_cycle_in_place(state, policy, timing) is None
+    assert state.dev_timebox_active
+    assert state.dev_timebox_consumed_seconds == 60.0
+    assert state.cycle_timebox_active
+    assert state.cycle_timebox_consumed_seconds == 36_001.0
+
+
 def test_custom_development_limit_does_not_change_cycle_elapsed() -> None:
     policy = _policy()
     assert policy.development_timebox is not None
@@ -160,8 +181,15 @@ def test_custom_development_limit_does_not_change_cycle_elapsed() -> None:
         decision.state, "development", policy=custom, routing_timing=timing, now_epoch=1000.0
     )
     assert decision.redirected
+    assert decision.state.cycle_timebox_active is True
     assert decision.state.cycle_timebox_consumed_seconds == 1234.0
     assert after == before
+
+    redirected = redirect_expired_cycle_in_place(state, custom, timing)
+    assert redirected is not None
+    redirected_state, _ = redirected
+    assert redirected_state.cycle_timebox_active is True
+    assert redirected_state.cycle_timebox_consumed_seconds == 1234.0
 
 
 def test_leaving_development_resets_timer_only_for_a_later_entry() -> None:

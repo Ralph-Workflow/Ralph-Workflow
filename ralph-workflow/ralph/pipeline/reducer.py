@@ -651,11 +651,24 @@ def redirect_expired_cycle_in_place(
     """
     if policy is None or routing_timing is None:
         return None
-    decision = apply_cycle_timebox(state, state.phase, policy=policy, routing_timing=routing_timing)
-    if not decision.redirected:
-        decision = apply_development_timebox(
-            state, state.phase, policy=policy, routing_timing=routing_timing
+    decision = apply_development_timebox(
+        state, state.phase, policy=policy, routing_timing=routing_timing
+    )
+    if decision.redirected:
+        logger.bind(component="policy.routing").warning(decision.redirect_reason)
+        advanced, effects = _advance_phase(
+            decision.state, decision.target_phase, policy, routing_timing=routing_timing
         )
+        return (
+            advanced.copy_with(
+                cycle_timebox_active=state.cycle_timebox_active,
+                cycle_timebox_consumed_seconds=state.cycle_timebox_consumed_seconds,
+            ),
+            effects,
+        )
+    if state.dev_timebox_active:
+        return None
+    decision = apply_cycle_timebox(state, state.phase, policy=policy, routing_timing=routing_timing)
     if not decision.redirected:
         return None
     logger.bind(component="policy.routing").warning(decision.redirect_reason)
