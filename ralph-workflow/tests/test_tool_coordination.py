@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.mcp.server._session_wrapup import reset_completion_admissions, session_warning_scope
 from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -125,6 +126,47 @@ def test_declare_complete_without_broker_secret_omits_hmac(
     handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
 
     assert captured["sentinel_hmac"] is None
+
+
+def test_declare_complete_requires_two_post_warning_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writes: list[str] = []
+
+    def capture_write(*args: object, **kwargs: object) -> bool:
+        del args, kwargs
+        writes.append("sentinel")
+        return True
+
+    reset_completion_admissions()
+    monkeypatch.setattr(coordination_module, "_write_completion_sentinel", capture_write)
+    with session_warning_scope(False):
+        admission = handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
+        completion = handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
+
+    assert admission.is_error is False
+    assert "COMPLETION ADMISSION REQUIRED" in admission.content[0].text
+    assert "actionable incomplete work remains" in admission.content[0].text
+    assert writes == ["sentinel"]
+    assert "Task declared complete" in completion.content[0].text
+
+
+def test_declare_complete_admissions_are_identity_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reset_completion_admissions()
+    monkeypatch.setattr(coordination_module, "_write_completion_sentinel", lambda *args, **kwargs: True)
+    second = MockSession()
+    second.session_id = "session-2"
+    second.run_id = "run-2"
+    with session_warning_scope(False):
+        first_a = handle_declare_complete(MockSession(), MockWorkspace(), {})
+        first_b = handle_declare_complete(second, MockWorkspace(), {})
+        confirm_a = handle_declare_complete(MockSession(), MockWorkspace(), {})
+
+    assert "ADMISSION REQUIRED" in first_a.content[0].text
+    assert "ADMISSION REQUIRED" in first_b.content[0].text
+    assert "Task declared complete" in confirm_a.content[0].text
 
 
 def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(

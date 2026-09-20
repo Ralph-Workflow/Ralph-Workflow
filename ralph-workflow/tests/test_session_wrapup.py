@@ -35,6 +35,8 @@ from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import (
     SessionWrapupBudget,
+    request_completion_admission,
+    reset_completion_admissions,
     session_warning_scope,
     wrapup_notice,
 )
@@ -58,6 +60,10 @@ def test_no_notice_before_soft_threshold() -> None:
 def test_notice_appears_after_soft_threshold_with_remaining_minutes() -> None:
     notice = wrapup_notice(elapsed_seconds=3060.0, soft_seconds=3000.0, hard_seconds=3300.0)
     assert notice is not None
+    assert "50-MINUTE WARNING" in notice
+    assert "actionable work remains" in notice
+    assert "partial only as an exceptional last resort" in notice
+    assert "Never submit completed" in notice
     assert "declare_complete" in notice
     # 3300 - 3060 = 240s remaining -> ~4 minutes.
     assert "4 min" in notice
@@ -87,6 +93,27 @@ def test_conflict_resolution_regression_excludes_normal_session_wrapup(
 
 def test_disabled_soft_threshold_never_notices() -> None:
     assert wrapup_notice(elapsed_seconds=10_000.0, soft_seconds=None, hard_seconds=3300.0) is None
+
+
+def test_completion_admission_is_identity_scoped_atomic_and_resettable() -> None:
+    reset_completion_admissions()
+    first_results: list[bool] = []
+    barrier = threading.Barrier(2)
+
+    def request() -> None:
+        barrier.wait(timeout=2.0)
+        first_results.append(request_completion_admission(("session", "run")))
+
+    threads = [threading.Thread(target=request) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2.0)
+
+    assert sorted(first_results) == [False, True]
+    assert request_completion_admission(("other-session", "other-run")) is True
+    reset_completion_admissions()
+    assert request_completion_admission(("session", "run")) is True
 
 
 def test_budget_uses_injected_clock_and_start() -> None:
@@ -300,6 +327,27 @@ def test_session_gate_regression_accepts_exact_plan_proofs_before_warning(
         )
 
     assert result.is_error is False
+
+
+def test_session_gate_rejects_inexact_completed_proofs_at_wrapup_warning(
+    tmp_path: pathlib.Path,
+) -> None:
+    _write_multi_step_plan(tmp_path)
+    clock = FakeClock()
+    budget = SessionWrapupBudget(clock, soft_seconds=3000.0, hard_seconds=3300.0)
+    clock.advance(3000.0)
+    with session_warning_scope(budget.before_soft_warning()):
+        result = handle_submit_md_artifact(
+            planning_session(drain="development"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": _completed_development_result("S-1"),
+            },
+        )
+
+    assert result.is_error is True
+    assert "DEV015" in result.content[0].text
 
 
 def test_development_result_accepts_incomplete_status_at_wrapup_warning(

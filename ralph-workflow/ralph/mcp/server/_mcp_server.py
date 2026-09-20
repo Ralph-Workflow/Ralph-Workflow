@@ -25,7 +25,11 @@ from ralph.mcp.server._schema_flavor import (
     schema_flavor_for_client_name,
 )
 from ralph.mcp.server._server_state import ServerState
-from ralph.mcp.server._session_wrapup import SessionWrapupBudget, session_warning_scope
+from ralph.mcp.server._session_wrapup import (
+    SessionWrapupBudget,
+    reset_completion_admissions,
+    session_warning_scope,
+)
 from ralph.mcp.server._wire_ledger import append_wire_record
 from ralph.mcp.tools._exec_resource_uri import parse_exec_uri
 from ralph.mcp.tools.coordination import (
@@ -252,6 +256,7 @@ class McpServer:
         ``notifications/reset_wrapup`` JSON-RPC method (see
         :meth:`_dispatch_request`).
         """
+        reset_completion_admissions()
         if self._wrapup_provider is None:
             return
         budget = SessionWrapupBudget(
@@ -794,8 +799,8 @@ class McpServer:
 
         try:
             before_warning = (
-                self._before_wrapup_warning_provider is not None
-                and self._before_wrapup_warning_provider()
+                self._before_wrapup_warning_provider is None
+                or self._before_wrapup_warning_provider()
             )
             with session_warning_scope(before_warning):
                 raw_result = self._registry.dispatch(

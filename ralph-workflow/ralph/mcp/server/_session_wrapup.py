@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from threading import Lock
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -50,19 +51,50 @@ if TYPE_CHECKING:
 
 __all__ = [
     "SessionWrapupBudget",
+    "request_completion_admission",
+    "reset_completion_admissions",
     "session_before_warning",
+    "session_warning_fired",
     "session_warning_scope",
     "wrapup_notice",
 ]
 
-_SESSION_BEFORE_WARNING: ContextVar[bool] = ContextVar(
-    "ralph_session_before_warning", default=False
+_SESSION_BEFORE_WARNING: ContextVar[bool | None] = ContextVar(
+    "ralph_session_before_warning", default=None
 )
+
+_PENDING_COMPLETION_ADMISSIONS: dict[tuple[str, str], None] = {}  # bounded-accumulator-ok: cleared at every per-attempt session-budget reset.
+_COMPLETION_ADMISSIONS_LOCK = Lock()
+
+
+def request_completion_admission(identity: tuple[str, str]) -> bool:
+    """Record a first completion admission or consume its deliberate confirmation.
+
+    Returns ``True`` for the first post-warning request and ``False`` for its
+    same-identity confirmation. The transition is atomic across HTTP threads.
+    """
+    with _COMPLETION_ADMISSIONS_LOCK:
+        if identity in _PENDING_COMPLETION_ADMISSIONS:
+            del _PENDING_COMPLETION_ADMISSIONS[identity]
+            return False
+        _PENDING_COMPLETION_ADMISSIONS[identity] = None
+        return True
+
+
+def reset_completion_admissions() -> None:
+    """Discard pending completion admissions at a fresh-attempt boundary."""
+    with _COMPLETION_ADMISSIONS_LOCK:
+        _PENDING_COMPLETION_ADMISSIONS.clear()
 
 
 def session_before_warning() -> bool:
-    """Return the broker-owned warning state for the current tool dispatch."""
-    return _SESSION_BEFORE_WARNING.get()
+    """Return whether the current dispatched tool call is before the warning."""
+    return _SESSION_BEFORE_WARNING.get() is True
+
+
+def session_warning_fired() -> bool:
+    """Return whether the current dispatched tool call is after the warning."""
+    return _SESSION_BEFORE_WARNING.get() is False
 
 
 @contextmanager
@@ -90,11 +122,20 @@ def wrapup_notice(
         return None
     if hard_seconds is not None:
         remaining_minutes = max(0, int((hard_seconds - elapsed_seconds) // 60))
-        return (
-            f"⚠️ ~{remaining_minutes} min of your time budget remain. Finish up and call"
-            " declare_complete soon — remaining work will be force-stopped at the cap."
-        )
-    return "⚠️ You are past your soft time budget. Finish up and call declare_complete soon."
+        remaining_budget = f"~{remaining_minutes} min remain before the hard cap. "
+    else:
+        remaining_budget = "You are past the soft time budget. "
+    return (
+        "⚠️ 50-MINUTE WARNING — "
+        f"{remaining_budget}"
+        "Do everything reasonably possible to complete the assigned task before submitting any "
+        "artifact. If any item is incomplete and actionable work remains, return to it immediately. "
+        "Use partial only as an exceptional last resort, when no productive in-scope action remains "
+        "and available information or authority cannot complete the work — not merely because 50 "
+        "minutes elapsed. Never submit completed unless the task is actually complete and every "
+        "reported item and piece of evidence is truthful. When genuinely complete, use "
+        "declare_complete."
+    )
 
 
 class SessionWrapupBudget:

@@ -59,6 +59,10 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.multimodal import ImageContent
+from ralph.mcp.server._session_wrapup import (
+    request_completion_admission,
+    session_warning_fired,
+)
 
 from .capability_denied_error import CapabilityDeniedError
 from .coordination_session_like import CoordinationSessionLike
@@ -352,6 +356,19 @@ def handle_declare_complete(
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
+    if session_warning_fired() and request_completion_admission(
+        (session.session_id, session.run_id)
+    ):
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    "⚠️ COMPLETION ADMISSION REQUIRED — You are declaring that every remaining "
+                    "item is complete. Do not confirm while actionable incomplete work remains. "
+                    "Call declare_complete a second time deliberately to confirm."
+                )
+            ],
+            is_error=False,
+        )
     # RFC-013 P3: thread the broker-owned secret through the live
     # write path so the sentinel payload includes an HMAC binding the
     # run id to the secret. ``session.broker_secret`` is ``None`` when

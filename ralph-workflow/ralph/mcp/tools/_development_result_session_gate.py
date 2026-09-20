@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
-from ralph.mcp.server._session_wrapup import session_before_warning
+from ralph.mcp.server._session_wrapup import session_before_warning, session_warning_fired
 from ralph.mcp.tools.artifact import DEFAULT_ARTIFACT_HANDLER_DEPS, _workspace_root
 from ralph.pipeline.work_units import parse_work_units_from_artifact
 
@@ -22,15 +22,17 @@ class _WorkerSession(Protocol):
     worker_namespace: Path | None
 
 
-def pre_warning_development_result_diagnostics(
+def development_result_session_diagnostics(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     content: dict[str, object],
 ) -> list[Diagnostic]:
-    """Reject incomplete or unproven development results before the warning."""
-    if not session_before_warning():
+    """Enforce status before warning and exact completed proof coverage always."""
+    if not session_before_warning() and not session_warning_fired():
         return []
     if content.get("status") != "completed":
+        if not session_before_warning():
+            return []
         return [
             Diagnostic(
                 1,
@@ -55,7 +57,7 @@ def pre_warning_development_result_diagnostics(
             1,
             "Plan Items Proven",
             "DEV015",
-            "pre-warning completion requires proof for every plan item; "
+            "completed development results require proof for every plan item; "
             f"missing={sorted(required_refs - submitted_refs)}, "
             f"unexpected={sorted(submitted_refs - required_refs)}",
         )
@@ -94,4 +96,4 @@ def _required_plan_refs(session: CoordinationSessionLike, workspace: WorkspaceLi
     return unit_refs | (step_refs - owned_steps)
 
 
-__all__ = ["pre_warning_development_result_diagnostics"]
+__all__ = ["development_result_session_diagnostics"]
