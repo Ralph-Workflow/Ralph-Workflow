@@ -28,10 +28,7 @@ from ralph.git.rebase.rebase import (
     RebaseNoOp,
     RebaseSuccess,
 )
-from ralph.pipeline.auto_integrate_resolve import (
-    RESOLUTION_FAILED,
-    RESOLVER_INVOCATION_FAILED,
-)
+from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -143,9 +140,6 @@ def _classify_rebase_conflict_outcome(
     # (headline: merged) -- the rebase-apply/rebase-merge state
     # was already aborted by ``_resolve_rebase_conflict`` so the
     # resulting branch state is the merged tree.
-    if merge_outcome.outcome == RESOLVER_INVOCATION_FAILED:
-        detail = merge_outcome.reason or "resolver invocation failed"
-        return ACTION_SKIPPED, f"{detail}; merge aborted without charging conflict resolution"
     if merge_outcome.outcome == RESOLUTION_FAILED:
         # Name what the resolver actually reported. "Conflict resolution
         # failed" was recorded even for a resolution nobody attempted,
@@ -238,9 +232,6 @@ def classify_merge_only_outcome(
     """
     if merge_outcome is None:
         return ACTION_CONFLICT, "endpoint merge attempt raised"
-    if merge_outcome.outcome == RESOLVER_INVOCATION_FAILED:
-        detail = merge_outcome.reason or "resolver invocation failed"
-        return ACTION_SKIPPED, f"{detail}; merge aborted without charging conflict resolution"
     if merge_outcome.outcome == RESOLUTION_FAILED:
         return ACTION_CONFLICT, "conflict resolution failed; merge aborted"
     if merge_outcome.outcome in {"success", "noop"}:

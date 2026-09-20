@@ -75,11 +75,6 @@ def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
 #: resolution attempt.
 RESOLUTION_FAILED = "resolution_failed"
 
-#: The resolver process failed to run, rather than attempting and failing to
-#: resolve the merge. Callers route this through agent recovery without
-#: charging the rebase-conflict budget or advancing the strategy ladder.
-RESOLVER_INVOCATION_FAILED = "resolver_invocation_failed"
-
 
 def endpoint_merge_with_resolution(
     root: Path,
@@ -120,12 +115,12 @@ def endpoint_merge_with_resolution(
         # The merge refused to start (no MERGE_HEAD): there are no
         # conflict markers on disk for a resolver to repair.
         return result
-    landed, reason, invocation_failed = _resolve_and_commit_with_reason(root, target, resolver)
+    landed, reason = _resolve_and_commit_with_reason(root, target, resolver)
     if landed:
         return MergeResult(outcome="success")
     _abort_merge_safely(root)
     return MergeResult(
-        outcome=RESOLVER_INVOCATION_FAILED if invocation_failed else RESOLUTION_FAILED,
+        outcome=RESOLUTION_FAILED,
         reason=reason,
     )
 
@@ -136,7 +131,7 @@ def _resolve_and_commit(
     resolver: ConflictResolver,
 ) -> bool:
     """Backwards-compatible boolean projection of the typed result."""
-    landed, _reason, _invocation_failed = _resolve_and_commit_with_reason(root, target, resolver)
+    landed, _reason = _resolve_and_commit_with_reason(root, target, resolver)
     return landed
 
 
@@ -144,7 +139,7 @@ def _resolve_and_commit_with_reason(
     root: Path,
     target: str,
     resolver: ConflictResolver,
-) -> tuple[bool, str | None, bool]:
+) -> tuple[bool, str | None]:
     """Run the resolver against the in-progress merge and commit it.
 
     True only when the resolver reported success, Ralph staged every
@@ -160,22 +155,22 @@ def _resolve_and_commit_with_reason(
             "auto_integrate: no readable conflicted paths to resolve: {}",
             conflicted,
         )
-        return False, "no readable conflicted paths", False
+        return False, "no readable conflicted paths"
     try:
         result = resolver(root, target)
     except Exception as resolver_exc:
         logger.warning("auto_integrate: conflict resolver raised: {}", resolver_exc)
-        return False, f"resolver raised: {resolver_exc}", True
+        return False, f"resolver raised: {resolver_exc}"
     reason = (
         result.reason.value
         if isinstance(result, ResolutionOutcome) and result.reason is not None
         else None
     )
     if not _resolution_succeeded(result):
-        return False, reason, False
+        return False, reason
     if _stage_verify_and_commit(root, conflicted):
-        return True, None, False
-    return False, "the resolution did not prove out against the worktree", False
+        return True, None
+    return False, "the resolution did not prove out against the worktree"
 
 
 def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:

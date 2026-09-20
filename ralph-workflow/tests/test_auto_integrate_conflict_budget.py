@@ -418,16 +418,10 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
     assert "budget" in result.last_reason
 
 
-def test_a_raising_resolver_does_not_charge_the_rebase_conflict_budget(
+def test_a_raising_resolver_is_an_unresolved_conflict(
     tmp_git_repo: Path,
 ) -> None:
-    """A resolver invocation crash is distinct from an unresolved rebase.
-
-    The endpoint seam contains the exception and returns its dedicated
-    invocation-failure outcome. That routes through ordinary agent recovery;
-    it must not consume the rebase conflict budget or advance the strategy
-    ladder.
-    """
+    """A contained resolver crash aborts and follows the conflict budget."""
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
     invocations: list[str] = []
@@ -445,12 +439,12 @@ def test_a_raising_resolver_does_not_charge_the_rebase_conflict_budget(
             conflict_resolver=_raises,
         )
         assert result is not None
-        assert result.last_action == "skipped"
-        assert result.consecutive_conflicts == 0
+        assert result.last_action == "conflict"
+        assert result.consecutive_conflicts <= _TEST_RESOLVER_ATTEMPTS
         assert result.conflict_strategy_index == 0
         state = result
 
-    assert invocations == [base] * (_TEST_RESOLVER_ATTEMPTS + 2)
+    assert invocations == [base] * _TEST_RESOLVER_ATTEMPTS
 
 
 def test_unexpected_failure_mid_attempt_does_not_refund_the_budget(

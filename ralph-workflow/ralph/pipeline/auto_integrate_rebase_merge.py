@@ -46,7 +46,6 @@ from ralph.pipeline.auto_integrate_recovery import (
 )
 from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
-    RESOLVER_INVOCATION_FAILED,
     endpoint_merge_with_resolution,
 )
 from ralph.pipeline.conflict_resolution import resolve_rebase_in_progress
@@ -620,7 +619,7 @@ def _endpoint_merge_result(
                 target=target,
             ),
         )
-    if merge_result.outcome in ("conflict", RESOLUTION_FAILED, RESOLVER_INVOCATION_FAILED):
+    if merge_result.outcome in ("conflict", RESOLUTION_FAILED):
         _clear_record_if_no_inflight_op(root)
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
