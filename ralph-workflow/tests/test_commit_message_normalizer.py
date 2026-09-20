@@ -154,6 +154,20 @@ def test_normalizer_regression_repairs_canonical_subject_without_separator() -> 
     assert "subject: fix: preserve evidence" in result.content
 
 
+def test_normalizer_regression_accepts_uppercase_subject_without_separator() -> None:
+    """DA-001: uppercase conventional kinds remain recoverable without a colon.
+
+    Portfolio decision: KEEP the existing pure normalizer regression family;
+    this case adds distinct case-insensitive extraction fault sensitivity.
+    """
+    result = normalize_commit_message_draft(
+        "FIX Preserve retry evidence\n\nPreserve retry evidence for submit artifacts.",
+        _fact_evidence(),
+    )
+
+    assert "subject: fix: preserve retry evidence" in result.content
+
+
 def test_normalizer_regression_rejects_unsupported_canonical_claim() -> None:
     """DA-005: canonical markers must not launder unsupported claims."""
     with pytest.raises(ValueError, match="unsupported body claim"):

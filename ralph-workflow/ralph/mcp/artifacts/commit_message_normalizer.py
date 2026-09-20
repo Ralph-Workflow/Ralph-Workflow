@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ralph.prompts.commit_evidence import CommitEvidenceBundle
 
 _FRONTMATTER_SUBJECT: re.Pattern[str] = re.compile(r"(?im)^subject:\s*(.+)$")
-_SUBJECT: re.Pattern[str] = re.compile(r"(?m)^\s*([a-z]+(?:\([^)]+\))?!?:\s*.+)$")
+_SUBJECT: re.Pattern[str] = re.compile(r"(?im)^\s*((?:[a-z]+(?:\([^)]+\))?!?)(?::\s*|\s+).+)$")
 _HEADING: re.Pattern[str] = re.compile(r"(?m)^##+\s+.*\S\s*$")
 _BODY_ITEM: re.Pattern[str] = re.compile(r"(?m)^\s*(?:[-*]|\d+\.)\s+(?:\[[A-Z]+-\d+\]\s*)?(.*\S)\s*$")
 _KEY_VALUE: re.Pattern[str] = re.compile(r"(?im)^\s*(?:intent|rationale|changes?|verification)\s*:\s*(.+\S)\s*$")
