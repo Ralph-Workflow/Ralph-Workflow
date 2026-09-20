@@ -2184,7 +2184,8 @@ def _handle_inline_effect(
                 policy=pipeline_policy,
                 routing_timing=routing_timing
                 or RoutingTiming(
-                    total_elapsed_seconds=state.dev_timebox_consumed_seconds,
+                    total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
+                    development_elapsed_seconds=state.dev_timebox_consumed_seconds,
                 ),
             )
             target_phase = development_timeboxed.target_phase

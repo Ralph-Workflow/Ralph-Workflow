@@ -130,6 +130,28 @@ def test_default_watchdog_ceiling_cannot_preempt_development_redirect() -> None:
     assert decision.redirected is True
 
 
+def test_development_timebox_regression_cycle_only_timing_is_a_noop() -> None:
+    """S-1: a missing development clock must never borrow the cycle clock."""
+    policy = _policy()
+    state = PipelineState(phase="development", dev_timebox_active=True)
+    cycle_only_timing = RoutingTiming(total_elapsed_seconds=36_000.0)
+
+    decision = apply_development_timebox(
+        state, "development", policy=policy, routing_timing=cycle_only_timing
+    )
+
+    assert decision.target_phase == "development"
+    assert not decision.redirected
+    assert decision.state.dev_timebox_active
+    assert development_deadline_epochs(
+        state,
+        "development",
+        policy=policy,
+        routing_timing=cycle_only_timing,
+        now_epoch=1000.0,
+    ) is None
+
+
 def test_cycle_expiry_does_not_interrupt_active_development_timebox() -> None:
     policy = _policy()
     state = PipelineState(

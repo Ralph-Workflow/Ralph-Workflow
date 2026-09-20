@@ -245,7 +245,7 @@ def apply_development_timebox(
     if target_phase == dt.guarded_entry and state.dev_timebox_active:
         elapsed = routing_timing.development_elapsed_seconds
         if elapsed is None:
-            elapsed = routing_timing.total_elapsed_seconds
+            return CycleTimeboxDecision(state=state, target_phase=target_phase)
         if elapsed >= dt.duration_seconds:
             reason = development_timebox_redirect_reason(
                 limit_seconds=dt.duration_seconds,
@@ -283,7 +283,7 @@ def development_deadline_epochs(
         return None
     elapsed = routing_timing.development_elapsed_seconds
     if elapsed is None:
-        elapsed = routing_timing.total_elapsed_seconds
+        return None
     return (
         now_epoch + max(0.0, dt.warning_seconds - elapsed),
         now_epoch + max(0.0, dt.duration_seconds - elapsed),
