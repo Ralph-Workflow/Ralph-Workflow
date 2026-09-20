@@ -24,7 +24,6 @@ from ralph.git.operations import (
     create_commit,
     get_head_sha,
     has_uncommitted_changes,
-    list_changed_paths,
     stage_all,
 )
 from ralph.git.operations import stage_files as _stage_files
@@ -42,6 +41,7 @@ from ralph.phases.required_artifacts import (
 )
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
+from ralph.prompts.commit_evidence import build_commit_evidence_bundle
 
 if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
@@ -401,7 +401,8 @@ def _normalize_repo_relative_path(raw_path: str) -> str:
 
 
 def _changed_commit_paths(repo_root: Path) -> list[str]:
-    return list_changed_paths(repo_root)
+    """Compatibility seam for callers that need a fresh evidence snapshot."""
+    return list(build_commit_evidence_bundle(repo_root).changed_files)
 
 
 def _repo_has_commit_work(repo_root: Path) -> bool:

@@ -104,6 +104,7 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
+from ralph.prompts.commit_evidence import CommitEvidenceBundle, build_commit_evidence_bundle
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
@@ -341,9 +342,14 @@ def run_commit_plumbing(
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 continue
+            evidence = (
+                build_commit_evidence_bundle(repo_root)
+                if (repo_root / ".git").exists()
+                else diff
+            )
             prompt = _commit_prompt_for_agent(
                 cfg,
-                diff,
+                evidence,
                 template_registry=template_registry,
                 repo_root=repo_root,
             )
@@ -401,7 +407,7 @@ def _is_opencode_agent(agent: AgentConfig | None) -> bool:
 
 def _commit_prompt_for_agent(
     agent: AgentConfig,
-    diff: str,
+    evidence: str | CommitEvidenceBundle,
     *,
     template_registry: TemplateRegistry,
     repo_root: Path,
@@ -410,7 +416,7 @@ def _commit_prompt_for_agent(
     submit_artifact_tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
     if _is_opencode_agent(agent):
         return prompt_commit_message_for_opencode(
-            diff,
+            evidence,
             submit_artifact_tool_name=submit_artifact_tool_names[0],
             payload_config=CommitPromptPayloadConfig(
                 output_dir=payload_output_dir,
@@ -419,7 +425,7 @@ def _commit_prompt_for_agent(
             workspace_root=repo_root,
         )
     return prompt_commit_message(
-        diff,
+        evidence,
         template_registry=template_registry,
         submit_artifact_tool_names=submit_artifact_tool_names,
         payload_config=CommitPromptPayloadConfig(

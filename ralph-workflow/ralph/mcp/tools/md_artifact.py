@@ -1,5 +1,4 @@
 """MCP handlers for validated markdown artifact documents."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -47,6 +46,12 @@ from ralph.mcp.tools.artifact import (
     _session_run_id,
     _workspace_root,
 )
+from ralph.mcp.tools.commit_normalization import (
+    commit_normalization_audit as _commit_normalization_audit,
+)
+from ralph.mcp.tools.commit_normalization import (
+    normalize_commit_content as _normalize_commit_content,
+)
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
     CoordinationSessionLike,
@@ -74,9 +79,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.tools.text_edits import TextEdit
-
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
-
 #: Every validating endpoint returns this so a rejected document is repaired
 #: in place rather than re-transcribed in full. Submission always leaves the
 #: submitted text staged as the draft, so the repair path is available even
@@ -88,7 +91,6 @@ REPAIR_HINT: str = (
     f"validates, so no separate `{FINALIZE_MD_ARTIFACT_TOOL}` call is needed. Read the draft "
     f"back with `{GET_MD_DRAFT_TOOL}` when you need to see its current text."
 )
-
 def handle_verify_md_artifact(
     session: CoordinationSessionLike,
     _workspace: WorkspaceLike,
@@ -99,8 +101,6 @@ def handle_verify_md_artifact(
     artifact_type, content = _params(params)
     diagnostics, overridden = _validate_with_overrides(artifact_type, content)
     return _validation_result(artifact_type, diagnostics, overridden)
-
-
 def handle_submit_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -109,13 +109,13 @@ def handle_submit_md_artifact(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     """Validate and canonically persist a markdown artifact atomically.
-
     The submitted text is staged as the artifact's draft first, whether or
     not it validates, so a rejected document can be repaired in place with
     ``ralph_edit_md_artifact`` rather than re-transcribed in full.
     """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown artifact submission")
     artifact_type, content = _params(params)
+    content = _normalize_commit_content(artifact_type, content, _workspace_root(workspace))
     _write_draft(session, workspace, artifact_type, content, deps)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
     diagnostics.extend(
@@ -136,8 +136,6 @@ def handle_submit_md_artifact(
     return _submitted_validation_result(
         artifact_type, content, diagnostics, overridden, validation_recovered=recovered
     )
-
-
 def handle_edit_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -146,7 +144,6 @@ def handle_edit_md_artifact(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     """Apply oldText/newText edits to the staged draft and submit it when it validates.
-
     This is ``ralph_submit_md_artifact`` starting from the existing draft
     instead of a whole retyped document: whenever the edited draft passes the
     submission gate it is persisted through the same canonical path submission
@@ -207,26 +204,27 @@ def handle_edit_md_artifact(
             submitted=False,
         )
 
-    save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
-    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, outcome.content)
+    content = _normalize_commit_content(artifact_type, outcome.content, _workspace_root(workspace))
+    save_md_draft(artifact_dir, artifact_type, content, backend=backend)
+    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(
-            session, workspace, artifact_type, outcome.content, deps
+            session, workspace, artifact_type, content, deps
         )
     )
     submitted = not any(item.severity == "error" for item in diagnostics)
     validation_recovered = False
     if submitted:
-        _submit_canonical(session, workspace, artifact_type, parsed_content, outcome.content, deps)
+        _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
         validation_recovered = _clear_validation_retry_hint(session, workspace, deps)
     else:
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
     result = _edit_result(
         artifact_type,
-        outcome.content,
+        content,
         outcome.diff,
         len(outcome.applied),
         "applied",
@@ -240,8 +238,6 @@ def handle_edit_md_artifact(
     elif not submitted:
         _log_validation_rejection(artifact_type, diagnostics)
     return result
-
-
 def handle_stage_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -277,8 +273,6 @@ def handle_stage_md_artifact(
         draft = f"{existing}\n{content}"
     _write_draft(session, workspace, artifact_type, draft, deps, label="staged")
     return _draft_status_result(artifact_type, draft)
-
-
 def handle_get_md_draft(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -292,8 +286,6 @@ def handle_get_md_draft(
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     draft = load_md_draft(_resolve_artifact_dir(session, workspace), artifact_type, backend=backend)
     return _draft_status_result(artifact_type, draft or "", exists=draft is not None)
-
-
 def handle_discard_md_draft(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -322,8 +314,6 @@ def handle_discard_md_draft(
         ],
         is_error=False,
     )
-
-
 def handle_finalize_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -348,6 +338,8 @@ def handle_finalize_md_artifact(
             f"no staged draft for {artifact_type!r}; stage content first "
             "or submit the complete document directly"
         )
+    content = _normalize_commit_content(artifact_type, content, _workspace_root(workspace))
+    _write_draft(session, workspace, artifact_type, content, deps)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
@@ -365,8 +357,6 @@ def handle_finalize_md_artifact(
     return _submitted_validation_result(
         artifact_type, content, diagnostics, overridden, validation_recovered=recovered
     )
-
-
 def _submit_canonical(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -403,6 +393,7 @@ def _submit_canonical(
         run_id=_session_run_id(session),
         artifact_dir=_resolve_artifact_dir(session, workspace),
         handoff_dir=worker_namespace / "handoffs" if worker_namespace is not None else None,
+        normalization_audit=_commit_normalization_audit(artifact_type, content, workspace_root),
     )
 
 
@@ -667,6 +658,7 @@ def _validate_with_overrides(
         return diagnostics, list(overridden)
     _, diagnostics = parse_and_validate(content, get_spec(artifact_type))
     return diagnostics, []
+
 
 
 def _parse_with_overrides(

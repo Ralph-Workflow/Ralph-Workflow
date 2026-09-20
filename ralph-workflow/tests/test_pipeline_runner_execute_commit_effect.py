@@ -609,9 +609,9 @@ class TestExecuteCommitEffect:
         [
             ({}, ["src/feature.py"], None),
             (
-                {"files": ["src/feature.py", "tests/test_feature.py"]},
+                {"files": ["src/feature.py", "tests/test_feature.py", "docs/guide.md"]},
                 ["src/feature.py", "tests/test_feature.py", "docs/guide.md"],
-                ["src/feature.py", "tests/test_feature.py"],
+                ["src/feature.py", "tests/test_feature.py", "docs/guide.md"],
             ),
             (
                 {"excluded_files": [{"path": "docs/guide.md", "reason": "internal_ignore"}]},

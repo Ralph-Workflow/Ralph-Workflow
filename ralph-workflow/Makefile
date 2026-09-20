@@ -2,7 +2,7 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 12 shards. This matches the maintained contention-safe profile and
+# Default: 12 shards. This is the maintained contention-safe profile and
 # finishes the primary suite before the budget-tracked smoke suites start.
 # Nested xdist remains disabled because its coordination overhead exceeds the
 # gain for this shard-saturated profile. Operators may override after measuring

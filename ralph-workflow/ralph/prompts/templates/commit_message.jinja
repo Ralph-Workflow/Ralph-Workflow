@@ -11,6 +11,12 @@ Produce and submit one valid `commit_message` artifact for the pending diff.
 
 Read the diff, choose a commit or skip document, and submit it with the tool named below. Do not call bash or ask the user for confirmation, including “Would you like me to…”.
 
+## WRITE THE MESSAGE FIRST
+
+Explain the purpose before the schema: cover material change areas ({{ CHANGE_AREAS }}), why they belong together, meaningful behavior, compatibility, or operational risk, and verification actually run. Do not invent verification or risks.
+
+Detail target: **{{ MESSAGE_BUDGET }}**. Small: `fix: preserve empty config values` with one concrete why. Medium: `feat(api): expose retry status` with focused behavior and verification points. Large: `refactor(runtime): unify worker recovery` with each major subsystem, compatibility risk, and verification surface. Do not narrate every file.
+
 ## HOW TO WRITE THE SUBJECT
 
 Use this sequence once, then write the body.

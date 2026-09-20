@@ -147,6 +147,7 @@ def submit_artifact_canonical(
     run_id: str | None = None,
     artifact_dir: Path | None = None,
     handoff_dir: Path | None = None,
+    normalization_audit: dict[str, object] | None = None,
 ) -> SubmitResult:
     """Persist validated markdown, handoff, and receipt as one logical transaction.
 
@@ -255,6 +256,7 @@ def submit_artifact_canonical(
                 artifact_type,
                 backend=backend,
                 receipt_secret=deps.receipt_secret,
+                normalization_audit=normalization_audit,
             )
     except Exception as submission_error:
         try:

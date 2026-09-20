@@ -52,6 +52,7 @@ from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.commit_cleanup import render_commit_cleanup_prompt
+from ralph.prompts.commit_evidence import build_commit_evidence_bundle
 from ralph.prompts.debug_dump import (
     clear_multimodal_sidecar,
     collect_media_entries_for_phase,
@@ -338,8 +339,13 @@ def _render_prompt_for_phase(
         )
     # Commit-style prompt: commit role
     if phase_role == "commit":
+        evidence = (
+            build_commit_evidence_bundle(workspace_root)
+            if (workspace_root / ".git").exists()
+            else _pending_diff(workspace_root)
+        )
         return prompt_commit_message(
-            _commit_phase_diff(workspace_root),
+            evidence,
             template_registry=tmpl_ctx.registry,
             partials=tmpl_ctx.partials,
             submit_artifact_tool_names=SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
@@ -350,6 +356,7 @@ def _render_prompt_for_phase(
                 name_prefix=phase,
             ),
             workspace_root=workspace_root,
+            allow_empty_diff=True,
         )
     # Commit-cleanup prompt: commit_cleanup role
     if phase_role == "commit_cleanup":

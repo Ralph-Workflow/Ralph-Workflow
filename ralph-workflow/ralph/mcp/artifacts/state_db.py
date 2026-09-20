@@ -19,7 +19,7 @@ RunStateDB instance, serialized by SQLite itself.
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -48,13 +48,15 @@ CLEARED_SENTINEL_HMAC: Final[str] = "__ralph_internal_cleared__"
 
 # Any change to _SCHEMA MUST bump _SCHEMA_VERSION so existing databases run
 # the new DDL instead of silently treating the old schema as current.
-_SCHEMA_VERSION: Final[int] = 1
+_SCHEMA_VERSION: Final[int] = 2
+_INITIAL_SCHEMA_VERSION: Final[int] = 1
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS receipts (
     run_id        TEXT NOT NULL,
     artifact_type TEXT NOT NULL,
     hmac          TEXT,
+    normalization_audit TEXT,
     created_at    REAL NOT NULL DEFAULT (unixepoch('subsec')),
     PRIMARY KEY (run_id, artifact_type)
 );
@@ -98,8 +100,20 @@ class RunStateDB:
         version_value: object = version_row[0]
         if not isinstance(version_value, int):
             raise RuntimeError("SQLite PRAGMA user_version returned a non-integer version")
-        if version_value < _SCHEMA_VERSION:
+        if version_value < _INITIAL_SCHEMA_VERSION:
             self._conn.executescript(_SCHEMA)
+        if version_value < _SCHEMA_VERSION:
+            rows = cast(
+                "list[object]", self._conn.execute("PRAGMA table_info(receipts)").fetchall()
+            )
+            columns = {
+                row[1]
+                for row in rows
+                if isinstance(row, tuple) and len(row) > 1 and isinstance(row[1], str)
+            }
+            if "normalization_audit" not in columns:
+                self._conn.execute("ALTER TABLE receipts ADD COLUMN normalization_audit TEXT")
+        if version_value < _SCHEMA_VERSION:
             self._conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             self._conn.commit()
         self._closed: bool = False
@@ -111,15 +125,40 @@ class RunStateDB:
 
     # -- receipts ---------------------------------------------------------
 
-    def upsert_receipt(self, run_id: str, artifact_type: str, hmac_hex: str | None) -> None:
+    def upsert_receipt(
+        self,
+        run_id: str,
+        artifact_type: str,
+        hmac_hex: str | None,
+        normalization_audit: str | None = None,
+    ) -> None:
         with self._conn:
-            params: tuple[str | None, ...] = (run_id, artifact_type, hmac_hex)
+            params: tuple[str | None, ...] = (
+                run_id,
+                artifact_type,
+                hmac_hex,
+                normalization_audit,
+            )
             self._conn.execute(
-                "INSERT INTO receipts (run_id, artifact_type, hmac) VALUES (?, ?, ?) "
-                "ON CONFLICT(run_id, artifact_type) DO UPDATE SET "
-                "hmac=excluded.hmac, created_at=unixepoch('subsec')",
+                "INSERT INTO receipts (run_id, artifact_type, hmac, normalization_audit) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(run_id, artifact_type) DO UPDATE SET "
+                "hmac=excluded.hmac, normalization_audit=excluded.normalization_audit, "
+                "created_at=unixepoch('subsec')",
                 params,
             )
+
+    def get_receipt_normalization_audit(self, run_id: str, artifact_type: str) -> str | None | _Missing:
+        cursor = self._conn.execute(
+            "SELECT normalization_audit FROM receipts WHERE run_id = ? AND artifact_type = ?",
+            (run_id, artifact_type),
+        )
+        try:
+            row: object = cursor.fetchone()
+        finally:
+            cursor.close()
+        if row is None:
+            return MISSING
+        return _coerce_hmac(row)
 
     def get_receipt_hmac(self, run_id: str, artifact_type: str) -> str | None | _Missing:
         cursor = self._conn.execute(

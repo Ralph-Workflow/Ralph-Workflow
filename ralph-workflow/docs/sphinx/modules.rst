@@ -2107,6 +2107,20 @@ ralph.mcp.artifacts.commit_message
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.commit_message_ir
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.commit_message_ir
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.commit_message_normalizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.commit_message_normalizer
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.completion_receipts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -4575,5 +4589,20 @@ ralph.project_policy.portfolio
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.project_policy.portfolio
+   :members:
+   :show-inheritance:
+
+
+ralph.prompts.commit_evidence
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.prompts.commit_evidence
+   :members:
+   :show-inheritance:
+
+ralph.mcp.tools.commit_normalization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.commit_normalization
    :members:
    :show-inheritance:

@@ -48,6 +48,23 @@ def test_receipt_keyed_by_artifact_type(tmp_path: Path) -> None:
     assert artifact_receipt_present(tmp_path, "run-1", "plan") is False
 
 
+def test_commit_receipt_stores_normalization_audit(tmp_path: Path) -> None:
+    from ralph.mcp.artifacts.state_db import RunStateDB
+
+    audit: dict[str, object] = {
+        "confidence": "high",
+        "transformations": ["canonicalized files"],
+    }
+    write_artifact_receipt(tmp_path, "run-1", "commit_message", normalization_audit=audit)
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_receipt_normalization_audit("run-1", "commit_message") == json.dumps(
+            audit, sort_keys=True
+        )
+    finally:
+        db.close()
+
+
 def test_receipt_keyed_by_run_id(tmp_path: Path) -> None:
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
     assert artifact_receipt_present(tmp_path, "run-2", "commit_message") is False
@@ -219,6 +236,19 @@ def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "run-1"
     assert payload["artifact_type"] == "commit_message"
+
+
+def test_legacy_fallback_stores_normalization_audit(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    def _raise_locked_db(_workspace_root: Path) -> object:
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _raise_locked_db)
+    audit: dict[str, object] = {"confidence": "high"}
+    write_artifact_receipt(tmp_path, "run-1", "commit_message", normalization_audit=audit)
+    legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    assert json.loads(legacy_path.read_text(encoding="utf-8"))["normalization_audit"] == audit
 
 
 def test_write_receipt_falls_back_to_legacy_when_db_upsert_raises_oserror(

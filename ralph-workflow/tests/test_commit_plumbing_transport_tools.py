@@ -12,6 +12,7 @@ from ralph.pipeline.plumbing.commit_plumbing import (
     _commit_prompt_for_agent,
     _submit_artifact_tool_names_for_transport,
 )
+from ralph.prompts.commit_evidence import CommitEvidenceBundle
 from ralph.prompts.template_registry import TemplateRegistry
 
 if TYPE_CHECKING:
@@ -50,7 +51,13 @@ def test_commit_prompt_qualifies_every_state_changing_tool(
 ) -> None:
     prompt = _commit_prompt_for_agent(
         AgentConfig(cmd="agent", transport=transport, json_parser="generic"),
-        "diff --git a/app.py b/app.py\n+hello",
+        CommitEvidenceBundle(
+            diff="diff --git a/app.py b/app.py\n+hello",
+            changed_files=("app.py",),
+            change_areas=("app.py",),
+            verification_hints=(),
+            public_behavior_paths=(),
+        ),
         template_registry=TemplateRegistry(),
         repo_root=tmp_path,
     )

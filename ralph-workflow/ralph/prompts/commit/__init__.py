@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL, WRITE_FILE_TOOL
 from ralph.phases.required_artifacts import read_validation_retry_hint
 
+from ..commit_evidence import CommitEvidenceBundle
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ..template_engine import render_template
 from ..template_registry import (
@@ -36,18 +37,19 @@ DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME = str(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def prompt_commit_message(
-    diff: str,
+    diff: str | CommitEvidenceBundle,
     *,
     template_registry: TemplateRegistry | None = None,
     partials: Mapping[str, str] | None = None,
     submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,),
     payload_config: CommitPromptPayloadConfig | None = None,
     workspace_root: Path | None = None,
+    allow_empty_diff: bool = False,
 ) -> str:
     """Return the commit message prompt for the provided diff."""
 
-    diff_content = diff.strip()
-    if not diff_content:
+    diff_content, evidence = _diff_and_evidence(diff)
+    if not diff_content and not allow_empty_diff:
         raise ValueError("empty diff provided; cannot build commit prompt")
 
     template = _select_template(template_registry)
@@ -67,6 +69,9 @@ def prompt_commit_message(
             f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
         ),
         "LAST_RETRY_ERROR": _read_commit_retry_hint(workspace_root),
+        "CHANGE_AREAS": ", ".join(evidence.change_areas) if evidence is not None else "derive from the diff",
+        "MESSAGE_BUDGET": evidence.message_budget if evidence is not None else "derive from the diff",
+        "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
     }
     variables.update(
         _commit_payload_variables(
@@ -82,15 +87,16 @@ def prompt_commit_message(
 
 
 def prompt_commit_message_for_opencode(
-    diff: str,
+    diff: str | CommitEvidenceBundle,
     *,
     submit_artifact_tool_name: str,
     payload_config: CommitPromptPayloadConfig | None = None,
     workspace_root: Path | None = None,
+    allow_empty_diff: bool = False,
 ) -> str:
     """Return a simplified commit message prompt for OpenCode's single-tool interface."""
-    diff_content = diff.strip()
-    if not diff_content:
+    diff_content, evidence = _diff_and_evidence(diff)
+    if not diff_content and not allow_empty_diff:
         raise ValueError("empty diff provided; cannot build commit prompt")
 
     template = _packaged_template_cache.get(
@@ -109,6 +115,9 @@ def prompt_commit_message_for_opencode(
             f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
         ),
         "LAST_RETRY_ERROR": _read_commit_retry_hint(workspace_root),
+        "CHANGE_AREAS": ", ".join(evidence.change_areas) if evidence is not None else "derive from the diff",
+        "MESSAGE_BUDGET": evidence.message_budget if evidence is not None else "derive from the diff",
+        "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
     }
     variables.update(
         _commit_payload_variables(
@@ -121,6 +130,12 @@ def prompt_commit_message_for_opencode(
         variables,
         _default_commit_partials(),
     ).lstrip()
+
+
+def _diff_and_evidence(diff: str | CommitEvidenceBundle) -> tuple[str, CommitEvidenceBundle | None]:
+    if isinstance(diff, CommitEvidenceBundle):
+        return diff.diff.strip(), diff
+    return diff.strip(), None
 
 
 def _read_commit_retry_hint(workspace_root: Path | None) -> str:

@@ -46,6 +46,40 @@ def test_state_db_regression_schema_guard_preserves_existing_data_on_reopen(
         reader.close()
 
 
+def test_state_db_migrates_v1_receipt_database_with_normalization_audit(tmp_path: Path) -> None:
+    """A v1 receipt database gains the audit column without losing its HMAC."""
+    db_path = tmp_path / DB_RELPATH
+    db_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE receipts (
+                run_id TEXT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                hmac TEXT,
+                created_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (run_id, artifact_type)
+            );
+            INSERT INTO receipts (run_id, artifact_type, hmac) VALUES ('run-1', 'plan', 'signature');
+            PRAGMA user_version = 1;
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    migrated = RunStateDB(tmp_path)
+    try:
+        assert _user_version(migrated) == state_db._SCHEMA_VERSION
+        assert migrated.get_receipt_hmac("run-1", "plan") == "signature"
+        assert migrated.get_receipt_normalization_audit("run-1", "plan") is None
+        migrated.upsert_receipt("run-1", "plan", "signature", '{"confidence":"high"}')
+        assert migrated.get_receipt_normalization_audit("run-1", "plan") == '{"confidence":"high"}'
+    finally:
+        migrated.close()
+
+
 def test_state_db_regression_schema_guard_recreates_deleted_database(tmp_path: Path) -> None:
     """S-11: deleting the file resets its version and triggers create-on-open."""
     initial = RunStateDB(tmp_path)

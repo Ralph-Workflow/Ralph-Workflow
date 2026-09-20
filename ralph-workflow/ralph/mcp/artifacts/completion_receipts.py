@@ -108,6 +108,7 @@ def write_artifact_receipt(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     receipt_secret: str | None = None,
+    normalization_audit: dict[str, object] | None = None,
 ) -> Path:
     """Record that ``artifact_type`` was durably persisted during ``run_id``.
 
@@ -145,6 +146,7 @@ def write_artifact_receipt(
     else:
         hmac_hex = None
 
+    audit_json = json.dumps(normalization_audit, sort_keys=True) if normalization_audit else None
     db_written = False
     db: RunStateDB | None = None
     try:
@@ -153,7 +155,10 @@ def write_artifact_receipt(
         db = None
     if db is not None:
         try:
-            db.upsert_receipt(run_id, artifact_type, hmac_hex)
+            if normalization_audit is None:
+                db.upsert_receipt(run_id, artifact_type, hmac_hex)
+            else:
+                db.upsert_receipt(run_id, artifact_type, hmac_hex, audit_json)
             db_written = True
         except (OSError, RuntimeError, sqlite3.Error):
             pass  # Will fall through to legacy-file durable fallback below.
@@ -170,6 +175,7 @@ def write_artifact_receipt(
         run_id,
         artifact_type,
         hmac_hex=hmac_hex,
+        normalization_audit=normalization_audit,
         backend=backend,
     )
     if not legacy_written:
@@ -186,6 +192,7 @@ def _write_legacy_receipt_fallback(
     artifact_type: str,
     *,
     hmac_hex: str | None,
+    normalization_audit: dict[str, object] | None,
     backend: FileBackend,
 ) -> bool:
     """Write the legacy ``.agent/receipts/<run_id>/<artifact_type>.json`` fallback.
@@ -208,6 +215,8 @@ def _write_legacy_receipt_fallback(
     payload: dict[str, object] = {"run_id": run_id, "artifact_type": artifact_type}
     if hmac_hex is not None:
         payload["hmac"] = hmac_hex
+    if normalization_audit is not None:
+        payload["normalization_audit"] = normalization_audit
     try:
         write_text_if_changed(
             backend,

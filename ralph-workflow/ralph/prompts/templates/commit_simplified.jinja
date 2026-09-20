@@ -14,6 +14,12 @@ Read the diff silently and put reasoning only in the artifact body. The only sta
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
+## Write the message first
+
+State purpose, material change areas ({{ CHANGE_AREAS }}), meaningful behavior or risk, and verification actually run; do not invent facts. Detail target: **{{ MESSAGE_BUDGET }}**. Small: one concrete why. Medium: two or three focused points. Large: each material subsystem, risk, and verification surface.
+
+Examples: small `fix: preserve empty config values`; medium `feat(api): expose retry status`; large `refactor(runtime): unify worker recovery`. Do not narrate every file.
+
 ## Subject
 
 Write `<kind>(<scope>)?!?: <description>` once. Kind is one of
