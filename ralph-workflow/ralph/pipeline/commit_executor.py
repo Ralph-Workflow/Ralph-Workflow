@@ -295,6 +295,12 @@ def _resolve_commit_scope(
                 )
             if normalized not in include_paths:
                 include_paths.append(normalized)
+        requested_paths = set(include_paths)
+        if requested_paths != normalized_changed:
+            raise ValueError(
+                "Commit artifact file selection must exactly match the current changed set: "
+                f"expected {sorted(normalized_changed)!r}, got {sorted(requested_paths)!r}"
+            )
         return _CommitScopeResolution(include_paths=tuple(include_paths))
     if not isinstance(raw_excluded, list):
         return _CommitScopeResolution(include_paths=None)

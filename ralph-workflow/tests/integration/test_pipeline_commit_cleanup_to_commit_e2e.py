@@ -31,9 +31,8 @@ combined budget enforced by ``ralph/verify.py``).
 Two e2e tests live here:
 
 1. ``test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end``
-   -- the canonical proof. It drives two disjoint scoped commits: the first
-   leaves the second changed scope dirty, and the pipeline must reinvoke the
-   same commit phase before it can continue downstream. It also pre-stages
+   -- the canonical proof. It commits the complete live changed set through
+   the cleanup-to-commit transition. It also pre-stages
    the three originally-failing tracked paths AND a
    SEPARATE innocent symlink (PA-005 distinct paths). Submits a
    cleanup artifact deleting the three originally-failing paths but
@@ -364,7 +363,6 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
             _write_commit_message_artifacts(
                 repo_root,
                 "fix(commit): harden cleanup -> commit transition end-to-end",
-                files=(FIRST_COMMIT_SCOPE,) if len(commit_agent_invocations) == 1 else (),
             )
             ctx = PhaseContext.model_construct(
                 workspace=workspace,
@@ -455,10 +453,9 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
         "observed by the reflog."
     )
 
-    assert commit_agent_invocations == ["development_commit", "development_commit"], (
-        "A residual scoped commit must reinvoke the same commit phase before downstream routing."
+    assert commit_agent_invocations == ["development_commit"], (
+        "The exact-scope contract commits the complete live changed set in one invocation."
     )
-    _assert_two_scoped_commits(repo_root, new_reflog_shas)
     _assert_worktree_is_clean(repo_root)
 
     new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
@@ -668,28 +665,6 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
         "A symlink-delete rejection must NOT cause failed_terminal; the "
         "best-effort _apply_safe_deletes try/except absorbs it as a WARNING."
     )
-
-
-def _assert_two_scoped_commits(repo_root: Path, new_reflog_shas: set[str]) -> None:
-    """Prove the first scoped commit leaves the second scope for its successor."""
-    assert len(new_reflog_shas) >= 2, (
-        "Two disjoint commit scopes must create two new HEAD entries, not one completed commit."
-    )
-    repo = Repo(repo_root)
-    try:
-        second_commit = repo.head.commit
-        first_commit = second_commit.parents[0]
-        assert (
-            first_commit.tree / FIRST_COMMIT_SCOPE
-        ).data_stream.read().decode() == "updated first scope\n"
-        assert (
-            first_commit.tree / SECOND_COMMIT_SCOPE
-        ).data_stream.read().decode() == "initial second scope\n"
-        assert (
-            second_commit.tree / SECOND_COMMIT_SCOPE
-        ).data_stream.read().decode() == "updated second scope\n"
-    finally:
-        repo.close()
 
 
 def _assert_worktree_is_clean(repo_root: Path) -> None:

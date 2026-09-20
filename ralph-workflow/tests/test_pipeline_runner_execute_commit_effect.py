@@ -634,6 +634,22 @@ class TestExecuteCommitEffect:
         actual = commit_executor_module._commit_include_paths_from_changed(payload, changed_paths)
         assert actual == expected
 
+    @pytest.mark.parametrize(
+        ("payload", "error"),
+        [
+            ({"files": ["src/feature.py"]}, "exactly match"),
+            ({"files": ["src/feature.py", "docs/stale.md"]}, "not part"),
+        ],
+    )
+    def test_commit_include_paths_requires_exact_live_changed_set(
+        self, payload: dict[str, object], error: str
+    ) -> None:
+        with pytest.raises(ValueError, match=error):
+            commit_executor_module._commit_include_paths_from_changed(
+                payload,
+                ["src/feature.py", "tests/test_feature.py"],
+            )
+
     def test_commit_effect_calls_a_rejected_artifact_invalid_not_empty(
         self, tmp_path: Path
     ) -> None:
