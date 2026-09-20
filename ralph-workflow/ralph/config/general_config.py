@@ -263,10 +263,10 @@ class GeneralConfig(RalphBaseModel):
         gt=0.0,
         description=(
             "Soft wrap-up threshold in seconds. Once a single invocation has run"
-            " this long, MCP tool results carry a 'finish up and call declare_complete"
-            " soon' banner so the agent winds down before the hard"
+            " this long, MCP tool results carry a stern warning to finish actionable"
+            " work; partial remains a last resort before the hard"
             " agent_max_session_seconds force-cut. Must be < agent_max_session_seconds"
-            " when both are set. Set to None to disable the nag."
+            " when both are set. Set to None to disable the warning."
         ),
     )
     agent_repeated_error_consecutive_threshold: int | None = Field(

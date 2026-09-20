@@ -44,6 +44,7 @@ from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.tools.bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
+from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.workspace.fs import FsWorkspace
 from tests._artifact_format_docs_mock_session import planning_session
@@ -389,6 +390,110 @@ def test_tool_result_carries_wrapup_banner_only_after_soft_threshold(
 # ---------------------------------------------------------------------------
 # Per-invocation reset contract (AC-01..AC-05)
 # ---------------------------------------------------------------------------
+
+
+def test_post_warning_declare_complete_requires_separate_dispatch_confirmation(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/S-3: separate production dispatches admit, then complete."""
+    reset_completion_admissions()
+    writes: list[str] = []
+    monkeypatch.setattr(
+        "ralph.mcp.tools.coordination._write_completion_sentinel",
+        lambda _workspace, run_id, **_kwargs: writes.append(run_id) or True,
+    )
+    clock = FakeClock()
+    budget = SessionWrapupBudget(clock, soft_seconds=3000.0, hard_seconds=3300.0)
+    clock.advance(3000.0)
+    bridge = ToolBridge()
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name="declare_complete",
+                description="Test completion tool",
+                input_schema={"type": "object"},
+            ),
+            required_capability="artifact.submit",
+        ),
+        handle_declare_complete,
+    )
+    session = AgentSession(
+        session_id="dispatch-admission-session",
+        run_id="dispatch-admission-run",
+        drain="development",
+        capabilities={"ArtifactSubmit"},
+    )
+    server = McpServer(
+        session=session,
+        workspace=_build_test_workspace(tmp_path),
+        registry=bridge,
+        wrapup_provider=budget.notice,
+        before_wrapup_warning_provider=budget.before_soft_warning,
+    )
+
+    def dispatch(msg_id: str) -> dict[str, object]:
+        result: list[dict[str, object]] = []
+
+        def request() -> None:
+            response, _ = server.handle_request(
+                JsonRpcRequest(
+                    jsonrpc="2.0",
+                    method="tools/call",
+                    msg_id=msg_id,
+                    params={"name": "declare_complete", "arguments": {"summary": "done"}},
+                ),
+                ServerState.RUNNING,
+            )
+            assert response is not None
+            assert response.result is not None
+            assert isinstance(response.result, dict)
+            result.append(response.result)
+
+        thread = threading.Thread(target=request)
+        thread.start()
+        thread.join(timeout=2.0)
+        assert not thread.is_alive()
+        assert len(result) == 1
+        return result[0]
+
+    first = dispatch("admission-1")
+    assert "COMPLETION ADMISSION REQUIRED" in _block_text(first["content"])
+    assert writes == []
+    second = dispatch("admission-2")
+    assert "Task declared complete" in _block_text(second["content"])
+    assert writes == ["dispatch-admission-run"]
+
+
+def test_reset_session_budget_clears_pending_completion_admission(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2/S-3: a fresh attempt cannot consume a stale admission."""
+    reset_completion_admissions()
+    monkeypatch.setattr(
+        "ralph.mcp.tools.coordination._write_completion_sentinel",
+        lambda *_args, **_kwargs: True,
+    )
+    session = AgentSession(
+        session_id="reset-admission-session",
+        run_id="reset-admission-run",
+        drain="development",
+        capabilities={"ArtifactSubmit"},
+    )
+    with session_warning_scope(False):
+        first = handle_declare_complete(session, _build_test_workspace(tmp_path), {})
+    assert "ADMISSION REQUIRED" in first.content[0].text
+
+    server = _server_with_budget(
+        SessionWrapupBudget(FakeClock(), soft_seconds=3000.0, hard_seconds=3300.0),
+        tmp_path=tmp_path,
+    )
+    server.reset_session_budget()
+
+    with session_warning_scope(False):
+        after_reset = handle_declare_complete(session, _build_test_workspace(tmp_path), {})
+    assert "ADMISSION REQUIRED" in after_reset.content[0].text
 
 
 def test_mcp_server_reset_session_budget_rearms_after_soft_threshold_crossed(

@@ -22,12 +22,13 @@ in place.
 
 ### 2.1 Soft wrap-up nag — MCP tool-result banner
 
-`ralph/mcp/server/_session_wrapup.py` + `_mcp_server.py:_maybe_append_wrapup_notice`.
+`ralph/mcp/server/_session_wrapup.py` + `_mcp_server.py:_maybe_append_notice`.
 Once a single invocation passes `agent_session_soft_wrapup_seconds` (default
-`SESSION_SOFT_WRAPUP_SECONDS = 3000s`), **every `tools/call` result** gets a text
-banner appended: *"⚠️ ~N min of your time budget remain. Finish up and call
-declare_complete soon…"* Delivered over the Ralph MCP server, so it reaches
-**every transport** uniformly.
+`SESSION_SOFT_WRAPUP_SECONDS = 3000s`), **every `tools/call` result** gets a stern
+warning appended: *"⚠️ 50-MINUTE WARNING — return to actionable incomplete work;
+`partial` is only a last resort, and never declare completion without truthful
+evidence."* Delivered over the Ralph MCP server, so it reaches **every transport**
+uniformly.
 
 **Why insufficient for "frozen":** a banner can only be *read when the agent makes
 its next tool call*. A frozen agent making **no MCP calls** never receives it.
