@@ -935,11 +935,30 @@ def _build_attempt_invoke_options(
         ),
     )
     if ctx.effect.activity_only_supervision:
-        return replace(
+        invoke_options = replace(
             invoke_options,
             idle_timeout_seconds=ctx.config.conflict_resolution.inactivity_timeout_seconds,
         )
-    return invoke_options
+    return _cap_development_invocation_to_phase_deadline(ctx, invoke_options)
+
+
+def _cap_development_invocation_to_phase_deadline(
+    ctx: _AgentInvocationCtx, options: InvokeOptions
+) -> InvokeOptions:
+    """Use the unspent development-phase budget as this invocation's ceiling."""
+    if ctx.state is None or ctx.policy_bundle is None:
+        return options
+    timebox = ctx.policy_bundle.pipeline.development_timebox
+    if (
+        timebox is None
+        or not ctx.state.dev_timebox_active
+        or ctx.effect.phase != timebox.guarded_entry
+    ):
+        return options
+    remaining_seconds = max(
+        0.0, timebox.duration_seconds - ctx.state.dev_timebox_consumed_seconds
+    )
+    return replace(options, max_session_seconds=remaining_seconds)
 
 
 def required_artifact_for_invocation(

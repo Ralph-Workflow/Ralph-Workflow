@@ -6,6 +6,7 @@ import pathlib
 import tempfile
 from contextlib import nullcontext
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -25,12 +26,13 @@ from ralph.mcp.server.lifecycle import (
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
 from ralph.workspace import WorkspaceScope
 from tests._pipeline_deps_factory import make_recording_bridge_factory, make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 
 def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
@@ -406,6 +408,68 @@ def test_config_max_session_seconds_flows_to_invoke_options(
 
     options = captured.get("options")
     assert getattr(options, "max_session_seconds", None) == custom_session
+
+
+def test_runner_timeout_regression_development_retry_uses_phase_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-1: a retry receives only the unspent development-phase budget."""
+    del monkeypatch
+    config = _make_config_full(agent_max_session_seconds=5700.0)
+    captured: dict[str, object] = {}
+    policy_bundle = load_policy(
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    state = PipelineState(
+        phase="development",
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=4200.0,
+    )
+
+    def materialize(workspace_root: Path, name: str, **_kwargs: object) -> str:
+        del workspace_root, name
+        return str(tmp_path / "MASTER_PROMPT.md")
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        master_prompt_materializer=materialize,
+        registry_factory=_registry_factory,
+    )
+    effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md"),
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        state=state,
+        policy_bundle=policy_bundle,
+        invoke_agent=_capture_options_factory(captured),
+        agent_invocation_error=RuntimeError,
+    )
+
+    options = captured["options"]
+    assert options is not None
+    assert options.max_session_seconds == 1200.0
+
+
+def test_non_development_invocation_keeps_generic_session_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = _make_config_full(agent_max_session_seconds=3600.0)
+    captured: dict[str, object] = {}
+
+    _run_with_config(
+        config,
+        InvokeAgentEffect(agent_name="dev", phase="planning", prompt_file="plan.md"),
+        captured,
+        monkeypatch,
+        tmp_path,
+    )
+
+    options = captured["options"]
+    assert options is not None
+    assert options.max_session_seconds == 3600.0
 
 
 def test_config_default_idle_poll_interval_is_0_05() -> None:
