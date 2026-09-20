@@ -60,9 +60,9 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 #: Consecutive unresolved conflicts against the same target that may
-#: each pay for a dev-agent conflict resolution. The seventeenth and later
+#: each pay for a dev-agent conflict resolution. The sixty-fifth and later
 #: attempts record an escalation instead of invoking the agent.
-MAX_CONSECUTIVE_RESOLVER_ATTEMPTS = 16
+MAX_CONSECUTIVE_RESOLVER_ATTEMPTS = 64
 
 _ACTION_CONFLICT = "conflict"
 

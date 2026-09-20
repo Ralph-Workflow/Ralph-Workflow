@@ -154,6 +154,16 @@ def test_clean_live_inspection_reconciles_stale_resolution_evidence(tmp_path: Pa
     assert reconciled.conflict_strategies_tried == ()
     assert reconcile_stale_unresolved_state(reconciled) == reconciled
 
+    next_verdict = inspect_integration_resolution(
+        tmp_path,
+        reconciled,
+        porcelain=lambda _: (True, ""),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+    assert next_verdict.status is RESOLVED
+    assert next_verdict.dispatch_allowed
+
 
 def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_path: Path) -> None:
     """The final fence raises before a blocked ordinary agent can start."""

@@ -31,7 +31,7 @@ def test_resolver_attempt_budget_defaults_above_incident_baseline_and_is_configu
     default = UnifiedConfig.model_validate({}).conflict_resolution.max_consecutive_resolver_attempts
     override = UnifiedConfig.model_validate({"conflict_resolution": {"max_consecutive_resolver_attempts": 3}}).conflict_resolution.max_consecutive_resolver_attempts
 
-    assert default == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS == 16
+    assert default == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS == 64
     assert default > 8
     assert override == 3
 

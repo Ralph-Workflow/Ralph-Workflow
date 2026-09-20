@@ -15,14 +15,13 @@ from ralph.interrupt.dispatcher import (
     dispatcher_from_process_manager,
     run_shutdown_block,
 )
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import ProcessManager, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.interrupt.signal_getter import SignalGetter
     from ralph.interrupt.signal_setter import SignalSetter
-    from ralph.process.manager import ProcessManager
 
 
 _DEFAULT_SIGNAL_GETTER = cast(
@@ -82,6 +81,9 @@ def handle_keyboard_interrupt(
             process_manager=resolved_pm,
             stop_connectivity=monitor_stop,
         )
+    if isinstance(resolved_pm, ProcessManager):
+        for record in resolved_pm.list_active():
+            resolved_pm.record_terminal_reason(record.pid, "operator_cancellation")
     resolved_getter: SignalGetter = signal_getter or _DEFAULT_SIGNAL_GETTER
     resolved_setter: SignalSetter = signal_setter or _DEFAULT_SIGNAL_SETTER
     interrupt_done = threading.Event()

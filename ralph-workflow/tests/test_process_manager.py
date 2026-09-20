@@ -990,6 +990,7 @@ def test_ec10_process_termination_error_when_kill_fails() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
     handle._record.pid = parent_pid
     # Force kill to fail by having wait_procs return alive processes
+    handle.record_terminal_reason("operator_cancellation")
     with pytest.raises(ProcessTerminationError):
         handle.terminate(grace_period_s=0.0)
 
@@ -1360,6 +1361,7 @@ async def test_pm_terminate_routes_async_handle_to_escalation() -> None:
     target_pid_ref[0] = handle.pid
     first_seen[0] = False
 
+    handle.record_terminal_reason("operator_cancellation")
     with patch.object(pm_mod, "verify_process_liveness", _fake_verify):
         pm.terminate(handle, grace_period_s=0.0)
 

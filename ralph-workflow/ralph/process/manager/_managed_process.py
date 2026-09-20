@@ -68,6 +68,10 @@ class ManagedProcess:
     def returncode(self) -> int | None:
         return self._proc.returncode
 
+    def record_terminal_reason(self, reason: str) -> None:
+        """Authorize this process's termination with a named terminal reason."""
+        self._manager.record_terminal_reason(self._record.pid, reason)
+
     def poll(self) -> int | None:
         rc = self._proc.poll()
         if rc is not None and self._record.status not in _TERMINAL_STATUSES:
@@ -506,6 +510,7 @@ class ManagedProcess:
                 f"skipping terminate"
             )
             return
+        self.record_terminal_reason("operator_cancellation")
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -514,6 +519,7 @@ class ManagedProcess:
         self._manager._escalate_termination_sync(self._record, self._proc, gp)
 
     def kill(self) -> None:
+        self.record_terminal_reason("operator_cancellation")
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
     def cleanup_orphans(self) -> None:

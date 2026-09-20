@@ -46,6 +46,16 @@ from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.process.teardown import register_child_session
 
+_PERMITTED_TERMINAL_REASONS = frozenset(
+    {
+        "conflict_inactivity",
+        "operator_cancellation",
+        "interactive_completion",
+        "quota_exhausted",
+        "terminal_startup_error",
+    }
+)
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -487,12 +497,27 @@ class ProcessManager:
         self._termination_outcomes[pid].append({"stage": stage, "outcome": outcome})
 
     def record_terminal_reason(self, pid: int, reason: str) -> None:
+        """Record a permitted reason that authorizes a later termination."""
+        if reason not in _PERMITTED_TERMINAL_REASONS:
+            self._record_termination_outcome(pid, "terminal_reason_refused", reason)
+            return
         outcomes = self._termination_outcomes.setdefault(pid, [])
         if not any(outcome["stage"] == "terminal_reason" for outcome in outcomes):
             outcomes.append({"stage": "terminal_reason", "outcome": reason})
 
-    def _record_default_terminal_reason(self, pid: int) -> None:
-        self.record_terminal_reason(pid, "operator_cancellation")
+    def _termination_is_authorized(self, pid: int) -> bool:
+        return any(
+            outcome["stage"] == "terminal_reason"
+            and outcome["outcome"] in _PERMITTED_TERMINAL_REASONS
+            for outcome in self._termination_outcomes.get(pid, [])
+        )
+
+    def _refuse_unauthorized_termination(self, pid: int) -> bool:
+        if self._termination_is_authorized(pid):
+            return False
+        self._record_termination_outcome(pid, "termination_refused", "missing_permitted_reason")
+        logger.warning("Refusing to terminate process {} without a permitted terminal reason", pid)
+        return True
 
     def list_termination_outcomes(self) -> dict[int, list[dict[str, str]]]:
         """Return a dict mapping PID to termination outcome records.
@@ -801,7 +826,8 @@ class ProcessManager:
         *,
         grace_period_s: float | None = None,
     ) -> None:
-        """Terminate a tracked process with escalation."""
+        """Terminate a tracked process with explicit operator cancellation."""
+        self.record_terminal_reason(handle.record.pid, "operator_cancellation")
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
             self._escalate_termination_sync(handle.record, handle._proc, gp)
@@ -1019,6 +1045,7 @@ class ProcessManager:
                 if record.status in _TERMINAL_STATUSES:
                     continue
                 try:
+                    self.record_terminal_reason(pid, "operator_cancellation")
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)
@@ -1096,6 +1123,7 @@ class ProcessManager:
                 ):
                     continue
                 try:
+                    self.record_terminal_reason(pid, "operator_cancellation")
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)
@@ -1344,10 +1372,8 @@ class ProcessManager:
         proc: _SyncProcessLike | _PtyProcessLike,
         grace_period_s: float,
     ) -> None:
-        if record.status in _TERMINAL_STATUSES:
+        if record.status in _TERMINAL_STATUSES or self._refuse_unauthorized_termination(record.pid):
             return
-
-        self._record_default_terminal_reason(record.pid)
 
         # Pre-kill liveness check
         liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
@@ -1445,7 +1471,8 @@ class ProcessManager:
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
             return
-        self._record_default_terminal_reason(record.pid)
+        if self._refuse_unauthorized_termination(record.pid):
+            return
         # Pre-kill liveness check
         liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
@@ -1465,6 +1492,8 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
+            return
+        if self._refuse_unauthorized_termination(record.pid):
             return
 
         # Pre-kill liveness check
@@ -1627,6 +1656,8 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
+            return
+        if self._refuse_unauthorized_termination(record.pid):
             return
         liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
