@@ -418,14 +418,15 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
     assert "budget" in result.last_reason
 
 
-def test_a_raising_resolver_is_still_bounded(tmp_git_repo: Path) -> None:
-    """A resolver that RAISES is bounded like any unresolved conflict.
+def test_a_raising_resolver_does_not_charge_the_rebase_conflict_budget(
+    tmp_git_repo: Path,
+) -> None:
+    """A resolver invocation crash is distinct from an unresolved rebase.
 
-    ``endpoint_merge_with_resolution`` contains resolver exceptions and
-    reports ``resolution_failed``, so a crashing agent reaches the seam
-    as an ordinary unresolved conflict. This pins that the containment
-    still routes into the budget -- an agent that reliably crashes must
-    hit the cap rather than being re-invoked at every seam forever.
+    The endpoint seam contains the exception and returns its dedicated
+    invocation-failure outcome. That routes through ordinary agent recovery;
+    it must not consume the rebase conflict budget or advance the strategy
+    ladder.
     """
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
@@ -444,11 +445,12 @@ def test_a_raising_resolver_is_still_bounded(tmp_git_repo: Path) -> None:
             conflict_resolver=_raises,
         )
         assert result is not None
+        assert result.last_action == "skipped"
+        assert result.consecutive_conflicts == 0
+        assert result.conflict_strategy_index == 0
         state = result
 
-    assert len(invocations) == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
-    assert state.last_target == base
-    assert state.consecutive_conflicts >= MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert invocations == [base] * (MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 2)
 
 
 def test_unexpected_failure_mid_attempt_does_not_refund_the_budget(
