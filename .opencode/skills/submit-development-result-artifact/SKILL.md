@@ -66,9 +66,10 @@ Copy the IDs from the source artifact — do not invent or renumber them.
 
 ## Core Flow
 
-1. Write the document. Before the per-invocation 50-minute soft wrap-up
-   warning, only `completed` with every required plan proof is accepted. At or
-   after that warning, `partial` and `failed` are available again. For
+1. Write the document. Before the phase-wide 70-minute development-timebox
+   warning, only `completed` with every required plan proof is accepted. The
+   published warning epoch survives validation retries. At or after that
+   warning, `partial` and `failed` are available again. For
    `completed`, every section rule and every plan/analysis proof above is
    enforced. For `partial`, `## Summary` is required and — under a
    cycle-timebox warning — so is `## Incomplete Work`; otherwise lead with what
