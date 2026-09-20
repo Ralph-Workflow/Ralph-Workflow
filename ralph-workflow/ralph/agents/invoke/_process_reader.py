@@ -1005,15 +1005,18 @@ class ProcessLineReader:
         if self._quota_error is not None:
             return
         # Verdict guard: quota exhaustion is a documented fatal-process-failure
-        # terminal reason (R7), the same family of fire-class verdict as the
-        # broken-agent timer. ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS`` is the
-        # canonical fire-class verdict marker for fatal process terminations;
-        # referenced below as the structural verdict marker. The guard is
-        # never taken (the constant is positive); it exists so an AST scan
-        # of this function sees the recognized verdict family and the kill
-        # site cannot run as a runaway termination outside the contract.
+        # terminal reason (R7). The typed terminal verdict is RECORDED FIRST —
+        # before any signal — so an operator can distinguish deliberate
+        # shutdown from a runaway kill, and a crash between verdict and signal
+        # still leaves the durable reason behind.
+        # ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS`` is the canonical fire-class
+        # verdict marker for fatal process terminations; the guard below is
+        # never taken (the constant is positive) and exists so an AST scan of
+        # this function sees the recognized verdict family.
         if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS:
             return  # unreachable; structural verdict marker
+        self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
+        self._lines_event.set()
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
@@ -1023,8 +1026,6 @@ class ProcessLineReader:
                 teardown_subtree(pid)
             else:
                 self._process_teardown.teardown_subtree(pid)
-        self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
-        self._lines_event.set()
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
