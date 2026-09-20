@@ -78,6 +78,20 @@ def md_draft_path(artifact_dir: Path, artifact_type: str) -> Path:
     return artifact_dir / md_draft_filename(artifact_type)
 
 
+def _md_draft_revision_path(artifact_dir: Path, artifact_type: str) -> Path:
+    return artifact_dir / f".{artifact_type}.draft.revision"
+
+
+def load_md_draft_revision(
+    artifact_dir: Path, artifact_type: str, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> int:
+    """Return the persisted draft revision, treating absent/invalid markers as zero."""
+    try:
+        return int(backend.read_text(_md_draft_revision_path(artifact_dir, artifact_type), encoding="utf-8"))
+    except (KeyError, OSError, ValueError):
+        return 0
+
+
 def _seeded_draft_path(artifact_dir: Path, artifact_type: str) -> Path:
     """Return the private marker that identifies a canonical-seeded draft."""
     return artifact_dir / f".{artifact_type}.draft.seeded"
@@ -132,8 +146,15 @@ def save_md_draft(
     # and avoid its otherwise redundant deletion mutation; a changed publication
     # becomes authored content and must clear the marker as before.
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
-    if changed and backend.exists(seeded_path):
-        backend.unlink(seeded_path)
+    if changed:
+        write_text_if_changed(
+            backend,
+            _md_draft_revision_path(artifact_dir, artifact_type),
+            str(load_md_draft_revision(artifact_dir, artifact_type, backend=backend) + 1),
+            encoding="utf-8",
+        )
+        if backend.exists(seeded_path):
+            backend.unlink(seeded_path)
 
 
 def mark_md_draft_seeded(
@@ -183,6 +204,7 @@ __all__ = [
     "delete_md_draft",
     "is_md_draft_seeded",
     "load_md_draft",
+    "load_md_draft_revision",
     "mark_md_draft_seeded",
     "md_draft_character_cap",
     "md_draft_path",

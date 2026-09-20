@@ -28,11 +28,9 @@ if TYPE_CHECKING:
 
 
 class _CommitNormalizationModule(Protocol):
-    def normalize_commit_content(self, artifact_type: str, content: str, workspace_root: Path) -> str: ...
-
-    def commit_normalization_audit(
+    def normalize_commit_submission(
         self, artifact_type: str, content: str, workspace_root: Path
-    ) -> dict[str, object] | None: ...
+    ) -> tuple[str, dict[str, object] | None]: ...
 
 
 def _normalize_commit_submission(
@@ -44,8 +42,7 @@ def _normalize_commit_submission(
     module = cast(
         "_CommitNormalizationModule", import_module("ralph.mcp.tools.commit_normalization")
     )
-    normalized = module.normalize_commit_content(artifact_type, markdown, workspace_root)
-    return normalized, module.commit_normalization_audit(artifact_type, normalized, workspace_root)
+    return module.normalize_commit_submission(artifact_type, markdown, workspace_root)
 
 
 @dataclass(frozen=True)
@@ -181,11 +178,10 @@ def submit_artifact_canonical(
     del parsed_content
     if markdown is None:
         raise ValueError("markdown source is required for migrated artifacts")
-    markdown, fresh_normalization_audit = _normalize_commit_submission(
-        artifact_type, markdown, workspace_root
-    )
-    if fresh_normalization_audit is not None:
-        normalization_audit = fresh_normalization_audit
+    if normalization_audit is None:
+        markdown, normalization_audit = _normalize_commit_submission(
+            artifact_type, markdown, workspace_root
+        )
     if deps is None:
         deps = cast(
             "ArtifactHandlerDeps",
@@ -369,24 +365,6 @@ def _clear_worker_artifacts(
             )
 
 
-def _normalize_fallback_commit_content(artifact_type: str, content: str, workspace_root: Path) -> str:
-    """Normalize only after lazy module resolution avoids an import cycle."""
-    module = cast(
-        "_CommitNormalizationModule", import_module("ralph.mcp.tools.commit_normalization")
-    )
-    return module.normalize_commit_content(artifact_type, content, workspace_root)
-
-
-def _fallback_normalization_audit(
-    artifact_type: str, content: str, workspace_root: Path
-) -> dict[str, object] | None:
-    """Build the fallback receipt audit after lazy module resolution."""
-    module = cast(
-        "_CommitNormalizationModule", import_module("ralph.mcp.tools.commit_normalization")
-    )
-    return module.commit_normalization_audit(artifact_type, content, workspace_root)
-
-
 def promote_fallback_artifact(
     workspace_root: Path,
     artifact_type: str,
@@ -423,7 +401,9 @@ def promote_fallback_artifact(
         return None
     try:
         markdown = backend.read_text(fallback, encoding="utf-8")
-        markdown = _normalize_fallback_commit_content(artifact_type, markdown, workspace_root)
+        markdown, normalization_audit = _normalize_commit_submission(
+            artifact_type, markdown, workspace_root
+        )
     except (OSError, ValueError):
         return None
     try:
@@ -441,7 +421,7 @@ def promote_fallback_artifact(
         run_id=run_id,
         artifact_dir=artifact_dir,
         handoff_dir=handoff_dir,
-        normalization_audit=_fallback_normalization_audit(artifact_type, markdown, workspace_root),
+        normalization_audit=normalization_audit,
     )
     backend.unlink(fallback, missing_ok=True)
     return result
