@@ -30,6 +30,7 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
     prior_conflict_count,
 )
+from ralph.pipeline.auto_integrate_resolve import RESOLUTION_AGENT_FAILURE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 __all__ = [
+    "apply_completed_attempt_budget",
     "carry_budget_through_skip",
     "charge_failed_attempt",
     "observe_conflict_identity",
@@ -108,37 +110,52 @@ def carry_budget_through_skip(
     )
 
 
+def apply_completed_attempt_budget(
+    record: RebaseState,
+    *,
+    prior: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+    resolver_suppressed: bool,
+    attempts: int,
+) -> RebaseState:
+    """Charge only actual repository conflicts to the resolver budget."""
+    if RESOLUTION_AGENT_FAILURE in (record.last_reason or ""):
+        return charge_failed_attempt(
+            record, prior=prior, target=target, identity=identity, attempts=attempts
+        )
+    return apply_conflict_budget(
+        record,
+        prior=prior,
+        target=target,
+        resolver_suppressed=resolver_suppressed,
+        identity=identity,
+        attempts=attempts,
+    )
+
+
 def charge_failed_attempt(
     skip: RebaseState,
     *,
     prior: RebaseState,
     target: str,
     identity: ConflictIdentity,
-    resolver_offered: bool,
     attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> RebaseState:
     """Account for an integration attempt that died with an exception.
 
     An unexpected failure is turned into a skip record built from the
     model defaults -- ``consecutive_conflicts=0`` and no identity --
-    which REFUNDS the budget. The dev-agent conflict resolver runs
-    inside the guarded region, so a resolver that raises would
-    otherwise zero the count at every seam and the bound would never
-    engage: exactly the unbounded 900 s-per-seam behaviour the budget
-    exists to stop.
-
-    When a resolver was actually handed down, the failure is therefore
-    CHARGED as a consumed attempt -- the seam paid for the agent and
-    did not land, which is what the budget counts. With no resolver in
-    play nothing was paid for, so the prior count is merely carried.
-    Either way this is a bound on agent invocations only; the rebase
-    and the endpoint merge still run at the next seam, and any
-    successful land still resets the count to zero.
+    which REFUNDS the budget. Preserve the existing count and identity:
+    this guard covers Ralph and resolver invocation failures as well as
+    repository conflicts, and only an observed ``last_action='conflict'``
+    is allowed to spend the rebase-resolution budget. Agent failures use
+    the conflict-resolution recovery flow's cooldown and fallover instead.
     """
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     return skip.model_copy(
         update={
-            "consecutive_conflicts": min(attempts, carried + 1) if resolver_offered else carried,
+            "consecutive_conflicts": carried,
             "last_conflict_feature_sha": identity.feature_sha,
             "last_conflict_target_sha": identity.target_sha,
             "last_conflict_paths": identity.conflicted_paths,

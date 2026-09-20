@@ -28,6 +28,7 @@ from ralph.pipeline.auto_integrate_boundary import (
     phase_boundary_outcome as _phase_boundary_outcome,
 )
 from ralph.pipeline.auto_integrate_budget_seam import (
+    apply_completed_attempt_budget,
     carry_budget_through_skip,
     charge_failed_attempt,
     observe_conflict_identity,
@@ -35,7 +36,6 @@ from ralph.pipeline.auto_integrate_budget_seam import (
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
-    apply_conflict_budget,
     resolver_allowed,
 )
 from ralph.pipeline.auto_integrate_context import (
@@ -367,7 +367,6 @@ def _auto_integrate_after_commit_inner(
             prior=state,
             target=target,
             identity=identity,
-            resolver_offered=effective_resolver is not None,
             attempts=resolver_attempts,
         )
     if record is None:
@@ -389,12 +388,12 @@ def _auto_integrate_after_commit_inner(
         )
     if attempts_exhausted:
         record = _record_attempt_budget_spent(record)
-    return apply_conflict_budget(
+    return apply_completed_attempt_budget(
         record,
         prior=state,
         target=target,
-        resolver_suppressed=resolver_suppressed,
         identity=identity,
+        resolver_suppressed=resolver_suppressed,
         attempts=resolver_attempts,
     )
 

@@ -40,6 +40,7 @@ RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] =
     | frozenset(
         {
             ResolutionTerminationReason.EXCEPTION,
+            ResolutionTerminationReason.ATTEMPT_FAILED,
             ResolutionTerminationReason.OPERATOR_CAP_REACHED,
             ResolutionTerminationReason.CANDIDATE_EXITED,
             ResolutionTerminationReason.OUT_OF_REACH,

@@ -52,6 +52,9 @@ from ralph.git.merge import (
     staged_conflict_marker_paths,
     unmerged_paths,
 )
+from ralph.pipeline.conflict_resolution.attempt_fault import (
+    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+)
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
 #: Sentinel :func:`unmerged_paths` reports when the git query itself
@@ -74,6 +77,10 @@ def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
 #: ``'conflict'`` so the operator-facing reason names the failed
 #: resolution attempt.
 RESOLUTION_FAILED = "resolution_failed"
+
+#: A resolver-agent failure is handled by conflict-resolution recovery
+#: (cooldown/fallover), not charged as a repository conflict attempt.
+RESOLUTION_AGENT_FAILURE = "resolution_agent_failure"
 
 
 def endpoint_merge_with_resolution(
@@ -167,6 +174,11 @@ def _resolve_and_commit_with_reason(
         else None
     )
     if not _resolution_succeeded(result):
+        if (
+            isinstance(result, ResolutionOutcome)
+            and result.reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+        ):
+            return False, RESOLUTION_AGENT_FAILURE
         return False, reason
     if _stage_verify_and_commit(root, conflicted):
         return True, None

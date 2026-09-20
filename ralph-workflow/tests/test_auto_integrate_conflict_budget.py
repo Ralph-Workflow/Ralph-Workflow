@@ -418,33 +418,49 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
     assert "budget" in result.last_reason
 
 
-def test_a_raising_resolver_is_an_unresolved_conflict(
+def test_auto_integrate_regression_resolver_invocation_failure_preserves_rebase_budget(
     tmp_git_repo: Path,
 ) -> None:
-    """A contained resolver crash aborts and follows the conflict budget."""
+    """DA-007: agent failure falls over without spending conflict strategy budget."""
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
+    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
-    invocations: list[str] = []
+    prior = RebaseState(
+        last_action="conflict",
+        last_target=base,
+        consecutive_conflicts=1,
+        last_conflict_feature_sha=_run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip(),
+        last_conflict_target_sha=_run(tmp_git_repo, "rev-parse", base).stdout.strip(),
+    )
+    calls: list[str] = []
 
-    def _raises(repo_root: Path, target: str) -> bool:
-        invocations.append(target)
-        raise RuntimeError("simulated resolver crash")
-
-    state = RebaseState()
-    for _ in range(_TEST_RESOLVER_ATTEMPTS + 2):
-        result = auto_integrate_after_commit(
-            config,
-            WorkspaceScope(tmp_git_repo),
-            state,
-            conflict_resolver=_raises,
+    def _resolver(_root: Path, target: str) -> ResolutionOutcome:
+        calls.append(target)
+        return ResolutionOutcome(
+            succeeded=False,
+            reason=ResolutionTerminationReason.ATTEMPT_FAILED,
+            duration_seconds=0.0,
+            last_activity_kind=None,
+            last_activity_at=None,
+            unresolved_paths=("shared.txt",),
         )
-        assert result is not None
-        assert result.last_action == "conflict"
-        assert result.consecutive_conflicts <= _TEST_RESOLVER_ATTEMPTS
-        assert result.conflict_strategy_index == 0
-        state = result
 
-    assert invocations == [base] * _TEST_RESOLVER_ATTEMPTS
+    result = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_git_repo),
+        prior,
+        conflict_resolver=_resolver,
+    )
+
+    assert calls == [base]
+    assert result is not None
+    assert result.last_action == "conflict"
+    assert result.consecutive_conflicts == prior.consecutive_conflicts
+    assert result.conflict_strategy_index == prior.conflict_strategy_index
 
 
 def test_unexpected_failure_mid_attempt_does_not_refund_the_budget(
