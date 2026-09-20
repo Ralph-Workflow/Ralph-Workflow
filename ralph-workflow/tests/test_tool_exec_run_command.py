@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import threading
 from pathlib import Path
 
@@ -47,6 +48,23 @@ def test_successful_command(tmp_path: Path) -> None:
 def test_failing_command(tmp_path: Path) -> None:
     result = run_command("false", [], tmp_path, 5000)
     assert result.returncode != 0
+
+
+def test_timeout_error_includes_captured_output_tail(tmp_path: Path) -> None:
+    def timeout_runner(
+        _command: list[str], _cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        raise subprocess.TimeoutExpired(
+            cmd="slow", timeout=timeout_seconds or 1.0, output=b"before-timeout", stderr=b"warning"
+        )
+
+    with pytest.raises(ExecutionError) as excinfo:
+        run_command("slow", [], tmp_path, 5000, deps=ExecRunDeps(runner=timeout_runner))
+
+    text = str(excinfo.value)
+    assert "before-timeout" in text
+    assert "warning" in text
+    assert "timeout_ms" in text
 
 
 def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:

@@ -14,7 +14,7 @@ from ralph.mcp.tools.names import (
     RAW_EXEC_TOOL,
     UNSAFE_EXEC_TOOL,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 # A timeout is ambiguous, so the property hint teaches both readings: a
 # legitimately long command should raise ``timeout_ms``, but an unexpectedly slow
@@ -24,9 +24,11 @@ from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 # hint can never drift from real behavior.
 _TIMEOUT_MS_DESCRIPTION = (
     f"Timeout in milliseconds (default: {EXEC_DEFAULT_TIMEOUT_MS}, above the verify "
-    "budget; example values: 10000, 60000, 120000). On a timeout the process tree is "
-    "killed and the call returns an is_error result, NOT a retryable protocol error — "
-    "decide WHY before retrying: if the command is genuinely long-running, raise "
+    "budget; example values: 10000, 60000, 120000). Output progress resets the "
+    f"inactivity window, but every call still has the absolute {EXEC_MAX_TIMEOUT_MS}ms cap. On a "
+    "timeout the process tree is killed and the call returns an is_error result, NOT "
+    "a retryable protocol error — decide WHY before retrying: if the command is "
+    "genuinely long-running, raise "
     "timeout_ms; if it is unexpectedly slow it may be stuck in an infinite loop, "
     "deadlocked, or blocked waiting on input, in which case fix the command rather "
     "than just raising the limit."

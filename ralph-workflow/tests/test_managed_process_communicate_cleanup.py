@@ -541,6 +541,67 @@ def test_on_output_chunk_does_not_prevent_output_limit_error() -> None:
     assert received, "on_output_chunk must still be called even when limit is exceeded"
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(2.0)
+def test_streaming_output_resets_the_inactivity_timeout() -> None:
+    pm = ProcessManager(policy=_FAST_POLICY, psutil=None)
+    handle = pm.spawn(
+        [sys.executable, "-u", "-c", "import time; [print(i) or time.sleep(.05) for i in range(6)]"],
+        SpawnOptions(
+            label="test:progress-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ),
+    )
+
+    stdout, stderr = handle.communicate_and_cleanup(
+        timeout=0.15,
+        hard_timeout=1.0,
+        output_limit_bytes=4096,
+    )
+
+    assert stdout is not None and b"0" in stdout and b"5" in stdout
+    assert stderr == b""
+
+
+@pytest.mark.subprocess_e2e
+def test_silent_process_still_times_out_at_the_inactivity_deadline() -> None:
+    pm = ProcessManager(policy=_FAST_POLICY, psutil=None)
+    handle = pm.spawn(
+        [sys.executable, "-u", "-c", "import time; time.sleep(1)"],
+        SpawnOptions(label="test:idle-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE),
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired) as excinfo:
+        handle.communicate_and_cleanup(timeout=0.1, hard_timeout=1.0, output_limit_bytes=4096)
+
+    assert excinfo.value.timeout == 0.1
+    assert handle.record.status == ProcessStatus.KILLED
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(2.0)
+def test_streaming_process_still_stops_at_the_absolute_hard_deadline() -> None:
+    pm = ProcessManager(policy=_FAST_POLICY, psutil=None)
+    handle = pm.spawn(
+        [
+            sys.executable,
+            "-u",
+            "-c",
+            "import time\nwhile True:\n print('progress'); time.sleep(.02)",
+        ],
+        SpawnOptions(
+            label="test:absolute-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ),
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired) as excinfo:
+        handle.communicate_and_cleanup(timeout=0.15, hard_timeout=0.3, output_limit_bytes=4096)
+
+    assert excinfo.value.timeout == 0.15
+    assert excinfo.value.stdout is not None
+    assert b"progress" in excinfo.value.stdout
+    assert handle.record.status == ProcessStatus.KILLED
+
+
 def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_psutil = FakePsutil()
     handle = _make_handle(fake_psutil=fake_psutil)

@@ -106,6 +106,7 @@ PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 DEFAULT_TIMEOUT_MS = EXEC_DEFAULT_TIMEOUT_MS
 CompletedProcessAdapter = _CompletedProcessAdapter
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
+_TIMEOUT_PARTIAL_OUTPUT_LIMIT_BYTES = 16 * 1024
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
 _ARCHIVE_EXTRACT_FLAGS = ("-x", "--extract", "-d", "--delete")
@@ -690,6 +691,7 @@ def run_command(
             timed_out=True,
             timeout_ms=timeout_ms,
             suggested_timeout_ms=suggested,
+            partial_output=_timeout_partial_output(exc),
         ) from exc
     except OSError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
@@ -727,6 +729,8 @@ def _run_subprocess(
             timeout=timeout_seconds,
             output_limit_bytes=SPILL_OUTPUT_LIMIT_BYTES,
             on_output_chunk=chunk_callback,
+            # Progress extends the inactivity window, never this absolute cap.
+            hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000,
         )
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
@@ -747,6 +751,16 @@ def _run_subprocess(
         stderr=stderr or b"",
         returncode=handle.returncode or 0,
     )
+
+
+def _timeout_partial_output(exc: subprocess.TimeoutExpired) -> str | None:
+    """Return a bounded decoded tail captured before a process timeout."""
+    parts: list[str] = []
+    for label, value in (("Stdout", exc.stdout), ("Stderr", exc.stderr)):
+        text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+        if text:
+            parts.append(f"{label}:\n{text[-_TIMEOUT_PARTIAL_OUTPUT_LIMIT_BYTES:]}")
+    return "\n\n".join(parts) or None
 
 
 def _format_exec_error(exc: Exception) -> str:

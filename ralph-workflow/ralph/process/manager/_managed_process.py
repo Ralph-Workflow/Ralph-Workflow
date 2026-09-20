@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import subprocess
 import threading
 import time as _time
@@ -149,8 +150,15 @@ class ManagedProcess:
         cleanup_grace_period_s: float = 0.0,
         output_limit_bytes: int | None = None,
         on_output_chunk: Callable[[bytes], None] | None = None,
+        *,
+        hard_timeout: float | None = None,
     ) -> tuple[bytes | None, bytes | None]:
         """Drain output and clean up any descendant processes with psutil.
+
+        ``timeout`` is an inactivity window when output capture is enabled:
+        each stdout or stderr chunk resets it. ``hard_timeout`` is an optional
+        absolute ceiling for that mode; callers that omit it keep legacy
+        timeout-only behavior.
 
         Exactly ONE synchronous process-tree scan runs per call, and it
         runs *after* the child has finished. ``psutil``'s
@@ -188,6 +196,7 @@ class ManagedProcess:
                     output_limit_bytes=output_limit_bytes,
                     cleanup_grace_period_s=cleanup_grace_period_s,
                     on_output_chunk=on_output_chunk,
+                    hard_timeout=hard_timeout,
                 )
         except (subprocess.TimeoutExpired, ManagedProcessOutputLimitExceededError):
             with contextlib.suppress(Exception):
@@ -255,12 +264,13 @@ class ManagedProcess:
         limit_exceeded: threading.Event,
         output_lock: threading.Lock,
         total_output_bytes_ref: list[int],
+        last_output_at_ref: list[float],
         on_chunk: Callable[[bytes], None] | None = None,
     ) -> None:
         if stream is None:
             return
         while True:
-            chunk = stream.read(8_192)
+            chunk = stream.read1(8_192) if isinstance(stream, io.BufferedIOBase) else stream.read(8_192)
             if not chunk:
                 break
             if on_chunk is not None:
@@ -268,6 +278,7 @@ class ManagedProcess:
                     on_chunk(chunk)
             with output_lock:
                 total_output_bytes_ref[0] += len(chunk)
+                last_output_at_ref[0] = _time.monotonic()
                 self._append_output_tail(buffer, chunk, output_limit_bytes)
                 if total_output_bytes_ref[0] > output_limit_bytes:
                     limit_exceeded.set()
@@ -280,10 +291,13 @@ class ManagedProcess:
         output_limit_bytes: int,
         cleanup_grace_period_s: float,
         on_output_chunk: Callable[[bytes], None] | None = None,
+        hard_timeout: float | None = None,
     ) -> tuple[bytes, bytes]:
         stdout_buffer = bytearray()
         stderr_buffer = bytearray()
         total_output_bytes_ref = [0]
+        start_at = _time.monotonic()
+        last_output_at_ref = [start_at]
         output_lock = threading.Lock()
         limit_exceeded = threading.Event()
 
@@ -298,6 +312,7 @@ class ManagedProcess:
                 limit_exceeded,
                 output_lock,
                 total_output_bytes_ref,
+                last_output_at_ref,
                 on_output_chunk,
             ),
             daemon=True,
@@ -311,6 +326,7 @@ class ManagedProcess:
                 limit_exceeded,
                 output_lock,
                 total_output_bytes_ref,
+                last_output_at_ref,
                 on_output_chunk,
             ),
             daemon=True,
@@ -318,16 +334,36 @@ class ManagedProcess:
         stdout_thread.start()
         stderr_thread.start()
 
-        deadline = _time.monotonic() + timeout if timeout is not None else None
+        # ``hard_timeout`` prevents a continuously chatty child from running forever.
+        absolute_deadline = start_at + hard_timeout if hard_timeout is not None else None
         try:
             while stdout_thread.is_alive() or stderr_thread.is_alive():
                 if limit_exceeded.is_set():
                     with contextlib.suppress(Exception):
                         self.terminate(grace_period_s=cleanup_grace_period_s)
                     break
-                if deadline is not None and _time.monotonic() >= deadline:
-                    assert timeout is not None
-                    raise subprocess.TimeoutExpired([], timeout)
+                now = _time.monotonic()
+                with output_lock:
+                    inactivity_deadline = (
+                        last_output_at_ref[0] + timeout if timeout is not None else None
+                    )
+                    timeout_stdout = bytes(stdout_buffer)
+                    timeout_stderr = bytes(stderr_buffer)
+                if (
+                    (inactivity_deadline is not None and now >= inactivity_deadline)
+                    or (absolute_deadline is not None and now >= absolute_deadline)
+                ):
+                    timeout_value = timeout if timeout is not None else hard_timeout
+                    if timeout_value is None:
+                        raise RuntimeError("timeout deadline requires a timeout value")
+                    # Close the pipes before the finally block joins their readers.
+                    self.terminate(grace_period_s=cleanup_grace_period_s)
+                    raise subprocess.TimeoutExpired(
+                        [],
+                        timeout_value,
+                        output=timeout_stdout,
+                        stderr=timeout_stderr,
+                    )
                 stdout_thread.join(timeout=0.05)
                 stderr_thread.join(timeout=0.05)
         finally:

@@ -29,6 +29,7 @@ class ExecutionError(ToolError):
         timed_out: bool = False,
         timeout_ms: int | None = None,
         suggested_timeout_ms: int | None = None,
+        partial_output: str | None = None,
         # Diagnostics summary line
         diagnostics: str | None = None,
     ) -> None:
@@ -43,6 +44,7 @@ class ExecutionError(ToolError):
         self.timed_out = timed_out
         self.timeout_ms = timeout_ms
         self.suggested_timeout_ms = suggested_timeout_ms
+        self.partial_output = partial_output
         self.diagnostics = diagnostics
 
     def __str__(self) -> str:
@@ -87,6 +89,8 @@ class ExecutionError(ToolError):
             " waiting on input): raising timeout_ms will only waste more time — fix the"
             " command itself. Do not retry unchanged."
         )
+        if self.partial_output:
+            lines.append(f"Partial output before timeout:\n{self.partial_output}")
         if self.diagnostics:
             lines.append(f"  Diagnostics: {self.diagnostics}")
         return "\n".join(lines)
