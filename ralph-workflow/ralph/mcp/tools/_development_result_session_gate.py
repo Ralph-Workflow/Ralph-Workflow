@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
-from ralph.mcp.server._session_wrapup import session_before_warning, session_warning_fired
+from ralph.mcp.protocol.cycle_deadline_env import development_warning_is_active
 from ralph.mcp.tools.artifact import DEFAULT_ARTIFACT_HANDLER_DEPS, _workspace_root
 from ralph.pipeline.work_units import parse_work_units_from_artifact
 
@@ -27,21 +28,22 @@ def development_result_session_diagnostics(
     workspace: WorkspaceLike,
     content: dict[str, object],
 ) -> list[Diagnostic]:
-    """Enforce status before warning and exact completed proof coverage always."""
-    if not session_before_warning() and not session_warning_fired():
-        return []
+    """Enforce status before the development-timebox warning and exact proof coverage."""
+    warned = development_warning_is_active(now_epoch=time.time())
     if content.get("status") != "completed":
-        if not session_before_warning():
+        if warned:
             return []
         return [
             Diagnostic(
                 1,
                 "Frontmatter",
                 "DEV014",
-                "development_result status must be 'completed' before the session's 50-minute warning",
+                "development_result status must be 'completed' before the development-timebox warning",
             )
         ]
     required_refs = _required_plan_refs(session, workspace)
+    if not required_refs:
+        return []
     submitted_refs: set[str] = set()
     raw_proofs = content.get("plan_items_proven")
     if isinstance(raw_proofs, list):

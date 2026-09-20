@@ -1,42 +1,8 @@
-"""Graduated session soft wrap-up nag.
+"""Development-timebox wrap-up state shared by MCP tool dispatch.
 
-Once a single agent invocation passes the soft threshold, every MCP tool result
-carries a wrap-up banner so the agent finishes up and calls ``declare_complete``
-before the hard wall-clock force-cut (enforced separately by the idle watchdog's
-``SESSION_CEILING_EXCEEDED``). This is the "nag, then cut" half of the session
-ceiling: the watchdog kills a runaway, but the nag gives a well-behaved agent a
-chance to land its work first.
-
-Per-invocation contract
------------------------
-
-``SessionWrapupBudget`` is owned by ONE agent invocation. The underlying
-``_started_at`` clock must NOT carry over when a new attempt begins. The
-following are equivalent (per the canonical AC-01..AC-05 contract documented in
-``.agent/PLAN.md``):
-
-- the orchestrator's ``effect_executor._run_attempt`` calls
-  ``bridge.reset_session_budget()`` at the top of every attempt (the
-  per-attempt boundary that ``_invoke_agent_with_recovery`` drives), which
-  posts ``notifications/reset_wrapup`` over HTTP to the inner subprocess;
-- the inner subprocess's :class:`McpServer` dispatches that method to
-  :meth:`McpServer.reset_session_budget`, which creates a fresh
-  ``SessionWrapupBudget(SystemClock(), ...)`` and replaces the existing
-  ``_wrapup_provider`` in-place;
-- a fresh command line to init the agent (operator-initiated restart) is
-  treated the same way: a new process, a new budget, ``elapsed=0`` from the
-  first tool result.
-
-The clock is injected so timing is deterministic in tests; the production
-reset path uses :class:`SystemClock` and the canonical ``MAX_SESSION_SECONDS``
-and ``SESSION_SOFT_WRAPUP_SECONDS`` defaults from
-:mod:`ralph.timeout_defaults`. Honouring ``RALPH_MAX_SESSION_SECONDS`` /
-``RALPH_SESSION_SOFT_WRAPUP_SECONDS`` env vars in the in-process reset is
-deliberately NOT done — those env vars are read by the standalone subprocess
-path (``ralph.mcp.server.runtime._session_wrapup_provider``) and apply to
-the freshly-spawned subprocess; the in-process reset uses the
-``timeout_defaults`` constants so the API contract (one budget per invocation)
-stays explicit.
+The pipeline publishes ``RALPH_DEV_WARN_EPOCH`` once for the uninterrupted
+development phase. MCP reads that epoch for both the tool-result nag and the
+identity-scoped completion confirmation, so retries cannot restart the timer.
 """
 
 from __future__ import annotations
@@ -44,35 +10,29 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from threading import Lock
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 __all__ = [
-    "SessionWrapupBudget",
+    "development_wrapup_notice",
     "request_completion_admission",
     "reset_completion_admissions",
     "session_before_warning",
     "session_warning_fired",
     "session_warning_scope",
-    "wrapup_notice",
 ]
 
 _SESSION_BEFORE_WARNING: ContextVar[bool | None] = ContextVar(
     "ralph_session_before_warning", default=None
 )
-
-_PENDING_COMPLETION_ADMISSIONS: dict[tuple[str, str], None] = {}  # bounded-accumulator-ok: cleared at every per-attempt session-budget reset.
+_PENDING_COMPLETION_ADMISSIONS: dict[tuple[str, str], None] = {}  # bounded-accumulator-ok: cleared at every attempt boundary.
 _COMPLETION_ADMISSIONS_LOCK = Lock()
 
 
 def request_completion_admission(identity: tuple[str, str]) -> bool:
-    """Record a first completion admission or consume its deliberate confirmation.
-
-    Returns ``True`` for the first post-warning request and ``False`` for its
-    same-identity confirmation. The transition is atomic across HTTP threads.
-    """
+    """Record a first completion admission or consume its confirmation."""
     with _COMPLETION_ADMISSIONS_LOCK:
         if identity in _PENDING_COMPLETION_ADMISSIONS:
             del _PENDING_COMPLETION_ADMISSIONS[identity]
@@ -82,24 +42,24 @@ def request_completion_admission(identity: tuple[str, str]) -> bool:
 
 
 def reset_completion_admissions() -> None:
-    """Discard pending completion admissions at a fresh-attempt boundary."""
+    """Discard pending confirmations at a fresh-attempt boundary."""
     with _COMPLETION_ADMISSIONS_LOCK:
         _PENDING_COMPLETION_ADMISSIONS.clear()
 
 
 def session_before_warning() -> bool:
-    """Return whether the current dispatched tool call is before the warning."""
+    """Return whether the current dispatched tool call precedes the warning."""
     return _SESSION_BEFORE_WARNING.get() is True
 
 
 def session_warning_fired() -> bool:
-    """Return whether the current dispatched tool call is after the warning."""
+    """Return whether the current dispatched tool call follows the warning."""
     return _SESSION_BEFORE_WARNING.get() is False
 
 
 @contextmanager
 def session_warning_scope(before_warning: bool) -> Iterator[None]:
-    """Publish one invocation's warning state only for its tool dispatch."""
+    """Publish the epoch-derived warning state for one tool dispatch."""
     token = _SESSION_BEFORE_WARNING.set(before_warning)
     try:
         yield
@@ -107,74 +67,14 @@ def session_warning_scope(before_warning: bool) -> Iterator[None]:
         _SESSION_BEFORE_WARNING.reset(token)
 
 
-class _Clock(Protocol):
-    def monotonic(self) -> float: ...
-
-
-def wrapup_notice(
-    *,
-    elapsed_seconds: float,
-    soft_seconds: float | None,
-    hard_seconds: float | None,
-) -> str | None:
-    """Return a wrap-up banner when past the soft threshold, else None."""
-    if soft_seconds is None or elapsed_seconds < soft_seconds:
-        return None
-    if hard_seconds is not None:
-        remaining_minutes = max(0, int((hard_seconds - elapsed_seconds) // 60))
-        remaining_budget = f"~{remaining_minutes} min remain before the hard cap. "
-    else:
-        remaining_budget = "You are past the soft time budget. "
+def development_wrapup_notice() -> str:
+    """Return the phase-wide development-timebox wind-down notice."""
     return (
-        "⚠️ 50-MINUTE WARNING — "
-        f"{remaining_budget}"
-        "Do everything reasonably possible to complete the assigned task before submitting any "
-        "artifact. If any item is incomplete and actionable work remains, return to it immediately. "
-        "Use partial only as an exceptional last resort, when no productive in-scope action remains "
-        "and available information or authority cannot complete the work — not merely because 50 "
-        "minutes elapsed. Never submit completed unless the task is actually complete and every "
-        "reported item and piece of evidence is truthful. When genuinely complete, use "
-        "declare_complete."
+        "⚠️ DEVELOPMENT-TIMEBOX WARNING — The uninterrupted development phase has passed "
+        "its configured warning point. Do everything reasonably possible to complete the "
+        "assigned task before submitting any artifact. If actionable work remains, return to "
+        "it immediately. Use partial only as an exceptional last resort, when no productive "
+        "in-scope action remains and available information or authority cannot complete the "
+        "work. Never submit completed unless every reported item and piece of evidence is "
+        "truthful. When genuinely complete, use declare_complete."
     )
-
-
-class SessionWrapupBudget:
-    """Tracks invocation elapsed time and produces the wrap-up notice.
-
-    Per-invocation ownership: a single ``SessionWrapupBudget`` instance is
-    scoped to ONE agent invocation. Callers MUST NOT reuse a budget across
-    attempts; instead, construct a fresh instance (e.g. via
-    :meth:`McpServer.reset_session_budget`, which does exactly this) so the
-    underlying ``_started_at`` clock does not carry over from a prior attempt.
-    The 60-minute timing budget is a per-invocation soft timeout: a fresh
-    command line to init the agent (operator-initiated restart) or a retry
-    within ``effect_executor._invoke_agent_with_recovery`` is a fresh attempt
-    with a fresh budget.
-    """
-
-    def __init__(
-        self,
-        clock: _Clock,
-        *,
-        soft_seconds: float | None,
-        hard_seconds: float | None,
-    ) -> None:
-        self._clock = clock
-        self._soft_seconds = soft_seconds
-        self._hard_seconds = hard_seconds
-        self._started_at = clock.monotonic()
-
-    def before_soft_warning(self) -> bool:
-        """Return whether this invocation is strictly before its soft warning."""
-        return self._soft_seconds is not None and (
-            self._clock.monotonic() - self._started_at < self._soft_seconds
-        )
-
-    def notice(self) -> str | None:
-        """Return the current wrap-up banner, or None if not yet past the soft threshold."""
-        elapsed = self._clock.monotonic() - self._started_at
-        return wrapup_notice(
-            elapsed_seconds=elapsed,
-            soft_seconds=self._soft_seconds,
-            hard_seconds=self._hard_seconds,
-        )

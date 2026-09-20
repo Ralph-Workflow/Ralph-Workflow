@@ -233,7 +233,7 @@ An AGY run can end cleanly (`rc=0`) without the required completion
 evidence — the durable `declare_complete` sentinel, or the receipt for a
 required artifact. Measured causes include AGY's provider-owned print
 deadline expiring mid-run (the headless default is five minutes; every
-Ralph Workflow invocation now passes `--print-timeout 1h`), a permission
+Ralph Workflow invocation now passes `--print-timeout 2h`), a permission
 auto-deny that empties the stream, and the model stopping early —
 including runs where it waited for interactive input or asked for
 clarification that a non-interactive run can never answer.

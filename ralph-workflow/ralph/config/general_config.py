@@ -40,7 +40,6 @@ from ralph.timeout_defaults import (
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
     SAME_SHAPE_RETRY_DEFAULT,
-    SESSION_SOFT_WRAPUP_SECONDS,
     SUBAGENT_OUTPUT_CAPTURE_ENABLED,
     SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
@@ -256,17 +255,6 @@ class GeneralConfig(RalphBaseModel):
             "Absolute wall-clock ceiling in seconds for the entire agent session"
             " (hard force-cut). Activity cannot reset this ceiling. Must be >="
             " agent_idle_timeout_seconds when set. Set to None to disable."
-        ),
-    )
-    agent_session_soft_wrapup_seconds: float | None = Field(
-        default=SESSION_SOFT_WRAPUP_SECONDS,
-        gt=0.0,
-        description=(
-            "Soft wrap-up threshold in seconds. Once a single invocation has run"
-            " this long, MCP tool results carry a stern warning to finish actionable"
-            " work; partial remains a last resort before the hard"
-            " agent_max_session_seconds force-cut. Must be < agent_max_session_seconds"
-            " when both are set. Set to None to disable the warning."
         ),
     )
     agent_repeated_error_consecutive_threshold: int | None = Field(
@@ -555,17 +543,6 @@ class GeneralConfig(RalphBaseModel):
             msg = (
                 "agent_max_session_seconds must be >= agent_idle_timeout_seconds"
                 f" (got {self.agent_max_session_seconds} < {self.agent_idle_timeout_seconds})"
-            )
-            raise ValueError(msg)
-        if (
-            self.agent_session_soft_wrapup_seconds is not None
-            and self.agent_max_session_seconds is not None
-            and self.agent_session_soft_wrapup_seconds >= self.agent_max_session_seconds
-        ):
-            msg = (
-                "agent_session_soft_wrapup_seconds must be < agent_max_session_seconds"
-                f" (got {self.agent_session_soft_wrapup_seconds}"
-                f" >= {self.agent_max_session_seconds})"
             )
             raise ValueError(msg)
         if (

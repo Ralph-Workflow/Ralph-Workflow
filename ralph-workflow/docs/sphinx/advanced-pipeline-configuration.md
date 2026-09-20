@@ -467,14 +467,14 @@ Unknown `[development_timebox]` keys are rejected rather than ignored.
 
 #### Relationship to other limits
 
-The cycle timebox is independent of the existing **60-minute
-per-invocation development-phase limit** (the soft timeout that bounds a
-single agent invocation) and the analysis-loop iteration cap. The
-cycle timebox bounds the *full* plan-to-final-commit cycle — across
-development, intermediate commit, development analysis, and every
-loopback — while the 60-minute limit bounds a *single* phase invocation
-and resets on each fresh attempt. Neither limit substitutes for the
-other; both are enforced independently.
+The cycle timebox is independent of the development timebox and the
+analysis-loop iteration cap. The cycle timebox bounds the *full*
+plan-to-final-commit cycle — across development, intermediate commit,
+development analysis, and every loopback — while the development timebox
+bounds the uninterrupted development phase across retries. Its default
+70-minute warning and 90-minute hard stop are published to MCP as phase-wide
+epochs, so validation failures cannot reset them. Neither limit substitutes
+for the other; both are enforced independently.
 
 #### Timer reset and checkpoint behavior
 

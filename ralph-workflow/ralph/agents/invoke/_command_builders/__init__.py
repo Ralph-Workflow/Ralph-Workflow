@@ -682,7 +682,7 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
         model_flag_template=None,
         positional_prompt=True,
         print_flag="--print",
-        extra_flags_before_prompt=("--print-timeout", "1h"),
+        extra_flags_before_prompt=("--print-timeout", "2h"),
         cmd_argv_override=True,
         yolo_before_session=True,
         workspace_dir_flag=("--add-dir",),

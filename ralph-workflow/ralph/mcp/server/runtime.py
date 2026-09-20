@@ -42,7 +42,6 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph import __version__
-from ralph.agents.system_clock import SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.multimodal.capabilities import (
@@ -50,7 +49,6 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
 )
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
-from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server._activity_relay_sender import (
     ActivityRelaySender,
@@ -70,7 +68,6 @@ from ralph.mcp.server._runtime_constants import (
     DEFAULT_TRANSPORT,
 )
 from ralph.mcp.server._server_state import ServerState
-from ralph.mcp.server._session_wrapup import SessionWrapupBudget
 from ralph.mcp.server._standalone_http_server import _StandaloneHttpServer
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
@@ -85,7 +82,6 @@ from ralph.mcp.upstream.config import (
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.mcp.upstream.validation import strict_mode_from_env
 from ralph.process._spawn_env import sanitize_process_environment
-from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -252,46 +248,15 @@ def build_standalone_http_server(
         )
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
-    activity_only = cast("bool", getattr(effective_session, "activity_only_supervision", False))
-    wrapup_budget = None if activity_only else _session_wrapup_budget(env_map)
     server = McpServer(
         effective_session,
         workspace,
         registry,
-        wrapup_provider=None if wrapup_budget is None else wrapup_budget.notice,
-        before_wrapup_warning_provider=(
-            None if wrapup_budget is None else wrapup_budget.before_soft_warning
-        ),
         mcp_activity_sink=(
             activity_relay_sender.emit if activity_relay_sender is not None else None
         ),
     )
     return _StandaloneHttpServer(host, port, server)
-
-
-def _env_float(name: str, default: float | None, env: Mapping[str, str]) -> float | None:
-    raw = env.get(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
-def _session_wrapup_budget(env: Mapping[str, str]) -> SessionWrapupBudget:
-    """Build the graduated-session wrap-up budget from env (or defaults).
-
-    The standalone MCP server starts per agent invocation, so process-start is a
-    sound proxy for invocation-start. ``RALPH_SESSION_SOFT_WRAPUP_SECONDS`` and
-    ``RALPH_MAX_SESSION_SECONDS`` override the built-in graduated defaults.
-    """
-    budget = SessionWrapupBudget(
-        SystemClock(),
-        soft_seconds=_env_float(SESSION_SOFT_WRAPUP_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS, env),
-        hard_seconds=_env_float(MAX_SESSION_SECONDS_ENV, MAX_SESSION_SECONDS, env),
-    )
-    return budget
 
 
 def _all_capability_values() -> set[str]:

@@ -75,12 +75,13 @@ that a step is unnecessary are invalid rationales for `not_applicable`.
 
 ## Session warning boundary
 
-Before the current invocation reaches its 50-minute soft wrap-up warning, only
-`status: completed` is accepted, and its Plan Items Proven entries must exactly
-cover every required plan reference. The gate and warning use the same
-broker-owned resettable monotonic clock; frontmatter cannot alter the boundary.
-At or after the warning, `partial` and `failed` remain available under the
-existing incomplete-work rules below.
+Before the uninterrupted development phase reaches its configured
+70-minute development-timebox warning, only `status: completed` is accepted,
+and its Plan Items Proven entries must exactly cover every required plan
+reference. The pipeline publishes the warning epoch once for the phase, so
+validation retries cannot reset the boundary. At or after the warning,
+`partial` and `failed` remain available under the existing incomplete-work
+rules below.
 
 ## Sections
 

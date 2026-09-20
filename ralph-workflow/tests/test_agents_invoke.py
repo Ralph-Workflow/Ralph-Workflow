@@ -4621,7 +4621,7 @@ def test_build_agy_command_all_flags_precede_print_and_prompt(tmp_path: Path) ->
         "sess-1",
         "--verbose",
         "--print-timeout",
-        "1h",
+        "2h",
         "--print",
         "hello",
     ]

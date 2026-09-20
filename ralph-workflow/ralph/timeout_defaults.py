@@ -84,16 +84,9 @@ DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS: dict[str, float] = {
 MAX_WAITING_ON_CHILD_SECONDS: float = 1800.0
 
 #: Default absolute session wall-clock ceiling (hard force-cut). None disables it.
-#: Set to 55 minutes so a runaway single invocation cannot run unbounded (the
-#: incident that motivated this ran ~5 hours). The soft wrap-up nag fires earlier
-#: (see ``SESSION_SOFT_WRAPUP_SECONDS``), leaving a margin under the nominal 1h
-#: budget. Per-invocation and config-overridable; recovery continues after a cut.
-MAX_SESSION_SECONDS: float | None = 3300.0
-
-#: Soft wrap-up threshold: once a single invocation has run this long, MCP tool
-#: results carry a "finish up / declare_complete soon" banner so the agent winds
-#: down before the hard ``MAX_SESSION_SECONDS`` force-cut. None disables the nag.
-SESSION_SOFT_WRAPUP_SECONDS: float | None = 3000.0
+#: This is a generic runaway guard, deliberately above the default 90-minute
+#: development-timebox hard stop so it cannot preempt the timebox redirect.
+MAX_SESSION_SECONDS: float | None = 5700.0
 
 #: Repeated-error circuit breaker: fire after this many consecutive identical
 #: error fingerprints with no intervening forward progress. None disables the rule.

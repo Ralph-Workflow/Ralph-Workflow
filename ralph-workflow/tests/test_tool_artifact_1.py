@@ -26,6 +26,8 @@ from tests._support.typed_accessors import must_mapping, must_text
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
     from ralph.mcp.tools.coordination import ToolResult
 
 _DOCUMENT = """---
@@ -36,9 +38,6 @@ status: completed
 - [S1] Markdown migration completed.
 ## Files Changed
 - [F1] tests/test_tool_artifact_1.py
-## Plan Items Proven
-- [S-1] Focused tests pass.
-  Disposition: completed
 """
 
 _PARTIAL = "---\ntype: product_spec\n---\n## Title\n- [T1] Markdown artifacts\n"
@@ -48,7 +47,10 @@ def _payload(result: ToolResult) -> dict[str, object]:
     return must_mapping(json.loads(must_text(result.content[0])))
 
 
-def test_submission_writes_byte_identical_artifact_and_handoff(tmp_path: Path) -> None:
+def test_submission_writes_byte_identical_artifact_and_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RALPH_DEV_WARN_EPOCH", raising=False)
     result = handle_submit_md_artifact(
         planning_session(drain="development"),
         MockWorkspace(tmp_path),

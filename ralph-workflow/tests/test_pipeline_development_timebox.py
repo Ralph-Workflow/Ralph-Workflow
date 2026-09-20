@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.cycle_timing import RoutingTiming, apply_development_timebox
 from ralph.pipeline.reducer import redirect_expired_cycle_in_place
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import DevelopmentTimeboxPolicy
+from ralph.timeout_defaults import IDLE_TIMEOUT_SECONDS, MAX_SESSION_SECONDS
 
 _DEFAULTS = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
@@ -57,6 +60,27 @@ def test_same_phase_retry_redirects_at_development_deadline() -> None:
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.dev_timebox_active is False
     assert next_state.dev_timebox_redirect_reason is not None
+
+
+def test_default_watchdog_ceiling_cannot_preempt_development_redirect() -> None:
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(idle_timeout_seconds=IDLE_TIMEOUT_SECONDS, max_session_seconds=MAX_SESSION_SECONDS),
+        clock,
+    )
+
+    assert watchdog.evaluate(classify_quiet=lambda: False) is WatchdogVerdict.CONTINUE
+    clock.advance(5400.0)
+    assert watchdog.evaluate(classify_quiet=lambda: False) is WatchdogVerdict.CONTINUE
+    policy = _policy()
+    assert policy.development_timebox is not None
+    decision = apply_development_timebox(
+        PipelineState(phase="development", dev_timebox_active=True),
+        "development",
+        policy=policy,
+        routing_timing=_timing(5400.0),
+    )
+    assert decision.redirected is True
 
 
 def test_custom_development_limit_does_not_change_cycle_elapsed() -> None:

@@ -5,16 +5,17 @@ from __future__ import annotations
 import base64 as _base64
 import hashlib
 import json
+import time
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph import __version__
-from ralph.agents.system_clock import SystemClock
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.multimodal.capabilities import inline_image_roundtrip_unsafe
 from ralph.mcp.multimodal.resources import parse_media_uri
+from ralph.mcp.protocol.cycle_deadline_env import development_warning_is_active
 from ralph.mcp.server._activity_relay import ActivityRelayError
 from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
@@ -26,7 +27,7 @@ from ralph.mcp.server._schema_flavor import (
 )
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import (
-    SessionWrapupBudget,
+    development_wrapup_notice,
     reset_completion_admissions,
     session_warning_scope,
 )
@@ -40,7 +41,6 @@ from ralph.mcp.tools.coordination import (
 )
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 from ralph.mcp.upstream.client import carries_upstream_media_blocks
-from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -194,8 +194,6 @@ class McpServer:
         registry: ToolBridge,
         *,
         expose_mcp_aliases: bool = True,
-        wrapup_provider: Callable[[], str | None] | None = None,
-        before_wrapup_warning_provider: Callable[[], bool] | None = None,
         metrics: McpMetrics | None = None,
         mcp_activity_sink: Callable[[str], None] | None = None,
     ) -> None:
@@ -212,11 +210,6 @@ class McpServer:
         # serves exactly one agent client per subprocess, so per-instance
         # state is the correct scope.
         self._schema_flavor: str | None = None
-        # Optional graduated-session nag: returns a wrap-up banner once the
-        # invocation passes the soft threshold, else None. Appended to every
-        # tool result so the agent winds down before the hard force-cut.
-        self._wrapup_provider = wrapup_provider
-        self._before_wrapup_warning_provider = before_wrapup_warning_provider
         # Observability metrics — counters the production transport wires
         # to record post-header failures, terminal frames, and health-probe
         # outcomes. Tests inject a fresh instance to assert observable behavior
@@ -243,29 +236,12 @@ class McpServer:
         artifact-missing failure) starts with ``elapsed=0`` on the very first
         tool result instead of inheriting the prior attempt's elapsed time.
 
-        The reset creates a fresh :class:`SessionWrapupBudget` backed by the
-        production :class:`SystemClock` and the canonical
-        ``SESSION_SOFT_WRAPUP_SECONDS`` / ``MAX_SESSION_SECONDS`` defaults
-        from :mod:`ralph.timeout_defaults`. The previous budget is replaced
-        in-place; the new provider retains the same
-        ``Callable[[], str | None]`` signature so no caller signature changes.
-
-        No-op when ``wrapup_provider`` was None at construction time (the
-        default; tests that do not exercise the nag have no provider to
-        reset). The reset is also reachable over the wire via the
-        ``notifications/reset_wrapup`` JSON-RPC method (see
-        :meth:`_dispatch_request`).
+        Warning timing is phase-wide and comes from the development-timebox
+        epoch, so this method deliberately does not re-arm a timer. It only
+        clears pending identity-scoped completion confirmations. The reset is
+        also reachable over the wire via ``notifications/reset_wrapup``.
         """
         reset_completion_admissions()
-        if self._wrapup_provider is None:
-            return
-        budget = SessionWrapupBudget(
-            SystemClock(),
-            soft_seconds=SESSION_SOFT_WRAPUP_SECONDS,
-            hard_seconds=MAX_SESSION_SECONDS,
-        )
-        self._wrapup_provider = budget.notice
-        self._before_wrapup_warning_provider = budget.before_soft_warning
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -798,11 +774,8 @@ class McpServer:
             )
 
         try:
-            before_warning = (
-                self._before_wrapup_warning_provider is None
-                or self._before_wrapup_warning_provider()
-            )
-            with session_warning_scope(before_warning):
+            warning_active = development_warning_is_active(now_epoch=time.time())
+            with session_warning_scope(not warning_active):
                 raw_result = self._registry.dispatch(
                     tool_name, dict(arguments_value), host_session=self._session
                 )
@@ -820,7 +793,10 @@ class McpServer:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
-        self._maybe_append_notice(payload, self._wrapup_provider)
+        self._maybe_append_notice(
+            payload,
+            development_wrapup_notice if development_warning_is_active(now_epoch=time.time()) else None,
+        )
         return (
             JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
             ServerState.RUNNING,
