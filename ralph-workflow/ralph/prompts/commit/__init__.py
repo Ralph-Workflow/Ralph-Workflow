@@ -72,6 +72,8 @@ def prompt_commit_message(
         "CHANGE_AREAS": ", ".join(evidence.change_areas) if evidence is not None else "derive from the diff",
         "MESSAGE_BUDGET": evidence.message_budget if evidence is not None else "derive from the diff",
         "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
+        "BEHAVIOR_FACTS": _evidence_facts(evidence, "behavior_facts"),
+        "VERIFICATION_FACTS": _evidence_facts(evidence, "verification_facts"),
     }
     variables.update(
         _commit_payload_variables(
@@ -118,6 +120,8 @@ def prompt_commit_message_for_opencode(
         "CHANGE_AREAS": ", ".join(evidence.change_areas) if evidence is not None else "derive from the diff",
         "MESSAGE_BUDGET": evidence.message_budget if evidence is not None else "derive from the diff",
         "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
+        "BEHAVIOR_FACTS": _evidence_facts(evidence, "behavior_facts"),
+        "VERIFICATION_FACTS": _evidence_facts(evidence, "verification_facts"),
     }
     variables.update(
         _commit_payload_variables(
@@ -136,6 +140,14 @@ def _diff_and_evidence(diff: str | CommitEvidenceBundle) -> tuple[str, CommitEvi
     if isinstance(diff, CommitEvidenceBundle):
         return diff.diff.strip(), diff
     return diff.strip(), None
+
+
+def _evidence_facts(evidence: CommitEvidenceBundle | None, field: str) -> str:
+    """Render recorded facts without turning recommendations into claims."""
+    if evidence is None:
+        return "none recorded"
+    facts = evidence.behavior_facts if field == "behavior_facts" else evidence.verification_facts
+    return "; ".join(facts) if facts else "none recorded"
 
 
 def _read_commit_retry_hint(workspace_root: Path | None) -> str:

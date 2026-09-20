@@ -28,8 +28,8 @@ def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> 
         intent=subject,
         change_areas=evidence.change_areas,
         rationale=(),
-        behavior_risk=(*evidence.compatibility_hints, *evidence.risk_hints),
-        verification=evidence.verification_hints,
+        behavior_risk=evidence.behavior_facts,
+        verification=evidence.verification_facts,
         files=evidence.changed_files,
     )
 
