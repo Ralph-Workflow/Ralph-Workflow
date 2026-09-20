@@ -14,7 +14,7 @@
 # Multimodal smoke tests are I/O-bound and use an independently bounded
 # worker pool so their parallelism remains configurable without changing the
 # primary suite policy.
-MULTIMODAL_SMOKE_WORKERS ?= 12
+MULTIMODAL_SMOKE_WORKERS ?= 4
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
