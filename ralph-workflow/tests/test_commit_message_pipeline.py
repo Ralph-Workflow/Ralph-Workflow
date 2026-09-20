@@ -116,6 +116,26 @@ def test_normalization_audit_records_fresh_evidence_and_draft_revision(
     assert audit["provenance"] == ("live evidence", "draft")
 
 
+def test_normalization_audit_flags_partial_overlap_at_medium_confidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py"))
+    (tmp_path / ".git").mkdir()
+
+    _, audit = commit_normalization_module.normalize_commit_submission(
+        "commit_message",
+        "fix: preserve evidence\n\n## Notes\n- Preserve retry evidence for users.",
+        tmp_path,
+    )
+
+    assert audit is not None
+    assert audit["confidence"] == "medium"
+    assert audit["transformations"] == [
+        {"action": "rendered canonical artifact from live evidence", "source": "live evidence", "confidence": "high"},
+        {"action": "preserved partial-overlap draft claim", "source": "live evidence", "confidence": "medium"},
+    ]
+
+
 def test_canonical_submission_persists_first_normalization_pass_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -21,6 +21,9 @@ _HEADING: re.Pattern[str] = re.compile(r"(?m)^##+\s+.*\S\s*$")
 _BODY_ITEM: re.Pattern[str] = re.compile(r"(?m)^\s*(?:[-*]|\d+\.)\s+(?:\[[A-Z]+-\d+\]\s*)?(.*\S)\s*$")
 _KEY_VALUE: re.Pattern[str] = re.compile(r"(?im)^\s*(?:intent|rationale|changes?|verification)\s*:\s*(.+\S)\s*$")
 _MIN_CLAIM_TOKEN_LENGTH = 4
+_SUBJECT_PART_COUNT = 2
+
+
 @dataclass(frozen=True)
 class NormalizationResult:
     """Normalized content plus a deterministic, auditable repair record."""
@@ -40,8 +43,6 @@ def normalize_commit_message_draft(
     """Repair recognizable drafts from live facts; reject ungrounded claims."""
     if re.search(r"(?m)^type:\s*skip\s*$", content):
         return NormalizationResult(content, (), "high", ("draft",))
-    if re.search(r"(?m)^type:\s*commit\s*$", content):
-        return NormalizationResult(content, (), "high", ("canonical draft",))
     match = _FRONTMATTER_SUBJECT.search(content) or _SUBJECT.search(content)
     if match is None:
         raise ValueError(_regeneration_diagnostic(
@@ -66,7 +67,10 @@ def normalize_commit_message_draft(
             "conventional-subject repair and live-file refresh; claim could not be matched to any evidence fact",
         ))
     if grounded:
-        ir = replace(ir, rationale=grounded)
+        known_claims = (*ir.rationale, *ir.behavior_risk, *ir.verification)
+        additional_claims = tuple(claim for claim in grounded if claim not in known_claims)
+        if additional_claims:
+            ir = replace(ir, rationale=(*ir.rationale, *additional_claims))
     rendered = render_commit_message_artifact(ir)
     if rendered == content:
         return NormalizationResult(rendered, (), "high", ("live evidence",))
@@ -90,7 +94,7 @@ def _extract_claims(content: str) -> tuple[str, ...]:
             in_files = stripped.lower() in {"## files", "## excluded files"}
             continue
         if not in_files and (claim := _list_claim(stripped)) and not claim.endswith(".py"):
-            candidates.append(claim)
+            candidates.extend(part.strip() for part in claim.split("; ") if part.strip())
         if ":" in stripped:
             key, value = stripped.split(":", 1)
             if key.lower() in {"intent", "rationale", "change", "changes", "verification"} and value.strip():
@@ -186,8 +190,13 @@ def _capture_subject(match: re.Match[str]) -> str:
 
 def _normalized_subject(subject: str) -> str:
     prefix, separator, description = subject.partition(":")
+    if not separator:
+        parts = subject.split(maxsplit=1)
+        if len(parts) != _SUBJECT_PART_COUNT or parts[0].lower() not in {"build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test"}:
+            return ""
+        prefix, description = parts
     description = description.strip()
-    if not separator or not description:
+    if not description:
         return ""
     return f"{prefix.lower()}: {description[:1].lower()}{description[1:]}"
 

@@ -130,3 +130,35 @@ def test_normalizer_is_idempotent() -> None:
 
     assert second.content == first.content
     assert second.transformations == ()
+
+
+def test_normalizer_regression_reconciles_canonical_stale_files() -> None:
+    """DA-004/DA-005: canonical markers must not bypass live-file normalization."""
+    result = normalize_commit_message_draft(
+        "---\ntype: commit\nsubject: fix: preserve evidence\n---\n\n## Body\n"
+        "- [B-1] Preserve retry evidence for submit artifacts.\n\n## Files\n- [F-1] old.py\n",
+        _fact_evidence(),
+    )
+
+    assert "ralph/app.py" in result.content
+    assert "old.py" not in result.content
+
+
+def test_normalizer_regression_repairs_canonical_subject_without_separator() -> None:
+    """DA-004/DA-006: canonical structure still receives deterministic subject repair."""
+    result = normalize_commit_message_draft(
+        "---\ntype: commit\nsubject: FIX Preserve evidence\n---\n",
+        EVIDENCE,
+    )
+
+    assert "subject: fix: preserve evidence" in result.content
+
+
+def test_normalizer_regression_rejects_unsupported_canonical_claim() -> None:
+    """DA-005: canonical markers must not launder unsupported claims."""
+    with pytest.raises(ValueError, match="unsupported body claim"):
+        normalize_commit_message_draft(
+            "---\ntype: commit\nsubject: fix: preserve evidence\n---\n\n## Body\n"
+            "- [B-1] Invent nonexistent behavior.\n",
+            _fact_evidence(),
+        )
