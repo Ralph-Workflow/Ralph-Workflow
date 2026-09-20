@@ -41,9 +41,13 @@ def _body_items(ir: CommitMessageIR) -> tuple[str, ...]:
     categories = tuple(parts for parts in (ir.rationale, ir.behavior_risk, ir.verification) if parts)
     if not categories:
         return ()
-    # The artifact reader exposes only the primary Body item, so preserve all
-    # grounded categories by consolidating rather than serializing siblings.
-    return ("; ".join(part for category in categories for part in category),)
+    limit = ir.message_budget.max_body_points if ir.message_budget else len(categories)
+    if limit <= 1:
+        return ("; ".join(part for category in categories for part in category),)
+    if len(categories) <= limit:
+        return tuple("; ".join(category) for category in categories)
+    head = tuple("; ".join(category) for category in categories[: limit - 1])
+    return (*head, "; ".join(part for category in categories[limit - 1 :] for part in category))
 
 
 def render_commit_message_artifact(ir: CommitMessageIR) -> str:

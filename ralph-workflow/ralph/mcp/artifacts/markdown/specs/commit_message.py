@@ -24,13 +24,19 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
         "type": kind,
         "subject": document.frontmatter.get("subject", ""),
     }
-    content.update(_single_text_section(document.section("Body"), "body"))
+    content.update(_body_section(document.section("Body")))
     content.update(_single_text_section(document.section("Body Summary"), "body_summary"))
     content.update(_single_text_section(document.section("Body Details"), "body_details"))
     content.update(_single_text_section(document.section("Body Footer"), "body_footer"))
     content.update(_text_list_section(document.section("Files"), "files"))
     content.update(_excluded_files_section(document.section("Excluded Files")))
     return content
+
+
+def _body_section(section: ParsedSection | None) -> dict[str, object]:
+    if section is None:
+        return {}
+    return {"body": "\n".join(item.text for item in section.items)}
 
 
 def _single_text_section(section: ParsedSection | None, field: str) -> dict[str, object]:

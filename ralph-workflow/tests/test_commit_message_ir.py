@@ -40,6 +40,30 @@ def test_ir_renderer_consolidates_small_budget_without_losing_categories() -> No
     assert "pytest passed" in artifact
 
 
+def test_ir_renderer_regression_expands_large_budget_into_category_items() -> None:
+    """DA-002/DA-008: available budget renders focused category items."""
+    evidence = CommitEvidenceBundle(
+        "diff",
+        ("ralph/app.py", "ralph/mcp/tool.py", "ralph/pipeline/run.py", "tests/test_app.py"),
+        ("ralph/app", "ralph/mcp", "ralph/pipeline", "tests"),
+        (),
+        ("ralph/app.py", "ralph/mcp/tool.py", "ralph/pipeline/run.py"),
+        behavior_facts=("Preserves compatibility.",),
+        verification_facts=("pytest passed",),
+    )
+    small = render_commit_message_artifact(
+        replace(build_commit_message_ir(evidence, subject="fix: preserve evidence"), message_budget=CommitMessageBudget("small", 1))
+    )
+    large = render_commit_message_artifact(build_commit_message_ir(evidence, subject="fix: preserve evidence"))
+
+    assert small.count("- [B-") == 1
+    assert large.count("- [B-") > small.count("- [B-")
+    assert large.count("- [B-") == 3
+    assert "Changed ralph/app." in large
+    assert "Preserves compatibility." in large
+    assert "pytest passed" in large
+
+
 def test_ir_renderer_preserves_excluded_files() -> None:
     from ralph.mcp.artifacts.commit_message_ir import CommitMessageIR
 
