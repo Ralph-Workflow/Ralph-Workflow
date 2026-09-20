@@ -453,13 +453,13 @@ class RestartAwareMcpBridge:
         )
 
     def reset_session_budget(self) -> None:
-        """Re-arm the inner subprocess's soft wrap-up nag for a fresh attempt.
+        """Clear the inner subprocess's pending completion admissions.
 
         The McpServer is a per-subprocess singleton; the bridge is its only
         client. Each attempt boundary (e.g. the start of every
-        ``effect_executor._run_attempt``) must re-arm the inner subprocess's
-        soft nag so a retried agent does not inherit the prior attempt's
-        elapsed time. The reset is exposed as the custom JSON-RPC method
+        ``effect_executor._run_attempt``) clears pending identity-scoped
+        completion admissions. Phase-wide elapsed time is unaffected by attempt
+        resets. The reset is exposed as the custom JSON-RPC method
         ``notifications/reset_wrapup`` over HTTP; the McpServer handles it
         via ``McpServer._dispatch_request`` by calling
         ``McpServer.reset_session_budget()``.

@@ -175,15 +175,15 @@ def decode_json_payload_from_content(content_blocks: object) -> dict[str, object
 class McpServer:
     """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools.
 
-    Per-invocation reset contract: a single ``McpServer`` is a per-subprocess
-    singleton; it may be reused across multiple agent attempts within the same
-    command-line invocation. The soft wrap-up nag (and the hard ceiling it
-    warns about) is owned by ONE agent attempt: each attempt boundary MUST
-    call :meth:`reset_session_budget` (in-process) or send the wire-level
+    Per-attempt completion-admission reset contract: a single ``McpServer`` is
+    a per-subprocess singleton; it may be reused across multiple agent attempts
+    within the same command-line invocation. Each attempt boundary MUST call
+    :meth:`reset_session_budget` (in-process) or send the wire-level
     ``notifications/reset_wrapup`` JSON-RPC method (over HTTP from
-    :class:`RestartAwareMcpBridge`) so the budget is re-armed. See
-    ``ralph.mcp.server._session_wrapup`` for the underlying contract and
-    ``ralph.pipeline.effect_executor._run_attempt`` for the production
+    :class:`RestartAwareMcpBridge`) to clear pending identity-scoped completion
+    admissions. Warning timing is phase-wide through the development-timebox
+    epoch. See ``ralph.mcp.server._session_wrapup`` for the underlying contract
+    and ``ralph.pipeline.effect_executor._run_attempt`` for the production
     wire-up at the per-attempt boundary.
     """
 
@@ -229,17 +229,14 @@ class McpServer:
         self._mcp_activity_sink = mcp_activity_sink
 
     def reset_session_budget(self) -> None:
-        """Re-arm the soft wrap-up nag (and the hard ceiling) for a fresh attempt.
+        """Clear pending identity-scoped completion admissions for a fresh attempt.
 
         Called by the orchestrator at the top of every ``_run_attempt`` in
-        ``ralph.pipeline.effect_executor`` so a retried agent (e.g. after an
-        artifact-missing failure) starts with ``elapsed=0`` on the very first
-        tool result instead of inheriting the prior attempt's elapsed time.
-
-        Warning timing is phase-wide and comes from the development-timebox
-        epoch, so this method deliberately does not re-arm a timer. It only
-        clears pending identity-scoped completion confirmations. The reset is
-        also reachable over the wire via ``notifications/reset_wrapup``.
+        ``ralph.pipeline.effect_executor``. Warning timing is phase-wide and
+        comes from the development-timebox epoch, so this method deliberately
+        does not alter any timer. It only clears pending
+        identity-scoped completion confirmations. The reset is also reachable
+        over the wire via ``notifications/reset_wrapup``.
         """
         reset_completion_admissions()
 

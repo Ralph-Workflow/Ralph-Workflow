@@ -99,8 +99,9 @@ focused verification result. Do not submit another plan-step or work-unit ID.
 Do not invent files or verification results.
 Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
 
-Before the per-invocation 50-minute soft wrap-up warning, only a fully proved
-`status: completed` result is accepted; keep working on ready unit work instead
+Before the phase-wide development-timebox warning (`RALPH_DEV_WARN_EPOCH`,
+default 70 minutes), only a fully proved `status: completed` result is accepted;
+keep working on ready unit work instead
 of submitting `partial` or `failed`. At or after the warning, those incomplete
 statuses remain available under the following handoff contract. A `status: partial` or `status: failed` result is free-form below the frontmatter. Use `partial` for a safe worker-local
 continuation and include `## Next Steps` plus `## Continuation`. Use `failed`
